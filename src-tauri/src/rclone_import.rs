@@ -1830,6 +1830,19 @@ pub struct RcloneImportResult {
     pub provider_secrets: std::collections::HashMap<String, crate::profile_export::ProviderSecrets>,
 }
 
+impl RcloneImportResult {
+    /// The secrets in the order of the servers, not of the map, which changes from
+    /// run to run: of two remotes with different OAuth apps, the first one decides
+    /// which app stays stored.
+    pub fn secrets_in_server_order(
+        &self,
+    ) -> impl Iterator<Item = (&String, &crate::profile_export::ProviderSecrets)> {
+        self.servers
+            .iter()
+            .filter_map(|server| Some((&server.id, self.provider_secrets.get(&server.id)?)))
+    }
+}
+
 /// A remote that was skipped (unsupported type).
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3636,6 +3649,24 @@ pub fn export_rclone(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Which OAuth app stays stored does not change from run to run.
+    #[test]
+    fn the_secrets_follow_the_order_of_the_servers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let remotes: String = (0..8)
+            .map(|i| format!("[r{i}]\ntype = drive\nclient_id = app-{i}\nclient_secret = s\n\n"))
+            .collect();
+        std::fs::write(&path, remotes).unwrap();
+        let result = import_rclone(&path).unwrap();
+        let apps: Vec<_> = result
+            .secrets_in_server_order()
+            .map(|(_, secrets)| secrets.oauth_client_id.clone().unwrap())
+            .collect();
+        let expected: Vec<_> = (0..8).map(|i| format!("app-{i}")).collect();
+        assert_eq!(apps, expected);
+    }
 
     /// An app with no token yet is still kept: a later sign-in on this device needs it.
     #[test]

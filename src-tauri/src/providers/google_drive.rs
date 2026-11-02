@@ -3331,6 +3331,16 @@ mod tests {
     /// as a mixture of two versions: the last chunk, which commits, never leaves.
     #[tokio::test]
     async fn a_file_rewritten_during_a_resumable_upload_is_not_published() {
+        rewritten_during_a_resumable_upload(11 * 1024 * 1024 + 1).await;
+    }
+
+    /// The same size is not the same file: the date gives the rewrite away.
+    #[tokio::test]
+    async fn a_same_size_rewrite_during_the_upload_is_not_published() {
+        rewritten_during_a_resumable_upload(11 * 1024 * 1024).await;
+    }
+
+    async fn rewritten_during_a_resumable_upload(rewritten: usize) {
         use std::sync::{Arc, Mutex};
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("big.bin");
@@ -3366,7 +3376,15 @@ mod tests {
                             .await
                             .unwrap();
                         seen.lock().unwrap().push(range);
-                        std::fs::write(&path, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
+                        std::fs::write(&path, vec![b'b'; rewritten]).unwrap();
+                        let later =
+                            std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+                        std::fs::File::options()
+                            .write(true)
+                            .open(&path)
+                            .unwrap()
+                            .set_modified(later)
+                            .unwrap();
                         return axum::http::StatusCode::PERMANENT_REDIRECT.into_response();
                     }
                     if req

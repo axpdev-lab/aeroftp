@@ -6838,6 +6838,8 @@ const App: React.FC = () => {
       // An empty list would read as "nothing matches".
       setRemoteSearchResults([]);
       notify.error(t('common.error'), String(error));
+      // With notifications off too: the empty panel alone would say the same.
+      if (!showToastNotifications) toastError(t('common.error'), String(error));
     } finally {
       setRemoteSearching(false);
     }

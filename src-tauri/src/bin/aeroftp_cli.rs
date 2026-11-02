@@ -10776,6 +10776,41 @@ fn refuse_local_name(local_path: &str) -> Result<(), ProviderError> {
         .map_err(ProviderError::InvalidPath)
 }
 
+/// Take out of a sync's plan the files `destination` cannot hold as they are, and
+/// say why. One of them written anyway would change name, leave an empty file or
+/// replace another file of the run. A conflict copy goes with its download: left
+/// in, each run would upload another copy of a conflict that stays open.
+fn refuse_download_names(
+    destination: &Path,
+    to_download: &mut Vec<&str>,
+    to_conflict_upload: &mut Vec<(String, String)>,
+) -> Vec<String> {
+    if to_download.is_empty() {
+        return Vec::new();
+    }
+    let paths: Vec<String> = to_download.iter().map(|path| path.to_string()).collect();
+    let problems = ftp_client_gui_lib::local_download_target::local_target_problems(
+        destination,
+        &paths,
+        &paths,
+    );
+    take_refused_names(problems, to_download, to_conflict_upload)
+}
+
+fn take_refused_names(
+    problems: Vec<ftp_client_gui_lib::local_download_target::LocalTargetProblem>,
+    to_download: &mut Vec<&str>,
+    to_conflict_upload: &mut Vec<(String, String)>,
+) -> Vec<String> {
+    let refused = |path: &str| problems.iter().any(|problem| problem.path == path);
+    to_download.retain(|path| !refused(path));
+    to_conflict_upload.retain(|(path, _)| !refused(path));
+    problems
+        .iter()
+        .map(|problem| format!("download {}: {}", problem.path, problem.reason))
+        .collect()
+}
+
 async fn download_with_resume(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
@@ -11098,6 +11133,14 @@ async fn cli_run_single_file_dag(
     server_url: Option<&str>,
     cancelled: Option<&Arc<AtomicBool>>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
+    if matches!(
+        direction,
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download
+    ) {
+        if let Err(refused) = refuse_local_name(local) {
+            return (provider, Err(refused));
+        }
+    }
     // Data-driven routing decision (Phase B), shared with the community
     // benchmark so a measurement takes the path a real transfer takes.
     let decision = ftp_client_gui_lib::transfer_dag_single_file::pick_single_file_route(
@@ -14113,7 +14156,10 @@ fn change_profiles_in_legacy_blob<R, E>(
         ));
     }
     let db = user_partitions::cli_db_path().map_err(&failed)?;
-    let _lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    let lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    if !lock.is_exclusive() {
+        return Err(failed(user_partitions::NO_FILE_LOCKS.to_string()));
+    }
     // The partition answers again: this was a passing fault, and the blob would hold
     // a change the next load replaces with the partition's list.
     if user_partitions::cli_list_server_profiles_for_user(store, user_id).is_ok() {
@@ -35960,6 +36006,13 @@ async fn cmd_get(
     } else {
         filename
     };
+    if let Err(reason) =
+        ftp_client_gui_lib::local_download_target::refuse_unwritable_name(local_path)
+    {
+        let _ = provider.disconnect().await;
+        print_error(format, &reason, 5);
+        return 5;
+    }
     // Audit-friendly overwrite warning. When the resolved destination
     // already exists locally, surface a clear stderr line so the agent
     // (or human) can decide rather than silently lose data. Suppressed
@@ -37121,6 +37174,8 @@ struct CliGetScan {
     /// G108: folders the scan could not read or did not follow, and paths it
     /// could not map. Each is an error of the run.
     listing_errors: Vec<String>,
+    /// Files left out because this disk cannot hold their name, with the reason.
+    refused_names: Vec<String>,
 }
 
 /// What one listing adds to `get -r`.
@@ -37165,6 +37220,7 @@ impl CliGetScan {
             stopped: false,
             deferred: Vec::new(),
             listing_errors: Vec::new(),
+            refused_names: Vec::new(),
         }
     }
 
@@ -37301,6 +37357,12 @@ impl CliGetScan {
                 if verify_path_within_root(&local_path_buf, &self.local_base).is_err() {
                     continue;
                 }
+                if let Err(reason) =
+                    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(relative)
+                {
+                    self.refused_names.push(format!("{relative}: {reason}"));
+                    continue;
+                }
                 // --immutable: skip if local file already exists
                 if self.immutable && local_path_buf.exists() {
                     if !self.quiet {
@@ -37342,6 +37404,13 @@ impl CliGetScan {
                         .push(format!("unsafe local path for {}", subdir));
                     continue;
                 };
+                if let Err(refusal) =
+                    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(relative)
+                {
+                    self.listing_errors
+                        .push(format!("not following {}: {}", subdir, refusal));
+                    continue;
+                }
                 let local_dir = self.local_base.join(relative);
                 if let Err(refusal) = verify_path_within_root(&local_dir, &self.local_base) {
                     self.listing_errors
@@ -37520,6 +37589,8 @@ async fn cmd_get_recursive(
     // partial whatever the transfers do: the subtree asked for was not all
     // downloaded.
     let unlisted_folders: usize;
+    // Files left out for a name this disk cannot hold: refused again on any retry.
+    let refused_names: usize;
     let scan_stopped: bool;
     let mut errors: Vec<String>;
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
@@ -37619,6 +37690,8 @@ async fn cmd_get_recursive(
         unlisted_folders = scan.listing_errors.len();
         scan_stopped = scan.stopped;
         errors = std::mem::take(&mut scan.listing_errors);
+        refused_names = scan.refused_names.len();
+        errors.append(&mut scan.refused_names);
         downloaded = outcome.downloaded;
         done_bytes = shared_batch_bytes(
             downloaded as usize == total_files,
@@ -37673,6 +37746,8 @@ async fn cmd_get_recursive(
         unlisted_folders = scan.listing_errors.len();
         scan_stopped = scan.stopped;
         errors = std::mem::take(&mut scan.listing_errors);
+        refused_names = scan.refused_names.len();
+        errors.append(&mut scan.refused_names);
 
         start = Instant::now();
         let aggregate = Arc::new(AtomicU64::new(0));
@@ -37837,7 +37912,11 @@ async fn cmd_get_recursive(
     }
 
     if downloaded == total_files as u32 && unlisted_folders == 0 && !scan_stopped {
-        0
+        if refused_names == 0 {
+            0
+        } else {
+            5
+        }
     } else if interrupted {
         130
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
@@ -37949,6 +38028,12 @@ async fn cmd_get_glob(
     for entry in &matched {
         if validate_relative_path(&entry.name).is_none() {
             errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
+            continue;
+        }
+        if let Err(reason) =
+            ftp_client_gui_lib::local_download_target::refuse_unwritable_name(&entry.name)
+        {
+            errors.push(format!("{}: {reason}", entry.name));
             continue;
         }
         let local_path = format!("{}/{}", local_base, entry.name);
@@ -39412,7 +39497,21 @@ fn publish_extracted(
             files.push(relative);
         }
     }
-    // A link in the way would carry the extract outside the destination.
+    // A link in the way would carry the extract outside the destination. An empty
+    // folder has no children to find a link at its own path.
+    for folder in &folders {
+        let target = dest.join(folder);
+        if target
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            return Err(format!(
+                "{} is a link, and the vault holds the folder {} there. Nothing was written",
+                target.display(),
+                folder.display()
+            ));
+        }
+    }
     for relative in folders.iter().chain(&files) {
         let mut under = dest.to_path_buf();
         let parents: Vec<_> = relative
@@ -41939,7 +42038,7 @@ async fn apply_rclone_import_to_vault(
     // The app a token refreshes with, as the GUI import keeps it: a fresh device
     // has nothing else to refresh with. After the write, which holds the lock.
     let mut oauth_app_warnings = Vec::new();
-    for (profile_id, secrets) in &result.provider_secrets {
+    for (profile_id, secrets) in result.secrets_in_server_order() {
         let slug = protocol_of(profile_id).and_then(|protocol| {
             ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol)
         });
@@ -56375,6 +56474,11 @@ async fn cmd_sync(
         |p| mtime_to_epoch(remote_map.get(*p).and_then(|(_, m)| *m)),
     );
 
+    // Refused here and in a dry run alike, before anything is written.
+    let refused_names =
+        refuse_download_names(Path::new(local), &mut to_download, &mut to_conflict_upload);
+    immutable_refusals.extend(refused_names.iter().cloned());
+
     if dry_run {
         match format {
             OutputFormat::Text => {
@@ -57537,7 +57641,11 @@ async fn cmd_sync(
     }
 
     // Save bisync snapshot after successful sync (--direction both)
-    if direction == "both" && errors.is_empty() && !dry_run {
+    // A name the disk cannot hold is refused on every run: it must not stop the
+    // snapshot, or a later run would read a file deleted and made again as one to
+    // delete. Its path is not settled here, so its old entry stays.
+    let only_refused_names = errors.iter().all(|error| refused_names.contains(error));
+    if direction == "both" && only_refused_names && !dry_run {
         let outcome = BisyncOutcome {
             rebuilt: resync,
             ..bisync_outcome(
@@ -98501,6 +98609,36 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
     }
 
+    /// A sync takes out the names this disk cannot hold, with their conflict copies,
+    /// and says why. The rest goes on.
+    #[test]
+    fn a_sync_refuses_only_the_names_the_disk_cannot_hold() {
+        use ftp_client_gui_lib::local_download_target::LocalTargetProblem;
+        let dest = tempfile::tempdir().unwrap();
+        let mut plain = vec!["ok.txt", "sub/other.txt"];
+        let mut no_conflicts = Vec::new();
+        assert!(refuse_download_names(dest.path(), &mut plain, &mut no_conflicts).is_empty());
+        assert_eq!(plain, ["ok.txt", "sub/other.txt"]);
+
+        let mut downloads = vec!["ok.txt", "a:b.txt", "kept.txt"];
+        let mut conflicts = vec![
+            ("a:b.txt".to_string(), "a:b.conflict.txt".to_string()),
+            ("kept.txt".to_string(), "kept.conflict.txt".to_string()),
+        ];
+        let refused = take_refused_names(
+            vec![LocalTargetProblem {
+                path: "a:b.txt".to_string(),
+                reason: "no colon".to_string(),
+            }],
+            &mut downloads,
+            &mut conflicts,
+        );
+        assert_eq!(refused, ["download a:b.txt: no colon"]);
+        assert_eq!(downloads, ["ok.txt", "kept.txt"]);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].0, "kept.txt");
+    }
+
     #[test]
     fn extracted_files_replace_nothing_without_overwrite() {
         let root = tempfile::tempdir().unwrap();
@@ -98544,6 +98682,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             let refused = publish_extracted(&staging, &linked, true).unwrap_err();
             assert!(refused.contains("is a link"), "{refused}");
             assert!(!outside.join("kept.txt").exists());
+
+            // An empty folder whose own path is a link has no parent to catch it.
+            let empty = root.path().join("empty");
+            std::fs::create_dir_all(empty.join("void")).unwrap();
+            std::os::unix::fs::symlink(&outside, linked.join("void")).unwrap();
+            let refused = publish_extracted(&empty, &linked, true).unwrap_err();
+            assert!(refused.contains("is a link"), "{refused}");
 
             std::os::unix::fs::symlink(root.path().join("gone"), dest.join("new.txt")).unwrap();
             assert!(

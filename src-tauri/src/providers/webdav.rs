@@ -5326,6 +5326,13 @@ impl StorageProvider for WebDavProvider {
                 Err(e) if dir == path || !super::listing_failure_is_the_folders(&e) => {
                     return Err(e)
                 }
+                // A 403 can be this folder's or the end of the account's access.
+                // In the second case the folder searched refuses too, and what
+                // was found so far would read as a complete result.
+                Err(ProviderError::PermissionDenied(_)) => {
+                    self.list(path).await?;
+                    continue;
+                }
                 Err(_) => continue,
             };
 
@@ -9892,60 +9899,74 @@ mod walk_scope_tests {
     /// A request path is resolved as a server resolves it; a collection not
     /// in `listings` is a 404.
     async fn provider_on_listings(listings: Listings) -> WebDavProvider {
-        let app = axum::Router::new().fallback(axum::routing::any(
-            move |req: axum::extract::Request| async move {
-                let path = urlencoding::decode(req.uri().path())
-                    .map(|p| crate::sync_core::walk_path_key(&p))
-                    .unwrap_or_default();
-                if path.ends_with("/signed-out") {
-                    return axum::response::Response::builder()
-                        .status(401)
-                        .body(axum::body::Body::empty())
-                        .unwrap();
-                }
-                if path.ends_with("/refused") {
-                    return axum::response::Response::builder()
-                        .status(403)
-                        .body(axum::body::Body::empty())
-                        .unwrap();
-                }
-                let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path) else {
-                    return axum::response::Response::builder()
-                        .status(404)
-                        .body(axum::body::Body::empty())
-                        .unwrap();
-                };
-                let response = |href: &str, name: &str, collection: bool| {
-                    let kind = if collection { "<d:collection/>" } else { "" };
-                    format!(
-                        "<d:response><d:href>{href}</d:href><d:propstat><d:prop>\
+        // Set by a request under `/revoked`: from then on every path answers 403.
+        let revoked = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let revoked = revoked.clone();
+                async move {
+                    let path = urlencoding::decode(req.uri().path())
+                        .map(|p| crate::sync_core::walk_path_key(&p))
+                        .unwrap_or_default();
+                    if path.ends_with("/revoked") {
+                        revoked.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    if revoked.load(std::sync::atomic::Ordering::SeqCst) {
+                        return axum::response::Response::builder()
+                            .status(403)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if path.ends_with("/signed-out") {
+                        return axum::response::Response::builder()
+                            .status(401)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if path.ends_with("/refused") {
+                        return axum::response::Response::builder()
+                            .status(403)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path)
+                    else {
+                        return axum::response::Response::builder()
+                            .status(404)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    };
+                    let response = |href: &str, name: &str, collection: bool| {
+                        let kind = if collection { "<d:collection/>" } else { "" };
+                        format!(
+                            "<d:response><d:href>{href}</d:href><d:propstat><d:prop>\
                              <d:displayname>{name}</d:displayname>\
                              <d:resourcetype>{kind}</d:resourcetype>\
                              <d:getcontentlength>1</d:getcontentlength></d:prop>\
                              <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
-                    )
-                };
-                let base = path.trim_end_matches('/');
-                let mut body = String::from(
+                        )
+                    };
+                    let base = path.trim_end_matches('/');
+                    let mut body = String::from(
                     "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:multistatus xmlns:d=\"DAV:\">",
                 );
-                body.push_str(&response(&format!("{base}/"), "", true));
-                for (i, name) in names.iter().enumerate() {
-                    let (name, collection) = match name.strip_suffix('/') {
-                        Some(folder) => (folder, true),
-                        None => (*name, false),
-                    };
-                    let slash = if collection { "/" } else { "" };
-                    body.push_str(&response(&format!("{base}/e{i}{slash}"), name, collection));
+                    body.push_str(&response(&format!("{base}/"), "", true));
+                    for (i, name) in names.iter().enumerate() {
+                        let (name, collection) = match name.strip_suffix('/') {
+                            Some(folder) => (folder, true),
+                            None => (*name, false),
+                        };
+                        let slash = if collection { "/" } else { "" };
+                        body.push_str(&response(&format!("{base}/e{i}{slash}"), name, collection));
+                    }
+                    body.push_str("</d:multistatus>");
+                    axum::response::Response::builder()
+                        .status(207)
+                        .header("content-type", "application/xml; charset=utf-8")
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
                 }
-                body.push_str("</d:multistatus>");
-                axum::response::Response::builder()
-                    .status(207)
-                    .header("content-type", "application/xml; charset=utf-8")
-                    .body(axum::body::Body::from(body))
-                    .unwrap()
-            },
-        ));
+            }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });
@@ -10002,6 +10023,15 @@ mod walk_scope_tests {
         let mut provider = provider_on_listings(SIGNED_OUT).await;
         let outcome = provider.find("/x", "*.txt").await;
         assert!(outcome.is_err(), "{outcome:?}");
+
+        // A 403 that also refuses the folder searched is the account's, not the folder's.
+        const REVOKED: Listings = &[("/x", &["a.txt", "revoked/"])];
+        let mut provider = provider_on_listings(REVOKED).await;
+        let outcome = provider.find("/x", "*.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::PermissionDenied(_))),
+            "{outcome:?}"
+        );
     }
 
     /// A search follows only collections inside the one searched, once each.
