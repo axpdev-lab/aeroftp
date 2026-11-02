@@ -466,12 +466,19 @@ impl PCloudProvider {
         format!("https://{host}{path}")
     }
 
-    /// A content host answering with an error status serves an error page,
-    /// not the file, and reqwest returns it like any other response.
+    /// A content host answering with anything but 200 does not serve the
+    /// whole file, and reqwest returns it like any other response.
     async fn content_response(resp: reqwest::Response) -> Result<reqwest::Response, ProviderError> {
         let status = resp.status();
-        if status.is_success() {
+        // A whole file comes with 200: a 204 has no body and a 206 only part.
+        if status == reqwest::StatusCode::OK {
             return Ok(resp);
+        }
+        // Any other success carries file bytes, not an error page.
+        if status.is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "pCloud content host answered HTTP {status}: not the whole file"
+            )));
         }
         let excerpt = super::error_body_excerpt(resp, 200).await;
         Err(ProviderError::TransferFailed(format!(
@@ -2953,6 +2960,28 @@ mod tests {
             .await;
         assert!(refused_with_404(&outcome), "{outcome:?}");
         assert!(!out.exists());
+    }
+
+    /// A success that is not the whole file (204 has no body, 206 only part)
+    /// fails like an error, on disk and in memory.
+    #[tokio::test]
+    async fn a_download_answered_with_less_than_the_whole_file_fails() {
+        for status in [204u16, 206] {
+            let mut provider = provider_with_content(status).await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.txt");
+            let on_disk = provider
+                .download("/f.txt", out.to_str().unwrap(), None)
+                .await;
+            let in_memory = provider.download_to_bytes("/f.txt").await;
+            for outcome in [on_disk.map(|_| ()), in_memory.map(|_| ())] {
+                assert!(
+                    matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains(&status.to_string()) && !m.contains("DATA")),
+                    "{status}: {outcome:?}"
+                );
+            }
+            assert!(!out.exists(), "{status}");
+        }
     }
 
     #[tokio::test]
