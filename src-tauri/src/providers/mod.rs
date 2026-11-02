@@ -591,6 +591,54 @@ fn unescape_xml_entities(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// The start of an error response's body, for a message. At most `max`
+/// bytes are read, so a large or endless error page costs nothing more.
+pub(crate) async fn error_body_excerpt(mut resp: reqwest::Response, max: usize) -> String {
+    let mut body = Vec::new();
+    while body.len() < max {
+        match resp.chunk().await {
+            Ok(Some(chunk)) => {
+                let take = chunk.len().min(max - body.len());
+                body.extend_from_slice(&chunk[..take]);
+            }
+            _ => break,
+        }
+    }
+    body.truncate(max);
+    String::from_utf8_lossy(&body).trim().to_string()
+}
+
+#[cfg(test)]
+mod error_body_excerpt_tests {
+    use super::*;
+
+    /// An error page that never ends still yields its first bytes, at once.
+    #[tokio::test]
+    async fn an_endless_error_body_is_read_only_up_to_the_excerpt() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let endless = futures_util::stream::repeat_with(|| {
+                Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"error page "))
+            });
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::body::Body::from_stream(endless),
+            )
+        });
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let excerpt = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            error_body_excerpt(resp, 200),
+        )
+        .await
+        .expect("the excerpt stops at its limit");
+        assert_eq!(excerpt.len(), 200, "{excerpt:?}");
+        assert!(excerpt.starts_with("error page error page"), "{excerpt:?}");
+    }
+}
+
 /// GAP-A10: Sanitize API error response bodies to prevent leaking sensitive data.
 /// Truncates to first line (max 200 chars), strips potential tokens/keys.
 pub fn sanitize_api_error(body: &str) -> String {
