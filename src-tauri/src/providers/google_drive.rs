@@ -3376,18 +3376,24 @@ mod tests {
                             .await
                             .unwrap();
                         seen.lock().unwrap().push(range);
+                        // `write` moves the modification time as well as the
+                        // bytes. The same-size case needs that date to move.
+                        // The different-size case puts the old date back, so
+                        // a size check that disappeared would let this pass.
+                        let original_modified =
+                            std::fs::metadata(&path).unwrap().modified().unwrap();
                         std::fs::write(&path, vec![b'b'; rewritten]).unwrap();
-                        // Only the date gives this one away; a different size stands on its own.
-                        if rewritten == 11 * 1024 * 1024 {
-                            let later =
-                                std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
-                            std::fs::File::options()
-                                .write(true)
-                                .open(&path)
-                                .unwrap()
-                                .set_modified(later)
-                                .unwrap();
-                        }
+                        let stamp = if rewritten == 11 * 1024 * 1024 {
+                            std::time::SystemTime::now() + std::time::Duration::from_secs(3600)
+                        } else {
+                            original_modified
+                        };
+                        std::fs::File::options()
+                            .write(true)
+                            .open(&path)
+                            .unwrap()
+                            .set_modified(stamp)
+                            .unwrap();
                         return axum::http::StatusCode::PERMANENT_REDIRECT.into_response();
                     }
                     if req
@@ -3413,6 +3419,7 @@ mod tests {
         provider.api_origin_override = Some(format!("http://{addr}"));
         provider.test_access_token = Some("t".into());
 
+        let original_modified = std::fs::metadata(&local).unwrap().modified().unwrap();
         let outcome = provider
             .upload(local.to_str().unwrap(), "/big.bin", None)
             .await;
@@ -3420,10 +3427,22 @@ mod tests {
         let error = outcome
             .expect_err("a file that changed is not published")
             .to_string();
-        assert!(
-            error.contains("changed") || error.contains("became"),
-            "{error}"
-        );
+        let after = std::fs::metadata(&local).unwrap().modified().unwrap();
+        if rewritten == 11 * 1024 * 1024 {
+            assert_ne!(
+                after, original_modified,
+                "the same-size case moves the date"
+            );
+            assert!(error.contains("modification time moved"), "{error}");
+            assert!(!error.contains("became"), "{error}");
+        } else {
+            assert_eq!(
+                after, original_modified,
+                "the different-size case keeps the original date"
+            );
+            assert!(error.contains("became"), "{error}");
+            assert!(!error.contains("modification time"), "{error}");
+        }
         assert_eq!(
             chunks.lock().unwrap().len(),
             1,
