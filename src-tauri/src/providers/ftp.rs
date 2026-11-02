@@ -9562,6 +9562,7 @@ pub(crate) mod walk_scope_tests {
         }
         let mut data: Option<TcpListener> = None;
         let mut cwd = "/".to_string();
+        let mut find_failed = false;
         let held = |path: &str| listings.iter().any(|(folder, _)| *folder == path);
         while let Ok(Some(line)) = lines.next_line().await {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
@@ -9582,12 +9583,13 @@ pub(crate) mod walk_scope_tests {
                 "PWD" => format!("257 \"{cwd}\" is current\r\n"),
                 "CWD" => {
                     let target = resolve(&cwd, &argument);
-                    if stall_restore && target == "/" {
+                    if stall_restore && find_failed && target == "/" {
                         // Leave CWD unanswered until the client drops the session.
                         while let Ok(Some(_)) = lines.next_line().await {}
                         return;
                     }
                     if target.ends_with("/down") {
+                        find_failed = true;
                         "421 Service not available.\r\n".to_string()
                     } else if held(&target) {
                         cwd = target;
@@ -9783,8 +9785,11 @@ pub(crate) mod walk_scope_tests {
 
     #[tokio::test]
     async fn a_failed_find_drops_a_session_whose_cwd_restore_never_answers() {
-        let (mut provider, _) =
-            provider_on_tree_with_restore_mode(&[("/x", &["down/"])], true).await;
+        let (mut provider, _) = provider_on_tree_with_restore_mode(
+            &[("/", &["keep.txt", "x/"]), ("/x", &["down/"])],
+            true,
+        )
+        .await;
         let outcome =
             tokio::time::timeout(std::time::Duration::from_secs(8), provider.find("/x", "*"))
                 .await
@@ -9795,6 +9800,21 @@ pub(crate) mod walk_scope_tests {
             "a late CWD reply must not reach another command"
         );
         assert_eq!(provider.current_path, "/");
+        // A listing does not dial a missing stream implicitly. The caller gets
+        // NotConnected until an explicit connect establishes a fresh session.
+        assert!(matches!(
+            provider.list("/").await,
+            Err(ProviderError::NotConnected)
+        ));
+        provider
+            .connect()
+            .await
+            .expect("explicitly reconnect after the dropped session");
+        let entries = provider
+            .list("/")
+            .await
+            .expect("list on the fresh control stream");
+        assert!(entries.iter().any(|entry| entry.name == "keep.txt"));
     }
 
     #[tokio::test]

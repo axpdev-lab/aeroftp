@@ -845,7 +845,6 @@ const App: React.FC = () => {
   const scanInFlightRef = useRef(false); // Synchronous re-entry latch for scanUsedStorage
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
-  const [remoteSearching, setRemoteSearching] = useState(false);
   const [showRemoteSearchBar, setShowRemoteSearchBar] = useState(false);
   // File versions dialog
   const [versionsDialog, setVersionsDialog] = useState<{ path: string; name: string } | null>(null);
@@ -6836,23 +6835,19 @@ const App: React.FC = () => {
     activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath,
     liveConnectionParams.server, liveConnectionParams.username, liveConnectionParams.protocol,
   ]));
+  const remoteSearching = remoteSearchRequest.pendingCount > 0;
   const cancelRemoteSearch = useCallback(() => {
+    // This invalidates results; it does not interrupt native provider_find.
     remoteSearchRequest.cancel();
-    setRemoteSearching(false);
   }, [remoteSearchRequest.cancel]);
 
-  useLayoutEffect(() => { setRemoteSearching(false); }, [
-    activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath,
-    liveConnectionParams.server, liveConnectionParams.username, liveConnectionParams.protocol,
-  ]);
-
   const handleRemoteSearch = async (query: string) => {
-    const isCurrent = remoteSearchRequest.begin();
     if (!query.trim()) {
+      remoteSearchRequest.cancel();
       setRemoteSearchResults(null);
       return;
     }
-    setRemoteSearching(true);
+    const { isCurrent, finish } = remoteSearchRequest.begin();
     try {
       const results = await invoke<RemoteFile[]>('provider_find', {
         path: currentRemotePath || '/',
@@ -6871,7 +6866,7 @@ const App: React.FC = () => {
       // With notifications off too: the empty panel alone would say the same.
       if (!showToastNotifications) toastError(t('common.error'), String(error));
     } finally {
-      if (isCurrent()) setRemoteSearching(false);
+      finish();
     }
   };
 

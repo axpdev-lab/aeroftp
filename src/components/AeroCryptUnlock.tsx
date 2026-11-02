@@ -149,6 +149,9 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     const [kitQrLevel, setKitQrLevel] = useState<'L' | 'M' | 'Q' | 'H'>('H');
     const [markerStatus, setMarkerStatus] = useState<AeroCryptMarkerStatus | null>(null);
     const [markerMigrating, setMarkerMigrating] = useState(false);
+    // Save and marker mutation cannot overlap, including their first awaits.
+    const kitOperationRef = useRef(false);
+    const [kitOperationBusy, setKitOperationBusy] = useState(false);
     const vaultInfoRef = useRef<AeroCryptVaultInfo | null>(null);
     // True when the provider overlay is already live (auto-unlock / badge) so the
     // modal shows the unlocked panel without inventing a fake AECR v2 stub.
@@ -345,7 +348,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         }
     };
 
-    const handleMigrateLegacyMarker = async () => {
+    const migrateLegacyMarker = async () => {
         // When the provider overlay is already unlocked (auto-unlock path), the
         // password may be empty here: re-use the stored profile password if any.
         let pw = password;
@@ -464,6 +467,18 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         }
     };
 
+    const handleMigrateLegacyMarker = async () => {
+        if (kitOperationRef.current) return;
+        kitOperationRef.current = true;
+        setKitOperationBusy(true);
+        try {
+            await migrateLegacyMarker();
+        } finally {
+            kitOperationRef.current = false;
+            setKitOperationBusy(false);
+        }
+    };
+
     // On-demand recovery kit: prefer the keystore kit (works offline after one
     // connect, includes vault_id backfill). Fall back to remote marker config.
     const showRecoveryKit = async () => {
@@ -511,7 +526,9 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     };
 
     const saveKitToFile = async () => {
-        if (!kitData) return;
+        if (!kitData || kitOperationRef.current) return;
+        kitOperationRef.current = true;
+        setKitOperationBusy(true);
         const generation = kitGenerationRef.current;
         try {
             const slug = (profileId || 'profile')
@@ -533,6 +550,9 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             setSuccess(t('aerocryptNative.kitSaved', { path }));
         } catch (e) {
             setError(String(e));
+        } finally {
+            kitOperationRef.current = false;
+            setKitOperationBusy(false);
         }
     };
 
@@ -813,7 +833,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => void handleMigrateLegacyMarker()}
-                                        disabled={loading || markerMigrating}
+                                        disabled={loading || markerMigrating || kitOperationBusy}
                                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {markerMigrating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileKey className="w-3.5 h-3.5" />}
@@ -873,7 +893,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => void handleMigrateLegacyMarker()}
-                                        disabled={loading || markerMigrating}
+                                        disabled={loading || markerMigrating || kitOperationBusy}
                                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {markerMigrating ? (
@@ -929,7 +949,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     </div>
 
                                     <div className="flex gap-2">
-                                        <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
+                                        <button onClick={saveKitToFile} disabled={kitOperationBusy} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
                                         <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
                                         <button onClick={() => setKitData(null)} className="px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.hideKit')}</button>
                                     </div>

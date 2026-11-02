@@ -73,16 +73,55 @@ describe('recovery kit after remote marker migration', () => {
         expect(writeTextFile).not.toHaveBeenCalled();
     });
 
-    it('does not save an old kit when a file picker returns after migration', async () => {
+    it('blocks migration while the save picker is open, before React can disable the buttons', async () => {
         let finishPicker!: (path: string) => void;
         pickSave.mockReturnValue(new Promise<string>((resolve) => { finishPicker = resolve; }));
         await mount();
-        // Start the async picker without awaiting its completion.
-        await click('aerocryptNative.saveKit');
-        await click('aerocryptNative.migrateLegacyMarker');
+        await act(async () => {
+            button('aerocryptNative.saveKit').click();
+            button('aerocryptNative.migrateLegacyMarker').click();
+        });
+        expect(invoke.mock.calls.filter(([c]) => c === 'aerocrypt_provider_migrate_legacy_marker')).toHaveLength(0);
+        expect(button('aerocryptNative.migrateLegacyMarker').disabled).toBe(true);
         await act(async () => finishPicker('/tmp/recovery.txt'));
+        expect(writeTextFile).toHaveBeenCalledWith('/tmp/recovery.txt', oldKit.text);
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(invoke.mock.calls.filter(([c]) => c === 'aerocrypt_provider_migrate_legacy_marker')).toHaveLength(1);
+        expect(host.textContent).not.toContain(oldKit.text);
+    });
+
+    it('blocks migration until an already-started kit write finishes', async () => {
+        let finishWrite!: () => void;
+        pickSave.mockResolvedValue('/tmp/recovery.txt');
+        writeTextFile.mockReturnValue(new Promise<void>((resolve) => { finishWrite = resolve; }));
+        await mount();
+        await click('aerocryptNative.saveKit');
+        expect(writeTextFile).toHaveBeenCalledWith('/tmp/recovery.txt', oldKit.text);
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(invoke.mock.calls.filter(([c]) => c === 'aerocrypt_provider_migrate_legacy_marker')).toHaveLength(0);
+        await act(async () => finishWrite());
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(invoke.mock.calls.filter(([c]) => c === 'aerocrypt_provider_migrate_legacy_marker')).toHaveLength(1);
+    });
+
+    it('holds the shared guard before the migration credential read starts', async () => {
+        let finishPassword!: (password: string) => void;
+        const original = invoke.getMockImplementation()!;
+        invoke.mockImplementation((command, args) => (
+            command === 'get_credential' && args?.account?.includes('_pw_')
+                ? new Promise<string>((resolve) => { finishPassword = resolve; })
+                : original(command, args)
+        ));
+        await mount();
+        await act(async () => {
+            button('aerocryptNative.migrateLegacyMarker').click();
+            button('aerocryptNative.saveKit').click();
+        });
+        expect(pickSave).not.toHaveBeenCalled();
+        expect(button('aerocryptNative.saveKit').disabled).toBe(true);
+        await act(async () => finishPassword('secret'));
+        expect(invoke.mock.calls.filter(([c]) => c === 'aerocrypt_provider_migrate_legacy_marker')).toHaveLength(1);
         expect(writeTextFile).not.toHaveBeenCalled();
-        expect(host.textContent).toContain('aerocryptNative.overlayMetadataNotSaved');
     });
 
     it('does not let a pending hydration restore the old kit after migration', async () => {

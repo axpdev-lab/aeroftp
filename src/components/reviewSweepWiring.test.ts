@@ -14,19 +14,21 @@ describe('a failure that would otherwise read as success', () => {
         expect(body).toMatch(/if \(!showToastNotifications\) toastError\(t\('common\.error'\), String\(error\)\);/);
     });
 
-    it('ignores stale search success, failure and completion and invalidates on close/session', () => {
+    it('ignores stale search results and errors but releases the native busy count on every completion', () => {
         const start = appRaw.indexOf('const handleRemoteSearch = async');
         const body = appRaw.slice(start, appRaw.indexOf('// Check provider capabilities', start));
-        expect(body).toContain('const isCurrent = remoteSearchRequest.begin()');
+        expect(body).toContain('const { isCurrent, finish } = remoteSearchRequest.begin()');
         expect(body).toMatch(/if \(!isCurrent\(\)\) return;\s*setRemoteSearchResults\(results\)/);
         expect(body).toMatch(/catch \(error\) \{\s*if \(!isCurrent\(\)\) return;/);
-        expect(body).toContain('if (isCurrent()) setRemoteSearching(false)');
+        expect(body).toMatch(/finally \{\s*finish\(\);/);
+        expect(appRaw).toContain('const remoteSearching = remoteSearchRequest.pendingCount > 0');
+        expect(appRaw).not.toContain('setRemoteSearching');
         expect(appRaw).toContain('activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath');
         expect(appRaw).toContain("cancelRemoteSearch(); setShowRemoteSearchBar(false)");
     });
 
     it('says the recovery kit was not cached when the metadata write fails', () => {
-        const start = cryptRaw.indexOf('const handleMigrateLegacyMarker');
+        const start = cryptRaw.indexOf('const migrateLegacyMarker');
         const body = cryptRaw.slice(start, cryptRaw.indexOf('setMarkerMigrating(false)', start));
         expect(body).toMatch(/await invoke\('store_overlay_metadata'[^\n]*\n\s*kitMetadataStaleRef\.current = false;\n\s*\} catch \{[^}]*setError\(t\('aerocryptNative\.overlayMetadataNotSaved'\)\);\s*return;/);
     });
