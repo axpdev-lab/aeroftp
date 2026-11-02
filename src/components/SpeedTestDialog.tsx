@@ -226,7 +226,9 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     const [useExpertSize, setUseExpertSize] = useState(false);
     const [expertConfirmed, setExpertConfirmed] = useState(false);
     const [verifyIntegrity, setVerifyIntegrity] = useState(true);
-    const [remoteDir, setRemoteDir] = useState('/');
+    // Empty means the folder the session starts in: most accounts cannot
+    // write the root of the server.
+    const [remoteDir, setRemoteDir] = useState('');
     const [phase, setPhase] = useState<SpeedTestPhase>('idle');
     const [progress, setProgress] = useState<SpeedTestProgress | null>(null);
     const [result, setResult] = useState<SpeedTestResult | null>(null);
@@ -258,7 +260,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
 
     useEffect(() => {
         if (!selectedServer) return;
-        setRemoteDir(selectedServer.initialPath || '/');
+        setRemoteDir(selectedServer.initialPath || '');
     }, [selectedServer?.id]);
 
     // Load history summary when single-mode server changes
@@ -322,7 +324,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                 request: {
                     connection,
                     size_bytes: effectiveSize,
-                    remote_dir: remoteDir.trim() || '/',
+                    remote_dir: remoteDir.trim(),
                     server_name: selectedServer.name || selectedServer.host,
                     test_id: genTestId(),
                     expert_confirmed: sizeRequiresConfirm && expertConfirmed,
@@ -372,7 +374,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                     return {
                         connection,
                         size_bytes: effectiveSize,
-                        remote_dir: server.initialPath || '/',
+                        remote_dir: server.initialPath || '',
                         server_name: speedTestServerName(server),
                         test_id: testId,
                         expert_confirmed: sizeRequiresConfirm && expertConfirmed,
@@ -633,7 +635,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                         value={remoteDir}
                         onChange={(e) => setRemoteDir(e.target.value)}
                         disabled={anyRunning}
-                        placeholder="/"
+                        placeholder="~"
                         title={t('speedTest.remoteDirHint')}
                         className="w-full h-9 px-3 rounded-lg bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
                     />

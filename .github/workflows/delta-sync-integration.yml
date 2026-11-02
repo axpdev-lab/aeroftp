@@ -483,8 +483,12 @@ jobs:
     # with a key it sets through `docker exec`.
     name: SCP fallback on stock OpenWrt
     runs-on: ubuntu-latest
-    # Compiles the lib like the fallback-fixture job, under the same budget.
-    timeout-minutes: 40
+    # Compiles the lib like the fallback-fixture job. As in the key-auth job,
+    # the steps below carry their own budgets and this cap is only the
+    # backstop: their limits total 64 minutes (6 disk, 15 cache, 13 apt,
+    # 5 router, 25 test), so a cap under that could cancel a healthy step
+    # and report it as no step at all.
+    timeout-minutes: 65
 
     steps:
       - name: Checkout

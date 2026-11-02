@@ -883,9 +883,16 @@ pub fn connect_block_unsupported(protocol: &str) -> Value {
             "Protocol '{protocol}' is not in agent-connect's live-connect allowlist. \
              capabilities/path/profile blocks are still valid; use protocol-specific commands to connect."
         ),
-        "supported_protocols": ["ftp", "ftps", "sftp", "webdav", "s3", "github", "gitlab"],
+        "supported_protocols": LIVE_CONNECT_PROTOCOLS,
     })
 }
+
+/// The protocols `resolve_provider_type` connects, as the unsupported
+/// payload names them (`webdavs` is an alias of `webdav`). One list, so the
+/// payload cannot leave out a protocol the resolver accepts: it did for SCP.
+const LIVE_CONNECT_PROTOCOLS: &[&str] = &[
+    "ftp", "ftps", "sftp", "scp", "webdav", "s3", "github", "gitlab",
+];
 
 /// Build a top-level error payload for the case where profile lookup
 /// itself failed (no profile block possible). Keeps the same shape as
@@ -1487,11 +1494,56 @@ mod tests {
         let v = connect_block_unsupported("pcloud");
         assert_eq!(v["status"], "unsupported");
         let supported = v["supported_protocols"].as_array().unwrap();
-        for proto in ["ftp", "ftps", "sftp", "webdav", "s3", "github", "gitlab"] {
+        for proto in [
+            "ftp", "ftps", "sftp", "scp", "webdav", "s3", "github", "gitlab",
+        ] {
             assert!(
                 supported.iter().any(|x| x == proto),
                 "supported_protocols must include {proto}"
             );
+        }
+    }
+
+    #[test]
+    fn the_unsupported_payload_names_exactly_the_protocols_the_resolver_connects() {
+        for proto in LIVE_CONNECT_PROTOCOLS {
+            assert!(
+                resolve_provider_type(proto).is_some(),
+                "{proto} is listed but not connected"
+            );
+        }
+        // Every protocol name a profile can carry, through the resolver.
+        for proto in [
+            "ftp",
+            "ftps",
+            "sftp",
+            "scp",
+            "webdav",
+            "s3",
+            "github",
+            "gitlab",
+            "googledrive",
+            "dropbox",
+            "onedrive",
+            "mega",
+            "box",
+            "pcloud",
+            "azure",
+            "filen",
+            "koofr",
+            "jottacloud",
+            "swift",
+            "opendrive",
+            "proton",
+            "mtp",
+            "local",
+        ] {
+            if resolve_provider_type(proto).is_some() {
+                assert!(
+                    LIVE_CONNECT_PROTOCOLS.contains(&proto),
+                    "{proto} is connected but not listed"
+                );
+            }
         }
     }
 

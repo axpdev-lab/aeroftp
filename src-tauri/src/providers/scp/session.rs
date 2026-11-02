@@ -1028,6 +1028,10 @@ const MAX_PATH_BYTES: usize = 64 * 1024;
 /// Total, used and available bytes from `df -Pk` output. The numbers are
 /// the three fields before the first one ending in `%`, which keeps a file
 /// system or a mount point with a space in its name readable.
+///
+/// Used is the total less what the user can still write, as SFTP's statvfs
+/// gives it: `df`'s own Used leaves out the blocks reserved for root (5% of
+/// an ext4 volume), which would otherwise read as free.
 fn parse_df(stdout: &[u8]) -> Option<(u64, u64, u64)> {
     let text = String::from_utf8_lossy(stdout);
     let line = text.lines().rev().find(|l| !l.trim().is_empty())?;
@@ -1044,5 +1048,25 @@ fn parse_df(stdout: &[u8]) -> Option<(u64, u64, u64)> {
             .ok()
             .map(|k| k.saturating_mul(1024))
     };
-    Some((num(at - 3)?, num(at - 2)?, num(at - 1)?))
+    let (total, available) = (num(at - 3)?, num(at - 1)?);
+    // Used is still read, so a line that is not df's is refused.
+    num(at - 2)?;
+    Some((total, total.saturating_sub(available), available))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_df;
+
+    #[test]
+    fn free_space_leaves_out_the_blocks_reserved_for_root() {
+        // A 1 000 000 KiB ext4 volume, 50 000 KiB reserved: df's Used and
+        // Available add up to 950 000.
+        let out = b"Filesystem     1024-blocks   Used Available Capacity Mounted on\n\
+                    /dev/sda1          1000000 800000    150000      85% /srv/my files\n";
+        let (total, used, free) = parse_df(out).unwrap();
+        assert_eq!((total, free), (1_000_000 * 1024, 150_000 * 1024));
+        assert_eq!(used, total - free, "the reserve is not free to this user");
+        assert!(parse_df(b"Filesystem 1024-blocks Used\n").is_none());
+    }
 }

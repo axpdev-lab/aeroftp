@@ -52,6 +52,10 @@ pub struct Options {
     /// The SFTP answer for every connection after the first, when it differs:
     /// a server whose subsystem goes away between a session and its workers.
     pub sftp_after_first: Option<Sftp>,
+    /// The SFTP answer for every request on a connection after its first:
+    /// a server that serves one SFTP session per connection and refuses the
+    /// second one a client opens beside it.
+    pub sftp_later_channels: Option<Sftp>,
 }
 
 /// What reached the server.
@@ -112,6 +116,8 @@ struct Conn {
     ended: Arc<std::sync::Mutex<HashSet<ChannelId>>>,
     sftp_channels: HashSet<ChannelId>,
     sftp_buf: Vec<u8>,
+    /// SFTP requests on this connection so far.
+    sftp_asked: usize,
 }
 
 fn w32(out: &mut Vec<u8>, v: u32) {
@@ -204,8 +210,11 @@ impl Handler for Conn {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         self.seen.subsystems.fetch_add(1, Ordering::SeqCst);
-        let sftp = match self.opts.sftp_after_first {
-            Some(later) if self.nth > 0 => later,
+        let asked = self.sftp_asked;
+        self.sftp_asked += 1;
+        let sftp = match (self.opts.sftp_after_first, self.opts.sftp_later_channels) {
+            (_, Some(later)) if asked > 0 => later,
+            (Some(later), _) if self.nth > 0 => later,
             _ => self.opts.sftp,
         };
         match (name, sftp) {
@@ -382,6 +391,7 @@ pub async fn start(opts: Options) -> (u16, Arc<Seen>) {
                 ended: Arc::default(),
                 sftp_channels: HashSet::new(),
                 sftp_buf: Vec::new(),
+                sftp_asked: 0,
             };
             let cfg = config.clone();
             let seen = seen.clone();

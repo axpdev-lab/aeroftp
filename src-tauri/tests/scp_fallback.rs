@@ -79,6 +79,7 @@ impl Fixture {
             host_key: ed25519(),
             restricted: None,
             sftp_after_first: None,
+            sftp_later_channels: None,
         }
     }
 }
@@ -204,6 +205,32 @@ async fn the_refused_sftp_channel_is_closed_before_scp_starts() {
     // ended and was closed by the server. A server with one session per
     // connection could not open the SCP channel beside it.
     assert_eq!(seen.closes(), 1);
+}
+
+/// A second SFTP session the server refuses (the one a replace opens to ask
+/// for `posix-rename@openssh.com`) is closed, every time it is asked for:
+/// left open, each would hold one of the connection's sessions until the
+/// server's limit refused every channel after it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_second_sftp_session_is_closed() {
+    let fx = Fixture::new("second-sftp-refused");
+    let mut options = fx.options(Sftp::Serve);
+    options.sftp_later_channels = Some(Sftp::Refuse);
+    let (port, seen) = start(options).await;
+    let mut p = SftpProvider::new(config(port, &fx.remote()));
+    timed_connect(&mut p).await.0.expect("connect");
+    assert!(!p.in_scp_mode());
+    for _ in 0..3 {
+        assert!(p.supports_atomic_replace().await.is_err());
+    }
+    assert_eq!(seen.subsystems(), 4, "the session and three refused asks");
+    // The last close is sent when `supports_atomic_replace` returns, and
+    // reaches the server a moment later.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while seen.closes() < 3 && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(seen.closes(), 3, "every refused channel closed");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
