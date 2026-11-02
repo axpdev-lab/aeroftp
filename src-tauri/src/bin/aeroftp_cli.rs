@@ -9669,6 +9669,19 @@ fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli
 static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Print "Using profile: ..." only once per session (avoids noise from parallel workers).
 static PROFILE_INFO_PRINTED: AtomicBool = AtomicBool::new(false);
+/// The servers already named in the "has no SFTP" note: a command that opens
+/// several connections to one server (`pget`'s workers) says it once.
+static SCP_NOTE_PRINTED: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Whether the "has no SFTP" note for `server` is still to be printed in
+/// this process; asking marks it printed.
+fn scp_note_first_time(server: &str) -> bool {
+    SCP_NOTE_PRINTED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(server.to_string())
+}
 /// Print the MEGAcmd warm-up notice only once per session (#275).
 static MEGACMD_WARMUP_NOTICE_PRINTED: AtomicBool = AtomicBool::new(false);
 /// Set early in main() when the user passed `--json` or `--format json`.
@@ -32083,10 +32096,11 @@ async fn connect_with_base_path(
         print_error(format, &connect_failure_message(&e), code);
         return Err(code);
     }
-    // A server with no SFTP went on over SCP: said once, on stderr, where it
-    // mixes with no listing and no JSON.
+    // A server with no SFTP went on over SCP: said once per server, on
+    // stderr, where it mixes with no listing and no JSON.
     if !cli.quiet
         && ftp_client_gui_lib::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut())
+        && scp_note_first_time(&provider.display_name())
     {
         eprintln!(
             "Note: {} has no SFTP; connected with SCP on the same connection.",
@@ -35628,7 +35642,7 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             eprintln!("  User:     {}", metadata.username);
             eprintln!("  Port:     {}", metadata.port);
             if scp_fallback {
-                eprintln!("  Protocol: {} over SCP (the server has no SFTP)", pt);
+                eprintln!("  Protocol: SCP (the server has no SFTP)");
             } else {
                 eprintln!("  Protocol: {}", pt);
             }
@@ -36014,11 +36028,21 @@ async fn cmd_get(
         && !matches!(format, OutputFormat::Json)
         && Path::new(local_path).exists()
     {
-        eprintln!(
-            "Warning: local '{}' already exists and will be overwritten. \
-             Pass --immutable to skip, or rename the destination.",
-            local_path
-        );
+        // `--partial` out of place keeps a file as long as the remote one
+        // (`download_with_resume`): "will be overwritten" was not true then.
+        if cli.partial && !cli.inplace && provider.supports_resume() {
+            eprintln!(
+                "Note: local '{}' already exists: --partial keeps it if it is as long \
+                 as the remote file, and downloads it again otherwise.",
+                local_path
+            );
+        } else {
+            eprintln!(
+                "Warning: local '{}' already exists and will be overwritten. \
+                 Pass --immutable to skip, or rename the destination.",
+                local_path
+            );
+        }
     }
     // --immutable: skip if local file already exists
     if cli.immutable && Path::new(local_path).exists() {
@@ -49247,7 +49271,8 @@ async fn cmd_speed(
     // PATH-01: `--remote-path` is used verbatim for upload/download/delete (it is
     // not run through the resolver), so a `..`/null path would let the speed test
     // write and then delete an attacker-chosen location. Validate before any
-    // connection. The default UUID scratch path is always safe.
+    // connection. The default UUID scratch path is always safe; it is placed in
+    // the session's folder once connected (`speed_scratch_path`).
     if let Some(user_path) = remote_path {
         if let Err(e) = check_remote_path_safe(user_path) {
             print_error(format, &format!("invalid --remote-path: {}", e), 5);
@@ -49387,14 +49412,43 @@ async fn wait_until_upload_readable(
 /// of every provider but Proton Drive, whose session starts in My Files while
 /// its root lists the account's sections, where no file can go (Requested 79):
 /// there it goes under the start folder. A `--remote-path` is used as given.
-fn speed_scratch_path(base: &CliBase, generated: &str, caller_named: bool) -> String {
-    match base.start_folder() {
-        Some(start) if !caller_named => format!(
-            "{}/{}",
-            start.trim_end_matches('/'),
-            generated.trim_start_matches('/')
-        ),
-        _ => generated.to_string(),
+fn speed_scratch_path(
+    base: &CliBase,
+    generated: &str,
+    caller_named: bool,
+    session_dir: &str,
+) -> String {
+    if caller_named {
+        return generated.to_string();
+    }
+    // The generated file goes into the folder the command works in: the one
+    // the URL or the profile names, else the one the session starts in (the
+    // login folder; Proton Drive's start folder). It used to go into the
+    // server's root, which most accounts cannot write.
+    let folder = if base.path != "/" {
+        base.path.as_str()
+    } else {
+        base.start_folder().unwrap_or(session_dir)
+    };
+    if folder == "/" {
+        return generated.to_string();
+    }
+    format!(
+        "{}/{}",
+        folder.trim_end_matches('/'),
+        generated.trim_start_matches('/')
+    )
+}
+
+#[cfg(test)]
+mod scp_note_tests {
+    use super::scp_note_first_time;
+
+    #[test]
+    fn the_scp_note_is_printed_once_per_server() {
+        assert!(scp_note_first_time("note-test-a:22"));
+        assert!(!scp_note_first_time("note-test-a:22"));
+        assert!(scp_note_first_time("note-test-b:22"));
     }
 }
 
@@ -49405,18 +49459,45 @@ mod speed_scratch_tests {
     #[test]
     fn the_generated_speed_file_goes_under_the_proton_start_folder() {
         let proton = CliBase::with_start_folder("/", Some("/my-files".to_string()));
-        let other = CliBase::with_start_folder("/", None);
         let generated = "/.aeroftp-speedtest-x.dat";
         assert_eq!(
-            speed_scratch_path(&proton, generated, false),
+            speed_scratch_path(&proton, generated, false, "/my-files"),
             "/my-files/.aeroftp-speedtest-x.dat"
         );
         // Native mode starts at its root, My Files.
         let native = CliBase::with_start_folder("/", Some("/".to_string()));
-        assert_eq!(speed_scratch_path(&native, generated, false), generated);
-        // A path the caller named, and any other provider: as given.
-        assert_eq!(speed_scratch_path(&proton, "/x/y.dat", true), "/x/y.dat");
-        assert_eq!(speed_scratch_path(&other, generated, false), generated);
+        assert_eq!(
+            speed_scratch_path(&native, generated, false, "/"),
+            generated
+        );
+        // A path the caller named: as given.
+        assert_eq!(
+            speed_scratch_path(&proton, "/x/y.dat", true, "/my-files"),
+            "/x/y.dat"
+        );
+    }
+
+    #[test]
+    fn the_generated_speed_file_goes_where_the_session_works_not_in_the_root() {
+        let generated = "/.aeroftp-speedtest-x.dat";
+        // No folder named: the folder the session starts in, the login folder.
+        let plain = CliBase::with_start_folder("/", None);
+        assert_eq!(
+            speed_scratch_path(&plain, generated, false, "/home/u"),
+            "/home/u/.aeroftp-speedtest-x.dat"
+        );
+        // A folder the URL or the profile names wins over the login folder.
+        let named = CliBase::with_start_folder("/srv/data/", None);
+        assert_eq!(
+            speed_scratch_path(&named, generated, false, "/home/u"),
+            "/srv/data/.aeroftp-speedtest-x.dat"
+        );
+        // A session that starts in the root keeps the root.
+        assert_eq!(speed_scratch_path(&plain, generated, false, "/"), generated);
+        assert_eq!(
+            speed_scratch_path(&plain, "/x/y.dat", true, "/home/u"),
+            "/x/y.dat"
+        );
     }
 }
 
@@ -49458,7 +49539,9 @@ async fn run_single_speed_test(
             ))
         }
     };
-    let remote_test_path = &speed_scratch_path(&base, remote_test_path, path_is_caller_named);
+    let session_dir = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let remote_test_path =
+        &speed_scratch_path(&base, remote_test_path, path_is_caller_named, &session_dir);
 
     // Overwrite guard: the test uploads to remote_test_path and then deletes
     // it, so a path that already exists is a real user file about to be

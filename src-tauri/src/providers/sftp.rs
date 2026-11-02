@@ -377,7 +377,24 @@ impl std::fmt::Display for SftpOpenError {
 /// with no SFTP for this connection. A server that does not answer within
 /// `wait` is an error, never a server without SFTP: PuTTY, and so WinSCP,
 /// wait for the same answer before they go on.
+///
+/// On anything but `Ok(Ok(()))` the channel is closed here. A channel that
+/// never goes through `into_stream` sends no close when dropped, so it would
+/// stay open on the server for the rest of the connection, and a server
+/// with a session limit (`MaxSessions`, 10 by default on OpenSSH) would
+/// refuse the SCP or second SFTP channels beside it.
 async fn request_sftp_subsystem(
+    channel: &mut russh::Channel<client::Msg>,
+    wait: std::time::Duration,
+) -> Result<Result<(), NoSftp>, ProviderError> {
+    let answer = ask_for_sftp_subsystem(channel, wait).await;
+    if !matches!(answer, Ok(Ok(()))) {
+        let _ = channel.close().await;
+    }
+    answer
+}
+
+async fn ask_for_sftp_subsystem(
     channel: &mut russh::Channel<client::Msg>,
     wait: std::time::Duration,
 ) -> Result<Result<(), NoSftp>, ProviderError> {
@@ -2758,15 +2775,10 @@ impl StorageProvider for SftpProvider {
         let wait = std::time::Duration::from_secs(self.config.timeout_secs.max(1));
         let opened = match request_sftp_subsystem(&mut channel, wait).await? {
             Ok(()) => SftpChannel::open(channel.into_stream()).await,
-            Err(no_sftp) => {
-                // A refused channel stays open on the server until it is
-                // closed, and a server with one session per connection
-                // (`MaxSessions 1`) would refuse the SCP channel beside it.
-                // Dropping it closes nothing: only `into_stream` closes on
-                // drop.
-                let _ = channel.close().await;
-                Err(SftpOpenError::NoSftp(no_sftp))
-            }
+            // `request_sftp_subsystem` closed the channel, so a server with
+            // one session per connection (`MaxSessions 1`) accepts the SCP
+            // channel that follows.
+            Err(no_sftp) => Err(SftpOpenError::NoSftp(no_sftp)),
         };
         // A channel that ended because the whole connection did, while SFTP
         // was asked for or before the server's VERSION, is a dropped

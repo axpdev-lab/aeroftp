@@ -39,6 +39,10 @@ const EVENT_NAME: &str = "speedtest-progress";
 /// Scratch subdirectory the benchmark payload is written into, so a test never
 /// drops a multi-hundred-MB file straight into the user's data directory.
 const SCRATCH_DIR_NAME: &str = ".aeroftp-speedtest";
+/// The error of a test cancelled while its scratch folder was being made.
+const SCRATCH_CANCELLED: &str = "Test cancelled while creating scratch directory";
+/// The error of an upload the user cancelled.
+const UPLOAD_CANCELLED: &str = "Test cancelled during upload";
 const COMPARE_DEFAULT_PARALLEL: u8 = 2;
 const COMPARE_MAX_PARALLEL: u8 = 4;
 /// Hard cap on compare-mode test count. Prevents accidental N-server
@@ -389,7 +393,27 @@ async fn run_speedtest_inner(
     // by validate_remote_dir_for_speedtest) and never writes the payload as a
     // sibling of live data. Everything goes into a dedicated scratch
     // subdirectory that the test creates and removes.
-    let scratch_dir = join_remote_path(&request.remote_dir, SCRATCH_DIR_NAME);
+    // An empty folder means the folder the session starts in, not "/": most
+    // accounts cannot write the root of the server. The folder the server
+    // answers is checked like one the user typed.
+    let remote_dir = if request.remote_dir.trim().is_empty() {
+        let start = run_cancelable(
+            token.clone(),
+            provider.pwd(),
+            "Test cancelled while connecting",
+        )
+        .await;
+        match start.and_then(|dir| validate_remote_dir_for_speedtest(&dir).map(|()| dir)) {
+            Ok(dir) => dir,
+            Err(msg) => {
+                let _ = provider.disconnect().await;
+                return Err(msg);
+            }
+        }
+    } else {
+        request.remote_dir.clone()
+    };
+    let scratch_dir = join_remote_path(&remote_dir, SCRATCH_DIR_NAME);
     let temp_file_name =
         crate::speed_payload::name(&format!(".aeroftp-speedtest-{}", Uuid::new_v4()));
     let remote_path = join_remote_path(&scratch_dir, &temp_file_name);
@@ -398,15 +422,19 @@ async fn run_speedtest_inner(
     // creates parents implicitly); ordinary provider errors are soft. Cancellation
     // is not: this call used to sit outside run_cancelable, so a stalled network
     // left the speed test stuck before upload with no way for the user to abort.
+    // A mkdir error is kept: when the upload then fails as well, the folder
+    // is the likely cause and the user is told so, instead of seeing only the
+    // upload's "path not found".
+    let mut scratch_error = None;
     match run_cancelable(
         token.clone(),
         provider.mkdir(&scratch_dir),
-        "Test cancelled while creating scratch directory",
+        SCRATCH_CANCELLED,
     )
     .await
     {
         Ok(()) => {}
-        Err(msg) if msg == "Test cancelled while creating scratch directory" => {
+        Err(msg) if msg == SCRATCH_CANCELLED => {
             // connect() already succeeded at this point: drop the session
             // before returning so a cancelled run never leaks a connected
             // provider (every other post-connect error path disconnects).
@@ -415,6 +443,27 @@ async fn run_speedtest_inner(
         }
         Err(e) => {
             debug!("speedtest: scratch dir {} not created: {}", scratch_dir, e);
+            // Many servers refuse to create a folder that is already there:
+            // that one is no cause of a later upload failure.
+            let present = match run_cancelable(
+                token.clone(),
+                provider.stat(&scratch_dir),
+                SCRATCH_CANCELLED,
+            )
+            .await
+            {
+                Ok(entry) => entry.is_dir,
+                Err(msg) if msg == SCRATCH_CANCELLED => {
+                    // Cancelled before anything was uploaded: nothing to
+                    // remove, so the session goes and the test stops here.
+                    let _ = provider.disconnect().await;
+                    return Err(msg);
+                }
+                Err(_) => false,
+            };
+            if !present {
+                scratch_error = Some(e);
+            }
         }
     }
 
@@ -479,7 +528,7 @@ async fn run_speedtest_inner(
                 &remote_path,
                 Some(progress),
             ),
-            "Test cancelled during upload",
+            UPLOAD_CANCELLED,
         )
         .await
     };
@@ -497,6 +546,7 @@ async fn run_speedtest_inner(
         )
         .await;
         let _ = provider.disconnect().await;
+        let err = upload_error_message(&scratch_dir, scratch_error.as_deref(), &err);
         if cleaned {
             return Err(err);
         }
@@ -878,6 +928,23 @@ fn validate_remote_dir_for_speedtest(remote_dir: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The error of a failed upload, led by the scratch folder's own error when
+/// that folder could not be created first.
+fn upload_error_message(
+    scratch_dir: &str,
+    scratch_error: Option<&str>,
+    upload_error: &str,
+) -> String {
+    match scratch_error {
+        // A cancel is the user's own doing, whatever the folder.
+        Some(_) if upload_error == UPLOAD_CANCELLED => upload_error.to_string(),
+        Some(mkdir) => format!(
+            "Could not create the folder {scratch_dir}: {mkdir}. Choose a folder this account can write to. The upload then failed: {upload_error}"
+        ),
+        None => upload_error.to_string(),
+    }
+}
+
 fn join_remote_path(dir: &str, file: &str) -> String {
     let trimmed = dir.trim();
     if trimmed.is_empty() || trimmed == "/" {
@@ -1084,7 +1151,8 @@ mod tests {
         );
         assert!(
             src.contains("provider.mkdir(&scratch_dir)")
-                && src.contains("Test cancelled while creating scratch directory"),
+                && src.contains("Test cancelled while creating scratch directory")
+                && src.contains("        SCRATCH_CANCELLED,"),
             "scratch mkdir must be wrapped in run_cancelable with an explicit cancel message"
         );
         // The cancel message appears as the third argument of run_cancelable
@@ -1106,18 +1174,25 @@ mod tests {
     #[test]
     fn cancel_after_connect_disconnects_provider() {
         let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/speedtest.rs"));
-        let branch_at = src
-            .find("Err(msg) if msg == \"Test cancelled while creating scratch directory\" => {")
-            .expect("cancel branch for scratch mkdir present");
-        let return_at = src[branch_at..]
-            .find("return Err(msg);")
-            .map(|i| branch_at + i)
-            .expect("cancel branch returns the cancel message");
-        let branch_body = &src[branch_at..return_at];
-        assert!(
-            branch_body.contains("provider.disconnect()"),
-            "cancel after connect must disconnect the provider before returning"
+        // Both the scratch mkdir and the stat that follows a failed one.
+        let branch = concat!("Err(msg) if msg == ", "SCRATCH_CANCELLED => {");
+        let branches: Vec<usize> = src.match_indices(branch).map(|(at, _)| at).collect();
+        assert_eq!(
+            branches.len(),
+            2,
+            "cancel branches for scratch mkdir and stat"
         );
+        for branch_at in branches {
+            let return_at = src[branch_at..]
+                .find("return Err(msg);")
+                .map(|i| branch_at + i)
+                .expect("cancel branch returns the cancel message");
+            let branch_body = &src[branch_at..return_at];
+            assert!(
+                branch_body.contains("provider.disconnect()"),
+                "cancel after connect must disconnect the provider before returning"
+            );
+        }
     }
 
     /// Pin: run_cancelable returns the cancel message instead of waiting forever
@@ -1144,6 +1219,35 @@ mod tests {
         assert!(
             started.elapsed() < std::time::Duration::from_secs(2),
             "cancel must win over a hanging future within a short bound"
+        );
+    }
+
+    #[test]
+    fn a_failed_upload_names_the_folder_that_could_not_be_created() {
+        let msg = upload_error_message(
+            "/.aeroftp-speedtest",
+            Some("Permission denied"),
+            "Path not found",
+        );
+        assert!(
+            msg.starts_with("Could not create the folder /.aeroftp-speedtest: Permission denied."),
+            "{msg}"
+        );
+        assert!(
+            msg.ends_with("The upload then failed: Path not found"),
+            "{msg}"
+        );
+        assert_eq!(
+            upload_error_message("/home/u/.aeroftp-speedtest", None, "Path not found"),
+            "Path not found"
+        );
+        assert_eq!(
+            upload_error_message(
+                "/.aeroftp-speedtest",
+                Some("Permission denied"),
+                UPLOAD_CANCELLED
+            ),
+            UPLOAD_CANCELLED
         );
     }
 
