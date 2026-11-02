@@ -115,6 +115,15 @@ describe('narrowComparison', () => {
     };
     const leftOut = (answer: boolean[]) => mocks.invoke.mockImplementation(async () => answer);
 
+    it('forgets a failed scan when the comparison is invalidated', async () => {
+        state = context();
+        state.context = { ...state.context, compareResult: null, compareFailed: true, compareRefused: 'unreadable' };
+        await render(React.createElement(Harness));
+        await React.act(async () => actions.invalidateComparison());
+        expect(state!.context.compareFailed).toBeUndefined();
+        expect(state!.context.compareRefused).toBeUndefined();
+    });
+
     it('drops the rows and records what the compare now applies', async () => {
         state = context();
         await render(React.createElement(Harness));

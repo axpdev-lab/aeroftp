@@ -370,6 +370,15 @@ describe('the AeroSync intents', () => {
         expect(reply).toMatchObject({ ok: false, error: 'action_failed', snapshot: { aerosync: { scan_failed: true } } });
     });
 
+    it('ends the wait on a refused scan, which leaves no result', async () => {
+        handlers.aeroSyncCompare = vi.fn(() => {
+            source.aerosync = { open: true, scanning: true, entries: null, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: null, busy: false, scan_failed: true }; }, 100);
+        });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: false, error: 'action_failed' });
+    });
+
     it('refuses a Compare with no second side at once', async () => {
         handlers.aeroSyncCompare = vi.fn(() => { throw new GuiError('blocked', 'needs a connected server or the second local panel'); });
         const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
