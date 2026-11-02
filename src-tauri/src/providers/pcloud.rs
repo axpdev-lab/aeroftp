@@ -2073,9 +2073,11 @@ impl StorageProvider for PCloudProvider {
     //      body. Offsets are handle-derived. Parts out of order on one
     //      uploadid return result 2068, so the hints advertise one chunk
     //      slot and the executor remains LockedSingle.
-    //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises and atomically
-    //      moves the staged bytes into place. Idempotent: a repeated call
-    //      on the same uploadid returns the same fileid.
+    //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises the staged
+    //      bytes at the destination. A stable fileid does not establish
+    //      replay safety: overwrites can retain that ID while adding revisions.
+    //      Without a documented replay guarantee, an ambiguous 5xx is returned
+    //      for reconciliation instead of repeating this write.
     //   4. `upload_delete?uploadid=N` best-effort cancel. pCloud GCs stale
     //      sessions after a few days, so the abort never re-raises.
     async fn begin_multipart_upload(
@@ -3168,6 +3170,70 @@ mod tests {
         let te = crate::transfer_dag::TransferError::from_provider(&err);
         assert_eq!(te.kind, crate::transfer_dag::TransferErrorKind::RateLimited);
         assert!(te.is_congestion());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn an_upload_save_committed_before_503_is_not_replayed() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let saves = Arc::new(AtomicUsize::new(0));
+        let seen = saves.clone();
+        let app = axum::Router::new().route(
+            "/upload_save",
+            axum::routing::get(move |uri: axum::http::Uri| {
+                let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://fixture{uri}")).unwrap();
+                    let query: std::collections::HashMap<_, _> = url.query_pairs().collect();
+                    assert_eq!(query.get("uploadid").unwrap(), "42");
+                    assert_eq!(query.get("folderid").unwrap(), "2");
+                    assert_eq!(query.get("name").unwrap(), "t.bin");
+                    // Model a save that commits, but its acknowledgement is lost
+                    // behind a gateway 503. Replaying would add another revision.
+                    if ordinal == 0 {
+                        (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            r#"{"result":5000}"#,
+                        )
+                    } else {
+                        (axum::http::StatusCode::OK, r#"{"result":0}"#)
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+        let meta = PCloudMultipartMeta {
+            uploadid: 42,
+            folderid: 2,
+            name: "t.bin".into(),
+            total: 4,
+            part: 4,
+            mtime: None,
+        };
+        let outcome = p
+            .complete_multipart_upload(
+                MultipartHandle {
+                    upload_id: meta.encode(),
+                    remote_path: "/t.bin".into(),
+                },
+                vec![UploadedPart {
+                    part_number: 1,
+                    etag: String::new(),
+                }],
+            )
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        assert_eq!(saves.load(Ordering::SeqCst), 1);
         server.abort();
     }
 

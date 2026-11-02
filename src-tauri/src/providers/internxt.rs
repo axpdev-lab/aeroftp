@@ -2776,6 +2776,13 @@ impl InternxtProvider {
         let resp = self.send_with_reauth(build).await?;
         let status = resp.status();
         if !status.is_success() {
+            if !status.is_server_error() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Start upload failed ({status}): {}",
+                    super::sanitize_api_error(&body)
+                )));
+            }
             return Err(ProviderError::ServerError(format!(
                 "Start upload returned {status}; it may have completed. Check remote state before retrying."
             )));
@@ -3121,6 +3128,50 @@ mod tests {
                 "an uncertain create cannot be reported as success"
             );
             assert_eq!(calls.load(Ordering::SeqCst), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_upload_start_reports_the_sanitized_reason() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for status in [400, 402, 403, 429] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/start",
+                axum::routing::post(move || {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            "quota refused sk-ant-1234567890abcdefghij\nsecret second line",
+                        )
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/start", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            p.retry_config.max_retries = 0;
+            let error = p
+                .start_upload_session(|this| this.client.post(&url))
+                .await
+                .expect_err("refusal");
+            let message = error.to_string();
+            assert!(message.contains(&status.to_string()), "{message}");
+            assert!(message.contains("quota refused"), "{message}");
+            assert!(!message.contains("may have completed"), "{message}");
+            assert!(
+                !message.contains("sk-ant-1234567890abcdefghij"),
+                "{message}"
+            );
+            assert!(!message.contains("secret second line"), "{message}");
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            server.abort();
         }
     }
 

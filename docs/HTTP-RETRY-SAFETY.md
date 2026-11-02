@@ -59,3 +59,14 @@ stream preservation, and honest per-attempt first-byte timing. Provider suites
 cover the affected call sites; live services are not mutated by these tests.
 
 Backblaze's [native upload guidance](https://www.backblaze.com/docs/cloud-storage-upload-files-with-the-native-api) and [integration checklist](https://www.backblaze.com/docs/cloud-storage-integration-checklist) explicitly prescribe acquiring a fresh upload URL/token after a pod 5xx. That specialized policy is preserved; a lost success response still does not authorize another small-file POST.
+
+The pCloud `upload_save` RPC remains refusal-only. The old source comment
+claimed replay safety from a stable file ID; that is insufficient because
+[pCloud preserves file IDs across overwrites](https://docs.pcloud.com/structures/filenames.html)
+and [uploads can add revisions](https://docs.pcloud.com/methods/file/uploadfile.html).
+The inspected [official client implementation](https://github.com/pcloudcom/console-client/blob/master/pCloudCC/lib/pclsync/pupload.c)
+does not establish a no-extra-revision guarantee for replay after an ambiguous
+HTTP response. The local committed-save/503 fixture verifies our single-attempt
+policy, not the server's internal behavior. Internxt definite 4xx refusals retain
+the sanitized reason; 5xx and unreadable successful allocations retain the
+uncertain-outcome message.
