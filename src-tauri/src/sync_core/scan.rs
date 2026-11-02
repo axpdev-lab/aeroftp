@@ -4550,10 +4550,11 @@ pub(crate) mod tests {
             assert_eq!(boundaries.unbounded, None, "(pool={pool})");
             assert!(boundaries.unseen.is_empty(), "(pool={pool})");
             assert!(
-                boundaries
-                    .first_failure
-                    .as_deref()
-                    .is_some_and(|failure| failure.contains("failed to list")),
+                boundaries.first_failure.as_deref().is_some_and(|failure| {
+                    failure.contains("failed to list /root")
+                        && failure
+                            .contains(&ProviderError::NotFound("/root".to_string()).to_string())
+                }),
                 "a refusal can say why (pool={pool}): {boundaries:?}"
             );
         }

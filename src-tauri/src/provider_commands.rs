@@ -4611,10 +4611,24 @@ async fn take_download_listing(
     use crate::sync_core::WalkStep;
     let mut staged = Vec::new();
     let mut links = Vec::new();
+    let mut seen_links = std::collections::HashSet::new();
     let mut listing_scope = crate::sync_core::WalkScope::new(remote_folder);
     listing_scope.learn_root_listing(&files);
     for file in files {
         if remote_folder == walk.root && listing_scope.is_root_entry(&file) {
+            continue;
+        }
+        let remote_file_path = if remote_folder.ends_with('/') {
+            format!("{}{}", remote_folder, file.name)
+        } else {
+            format!("{}/{}", remote_folder, file.name)
+        };
+        // A link to a folder is reported, never followed or written: where its
+        // name points and which local name it would take do not matter.
+        if file.is_dir && file.is_symlink {
+            if seen_links.insert(remote_file_path.clone()) {
+                links.push(remote_file_path);
+            }
             continue;
         }
         let safe_name = match sanitize_remote_filename(&file.name) {
@@ -4625,19 +4639,6 @@ async fn take_download_listing(
             }
         };
 
-        let remote_file_path = if remote_folder.ends_with('/') {
-            format!("{}{}", remote_folder, file.name)
-        } else {
-            format!("{}/{}", remote_folder, file.name)
-        };
-        // A link to a folder is reported, never followed or written: where its
-        // name points and which local name it would take do not matter.
-        if file.is_dir && file.is_symlink {
-            if !links.contains(&remote_file_path) {
-                links.push(remote_file_path);
-            }
-            continue;
-        }
         let step = if file.is_dir {
             walk.scope.admit(remote_folder, &remote_file_path)
         } else {
@@ -19539,6 +19540,8 @@ mod folder_download_live_tests {
         let mut walk = DownloadWalk::new("/root");
         let mut link = RemoteEntry::directory("../outside".into(), "/outside".into());
         link.is_symlink = true;
+        let mut unsafe_name = RemoteEntry::directory("..".into(), "/".into());
+        unsafe_name.is_symlink = true;
         let listed = take_download_listing(
             &mut walk,
             "/root",
@@ -19546,12 +19549,13 @@ mod folder_download_live_tests {
             local.path(),
             vec![
                 link,
+                unsafe_name,
                 RemoteEntry::file("outside".into(), "/root/outside".into(), 1),
             ],
         )
         .await
         .expect("the file downloads");
-        assert_eq!(listed.links, ["/root/../outside"]);
+        assert_eq!(listed.links, ["/root/../outside", "/root/.."]);
         assert_eq!(listed.files.len(), 1);
         assert!(listed.folders.is_empty());
     }
