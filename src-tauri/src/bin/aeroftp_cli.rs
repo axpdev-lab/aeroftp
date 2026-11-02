@@ -10813,9 +10813,12 @@ fn take_refused_names(
     to_download: &mut Vec<&str>,
     to_conflict_upload: &mut Vec<(String, String)>,
 ) -> Vec<String> {
-    let refused = |path: &str| problems.iter().any(|problem| problem.path == path);
-    to_download.retain(|path| !refused(path));
-    to_conflict_upload.retain(|(path, _)| !refused(path));
+    let refused: std::collections::HashSet<&str> = problems
+        .iter()
+        .map(|problem| problem.path.as_str())
+        .collect();
+    to_download.retain(|path| !refused.contains(path));
+    to_conflict_upload.retain(|(path, _)| !refused.contains(path.as_str()));
     problems
         .iter()
         .map(|problem| format!("download {}: {}", problem.path, problem.reason))

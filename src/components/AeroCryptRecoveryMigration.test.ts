@@ -28,9 +28,9 @@ const button = (key: string) => {
     return found;
 };
 const click = async (key: string) => { await act(async () => button(key).click()); };
-const mount = async () => {
+const mount = async (active = true) => {
     await act(async () => root.render(createElement(AeroCryptUnlock, {
-        onClose: () => {}, onUnlocked: async () => {}, activeVaultId: 'active', profileId: 'profile', scope: '/vault',
+        onClose: () => {}, onUnlocked: async () => {}, activeVaultId: active ? 'active' : undefined, profileId: 'profile', scope: '/vault',
     })));
 };
 
@@ -115,4 +115,68 @@ describe('recovery kit after remote marker migration', () => {
         expect(host.textContent).not.toContain(oldKit.text);
         expect(host.textContent).not.toContain('aerocryptNative.overlayMetadataNotSaved');
     });
+    it.each(['cache-fails', 'cache-succeeds'])('keeps a locked dialog locked after migration when %s', async (cache) => {
+        const original = invoke.getMockImplementation()!;
+        if (cache === 'cache-succeeds') invoke.mockImplementation((command, args) => (
+            command === 'store_overlay_metadata' ? Promise.resolve() : original(command, args)
+        ));
+        await mount(false);
+        expect(button('aerocryptNative.unlock')).toBeDefined();
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(button('aerocryptNative.unlock')).toBeDefined();
+        expect(host.textContent).not.toContain('aerocryptNative.lockVault');
+        expect(invoke.mock.calls.some(([command]) => command === 'provider_apply_crypt_overlay')).toBe(false);
+    });
+
+    it('keeps the offline kit after a backend-certified pre-publication failure', async () => {
+        const original = invoke.getMockImplementation()!;
+        invoke.mockImplementation((command, args) => {
+            if (command === 'aerocrypt_provider_migrate_legacy_marker') return Promise.reject({ message: 'bad password', markerMayHaveChanged: false });
+            if (command === 'aerocrypt_provider_read_config' && migrated) return Promise.reject(new Error('offline'));
+            return original(command, args);
+        });
+        await mount();
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(host.textContent).toContain('bad password');
+        expect(host.textContent).toContain(oldKit.text);
+        migrated = true; // Remote is now unavailable; cache use must not require it.
+        await click('aerocryptNative.hideKit');
+        await click('aerocryptNative.showKit');
+        expect(host.textContent).toContain(oldKit.text);
+    });
+
+    it.each([true, undefined])('does not restore the old kit after an uncertain migration failure (%s)', async (mayHaveChanged) => {
+        const original = invoke.getMockImplementation()!;
+        invoke.mockImplementation((command, args) => {
+            if (command === 'aerocrypt_provider_migrate_legacy_marker') {
+                migrated = true;
+                return Promise.reject(mayHaveChanged ? { message: 'lost reply', markerMayHaveChanged: true } : 'unclassified transport failure');
+            }
+            if (command === 'aerocrypt_provider_read_config' && migrated) return Promise.reject(new Error('offline'));
+            return original(command, args);
+        });
+        await mount();
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(host.textContent).not.toContain(oldKit.text);
+        expect(host.textContent).not.toContain('aerocryptNative.saveKit');
+        await click('aerocryptNative.showKit');
+        expect(host.textContent).not.toContain(oldKit.text);
+        expect(host.textContent).toContain('offline');
+        expect(writeTextFile).not.toHaveBeenCalled();
+    });
+
+    it('keeps the old kit invalid when a successful migration cannot be read back', async () => {
+        const original = invoke.getMockImplementation()!;
+        invoke.mockImplementation((command, args) => (
+            command === 'aerocrypt_provider_read_config' && migrated
+                ? Promise.reject(new Error('read-back offline')) : original(command, args)
+        ));
+        await mount();
+        await click('aerocryptNative.migrateLegacyMarker');
+        await click('aerocryptNative.showKit');
+        expect(host.textContent).not.toContain(oldKit.text);
+        expect(host.textContent).toContain('read-back offline');
+        expect(writeTextFile).not.toHaveBeenCalled();
+    });
+
 });

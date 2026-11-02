@@ -369,6 +369,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         setMarkerMigrating(true);
         setError(null);
         setSuccess(null);
+        const previousKit = kitData;
+        const previousMetadataStale = kitMetadataStaleRef.current;
         try {
             // The account this migration runs under: a switch during it must not put the metadata elsewhere.
             const accountRead = await readSavedServerProfilesForWrite().catch(() => null);
@@ -394,7 +396,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                         (await invoke<string | null>('aerocrypt_provider_read_config', {
                             basePath: vaultRoot,
                         })) || '';
-                    if (configJson) {
+                    if (configJson && activeVaultId) {
                         // This is the live post-migration config, even when the
                         // local metadata write below fails. A pending old-kit
                         // hydration must not leave an already-open overlay on
@@ -432,20 +434,31 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                             profileId,
                         });
                         setKitData(kit);
-                        setVaultInfo({
-                            vault_id: kit.vault_id || 'provider',
-                            version: kit.version || 3,
-                            config_json: configJson,
-                        });
+                        if (activeVaultId) {
+                            setVaultInfo({
+                                vault_id: kit.vault_id || 'provider',
+                                version: kit.version || 3,
+                                config_json: configJson,
+                            });
+                        }
                     }
                 } catch {
                     /* kit may warm on next connect */
                 }
             } else {
+                kitMetadataStaleRef.current = previousMetadataStale;
+                setKitData(previousKit);
                 setSuccess(t('aerocryptNative.legacyMarkerAlreadyCurrent'));
             }
         } catch (e) {
-            setError(String(e));
+            const failure = e && typeof e === 'object' ? e as { message?: unknown; markerMayHaveChanged?: unknown } : null;
+            if (failure?.markerMayHaveChanged === false) {
+                // The backend certifies no marker publication was attempted.
+                // Never infer this from an error message or a lost reply.
+                kitMetadataStaleRef.current = previousMetadataStale;
+                setKitData(previousKit);
+            }
+            setError(typeof failure?.message === 'string' ? failure.message : String(e));
         } finally {
             setMarkerMigrating(false);
         }

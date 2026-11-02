@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { useRemoteSearchRequest } from './hooks/useRemoteSearchRequest';
 import { ConnectScope, type ProfileConnector, type RegisterProfileConnector } from './gui/connectScope';
 import { runOwnedConnectionCleanup } from './gui/connectionCleanup';
 import { buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
@@ -6829,7 +6830,22 @@ const App: React.FC = () => {
     }
   }, [showConnectionScreen]);
 
+  const remoteSearchRequest = useRemoteSearchRequest(JSON.stringify([
+    activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath,
+    liveConnectionParams.server, liveConnectionParams.username, liveConnectionParams.protocol,
+  ]));
+  const cancelRemoteSearch = () => {
+    remoteSearchRequest.cancel();
+    setRemoteSearching(false);
+  };
+
+  useLayoutEffect(() => { setRemoteSearching(false); }, [
+    activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath,
+    liveConnectionParams.server, liveConnectionParams.username, liveConnectionParams.protocol,
+  ]);
+
   const handleRemoteSearch = async (query: string) => {
+    const isCurrent = remoteSearchRequest.begin();
     if (!query.trim()) {
       setRemoteSearchResults(null);
       return;
@@ -6840,18 +6856,20 @@ const App: React.FC = () => {
         path: currentRemotePath || '/',
         pattern: `*${query.trim()}*`,
       });
+      if (!isCurrent()) return;
       setRemoteSearchResults(results);
       if (results.length >= REMOTE_SEARCH_RESULT_LIMIT) {
         notify.warning(t('common.warning'), t('common.searchLimited', { count: REMOTE_SEARCH_RESULT_LIMIT }) || `Showing the first ${REMOTE_SEARCH_RESULT_LIMIT} matches. Search a smaller folder to see the rest.`);
       }
     } catch (error) {
+      if (!isCurrent()) return;
       // An empty list would read as "nothing matches".
       setRemoteSearchResults([]);
       notify.error(t('common.error'), String(error));
       // With notifications off too: the empty panel alone would say the same.
       if (!showToastNotifications) toastError(t('common.error'), String(error));
     } finally {
-      setRemoteSearching(false);
+      if (isCurrent()) setRemoteSearching(false);
     }
   };
 
@@ -19794,6 +19812,7 @@ const App: React.FC = () => {
                     {isConnected && (
                       <button
                         onClick={() => {
+                          cancelRemoteSearch();
                           if (remoteSearchResults !== null) {
                             setRemoteSearchResults(null);
                             setRemoteSearchQuery('');
@@ -19857,11 +19876,12 @@ const App: React.FC = () => {
                         type="text"
                         placeholder={t('search.remote_placeholder') || 'Search remote files...'}
                         value={remoteSearchQuery}
-                        onChange={e => setRemoteSearchQuery(e.target.value)}
+                        onChange={e => { cancelRemoteSearch(); setRemoteSearchQuery(e.target.value); }}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && remoteSearchQuery.trim()) {
                             handleRemoteSearch(remoteSearchQuery);
                           } else if (e.key === 'Escape') {
+                            cancelRemoteSearch();
                             setShowRemoteSearchBar(false);
                             setRemoteSearchQuery('');
                             setRemoteSearchResults(null);
@@ -19874,7 +19894,7 @@ const App: React.FC = () => {
                         <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{t('search.resultsCount', { count: sortedRemoteFiles.length })}</span>
                       )}
                       <button
-                        onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
+                        onClick={() => { cancelRemoteSearch(); setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
                         className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
                       >
                         <X size={14} />

@@ -1833,8 +1833,9 @@ pub struct RcloneImportResult {
 impl RcloneImportResult {
     /// The secrets in the order of the servers, not of the map, which changes from
     /// run to run: of two remotes with different OAuth apps, the first one decides
-    /// which app stays stored. Remotes with a token come first: their token refreshes
-    /// only with their own app.
+    /// which app stays stored. Refreshable tokens come first: their refresh
+    /// works only with their own app. Access-only tokens follow, then app-only
+    /// remotes; equal classes keep the config's order.
     pub fn secrets_in_server_order(
         &self,
     ) -> Vec<(&String, &crate::profile_export::ProviderSecrets)> {
@@ -1843,7 +1844,20 @@ impl RcloneImportResult {
             .iter()
             .filter_map(|server| Some((&server.id, self.provider_secrets.get(&server.id)?)))
             .collect();
-        secrets.sort_by_key(|(_, secret)| secret.oauth.is_none());
+        secrets.sort_by_key(|(_, secret)| {
+            let refreshable = secret
+                .oauth
+                .as_deref()
+                .and_then(|token| serde_json::from_str::<serde_json::Value>(token).ok())
+                .and_then(|token| {
+                    token
+                        .get("refresh_token")
+                        .and_then(|value| value.as_str())
+                        .map(|refresh| !refresh.trim().is_empty())
+                })
+                .unwrap_or(false);
+            (!refreshable, secret.oauth.is_none())
+        });
         secrets
     }
 }
@@ -3684,6 +3698,57 @@ mod tests {
         let result = import_rclone(&path).unwrap();
         let first = result.secrets_in_server_order()[0].1;
         assert_eq!(first.oauth_client_id.as_deref(), Some("with-token"));
+    }
+
+    #[test]
+    fn refreshable_tokens_precede_access_only_and_app_only_remotes_stably() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let remotes = [
+            ("app-only", ""),
+            ("access-only", r#"{"access_token":"a"}"#),
+            (
+                "empty-refresh",
+                r#"{"access_token":"a","refresh_token":"  "}"#,
+            ),
+            (
+                "refresh-first",
+                r#"{"access_token":"a","refresh_token":"r"}"#,
+            ),
+            (
+                "refresh-second",
+                r#"{"access_token":"b","refresh_token":"s"}"#,
+            ),
+        ]
+        .into_iter()
+        .map(|(name, token)| {
+            format!(
+                "[{name}]\ntype = drive\nclient_id = {name}\nclient_secret = s\n{}\n",
+                if token.is_empty() {
+                    String::new()
+                } else {
+                    format!("token = {token}\n")
+                }
+            )
+        })
+        .collect::<String>();
+        std::fs::write(&path, remotes).unwrap();
+        let result = import_rclone(&path).unwrap();
+        let apps: Vec<_> = result
+            .secrets_in_server_order()
+            .iter()
+            .map(|(_, secret)| secret.oauth_client_id.as_deref().unwrap())
+            .collect();
+        assert_eq!(
+            apps,
+            [
+                "refresh-first",
+                "refresh-second",
+                "access-only",
+                "empty-refresh",
+                "app-only"
+            ]
+        );
     }
 
     /// An app with no token yet is still kept: a later sign-in on this device needs it.

@@ -268,6 +268,21 @@ fn existing_spelling_problems(
         let held = entries.get(&guard.key(Path::new(name)));
         // Two Unicode spellings of one name are one file on a disk that folds them:
         // an update, not a replacement. Only the disk's listing shows which it keeps.
+        if let Some(link) = held.and_then(|names| {
+            names.iter().find(|found| {
+                destination
+                    .join(parent)
+                    .join(found)
+                    .symlink_metadata()
+                    .is_ok_and(|meta| meta.file_type().is_symlink())
+            })
+        }) {
+            problems.push(LocalTargetProblem {
+                path: file.clone(),
+                reason: format!("This disk holds the link {link}; refusing to write through it"),
+            });
+            continue;
+        }
         let other = held.and_then(|names| conflicting_existing_spelling(names, name));
         if let Some(other) = other {
             problems.push(LocalTargetProblem {
@@ -536,6 +551,34 @@ mod tests {
             None
         );
         assert_eq!(conflicting_existing_spelling(&names, &names[0]), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_normalization_alias_may_update_a_regular_file_but_never_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(outside.path(), b"untouched").unwrap();
+        let name = "cafe\u{301}.txt";
+        let held = dir.path().join(name);
+        let rules = DestinationRules {
+            fold_case: false,
+            fold_normalization: true,
+        };
+        let files = vec!["caf\u{e9}.txt".to_string()];
+        std::fs::write(&held, b"old").unwrap();
+        assert!(existing_spelling_problems(rules, dir.path(), &files).is_empty());
+        std::fs::remove_file(&held).unwrap();
+        std::os::unix::fs::symlink(outside.path(), &held).unwrap();
+        assert_eq!(
+            existing_spelling_problems(rules, dir.path(), &files).len(),
+            1
+        );
+        assert_eq!(
+            existing_spelling_problems(rules, dir.path(), &[name.to_string()]).len(),
+            1
+        );
+        assert_eq!(std::fs::read(outside.path()).unwrap(), b"untouched");
     }
 
     #[test]

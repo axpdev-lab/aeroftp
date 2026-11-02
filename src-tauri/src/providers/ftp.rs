@@ -2219,8 +2219,16 @@ impl StorageProvider for FtpProvider {
                 Err(e) if dir == root || !super::listing_failure_is_the_folders(&e) => {
                     // The server may stand in the failed folder: relative commands
                     // after this would act there. A lost connection has none to move.
-                    if self.cd(&saved).await.is_err() {
-                        self.current_path = saved;
+                    match tokio::time::timeout(std::time::Duration::from_secs(5), self.cd(&saved))
+                        .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) => self.current_path = saved,
+                        Err(_) => {
+                            // CWD may still owe a reply: never reuse this stream.
+                            self.stream = None;
+                            self.current_path = saved;
+                        }
                     }
                     return Err(e);
                 }
@@ -9541,7 +9549,12 @@ pub(crate) mod walk_scope_tests {
     /// ending in `/` is a folder, the slash dropped). Paths are resolved
     /// against the working directory with `.` and `..` read as a server reads
     /// them; every DELE and RMD is logged with the path it reached.
-    async fn serve_tree(stream: TcpStream, listings: Listings, log: Arc<Mutex<Vec<String>>>) {
+    async fn serve_tree(
+        stream: TcpStream,
+        listings: Listings,
+        log: Arc<Mutex<Vec<String>>>,
+        stall_restore: bool,
+    ) {
         let (read, mut write) = stream.into_split();
         let mut lines = BufReader::new(read).lines();
         if write.write_all(b"220 ready\r\n").await.is_err() {
@@ -9569,6 +9582,11 @@ pub(crate) mod walk_scope_tests {
                 "PWD" => format!("257 \"{cwd}\" is current\r\n"),
                 "CWD" => {
                     let target = resolve(&cwd, &argument);
+                    if stall_restore && target == "/" {
+                        // Leave CWD unanswered until the client drops the session.
+                        while let Ok(Some(_)) = lines.next_line().await {}
+                        return;
+                    }
                     if target.ends_with("/down") {
                         "421 Service not available.\r\n".to_string()
                     } else if held(&target) {
@@ -9643,13 +9661,25 @@ pub(crate) mod walk_scope_tests {
     /// legacy FTP session's walks (`crate::ftp::FtpManager`) are tested on it
     /// too.
     pub(crate) async fn tree_server(listings: Listings) -> (u16, Arc<Mutex<Vec<String>>>) {
+        tree_server_with_restore_mode(listings, false).await
+    }
+
+    async fn tree_server_with_restore_mode(
+        listings: Listings,
+        stall_restore: bool,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(serve_tree(stream, listings, Arc::clone(&seen)));
+                tokio::spawn(serve_tree(
+                    stream,
+                    listings,
+                    Arc::clone(&seen),
+                    stall_restore,
+                ));
             }
         });
         (port, log)
@@ -9657,7 +9687,14 @@ pub(crate) mod walk_scope_tests {
 
     /// A connected provider on a [`serve_tree`] server, and its DELE/RMD log.
     async fn provider_on_tree(listings: Listings) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
-        let (port, log) = tree_server(listings).await;
+        provider_on_tree_with_restore_mode(listings, false).await
+    }
+
+    async fn provider_on_tree_with_restore_mode(
+        listings: Listings,
+        stall_restore: bool,
+    ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        let (port, log) = tree_server_with_restore_mode(listings, stall_restore).await;
         let mut provider = FtpProvider::new(FtpConfig {
             host: "127.0.0.1".to_string(),
             port,
@@ -9742,6 +9779,29 @@ pub(crate) mod walk_scope_tests {
         let outcome = provider.find("/x", "*.txt").await;
         assert!(outcome.is_err(), "{outcome:?}");
         assert_eq!(provider.current_path, "/", "the folder is restored");
+    }
+
+    #[tokio::test]
+    async fn a_failed_find_drops_a_session_whose_cwd_restore_never_answers() {
+        let (mut provider, _) =
+            provider_on_tree_with_restore_mode(&[("/x", &["down/"])], true).await;
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(8), provider.find("/x", "*"))
+                .await
+                .expect("the five-second restore bound ends the search");
+        assert!(outcome.is_err());
+        assert!(
+            provider.stream.is_none(),
+            "a late CWD reply must not reach another command"
+        );
+        assert_eq!(provider.current_path, "/");
+    }
+
+    #[tokio::test]
+    async fn a_find_fails_when_its_root_cannot_be_listed() {
+        let (mut provider, _) = provider_on_tree(&[("/", &[])]).await;
+        assert!(provider.find("/missing-root", "*").await.is_err());
+        assert_eq!(provider.current_path, "/");
     }
 
     /// A search follows only folders inside the one searched, once each.
