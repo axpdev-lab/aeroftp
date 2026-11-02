@@ -194,7 +194,7 @@ dependencies = [
  "winreg 0.56.0",
  "xxhash-rust",
  "xz2",
- "zbus 5.19.0",
+ "zbus 6.2.0",
  "zeroize",
  "zip",
  "zstd",
@@ -9439,9 +9439,9 @@ dependencies = [
 
 [[package]]
 name = "rustix"
-version = "1.1.4"
+version = "1.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6fe4565b9518b83ef4f91bb47ce29620ca828bd32cb7e408f0062e9930ba190"
+checksum = "e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa"
 dependencies = [
  "bitflags 2.13.2",
  "errno",
@@ -11755,6 +11755,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -13894,6 +13895,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "zbus"
+version = "6.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3666b126b788c05de810dd9e4e8dc84b21f87f7ad70a29a09b9db093f0102891"
+dependencies = [
+ "async-trait",
+ "bitflags 2.13.2",
+ "endi",
+ "futures-core",
+ "hex",
+ "libc",
+ "ordered-stream",
+ "rustix",
+ "serde",
+ "serde_repr",
+ "socket2",
+ "tokio",
+ "tracing",
+ "uds_windows",
+ "uuid",
+ "windows-sys 0.61.2",
+ "winnow 1.0.4",
+ "zbus_macros 6.2.1",
+ "zbus_utils",
+ "zcheapstr",
+ "zruntime",
+]
+
+[[package]]
 name = "zbus_macros"
 version = "4.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13922,6 +13952,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zbus_macros"
+version = "6.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "083b38add47c340fc12ec560124fb1d9c23acb584f7021099f85ec6587a03c54"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
+ "zbus_utils",
+]
+
+[[package]]
 name = "zbus_names"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13941,6 +13983,19 @@ dependencies = [
  "serde",
  "winnow 1.0.4",
  "zvariant 5.15.0",
+]
+
+[[package]]
+name = "zbus_utils"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af55e52da295311b368c45bcae221f020e28e97a2420360170ce389218e76ec7"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde",
+ "syn 3.0.5",
+ "winnow 1.0.4",
 ]
 
 [[package]]
@@ -14094,6 +14149,20 @@ dependencies = [
  "crc32fast",
  "log",
  "simd-adler32",
+]
+
+[[package]]
+name = "zruntime"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23ef5ed7d628cdf0af82f93dfe03330a8e37383bf7422a1d3d6eb72326680be5"
+dependencies = [
+ "futures-core",
+ "futures-io",
+ "rustix",
+ "socket2",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

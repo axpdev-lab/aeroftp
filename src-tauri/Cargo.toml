@@ -388,7 +388,7 @@ winreg = "0.56"
 [target.'cfg(target_os = "linux")'.dependencies]
 # The snap's partition list, mount and unmount go to UDisks2 over D-Bus. Already
 # in the tree through tauri-plugin-notification and single-instance.
-zbus = "5"
+zbus = "6"
 hyper = { version = "1", features = ["server", "http1"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 http-body-util = "0.1"
@@ -425,7 +425,7 @@ acl-sys = { version = "1.2.2", optional = true }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 # A stand-in UDisks2 service over a socket pair, for the snap's D-Bus calls.
-zbus = { version = "5", features = ["p2p"] }
+zbus = { version = "6", features = ["p2p"] }
 
 [dev-dependencies]
 rcgen = "0.14"                                                       # Self-signed certificates for the loopback TLS tests
