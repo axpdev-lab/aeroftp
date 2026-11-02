@@ -760,15 +760,15 @@ impl FileLuProvider {
             ))
         })?;
 
-        if let Some(s) = parsed.status {
-            if s != 200 {
-                return Err(ProviderError::ServerError(
-                    parsed.msg.unwrap_or_else(|| format!("API error {}", s)),
-                ));
-            }
+        match parsed.status {
+            Some(200) => Ok(()),
+            Some(status) => Err(ProviderError::ServerError(super::sanitize_api_error(
+                &parsed.msg.unwrap_or_else(|| format!("API error {status}")),
+            ))),
+            None => Err(ProviderError::ParseError(
+                "FileLu mutation response has no API status".into(),
+            )),
         }
-
-        Ok(())
     }
 
     fn build_clone_name(source_name: &str, n: usize) -> String {
@@ -1629,8 +1629,8 @@ impl FileLuProvider {
             "file/set_password",
             &[("file_code", &file_code), ("file_password", password)],
         );
-        self.get_after_refusal(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Toggle file visibility. `only_me=true` → private, `false` → public.
@@ -1649,8 +1649,8 @@ impl FileLuProvider {
             "file/only_me",
             &[("file_code", &file_code), ("only_me", flag)],
         );
-        self.get_after_refusal(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Clone (server-side copy) a file. Returns the URL of the cloned file.
@@ -1793,8 +1793,8 @@ impl FileLuProvider {
             "folder/set_password",
             &[("fld_token", &token), ("fld_password", password)],
         );
-        self.get_after_refusal(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Configure folder settings: filedrop (others can upload) and public visibility.
@@ -1819,8 +1819,8 @@ impl FileLuProvider {
                 ("fld_public", pub_),
             ],
         );
-        self.get_after_refusal(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// List all deleted files (trash).
@@ -1859,8 +1859,8 @@ impl FileLuProvider {
             "file/restore",
             &[("file_code", file_code), ("restore", "1")],
         );
-        self.get_after_refusal(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Upload a file from a remote URL into the given destination folder.
@@ -2751,7 +2751,8 @@ impl StorageProvider for FileLuProvider {
             "file/only_me",
             &[("file_code", &file_code), ("only_me", "0")],
         );
-        self.get_after_refusal(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await?;
         Ok(ShareLinkResult {
             url: format!("https://filelu.com/{}", file_code),
             password: None,
@@ -3436,6 +3437,76 @@ mod tests {
     }
 
     use super::*;
+
+    /// HTTP success is not an acknowledgement of a setting/share mutation.
+    #[tokio::test]
+    async fn setting_and_share_mutations_require_an_explicit_api_success() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for (status, body, success) in [
+            (200, r#"{"status":200,"msg":"OK"}"#, true),
+            (200, r#"{"status":403,"msg":"operation refused"}"#, false),
+            (403, r#"{"status":403,"msg":"operation refused"}"#, false),
+            (503, r#"{"status":503,"msg":"uncertain"}"#, false),
+            (200, "broken acknowledgement", false),
+            (200, "{}", false),
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().fallback(axum::routing::get(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async move { (axum::http::StatusCode::from_u16(status).unwrap(), body) }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = FileLuProvider::new(FileLuConfig {
+                api_key: secrecy::SecretString::from("fixture-key".to_string()),
+                initial_path: None,
+            });
+            p.connected = true;
+            p.api_origin_override = Some(format!("http://{addr}"));
+            for (path, is_dir) in [("/f.txt", false), ("/dir", true)] {
+                p.path_cache.insert(
+                    path.into(),
+                    CacheEntry {
+                        is_dir,
+                        fld_id: 1,
+                        fld_token: Some("folder-token".into()),
+                        file_code: "FILE".into(),
+                        size: 4,
+                        modified: None,
+                        hash: None,
+                    },
+                );
+            }
+            let outcomes = [
+                p.set_file_password("/f.txt", "fixture-password").await,
+                p.set_file_privacy("/f.txt", true).await,
+                p.set_folder_password("/dir", "fixture-password").await,
+                p.set_folder_settings("/dir", false, false).await,
+                p.restore_deleted_file("FILE").await,
+                p.create_share_link("/f.txt", ShareLinkOptions::default())
+                    .await
+                    .map(|_| ()),
+            ];
+            for outcome in outcomes {
+                assert_eq!(
+                    outcome.is_ok(),
+                    success,
+                    "HTTP {status},body {body}: {outcome:?}"
+                );
+            }
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                6,
+                "no hidden lookup or replay of a refused/uncertain mutation"
+            );
+            server.abort();
+        }
+    }
 
     fn tree_fixture_listing(tree: &[(String, String)], parent: &str) -> serde_json::Value {
         let mut files = Vec::new();

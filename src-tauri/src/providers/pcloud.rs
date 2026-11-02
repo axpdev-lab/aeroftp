@@ -511,6 +511,38 @@ impl PCloudProvider {
             .await
     }
 
+    /// Retry only a failed connection establishment: the application request
+    /// was not sent. Responses, timeouts and interrupted bodies are uncertain
+    /// writes and return immediately. Each attempt rebuilds the entire body.
+    async fn send_upload_after_connect_failure<F, Fut>(
+        mut build: F,
+        config: &HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, ProviderError>>,
+    {
+        let mut retries = 0;
+        loop {
+            match build().await?.send().await {
+                Ok(response) => return Ok(response),
+                Err(error)
+                    if error.is_connect()
+                        && !error.is_timeout()
+                        && retries < config.max_retries =>
+                {
+                    tokio::time::sleep(super::http_retry::calculate_delay(retries, config)).await;
+                    retries += 1;
+                }
+                Err(error) => {
+                    return Err(ProviderError::NetworkError(sanitize_api_error(
+                        &error.to_string(),
+                    )))
+                }
+            }
+        }
+    }
+
     /// pCloud's create/copy/upload-save commands are GET RPCs, not reads.
     async fn get_after_refusal(
         &self,
@@ -1209,17 +1241,6 @@ impl StorageProvider for PCloudProvider {
         // total, and 100 percent is reported below, once the acknowledgement
         // has been read (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(progress, file_size);
-        let body = progress.file_body(file);
-
-        // stream_with_length sets Content-Length so pCloud doesn't hang on chunked encoding
-        let form = reqwest::multipart::Form::new()
-            .text("access_token", token)
-            .part(
-                "file",
-                reqwest::multipart::Part::stream_with_length(body, file_size)
-                    .file_name(file_name.to_string()),
-            );
-
         let url = format!(
             "{}/uploadfile?path={}&filename={}&nopartial=1{}",
             self.api_base(),
@@ -1230,15 +1251,35 @@ impl StorageProvider for PCloudProvider {
                 .unwrap_or_default()
         );
 
-        // Note: multipart uploads cannot use send_with_retry because the stream body
-        // is consumed on first attempt and cannot be cloned/replayed.
-        let resp = self
-            .client
-            .post(&url)
-            .multipart(form)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        // Hold the original open file across connection-only retries. Reopening
+        // local_path could select a different file after a rename/replacement.
+        // A consumed multipart stream is rebuilt from this same open file.
+        let source = &file;
+        let reporter = &progress;
+        let client = &self.client;
+        let url = &url;
+        let token = &token;
+        let resp = Self::send_upload_after_connect_failure(
+            || async move {
+                use tokio::io::AsyncSeekExt;
+                let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
+                reader
+                    .seek(std::io::SeekFrom::Start(0))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                let body = reporter.file_body(reader);
+                let form = reqwest::multipart::Form::new()
+                    .text("access_token", token.clone())
+                    .part(
+                        "file",
+                        reqwest::multipart::Part::stream_with_length(body, file_size)
+                            .file_name(file_name.to_string()),
+                    );
+                Ok(client.post(url).multipart(form))
+            },
+            &HttpRetryConfig::default(),
+        )
+        .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -3171,6 +3212,144 @@ mod tests {
         assert_eq!(te.kind, crate::transfer_dag::TransferErrorKind::RateLimited);
         assert!(te.is_congestion());
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn an_upload_can_recover_after_a_connection_refused_before_sending() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved); // First build deliberately has no listening server.
+        let builds = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let server = Arc::new(Mutex::new(None));
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                let attempt = builds.fetch_add(1, Ordering::SeqCst);
+                if attempt == 1 {
+                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    listener.set_nonblocking(true).unwrap();
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let received = seen.clone();
+                    let app = axum::Router::new().route(
+                        "/upload",
+                        axum::routing::post(move |body: bytes::Bytes| {
+                            received.lock().unwrap().push(body.to_vec());
+                            async { r#"{"result":0}"# }
+                        }),
+                    );
+                    *server.lock().unwrap() = Some(tokio::spawn(async move {
+                        axum::serve(listener, app).await.unwrap()
+                    }));
+                }
+                let request = client
+                    .post(format!("http://{addr}/upload"))
+                    .body("complete payload");
+                async move { Ok(request) }
+            },
+            &HttpRetryConfig {
+                max_retries: 2,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(builds.load(Ordering::SeqCst), 2);
+        assert_eq!(*seen.lock().unwrap(), vec![b"complete payload".to_vec()]);
+        server.lock().unwrap().take().unwrap().abort();
+    }
+
+    #[tokio::test]
+    async fn connection_only_upload_recovery_does_not_replay_responses_or_timeouts() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for (status, delay) in [(503, false), (429, false), (200, false), (200, true)] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/upload",
+                axum::routing::post(move |_: bytes::Bytes| {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if delay {
+                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        }
+                        (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            "malformed acknowledgement",
+                        )
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let client = reqwest::Client::builder().no_proxy().build().unwrap();
+            let mut builds = 0;
+            let response = PCloudProvider::send_upload_after_connect_failure(
+                || {
+                    builds += 1;
+                    let request = client
+                        .post(format!("http://{addr}/upload"))
+                        .timeout(std::time::Duration::from_millis(50))
+                        .body("payload");
+                    async move { Ok(request) }
+                },
+                &HttpRetryConfig {
+                    max_retries: 2,
+                    base_delay_ms: 1,
+                    max_delay_ms: 1,
+                    ..Default::default()
+                },
+            )
+            .await;
+            if delay {
+                assert!(response.is_err());
+            } else {
+                let response = response.unwrap();
+                assert_eq!(response.status().as_u16(), status);
+                if status == 200 {
+                    assert!(response.json::<serde_json::Value>().await.is_err());
+                }
+            }
+            assert_eq!(builds, 1);
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn connection_only_upload_recovery_exhausts_its_budget() {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved);
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let mut builds = 0;
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                builds += 1;
+                let request = client.post(format!("http://{addr}/upload")).body("payload");
+                async move { Ok(request) }
+            },
+            &HttpRetryConfig {
+                max_retries: 2,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert!(response.is_err());
+        assert_eq!(builds, 3);
     }
 
     #[tokio::test]

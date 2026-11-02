@@ -41,9 +41,9 @@ this is not a promise that the failed write left the remote unchanged.
 | Azure | GET/HEAD | PUT create/copy and mutations do not replay ambiguous 5xx at the shared layer. |
 | S3 | GET/HEAD incl. range reads | PUT object/copy/part and POST multipart completion do not replay 5xx at the shared layer. |
 | Swift | GET/HEAD | PUT object/container, POST metadata and DELETE do not replay 5xx. One retry after explicit 401 and reauthentication remains. |
-| Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. One explicit 401 recovery remains. |
+| Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. Existing non-empty files publish a completed network upload through native UUID content replacement; there is no delete/create fallback. Existing empty overwrites fail closed because the confirmed replacement contract needs a network content ID. A concurrent create refusal is AlreadyExists. One explicit 401 recovery remains. |
 | Twake | GET listing and reads | POST mkdir/copy/share/restore and PUT/PATCH do not replay 5xx. Explicit 401 recovery remains. |
-| pCloud | Read GETs, download links, checksums, revisions, trash listing | Mutating GET create/copy/upload-create/save, rename/move, links and trash restore/clear use refusals only. `createfolderifnotexists` retains retries because it conditionally returns the same folder. |
+| pCloud | Read GETs, download links, checksums, revisions, trash listing | Mutating GET create/copy/upload-create/save, rename/move, links and trash restore/clear use refusals only. `createfolderifnotexists` retains retries because it conditionally returns the same folder. Single-stream uploads recover bounded connection-establishment failures only, rebuilding the multipart body from the same open file; responses, timeouts and malformed acknowledgements do not restart the upload. |
 | GitLab | GET/HEAD incl. paginated reads | Commit POST and DELETE bypass the extra outer 5xx retry; other writes get the shared conservative default. |
 | Filen | GETs retain recovery; directory content, path resolution and file-version POST queries explicitly retain safe recovery | Shared POST writes do not replay 5xx. Its separate encrypted-chunk download retry is read-only. |
 | Zoho | GET listing | Shared writes get the conservative default. A provider-specific reconciliation loop must retain a single-attempt transport and establish whether the item exists before repeating a create. |
@@ -70,3 +70,17 @@ HTTP response. The local committed-save/503 fixture verifies our single-attempt
 policy, not the server's internal behavior. Internxt definite 4xx refusals retain
 the sanitized reason; 5xx and unreadable successful allocations retain the
 uncertain-outcome message.
+
+FileLu setting/share mutations require an explicit API status200 even when HTTP
+is200; missing status or a refused mutation is an error, not a reported change.
+
+Internxt's [official SDK replaceFile contract](https://github.com/internxt/sdk/blob/29ad01efb9d14e32edf7a3f5c06badbab10986ea/src/drive/storage/index.ts#L875-L884)
+uses PUT/files/{uuid} with fileId and size. The
+[desktop client](https://github.com/internxt/drive-desktop/blob/ee8c7b3d75688337cb018249c90c4ccf49205e88/src/infra/drive-server-wip/services/files.service.ts#L54-L83)
+uses the same pointer update after storing content. This preserves the existing
+name until publication, with no destructive fallback on a refused or uncertain
+response. It does not advertise atomic rename/replace capability. A new stored
+network object may remain orphaned after failed publication; retry does not
+allocate another session automatically. No claim is made about unobserved server
+transactions. Existing zero-byte overwrites are refused before mutation because
+the confirmed content-ID contract cannot safely publish that case.

@@ -411,6 +411,9 @@ pub struct InternxtProvider {
     current_folder_id: String,
     /// Base URL for /drive/* requests, the login included: the gateway (a local fixture in tests)
     api_base: String,
+    /// Only local fixtures can replace the network gateway.
+    #[cfg(test)]
+    network_base_override: Option<String>,
     /// Cache: path → DirInfo (uuid, name)
     /// M3: Capped at DIR_CACHE_MAX_ENTRIES to prevent unbounded memory growth
     dir_cache: HashMap<String, DirInfo>,
@@ -475,6 +478,8 @@ impl InternxtProvider {
             bucket: String::new(),
             basic_auth: String::new(),
             api_base: GATEWAY.to_string(),
+            #[cfg(test)]
+            network_base_override: None,
             root_folder_id: String::new(),
             current_path: "/".to_string(),
             current_folder_id: String::new(),
@@ -804,7 +809,11 @@ impl InternxtProvider {
     /// whatever `api_base` the /drive/* requests use.
     /// This is because the Bridge/Network API only accepts Basic auth via the gateway.
     fn network_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/network{}", GATEWAY, path);
+        #[cfg(not(test))]
+        let base = GATEWAY;
+        #[cfg(test)]
+        let base = self.network_base_override.as_deref().unwrap_or(GATEWAY);
+        let url = format!("{base}/network{path}");
         self.client
             .request(method, &url)
             .header("Authorization", &self.basic_auth)
@@ -2016,26 +2025,19 @@ impl StorageProvider for InternxtProvider {
             filename, plain_size, resolved
         ));
 
-        // Preemptive delete: if file already exists, remove it before uploading.
-        // This avoids 409 Conflict and gives the server time to process the delete
-        // during the upload/encryption phase. The file of this exact name,
-        // never one of another letter case.
-        if let Some((existing_uuid, _, _)) = self
+        // Keep the name and original contents intact through allocation,
+        // transfer and finish. Existing files are published via the native
+        // content-pointer replacement, never delete-then-create.
+        let existing = self
             .find_exact_file_in_folder(&parent_uuid, &filename)
-            .await?
-        {
-            internxt_log(&format!(
-                "[UPLOAD] File {} exists, deleting before overwrite...",
-                filename
+            .await?;
+        if plain_size == 0 && existing.is_some() {
+            // The confirmed replace contract requires a new network fileId.
+            // Creating zero-byte metadata has no such ID; do not guess or
+            // remove the original just to make its name available.
+            return Err(ProviderError::NotSupported(
+                "Internxt cannot safely overwrite an existing file with an empty file; the original was kept".into(),
             ));
-            let _ = self
-                .send_with_reauth(|this| {
-                    this.drive_request(
-                        reqwest::Method::DELETE,
-                        &format!("/files/{}", existing_uuid),
-                    )
-                })
-                .await;
         }
 
         if plain_size == 0 {
@@ -2171,21 +2173,21 @@ impl StorageProvider for InternxtProvider {
             ProviderError::ServerError(format!("Failed to parse finish upload: {}", e))
         })?;
 
-        // Create file metadata in Drive
-        let (name, ext) = Self::split_name_ext(&filename);
-        self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size)
-            .await
-            .map_err(|e| {
-                // If still 409 despite preemptive delete, provide clear error
-                if format!("{}", e).contains("409") {
-                    ProviderError::ServerError(format!(
-                        "File {} already exists: try again in a few seconds",
-                        filename
-                    ))
-                } else {
-                    e
-                }
-            })?;
+        if finish_data.id.trim().is_empty() {
+            return Err(ProviderError::ParseError(
+                "Internxt upload finish returned no content ID; original kept".into(),
+            ));
+        }
+        if let Some((uuid, _, _)) = existing {
+            // Official SDK replaceFile: PUT /files/{uuid} with fileId and
+            // size, after the network upload has finished. No delete fallback.
+            self.replace_file_meta(&uuid, &finish_data.id, plain_size)
+                .await?;
+        } else {
+            let (name, ext) = Self::split_name_ext(&filename);
+            self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size)
+                .await?;
+        }
 
         progress.complete();
         internxt_log(&format!("Uploaded {} OK", filename));
@@ -2682,6 +2684,14 @@ impl InternxtProvider {
             })
             .await?;
 
+        if resp.status() == reqwest::StatusCode::CONFLICT {
+            let filename = if file_type.is_empty() {
+                plain_name.to_string()
+            } else {
+                format!("{plain_name}.{file_type}")
+            };
+            return Err(ProviderError::AlreadyExists(filename));
+        }
         if !resp.status().is_success() {
             let status = resp.status();
             let resp_body = resp.text().await.unwrap_or_default();
@@ -2695,6 +2705,41 @@ impl InternxtProvider {
         resp.json::<CreateMetaResponse>().await.map_http_err(|e| {
             ProviderError::ServerError(format!("Failed to parse create file meta response: {}", e))
         })
+    }
+
+    /// Publish already stored contents through Internxt's native UUID update.
+    /// An uncertain response is returned, never retried through delete/create.
+    /// SDK contract: internxt/sdk 29ad01ef, storage.replaceFile(ReplaceFile).
+    async fn replace_file_meta(
+        &mut self,
+        uuid: &str,
+        file_id: &str,
+        size: i64,
+    ) -> Result<(), ProviderError> {
+        let body = serde_json::json!({
+            "fileId": file_id,
+            "size": size,
+            "modificationTime": chrono::Utc::now().to_rfc3339(),
+        });
+        let path = format!("/files/{uuid}");
+        let resp = self
+            .send_with_reauth(|this| {
+                this.drive_request(reqwest::Method::PUT, &path)
+                    .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                    .json(&body)
+            })
+            .await?;
+        let status = resp.status();
+        if matches!(
+            status,
+            reqwest::StatusCode::OK | reqwest::StatusCode::NO_CONTENT
+        ) {
+            return Ok(());
+        }
+        let reason = super::sanitize_api_error(&resp.text().await.unwrap_or_default());
+        Err(ProviderError::ServerError(format!(
+            "Replace file contents returned {status}: {reason}; check remote state before retrying"
+        )))
     }
 
     /// Build and send an HTTP request with retry on 429/5xx.
@@ -3210,6 +3255,196 @@ mod tests {
             "{outcome:?}"
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// Store new bytes before publishing the UUID pointer; no error path may
+    /// delete the original or fall back to a second create.
+    #[tokio::test]
+    async fn overwrite_keeps_the_original_until_new_contents_are_stored() {
+        use axum::{
+            http::{Method, StatusCode},
+            response::IntoResponse,
+        };
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Mutex,
+        };
+        for failure in [
+            "start503",
+            "startbroken",
+            "starttimeout",
+            "shard503",
+            "finish503",
+            "finishbroken",
+            "emptyfinish",
+            "replace403",
+            "replace503",
+            "replacecommit503",
+            "replacetimeout",
+            "success",
+        ] {
+            let pointer = Arc::new(Mutex::new("OLD".to_string()));
+            let finished = Arc::new(AtomicBool::new(false));
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let (stored, complete, observed, origin) = (
+                pointer.clone(),
+                finished.clone(),
+                calls.clone(),
+                base.clone(),
+            );
+            let app = axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (stored, complete, observed, origin) = (stored.clone(), complete.clone(), observed.clone(), origin.clone());
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let bytes = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    observed.lock().unwrap().push(format!("{method} {path}"));
+                    if method == Method::GET && path.ends_with("/files") {
+                        return axum::Json(serde_json::json!({"files":[{"uuid":"EXISTING","plainName":"keep","type":"txt","fileId":"OLD","bucket":"BUCKET"}]})).into_response();
+                    }
+                    if path.ends_with("/files/start") {
+                        if failure == "starttimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
+                        if failure == "start503" { return (StatusCode::SERVICE_UNAVAILABLE, "start uncertain").into_response(); }
+                        if failure == "startbroken" { return (StatusCode::OK, "broken allocation").into_response(); }
+                        return axum::Json(serde_json::json!({"uploads":[{"index":0,"uuid":"PART","url":format!("{origin}/shard")}]})).into_response();
+                    }
+                    if method == Method::PUT && path == "/shard" {
+                        assert_eq!(bytes.len(), 8);
+                        if failure == "shard503" { return (StatusCode::SERVICE_UNAVAILABLE, "shard uncertain").into_response(); }
+                        return StatusCode::OK.into_response();
+                    }
+                    if path.ends_with("/files/finish") {
+                        if failure == "finish503" { return (StatusCode::SERVICE_UNAVAILABLE, "finish uncertain").into_response(); }
+                        if failure == "finishbroken" { return (StatusCode::OK, "broken finish").into_response(); }
+                        complete.store(true, Ordering::SeqCst);
+                        let id = if failure == "emptyfinish" { "" } else { "NEW" };
+                        return axum::Json(serde_json::json!({"id":id})).into_response();
+                    }
+                    if method == Method::PUT && path == "/drive/files/EXISTING" {
+                        assert!(complete.load(Ordering::SeqCst), "pointer changed before stored content");
+                        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                        assert_eq!(body["fileId"], "NEW");
+                        assert_eq!(body["size"], 8);
+                        if failure == "replace403" { return (StatusCode::FORBIDDEN, "replace refused").into_response(); }
+                        if failure == "replace503" { return (StatusCode::SERVICE_UNAVAILABLE, "replace uncertain").into_response(); }
+                        *stored.lock().unwrap() = "NEW".into();
+                        if failure == "replacecommit503" { return (StatusCode::SERVICE_UNAVAILABLE, "lost acknowledgement").into_response(); }
+                        if failure == "replacetimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
+                        return axum::Json(serde_json::json!({"uuid":"EXISTING"})).into_response();
+                    }
+                    (StatusCode::NOT_FOUND, "unexpected operation").into_response()
+                }
+            }));
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            p.connected = true;
+            p.root_folder_id = "R".into();
+            p.bucket = "BUCKET".into();
+            p.api_base = base.clone();
+            p.network_base_override = Some(base);
+            p.client = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(std::time::Duration::from_millis(150))
+                .build()
+                .unwrap();
+            let local = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(local.path(), b"newbytes").unwrap();
+            let progress = Arc::new(Mutex::new(Vec::new()));
+            let report = progress.clone();
+            let outcome = p
+                .upload(
+                    local.path().to_str().unwrap(),
+                    "/keep.txt",
+                    Some(Box::new(move |a, b| report.lock().unwrap().push((a, b)))),
+                )
+                .await;
+            assert_eq!(
+                outcome.is_ok(),
+                failure == "success",
+                "{failure}: {outcome:?}"
+            );
+            let expected = if ["success", "replacecommit503", "replacetimeout"].contains(&failure) {
+                "NEW"
+            } else {
+                "OLD"
+            };
+            assert_eq!(*pointer.lock().unwrap(), expected, "{failure}");
+            let calls = calls.lock().unwrap().clone();
+            assert!(
+                !calls
+                    .iter()
+                    .any(|c| c.starts_with("DELETE ") || c == "POST /drive/files"),
+                "{failure}: {calls:?}"
+            );
+            assert!(
+                calls
+                    .iter()
+                    .filter(|c| *c == "PUT /drive/files/EXISTING")
+                    .count()
+                    <= 1,
+                "{failure}: {calls:?}"
+            );
+            assert!(
+                calls.iter().filter(|c| c.ends_with("/files/start")).count() <= 1,
+                "{failure}: {calls:?}"
+            );
+            assert_eq!(
+                progress.lock().unwrap().contains(&(8, 8)),
+                failure == "success",
+                "{failure}"
+            );
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_overwrite_refuses_before_mutation_and_keeps_the_original() {
+        let (mut p, store, changes) = provider_on_drive(&[("EXISTING", "keep.txt", "S")]).await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        let outcome = p
+            .upload(local.path().to_str().unwrap(), "/src/keep.txt", None)
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotSupported(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(store.lock().unwrap()[0].0, "EXISTING");
+        assert!(changes.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_concurrent_create_is_already_exists_without_delete_or_replay() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/drive/files",
+            axum::routing::post(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async {
+                    (
+                        axum::http::StatusCode::CONFLICT,
+                        "name occupied concurrently",
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        p.api_base = base;
+        assert!(matches!(
+            p.create_file_meta(Some("NEW"), "R", "keep", "txt", 8).await,
+            Err(ProviderError::AlreadyExists(_))
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        server.abort();
     }
 
     /// Internxt refuses a taken name and has no overwrite on rename or move, so
