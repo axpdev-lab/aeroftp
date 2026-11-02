@@ -10776,6 +10776,26 @@ fn refuse_local_name(local_path: &str) -> Result<(), ProviderError> {
         .map_err(ProviderError::InvalidPath)
 }
 
+/// Take out of a sync's downloads the files `destination` cannot hold as they are,
+/// and say why. One of them written anyway would change name, leave an empty file
+/// or replace another file of the run.
+fn refuse_download_names(destination: &Path, to_download: &mut Vec<&str>) -> Vec<String> {
+    if to_download.is_empty() {
+        return Vec::new();
+    }
+    let paths: Vec<String> = to_download.iter().map(|path| path.to_string()).collect();
+    let problems = ftp_client_gui_lib::local_download_target::local_target_problems(
+        destination,
+        &paths,
+        &paths,
+    );
+    to_download.retain(|path| !problems.iter().any(|problem| problem.path == *path));
+    problems
+        .into_iter()
+        .map(|problem| format!("download {}: {}", problem.path, problem.reason))
+        .collect()
+}
+
 async fn download_with_resume(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
@@ -11098,6 +11118,14 @@ async fn cli_run_single_file_dag(
     server_url: Option<&str>,
     cancelled: Option<&Arc<AtomicBool>>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
+    if matches!(
+        direction,
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download
+    ) {
+        if let Err(refused) = refuse_local_name(local) {
+            return (provider, Err(refused));
+        }
+    }
     // Data-driven routing decision (Phase B), shared with the community
     // benchmark so a measurement takes the path a real transfer takes.
     let decision = ftp_client_gui_lib::transfer_dag_single_file::pick_single_file_route(
@@ -37124,6 +37152,8 @@ struct CliGetScan {
     /// G108: folders the scan could not read or did not follow, and paths it
     /// could not map. Each is an error of the run.
     listing_errors: Vec<String>,
+    /// Files left out because this disk cannot hold their name, with the reason.
+    refused_names: Vec<String>,
 }
 
 /// What one listing adds to `get -r`.
@@ -37168,6 +37198,7 @@ impl CliGetScan {
             stopped: false,
             deferred: Vec::new(),
             listing_errors: Vec::new(),
+            refused_names: Vec::new(),
         }
     }
 
@@ -37302,6 +37333,12 @@ impl CliGetScan {
                 }
                 let local_path_buf = self.local_base.join(relative);
                 if verify_path_within_root(&local_path_buf, &self.local_base).is_err() {
+                    continue;
+                }
+                if let Err(reason) =
+                    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(relative)
+                {
+                    self.refused_names.push(format!("{relative}: {reason}"));
                     continue;
                 }
                 // --immutable: skip if local file already exists
@@ -37622,6 +37659,7 @@ async fn cmd_get_recursive(
         unlisted_folders = scan.listing_errors.len();
         scan_stopped = scan.stopped;
         errors = std::mem::take(&mut scan.listing_errors);
+        errors.append(&mut scan.refused_names);
         downloaded = outcome.downloaded;
         done_bytes = shared_batch_bytes(
             downloaded as usize == total_files,
@@ -37676,6 +37714,7 @@ async fn cmd_get_recursive(
         unlisted_folders = scan.listing_errors.len();
         scan_stopped = scan.stopped;
         errors = std::mem::take(&mut scan.listing_errors);
+        errors.append(&mut scan.refused_names);
 
         start = Instant::now();
         let aggregate = Arc::new(AtomicU64::new(0));
@@ -56391,6 +56430,9 @@ async fn cmd_sync(
         |p| remote_map.get(*p).map(|(s, _)| *s).unwrap_or(0),
         |p| mtime_to_epoch(remote_map.get(*p).and_then(|(_, m)| *m)),
     );
+
+    // Refused here and in a dry run alike, before anything is written.
+    immutable_refusals.extend(refuse_download_names(Path::new(local), &mut to_download));
 
     if dry_run {
         match format {
@@ -98516,6 +98558,33 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         );
         assert!(copy_without_replacing(&from, &to).is_err());
         assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
+    }
+
+    /// A sync takes out the names this disk cannot hold and says why, the rest goes on.
+    #[test]
+    fn a_sync_refuses_only_the_names_the_disk_cannot_hold() {
+        let dest = tempfile::tempdir().unwrap();
+        let mut plain = vec!["ok.txt", "sub/other.txt"];
+        assert!(refuse_download_names(dest.path(), &mut plain).is_empty());
+        assert_eq!(plain, ["ok.txt", "sub/other.txt"]);
+
+        #[cfg(windows)]
+        {
+            let mut names = vec![
+                "ok.txt",
+                "colon:name.txt",
+                "trail-dot.",
+                "Foo.txt",
+                "foo.txt",
+            ];
+            let refused = refuse_download_names(dest.path(), &mut names);
+            assert_eq!(names, ["ok.txt"]);
+            assert_eq!(refused.len(), 4, "{refused:?}");
+            assert!(
+                refused.iter().all(|line| line.starts_with("download ")),
+                "{refused:?}"
+            );
+        }
     }
 
     #[test]
