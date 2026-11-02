@@ -1029,6 +1029,39 @@ impl FourSharedProvider {
 }
 
 impl FourSharedProvider {
+    /// Retry only a failed connection establishment. The body was not sent.
+    /// Responses, timeouts and a failure after the body starts return at once.
+    /// Each attempt pays the shared request-rate permit, then rebuilds the body.
+    async fn send_upload_after_connect_failure<F, Fut>(
+        mut build: F,
+        config: &HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, ProviderError>>,
+    {
+        let mut retries = 0;
+        loop {
+            super::tpslimit::maybe_acquire().await;
+            match build().await?.send().await {
+                Ok(response) => return Ok(response),
+                Err(error)
+                    if error.is_connect()
+                        && !error.is_timeout()
+                        && retries < config.max_retries =>
+                {
+                    tokio::time::sleep(super::http_retry::calculate_delay(retries, config)).await;
+                    retries += 1;
+                }
+                Err(error) => {
+                    return Err(super::http_send_error(error, |error| {
+                        ProviderError::NetworkError(error.to_string())
+                    }));
+                }
+            }
+        }
+    }
+
     /// The API's delete of a folder, which takes whatever the folder holds
     /// along: `rmdir` reaches it only for a folder that listed empty,
     /// `rmdir_recursive` for any.
@@ -1471,7 +1504,6 @@ impl StorageProvider for FourSharedProvider {
         // The bytes are reported as they go out; 100 percent waits for the
         // server's answer (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
-        let body = progress.file_body(file);
 
         let sign_url = format!("{}/files", self.upload_base());
         let extra = [
@@ -1487,19 +1519,35 @@ impl StorageProvider for FourSharedProvider {
             oauth1::percent_encode(&file_name)
         );
 
-        // Note: streaming upload cannot use send_with_retry because the body stream
-        // is consumed on first attempt. The OAuth-signed URL is still retry-safe for
-        // the signing portion; transport-level retries require re-opening the file.
-        let resp = self
-            .client
-            .post(&url)
-            .header("Authorization", &auth)
-            .header("Content-Type", "application/octet-stream")
-            .header("Content-Length", file_size.to_string())
-            .body(body)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        // The batch executor leaves the retry budget at zero because 4shared
+        // reports that it manages upload retries. A refused connection never
+        // read the body, so that one case is retried from a rewound clone of
+        // this open file. Reopening `local_path` could send a different file
+        // after a replacement. Responses, timeouts and a failure after the
+        // body starts are not replayed.
+        let source = &file;
+        let reporter = &progress;
+        let client = &self.client;
+        let target = &url;
+        let authorization = &auth;
+        let resp = Self::send_upload_after_connect_failure(
+            || async move {
+                use tokio::io::AsyncSeekExt;
+                let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
+                reader
+                    .seek(std::io::SeekFrom::Start(0))
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                Ok(client
+                    .post(target)
+                    .header("Authorization", authorization)
+                    .header("Content-Type", "application/octet-stream")
+                    .header("Content-Length", file_size.to_string())
+                    .body(reporter.file_body(reader)))
+            },
+            &HttpRetryConfig::default(),
+        )
+        .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -2428,6 +2476,159 @@ mod tests {
         let mut p = test_provider();
         assert!(!p.supports_atomic_replace().await.unwrap());
         assert!(!p.replace_sets_aside());
+    }
+
+    /// A refused connection is retried from the already-open file. Replacing
+    /// the path between attempts must not change the bytes that are sent.
+    #[tokio::test]
+    async fn a_refused_connection_retries_the_open_file_not_its_replacement() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+        use tokio::io::AsyncSeekExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, b"original-bytes").unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let progress = crate::providers::upload_progress::UploadProgress::new(None, 14);
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved);
+        let builds = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let server: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let source = &file;
+        let reporter = &progress;
+        let response = FourSharedProvider::send_upload_after_connect_failure(
+            || {
+                let attempt = builds.fetch_add(1, Ordering::SeqCst);
+                if attempt == 1 {
+                    let replaced = dir.path().join("f.bin.new");
+                    std::fs::write(&replaced, b"replaced-bytes").unwrap();
+                    std::fs::rename(&replaced, &path).unwrap();
+                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    listener.set_nonblocking(true).unwrap();
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let received = seen.clone();
+                    let app = axum::Router::new().route(
+                        "/files",
+                        axum::routing::post(move |body: bytes::Bytes| {
+                            received.lock().unwrap().push(body.to_vec());
+                            async { r#"{"id":"abc"}"# }
+                        }),
+                    );
+                    *server.lock().unwrap() = Some(tokio::spawn(async move {
+                        axum::serve(listener, app).await.unwrap()
+                    }));
+                }
+                let request_client = client.clone();
+                async move {
+                    let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
+                    reader
+                        .seek(std::io::SeekFrom::Start(0))
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    Ok(request_client
+                        .post(format!("http://{addr}/files"))
+                        .body(reporter.file_body(reader)))
+                }
+            },
+            &HttpRetryConfig {
+                max_retries: 2,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(builds.load(Ordering::SeqCst), 2);
+        assert_eq!(*seen.lock().unwrap(), vec![b"original-bytes".to_vec()]);
+        server.lock().unwrap().take().unwrap().abort();
+    }
+
+    /// An HTTP answer or a timeout is an uncertain upload. It is not sent again.
+    #[tokio::test]
+    async fn connection_retries_do_not_replay_a_response_or_a_timeout() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for (status, delay) in [(503, false), (200, true)] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/files",
+                axum::routing::post(move |_: bytes::Bytes| {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if delay {
+                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        }
+                        axum::http::StatusCode::from_u16(status).unwrap()
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let client = reqwest::Client::builder().no_proxy().build().unwrap();
+            let mut builds = 0;
+            let response = FourSharedProvider::send_upload_after_connect_failure(
+                || {
+                    builds += 1;
+                    let request = client
+                        .post(format!("http://{addr}/files"))
+                        .timeout(std::time::Duration::from_millis(50))
+                        .body("payload");
+                    async move { Ok(request) }
+                },
+                &HttpRetryConfig {
+                    max_retries: 2,
+                    base_delay_ms: 1,
+                    max_delay_ms: 1,
+                    ..Default::default()
+                },
+            )
+            .await;
+            if delay {
+                assert!(matches!(response, Err(ProviderError::Timeout)));
+            } else {
+                assert_eq!(response.unwrap().status().as_u16(), status);
+            }
+            assert_eq!(builds, 1);
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn connection_retries_stop_when_the_budget_is_spent() {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved);
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let mut builds = 0;
+        let response = FourSharedProvider::send_upload_after_connect_failure(
+            || {
+                builds += 1;
+                let request = client.post(format!("http://{addr}/files")).body("payload");
+                async move { Ok(request) }
+            },
+            &HttpRetryConfig {
+                max_retries: 2,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert!(response.is_err());
+        assert_eq!(builds, 3);
     }
 
     /// The upload streams the file: the bar follows the bytes going out and

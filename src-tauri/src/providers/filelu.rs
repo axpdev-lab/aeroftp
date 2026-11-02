@@ -2202,7 +2202,9 @@ impl StorageProvider for FileLuProvider {
                 ("version_code", version_id),
             ],
         );
-        let resp = self.get_with_retry(&url).await;
+        // version_restore changes the current file. A 503 can arrive after the
+        // commit, so a replay would report failure for a restore that finished.
+        let resp = self.get_after_refusal(&url).await;
         // The file's code changes on success; the cache would keep the old one.
         self.path_cache.remove(&norm);
         Self::ensure_api_ok(resp?).await
@@ -2214,7 +2216,9 @@ impl StorageProvider for FileLuProvider {
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         self.version_of(path, version_id).await?;
         let url = self.api_url_with("file/version_delete", &[("version_code", version_id)]);
-        let resp = self.get_with_retry(&url).await?;
+        // Same contract as restore: the GET deletes a version, so a 503 is
+        // returned once instead of being sent again.
+        let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await?;
         let accepted = |detail: String| {
             ProviderError::ServerError(format!(
@@ -5210,6 +5214,19 @@ mod tests {
         FileLuProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_with_versions_answer(after_delete, None).await
+    }
+
+    /// [`provider_with_versions`]. When `mutation_failure` is set,
+    /// `version_restore` and `version_delete` answer with that HTTP status
+    /// instead of OK.
+    async fn provider_with_versions_answer(
+        after_delete: AfterDelete,
+        mutation_failure: Option<u16>,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         let versions = std::sync::Arc::new(std::sync::Mutex::new(vec!["V2", "V1"]));
         let deleted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         provider_against(move |origin, path, query| {
@@ -5265,13 +5282,24 @@ mod tests {
                 }
                 "/blob/CUR" => "!404 gone".to_string(),
                 "/blob/V2" => "!403 denied".to_string(),
-                "/api/file/version_delete" => {
-                    deleted.store(true, std::sync::atomic::Ordering::SeqCst);
-                    if after_delete != AfterDelete::KeepsIt {
-                        let code = query.get("version_code").cloned().unwrap_or_default();
-                        versions.lock().unwrap().retain(|v| *v != code);
+                "/api/file/version_restore" => {
+                    if let Some(status) = mutation_failure {
+                        format!("!{status} lost")
+                    } else {
+                        r#"{"status":200,"msg":"OK"}"#.to_string()
                     }
-                    r#"{"status":200,"msg":"OK"}"#.to_string()
+                }
+                "/api/file/version_delete" => {
+                    if let Some(status) = mutation_failure {
+                        format!("!{status} lost")
+                    } else {
+                        deleted.store(true, std::sync::atomic::Ordering::SeqCst);
+                        if after_delete != AfterDelete::KeepsIt {
+                            let code = query.get("version_code").cloned().unwrap_or_default();
+                            versions.lock().unwrap().retain(|v| *v != code);
+                        }
+                        r#"{"status":200,"msg":"OK"}"#.to_string()
+                    }
                 }
                 _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
             }
@@ -5511,6 +5539,47 @@ mod tests {
                 .all(|c| !c.contains("version_restore")),
             "{:?}",
             calls.lock().unwrap()
+        );
+    }
+
+    /// A restore or delete that already committed can still answer 503.
+    /// Sending it again would report failure for a change that finished.
+    #[tokio::test]
+    async fn a_version_change_that_returns_503_is_not_sent_again() {
+        let (mut provider, calls) =
+            provider_with_versions_answer(AfterDelete::Removes, Some(503)).await;
+        let outcome = provider.restore_version("/d/f.txt", "V1").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        {
+            let recorded = calls.lock().unwrap();
+            assert_eq!(
+                recorded
+                    .iter()
+                    .filter(|call| call.contains("version_restore"))
+                    .count(),
+                1,
+                "{recorded:?}"
+            );
+        }
+
+        let (mut provider, calls) =
+            provider_with_versions_answer(AfterDelete::Removes, Some(503)).await;
+        let outcome = provider.delete_version("/d/f.txt", "V1").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        let recorded = calls.lock().unwrap();
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|call| call.contains("version_delete"))
+                .count(),
+            1,
+            "{recorded:?}"
         );
     }
 

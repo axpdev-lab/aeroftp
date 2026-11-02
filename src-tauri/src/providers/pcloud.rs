@@ -524,6 +524,10 @@ impl PCloudProvider {
     {
         let mut retries = 0;
         loop {
+            // The shared retry loop takes a permit before every attempt,
+            // including a connection that was refused. This loop is outside
+            // that helper, so it pays the same toll itself.
+            super::tpslimit::maybe_acquire().await;
             match build().await?.send().await {
                 Ok(response) => return Ok(response),
                 Err(error)
