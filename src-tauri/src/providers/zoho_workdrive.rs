@@ -785,6 +785,14 @@ fn zoho_native_export_info(extn: &str) -> Option<(&'static str, &'static str, &'
 
 // ── Provider implementation ───────────────────────────────────────────────
 
+/// A resolution may already have fetched its target. This listing lives only
+/// for the current operation; alias provenance is separate from cache presence.
+struct FolderResolution {
+    id: String,
+    listing: Option<Vec<FileResource>>,
+    alias_derived: bool,
+}
+
 /// Zoho WorkDrive Storage Provider
 pub struct ZohoWorkdriveProvider {
     config: ZohoWorkdriveConfig,
@@ -795,6 +803,9 @@ pub struct ZohoWorkdriveProvider {
     current_folder_id: String,
     /// Human-readable current path
     current_path: String,
+    /// Only legacy alias cwd must follow later real-name precedence. Ordinary
+    /// cwd remains bound to its ID even when a cache entry is invalidated.
+    current_is_legacy_alias: bool,
     /// Cache: path → folder_id
     folder_cache: HashMap<String, String>,
     /// Team ID (discovered on connect)
@@ -876,6 +887,7 @@ impl ZohoWorkdriveProvider {
             connected: false,
             current_folder_id: String::new(),
             current_path: "/".to_string(),
+            current_is_legacy_alias: false,
             folder_cache: HashMap::new(),
             team_id: None,
             privatespace_id: None,
@@ -1443,12 +1455,11 @@ impl ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+        let (_parent_id, found) = self
+            .find_in_parent(path_is_absolute, parent_path, file_name)
+            .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         Ok(file.id)
     }
@@ -2356,14 +2367,11 @@ impl ZohoWorkdriveProvider {
             ("", from_path)
         };
 
-        let from_parent_id = self
-            .parent_folder_id(from_path_is_absolute, from_parent_path)
+        let (from_parent_id, found) = self
+            .find_in_parent(from_path_is_absolute, from_parent_path, file_name)
             .await?;
 
-        let file = self
-            .find_by_name(file_name, &from_parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
         let to_path_is_absolute = to.starts_with('/');
         let to_path = to.trim_matches('/');
@@ -2373,9 +2381,10 @@ impl ZohoWorkdriveProvider {
             ("", to_path)
         };
 
-        let to_parent_id = self
-            .parent_folder_id(to_path_is_absolute, to_parent_path)
+        let to_parent = self
+            .parent_folder_with_listing(to_path_is_absolute, to_parent_path)
             .await?;
+        let to_parent_id = to_parent.id;
 
         let is_cross_folder = from_parent_id != to_parent_id;
         let is_rename = file_name != new_name;
@@ -2386,7 +2395,10 @@ impl ZohoWorkdriveProvider {
         // holds the new name, either order would, and nothing is changed.
         let rename_first = is_cross_folder
             && is_rename
-            && self.find_by_name(file_name, &to_parent_id).await?.is_some();
+            && match to_parent.listing {
+                Some(files) => files.iter().any(|f| f.attributes.name == file_name),
+                None => self.find_by_name(file_name, &to_parent_id).await?.is_some(),
+            };
         if rename_first
             && self
                 .find_by_name(new_name, &from_parent_id)
@@ -2529,13 +2541,50 @@ impl ZohoWorkdriveProvider {
         parent: &str,
     ) -> Result<String, ProviderError> {
         if absolute {
-            return self.resolve_path(parent).await;
+            self.resolve_path(parent).await
+        } else {
+            self.parent_folder_with_listing(false, parent)
+                .await
+                .map(|r| r.id)
+        }
+    }
+
+    async fn parent_folder_with_listing(
+        &mut self,
+        absolute: bool,
+        parent: &str,
+    ) -> Result<FolderResolution, ProviderError> {
+        if absolute {
+            return self.resolve_path_with_listing(parent).await;
         }
         if parent.is_empty() {
-            return Ok(self.current_folder_id.clone());
+            if self.current_is_legacy_alias {
+                let path = self.current_path.clone();
+                return self.resolve_path_with_listing(&path).await;
+            }
+            return Ok(FolderResolution {
+                id: self.current_folder_id.clone(),
+                listing: None,
+                alias_derived: false,
+            });
         }
         let joined = format!("{}/{parent}", self.current_path.trim_end_matches('/'));
-        self.resolve_path(&joined).await
+        self.resolve_path_with_listing(&joined).await
+    }
+
+    /// A parent's access/name probe can also answer the immediate child lookup.
+    async fn find_in_parent(
+        &mut self,
+        absolute: bool,
+        parent: &str,
+        name: &str,
+    ) -> Result<(String, Option<FileResource>), ProviderError> {
+        let resolved = self.parent_folder_with_listing(absolute, parent).await?;
+        let entry = match resolved.listing {
+            Some(files) => files.into_iter().find(|f| f.attributes.name == name),
+            None => self.find_by_name(name, &resolved.id).await?,
+        };
+        Ok((resolved.id, entry))
     }
 
     /// Accept only root identifiers returned by this account's discovery.
@@ -2546,7 +2595,7 @@ impl ZohoWorkdriveProvider {
 
     /// Resolve names first, with discovered root IDs as a legacy-profile fallback.
     async fn resolve_path(&mut self, path: &str) -> Result<String, ProviderError> {
-        self.resolve_path_with_listing(path).await.map(|(id, _)| id)
+        self.resolve_path_with_listing(path).await.map(|r| r.id)
     }
 
     /// Return an already fetched target listing only to this operation, never
@@ -2554,22 +2603,28 @@ impl ZohoWorkdriveProvider {
     async fn resolve_path_with_listing(
         &mut self,
         path: &str,
-    ) -> Result<(String, Option<Vec<FileResource>>), ProviderError> {
+    ) -> Result<FolderResolution, ProviderError> {
         let path = path.trim_matches('/');
         if path.is_empty() {
-            return Ok((
-                self.folder_cache
+            return Ok(FolderResolution {
+                id: self
+                    .folder_cache
                     .get("/")
                     .cloned()
                     .unwrap_or_else(|| self.current_folder_id.clone()),
-                None,
-            ));
+                listing: None,
+                alias_derived: false,
+            });
         }
 
         // Check cache
         let full_path = format!("/{}", path);
         if let Some(id) = self.folder_cache.get(&full_path) {
-            return Ok((id.clone(), None));
+            return Ok(FolderResolution {
+                id: id.clone(),
+                listing: None,
+                alias_derived: false,
+            });
         }
 
         let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
@@ -2633,8 +2688,6 @@ impl ZohoWorkdriveProvider {
 
         // Remaining components: normal walk via /files/{id}/files listing
         for part in &parts[1..] {
-            // A root probe is not a listing of the child being resolved.
-            target_listing = None;
             current_path = format!("{}/{}", current_path, part);
 
             if !legacy_root {
@@ -2644,10 +2697,13 @@ impl ZohoWorkdriveProvider {
                 }
             }
 
-            let file = self
-                .find_by_name(part, &current_id)
-                .await?
-                .ok_or_else(|| ProviderError::NotFound(current_path.clone()))?;
+            // The probe lists current_id, so consume it for this first child.
+            // It must not be returned as a listing of the resolved child.
+            let found = match target_listing.take() {
+                Some(files) => files.into_iter().find(|f| f.attributes.name == *part),
+                None => self.find_by_name(part, &current_id).await?,
+            };
+            let file = found.ok_or_else(|| ProviderError::NotFound(current_path.clone()))?;
 
             current_id = file.id.clone();
             if !legacy_root {
@@ -2655,7 +2711,11 @@ impl ZohoWorkdriveProvider {
             }
         }
 
-        Ok((current_id, target_listing))
+        Ok(FolderResolution {
+            id: current_id,
+            listing: target_listing,
+            alias_derived: legacy_root,
+        })
     }
 }
 
@@ -2689,6 +2749,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         self.connected = true;
         self.current_path = "/".to_string();
+        self.current_is_legacy_alias = false;
         info!(
             "Connected to Zoho WorkDrive ({})",
             self.account_email.as_deref().unwrap_or("unknown")
@@ -2698,6 +2759,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         self.connected = false;
+        self.current_is_legacy_alias = false;
         self.folder_cache.clear();
         self.team_id = None;
         self.privatespace_id = None;
@@ -2727,16 +2789,25 @@ impl StorageProvider for ZohoWorkdriveProvider {
             return Ok(entries);
         }
 
-        let (folder_id, already_listed) = if path == "." || path.is_empty() {
-            (self.current_folder_id.clone(), None)
+        let is_current = path == "." || path.is_empty();
+        let resolved = if is_current && !self.current_is_legacy_alias {
+            FolderResolution {
+                id: self.current_folder_id.clone(),
+                listing: None,
+                alias_derived: false,
+            }
         } else {
             self.resolve_path_with_listing(&effective_path).await?
         };
-
-        let files = match already_listed {
+        let files = match resolved.listing {
             Some(files) => files,
-            None => self.list_folder(&folder_id).await?,
+            None => self.list_folder(&resolved.id).await?,
         };
+        if is_current && self.current_is_legacy_alias {
+            self.current_folder_id = resolved.id.clone();
+            self.current_is_legacy_alias = resolved.alias_derived;
+        }
+        let folder_id = resolved.id;
 
         let entries: Vec<RemoteEntry> = files
             .iter()
@@ -2775,14 +2846,15 @@ impl StorageProvider for ZohoWorkdriveProvider {
             format!("{}/{}", self.current_path.trim_end_matches('/'), path)
         };
 
-        let (folder_id, already_listed) = self.resolve_path_with_listing(&new_path).await?;
+        let resolved = self.resolve_path_with_listing(&new_path).await?;
         if new_path.trim_matches('/').is_empty() {
             // Team-only accounts have a synthetic root, not a listable team ID.
             self.list_root().await?;
-        } else if already_listed.is_none() {
-            self.list_folder(&folder_id).await?;
+        } else if resolved.listing.is_none() {
+            self.list_folder(&resolved.id).await?;
         }
-        self.current_folder_id = folder_id;
+        self.current_folder_id = resolved.id;
+        self.current_is_legacy_alias = resolved.alias_derived;
         self.current_path = if new_path.is_empty() {
             "/".to_string()
         } else {
@@ -2809,12 +2881,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+        let (_parent_id, found) = self
+            .find_in_parent(path_is_absolute, parent_path, file_name)
+            .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
         // WorkDrive download URL (same for regular files and native docs: auto-converts)
         let download_url = format!(
@@ -2925,12 +2996,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+        let (_parent_id, found) = self
+            .find_in_parent(path_is_absolute, parent_path, file_name)
+            .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
         // Skip resume for native Zoho docs (exports are generated on-the-fly)
         if file
@@ -2996,12 +3066,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+        let (_parent_id, found) = self
+            .find_in_parent(path_is_absolute, parent_path, file_name)
+            .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(remote_path.to_string()))?;
 
         // Check if this is a Zoho native doc: use same download URL (WorkDrive auto-converts)
         let download_url = format!(
@@ -3151,12 +3220,14 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+        let (parent_id, found) = self
+            .find_in_parent(path_is_absolute, parent_path, folder_name)
+            .await?;
 
         // `mkdir` is not documented as idempotent. An existing child of this
         // name is AlreadyExists, the refusal the other providers give, rather
         // than a second folder of the same name.
-        if self.find_by_name(folder_name, &parent_id).await?.is_some() {
+        if found.is_some() {
             return Err(ProviderError::AlreadyExists(path.to_string()));
         }
 
@@ -3241,12 +3312,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+        let (_parent_id, found) = self
+            .find_in_parent(path_is_absolute, parent_path, file_name)
+            .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         // Move to trash via PATCH with status "51" (Zoho JSON:API convention)
         let url = format!("{}/files/{}", self.api_base(), file.id);
@@ -3398,11 +3468,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             }
         }
 
-        let parent_id = self
-            .parent_folder_id(path_str_is_absolute, parent_path)
+        let (parent_id, found) = self
+            .find_in_parent(path_str_is_absolute, parent_path, file_name)
             .await?;
 
-        let file = match self.find_by_name(file_name, &parent_id).await? {
+        let file = match found {
             Some(file) => file,
             None if parent_path.is_empty()
                 && (path_str_is_absolute || self.current_path == "/")
@@ -3410,7 +3480,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
             {
                 // As for the virtual root, verify it is readable. A legacy
                 // imported root is not a child named after its own API id.
-                self.list_folder(file_name).await?;
+                if parent_id != file_name {
+                    self.list_folder(file_name).await?;
+                }
                 return Ok(RemoteEntry::directory(
                     file_name.to_string(),
                     format!("/{file_name}"),
@@ -3499,14 +3571,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", from_path)
         };
 
-        let parent_id = self
-            .parent_folder_id(from_path_is_absolute, parent_path)
+        let (_parent_id, found) = self
+            .find_in_parent(from_path_is_absolute, parent_path, file_name)
             .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(from.to_string()))?;
 
         // Resolve destination folder
         let to_path = to.trim_matches('/');
@@ -3615,12 +3684,11 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path)
         };
 
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+        let (_parent_id, found) = self
+            .find_in_parent(path_is_absolute, parent_path, file_name)
+            .await?;
 
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+        let file = found.ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
 
         // Create a download link via Zoho WorkDrive Links API
         // POST /api/v1/links
@@ -4118,7 +4186,8 @@ mod tests {
                     let body = match uri.path() {
                         "/workdrive/api/v1/privatespace/PS/files" => r#"{"data":[{"id":"DOCS","attributes":{"name":"docs","type":"folder"}}]}"#,
                         "/workdrive/api/v1/files/WS/files" => r#"{"data":[{"id":"TEAM_DOCS","attributes":{"name":"docs","type":"folder"}}]}"#,
-                        "/workdrive/api/v1/files/DOCS/files" | "/workdrive/api/v1/files/TEAM_DOCS/files" => r#"{"data":[{"id":"FILE","attributes":{"name":"keep.txt","type":"file"}}]}"#,
+                        "/workdrive/api/v1/files/DOCS/files" => r#"{"data":[{"id":"PRIVATE_FILE","attributes":{"name":"keep.txt","type":"file"}}]}"#,
+                        "/workdrive/api/v1/files/TEAM_DOCS/files" => r#"{"data":[{"id":"TEAM_FILE","attributes":{"name":"team.txt","type":"file"}}]}"#,
                         _ => return (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint"),
                     };
                     (axum::http::StatusCode::OK, body)
@@ -4148,9 +4217,12 @@ mod tests {
             assert_eq!(p.pwd().await.unwrap(), format!("/{root}"));
             let files = p.list(&format!("/{root}/docs")).await.unwrap();
             assert_eq!(files.len(), 1);
-            assert_eq!(files[0].path, format!("/{root}/docs/keep.txt"));
+            let name = if root == "PS" { "keep.txt" } else { "team.txt" };
+            assert_eq!(files[0].name, name);
+            assert_eq!(files[0].path, format!("/{root}/docs/{name}"));
             let relative = p.list("docs").await.unwrap();
-            assert_eq!(relative[0].path, format!("/{root}/docs/keep.txt"));
+            assert_eq!(relative[0].name, name);
+            assert_eq!(relative[0].path, format!("/{root}/docs/{name}"));
             assert_eq!(
                 p.resolve_path(&format!("/{root}/docs")).await.unwrap(),
                 if root == "PS" { "DOCS" } else { "TEAM_DOCS" }
@@ -4277,6 +4349,77 @@ mod tests {
                     1
                 );
                 assert!(!p.folder_cache.contains_key(&format!("/{alias}")));
+            }
+        }
+        server.abort();
+    }
+
+    /// A probe of the alias parent also answers child resolution/name checks.
+    #[tokio::test]
+    async fn alias_child_and_parent_name_checks_fetch_each_folder_once() {
+        use std::sync::{Arc, Mutex};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            seen.lock().unwrap().push(uri.path().to_string());
+            async move {
+                let body = if uri.path().contains("/files/CHILD/") {
+                    r#"{"data":[{"id":"LEAF","attributes":{"name":"leaf.txt","type":"file"}}]}"#
+                } else {
+                    r#"{"data":[{"id":"CHILD","attributes":{"name":"child","type":"folder"}},{"id":"EXISTING","attributes":{"name":"existing","type":"folder"}}]}"#
+                };
+                (axum::http::StatusCode::OK, body)
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        for (private, alias, target) in [
+            (None, "WS", "/workdrive/api/v1/files/WS/files"),
+            (Some("PS"), "PS", "/workdrive/api/v1/privatespace/PS/files"),
+            (Some("PS"), "WS", "/workdrive/api/v1/files/WS/files"),
+        ] {
+            let mut p = ZohoWorkdriveProvider::new(config("com"));
+            p.endpoint_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("test-token".into());
+            p.connected = true;
+            p.privatespace_id = private.map(str::to_string);
+            p.current_folder_id = private.unwrap_or("TEAM").into();
+            p.folder_cache
+                .insert("/".into(), p.current_folder_id.clone());
+            p.team_folders.push(("WS".into(), "Team".into()));
+            for operation in 0..3 {
+                calls.lock().unwrap().clear();
+                match operation {
+                    0 => assert_eq!(
+                        p.list(&format!("/{alias}/child")).await.unwrap()[0].name,
+                        "leaf.txt"
+                    ),
+                    1 => assert!(matches!(
+                        p.mkdir(&format!("/{alias}/existing")).await,
+                        Err(ProviderError::AlreadyExists(_))
+                    )),
+                    _ => assert_eq!(
+                        p.stat(&format!("/{alias}/existing"))
+                            .await
+                            .unwrap()
+                            .metadata
+                            .get("id")
+                            .map(String::as_str),
+                        Some("EXISTING")
+                    ),
+                }
+                assert_eq!(
+                    calls
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|s| *s == target)
+                        .count(),
+                    1
+                );
+                assert!(!p.folder_cache.contains_key(&format!("/{alias}")));
+                assert!(!p.folder_cache.contains_key(&format!("/{alias}/child")));
             }
         }
         server.abort();
@@ -4485,6 +4628,30 @@ mod tests {
         p.cd("/").await.unwrap();
         assert!(!p.folder_cache.contains_key("/PS"));
         assert!(!p.folder_cache.contains_key("/PS/docs"));
+        // A cwd explicitly entered through an alias follows later name
+        // precedence, unlike an ordinary ID-bound cwd with an invalidated cache.
+        p.cd("/PS").await.unwrap();
+        assert!(p.current_is_legacy_alias);
+        appeared.store(true, Ordering::SeqCst);
+        let dot = p.list(".").await.unwrap();
+        assert_eq!(
+            dot[0].metadata.get("id").map(String::as_str),
+            Some("NEW_DOCS")
+        );
+        assert_eq!(p.current_folder_id, "REAL");
+        assert!(!p.current_is_legacy_alias);
+        assert_eq!(p.list("/PS").await.unwrap()[0].name, dot[0].name);
+        p.forget_folder("/PS");
+        appeared.store(false, Ordering::SeqCst);
+        let ordinary = p.list("").await.unwrap();
+        assert_eq!(
+            ordinary[0].metadata.get("id").map(String::as_str),
+            Some("NEW_DOCS")
+        );
+        assert_eq!(
+            p.current_folder_id, "REAL",
+            "ordinary cwd keeps its ID after cache invalidation"
+        );
         appeared.store(true, Ordering::SeqCst);
         assert_eq!(p.resolve_path("/PS/docs").await.unwrap(), "NEW_DOCS");
         assert_eq!(p.folder_cache.get("/PS").map(String::as_str), Some("REAL"));
