@@ -702,8 +702,11 @@ mod tests {
             .build()
             .unwrap();
         // u32::MAX would never finish if a consumed body were retried.
+        // One Windows connect refusal can outlast 2 seconds, so the guard
+        // covers that single attempt and still fails if the body re-enters
+        // the loop.
         let result = tokio::time::timeout(
-            Duration::from_secs(2),
+            Duration::from_secs(30),
             send_with_retry(
                 &client,
                 request,
