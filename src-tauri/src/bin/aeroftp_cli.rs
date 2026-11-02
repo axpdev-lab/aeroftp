@@ -494,6 +494,17 @@ struct Cli {
     )]
     immutable: bool,
 
+    /// Do not compare a finished download with the hash the server publishes.
+    /// The check reads the whole file once more, and asks the server for its
+    /// hash; a server with none is checked by size alone either way.
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
+    ignore_checksum: bool,
+
     /// Recursive `put`: skip a file or folder whose name contains a character
     /// the destination backend forbids and upload the rest, reporting each
     /// skipped path, instead of refusing the whole batch up front (the
@@ -10801,7 +10812,7 @@ async fn download_with_resume(
         if offset > 0 {
             refuse_local_name(local_path)?;
             return provider
-                .resume_download(remote_path, local_path, offset, progress_cb)
+                .resume_download_checked(remote_path, local_path, offset, progress_cb)
                 .await;
         }
         // Out of place the destination is a finished file, never a part: one
@@ -10830,7 +10841,7 @@ async fn download_with_resume(
     }
     refuse_local_name(local_path)?;
     provider
-        .download_with_size_hint(remote_path, local_path, size_hint, progress_cb)
+        .download_checked(remote_path, local_path, size_hint, progress_cb)
         .await
 }
 
@@ -19455,7 +19466,7 @@ async fn download_tui_session_via_cli_handler(
             });
         }));
     provider
-        .download(&resolved, local_path, on_progress)
+        .download_checked(&resolved, local_path, None, on_progress)
         .await
         .map_err(|err| format!("download failed: {}", err))
 }
@@ -19915,7 +19926,7 @@ async fn edit_fetch_remote(
     }
     let provider = session.provider_mut();
     provider
-        .download(&resolved, &tmp_str, None)
+        .download_checked(&resolved, &tmp_str, None, None)
         .await
         .map_err(|err| format!("download failed: {}", err))?;
     // Re-assert 0o600 in case the provider truncated and recreated the file with
@@ -34206,7 +34217,7 @@ mod serve_ftp_backend {
                 self.provider
                     .lock()
                     .await
-                    .download(&remote, &tmp_path, None)
+                    .download_checked(&remote, &tmp_path, None, None)
                     .await
                     .map_err(Self::provider_err_to_ftp)?;
             }
@@ -34988,8 +34999,9 @@ mod serve_sftp {
                     if existing == Some(false) && flags & SSH_FXF_TRUNC == 0 {
                         let r = remote.clone();
                         let local = spool.to_string_lossy().into_owned();
-                        if let Err(e) =
-                            prov!(provider, rt, async |p| p.download(&r, &local, None).await)
+                        if let Err(e) = prov!(provider, rt, async |p| p
+                            .download_checked(&r, &local, None, None)
+                            .await)
                         {
                             return make_status(id, SSH_FX_FAILURE, &format!("open failed: {e}"));
                         }
@@ -36743,7 +36755,72 @@ async fn pget_segmented_download(
                 )
                 .await;
             }
-            if let Err(e) = temp.publish(Path::new(local_path)).await {
+            // Asked last, on a session of its own like the reading above.
+            let expected = if ftp_client_gui_lib::providers::content_check::enabled() {
+                let reading = run_until_interrupted(&cancelled, async {
+                    let opened =
+                        ftp_client_gui_lib::providers::multi_thread::open_after_transfer(|| {
+                            create_and_connect(url, cli, format)
+                        })
+                        .await;
+                    let (mut reader, _) = match opened {
+                        Ok(connected) => connected,
+                        Err(error) => {
+                            // Every window is in: a session that will not open
+                            // costs the check, and says so, not the download.
+                            log::warn!("[content-check] {local_path}: not checked: {error}");
+                            return None;
+                        }
+                    };
+                    let expected = reader.content_digest(remote_path, Some(file_size)).await;
+                    let _ = reader.disconnect().await;
+                    expected
+                })
+                .await;
+                let Some(expected) = reading else {
+                    temp.discard();
+                    return interrupted_exit(None, format, "the download did not finish").await;
+                };
+                expected
+            } else {
+                None
+            };
+            let check = ftp_client_gui_lib::providers::content_check::ContentCheck::expecting(
+                expected, local_path,
+            );
+            let checked = run_until_interrupted(
+                &cancelled,
+                check.scope(temp.check_content(Path::new(local_path))),
+            )
+            .await;
+            let Some(checked) = checked else {
+                temp.discard();
+                return interrupted_exit(None, format, "the download did not finish").await;
+            };
+            let published = match checked {
+                Ok(()) => temp.publish(Path::new(local_path)).await,
+                Err(differs) => {
+                    temp.discard();
+                    Err(differs)
+                }
+            };
+            if let Err(e) = published {
+                if check.differs() {
+                    report_download_fallback(
+                        "pget: the assembled file does not match the hash the server publishes",
+                    );
+                    return pget_fallback_single(
+                        url,
+                        remote_path,
+                        local_path,
+                        cli,
+                        format,
+                        &cancelled,
+                        listed_time,
+                        true,
+                    )
+                    .await;
+                }
                 print_error(format, &format!("pget: finalize failed: {}", e), 4);
                 return 4;
             }
@@ -59350,11 +59427,12 @@ mod fuse_mount {
                     .unwrap_or_else(|_| std::env::temp_dir().join(format!("aeroftp_fuse_{}", ino)));
                 let download_result = self.rt.block_on(async {
                     let mut p = provider.lock().await;
-                    p.download(&path, &tmp.to_string_lossy(), None).await
+                    p.download_checked(&path, &tmp.to_string_lossy(), None, None)
+                        .await
                 });
-                if download_result.is_err() {
-                    // New file or download failed - start empty
-                    let _ = std::fs::write(&tmp, b"");
+                if !write_buffer_ready(download_result, &tmp) {
+                    reply.error(Errno::EIO);
+                    return;
                 }
                 self.write_buffers.lock().unwrap().insert(ino, tmp.clone());
                 // Now write to the buffer
@@ -59721,6 +59799,22 @@ mod fuse_mount {
                     255,
                     BLOCK_SIZE,
                 );
+            }
+        }
+    }
+
+    /// Whether a write to a file with no buffer can go on from what its download
+    /// left at `tmp`. Only a file that does not exist starts empty: the buffer is
+    /// uploaded on flush, so starting empty after a failed transfer or a refused
+    /// hash would replace the remote file with the bytes of this one write.
+    fn write_buffer_ready(downloaded: Result<(), ProviderError>, tmp: &std::path::Path) -> bool {
+        match downloaded {
+            Ok(()) => true,
+            Err(ProviderError::NotFound(_)) => std::fs::write(tmp, b"").is_ok(),
+            Err(error) => {
+                eprintln!("write error: the existing content could not be read: {error}");
+                let _ = std::fs::remove_file(tmp);
+                false
             }
         }
     }
@@ -60169,6 +60263,40 @@ mod fuse_mount {
                 fs.get_cached(ROOT_INODE).unwrap().attr.kind,
                 FileType::Directory
             );
+        }
+
+        #[test]
+        fn a_successful_download_keeps_its_bytes() {
+            let dir = tempfile::tempdir().unwrap();
+            let tmp = dir.path().join("buffer");
+            std::fs::write(&tmp, b"remote bytes").unwrap();
+
+            assert!(write_buffer_ready(Ok(()), &tmp));
+            assert_eq!(std::fs::read(&tmp).unwrap(), b"remote bytes");
+        }
+
+        #[test]
+        fn a_write_starts_empty_only_on_a_file_that_does_not_exist() {
+            let dir = tempfile::tempdir().unwrap();
+            let tmp = dir.path().join("buffer");
+
+            assert!(write_buffer_ready(Ok(()), &tmp), "downloaded: use it");
+            assert!(!tmp.exists(), "a download's file is left as it is");
+
+            assert!(write_buffer_ready(
+                Err(ProviderError::NotFound("gone".to_string())),
+                &tmp
+            ));
+            assert_eq!(std::fs::read(&tmp).unwrap(), b"");
+
+            for error in [
+                ProviderError::TransferFailed("the download was not kept".to_string()),
+                ProviderError::ConnectionLost("reset".to_string()),
+            ] {
+                std::fs::write(&tmp, b"partial").unwrap();
+                assert!(!write_buffer_ready(Err(error), &tmp));
+                assert!(!tmp.exists(), "nothing is left to upload on flush");
+            }
         }
     }
 }
@@ -68148,7 +68276,8 @@ mod hashsum_digest_tests {
     /// at the first version, 7 as 4 with the first HEAD after a refusal
     /// answered `404`, 8 as 4 with the entity tag the MD5 of the content, 9 as
     /// 8 with the unpinned ranges, untagged, coming from a replacement, 10 as 4
-    /// with the pinned range at byte 0 served and the later ones refused.
+    /// with the pinned range at byte 0 served and the later ones refused, 11 as
+    /// 8 with every range served, untagged, from a replacement.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -68213,7 +68342,7 @@ mod hashsum_digest_tests {
                                     || (range_mode == 5 && refused.load(Ordering::SeqCst) > 0)
                                 {
                                     "\"changed-version\"".to_string()
-                                } else if matches!(range_mode, 8 | 9) {
+                                } else if matches!(range_mode, 8 | 9 | 11) {
                                     format!(
                                         "\"{:x}\"",
                                         <md5::Md5 as md5::Digest>::digest(served.as_slice())
@@ -68246,7 +68375,7 @@ mod hashsum_digest_tests {
                                 .body(Body::empty())
                                 .unwrap();
                         }
-                        if range_mode == 9 {
+                        if matches!(range_mode, 9 | 11) {
                             let (start, end) = range
                                 .to_str()
                                 .unwrap()
@@ -76996,6 +77125,9 @@ async fn main() {
     };
 
     let mut cli = Cli::parse_from(args.clone());
+    if cli.ignore_checksum {
+        ftp_client_gui_lib::providers::content_check::set_enabled(false);
+    }
 
     // Stash the alias-expanded arguments so the deep cutoff consumption
     // points can tell a flag value from an environment one (G5).
@@ -84454,6 +84586,7 @@ mod tests {
             files_from: None,
             files_from_raw: None,
             immutable: false,
+            ignore_checksum: false,
             skip_restricted: false,
             no_check_dest: false,
             max_depth: None,
@@ -91298,8 +91431,9 @@ mod tests {
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
-        // The reading before the segments, the diagnosis, the reading after.
-        assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+        // The hash of the content check, the reading before the segments, the
+        // diagnosis, the reading after.
+        assert_eq!(fixture.heads.load(Ordering::SeqCst), 4);
         // A publish from the windows keeps the time it was listed with.
         assert_eq!(
             local_time(&out),
@@ -91358,6 +91492,36 @@ mod tests {
                 "mode {mode}: {warnings:?}"
             );
         }
+    }
+
+    /// Segments that do not hash to what the server publishes may come from an
+    /// object that moved: the single stream after them keeps the time of its own
+    /// reading, not the listing's.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_takes_the_time_of_its_own_reading_after_a_hash_that_differs() {
+        let size = 8 * 1024 * 1024 + 31;
+        let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, 11).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.bin");
+        let (code, warnings) = pget_against(
+            fixture.provider.clone(),
+            size as u64,
+            out.to_string_lossy().into_owned(),
+        )
+        .await;
+        assert_eq!(code, 0, "{warnings:?}");
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("the assembled file does not match the hash")),
+            "{warnings:?}"
+        );
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            local_time(&out),
+            ftp_client_gui_lib::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT").unwrap()
+        );
     }
 
     /// A 412 on an object that did change: no unpinned retry, the fallback

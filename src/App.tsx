@@ -456,7 +456,7 @@ import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
 import { usedScanRoot } from './utils/protonPaths';
-import { describeScanIncompleteError, isCompareCancelled, isScanIncompleteError } from './utils/scanCompleteness';
+import { compareOutcome, describeScanIncompleteError, isCompareCancelled, isScanIncompleteError } from './utils/scanCompleteness';
 import { useCancelStaleCompare } from './hooks/useCancelStaleCompare';
 import { useTranslation } from './i18n';
 
@@ -4662,6 +4662,16 @@ const App: React.FC = () => {
   // offered on a connected FTP/FTPS session only. Computed here, ahead of the
   // command palette that lists it.
   const canSendSiteCommand = siteCommandAvailable(isConnected, liveConnectionParams.protocol);
+  // One at a time: async commands run as separate tasks, and an older value that
+  // lands last would stay in force against the setting on screen.
+  const downloadContentCheckSent = useRef<Promise<unknown>>(Promise.resolve());
+  useEffect(() => {
+    const enabled = settings.verifyDownloadHash;
+    downloadContentCheckSent.current = downloadContentCheckSent.current
+      .then(() => invoke('set_download_content_check', { enabled }))
+      .catch(() => { /* not in the desktop shell */ });
+  }, [settings.verifyDownloadHash]);
+
   // The native menu (macOS menu bar, optional on Linux/Windows) follows the
   // same rule: Connection > SITE Command is off unless this is true.
   useEffect(() => {
@@ -11765,6 +11775,7 @@ const App: React.FC = () => {
           // having applied them: the Plan then blocks Execute until a rescan
           // works, rather than let Mirror delete what the compare never hid.
           let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
+          let refused: string | undefined;
           let compareFailed = false;
           try {
             const report = await invoke<CompareReport>('compare_local_directories', {
@@ -11787,7 +11798,8 @@ const App: React.FC = () => {
               // listing and Mirror deletes the other side down to it. Fail
               // closed, no executable plan.
               resolved = compareEntries([], []);
-              notify.error(t('aerosync.title') || 'AeroSync', describeScanIncompleteError(err));
+              refused = describeScanIncompleteError(err);
+              notify.error(t('aerosync.title') || 'AeroSync', refused);
             } else {
               // Recursive scan failed: fall back to the flat top-level classify.
               applied = appliedCompareFilters('flat', userExcludes, backupDir);
@@ -11801,7 +11813,7 @@ const App: React.FC = () => {
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
           setAeroSync((prev) =>
             prev
-              ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareFailed, ...applied } }
+              ? { ...prev, context: { ...prev.context, ...compareOutcome(resolved, refused), compareLoading: false, compareFailed, ...applied } }
               : prev,
           );
         })();
@@ -11881,6 +11893,7 @@ const App: React.FC = () => {
         let resolved: CompareResult;
         // See the local-local branch: the flat fallback applies no exclusions.
         let applied = appliedCompareFilters('recursive', userExcludes, backupDir);
+        let refused: string | undefined;
         let compareFailed = false;
         try {
           const compareArgs: Record<string, unknown> = {
@@ -11911,7 +11924,8 @@ const App: React.FC = () => {
             // re-uploads everything. Fail closed end-to-end: surface a blocking
             // error and leave Compare with no executable result.
             resolved = compareEntries([], []);
-            notify.error(t('aerosync.title') || 'AeroSync', String(err));
+            refused = describeScanIncompleteError(err);
+            notify.error(t('aerosync.title') || 'AeroSync', refused);
           } else if (isScanIncompleteError(err)) {
             // CLAUDE-AV-B3-13: the backend refused because the local walk did
             // not see the whole tree (unmounted root, unreadable directory,
@@ -11922,7 +11936,8 @@ const App: React.FC = () => {
             // the backend just refused, off an even thinner tree. Fail closed
             // like the crypt arm: no rows, no executable plan, blocking error.
             resolved = compareEntries([], []);
-            notify.error(t('aerosync.title') || 'AeroSync', describeScanIncompleteError(err));
+            refused = describeScanIncompleteError(err);
+            notify.error(t('aerosync.title') || 'AeroSync', refused);
           } else {
             // Recursive scan failed: fall back to the flat top-level
             // classify so the Compare tab still shows something actionable.
@@ -11939,7 +11954,7 @@ const App: React.FC = () => {
         if (aeroSyncCompareSeqRef.current !== mySeq) return;
         setAeroSync((prev) =>
           prev
-            ? { ...prev, context: { ...prev.context, compareResult: resolved, compareLoading: false, compareFailed, ...applied } }
+            ? { ...prev, context: { ...prev.context, ...compareOutcome(resolved, refused), compareLoading: false, compareFailed, ...applied } }
             : prev,
         );
       })();

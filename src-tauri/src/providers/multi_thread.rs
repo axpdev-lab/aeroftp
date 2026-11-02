@@ -752,6 +752,7 @@ impl SegmentedTemp {
     /// behind that removes by name a temporary another run has created there
     /// since the rename.
     pub async fn publish(mut self, final_path: &Path) -> std::io::Result<()> {
+        self.check_content(final_path).await?;
         let Some(held) = self.held.take() else {
             return Err(std::io::Error::other(
                 "segmented temporary already handed over",
@@ -767,6 +768,15 @@ impl SegmentedTemp {
         })
         .await
         .map_err(std::io::Error::other)?
+    }
+
+    /// The check of [`super::content_check`], for a caller that races it with a
+    /// Stop: it reads the whole file, and the publish after it does not repeat it.
+    pub async fn check_content(&self, final_path: &Path) -> std::io::Result<()> {
+        match &self.held {
+            Some(held) => super::content_check::before_publish(&held.path, final_path).await,
+            None => Ok(()),
+        }
     }
 
     /// Remove the temporary while it is still claimed.
@@ -2633,6 +2643,12 @@ pub(crate) async fn try_http_concurrent_range_download(
                         "[multi-thread] {}; single-stream fallback",
                         source_changed("http range", &req.url, &what)
                     );
+                    return HttpRangeAttempt::Refused(fallback_progress);
+                }
+                if let Err(differs) = temp.check_content(Path::new(&req.local_path)).await {
+                    temp.discard();
+                    report_download_fallback(super::content_check::ASSEMBLED_DIFFERS);
+                    tracing::warn!("[multi-thread] {}: {differs}", req.url);
                     return HttpRangeAttempt::Refused(fallback_progress);
                 }
                 match temp.publish(Path::new(&req.local_path)).await {
