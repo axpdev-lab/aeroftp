@@ -535,9 +535,9 @@ impl PCloudProvider {
                     retries += 1;
                 }
                 Err(error) => {
-                    return Err(ProviderError::NetworkError(sanitize_api_error(
-                        &error.to_string(),
-                    )))
+                    return Err(super::http_send_error(error, |error| {
+                        ProviderError::NetworkError(sanitize_api_error(&error.to_string()))
+                    }))
                 }
             }
         }
@@ -3313,7 +3313,7 @@ mod tests {
             )
             .await;
             if delay {
-                assert!(response.is_err());
+                assert!(matches!(response, Err(ProviderError::Timeout)));
             } else {
                 let response = response.unwrap();
                 assert_eq!(response.status().as_u16(), status);
