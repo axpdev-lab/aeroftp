@@ -2202,12 +2202,18 @@ impl ZohoWorkdriveProvider {
             let id = if self.privatespace_id.is_none() && self.is_discovered_root_id(first) {
                 // A team-only account has a synthetic root of discovered team
                 // folders, not a listable /files/{team_id}/files directory.
+                // Discovery may outlive access: do not move cwd into a root
+                // whose listing is now refused.
+                self.list_folder(first).await?;
                 legacy_root = true;
                 first.to_string()
             } else {
                 match self.find_by_name(first, root_id).await? {
                     Some(file) => file.id,
                     None if self.is_discovered_root_id(first) => {
+                        if root_id != first {
+                            self.list_folder(first).await?;
+                        }
                         legacy_root = true;
                         first.to_string()
                     }
@@ -2904,17 +2910,19 @@ impl StorageProvider for ZohoWorkdriveProvider {
             ("", path_str)
         };
 
-        if self.privatespace_id.is_none()
-            && parent_path.is_empty()
-            && (path_str_is_absolute || self.current_path == "/")
-        {
+        if parent_path.is_empty() && (path_str_is_absolute || self.current_path == "/") {
             // Match actual names first, as resolve_path does; only then may
             // a discovered ID stand for a legacy imported root.
             let root = self
                 .team_folders
                 .iter()
                 .find(|(_, name)| name == file_name)
-                .or_else(|| self.team_folders.iter().find(|(id, _)| id == file_name))
+                .or_else(|| {
+                    self.privatespace_id
+                        .is_none()
+                        .then(|| self.team_folders.iter().find(|(id, _)| id == file_name))
+                        .flatten()
+                })
                 .map(|(id, _)| id.clone());
             if let Some(id) = root {
                 self.list_folder(&id).await?;
@@ -3757,6 +3765,99 @@ mod tests {
             .unwrap()
             .iter()
             .any(|path| path.contains("/files/REAL/files")));
+        server.abort();
+    }
+
+    /// Discovery is not a current access check: a revoked root must leave
+    /// navigation unchanged, with or without a separate private space.
+    #[tokio::test]
+    async fn a_revoked_legacy_root_cannot_change_the_working_directory() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let readable = Arc::new(AtomicBool::new(true));
+        let served = readable.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let readable = served.load(Ordering::SeqCst);
+            async move {
+                match uri.path() {
+                    "/workdrive/api/v1/privatespace/PS/files" => {
+                        (axum::http::StatusCode::OK, r#"{"data":[]}"#)
+                    }
+                    "/workdrive/api/v1/files/WS/files" if readable => {
+                        (axum::http::StatusCode::OK, r#"{"data":[]}"#)
+                    }
+                    _ => (axum::http::StatusCode::FORBIDDEN, "access revoked"),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        for private in [None, Some("PS")] {
+            let mut p = ZohoWorkdriveProvider::new(config("com"));
+            p.endpoint_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("test-token".into());
+            p.connected = true;
+            p.privatespace_id = private.map(str::to_string);
+            let root = private.unwrap_or("TEAM");
+            p.current_folder_id = root.into();
+            p.folder_cache.insert("/".into(), root.into());
+            p.team_folders.push(("WS".into(), "Team".into()));
+            readable.store(true, Ordering::SeqCst);
+            p.cd("/WS").await.unwrap();
+            assert_eq!(p.pwd().await.unwrap(), "/WS");
+            assert!(!p.folder_cache.contains_key("/WS"));
+            p.cd("/").await.unwrap();
+            readable.store(false, Ordering::SeqCst);
+            assert!(p.cd("/WS").await.is_err());
+            assert_eq!(p.pwd().await.unwrap(), "/");
+            assert_eq!(p.current_folder_id, root);
+            assert!(!p.folder_cache.contains_key("/WS"));
+        }
+        server.abort();
+    }
+
+    /// Stat and navigation must select a team-folder name before an ID
+    /// alias or private-space child with the same spelling.
+    #[tokio::test]
+    async fn private_space_stat_preserves_team_folder_name_precedence() {
+        use std::sync::{Arc, Mutex};
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let served = calls.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            served.lock().unwrap().push(uri.path().to_string());
+            async move {
+                match uri.path() {
+                    "/workdrive/api/v1/files/REAL/files" => (axum::http::StatusCode::OK, r#"{"data":[{"id":"FILE","attributes":{"name":"keep.txt","type":"file"}}]}"#),
+                    "/workdrive/api/v1/privatespace/PS/files" => (axum::http::StatusCode::OK, r#"{"data":[{"id":"PRIVATE_CHILD","attributes":{"name":"WS","type":"folder"}}]}"#),
+                    _ => (axum::http::StatusCode::FORBIDDEN, "wrong root selected"),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+        p.team_folders = vec![("WS".into(), "Team".into()), ("REAL".into(), "WS".into())];
+        assert_eq!(p.stat("/WS").await.unwrap().path, "/WS");
+        assert!(p.exists("/WS").await.unwrap());
+        assert_eq!(p.resolve_path("/WS").await.unwrap(), "REAL");
+        assert_eq!(p.list("/WS").await.unwrap()[0].path, "/WS/keep.txt");
+        p.cd("/WS").await.unwrap();
+        assert_eq!(p.current_folder_id, "REAL");
+        assert!(calls
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|path| path == "/workdrive/api/v1/files/REAL/files"));
         server.abort();
     }
 
