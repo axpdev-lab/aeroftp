@@ -9544,6 +9544,13 @@ pub(crate) mod walk_scope_tests {
 
     pub(crate) type Listings = &'static [(&'static str, &'static [&'static str])];
 
+    #[derive(Clone, Copy)]
+    enum FindFailureMode {
+        Reply421,
+        StallRestore,
+        CloseAfter421,
+    }
+
     /// One control connection of a server without MLSD that holds
     /// `listings`: each folder with the names its LIST rows carry (a name
     /// ending in `/` is a folder, the slash dropped). Paths are resolved
@@ -9553,7 +9560,7 @@ pub(crate) mod walk_scope_tests {
         stream: TcpStream,
         listings: Listings,
         log: Arc<Mutex<Vec<String>>>,
-        stall_restore: bool,
+        mode: FindFailureMode,
     ) {
         let (read, mut write) = stream.into_split();
         let mut lines = BufReader::new(read).lines();
@@ -9583,13 +9590,19 @@ pub(crate) mod walk_scope_tests {
                 "PWD" => format!("257 \"{cwd}\" is current\r\n"),
                 "CWD" => {
                     let target = resolve(&cwd, &argument);
-                    if stall_restore && find_failed && target == "/" {
+                    if matches!(mode, FindFailureMode::StallRestore) && find_failed && target == "/"
+                    {
                         // Leave CWD unanswered until the client drops the session.
                         while let Ok(Some(_)) = lines.next_line().await {}
                         return;
                     }
                     if target.ends_with("/down") {
                         find_failed = true;
+                        if matches!(mode, FindFailureMode::CloseAfter421) {
+                            let _ = write.write_all(b"421 Service not available.\r\n").await;
+                            let _ = write.shutdown().await;
+                            return;
+                        }
                         "421 Service not available.\r\n".to_string()
                     } else if held(&target) {
                         cwd = target;
@@ -9663,12 +9676,12 @@ pub(crate) mod walk_scope_tests {
     /// legacy FTP session's walks (`crate::ftp::FtpManager`) are tested on it
     /// too.
     pub(crate) async fn tree_server(listings: Listings) -> (u16, Arc<Mutex<Vec<String>>>) {
-        tree_server_with_restore_mode(listings, false).await
+        tree_server_with_restore_mode(listings, FindFailureMode::Reply421).await
     }
 
     async fn tree_server_with_restore_mode(
         listings: Listings,
-        stall_restore: bool,
+        mode: FindFailureMode,
     ) -> (u16, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -9676,12 +9689,10 @@ pub(crate) mod walk_scope_tests {
         let seen = Arc::clone(&log);
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(serve_tree(
-                    stream,
-                    listings,
-                    Arc::clone(&seen),
-                    stall_restore,
-                ));
+                if matches!(mode, FindFailureMode::CloseAfter421) {
+                    seen.lock().unwrap().push("ACCEPT_CONTROL".to_string());
+                }
+                tokio::spawn(serve_tree(stream, listings, Arc::clone(&seen), mode));
             }
         });
         (port, log)
@@ -9689,14 +9700,14 @@ pub(crate) mod walk_scope_tests {
 
     /// A connected provider on a [`serve_tree`] server, and its DELE/RMD log.
     async fn provider_on_tree(listings: Listings) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
-        provider_on_tree_with_restore_mode(listings, false).await
+        provider_on_tree_with_restore_mode(listings, FindFailureMode::Reply421).await
     }
 
     async fn provider_on_tree_with_restore_mode(
         listings: Listings,
-        stall_restore: bool,
+        mode: FindFailureMode,
     ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
-        let (port, log) = tree_server_with_restore_mode(listings, stall_restore).await;
+        let (port, log) = tree_server_with_restore_mode(listings, mode).await;
         let mut provider = FtpProvider::new(FtpConfig {
             host: "127.0.0.1".to_string(),
             port,
@@ -9787,7 +9798,7 @@ pub(crate) mod walk_scope_tests {
     async fn a_failed_find_drops_a_session_whose_cwd_restore_never_answers() {
         let (mut provider, _) = provider_on_tree_with_restore_mode(
             &[("/", &["keep.txt", "x/"]), ("/x", &["down/"])],
-            true,
+            FindFailureMode::StallRestore,
         )
         .await;
         let outcome =
@@ -9815,6 +9826,49 @@ pub(crate) mod walk_scope_tests {
             .await
             .expect("list on the fresh control stream");
         assert!(entries.iter().any(|entry| entry.name == "keep.txt"));
+    }
+
+    /// After a closed 421 socket, the existing LIST retry must use a newly
+    /// accepted control connection, not report success on the dead session.
+    #[tokio::test]
+    async fn a_failed_find_observes_a_control_connection_closed_after_421() {
+        let (mut provider, log) = provider_on_tree_with_restore_mode(
+            &[("/", &["keep.txt", "x/"]), ("/x", &["down/"])],
+            FindFailureMode::CloseAfter421,
+        )
+        .await;
+        let accepted_connections = || {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|event| event.as_str() == "ACCEPT_CONTROL")
+                .count()
+        };
+        assert_eq!(accepted_connections(), 1);
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(8), provider.find("/x", "*"))
+                .await
+                .expect("the closed control stream cannot stall restore");
+        assert!(outcome.is_err());
+        assert!(
+            provider.stream.is_some(),
+            "a synchronous restore failure retains the handle"
+        );
+        assert_eq!(provider.current_path, "/");
+        let before_listing = accepted_connections();
+        let entries = provider
+            .list("/")
+            .await
+            .expect("LIST retries the closed connection");
+        assert!(
+            accepted_connections() > before_listing,
+            "LIST must reconnect, not reuse a dead socket"
+        );
+        assert!(provider.is_connected());
+        assert_eq!(provider.current_path, "/");
+        let mut names: Vec<_> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, ["keep.txt", "x"]);
     }
 
     #[tokio::test]

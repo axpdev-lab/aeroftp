@@ -7580,6 +7580,9 @@ const App: React.FC = () => {
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
       setSelectedRemoteFiles(new Set());
+      // Searches started during reconnect may still belong to the old branch.
+      cancelRemoteSearch();
+      setRemoteSearchResults(null);
       if (activeSessionId) {
         setSessions(prev => prev.map(session =>
           session.id === activeSessionId
@@ -19875,7 +19878,7 @@ const App: React.FC = () => {
                         type="text"
                         placeholder={t('search.remote_placeholder') || 'Search remote files...'}
                         value={remoteSearchQuery}
-                        onChange={e => { cancelRemoteSearch(); setRemoteSearchResults(null); setRemoteSearchQuery(e.target.value); }}
+                        onChange={e => { cancelRemoteSearch(); setRemoteSearchResults(null); setSelectedRemoteFiles(new Set()); setRemoteSearchQuery(e.target.value); }}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && remoteSearchQuery.trim()) {
                             handleRemoteSearch(remoteSearchQuery);

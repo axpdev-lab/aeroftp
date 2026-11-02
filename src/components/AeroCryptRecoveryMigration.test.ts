@@ -140,6 +140,49 @@ describe('recovery kit after remote marker migration', () => {
         expect(host.textContent).toContain(freshKit.text);
     });
 
+    it.each(['kit', 'missing', 'error'])('ignores a pending Show %s completion after migration publishes', async (outcome) => {
+        const original = invoke.getMockImplementation()!;
+        // An offline initial config leaves a cached kit but no vaultInfo fallback.
+        invoke.mockImplementation((command, args) => command === 'aerocrypt_provider_read_config'
+            ? Promise.resolve(null) : original(command, args));
+        await mount();
+        await click('aerocryptNative.hideKit');
+        let resolveShow!: (value: unknown) => void;
+        let rejectShow!: (reason: unknown) => void;
+        const pending = new Promise((resolve, reject) => { resolveShow = resolve; rejectShow = reject; });
+        invoke.mockImplementation((command, args) => {
+            if (command === 'aerocrypt_profile_recovery_kit') {
+                return outcome === 'kit' ? pending : Promise.reject(new Error('cache unavailable'));
+            }
+            if (command === 'aerocrypt_provider_read_config' && !migrated) return pending;
+            return original(command, args);
+        });
+        await click('aerocryptNative.showKit');
+        expect(invoke.mock.calls.some(([c]) => c === (outcome === 'kit' ? 'aerocrypt_profile_recovery_kit' : 'aerocrypt_provider_read_config'))).toBe(true);
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(host.textContent).toContain('aerocryptNative.overlayMetadataNotSaved');
+        await act(async () => { if (outcome === 'error') rejectShow(new Error('stale Show error')); else resolveShow(outcome === 'kit' ? oldKit : null); });
+        expect(host.textContent).not.toContain(oldKit.text);
+        expect(host.textContent).toContain('aerocryptNative.overlayMetadataNotSaved');
+        expect(host.textContent).not.toContain('aerocryptNative.kitUnavailable');
+        expect(host.textContent).not.toContain('stale Show error');
+    });
+
+    it('disables Show while marker migration is pending', async () => {
+        let finishMigration!: (value: unknown) => void;
+        const original = invoke.getMockImplementation()!;
+        invoke.mockImplementation((command, args) => command === 'aerocrypt_provider_migrate_legacy_marker'
+            ? new Promise((resolve) => { finishMigration = resolve; }) : original(command, args));
+        await mount();
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(button('aerocryptNative.showKit').disabled).toBe(true);
+        const reads = invoke.mock.calls.length;
+        await click('aerocryptNative.showKit');
+        expect(invoke.mock.calls.length).toBe(reads);
+        await act(async () => { migrated = true; finishMigration({ changed: true, legacyDeleted: true }); });
+        expect(button('aerocryptNative.showKit').disabled).toBe(false);
+    });
+
     it('offers the new cached kit when metadata persistence succeeds', async () => {
         const original = invoke.getMockImplementation()!;
         let cachedNew = false;

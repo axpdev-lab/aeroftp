@@ -482,6 +482,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     // On-demand recovery kit: prefer the keystore kit (works offline after one
     // connect, includes vault_id backfill). Fall back to remote marker config.
     const showRecoveryKit = async () => {
+        // The ref also covers clicks before React renders disabled controls.
+        if (kitOperationRef.current) return;
         const generation = kitGenerationRef.current;
         setError(null);
         try {
@@ -507,7 +509,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                     })) || '';
             }
             if (!configJson) {
-                setError(t('aerocryptNative.kitUnavailable'));
+                if (generation === kitGenerationRef.current) setError(t('aerocryptNative.kitUnavailable'));
                 return;
             }
             const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_build_emergency_kit', {
@@ -516,6 +518,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
             if (generation !== kitGenerationRef.current) return;
             setKitData(kit);
         } catch (e) {
+            if (generation !== kitGenerationRef.current) return;
             const msg = String(e);
             if (/vault_id/i.test(msg)) {
                 setError(t('aerocryptNative.kitNeedsVaultIdUpgrade'));
@@ -957,7 +960,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                             ) : (
                                 <button
                                     onClick={showRecoveryKit}
-                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 rounded hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                                    disabled={markerMigrating || kitOperationBusy}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 rounded hover:bg-amber-50 dark:hover:bg-amber-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <FileKey className="w-4 h-4" />
                                     {t('aerocryptNative.showKit')}

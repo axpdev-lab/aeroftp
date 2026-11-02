@@ -246,38 +246,9 @@ fn existing_spelling_problems(
 ) -> Vec<LocalTargetProblem> {
     let guard = LocalTargetGuard::with_rules(rules);
     let mut listed: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
-    let mut linked_parents: HashMap<String, Option<PathBuf>> = HashMap::new();
     let mut problems = Vec::new();
     for file in files {
         let (parent, name) = file.rsplit_once('/').unwrap_or(("", file));
-        // Static containment check only: a concurrent local replacement after
-        // this check is outside this preflight's guarantee.
-        let link = linked_parents.entry(parent.to_string()).or_insert_with(|| {
-            let mut under = destination.to_path_buf();
-            if under
-                .symlink_metadata()
-                .is_ok_and(|meta| meta.file_type().is_symlink())
-            {
-                return Some(under);
-            }
-            for component in Path::new(parent).components() {
-                under.push(component);
-                if under
-                    .symlink_metadata()
-                    .is_ok_and(|meta| meta.file_type().is_symlink())
-                {
-                    return Some(under);
-                }
-            }
-            None
-        });
-        if let Some(link) = link {
-            problems.push(LocalTargetProblem {
-                path: file.clone(),
-                reason: format!("{} is a link; refusing to write below it", link.display()),
-            });
-            continue;
-        }
         let entries = listed.entry(parent.to_string()).or_insert_with(|| {
             let mut entries: HashMap<String, Vec<String>> = HashMap::new();
             // A folder not there yet holds nothing to replace.
@@ -323,6 +294,38 @@ fn existing_spelling_problems(
     problems
 }
 
+/// Reject pre-existing links on every planned target's path, including folders
+/// without any file children. This is a static check, not a race-proof open.
+fn linked_target_problems(destination: &Path, paths: &[String]) -> Vec<LocalTargetProblem> {
+    let mut checked: HashMap<PathBuf, bool> = HashMap::new();
+    let mut problems = Vec::new();
+    for path in paths {
+        let mut under = destination.to_path_buf();
+        let mut link = None;
+        for component in std::iter::once(None).chain(Path::new(path).components().map(Some)) {
+            if let Some(component) = component {
+                under.push(component);
+            }
+            let is_link = *checked.entry(under.clone()).or_insert_with(|| {
+                under
+                    .symlink_metadata()
+                    .is_ok_and(|meta| meta.file_type().is_symlink())
+            });
+            if is_link {
+                link = Some(under.clone());
+                break;
+            }
+        }
+        if let Some(link) = link {
+            problems.push(LocalTargetProblem {
+                path: path.clone(),
+                reason: format!("{} is a link; refusing to write below it", link.display()),
+            });
+        }
+    }
+    problems
+}
+
 /// Compare the entries actually returned by a directory listing. Keeping this
 /// separate from disk access also lets normalization-insensitive hosts test a
 /// listing containing two names that their own filesystem cannot hold apart.
@@ -351,14 +354,19 @@ pub fn local_target_problems(
         fold_case: true,
         fold_normalization: true,
     };
-    if target_problems(strictest, cfg!(windows), paths, files).is_empty()
+    let links = linked_target_problems(destination, paths);
+    if links.is_empty()
+        && target_problems(strictest, cfg!(windows), paths, files).is_empty()
         && existing_spelling_problems(strictest, destination, files).is_empty()
     {
         return Vec::new();
     }
     let rules = destination_rules(destination);
     let mut problems = target_problems(rules, cfg!(windows), paths, files);
-    for problem in existing_spelling_problems(rules, destination, files) {
+    for problem in links
+        .into_iter()
+        .chain(existing_spelling_problems(rules, destination, files))
+    {
         if !problems.iter().any(|known| known.path == problem.path) {
             problems.push(problem);
         }
@@ -631,6 +639,22 @@ mod tests {
         std::fs::remove_file(dest.path().join("sub")).unwrap();
         std::fs::create_dir(dest.path().join("sub")).unwrap();
         assert!(local_target_problems(dest.path(), &files, &files).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_only_targets_refuse_linked_parents_and_linked_folder_targets() {
+        let dest = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(outside.path(), dest.path().join("sub")).unwrap();
+        let paths = vec!["sub/new/deep".to_string(), "sub".to_string()];
+        let problems = local_target_problems(dest.path(), &paths, &[]);
+        assert_eq!(problems.len(), 2);
+        assert!(problems.iter().all(|p| p.reason.contains("is a link")));
+        assert!(!outside.path().join("new").exists());
+        std::fs::remove_file(dest.path().join("sub")).unwrap();
+        std::fs::create_dir(dest.path().join("sub")).unwrap();
+        assert!(local_target_problems(dest.path(), &paths, &[]).is_empty());
     }
 
     #[test]

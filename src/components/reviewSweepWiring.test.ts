@@ -69,15 +69,48 @@ describe('a failure that would otherwise read as success', () => {
         expect(clear).toHaveBeenCalledWith(null);
     });
 
+    it('discards matches started during reconnect after the new branch listing is installed', async () => {
+        const start = appRaw.indexOf('  const switchGitHubBranch =');
+        const end = appRaw.indexOf('  const requestGitHubBatchCommitMessage', start);
+        const { code } = await transformWithOxc(appRaw.slice(start, end), 'branch-switch.ts');
+        let resume!: (value: unknown) => void;
+        let matches: unknown = null;
+        let installed = false;
+        const cancel = vi.fn();
+        const context = {
+            useCallback: (fn: unknown) => fn, cancelRemoteSearch: cancel,
+            setRemoteSearchResults: (value: unknown) => { matches = value; },
+            normalizeProviderConnectionParams: () => ({}), liveConnectionParams: {},
+            buildProviderParams: () => new Promise((resolve) => { resume = resolve; }),
+            setLoading: vi.fn(), remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false },
+            invoke: vi.fn(async (command: string) => command === 'provider_list_files' ? { files: ['NEW'], current_path: '/' } : undefined),
+            runConnect: vi.fn(), withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: vi.fn(),
+            setConnectionParams: vi.fn(), setRemoteFiles: () => { installed = true; }, setCurrentRemotePath: vi.fn(),
+            setSelectedRemoteFiles: vi.fn(), activeSessionId: null, currentRemotePath: '/',
+            setSessions: vi.fn(), refreshGitHubContext: vi.fn(), notify: { success: vi.fn(), error: vi.fn() },
+            t: (key: string) => key, isConnectCancelledError: () => false, isListingCancelled: () => false,
+        };
+        const handler = new Function(...Object.keys(context), `${code}\nreturn switchGitHubBranch;`)(...Object.values(context));
+        const switching = handler('new');
+        matches = ['OLD BRANCH MATCH']; // A new search finishes while reconnect awaits.
+        resume({ effectiveParams: {}, providerParams: {} });
+        await switching;
+        expect(installed).toBe(true);
+        expect(context.notify.error).not.toHaveBeenCalled();
+        expect(cancel).toHaveBeenCalledTimes(2);
+        expect(matches).toBe(null);
+    });
+
     it('clears old matches when the query edit cancels result ownership', () => {
         const match = appRaw.match(/onChange=\{(e => \{ cancelRemoteSearch\(\);[^\n]+setRemoteSearchQuery\(e.target.value\); \})\}/);
         if (!match) throw new Error('Missing remote query handler');
-        const cancel = vi.fn(), clear = vi.fn(), query = vi.fn();
-        const handler = new Function('cancelRemoteSearch', 'setRemoteSearchResults', 'setRemoteSearchQuery', `return ${match[1]};`)(cancel, clear, query);
+        const cancel = vi.fn(), clear = vi.fn(), query = vi.fn(), selection = vi.fn();
+        const handler = new Function('cancelRemoteSearch', 'setRemoteSearchResults', 'setRemoteSearchQuery', 'setSelectedRemoteFiles', `return ${match[1]};`)(cancel, clear, query, selection);
         handler({ target: { value: 'new text' } });
         expect(cancel).toHaveBeenCalledOnce();
         expect(clear).toHaveBeenCalledWith(null);
         expect(query).toHaveBeenCalledWith('new text');
+        expect(selection).toHaveBeenCalledWith(new Set());
     });
 
 });
