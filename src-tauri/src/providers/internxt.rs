@@ -2025,18 +2025,16 @@ impl StorageProvider for InternxtProvider {
             filename, plain_size, resolved
         ));
 
-        // Keep the name and original contents intact through allocation,
-        // transfer and finish. Existing files are published via the native
-        // content-pointer replacement, never delete-then-create.
-        let existing = self
+        // The published replace API conditions only on UUID/user, not the
+        // expected name or parent. A concurrent rename could make it replace
+        // a moved file. Refuse before allocation; no delete/create fallback.
+        if self
             .find_exact_file_in_folder(&parent_uuid, &filename)
-            .await?;
-        if plain_size == 0 && existing.is_some() {
-            // The confirmed replace contract requires a new network fileId.
-            // Creating zero-byte metadata has no such ID; do not guess or
-            // remove the original just to make its name available.
+            .await?
+            .is_some()
+        {
             return Err(ProviderError::NotSupported(
-                "Internxt cannot safely overwrite an existing file with an empty file; the original was kept".into(),
+                "Internxt cannot safely overwrite an existing name without conditional replacement; the original was kept".into(),
             ));
         }
 
@@ -2178,16 +2176,9 @@ impl StorageProvider for InternxtProvider {
                 "Internxt upload finish returned no content ID; original kept".into(),
             ));
         }
-        if let Some((uuid, _, _)) = existing {
-            // Official SDK replaceFile: PUT /files/{uuid} with fileId and
-            // size, after the network upload has finished. No delete fallback.
-            self.replace_file_meta(&uuid, &finish_data.id, plain_size)
-                .await?;
-        } else {
-            let (name, ext) = Self::split_name_ext(&filename);
-            self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size)
-                .await?;
-        }
+        let (name, ext) = Self::split_name_ext(&filename);
+        self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size)
+            .await?;
 
         progress.complete();
         internxt_log(&format!("Uploaded {} OK", filename));
@@ -2707,41 +2698,6 @@ impl InternxtProvider {
         })
     }
 
-    /// Publish already stored contents through Internxt's native UUID update.
-    /// An uncertain response is returned, never retried through delete/create.
-    /// SDK contract: internxt/sdk 29ad01ef, storage.replaceFile(ReplaceFile).
-    async fn replace_file_meta(
-        &mut self,
-        uuid: &str,
-        file_id: &str,
-        size: i64,
-    ) -> Result<(), ProviderError> {
-        let body = serde_json::json!({
-            "fileId": file_id,
-            "size": size,
-            "modificationTime": chrono::Utc::now().to_rfc3339(),
-        });
-        let path = format!("/files/{uuid}");
-        let resp = self
-            .send_with_reauth(|this| {
-                this.drive_request(reqwest::Method::PUT, &path)
-                    .header(CONTENT_TYPE, "application/json; charset=utf-8")
-                    .json(&body)
-            })
-            .await?;
-        let status = resp.status();
-        if matches!(
-            status,
-            reqwest::StatusCode::OK | reqwest::StatusCode::NO_CONTENT
-        ) {
-            return Ok(());
-        }
-        let reason = super::sanitize_api_error(&resp.text().await.unwrap_or_default());
-        Err(ProviderError::ServerError(format!(
-            "Replace file contents returned {status}: {reason}; check remote state before retrying"
-        )))
-    }
-
     /// Build and send an HTTP request with retry on 429/5xx.
     /// Accepts a RequestBuilder (from drive_request/network_request + chained modifiers),
     /// builds the final Request, and sends it through the shared http_retry module.
@@ -3257,10 +3213,10 @@ mod tests {
         assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
-    /// Store new bytes before publishing the UUID pointer; no error path may
-    /// delete the original or fall back to a second create.
+    /// A new name is published once after stored content; uncertain outcomes
+    /// neither replay metadata creation nor touch an unrelated existing file.
     #[tokio::test]
-    async fn overwrite_keeps_the_original_until_new_contents_are_stored() {
+    async fn new_upload_publishes_once_after_stored_contents_without_replaying_uncertainty() {
         use axum::{
             http::{Method, StatusCode},
             response::IntoResponse,
@@ -3277,13 +3233,13 @@ mod tests {
             "finish503",
             "finishbroken",
             "emptyfinish",
-            "replace403",
-            "replace503",
-            "replacecommit503",
-            "replacetimeout",
+            "create403",
+            "create503",
+            "createcommit503",
+            "createtimeout",
             "success",
         ] {
-            let pointer = Arc::new(Mutex::new("OLD".to_string()));
+            let pointer = Arc::new(Mutex::new("NONE".to_string()));
             let finished = Arc::new(AtomicBool::new(false));
             let calls = Arc::new(Mutex::new(Vec::new()));
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -3302,7 +3258,7 @@ mod tests {
                     let bytes = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
                     observed.lock().unwrap().push(format!("{method} {path}"));
                     if method == Method::GET && path.ends_with("/files") {
-                        return axum::Json(serde_json::json!({"files":[{"uuid":"EXISTING","plainName":"keep","type":"txt","fileId":"OLD","bucket":"BUCKET"}]})).into_response();
+                        return axum::Json(serde_json::json!({"files":[{"uuid":"EXISTING","plainName":"other","type":"txt","fileId":"OLD","bucket":"BUCKET"}]})).into_response();
                     }
                     if path.ends_with("/files/start") {
                         if failure == "starttimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
@@ -3322,17 +3278,17 @@ mod tests {
                         let id = if failure == "emptyfinish" { "" } else { "NEW" };
                         return axum::Json(serde_json::json!({"id":id})).into_response();
                     }
-                    if method == Method::PUT && path == "/drive/files/EXISTING" {
-                        assert!(complete.load(Ordering::SeqCst), "pointer changed before stored content");
+                    if method == Method::POST && path == "/drive/files" {
+                        assert!(complete.load(Ordering::SeqCst), "name published before stored content");
                         let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
                         assert_eq!(body["fileId"], "NEW");
                         assert_eq!(body["size"], 8);
-                        if failure == "replace403" { return (StatusCode::FORBIDDEN, "replace refused").into_response(); }
-                        if failure == "replace503" { return (StatusCode::SERVICE_UNAVAILABLE, "replace uncertain").into_response(); }
+                        if failure == "create403" { return (StatusCode::FORBIDDEN, "create refused").into_response(); }
+                        if failure == "create503" { return (StatusCode::SERVICE_UNAVAILABLE, "create uncertain").into_response(); }
                         *stored.lock().unwrap() = "NEW".into();
-                        if failure == "replacecommit503" { return (StatusCode::SERVICE_UNAVAILABLE, "lost acknowledgement").into_response(); }
-                        if failure == "replacetimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
-                        return axum::Json(serde_json::json!({"uuid":"EXISTING"})).into_response();
+                        if failure == "createcommit503" { return (StatusCode::SERVICE_UNAVAILABLE, "lost acknowledgement").into_response(); }
+                        if failure == "createtimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
+                        return axum::Json(serde_json::json!({"uuid":"NEW_FILE"})).into_response();
                     }
                     (StatusCode::NOT_FOUND, "unexpected operation").into_response()
                 }
@@ -3356,7 +3312,7 @@ mod tests {
             let outcome = p
                 .upload(
                     local.path().to_str().unwrap(),
-                    "/keep.txt",
+                    "/new.txt",
                     Some(Box::new(move |a, b| report.lock().unwrap().push((a, b)))),
                 )
                 .await;
@@ -3365,25 +3321,21 @@ mod tests {
                 failure == "success",
                 "{failure}: {outcome:?}"
             );
-            let expected = if ["success", "replacecommit503", "replacetimeout"].contains(&failure) {
+            let expected = if ["success", "createcommit503", "createtimeout"].contains(&failure) {
                 "NEW"
             } else {
-                "OLD"
+                "NONE"
             };
             assert_eq!(*pointer.lock().unwrap(), expected, "{failure}");
             let calls = calls.lock().unwrap().clone();
             assert!(
                 !calls
                     .iter()
-                    .any(|c| c.starts_with("DELETE ") || c == "POST /drive/files"),
+                    .any(|c| c.starts_with("DELETE ") || c.starts_with("PUT /drive/")),
                 "{failure}: {calls:?}"
             );
             assert!(
-                calls
-                    .iter()
-                    .filter(|c| *c == "PUT /drive/files/EXISTING")
-                    .count()
-                    <= 1,
+                calls.iter().filter(|c| *c == "POST /drive/files").count() <= 1,
                 "{failure}: {calls:?}"
             );
             assert!(
@@ -3412,6 +3364,66 @@ mod tests {
         );
         assert_eq!(store.lock().unwrap()[0].0, "EXISTING");
         assert!(changes.lock().unwrap().is_empty());
+    }
+
+    /// The listing is a snapshot: the server may move the UUID as it returns
+    /// that snapshot. No allocation or UUID write may follow even then.
+    #[tokio::test]
+    async fn existing_name_refusal_cannot_write_a_target_moved_after_lookup() {
+        use axum::{http::Method, response::IntoResponse};
+        use std::sync::{Arc, Mutex};
+        for contents in [b"".as_slice(), b"newbytes".as_slice()] {
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let observed = calls.clone();
+            let moved = Arc::new(Mutex::new(false));
+            let relocated = moved.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (observed, relocated) = (observed.clone(), relocated.clone());
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    observed.lock().unwrap().push(format!("{method} {path}"));
+                    if method == Method::GET && path.ends_with("/files") {
+                        // The old name was present at lookup; immediately
+                        // afterwards the same UUID lives under another name.
+                        *relocated.lock().unwrap() = true;
+                        return axum::Json(serde_json::json!({"files":[{"uuid":"EXISTING","plainName":"keep","type":"txt","fileId":"OLD","bucket":"BUCKET"}]})).into_response();
+                    }
+                    (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "unexpected mutation").into_response()
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            p.connected = true;
+            p.root_folder_id = "R".into();
+            p.api_base = base.clone();
+            p.network_base_override = Some(base);
+            let local = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(local.path(), contents).unwrap();
+            let outcome = p
+                .upload(local.path().to_str().unwrap(), "/keep.txt", None)
+                .await;
+            assert!(
+                matches!(outcome, Err(ProviderError::NotSupported(_))),
+                "{outcome:?}"
+            );
+            assert!(
+                *moved.lock().unwrap(),
+                "the fixture moved the UUID after lookup"
+            );
+            assert!(
+                calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .all(|call| call.starts_with("GET ")),
+                "{:?}",
+                calls.lock().unwrap()
+            );
+            server.abort();
+        }
     }
 
     #[tokio::test]
@@ -3988,8 +4000,8 @@ mod tests {
         );
     }
 
-    /// An upload deletes the file it replaces first, and found it ignoring
-    /// the case: an upload of `a.txt` beside only `A.txt` deleted `A.txt`.
+    /// An upload used to delete its target first and match ignoring case:
+    /// an upload of `a.txt` beside only `A.txt` deleted `A.txt`.
     /// `rm /src/A.TXT` deleted it too. Both take the exact name only.
     #[tokio::test]
     async fn an_upload_or_delete_does_not_take_a_file_of_another_case() {

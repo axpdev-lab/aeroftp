@@ -74,13 +74,22 @@ uncertain-outcome message.
 FileLu setting/share mutations require an explicit API status 200 even when HTTP
 is 200; missing status or a refused mutation is an error, not a reported change.
 
-Internxt's [official SDK replaceFile contract](https://github.com/internxt/sdk/blob/29ad01efb9d14e32edf7a3f5c06badbab10986ea/src/drive/storage/index.ts#L875-L884)
-uses PUT /files/{uuid} with fileId and size. The
-[desktop client](https://github.com/internxt/drive-desktop/blob/ee8c7b3d75688337cb018249c90c4ccf49205e88/src/infra/drive-server-wip/services/files.service.ts#L54-L83)
-uses the same pointer update after storing content. This preserves the existing
-name until publication, with no destructive fallback on a refused or uncertain
-response. It does not advertise atomic rename/replace capability. A new stored
-network object may remain orphaned after failed publication; retry does not
-allocate another session automatically. No claim is made about unobserved server
-transactions. Existing zero-byte overwrites are refused before mutation because
-the confirmed content-ID contract cannot safely publish that case.
+Internxt's [published replaceFile contract](https://github.com/internxt/sdk/blob/29ad01efb9d14e32edf7a3f5c06badbab10986ea/src/drive/storage/index.ts#L875-L884)
+updates an existing UUID, without an expected destination name or parent.
+The public server implementation also updates by UUID and user rather than a
+client-supplied name/parent condition. A concurrent rename can therefore move the
+selected file before that update. AeroFTP refuses any already-existing name with
+NotSupported before upload allocation, including empty files. There is no UUID
+update or delete/create fallback. This intentionally disables Internxt overwrites
+until a conditional replacement contract is established. Creation of new names,
+including empty files, remains available; a concurrent create conflict returns
+AlreadyExists without replay. The error distinction keeps a requested overwrite
+from being reported as a successful no-clobber skip.
+
+For a new nonempty file, content storage precedes a single metadata create.
+A failed create may leave an orphaned stored network object; an uncertain
+acknowledgement returns an error instead of allocating or publishing again.
+No atomic rename/replace capability is advertised, and no claim is made about
+unobserved production transactions. FileLu mutation diagnostics expose only
+HTTP/API status or numeric JSON error location, not arbitrary response text that
+can echo a password or API key.
