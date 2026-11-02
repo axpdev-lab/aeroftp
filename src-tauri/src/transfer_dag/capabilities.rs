@@ -199,7 +199,9 @@ impl TransferCapabilities {
                 caps.max_file_slots = Some(1);
                 caps.max_checker_slots = Some(4);
             }
-            ProviderType::Sftp => {
+            // SCP shares this row: its pool and ranged reads come with the
+            // executor kind, like SFTP's (`StorageProvider::transfer_capabilities`).
+            ProviderType::Sftp | ProviderType::Scp => {
                 // SFTP has range primitives, but until the shared SFTP pool
                 // lands, provider-generic GUI transfers are a single lease.
                 caps.session_pool = Capability::Unsupported;

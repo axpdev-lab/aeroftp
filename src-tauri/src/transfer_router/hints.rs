@@ -48,7 +48,8 @@ pub fn from_provider_type(
     preset_id: Option<&str>,
 ) -> ProviderHint {
     match pt {
-        ProviderType::Sftp => ProviderHint::Sftp,
+        // The same SSH transport, and no measurement that would set SCP apart.
+        ProviderType::Sftp | ProviderType::Scp => ProviderHint::Sftp,
         ProviderType::Ftp | ProviderType::Ftps => ProviderHint::Ftp,
         ProviderType::S3 => ProviderHint::S3,
         ProviderType::Backblaze => ProviderHint::B2,

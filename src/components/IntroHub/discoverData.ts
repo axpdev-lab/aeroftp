@@ -81,6 +81,9 @@ const MEDIA_SERVICES: DiscoverItem[] = [
 const PROTOCOL_ITEMS: DiscoverItem[] = [
     { id: 'ftp-generic', name: 'FTP / FTPS', description: 'File Transfer Protocol (plain or TLS)', protocol: 'ftp', badge: 'TLS', isGeneric: true, source: 'protocol' },
     { id: 'sftp-generic', name: 'SFTP', description: 'SSH File Transfer', protocol: 'sftp', badge: 'SSH', isGeneric: true, source: 'protocol' },
+    // SCP for SSH servers with no SFTP (a stock OpenWrt router). An SFTP
+    // profile already falls back to it, so this is for choosing it outright.
+    { id: 'scp-generic', name: 'SCP', description: 'SSH file copy for servers without SFTP', protocol: 'scp', badge: 'SSH', isGeneric: true, source: 'protocol', searchAliases: ['openwrt', 'dropbear', 'router'] },
     // Portable MTP framed as a first-class protocol (with P2P / FTP / SFTP), not
     // a one-item "Devices" catalog category. APPENDIX-DEVICE-PROFILES.
     {
@@ -205,6 +208,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     // Protocol items
     'ftp-generic': 'protocol.discoverFtpFtps',
     'sftp-generic': 'protocol.discoverSftp',
+    'scp-generic': 'protocol.discoverScp',
     'rebex-ftp-demo': 'protocol.discoverRebexFtp',
     'rebex-sftp-demo': 'protocol.discoverRebexSftp',
     'azure-generic': 'protocol.discoverAzureBlob',

@@ -9,8 +9,8 @@ import { logger } from '../utils/logger';
 
 // FTP/FTPS use ftp_manager (suppaftp) → detect_server_favicon
 const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
-// SFTP/S3/WebDAV use StorageProvider (ProviderState) → detect_provider_favicon
-const PROVIDER_PROTOCOLS = new Set(['sftp', 's3', 'webdav']);
+// SFTP/SCP/S3/WebDAV use StorageProvider (ProviderState) → detect_provider_favicon
+const PROVIDER_PROTOCOLS = new Set(['sftp', 'scp', 's3', 'webdav']);
 
 /**
  * Hook that detects project favicons from connected FTP/FTPS/SFTP/S3/WebDAV servers.

@@ -130,6 +130,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     "ftp",
     "ftps",
     "sftp",
+    "scp",
     "webdav",
     "webdavs",
     "s3",
@@ -284,6 +285,16 @@ struct Cli {
         help_heading = "Connection options"
     )]
     trust_host_key: bool,
+
+    /// SFTP: refuse a server that has no SFTP instead of continuing over SCP
+    /// on the same connection
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
+    no_scp_fallback: bool,
 
     /// 2FA code (Filen, Internxt)
     #[arg(
@@ -642,7 +653,9 @@ struct Cli {
     /// (rclone `--multi-thread-streams`). Default 4, applied only to files at
     /// or above `--multi-thread-cutoff` (250M), the same shape as rclone's
     /// default (4 streams above 256Mi); `1` disables. Range 1-16.
-    /// Honored by S3/Azure (native), SFTP (N independent connections) and,
+    /// Honored by S3/Azure (native), SFTP (N independent connections), SCP
+    /// (exec channels of its one connection, up to 8, when the server has
+    /// `dd`, `cat` and `head`) and,
     /// after a live strict 206 probe, by WebDAV (Basic/anonymous auth; Digest
     /// excluded) and Koofr. Any backend or server that does not prove Range
     /// honesty falls back to single-stream transparently. Reads default from
@@ -6075,6 +6088,9 @@ struct CliConnectResult {
     username: String,
     server_info: Option<String>,
     elapsed_ms: u64,
+    /// SFTP went on over SCP: the server has no SFTP.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    scp_fallback: bool,
 }
 
 #[derive(Serialize)]
@@ -9653,6 +9669,19 @@ fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli
 static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Print "Using profile: ..." only once per session (avoids noise from parallel workers).
 static PROFILE_INFO_PRINTED: AtomicBool = AtomicBool::new(false);
+/// The servers already named in the "has no SFTP" note: a command that opens
+/// several connections to one server (`pget`'s workers) says it once.
+static SCP_NOTE_PRINTED: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Whether the "has no SFTP" note for `server` is still to be printed in
+/// this process; asking marks it printed.
+fn scp_note_first_time(server: &str) -> bool {
+    SCP_NOTE_PRINTED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(server.to_string())
+}
 /// Print the MEGAcmd warm-up notice only once per session (#275).
 static MEGACMD_WARMUP_NOTICE_PRINTED: AtomicBool = AtomicBool::new(false);
 /// Set early in main() when the user passed `--json` or `--format json`.
@@ -12993,7 +13022,7 @@ fn resolve_password(
     // 3. Environment variable (protocol-specific, then generic)
     let env_vars = match provider_type {
         ProviderType::Ftp | ProviderType::Ftps => vec!["FTP_PASSWORD", "AEROFTP_PASSWORD"],
-        ProviderType::Sftp => vec!["SFTP_PASSWORD", "AEROFTP_PASSWORD"],
+        ProviderType::Sftp | ProviderType::Scp => vec!["SFTP_PASSWORD", "AEROFTP_PASSWORD"],
         ProviderType::WebDav => vec!["WEBDAV_PASSWORD", "AEROFTP_PASSWORD"],
         ProviderType::S3 => vec!["AWS_SECRET_ACCESS_KEY", "AEROFTP_PASSWORD"],
         _ => vec!["AEROFTP_PASSWORD"],
@@ -13120,6 +13149,24 @@ fn local_target_to_provider_config(
     Ok((config, path))
 }
 
+/// The SSH flags (`--key`, `--key-passphrase`, `--trust-host-key`,
+/// `--no-scp-fallback`) as connection extras, the same for a URL and for a
+/// saved profile.
+fn apply_cli_ssh_extras(cli: &Cli, extra: &mut HashMap<String, String>) {
+    if let Some(ref key) = cli.key {
+        extra.insert("private_key_path".to_string(), key.clone());
+    }
+    if let Some(ref kp) = cli.key_passphrase {
+        extra.insert("key_passphrase".to_string(), kp.clone());
+    }
+    if cli.trust_host_key {
+        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
+    }
+    if cli.no_scp_fallback {
+        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
+    }
+}
+
 fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, String), String> {
     if let Some(target) = local_path_target(url) {
         return local_target_to_provider_config(target?);
@@ -13148,6 +13195,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "ftp" => (ProviderType::Ftp, host_str.clone()),
         "ftps" => (ProviderType::Ftps, host_str.clone()),
         "sftp" | "ssh" => (ProviderType::Sftp, host_str.clone()),
+        "scp" => (ProviderType::Scp, host_str.clone()),
         "webdav" | "http" => {
             let port_str = url_obj
                 .port()
@@ -13349,15 +13397,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     let mut extra = HashMap::new();
 
     // SFTP
-    if let Some(ref key) = cli.key {
-        extra.insert("private_key_path".to_string(), key.clone());
-    }
-    if let Some(ref kp) = cli.key_passphrase {
-        extra.insert("key_passphrase".to_string(), kp.clone());
-    }
-    if cli.trust_host_key {
-        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
-    }
+    apply_cli_ssh_extras(cli, &mut extra);
 
     // Warn about secrets on command line (visible in process list)
     if cli.token.is_some() && std::env::var("AEROFTP_TOKEN").is_err() && !cli.quiet {
@@ -26890,7 +26930,7 @@ fn persist_new_profile_entry(
 fn protocol_needs_network_fields(protocol: &str) -> bool {
     matches!(
         protocol,
-        "ftp" | "ftps" | "sftp" | "webdav" | "webdavs" | "s3" | "swift"
+        "ftp" | "ftps" | "sftp" | "scp" | "webdav" | "webdavs" | "s3" | "swift"
     )
 }
 
@@ -30375,7 +30415,11 @@ async fn cmd_agent_connect(cli: &Cli, query: &str) -> i32 {
         return 2;
     }
 
-    let payload = ftp_client_gui_lib::agent_session::build_agent_connect_payload(query).await;
+    let payload = ftp_client_gui_lib::agent_session::build_agent_connect_payload_with(
+        query,
+        cli.no_scp_fallback,
+    )
+    .await;
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).unwrap_or_default()
@@ -31368,15 +31412,7 @@ fn profile_value_to_provider_config(
     }
 
     // CLI overrides take precedence
-    if let Some(ref key) = cli.key {
-        extra.insert("private_key_path".to_string(), key.clone());
-    }
-    if let Some(ref kp) = cli.key_passphrase {
-        extra.insert("key_passphrase".to_string(), kp.clone());
-    }
-    if cli.trust_host_key {
-        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
-    }
+    apply_cli_ssh_extras(cli, &mut extra);
     if let Some(ref tls) = cli.tls {
         extra.insert("tls_mode".to_string(), tls.clone());
     }
@@ -32059,6 +32095,17 @@ async fn connect_with_base_path(
         let code = provider_error_to_exit_code(&e);
         print_error(format, &connect_failure_message(&e), code);
         return Err(code);
+    }
+    // A server with no SFTP went on over SCP: said once per server, on
+    // stderr, where it mixes with no listing and no JSON.
+    if !cli.quiet
+        && ftp_client_gui_lib::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut())
+        && scp_note_first_time(&provider.display_name())
+    {
+        eprintln!(
+            "Note: {} has no SFTP; connected with SCP on the same connection.",
+            provider.display_name()
+        );
     }
 
     // Apply speed limit if set
@@ -35582,6 +35629,8 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let elapsed = start.elapsed();
     let server_info = provider.server_info().await.ok();
     let pt = provider.provider_type();
+    let scp_fallback =
+        ftp_client_gui_lib::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut());
 
     if let Some(sp) = spinner {
         sp.finish_and_clear();
@@ -35592,7 +35641,11 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             eprintln!("Connected to {} ({})", metadata.host, pt);
             eprintln!("  User:     {}", metadata.username);
             eprintln!("  Port:     {}", metadata.port);
-            eprintln!("  Protocol: {}", pt);
+            if scp_fallback {
+                eprintln!("  Protocol: SCP (the server has no SFTP)");
+            } else {
+                eprintln!("  Protocol: {}", pt);
+            }
             if let Some(ref info) = server_info {
                 if !info.is_empty() {
                     eprintln!("  Server:   {}", info);
@@ -35622,6 +35675,7 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                 username: metadata.username,
                 server_info,
                 elapsed_ms: elapsed.as_millis() as u64,
+                scp_fallback,
             });
         }
     }
@@ -35974,11 +36028,21 @@ async fn cmd_get(
         && !matches!(format, OutputFormat::Json)
         && Path::new(local_path).exists()
     {
-        eprintln!(
-            "Warning: local '{}' already exists and will be overwritten. \
-             Pass --immutable to skip, or rename the destination.",
-            local_path
-        );
+        // `--partial` out of place keeps a file as long as the remote one
+        // (`download_with_resume`): "will be overwritten" was not true then.
+        if cli.partial && !cli.inplace && provider.supports_resume() {
+            eprintln!(
+                "Note: local '{}' already exists: --partial keeps it if it is as long \
+                 as the remote file, and downloads it again otherwise.",
+                local_path
+            );
+        } else {
+            eprintln!(
+                "Warning: local '{}' already exists and will be overwritten. \
+                 Pass --immutable to skip, or rename the destination.",
+                local_path
+            );
+        }
     }
     // --immutable: skip if local file already exists
     if cli.immutable && Path::new(local_path).exists() {
@@ -49207,7 +49271,8 @@ async fn cmd_speed(
     // PATH-01: `--remote-path` is used verbatim for upload/download/delete (it is
     // not run through the resolver), so a `..`/null path would let the speed test
     // write and then delete an attacker-chosen location. Validate before any
-    // connection. The default UUID scratch path is always safe.
+    // connection. The default UUID scratch path is always safe; it is placed in
+    // the session's folder once connected (`speed_scratch_path`).
     if let Some(user_path) = remote_path {
         if let Err(e) = check_remote_path_safe(user_path) {
             print_error(format, &format!("invalid --remote-path: {}", e), 5);
@@ -49347,14 +49412,43 @@ async fn wait_until_upload_readable(
 /// of every provider but Proton Drive, whose session starts in My Files while
 /// its root lists the account's sections, where no file can go (Requested 79):
 /// there it goes under the start folder. A `--remote-path` is used as given.
-fn speed_scratch_path(base: &CliBase, generated: &str, caller_named: bool) -> String {
-    match base.start_folder() {
-        Some(start) if !caller_named => format!(
-            "{}/{}",
-            start.trim_end_matches('/'),
-            generated.trim_start_matches('/')
-        ),
-        _ => generated.to_string(),
+fn speed_scratch_path(
+    base: &CliBase,
+    generated: &str,
+    caller_named: bool,
+    session_dir: &str,
+) -> String {
+    if caller_named {
+        return generated.to_string();
+    }
+    // The generated file goes into the folder the command works in: the one
+    // the URL or the profile names, else the one the session starts in (the
+    // login folder; Proton Drive's start folder). It used to go into the
+    // server's root, which most accounts cannot write.
+    let folder = if base.path != "/" {
+        base.path.as_str()
+    } else {
+        base.start_folder().unwrap_or(session_dir)
+    };
+    if folder == "/" {
+        return generated.to_string();
+    }
+    format!(
+        "{}/{}",
+        folder.trim_end_matches('/'),
+        generated.trim_start_matches('/')
+    )
+}
+
+#[cfg(test)]
+mod scp_note_tests {
+    use super::scp_note_first_time;
+
+    #[test]
+    fn the_scp_note_is_printed_once_per_server() {
+        assert!(scp_note_first_time("note-test-a:22"));
+        assert!(!scp_note_first_time("note-test-a:22"));
+        assert!(scp_note_first_time("note-test-b:22"));
     }
 }
 
@@ -49365,18 +49459,45 @@ mod speed_scratch_tests {
     #[test]
     fn the_generated_speed_file_goes_under_the_proton_start_folder() {
         let proton = CliBase::with_start_folder("/", Some("/my-files".to_string()));
-        let other = CliBase::with_start_folder("/", None);
         let generated = "/.aeroftp-speedtest-x.dat";
         assert_eq!(
-            speed_scratch_path(&proton, generated, false),
+            speed_scratch_path(&proton, generated, false, "/my-files"),
             "/my-files/.aeroftp-speedtest-x.dat"
         );
         // Native mode starts at its root, My Files.
         let native = CliBase::with_start_folder("/", Some("/".to_string()));
-        assert_eq!(speed_scratch_path(&native, generated, false), generated);
-        // A path the caller named, and any other provider: as given.
-        assert_eq!(speed_scratch_path(&proton, "/x/y.dat", true), "/x/y.dat");
-        assert_eq!(speed_scratch_path(&other, generated, false), generated);
+        assert_eq!(
+            speed_scratch_path(&native, generated, false, "/"),
+            generated
+        );
+        // A path the caller named: as given.
+        assert_eq!(
+            speed_scratch_path(&proton, "/x/y.dat", true, "/my-files"),
+            "/x/y.dat"
+        );
+    }
+
+    #[test]
+    fn the_generated_speed_file_goes_where_the_session_works_not_in_the_root() {
+        let generated = "/.aeroftp-speedtest-x.dat";
+        // No folder named: the folder the session starts in, the login folder.
+        let plain = CliBase::with_start_folder("/", None);
+        assert_eq!(
+            speed_scratch_path(&plain, generated, false, "/home/u"),
+            "/home/u/.aeroftp-speedtest-x.dat"
+        );
+        // A folder the URL or the profile names wins over the login folder.
+        let named = CliBase::with_start_folder("/srv/data/", None);
+        assert_eq!(
+            speed_scratch_path(&named, generated, false, "/home/u"),
+            "/srv/data/.aeroftp-speedtest-x.dat"
+        );
+        // A session that starts in the root keeps the root.
+        assert_eq!(speed_scratch_path(&plain, generated, false, "/"), generated);
+        assert_eq!(
+            speed_scratch_path(&plain, "/x/y.dat", true, "/home/u"),
+            "/x/y.dat"
+        );
     }
 }
 
@@ -49418,7 +49539,9 @@ async fn run_single_speed_test(
             ))
         }
     };
-    let remote_test_path = &speed_scratch_path(&base, remote_test_path, path_is_caller_named);
+    let session_dir = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let remote_test_path =
+        &speed_scratch_path(&base, remote_test_path, path_is_caller_named, &session_dir);
 
     // Overwrite guard: the test uploads to remote_test_path and then deletes
     // it, so a path that already exists is a real user file about to be
@@ -84385,6 +84508,7 @@ mod tests {
             tls: None,
             insecure: false,
             trust_host_key: false,
+            no_scp_fallback: false,
             two_factor: None,
             no_crypt: false,
             profile: None,
@@ -85951,6 +86075,30 @@ mod tests {
     /// file; a path that does not exist is a usage error, not a connection
     /// to an empty folder.
     #[test]
+    fn no_scp_fallback_reaches_the_config_of_a_url_and_of_a_profile() {
+        let mut cli = test_cli();
+        let (config, _) = url_to_provider_config("sftp://root@192.0.2.1/", &cli).unwrap();
+        assert!(!config.extra.contains_key("allow_scp_fallback"));
+        let mut extra = HashMap::new();
+        apply_cli_ssh_extras(&cli, &mut extra);
+        assert!(!extra.contains_key("allow_scp_fallback"));
+
+        cli.no_scp_fallback = true;
+        let (config, _) = url_to_provider_config("sftp://root@192.0.2.1/", &cli).unwrap();
+        assert_eq!(
+            config.extra.get("allow_scp_fallback").map(String::as_str),
+            Some("false")
+        );
+        // A saved profile takes its extras from the same function.
+        let mut extra = HashMap::new();
+        apply_cli_ssh_extras(&cli, &mut extra);
+        assert_eq!(
+            extra.get("allow_scp_fallback").map(String::as_str),
+            Some("false")
+        );
+    }
+
+    #[test]
     fn a_local_folder_resolves_to_a_local_remote() {
         let cli = test_cli();
         let dir = tempfile::tempdir().unwrap();
@@ -86107,6 +86255,26 @@ mod tests {
         assert_eq!(config.port, Some(2222));
         assert_eq!(config.username.as_deref(), Some("admin"));
         assert_eq!(path, "/home");
+    }
+
+    #[test]
+    fn a_url_path_is_read_back_as_the_name_it_encodes() {
+        let cli = test_cli();
+        // What the app's Copy URL writes for "/srv/a dir/what? #1 100%.txt".
+        let (config, path) = url_to_provider_config(
+            "scp://me%40corp@host/srv/a%20dir/what%3F%20%231%20100%25.txt",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.username.as_deref(), Some("me@corp"));
+        assert_eq!(path, "/srv/a dir");
+        assert_eq!(
+            config.extra.get("url_target").map(String::as_str),
+            Some("/srv/a dir/what? #1 100%.txt")
+        );
+        // A space typed in is encoded by the parse and decoded back.
+        let (_, path) = url_to_provider_config("sftp://u@host/home/my files/", &cli).unwrap();
+        assert_eq!(path, "/home/my files/");
     }
 
     #[test]

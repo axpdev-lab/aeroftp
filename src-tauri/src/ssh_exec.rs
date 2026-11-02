@@ -20,8 +20,11 @@
 //!   its queue is dropped, never waited on.
 //! - stdin is a `'static` `AsyncWrite` obtained from the write half (russh clones the
 //!   underlying mpsc sender, so detached use is safe).
-//! - When [`ExecSession`] is dropped the reader task is aborted; remote process receives
-//!   EOF and, if it respects it, terminates.
+//! - When [`ExecSession`] is dropped the reader task is aborted and the channel is closed
+//!   (`CHANNEL_CLOSE`), so a command abandoned part way (an error, a cap, a cancel) does
+//!   not keep its channel open on the server. A split channel has no close of its own on
+//!   drop (russh installs one only in `into_stream`); a close for a channel the server
+//!   already closed is a no-op in russh, and channel ids are not reused while one is open.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -40,14 +43,45 @@ use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
 
 /// Handle to a running remote command.
 ///
-/// Drop to tear down: the inner reader task is aborted and the write half is released,
-/// which (combined with EOF propagation) will typically signal the remote process to exit.
+/// Drop to tear down: the inner reader task is aborted and the channel is closed, which
+/// ends the remote command whether or not it read its input to the end.
 pub struct ExecSession {
     pub stdin: Box<dyn AsyncWrite + Send + Unpin>,
     pub stdout_rx: mpsc::Receiver<Vec<u8>>,
     pub stderr_rx: mpsc::Receiver<Vec<u8>>,
     pub exit_rx: oneshot::Receiver<u32>,
     _reader: ReaderGuard,
+    close: CloseOnDrop,
+}
+
+impl ExecSession {
+    /// Keep `item` until the channel's close has been sent: a caller's place
+    /// for the channel among a connection's limited channels goes back only
+    /// once the server has been told the channel is gone.
+    pub fn hold_until_closed<T: Send + 'static>(&mut self, item: T) {
+        self.close.held.push(Box::new(item));
+    }
+}
+
+/// Closes the channel on drop, then lets go of what was held until then.
+struct CloseOnDrop {
+    half: Option<russh::ChannelWriteHalf<russh::client::Msg>>,
+    held: Vec<Box<dyn Send>>,
+}
+
+impl Drop for CloseOnDrop {
+    fn drop(&mut self) {
+        let Some(half) = self.half.take() else { return };
+        let held = std::mem::take(&mut self.held);
+        // Best effort, as russh's own close on drop: outside a runtime there
+        // is no connection left to tell.
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                let _ = half.close().await;
+                drop(held);
+            });
+        }
+    }
 }
 
 /// RAII guard that aborts the reader task when the session is dropped.
@@ -141,7 +175,7 @@ const STDERR_QUEUE: usize = 64;
 /// by reading `stdout_rx` / `stderr_rx` and writing to `stdin`. Remote exit status is
 /// delivered on `exit_rx` (lossy if the process exits abnormally: `EXIT_ABNORMAL`).
 ///
-/// The handle mutex is held only for the duration of `channel_open_session()` + `exec()`
+/// The handle mutex is held only for the duration of `channel_open_session()`
 /// (typically microseconds); concurrent SFTP operations on the same handle are not
 /// measurably impacted.
 pub async fn ssh_exec<H>(
@@ -159,12 +193,19 @@ where
             .map_err(|e| format!("ssh exec: open channel: {}", e))?
     };
 
-    channel
+    // Split first, so a failed exec request closes the channel too.
+    let (mut read_half, write_half) = channel.split();
+    let close = CloseOnDrop {
+        half: Some(write_half),
+        held: Vec::new(),
+    };
+    let write_half = close.half.as_ref().expect("just set");
+
+    write_half
         .exec(true, command.as_ref())
         .await
         .map_err(|e| format!("ssh exec: request: {}", e))?;
 
-    let (mut read_half, write_half) = channel.split();
     let stdin: Box<dyn AsyncWrite + Send + Unpin> = Box::new(write_half.make_writer());
 
     let (stdout_tx, stdout_rx) = mpsc::channel(STDOUT_QUEUE);
@@ -239,6 +280,7 @@ where
         stderr_rx,
         exit_rx,
         _reader: ReaderGuard(reader_task),
+        close,
     })
 }
 

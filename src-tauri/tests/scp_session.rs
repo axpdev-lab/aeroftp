@@ -319,7 +319,7 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
         data.len() as u64,
         0o640,
         Some(1_700_000_000),
-        &mut |n| sent = n,
+        &mut |n, _| sent = n,
     )
     .await
     .expect("upload");
@@ -330,7 +330,7 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
 
     let mut back = Vec::new();
     let (size, mtime) = scp
-        .download(&path, &mut back, &mut |_| {})
+        .download(&path, &mut back, &mut |_, _| {})
         .await
         .expect("download");
     assert_eq!((size, mtime), (data.len() as u64, Some(1_700_000_000)));
@@ -339,14 +339,14 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
     // A source that ends early is an error, not a short file reported done.
     let short = s(&root.join("short"));
     let err = scp
-        .upload(&short, &mut &data[..10], 100, 0o644, None, &mut |_| {})
+        .upload(&short, &mut &data[..10], 100, 0o644, None, &mut |_, _| {})
         .await
         .expect_err("short source");
     assert!(err.to_string().contains("10 of 100"), "{err}");
 
     let missing = s(&root.join("missing"));
     let err = scp
-        .download(&missing, &mut Vec::new(), &mut |_| {})
+        .download(&missing, &mut Vec::new(), &mut |_, _| {})
         .await
         .expect_err("missing");
     assert!(matches!(err, ProviderError::NotFound(_)), "{err:?}");
@@ -356,7 +356,14 @@ async fn a_file_goes_up_and_comes_back_byte_exact_with_its_mtime() {
     let folder = root.join("folder");
     std::fs::create_dir(&folder).unwrap();
     let err = scp
-        .upload(&s(&folder), &mut &data[..10], 10, 0o644, None, &mut |_| {})
+        .upload(
+            &s(&folder),
+            &mut &data[..10],
+            10,
+            0o644,
+            None,
+            &mut |_, _| {},
+        )
         .await
         .expect_err("folder target");
     assert!(matches!(err, ProviderError::InvalidPath(_)), "{err:?}");
@@ -380,7 +387,7 @@ async fn a_download_refuses_a_file_the_server_renamed() {
         .expect("probe");
     let mut sink = Vec::new();
     let err = scp
-        .download(&s(&root.join("wanted.txt")), &mut sink, &mut |_| {})
+        .download(&s(&root.join("wanted.txt")), &mut sink, &mut |_, _| {})
         .await
         .expect_err("renamed file");
     assert!(err.to_string().contains("not the file asked for"), "{err}");
@@ -414,7 +421,7 @@ async fn a_stalled_download_holds_the_server_back() {
     let (mut sink, mut drain) = tokio::io::duplex(64 * 1024);
     let big = s(&root.join("big"));
     let sent = root.join("sent");
-    let mut progress = |_| {};
+    let mut progress = |_, _| {};
     let (result, (held, got)) = tokio::join!(scp.download(&big, &mut sink, &mut progress), async {
         tokio::time::sleep(Duration::from_secs(3)).await;
         let held = !sent.exists();
@@ -431,6 +438,30 @@ async fn a_stalled_download_holds_the_server_back() {
     assert_eq!(result.expect("download"), (SIZE, None));
     assert_eq!(got, SIZE);
     assert!(sent.exists());
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A keepalive on a connection whose channels are all carrying commands
+/// does not wait for one of them to end.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_keepalive_does_not_queue_behind_busy_channels() {
+    use ftp_client_gui_lib::providers::scp::session::CHANNELS_PER_CONNECTION;
+    let root = temp_dir("keepalive-busy");
+    let scp = ScpSession::open(connect(&root, &system_path()).await, IO)
+        .await
+        .expect("probe");
+    scp.keep_alive().await.expect("an idle connection answers");
+    let busy =
+        futures_util::future::join_all((0..CHANNELS_PER_CONNECTION).map(|_| scp.run(b"sleep 3")));
+    let tick = async {
+        // Let every command take its channel first.
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        tokio::time::timeout(Duration::from_secs(1), scp.keep_alive()).await
+    };
+    let (ran, tick) = tokio::join!(busy, tick);
+    assert!(ran.iter().all(|r| r.as_ref().is_ok_and(|o| o.status == 0)));
+    tick.expect("the keepalive waited for a channel")
+        .expect("a busy connection is alive");
     let _ = std::fs::remove_dir_all(&root);
 }
 

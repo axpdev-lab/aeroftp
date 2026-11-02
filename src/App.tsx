@@ -33,7 +33,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -229,6 +229,9 @@ import {
   getSftpDownloadPresetDefinition,
   nextSftpDownloadPreset,
 } from './utils/sftpDownloadPresets';
+import { connectionProtocolLabel, scpFallbackConnectParam, wentOnOverScpAfter } from './utils/scpFallback';
+import { remoteCopyUrl } from './utils/copyUrl';
+import { serverHost } from './utils/serverHost';
 import {
   TRANSFER_SPEED_PRESETS,
   deriveTransferSpeedPreset,
@@ -1882,8 +1885,8 @@ const App: React.FC = () => {
 
     // Extract server name without 'ftp.' prefix and port
     // e.g., "ftp.example.com:21" -> "example"
-    const serverHost = liveConnectionParams.server.split(':')[0]; // Remove port
-    const serverName = serverHost.replace(/^ftp\./, '').replace(/^www\./, ''); // Remove ftp./www.
+    const liveHost = serverHost(liveConnectionParams.server);
+    const serverName = liveHost.replace(/^ftp\./, '').replace(/^www\./, ''); // Remove ftp./www.
     const serverBase = serverName.split('.')[0]; // Get first part (e.g., "example" from "example.com")
 
     // Check if local path contains a reference to a different server
@@ -2536,17 +2539,23 @@ const App: React.FC = () => {
     }
   }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);
 
+  // Whether the live connection is an SFTP profile that went on over SCP:
+  // cleared by every connect, set by the `scp-mode` session event that
+  // connect emits. Names the protocol in the UI only.
+  const wentOnOverScpRef = useRef(false);
+
   // Thin wrapper for the common single-invoke connect (`provider_connect` /
   // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
   const runConnect = useCallback(<T,>(
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
     scope?: ConnectScope,
-  ): Promise<T> => cancellableConnect<T>((token) =>
-    scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
+  ): Promise<T> => cancellableConnect<T>((token) => {
+    wentOnOverScpRef.current = false;
+    return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
-      invoke<T>(command, { params: { ...params, connectToken: token } })
-  ), [cancellableConnect]);
+      invoke<T>(command, { params: { ...params, connectToken: token } });
+  }), [cancellableConnect]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -3374,12 +3383,12 @@ const App: React.FC = () => {
     const liveProto = cp.protocol || 'ftp';
     const liveUser = cp.username;
     const liveHostRaw = cp.server || '';
-    const liveHost = liveHostRaw.split('/')[0].split(':')[0];
+    const liveHost = serverHost(liveHostRaw.split('/')[0]);
     const matchesLive = (s: ServerProfile): boolean =>
       (s.protocol || 'ftp') === liveProto
       && s.username === liveUser
       && (s.host === liveHostRaw
-        || (s.host || '').split('/')[0].split(':')[0] === liveHost);
+        || serverHost((s.host || '').split('/')[0]) === liveHost);
     const matches = all.filter(matchesLive);
     return matches.length === 1 ? matches[0] : undefined;
   };
@@ -3538,7 +3547,7 @@ const App: React.FC = () => {
         const autoScan = !!(prof?.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
         const hasScanBaseline = !!prof?.lastQuota && (prof.lastQuota.usedSource === 'scan' || prof.lastQuota.used > 0);
         const scanEligibleProtocol =
-          ['ftp', 'ftps', 'sftp', 's3', 'webdav'].includes(protocol) ||
+          ['ftp', 'ftps', 'sftp', 'scp', 's3', 'webdav'].includes(protocol) ||
           isMegaCmdQuotaProfile(liveCp, prof);
         if (autoScan && scanEligibleProtocol && !hasScanBaseline) {
           void scanUsedStorage({
@@ -5878,6 +5887,13 @@ const App: React.FC = () => {
             pendingId = null;
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
           }
+          // Properties and Copy URL follow the transport: a full connect
+          // and a silent reconnect can each land on SCP or SFTP.
+          wentOnOverScpRef.current = wentOnOverScpAfter(kind, event.payload?.detail, wentOnOverScpRef.current);
+          if (kind === 'scp-mode') {
+            // An SFTP connection whose server has no SFTP went on over SCP.
+            notify.info(t('toast.scpModeTitle'), t('toast.scpModeBody', { host: event.payload?.detail || '' }));
+          }
           // 'lost' is intentionally silent: showing it would briefly flash
           // a scary message before 'reconnecting' replaces it.
         });
@@ -6846,8 +6862,8 @@ const App: React.FC = () => {
   // Check provider capabilities after connection (for context menu features)
   const refreshProviderCaps = useLatestCallback(async () => {
     const protocol = liveConnectionParams.protocol;
-    if (!protocol || ['ftp', 'ftps', 'sftp'].includes(protocol)) {
-      // FTP/SFTP don't use provider_* capability commands
+    if (!protocol || ['ftp', 'ftps'].includes(protocol) || isSshProtocol(protocol)) {
+      // FTP/SFTP/SCP don't use provider_* capability commands
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
       return;
     }
@@ -7142,7 +7158,7 @@ const App: React.FC = () => {
   // WebDAV, Backblaze B2, Koofr); every other provider degrades to no badge.
   // Gated on a lock-bearing surface being visible so the plain list costs nothing.
   const remoteArchiveCapable = !!activeTransferProtocol
-    && ['sftp', 'ftp', 'ftps', 's3', 'webdav', 'backblaze', 'koofr'].includes(activeTransferProtocol);
+    && ['sftp', 'scp', 'ftp', 'ftps', 's3', 'webdav', 'backblaze', 'koofr'].includes(activeTransferProtocol);
   const remoteArchiveMetaEnabled = remoteArchiveCapable && !!(
     remoteColumns.config.visibility.type ||
     remoteColumns.config.visibility.encryption ||
@@ -7415,6 +7431,7 @@ const App: React.FC = () => {
       private_key_path: effectiveParams.options?.private_key_path || null,
       key_passphrase: effectiveParams.options?.key_passphrase || null,
       timeout: effectiveParams.options?.timeout || 30,
+      ...scpFallbackConnectParam(protocol, effectiveParams.options),
       tls_mode: protocol === 'webdav'
         ? effectiveParams.options?.webdavScheme
         : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
@@ -7646,12 +7663,35 @@ const App: React.FC = () => {
     return { resolvedIp, connectingLogId };
   };
 
+  // Runs the connect that a "Connecting to" row announced and closes that row
+  // when it fails: the row used to stay live, "1 ACTIVE" in the log, long after
+  // the next connection and its disconnect.
+  const connectUnderRow = async (connectingLogId: string | null, run: () => Promise<unknown>): Promise<void> => {
+    try {
+      await run();
+    } catch (error) {
+      if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'error' });
+      throw error;
+    }
+  };
+
+  // A failed connect says why on its own log row. It used to say "Check
+  // credentials" for every failure, a server that refused SFTP included. The
+  // reason is logged once: the toast, when toasts are on, is the only other
+  // notice of it.
+  const reportConnectFailure = (logId: string, error: unknown) => {
+    const reason = String(error);
+    humanLog.updateEntry(logId, { status: 'error', message: t('toast.connectionFailed', { error: reason }) });
+    console.error(`[ERROR] connect failed: ${reason}`);
+    if (showToastNotifications) toastError(t('connection.connectionFailed'), reason);
+  };
+
   const logConnectionSuccess = (
     protocol: string,
     username: string,
     options?: { tlsMode?: string; private_key_path?: string }
   ) => {
-    if (protocol === 'sftp') {
+    if (isSshProtocol(protocol)) {
       humanLog.logRaw('activity.ssh_established', 'CONNECT', {}, 'success');
     } else if (protocol === 'ftps') {
       const mode = options?.tlsMode || 'explicit';
@@ -7659,7 +7699,7 @@ const App: React.FC = () => {
     } else if (['webdav', 's3', 'filen'].includes(protocol)) {
       humanLog.logRaw('activity.https_established', 'CONNECT', {}, 'success');
     }
-    if (protocol === 'sftp' && options?.private_key_path) {
+    if (isSshProtocol(protocol) && options?.private_key_path) {
       humanLog.logRaw('activity.auth_method_key', 'CONNECT', { username: maskCredential(username) }, 'success');
     } else if (username) {
       humanLog.logRaw('activity.auth_success', 'CONNECT', { username: maskCredential(username) }, 'success');
@@ -8228,7 +8268,7 @@ const App: React.FC = () => {
                         ? (effectiveParams.providerId === 'pixelunion' ? 'PixelUnion' : effectiveParams.server.replace(/^https?:\/\//, ''))
                         : protocol === 'twake'
                           ? effectiveParams.server.replace(/^https?:\/\//, '')
-                          : effectiveParams.server.split(':')[0]);
+                          : serverHost(effectiveParams.server));
       const protocolLabel = connectionViaLabel(effectiveParams);
       // SEC: mask credentials in log-only provider name to prevent data leakage
       const maskedProviderName = effectiveParams.username && providerName.includes(effectiveParams.username)
@@ -8239,6 +8279,14 @@ const App: React.FC = () => {
       const logId = opts?.existingLogId ?? humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
       try {
+        // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts),
+        // asked before the current connection ends, so a refused key leaves
+        // it as it was.
+        if (isSshProtocol(protocol)) {
+          const target = normalizeProviderConnectionParams(effectiveParams);
+          const accepted = await checkSftpHostKey(target.server, target.port || 22);
+          if (!accepted) { setLoading(false); return; }
+        }
         // Disconnect any existing provider first
         try {
           await invoke('provider_disconnect');
@@ -8269,14 +8317,9 @@ const App: React.FC = () => {
 
 
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
-        // SEC-P1-06: TOFU host key check for SFTP
-        if (protocol === 'sftp') {
-          const accepted = await checkSftpHostKey(effectiveParams.server, effectiveParams.port || 22);
-          if (!accepted) { setLoading(false); return; }
-        }
         const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
-        await runConnect('provider_connect', providerParams);
+        await connectUnderRow(connectingLogId, () => runConnect('provider_connect', providerParams));
         // 2FA accepted: clear the saved-secret auto-retry budget (issue #128).
         totpRetryCountRef.current = 0;
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
@@ -8420,8 +8463,7 @@ const App: React.FC = () => {
           setLoading(false);
           return;
         }
-        humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
-        notify.error(t('connection.connectionFailed'), String(error));
+        reportConnectFailure(logId, error);
         // #180 / 4486730822: stamp a standalone connect-failure marker on
         // the saved-server card so a closed Activity Log is no longer the
         // only feedback path.
@@ -8450,7 +8492,7 @@ const App: React.FC = () => {
       }
       const ftpProto = effectiveParams.protocol || 'ftp';
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
-      await runConnect('connect_ftp', effectiveParams as unknown as Record<string, unknown>);
+      await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', effectiveParams as unknown as Record<string, unknown>));
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
       // login (#180 / 4486730822). Separate signal from health.
@@ -8508,8 +8550,7 @@ const App: React.FC = () => {
         humanLog.updateEntry(logId, { status: 'error', message: pathMsg });
         notify.error(t('connection.connectionFailed'), pathMsg);
       } else {
-        humanLog.logError('CONNECT', { server: effectiveParams.server }, logId);
-        notify.error(t('connection.connectionFailed'), String(error));
+        reportConnectFailure(logId, error);
       }
       // #180 / 4486730822: stamp the standalone connect-failure marker so
       // the My Servers card surfaces a failed FTP/SFTP login even when
@@ -8694,6 +8735,16 @@ const App: React.FC = () => {
     if (activeSessionId === sessionId) {
       if (!showRemotePanel) setShowRemotePanel(true);
       return;
+    }
+
+    // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts),
+    // asked before anything of the current tab changes: a refused key leaves
+    // the user on that tab, connected as before. Asked after the switch, it
+    // left the target tab showing over the previous tab's live connection.
+    if (isSshProtocol(targetSession.connectionParams?.protocol)) {
+      const target = normalizeProviderConnectionParams(targetSession.connectionParams);
+      const accepted = await connectScope.step(() => checkSftpHostKey(target.server, target.port || 22, connectScope));
+      if (!accepted) return;
     }
 
     // Same reason as the disconnect path: the scan belongs to the session being
@@ -8930,6 +8981,7 @@ const App: React.FC = () => {
           } catch (e) { connectScope.assert(); console.error('Option recovery failed', e); }
         }
 
+        // The SSH host key was checked before the switch began.
         // First disconnect any existing connections
         try { await connectScope.step(() => invoke('provider_disconnect')); } catch { connectScope.assert(); }
         try { await connectScope.step(() => invoke('disconnect_ftp')); } catch { connectScope.assert(); }
@@ -8939,11 +8991,6 @@ const App: React.FC = () => {
         const providerParams = providerPayload.providerParams;
 
         logger.debug('[switchSession] provider protocol:', providerParams.protocol);
-        // SEC-P1-06: TOFU host key check for SFTP
-        if (protocol === 'sftp') {
-          const accepted = await connectScope.step(() => checkSftpHostKey(connectParams.server, connectParams.port || 22, connectScope));
-          if (!accepted) throw new Error('Host key rejected by user');
-        }
         await connectScope.step(() => runConnect('provider_connect', providerParams, connectScope));
         if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
           try {
@@ -9381,7 +9428,7 @@ const App: React.FC = () => {
       const protocolLabel = connectionViaLabel({ protocol, providerId: cloudServer.providerId, options: cloudServer.options });
 
       // Build connection server string
-      const defaultPort = protocol === 'sftp' ? 22 : protocol === 'ftps' ? 990 : 21;
+      const defaultPort = isSshProtocol(protocol) ? 22 : protocol === 'ftps' ? 990 : 21;
       const cloudServerString = cloudServer.port && cloudServer.port !== defaultPort
         ? `${cloudServer.host}:${cloudServer.port}`
         : cloudServer.host;
@@ -9404,8 +9451,14 @@ const App: React.FC = () => {
         } catch { /* no stored Filen API key for this profile */ }
       }
 
-      // Helper: connect to cloud server using the correct protocol
+      // Helper: connect to cloud server using the correct protocol. It ends
+      // the current connection itself, after the host-key check: a refused
+      // key leaves that connection live for the callers to restore.
       const connectToCloudServer = async (): Promise<void> => {
+        const endCurrentConnection = async () => {
+          try { await invoke('provider_disconnect'); } catch { }
+          try { await invoke('disconnect_ftp'); } catch { }
+        };
         if (isProvider) {
           // Non-FTP: use provider_connect (SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.)
           // S3 endpoint + region from the rule the main connect path uses.
@@ -9416,7 +9469,7 @@ const App: React.FC = () => {
             protocol,
             profile_id: cloudServer.id || null,
             server: cloudServer.host,
-            port: cloudServer.port || (protocol === 'sftp' ? 22 : 443),
+            port: cloudServer.port || (isSshProtocol(protocol) ? 22 : 443),
             username: cloudServer.username || '',
             password: cloudPassword,
             initial_path: cloudConfig.remote_folder || null,
@@ -9429,6 +9482,7 @@ const App: React.FC = () => {
             private_key_path: cloudServer.options?.private_key_path || null,
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,
+            ...scpFallbackConnectParam(protocol, cloudServer.options),
             tls_mode: cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
             allow_cleartext_storage: cloudServer.options?.allowCleartextStorage === true,
@@ -9437,6 +9491,14 @@ const App: React.FC = () => {
             filen_api_key: cloudFilenApiKey,
             opendrive_default_privacy: cloudServer.options?.opendriveDefaultPrivacy || null,
           };
+          // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts).
+          // A rejected key ends the connect as a cancel: no failure toast, and
+          // the callers restore the previous session or reopen the cloud panel.
+          if (isSshProtocol(protocol)) {
+            const accepted = await checkSftpHostKey(providerParams.server, providerParams.port);
+            if (!accepted) throw new Error(CONNECT_CANCELLED_MARKER);
+          }
+          await endCurrentConnection();
           await runConnect('provider_connect', providerParams);
         } else {
           // FTP/FTPS: use connect_ftp
@@ -9446,6 +9508,7 @@ const App: React.FC = () => {
             password: cloudPassword,
             protocol,
           };
+          await endCurrentConnection();
           await runConnect('connect_ftp', ftpParams);
         }
       };
@@ -9532,9 +9595,6 @@ const App: React.FC = () => {
         // If different server/protocol, reconnect
         if (!isSameServer) {
           logger.debug('Different server, reconnecting to cloud server...');
-          try { await invoke('provider_disconnect'); } catch { }
-          try { await invoke('disconnect_ftp'); } catch { }
-
           try {
             setLoading(true);
             await connectToCloudServer();
@@ -9606,10 +9666,7 @@ const App: React.FC = () => {
         toast.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
       }
 
-      // Disconnect any stale connections
-      try { await invoke('provider_disconnect'); } catch { }
-      try { await invoke('disconnect_ftp'); } catch { }
-
+      // connectToCloudServer ends any stale connection first.
       await connectToCloudServer();
       setIsConnected(true);
       setShowRemotePanel(true);
@@ -14684,6 +14741,7 @@ const App: React.FC = () => {
     // The live connection's facts (for context menu operations)
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const currentProtocol = liveConnectionParams.protocol;
+    const shownProtocol = connectionProtocolLabel(currentProtocol, wentOnOverScpRef.current);
     const currentServer = liveConnectionParams.server;
     const currentUsername = liveConnectionParams.username;
     const filePrivacy = (file.permissions || '').toLowerCase();
@@ -14700,13 +14758,13 @@ const App: React.FC = () => {
       if (count > 1) {
         const selectedRemote = remoteFiles.filter(f => selection.has(f.name)).map(f => ({
           name: f.name, path: f.path, size: f.size, is_dir: f.is_dir, modified: f.modified,
-          permissions: f.permissions, isRemote: true, protocol: currentProtocol,
+          permissions: f.permissions, isRemote: true, protocol: shownProtocol,
         } as FileProperties));
-        setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: currentProtocol });
+        setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: shownProtocol });
       } else {
         setPropertiesDialog({
           name: file.name, path: file.path, size: file.size, is_dir: file.is_dir,
-          modified: file.modified, permissions: file.permissions, isRemote: true, protocol: currentProtocol,
+          modified: file.modified, permissions: file.permissions, isRemote: true, protocol: shownProtocol,
         });
       }
     };
@@ -14731,7 +14789,7 @@ const App: React.FC = () => {
           setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
         }
       }] : []),
-      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || currentProtocol === 'sftp' ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
+      ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || isSshProtocol(currentProtocol) ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
         // The backend connection this listing came from; provider_chmod refuses
         // to act once another connection has taken the slot.
         const sessionId = activeSessionId;
@@ -15031,12 +15089,13 @@ const App: React.FC = () => {
       { label: t('contextMenu.copyName'), icon: <Clipboard size={14} />, action: () => { copyText(file.name).then(() => notify.success(t('contextMenu.nameCopied')), () => notify.error(t('toast.copyFailed'))); } },
     ];
 
-    // Copy FTP/SFTP URL: only for traditional protocols
-    if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || currentProtocol === 'sftp')) {
-      const scheme = currentProtocol === 'sftp' ? 'sftp' : 'ftp';
+    // Copy FTP/SFTP/SCP URL: only for traditional protocols
+    if (currentProtocol && (currentProtocol === 'ftp' || currentProtocol === 'ftps' || isSshProtocol(currentProtocol))) {
+      // An SFTP connection that went on over SCP copies `scp://`: the server has no SFTP.
+      const scheme = isSshProtocol(currentProtocol) ? (shownProtocol ?? currentProtocol) : 'ftp';
       items.push({
         label: t('contextMenu.copyUrl', { scheme: scheme.toUpperCase() }), icon: <Link2 size={14} />, action: () => {
-          const url = `${scheme}://${currentUsername}@${currentServer}${file.path}`;
+          const url = remoteCopyUrl(scheme, currentUsername, currentServer, liveConnectionParams.port, file.path);
           copyText(url).then(
               () => notify.success(t('contextMenu.urlCopied', { scheme: scheme.toUpperCase() })),
               () => notify.error(t('toast.copyFailed')),
@@ -15077,7 +15136,7 @@ const App: React.FC = () => {
     const hasConfiguredServerShareLink = !!sessionPublicUrl
       && count === 1
       && !!currentProtocol
-      && ['ftp', 'ftps', 'sftp', 'webdav'].includes(currentProtocol);
+      && (['ftp', 'ftps', 'webdav'].includes(currentProtocol) || isSshProtocol(currentProtocol));
     if (hasConfiguredServerShareLink) {
       items.push({
         label: t('contextMenu.copyShareLink'),
@@ -18893,7 +18952,7 @@ const App: React.FC = () => {
                             ? (normalizedParams.providerId === 'pixelunion' ? 'PixelUnion' : normalizedParams.server.replace(/^https?:\/\//, ''))
                             : normalizedParams.protocol === 'twake'
                               ? normalizedParams.server.replace(/^https?:\/\//, '')
-                              : normalizedParams.server.split(':')[0]);
+                              : serverHost(normalizedParams.server));
                   const protocolLabel = connectionViaLabel(normalizedParams);
                   // SEC: mask credentials in log-only provider name to prevent data leakage
                   const maskedProviderName = normalizedParams.username && providerName.includes(normalizedParams.username)
@@ -18902,6 +18961,13 @@ const App: React.FC = () => {
                   const logId = humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
                   try {
+                    // SEC-P1-06: TOFU host key check for SFTP and SCP (one
+                    // known_hosts), asked before the current connection
+                    // ends, so a refused key leaves it as it was.
+                    if (isSshProtocol(normalizedParams.protocol)) {
+                      const accepted = await connectScope.step(() => checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22, connectScope));
+                      if (!accepted) return 'pending_human' as const;
+                    }
                     // Disconnect any existing connections
                     try { await connectScope.step(() => invoke('provider_disconnect')); } catch { connectScope.assert(); }
                     try { await connectScope.step(() => invoke('disconnect_ftp')); } catch { connectScope.assert(); }
@@ -18922,14 +18988,9 @@ const App: React.FC = () => {
                     const providerParams = providerPayload.providerParams;
 
                     logger.debug('[onSavedServerConnect] provider protocol:', providerParams.protocol);
-                    // SEC-P1-06: TOFU host key check for SFTP
-                    if (normalizedParams.protocol === 'sftp') {
-                      const accepted = await connectScope.step(() => checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22, connectScope));
-                      if (!accepted) return 'pending_human' as const;
-                    }
                     const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
                     const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await connectScope.step(() => logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp'));
-                      await connectScope.step(() => runConnect('provider_connect', providerParams, connectScope));
+                      await connectUnderRow(savedConnLogId, () => connectScope.step(() => runConnect('provider_connect', providerParams, connectScope)));
 
                       const isFilenConnect =
                         connectedParams.protocol === 'filen' ||
@@ -19057,8 +19118,7 @@ const App: React.FC = () => {
                       setLoading(false);
                       return 'pending_human' as const;
                     }
-                    humanLog.logError('CONNECT', { server: maskedProviderName }, logId);
-                    notify.error(t('connection.connectionFailed'), String(error));
+                    reportConnectFailure(logId, error);
                     // #180 / 4486730822: stamp the standalone connect-failure
                     // marker so the My Servers card surfaces a failed login
                     // even when the Activity Log is closed.
@@ -19085,7 +19145,7 @@ const App: React.FC = () => {
 
                   const savedFtpProto = params.protocol || 'ftp';
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await connectScope.step(() => logConnectionSteps(params.server, params.port || 21, savedFtpProto));
-                  await connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope));
+                  await connectUnderRow(savedFtpConnLogId, () => connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope)));
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
                   // Clear standalone connect-failure marker (#180 / 4486730822).
                   if (params.savedServerId) {
@@ -19118,7 +19178,7 @@ const App: React.FC = () => {
                     resolvedLocalPath3 = await connectScope.step(() => safeChangeLocalDirectory(localInitialPath));
                   }
                   // Use displayName if provided, otherwise extract from server
-                  const sessionName = params.displayName || params.server.split(':')[0];
+                  const sessionName = params.displayName || serverHost(params.server);
                   await connectScope.step(() => createSession(
                     sessionName,
                     params,
@@ -19150,8 +19210,7 @@ const App: React.FC = () => {
                     humanLog.updateEntry(logId, { status: 'error', message: pathMsg });
                     notify.error(t('connection.connectionFailed'), pathMsg);
                   } else {
-                    humanLog.logError('CONNECT', { server: params.server }, logId);
-                    notify.error(t('connection.connectionFailed'), String(error));
+                    reportConnectFailure(logId, error);
                   }
                   // #180 / 4486730822: stamp the standalone connect-failure
                   // marker on the saved-server card.
@@ -19540,7 +19599,8 @@ const App: React.FC = () => {
                           switch (protocol) {
                             case 's3': return <Cloud size={14} />;
                             case 'webdav': return <Server size={14} />;
-                            case 'sftp': return <Lock size={14} />;
+                            case 'sftp':
+                            case 'scp': return <Lock size={14} />;
                             case 'ftps': return <Shield size={14} />;
                             case 'googledrive': return <Cloud size={14} />;
                             case 'dropbox': return <Archive size={14} />;
@@ -20806,8 +20866,8 @@ const App: React.FC = () => {
           serverUser={liveConnectionParams.username}
           activeFilePanel={activePanel}
           isCloudConnection={isCloudActive}
-          sshConnection={isConnected && liveConnectionParams.protocol === 'sftp' ? {
-            host: liveConnectionParams.server.split(':')[0],
+          sshConnection={isConnected && isSshProtocol(liveConnectionParams.protocol) ? {
+            host: serverHost(liveConnectionParams.server),
             port: liveConnectionParams.port || 22,
             username: liveConnectionParams.username,
             password: liveConnectionParams.password || undefined,
@@ -20894,7 +20954,7 @@ const App: React.FC = () => {
                 return 'TLS';
               }
               if (protocol === 'ftps') return 'TLS';
-              if (protocol === 'sftp') return 'SSH';
+              if (isSshProtocol(protocol)) return 'SSH';
               if (protocol === 'filen' || protocol === 'mega') return 'E2EE';
               return 'HTTPS';
             })() : undefined}

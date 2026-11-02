@@ -170,7 +170,7 @@ fn is_cloud_protocol(protocol: &str) -> bool {
 /// SFTP uses SSH (not TLS), FTP plain has no TLS.
 /// WebDAV on non-443 ports may be plain HTTP.
 fn should_check_tls(protocol: &str, port: u16) -> bool {
-    if protocol == "sftp" || protocol == "ftp" {
+    if protocol == "sftp" || protocol == "scp" || protocol == "ftp" {
         return false;
     }
     if protocol == "webdav" && port != 443 {
@@ -184,7 +184,7 @@ fn default_port(protocol: &str) -> u16 {
     match protocol {
         "ftp" => 21,
         "ftps" => 990,
-        "sftp" => 22,
+        "sftp" | "scp" => 22,
         "webdav" => 443,
         "s3" => 443,
         _ => 443,

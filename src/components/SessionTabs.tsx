@@ -162,6 +162,7 @@ const ProviderIcon: React.FC<{
         case 'backblaze':
             return <Flame size={size} className={`${combinedClass} text-red-600`} />;
         case 'sftp':
+        case 'scp':
             return <Lock size={size} className={`${combinedClass} text-emerald-500`} />;
         case 'ftps':
             return <ShieldCheck size={size} className={`${combinedClass} text-green-500`} />;
@@ -198,7 +199,8 @@ const getProviderColor = (protocol: ProviderType | undefined): string => {
         case 'immich': return 'text-indigo-500';
         case 'twake': return 'text-sky-500';
         case 'backblaze': return 'text-red-600';
-        case 'sftp': return 'text-emerald-500';  // SFTP - emerald (lock)
+        case 'sftp':
+        case 'scp': return 'text-emerald-500';   // SFTP/SCP - emerald (lock)
         case 'ftps': return 'text-green-500';    // FTPS - green (shield)
         default: return 'text-green-500';        // FTP - green
     }

@@ -4,8 +4,9 @@
 //! minimal systems ship `scp` but no SFTP. WinSCP reaches them by falling back
 //! to SCP. This module is the engine for that: SCP is a protocol of its own,
 //! and the plan is for an SFTP connection to such a server to continue in SCP
-//! mode on the same session. No provider uses the engine yet; the
-//! `ScpProvider` and the fallback come next.
+//! mode on the same session: [`provider::ScpProvider`] is both, the explicit
+//! protocol and the provider `SftpProvider` hands its connection to when the
+//! server refuses the `sftp` subsystem or has nothing behind it.
 //! Transfers run `scp -t` / `scp -f` over exec channels of the already
 //! authenticated russh handle (never a second connection: see the v3.0.5
 //! libssh2 path removed in #73), and everything SCP does not do (listing,
@@ -15,4 +16,5 @@
 
 pub mod codec;
 pub mod listing;
+pub mod provider;
 pub mod session;

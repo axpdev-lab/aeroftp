@@ -2765,6 +2765,7 @@ pub fn protocol_class(proto: &str) -> &'static str {
         "ftps" => "FTPS",
         "ftp" => "FTP",
         "sftp" => "SFTP",
+        "scp" => "SCP",
         "s3" => "S3",
         "azure" => "Azure",
         // Native API providers (Koofr, Jottacloud, OpenDrive, kDrive, Drime, FileLu,

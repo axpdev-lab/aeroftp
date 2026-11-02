@@ -80,7 +80,7 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     // JWT-shaped tokens (3 base64url segments separated by '.')
     { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
     // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
-    { pattern: /\b((?:ftps?|sftp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
+    { pattern: /\b((?:ftps?|sftp|scp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     {
