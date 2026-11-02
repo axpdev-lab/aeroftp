@@ -207,7 +207,11 @@ fn zoho_workdrive_resolves_every_path_through_parent_folder_id() {
             "discover_team",
             "discover_privatespace",
             "parent_folder_id",
+            // These two helpers own the same resolution rules while also
+            // returning an operation-local listing and alias provenance.
+            "parent_folder_with_listing",
             "resolve_path",
+            "resolve_path_with_listing",
             "list",
             "cd",
         ],
@@ -216,7 +220,7 @@ fn zoho_workdrive_resolves_every_path_through_parent_folder_id() {
         "zoho_workdrive.rs",
         source,
         ".get(\"/\")",
-        &["resolve_path"],
+        &["resolve_path_with_listing"],
     );
 }
 
@@ -537,9 +541,24 @@ fn no_provider_listing_moves_the_current_folder() {
     let (mut in_cd, mut in_list) = (0, Vec::new());
     for (file, source) in provider_sources() {
         for (line, function) in sites_where(production_part(&source), moves) {
+            // A Zoho cwd entered through a legacy root keeps its logical
+            // path, but that path may now name a real folder. Only this
+            // guarded identity refresh is allowed; ordinary cwd identity
+            // and every provider's path must still remain unchanged.
+            let alias_identity_refresh =
+                file == "zoho_workdrive.rs"
+                    && source.lines().nth(line.saturating_sub(2)).is_some_and(|s| {
+                        s.trim() == "if is_current && self.current_is_legacy_alias {"
+                    })
+                    && source.lines().nth(line - 1).is_some_and(|s| {
+                        s.trim() == "self.current_folder_id = resolved.id.clone();"
+                    })
+                    && source.lines().nth(line).is_some_and(|s| {
+                        s.trim() == "self.current_is_legacy_alias = resolved.alias_derived;"
+                    });
             match function {
                 "cd" => in_cd += 1,
-                "list" => in_list.push(format!("{file}:{line}")),
+                "list" if !alias_identity_refresh => in_list.push(format!("{file}:{line}")),
                 _ => {}
             }
         }

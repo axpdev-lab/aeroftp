@@ -2717,6 +2717,86 @@ impl ZohoWorkdriveProvider {
             alias_derived: legacy_root,
         })
     }
+
+    /// Pin IDs only for one search after checking the alias's name precedence.
+    /// Each folder is listed once; no alias path or descendant survives this
+    /// operation in the name cache, even on error or future cancellation.
+    async fn find_alias_walk(
+        &self,
+        root: &str,
+        resolved: FolderResolution,
+        pattern: &str,
+        started: std::time::Instant,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let mut walk = crate::sync_core::FindWalk::new(root);
+        let mut folders = vec![(root.to_string(), resolved.id, resolved.listing)];
+        let mut results = Vec::new();
+        let mut listed = 0;
+        while let Some((folder, id, probe)) = folders.pop() {
+            listed += 1;
+            if listed > super::FIND_FOLDER_LIMIT {
+                return Err(ProviderError::Other(format!(
+                    "Search stopped after {} folders under {root}: search a smaller folder",
+                    super::FIND_FOLDER_LIMIT
+                )));
+            }
+            if started.elapsed() >= super::FIND_WALK_BUDGET {
+                return Err(ProviderError::Other(format!(
+                    "Search stopped after {} s under {root}: search a smaller folder",
+                    super::FIND_WALK_BUDGET.as_secs()
+                )));
+            }
+            let files = match probe {
+                Some(files) => files,
+                None => match self.list_folder(&id).await {
+                    Ok(files) => files,
+                    Err(error)
+                        if folder == root || !super::listing_failure_is_the_folders(&error) =>
+                    {
+                        return Err(error);
+                    }
+                    Err(error) => {
+                        tracing::warn!("find: skipping {folder:?}: {error}");
+                        continue;
+                    }
+                },
+            };
+            let mut ids = HashMap::new();
+            let entries = files
+                .iter()
+                .map(|file| {
+                    let entry = self.to_remote_entry(file, &folder);
+                    if entry.is_walkable_dir() {
+                        ids.entry(entry.path.clone())
+                            .or_insert_with(|| file.id.clone());
+                    }
+                    entry
+                })
+                .collect();
+            let sorted = walk.sort(&folder, entries);
+            for (path, step) in &sorted.refused {
+                tracing::warn!(
+                    "find: skipping {path:?}, named in {folder}: {}",
+                    step.reason()
+                );
+            }
+            for path in sorted.follow {
+                let id = ids.remove(&path).ok_or_else(|| {
+                    ProviderError::ParseError(format!("Search listing has no folder ID for {path}"))
+                })?;
+                folders.push((path, id, None));
+            }
+            for entry in sorted.entries {
+                if super::matches_find_pattern(&entry.name, pattern) {
+                    results.push(entry);
+                    if results.len() >= super::FIND_RESULT_LIMIT {
+                        return Ok(results);
+                    }
+                }
+            }
+        }
+        Ok(results)
+    }
 }
 
 #[async_trait]
@@ -3891,6 +3971,21 @@ impl StorageProvider for ZohoWorkdriveProvider {
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         // The search API answers outside the folder or without the hit's real
         // path, and a caller acts on that path.
+        if !self.connected {
+            return Err(ProviderError::NotConnected);
+        }
+        let root = super::search_root(&self.current_path, path);
+        if root != "/" {
+            let started = std::time::Instant::now();
+            let resolved = self.resolve_path_with_listing(&root).await?;
+            if resolved.alias_derived {
+                // Precedence is fresh at the start of this single operation.
+                // Later independent calls still recheck it immediately.
+                return self
+                    .find_alias_walk(&root, resolved, pattern, started)
+                    .await;
+            }
+        }
         super::find_by_walk(self, path, pattern).await
     }
 
@@ -4633,7 +4728,13 @@ mod tests {
         p.cd("/PS").await.unwrap();
         assert!(p.current_is_legacy_alias);
         appeared.store(true, Ordering::SeqCst);
+        // An absolute listing elsewhere cannot rebind cwd. Only listing
+        // cwd itself refreshes its alias identity, never its logical path.
+        p.list("/PS/docs").await.unwrap();
+        assert_eq!(p.current_folder_id, "PS");
+        assert_eq!(p.current_path, "/PS");
         let dot = p.list(".").await.unwrap();
+        assert_eq!(p.current_path, "/PS");
         assert_eq!(
             dot[0].metadata.get("id").map(String::as_str),
             Some("NEW_DOCS")
@@ -4756,6 +4857,170 @@ mod tests {
             .iter()
             .filter(|(seen, _)| seen == id)
             .count()
+    }
+
+    /// A single alias search pins IDs locally, not paths in the session cache.
+    /// The next operation must still prefer a real folder created afterwards.
+    #[tokio::test]
+    async fn an_alias_find_lists_25_children_once_and_rechecks_the_next_operation() {
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc,
+        };
+        let appeared = Arc::new(AtomicBool::new(false));
+        let served = appeared.clone();
+        let children: Vec<(String, String)> = (1..=25)
+            .map(|n| (format!("C{n:02}"), format!("c{n:02}")))
+            .collect();
+        let shown = children.clone();
+        let (mut provider, requests, server) = listing_fixture(move |id, _, _| {
+            let real = served.load(Ordering::SeqCst);
+            let entries: Vec<(&str, &str, bool)> = match id {
+                "PS" if real => vec![("REAL", "PS", true)],
+                "PS" => vec![("DOCS", "docs", true)],
+                "DOCS" => shown
+                    .iter()
+                    .map(|(id, name)| (id.as_str(), name.as_str(), true))
+                    .collect(),
+                "REAL" => vec![("NEW_DOCS", "docs", true)],
+                "NEW_DOCS" => vec![("NEW_FILE", "new.txt", false)],
+                _ => vec![],
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        provider.privatespace_id = Some("PS".into());
+        provider.folder_cache.insert("/".into(), "PS".into());
+        provider.current_path = "/PS/docs".into();
+        provider.current_folder_id = "DOCS".into();
+        provider.current_is_legacy_alias = true;
+
+        let found =
+            tokio::time::timeout(std::time::Duration::from_secs(15), provider.find(".", "*"))
+                .await
+                .expect("one alias find must not wait for a twentieth root listing")
+                .unwrap();
+        assert_eq!(found.len(), 25);
+        assert!(found
+            .iter()
+            .all(|entry| entry.path.starts_with("/PS/docs/c")));
+        assert_eq!(listings_of(&requests, "PS"), 1);
+        assert_eq!(listings_of(&requests, "DOCS"), 1);
+        for (id, _) in &children {
+            assert_eq!(listings_of(&requests, id), 1, "{id}");
+        }
+        assert_eq!(provider.current_path, "/PS/docs");
+        assert_eq!(provider.current_folder_id, "DOCS");
+        assert!(provider.current_is_legacy_alias);
+        assert!(!provider
+            .folder_cache
+            .keys()
+            .any(|p| p == "/PS" || p.starts_with("/PS/")));
+
+        appeared.store(true, Ordering::SeqCst);
+        let fresh = provider.list(".").await.unwrap();
+        assert_eq!(fresh.len(), 1);
+        assert_eq!(fresh[0].path, "/PS/docs/new.txt");
+        assert_eq!(provider.current_folder_id, "NEW_DOCS");
+        assert!(!provider.current_is_legacy_alias);
+        server.abort();
+    }
+
+    /// The alias root probe is its listing, and malformed child paths retain
+    /// the shared find walk's boundary checks rather than becoming API reads.
+    #[tokio::test]
+    async fn an_alias_find_reuses_its_root_probe_and_refuses_outside_paths() {
+        let (mut provider, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "PS" => vec![("GOOD", "good", true), ("OUTSIDE", "../outside", true)],
+                "GOOD" => vec![("KEEP", "keep.txt", false)],
+                _ => panic!("unexpected listing of {id}"),
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        provider.privatespace_id = Some("PS".into());
+        provider.folder_cache.insert("/".into(), "PS".into());
+        let found = provider.find("/PS", "*").await.unwrap();
+        assert_eq!(
+            found.iter().map(|e| e.path.as_str()).collect::<Vec<_>>(),
+            ["/PS/good", "/PS/good/keep.txt"]
+        );
+        assert_eq!(listings_of(&requests, "PS"), 1);
+        assert_eq!(listings_of(&requests, "GOOD"), 1);
+        assert_eq!(listings_of(&requests, "OUTSIDE"), 0);
+        server.abort();
+    }
+
+    /// Keep the existing typed-error contract: 404 children are skipped, but
+    /// Zoho maps 403 to Other so the shared walk aborts. Root failures always
+    /// abort; none of these cases re-resolves a child by name.
+    #[tokio::test]
+    async fn an_alias_find_keeps_the_shared_walk_error_contract() {
+        for (root_status, child_status, succeeds) in [
+            (200, 403, false),
+            (200, 404, true),
+            (403, 200, false),
+            (200, 500, false),
+        ] {
+            let (mut provider, requests, server) = listing_fixture(move |id, _, _| {
+                let (status, entries) = match id {
+                    "PS" => (200, vec![("DOCS", "docs", true)]),
+                    "DOCS" => (
+                        root_status,
+                        vec![("BAD", "bad", true), ("KEEP", "keep.txt", false)],
+                    ),
+                    "BAD" => (child_status, vec![]),
+                    _ => panic!("unexpected listing of {id}"),
+                };
+                (status, vec![], listing_json(&entries, Some((false, None))))
+            })
+            .await;
+            provider.privatespace_id = Some("PS".into());
+            provider.folder_cache.insert("/".into(), "PS".into());
+            provider.retry.max_retries = 0;
+            let result = provider.find("/PS/docs", "*").await;
+            assert_eq!(
+                result.is_ok(),
+                succeeds,
+                "root {root_status}, child {child_status}: {result:?}"
+            );
+            if let Ok(found) = result {
+                assert!(found.iter().any(|e| e.name == "keep.txt"));
+            }
+            assert_eq!(listings_of(&requests, "PS"), 1);
+            assert_eq!(listings_of(&requests, "DOCS"), 1);
+            assert!(!provider.folder_cache.contains_key("/PS"));
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn an_alias_find_leaves_an_ordinary_current_folder_identity_untouched() {
+        let (mut provider, requests, server) = listing_fixture(|id, _, _| {
+            let entries = match id {
+                "PS" => vec![("DOCS", "docs", true)],
+                "DOCS" => vec![("REMOTE", "remote.txt", false)],
+                "ORDINARY" => vec![("HERE", "here.txt", false)],
+                _ => panic!("unexpected listing of {id}"),
+            };
+            (200, vec![], listing_json(&entries, Some((false, None))))
+        })
+        .await;
+        provider.privatespace_id = Some("PS".into());
+        provider.folder_cache.insert("/".into(), "PS".into());
+        provider.current_path = "/ordinary".into();
+        provider.current_folder_id = "ORDINARY".into();
+        provider.current_is_legacy_alias = false;
+        let found = provider.find("/PS/docs", "remote").await.unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(provider.current_folder_id, "ORDINARY");
+        assert_eq!(provider.current_path, "/ordinary");
+        assert!(!provider.current_is_legacy_alias);
+        let here = provider.list(".").await.unwrap();
+        assert_eq!(here[0].name, "here.txt");
+        assert_eq!(listings_of(&requests, "ORDINARY"), 1);
+        server.abort();
     }
 
     /// A tree walk lists every folder once. It listed a folder again before
