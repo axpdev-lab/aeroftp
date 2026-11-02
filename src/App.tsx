@@ -4500,8 +4500,10 @@ const App: React.FC = () => {
                     notify.info(t('aerocryptNative.legacyMarkerAlreadyCurrent'));
                   }
                 } catch (err) {
-                  humanLog.updateEntry(logId, { status: 'error', message: String(err) });
-                  notify.error('AeroCrypt', String(err));
+                  const message = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+                    ? err.message : String(err);
+                  humanLog.updateEntry(logId, { status: 'error', message });
+                  notify.error('AeroCrypt', message);
                 }
               })();
             },
@@ -6834,10 +6836,10 @@ const App: React.FC = () => {
     activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath,
     liveConnectionParams.server, liveConnectionParams.username, liveConnectionParams.protocol,
   ]));
-  const cancelRemoteSearch = () => {
+  const cancelRemoteSearch = useCallback(() => {
     remoteSearchRequest.cancel();
     setRemoteSearching(false);
-  };
+  }, [remoteSearchRequest.cancel]);
 
   useLayoutEffect(() => { setRemoteSearching(false); }, [
     activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath,
@@ -7546,6 +7548,8 @@ const App: React.FC = () => {
   }, [isConnected, getActiveProviderProtocol]);
 
   const switchGitHubBranch = useCallback(async (branch: string) => {
+    cancelRemoteSearch();
+    setRemoteSearchResults(null);
     const baseParams = normalizeProviderConnectionParams(liveConnectionParams);
     const nextParams: ConnectionParams = {
       ...baseParams,
@@ -7604,7 +7608,7 @@ const App: React.FC = () => {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
       setLoading(false);
     }
-  }, [activeSessionId, liveConnectionParams, currentRemotePath, notify, refreshGitHubContext, runConnect, t]);
+  }, [activeSessionId, liveConnectionParams, currentRemotePath, notify, refreshGitHubContext, runConnect, t, cancelRemoteSearch]);
 
   const requestGitHubBatchCommitMessage = useCallback((
     files: { local: string; remote: string }[],
@@ -19876,7 +19880,7 @@ const App: React.FC = () => {
                         type="text"
                         placeholder={t('search.remote_placeholder') || 'Search remote files...'}
                         value={remoteSearchQuery}
-                        onChange={e => { cancelRemoteSearch(); setRemoteSearchQuery(e.target.value); }}
+                        onChange={e => { cancelRemoteSearch(); setRemoteSearchResults(null); setRemoteSearchQuery(e.target.value); }}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && remoteSearchQuery.trim()) {
                             handleRemoteSearch(remoteSearchQuery);

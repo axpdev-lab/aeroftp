@@ -179,4 +179,24 @@ describe('recovery kit after remote marker migration', () => {
         expect(writeTextFile).not.toHaveBeenCalled();
     });
 
+    it('does not re-offer the old kit when another client already migrated the marker', async () => {
+        const original = invoke.getMockImplementation()!;
+        invoke.mockImplementation((command, args) => {
+            if (command === 'aerocrypt_provider_migrate_legacy_marker') {
+                migrated = true;
+                return Promise.resolve({ changed: false, legacyDeleted: false });
+            }
+            return original(command, args);
+        });
+        await mount();
+        expect(host.textContent).toContain(oldKit.text);
+        const cacheReads = invoke.mock.calls.filter(([c]) => c === 'aerocrypt_profile_recovery_kit').length;
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(host.textContent).not.toContain(oldKit.text);
+        expect(host.textContent).not.toContain('aerocryptNative.saveKit');
+        await click('aerocryptNative.showKit');
+        expect(host.textContent).toContain(freshKit.text);
+        expect(invoke.mock.calls.filter(([c]) => c === 'aerocrypt_profile_recovery_kit')).toHaveLength(cacheReads);
+    });
+
 });

@@ -446,8 +446,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                     /* kit may warm on next connect */
                 }
             } else {
-                kitMetadataStaleRef.current = previousMetadataStale;
-                setKitData(previousKit);
+                // Another client may have migrated the marker. Do not restore
+                // our earlier kit or trust its cache: Show must read it live.
                 setSuccess(t('aerocryptNative.legacyMarkerAlreadyCurrent'));
             }
         } catch (e) {

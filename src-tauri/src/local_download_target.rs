@@ -246,9 +246,38 @@ fn existing_spelling_problems(
 ) -> Vec<LocalTargetProblem> {
     let guard = LocalTargetGuard::with_rules(rules);
     let mut listed: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
+    let mut linked_parents: HashMap<String, Option<PathBuf>> = HashMap::new();
     let mut problems = Vec::new();
     for file in files {
         let (parent, name) = file.rsplit_once('/').unwrap_or(("", file));
+        // Static containment check only: a concurrent local replacement after
+        // this check is outside this preflight's guarantee.
+        let link = linked_parents.entry(parent.to_string()).or_insert_with(|| {
+            let mut under = destination.to_path_buf();
+            if under
+                .symlink_metadata()
+                .is_ok_and(|meta| meta.file_type().is_symlink())
+            {
+                return Some(under);
+            }
+            for component in Path::new(parent).components() {
+                under.push(component);
+                if under
+                    .symlink_metadata()
+                    .is_ok_and(|meta| meta.file_type().is_symlink())
+                {
+                    return Some(under);
+                }
+            }
+            None
+        });
+        if let Some(link) = link {
+            problems.push(LocalTargetProblem {
+                path: file.clone(),
+                reason: format!("{} is a link; refusing to write below it", link.display()),
+            });
+            continue;
+        }
         let entries = listed.entry(parent.to_string()).or_insert_with(|| {
             let mut entries: HashMap<String, Vec<String>> = HashMap::new();
             // A folder not there yet holds nothing to replace.
@@ -579,6 +608,29 @@ mod tests {
             1
         );
         assert_eq!(std::fs::read(outside.path()).unwrap(), b"untouched");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn existing_linked_parents_are_refused_before_a_download_can_create_anything() {
+        let dest = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("keep.txt"), b"unchanged").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dest.path().join("sub")).unwrap();
+        let files = vec!["sub/new/deep.txt".to_string(), "sub/keep.txt".to_string()];
+        let problems = local_target_problems(dest.path(), &files, &files);
+        assert_eq!(problems.len(), 2);
+        assert!(problems
+            .iter()
+            .all(|problem| problem.reason.contains("is a link")));
+        assert!(!outside.path().join("new").exists());
+        assert_eq!(
+            std::fs::read(outside.path().join("keep.txt")).unwrap(),
+            b"unchanged"
+        );
+        std::fs::remove_file(dest.path().join("sub")).unwrap();
+        std::fs::create_dir(dest.path().join("sub")).unwrap();
+        assert!(local_target_problems(dest.path(), &files, &files).is_empty());
     }
 
     #[test]
