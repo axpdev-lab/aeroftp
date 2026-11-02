@@ -218,7 +218,6 @@ struct UploadServerResponse {
 #[derive(Debug, Deserialize)]
 struct StatusOnlyResponse {
     status: Option<u32>,
-    msg: Option<String>,
 }
 
 /// Upload response entry returned by upload CGI endpoint
@@ -623,18 +622,12 @@ impl FileLuProvider {
         config: HttpRetryConfig,
     ) -> Result<reqwest::Response, ProviderError> {
         let request = self.client.get(url).build().map_err(|e| {
-            ProviderError::ConnectionFailed(format!(
-                "Build GET failed: {}",
-                redact_key(&e.to_string())
-            ))
+            ProviderError::ConnectionFailed(format!("Build GET failed: {}", e.without_url()))
         })?;
         send_with_retry(&self.client, request, &config)
             .await
             .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!(
-                    "GET failed: {}",
-                    redact_key(&e.to_string())
-                ))
+                ProviderError::ConnectionFailed(format!("GET failed: {}", e.without_url()))
             })
     }
 
@@ -736,34 +729,33 @@ impl FileLuProvider {
             || lower.contains("gateway timeout")
     }
 
+    /// A mutation acknowledgement may echo its URL or submitted password.
+    /// Report status/parse location only; arbitrary response text is not safe
+    /// even after pattern-based redaction of known token formats.
     async fn ensure_api_ok(resp: reqwest::Response) -> Result<(), ProviderError> {
         let status = resp.status();
         let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
-                "Failed to read response: {}",
-                redact_key(&e.to_string())
+                "Failed to read mutation response: {}",
+                e.without_url()
             ))
         })?;
-
         if !status.is_success() {
             return Err(ProviderError::ServerError(format!(
-                "HTTP {}: {}",
-                status, text
+                "HTTP {status}: FileLu mutation refused"
             )));
         }
-
         let parsed: StatusOnlyResponse = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "json: {}. Body: {}",
-                e,
-                &text[..text.floor_char_boundary(200)]
+                "FileLu mutation returned invalid JSON at line {}, column {}",
+                e.line(),
+                e.column()
             ))
         })?;
-
         match parsed.status {
             Some(200) => Ok(()),
-            Some(status) => Err(ProviderError::ServerError(super::sanitize_api_error(
-                &parsed.msg.unwrap_or_else(|| format!("API error {status}")),
+            Some(status) => Err(ProviderError::ServerError(format!(
+                "FileLu mutation returned API error {status}"
             ))),
             None => Err(ProviderError::ParseError(
                 "FileLu mutation response has no API status".into(),
@@ -3452,6 +3444,10 @@ mod tests {
             (503, r#"{"status":503,"msg":"uncertain"}"#, false),
             (200, "broken acknowledgement", false),
             (200, "{}", false),
+            (400, "https://filelu.example/api/file/set_password?key=fixture-key&file_password=fixture-password", false),
+            (403, r#"{"status":403,"msg":"fixture-key fixture-password"}"#, false),
+            (200, r#"{"status":403,"msg":"fixture-key fixture-password"}"#, false),
+            (200, r#"{"status":"fixture-password","msg":"fixture-key"}"#, false),
         ] {
             let calls = Arc::new(AtomicUsize::new(0));
             let seen = calls.clone();
@@ -3498,6 +3494,11 @@ mod tests {
                     success,
                     "HTTP {status},body {body}: {outcome:?}"
                 );
+                if let Err(error) = outcome {
+                    let shown = error.to_string();
+                    assert!(!shown.contains("fixture-key"), "API key reflected in {shown}");
+                    assert!(!shown.contains("fixture-password"), "password reflected in {shown}");
+                }
             }
             assert_eq!(
                 calls.load(Ordering::SeqCst),
@@ -3966,7 +3967,7 @@ mod tests {
             provider_for_folder_move(r#"{"status":403,"msg":"Folder not accessible"}"#).await;
         let outcome = provider.rename("/src", "/dst/src").await;
         assert!(
-            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m == "Folder not accessible"),
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m == "FileLu mutation returned API error 403"),
             "{outcome:?}"
         );
     }
