@@ -66024,14 +66024,6 @@ fn should_exclude_watch_path(path: &std::path::Path) -> bool {
         None => return false,
     };
     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    // The folder a sync makes to learn what this disk can hold apart.
-    if path.components().any(|part| {
-        part.as_os_str()
-            .to_string_lossy()
-            .starts_with(".aeroftp-name-probe-")
-    }) {
-        return true;
-    }
     // OS metadata
     if matches!(
         name,
