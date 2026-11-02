@@ -271,7 +271,7 @@ fn store_rclone_provider_secrets(
             )
         })
         .collect();
-    for (profile_id, secrets) in &result.provider_secrets {
+    for (profile_id, secrets) in result.secrets_in_server_order() {
         let protocol = match protocol_by_id.get(profile_id.as_str()) {
             Some(p) => p,
             None => continue,

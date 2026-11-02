@@ -14113,7 +14113,10 @@ fn change_profiles_in_legacy_blob<R, E>(
         ));
     }
     let db = user_partitions::cli_db_path().map_err(&failed)?;
-    let _lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    let lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    if !lock.is_exclusive() {
+        return Err(failed(user_partitions::NO_FILE_LOCKS.to_string()));
+    }
     // The partition answers again: this was a passing fault, and the blob would hold
     // a change the next load replaces with the partition's list.
     if user_partitions::cli_list_server_profiles_for_user(store, user_id).is_ok() {
@@ -39412,7 +39415,21 @@ fn publish_extracted(
             files.push(relative);
         }
     }
-    // A link in the way would carry the extract outside the destination.
+    // A link in the way would carry the extract outside the destination. An empty
+    // folder has no children to find a link at its own path.
+    for folder in &folders {
+        let target = dest.join(folder);
+        if target
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            return Err(format!(
+                "{} is a link, and the vault holds the folder {} there. Nothing was written",
+                target.display(),
+                folder.display()
+            ));
+        }
+    }
     for relative in folders.iter().chain(&files) {
         let mut under = dest.to_path_buf();
         let parents: Vec<_> = relative
@@ -41939,7 +41956,7 @@ async fn apply_rclone_import_to_vault(
     // The app a token refreshes with, as the GUI import keeps it: a fresh device
     // has nothing else to refresh with. After the write, which holds the lock.
     let mut oauth_app_warnings = Vec::new();
-    for (profile_id, secrets) in &result.provider_secrets {
+    for (profile_id, secrets) in result.secrets_in_server_order() {
         let slug = protocol_of(profile_id).and_then(|protocol| {
             ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol)
         });
@@ -98544,6 +98561,13 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             let refused = publish_extracted(&staging, &linked, true).unwrap_err();
             assert!(refused.contains("is a link"), "{refused}");
             assert!(!outside.join("kept.txt").exists());
+
+            // An empty folder whose own path is a link has no parent to catch it.
+            let empty = root.path().join("empty");
+            std::fs::create_dir_all(empty.join("void")).unwrap();
+            std::os::unix::fs::symlink(&outside, linked.join("void")).unwrap();
+            let refused = publish_extracted(&empty, &linked, true).unwrap_err();
+            assert!(refused.contains("is a link"), "{refused}");
 
             std::os::unix::fs::symlink(root.path().join("gone"), dest.join("new.txt")).unwrap();
             assert!(

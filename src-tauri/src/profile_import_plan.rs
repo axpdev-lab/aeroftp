@@ -900,6 +900,15 @@ mod tests {
         assert_eq!(merged["localOnly"], "kept");
         assert_eq!(merged["hasStoredCredential"], true);
         assert_eq!(merged["hasStoredAeroCryptPassword"], true);
+
+        // A flag stored here survives a file that says otherwise, for each flag.
+        for flag in STORED_SECRET_FLAGS {
+            let merged = overwrite_profile(
+                &json!({"id": "srv_a", flag: true}),
+                &json!({"id": "srv_a", flag: false}),
+            );
+            assert_eq!(merged[flag], true, "{flag}");
+        }
     }
 
     /// A shared singleton is written when empty or when it is this import's

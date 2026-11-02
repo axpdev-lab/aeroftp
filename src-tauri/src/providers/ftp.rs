@@ -2208,8 +2208,9 @@ impl StorageProvider for FtpProvider {
             self.current_path = dir.clone();
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
-                // A folder searched that cannot be read is not an empty result.
-                Err(e) if dir == root => {
+                // A folder searched that cannot be read is not an empty result,
+                // and a failure that is not about one folder fails the search.
+                Err(e) if dir == root || !super::listing_failure_is_the_folders(&e) => {
                     self.current_path = saved;
                     return Err(e);
                 }
@@ -9558,7 +9559,9 @@ pub(crate) mod walk_scope_tests {
                 "PWD" => format!("257 \"{cwd}\" is current\r\n"),
                 "CWD" => {
                     let target = resolve(&cwd, &argument);
-                    if held(&target) {
+                    if target.ends_with("/down") {
+                        "421 Service not available.\r\n".to_string()
+                    } else if held(&target) {
                         cwd = target;
                         "250 Directory changed\r\n".to_string()
                     } else {
@@ -9713,6 +9716,22 @@ pub(crate) mod walk_scope_tests {
                 "{listings:?}: {log:?}"
             );
         }
+    }
+
+    /// A subfolder that is gone leaves the rest of the search. A server that
+    /// stops answering fails it: the folders after it could not be read either.
+    #[tokio::test]
+    async fn a_find_skips_a_gone_folder_and_fails_on_a_server_failure() {
+        const GONE: Listings = &[("/x", &["a.txt", "gone/"])];
+        let (mut provider, _) = provider_on_tree(GONE).await;
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+
+        const DOWN: Listings = &[("/x", &["a.txt", "down/"])];
+        let (mut provider, _) = provider_on_tree(DOWN).await;
+        let outcome = provider.find("/x", "*.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(provider.current_path, "/", "the folder is restored");
     }
 
     /// A search follows only folders inside the one searched, once each.

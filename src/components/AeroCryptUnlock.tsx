@@ -399,7 +399,11 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                         }
                         // A failed read gives no account to bind this to, so it is not saved here.
                         if (accountRead) {
-                            await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                            try {
+                                await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                            } catch {
+                                setError(t('aerocryptNative.overlayMetadataNotSaved'));
+                            }
                         } else {
                             setError(t('aerocryptNative.overlayMetadataNotSaved'));
                         }

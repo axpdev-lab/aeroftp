@@ -2425,6 +2425,14 @@ mod tests {
         assert_eq!(read(r#""not a date""#).as_deref(), Some("not a date"));
         let missing: PCloudMetadata = serde_json::from_str(r#"{"name":"a"}"#).unwrap();
         assert_eq!(missing.modified, None);
+
+        const DATE: &str = r#""modified":"Sat, 31 Oct 2026 07:18:16 +0000""#;
+        let link: PCloudPubLinkEntry =
+            serde_json::from_str(&format!(r#"{{"linkid":1,{DATE}}}"#)).unwrap();
+        assert_eq!(link.modified.as_deref(), Some("2026-10-31T07:18:16Z"));
+        let revision: PCloudRevision =
+            serde_json::from_str(&format!(r#"{{"revisionid":1,{DATE}}}"#)).unwrap();
+        assert_eq!(revision.modified.as_deref(), Some("2026-10-31T07:18:16Z"));
     }
 
     use super::*;
