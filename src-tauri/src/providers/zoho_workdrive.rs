@@ -837,6 +837,8 @@ pub struct ZohoWorkdriveProvider {
     team_user_id: Option<String>,
     /// Team folders discovered during connect: (id, name)
     team_folders: Vec<(String, String)>,
+    /// Team folders removed from the live root whose trash can still be scanned.
+    trashed_team_folders: Vec<(String, String)>,
     /// Server profile identifier owning these OAuth tokens. Empty when the
     /// caller has not bound a profile (legacy singleton key path). Issue #214.
     profile_id: String,
@@ -913,6 +915,7 @@ impl ZohoWorkdriveProvider {
             account_email: None,
             team_user_id: None,
             team_folders: Vec::new(),
+            trashed_team_folders: Vec::new(),
             profile_id: String::new(),
             retry: HttpRetryConfig::default(),
             pace: if cfg!(test) {
@@ -1250,8 +1253,14 @@ impl ZohoWorkdriveProvider {
             }
         }
 
-        // List team folder trash (paginated)
-        for tf in &self.team_folders.clone() {
+        // List team folder trash (paginated). A deleted root stays scannable.
+        let discovered: Vec<(String, String)> = self
+            .team_folders
+            .iter()
+            .chain(self.trashed_team_folders.iter())
+            .cloned()
+            .collect();
+        for tf in &discovered {
             let mut offset = 0;
             loop {
                 let url = format!(
@@ -2377,7 +2386,7 @@ impl ZohoWorkdriveProvider {
 
     /// Move `from` into the folder of `to` and/or rename it: two calls when
     /// both change. The folder cache is `rename`'s to clean up.
-    async fn move_then_rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+    async fn move_then_rename(&mut self, from: &str, to: &str) -> Result<String, ProviderError> {
         let from_path_is_absolute = from.starts_with('/');
         let from_path = from.trim_matches('/');
         let (from_parent_path, file_name) = if let Some(pos) = from_path.rfind('/') {
@@ -2476,7 +2485,26 @@ impl ZohoWorkdriveProvider {
         }
 
         info!("Renamed {} to {}", from, to);
-        Ok(())
+        Ok(file.id)
+    }
+
+    /// Take a successfully deleted team folder off the live root.
+    fn retire_discovered_team_folder(&mut self, id: &str) {
+        let Some(index) = self
+            .team_folders
+            .iter()
+            .position(|(folder_id, _)| folder_id == id)
+        else {
+            return;
+        };
+        let entry = self.team_folders.remove(index);
+        if !self
+            .trashed_team_folders
+            .iter()
+            .any(|(folder_id, _)| folder_id == &entry.0)
+        {
+            self.trashed_team_folders.push(entry);
+        }
     }
 
     /// Drop the cached ids of the folder at `path` (absolute, or relative to
@@ -2888,6 +2916,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         self.team_id = None;
         self.privatespace_id = None;
         self.team_folders.clear();
+        self.trashed_team_folders.clear();
         info!("Disconnected from Zoho WorkDrive");
         Ok(())
     }
@@ -3480,6 +3509,9 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         info!("Moved to trash: {}", path);
         self.forget_folder(original_path);
+        // The live root must stop offering this team folder. Its id stays
+        // available to the trash scan, which lists teamfolders/{id}/trashedfiles.
+        self.retire_discovered_team_folder(&file.id);
         Ok(())
     }
 
@@ -3541,20 +3573,17 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // wrong folder's files.
         self.forget_folder(from);
         self.forget_folder(to);
-        if outcome.is_ok() {
-            // A successful in-place rename of a discovered team folder also
-            // changes its virtual-root name. Keep the discovered ID stable.
+        if let Ok(file_id) = &outcome {
+            // A root rename follows the id the resolver selected. Matching the
+            // old path text misses an id alias such as /REAL for a folder
+            // named Team. A name collision stays with that resolver.
             if !from_key.trim_start_matches('/').contains('/')
                 && !to_key.trim_start_matches('/').contains('/')
             {
-                let old_name = from_key.trim_start_matches('/');
-                let new_name = to_key.trim_start_matches('/');
-                if let Some((_, name)) = self
-                    .team_folders
-                    .iter_mut()
-                    .find(|(_, name)| name.as_str() == old_name)
+                let new_name = to_key.trim_start_matches('/').to_string();
+                if let Some((_, name)) = self.team_folders.iter_mut().find(|(id, _)| id == file_id)
                 {
-                    *name = new_name.to_string();
+                    *name = new_name;
                 }
             }
             // Ordinary cwd follows a renamed ancestor by path, keeping its
@@ -3569,7 +3598,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 }
             }
         }
-        outcome
+        outcome.map(|_| ())
     }
 
     /// No: WorkDrive's rename and move have no documented overwrite, so
@@ -4904,6 +4933,117 @@ mod tests {
                 assert_eq!(p.pwd().await.unwrap(), "/");
                 server.abort();
             }
+        }
+    }
+
+    /// `/REAL` is the discovered id of a folder named Team. The root follows
+    /// the renamed id, whether the request used that id or the old name.
+    #[tokio::test]
+    async fn team_only_id_rename_updates_the_discovered_root_name() {
+        for source in ["/REAL", "/Team"] {
+            let app = axum::Router::new().fallback(axum::routing::any(
+                |method: axum::http::Method, uri: axum::http::Uri| async move {
+                    if method == axum::http::Method::PATCH
+                        && uri.path() == "/workdrive/api/v1/files/REAL"
+                    {
+                        return (axum::http::StatusCode::OK, r#"{"data":[]}"#);
+                    }
+                    match uri.path() {
+                        "/workdrive/api/v1/files/REAL/files" => {
+                            (axum::http::StatusCode::OK, r#"{"data":[]}"#)
+                        }
+                        _ => (axum::http::StatusCode::FORBIDDEN, "team ID is not a folder"),
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = ZohoWorkdriveProvider::new(config("com"));
+            p.endpoint_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("test-token".into());
+            p.connected = true;
+            p.current_folder_id = "TEAM".into();
+            p.folder_cache.insert("/".into(), "TEAM".into());
+            p.team_folders = vec![("REAL".into(), "Team".into())];
+            p.rename(source, "/new").await.unwrap();
+            assert_eq!(p.team_folders, vec![("REAL".into(), "new".into())]);
+            let paths: Vec<_> = p
+                .list("/")
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.path)
+                .collect();
+            assert_eq!(paths, vec!["/new".to_string()]);
+            assert!(matches!(
+                p.stat("/Team").await,
+                Err(ProviderError::NotFound(_))
+            ));
+            assert_eq!(p.resolve_path("/new").await.unwrap(), "REAL");
+            server.abort();
+        }
+    }
+
+    /// Trashing a discovered team folder removes it from the root. The trash
+    /// scan still queries that id.
+    #[tokio::test]
+    async fn deleted_team_folder_leaves_the_root_and_stays_in_the_trash_scan() {
+        use std::sync::{Arc, Mutex};
+        for source in ["/Team", "/REAL"] {
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let recorded = calls.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let recorded = recorded.clone();
+                    async move {
+                        recorded.lock().unwrap().push(uri.path().to_string());
+                        if method == axum::http::Method::PATCH
+                            && uri.path() == "/workdrive/api/v1/files/REAL"
+                        {
+                            return (axum::http::StatusCode::OK, r#"{"data":[]}"#);
+                        }
+                        match uri.path() {
+                            "/workdrive/api/v1/files/REAL/files"
+                            | "/workdrive/api/v1/teamfolders/REAL/trashedfiles" => {
+                                (axum::http::StatusCode::OK, r#"{"data":[]}"#)
+                            }
+                            _ => (axum::http::StatusCode::FORBIDDEN, "team ID is not a folder"),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = ZohoWorkdriveProvider::new(config("com"));
+            p.endpoint_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("test-token".into());
+            p.connected = true;
+            p.current_folder_id = "TEAM".into();
+            p.folder_cache.insert("/".into(), "TEAM".into());
+            p.team_folders = vec![("REAL".into(), "Team".into())];
+            p.delete(source).await.unwrap();
+            assert!(p.team_folders.is_empty());
+            assert_eq!(p.trashed_team_folders, vec![("REAL".into(), "Team".into())]);
+            assert!(p.list("/").await.unwrap().is_empty());
+            assert!(matches!(
+                p.stat("/Team").await,
+                Err(ProviderError::NotFound(_))
+            ));
+            assert!(matches!(
+                p.stat("/REAL").await,
+                Err(ProviderError::NotFound(_))
+            ));
+            p.list_trash().await.unwrap();
+            let seen = calls.lock().unwrap().clone();
+            assert!(
+                seen.iter()
+                    .any(|path| path == "/workdrive/api/v1/teamfolders/REAL/trashedfiles"),
+                "{seen:?}"
+            );
+            assert!(seen.iter().all(|path| !path.contains("/TEAM")), "{seen:?}");
+            server.abort();
         }
     }
 
