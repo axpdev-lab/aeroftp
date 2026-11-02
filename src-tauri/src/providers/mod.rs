@@ -660,7 +660,7 @@ mod error_body_excerpt_tests {
         // No short client read timeout: the excerpt's own total bound must win.
         let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
         let excerpt = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
+            std::time::Duration::from_secs(6),
             error_body_excerpt(resp, 200),
         )
         .await
@@ -686,7 +686,7 @@ mod error_body_excerpt_tests {
         let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
         let excerpt = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
+            std::time::Duration::from_secs(6),
             error_body_excerpt(resp, 200),
         )
         .await
