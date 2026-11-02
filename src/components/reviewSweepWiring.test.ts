@@ -69,13 +69,13 @@ describe('a failure that would otherwise read as success', () => {
         expect(clear).toHaveBeenCalledWith(null);
     });
 
-    it('discards matches started during reconnect after the new branch listing is installed', async () => {
+    it.each(['success', 'connect-failure'])('discards matches started during reconnect (%s)', async (outcome) => {
         const start = appRaw.indexOf('  const switchGitHubBranch =');
         const end = appRaw.indexOf('  const requestGitHubBatchCommitMessage', start);
         const { code } = await transformWithOxc(appRaw.slice(start, end), 'branch-switch.ts');
         let resume!: (value: unknown) => void;
         let matches: unknown = null;
-        let installed = false;
+        let installedFiles: unknown;
         const cancel = vi.fn();
         const context = {
             useCallback: (fn: unknown) => fn, cancelRemoteSearch: cancel,
@@ -84,8 +84,8 @@ describe('a failure that would otherwise read as success', () => {
             buildProviderParams: () => new Promise((resolve) => { resume = resolve; }),
             setLoading: vi.fn(), remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false },
             invoke: vi.fn(async (command: string) => command === 'provider_list_files' ? { files: ['NEW'], current_path: '/' } : undefined),
-            runConnect: vi.fn(), withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: vi.fn(),
-            setConnectionParams: vi.fn(), setRemoteFiles: () => { installed = true; }, setCurrentRemotePath: vi.fn(),
+            runConnect: outcome === 'connect-failure' ? vi.fn().mockRejectedValue(new Error('connect failed')) : vi.fn(), withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: vi.fn(),
+            setConnectionParams: vi.fn(), setRemoteFiles: (files: unknown) => { installedFiles = files; }, setCurrentRemotePath: vi.fn(),
             setSelectedRemoteFiles: vi.fn(), activeSessionId: null, currentRemotePath: '/',
             setSessions: vi.fn(), refreshGitHubContext: vi.fn(), notify: { success: vi.fn(), error: vi.fn() },
             t: (key: string) => key, isConnectCancelledError: () => false, isListingCancelled: () => false,
@@ -95,9 +95,14 @@ describe('a failure that would otherwise read as success', () => {
         matches = ['OLD BRANCH MATCH']; // A new search finishes while reconnect awaits.
         resume({ effectiveParams: {}, providerParams: {} });
         await switching;
-        expect(installed).toBe(true);
-        expect(context.notify.error).not.toHaveBeenCalled();
-        expect(cancel).toHaveBeenCalledTimes(2);
+        if (outcome === 'success') {
+            expect(installedFiles).toEqual(['NEW']);
+            expect(context.notify.error).not.toHaveBeenCalled();
+        } else {
+            expect(installedFiles).toBeUndefined();
+            expect(context.notify.error).toHaveBeenCalledOnce();
+        }
+        expect(cancel).toHaveBeenCalledTimes(outcome === 'success' ? 3 : 2);
         expect(matches).toBe(null);
     });
 

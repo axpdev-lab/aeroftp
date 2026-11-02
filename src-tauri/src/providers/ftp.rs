@@ -629,6 +629,24 @@ impl FtpProvider {
             || lower.contains("broken pipe")
     }
 
+    /// Only a dead control connection permits retrying navigation. Ordinary
+    /// server refusals (including 550) must not pass the broader data predicate.
+    async fn closed_control_failure(&self, err: &FtpError) -> bool {
+        match err {
+            FtpError::ConnectionError(io) => matches!(
+                io.kind(),
+                std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+                    | std::io::ErrorKind::NotConnected
+                    | std::io::ErrorKind::UnexpectedEof
+            ),
+            FtpError::UnexpectedResponse(reply) => reply.status == Status::NotAvailable,
+            FtpError::BadResponse => self.control_at_eof().await,
+            _ => false,
+        }
+    }
+
     async fn reconnect_after_data_error(
         &mut self,
         operation: &str,
@@ -1706,10 +1724,17 @@ impl StorageProvider for FtpProvider {
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        let path = stream
-            .pwd()
-            .await
+        let mut outcome = self.stream_mut()?.pwd().await;
+        if let Err(err) = &outcome {
+            if self.closed_control_failure(err).await {
+                let failure = ProviderError::ServerError(err.to_string());
+                let saved = self.current_path.clone();
+                self.reconnect_after_data_error("PWD", &saved, &failure)
+                    .await?;
+                outcome = self.stream_mut()?.pwd().await;
+            }
+        }
+        let path = outcome
             .map_err(|e| ProviderError::ServerError(e.to_string()))?
             .replace('\\', "/");
         self.current_path = path.clone();
@@ -1718,18 +1743,22 @@ impl StorageProvider for FtpProvider {
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        stream
-            .cwd(path)
-            .await
-            .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
-
-        self.current_path = stream
+        let mut outcome = self.stream_mut()?.cwd(path).await;
+        if let Err(err) = &outcome {
+            if self.closed_control_failure(err).await {
+                let failure = ProviderError::InvalidPath(err.to_string());
+                self.reconnect_after_data_error("CWD", path, &failure)
+                    .await?;
+                outcome = self.stream_mut()?.cwd(path).await;
+            }
+        }
+        outcome.map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+        self.current_path = self
+            .stream_mut()?
             .pwd()
             .await
             .unwrap_or_else(|_| path.to_string())
             .replace('\\', "/");
-
         Ok(())
     }
 
@@ -2219,8 +2248,13 @@ impl StorageProvider for FtpProvider {
                 Err(e) if dir == root || !super::listing_failure_is_the_folders(&e) => {
                     // The server may stand in the failed folder: relative commands
                     // after this would act there. A lost connection has none to move.
-                    match tokio::time::timeout(std::time::Duration::from_secs(5), self.cd(&saved))
-                        .await
+                    // Restore this stream within the existing bound. Public cd now
+                    // retries navigation and must not redial during error cleanup.
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        self.restore_cwd(&saved),
+                    )
+                    .await
                     {
                         Ok(Ok(())) => {}
                         Ok(Err(_)) => self.current_path = saved,
@@ -9869,6 +9903,84 @@ pub(crate) mod walk_scope_tests {
         let mut names: Vec<_> = entries.iter().map(|entry| entry.name.as_str()).collect();
         names.sort_unstable();
         assert_eq!(names, ["keep.txt", "x"]);
+    }
+
+    #[tokio::test]
+    async fn cd_reconnects_once_after_a_failed_find_and_keeps_its_relative_base() {
+        let (mut provider, log) = provider_on_tree_with_restore_mode(
+            &[
+                ("/", &["home/", "x/"]),
+                ("/home", &["sub/"]),
+                ("/home/sub", &[]),
+                ("/x", &["down/"]),
+            ],
+            FindFailureMode::CloseAfter421,
+        )
+        .await;
+        provider.cd("/home").await.unwrap();
+        assert!(provider.find("/x", "*").await.is_err());
+        assert!(provider.stream.is_some());
+        assert_eq!(provider.current_path, "/home");
+        let before = log.lock().unwrap().len();
+        provider
+            .cd("sub")
+            .await
+            .expect("retry relative CWD on a fresh connection");
+        assert_eq!(log.lock().unwrap().len(), before + 1, "one redial only");
+        assert_eq!(provider.current_path, "/home/sub");
+        assert_eq!(provider.pwd().await.unwrap(), "/home/sub");
+    }
+
+    #[tokio::test]
+    async fn pwd_reconnects_once_after_a_failed_find_and_restores_the_saved_directory() {
+        let (mut provider, log) = provider_on_tree_with_restore_mode(
+            &[("/", &["home/", "x/"]), ("/home", &[]), ("/x", &["down/"])],
+            FindFailureMode::CloseAfter421,
+        )
+        .await;
+        provider.cd("/home").await.unwrap();
+        assert!(provider.find("/x", "*").await.is_err());
+        assert!(provider.stream.is_some());
+        assert_eq!(provider.current_path, "/home");
+        let before = log.lock().unwrap().len();
+        assert_eq!(
+            provider.pwd().await.expect("retry PWD after reconnect"),
+            "/home"
+        );
+        assert_eq!(provider.current_path, "/home");
+        assert_eq!(log.lock().unwrap().len(), before + 1, "one redial only");
+    }
+
+    #[tokio::test]
+    async fn navigation_does_not_redial_for_a_normal_refusal_or_a_live_malformed_reply() {
+        let (mut provider, log) =
+            provider_on_tree_with_restore_mode(&[("/", &[])], FindFailureMode::CloseAfter421).await;
+        let before = log.lock().unwrap().len();
+        assert!(matches!(
+            provider.cd("/missing").await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert_eq!(log.lock().unwrap().len(), before);
+        assert!(
+            !provider
+                .closed_control_failure(&FtpError::BadResponse)
+                .await
+        );
+        assert!(
+            !provider
+                .closed_control_failure(&FtpError::UnexpectedResponse(suppaftp::types::Response {
+                    status: Status::FileUnavailable,
+                    body: b"550 Permission denied".to_vec(),
+                }))
+                .await
+        );
+        assert!(
+            !provider
+                .closed_control_failure(&FtpError::ConnectionError(std::io::Error::from(
+                    std::io::ErrorKind::TimedOut
+                )))
+                .await
+        );
     }
 
     #[tokio::test]

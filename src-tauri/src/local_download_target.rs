@@ -361,7 +361,16 @@ pub fn local_target_problems(
     {
         return Vec::new();
     }
-    let rules = destination_rules(destination);
+    // A linked root already refuses every target; probing it would write
+    // into the link target before returning that refusal.
+    let rules = if destination
+        .symlink_metadata()
+        .is_ok_and(|meta| meta.file_type().is_symlink())
+    {
+        strictest
+    } else {
+        destination_rules(destination)
+    };
     let mut problems = target_problems(rules, cfg!(windows), paths, files);
     for problem in links
         .into_iter()
@@ -413,7 +422,14 @@ fn ambiguous_local_target(first: &str, second: &str, local: &Path) -> LocalTarge
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static NAME_PROBE_ATTEMPTS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 fn destination_rules(destination: &Path) -> DestinationRules {
+    #[cfg(test)]
+    NAME_PROBE_ATTEMPTS.with(|count| count.set(count.get() + 1));
     // A new nested destination inherits the closest existing parent's volume.
     let parent = destination
         .ancestors()
@@ -655,6 +671,25 @@ mod tests {
         std::fs::remove_file(dest.path().join("sub")).unwrap();
         std::fs::create_dir(dest.path().join("sub")).unwrap();
         assert!(local_target_problems(dest.path(), &paths, &[]).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_destination_is_refused_without_attempting_a_name_probe() {
+        let dest = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let linked = dest.path().join("linked");
+        std::os::unix::fs::symlink(outside.path(), &linked).unwrap();
+        let before = NAME_PROBE_ATTEMPTS.with(|count| count.get());
+        let files = vec!["A.txt".to_string(), "a.txt".to_string()];
+        let problems = local_target_problems(&linked, &files, &files);
+        assert_eq!(
+            problems.len(),
+            2,
+            "both collision participants remain refused"
+        );
+        assert_eq!(NAME_PROBE_ATTEMPTS.with(|count| count.get()), before);
+        assert!(std::fs::read_dir(outside.path()).unwrap().next().is_none());
     }
 
     #[test]

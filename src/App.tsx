@@ -7562,6 +7562,9 @@ const App: React.FC = () => {
     try {
       const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
       await invoke('provider_disconnect').catch(() => {});
+      // Also close the failure path: reconnect/listing may never complete.
+      cancelRemoteSearch();
+      setRemoteSearchResults(null);
       await runConnect('provider_connect', providerParams);
 
       // One spinner over both attempts: the retry at the provider root is the
