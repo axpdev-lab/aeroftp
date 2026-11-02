@@ -511,9 +511,11 @@ impl PCloudProvider {
             .await
     }
 
-    /// Retry only a failed connection establishment: the application request
-    /// was not sent. Responses, timeouts and interrupted bodies are uncertain
-    /// writes and return immediately. Each attempt rebuilds the entire body.
+    /// Retry a failed connection, or an explicit HTTP 429, within the budget.
+    /// A 429 was refused, so the upload was not stored. Retry-After sets the
+    /// wait when present; otherwise the shared backoff applies. Any other
+    /// response, a timeout, or a failure after the body starts returns
+    /// immediately. Each attempt rebuilds the entire body.
     async fn send_upload_after_connect_failure<F, Fut>(
         mut build: F,
         config: &HttpRetryConfig,
@@ -529,6 +531,15 @@ impl PCloudProvider {
             // that helper, so it pays the same toll itself.
             super::tpslimit::maybe_acquire().await;
             match build().await?.send().await {
+                Ok(response)
+                    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
+                        && retries < config.max_retries =>
+                {
+                    let delay = super::http_retry::parse_retry_after(&response)
+                        .unwrap_or_else(|| super::http_retry::calculate_delay(retries, config));
+                    tokio::time::sleep(delay).await;
+                    retries += 1;
+                }
                 Ok(response) => return Ok(response),
                 Err(error)
                     if error.is_connect()
@@ -1255,9 +1266,11 @@ impl StorageProvider for PCloudProvider {
                 .unwrap_or_default()
         );
 
-        // Hold the original open file across connection-only retries. Reopening
-        // local_path could select a different file after a rename/replacement.
-        // A consumed multipart stream is rebuilt from this same open file.
+        // Hold the original open file across retries. Reopening local_path
+        // could select a different file after a rename/replacement. A 429 is
+        // an explicit refusal and is retried. Any other response, a timeout,
+        // or a failure after the body starts returns at once. A consumed
+        // multipart stream is rebuilt from this same open file.
         let source = &file;
         let reporter = &progress;
         let client = &self.client;
@@ -3276,7 +3289,7 @@ mod tests {
             atomic::{AtomicUsize, Ordering},
             Arc,
         };
-        for (status, delay) in [(503, false), (429, false), (200, false), (200, true)] {
+        for (status, delay) in [(503, false), (200, false), (200, true)] {
             let calls = Arc::new(AtomicUsize::new(0));
             let seen = calls.clone();
             let app = axum::Router::new().route(
@@ -3354,6 +3367,87 @@ mod tests {
         .await;
         assert!(response.is_err());
         assert_eq!(builds, 3);
+    }
+
+    /// HTTP 429 is a refusal, not an uncertain write. The executor no longer
+    /// repeats these uploads, so this loop keeps the bounded retry. A 5xx
+    /// stays on the single-attempt path covered above.
+    #[tokio::test]
+    async fn a_429_refusal_is_retried_and_then_the_budget_stops() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        async fn serve(
+            always_refuse: bool,
+        ) -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/upload",
+                axum::routing::post(move || {
+                    let n = seen.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        let status = if always_refuse || n == 0 {
+                            axum::http::StatusCode::TOO_MANY_REQUESTS
+                        } else {
+                            axum::http::StatusCode::OK
+                        };
+                        (status, [("retry-after", "0")], "refused")
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (format!("http://{addr}/upload"), calls, server)
+        }
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let fast = HttpRetryConfig {
+            max_retries: 2,
+            base_delay_ms: 1,
+            max_delay_ms: 1,
+            ..Default::default()
+        };
+
+        let (url, calls, server) = serve(false).await;
+        let mut builds = 0;
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                builds += 1;
+                let request = client.post(&url).body("payload");
+                async move { Ok(request) }
+            },
+            &fast,
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(builds, 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
+
+        let (url, calls, server) = serve(true).await;
+        let mut builds = 0;
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                builds += 1;
+                let request = client.post(&url).body("payload");
+                async move { Ok(request) }
+            },
+            &HttpRetryConfig {
+                max_retries: 1,
+                ..fast.clone()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 429);
+        assert_eq!(builds, 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
     }
 
     #[tokio::test]

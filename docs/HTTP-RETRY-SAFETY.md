@@ -36,7 +36,7 @@ this is not a promise that the failed write left the remote unchanged.
 | --- | --- | --- |
 | B2 | Explicit safe POSTs: buckets, names, versions, unfinished files, upload URL and download authorization | Shared wrapper does not replay create/copy POSTs. Existing B2-specific upload recovery stays separate: multipart replaces the same file ID/part number; small uploads use their existing fresh-pod policy. |
 | FileLu | Listing, info, download links and upload-endpoint lookup keep GET retries; the obsolete direct-link POST helper was removed by the versions integration | Create, clone/copy, version restore, version delete and other non-idempotent GET RPCs use refusals only; fixed-ID rename/move/set-folder and delete retain bounded recovery, while path-based rename/move do not replay 5xx. Multipart POST is not replayed after 5xx. Uploads use the native destination-folder field and preserve version history; there is no pre-delete or post-upload relocation. Fixed-ID delete retains existing bounded recovery. |
-| 4shared | Signed GETs | Folder POST and other writes do not replay 5xx. Single-stream uploads recover bounded non-timeout connection-establishment failures only. Each attempt streams a rewound clone of the same open file and acquires the shared request-rate permit. Responses, timeouts and failures after the body starts do not restart the upload. |
+| 4shared | Signed GETs | Folder POST and other writes do not replay 5xx. Single-stream uploads recover bounded non-timeout connection-establishment failures and an explicit HTTP 429. A 429 waits for Retry-After when present, otherwise the shared backoff. Each attempt streams a rewound clone of the same open file and acquires the shared request-rate permit. Other responses, timeouts and failures after the body starts do not restart the upload. |
 | Jottacloud | GET listing and reads | POST create, copy/move, restore/trash commands do not replay 5xx. |
 | kDrive | GET listing, metadata and downloads | POST mkdir, copy, share and restore/version commands do not replay 5xx. |
 | Koofr | GET listing, info, downloads | POST mkdir/share/restore and other writes do not replay 5xx. |
@@ -45,7 +45,7 @@ this is not a promise that the failed write left the remote unchanged.
 | Swift | GET/HEAD | PUT object/container, POST metadata and DELETE do not replay 5xx. One retry after explicit 401 and reauthentication remains. |
 | Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. All existing names, including empty files, are refused with NotSupported before allocation; there is no UUID replacement or delete/create fallback. A concurrent create refusal is AlreadyExists. One explicit 401 recovery remains. |
 | Twake | GET listing and reads | POST mkdir/copy/share/restore and PUT/PATCH do not replay 5xx. Explicit 401 recovery remains. |
-| pCloud | Read GETs, download links, checksums, revisions, trash listing | Mutating GET create/copy/upload-create/save, rename/move, links and trash restore/clear use refusals only. `createfolderifnotexists` retains retries because it conditionally returns the same folder. Single-stream uploads recover bounded connection-establishment failures only, rebuilding the multipart body from the same open file; responses, timeouts and malformed acknowledgements do not restart the upload. Each of those attempts acquires the shared request-rate permit before it is sent. |
+| pCloud | Read GETs, download links, checksums, revisions, trash listing | Mutating GET create/copy/upload-create/save, rename/move, links and trash restore/clear use refusals only. `createfolderifnotexists` retains retries because it conditionally returns the same folder. Single-stream uploads recover bounded connection-establishment failures and an explicit HTTP 429, rebuilding the multipart body from the same open file. A 429 waits for Retry-After when present, otherwise the shared backoff. Other responses, timeouts and malformed acknowledgements do not restart the upload. Each of those attempts acquires the shared request-rate permit before it is sent. |
 | GitLab | GET/HEAD incl. paginated reads | Commit POST and DELETE bypass the extra outer 5xx retry; other writes get the shared conservative default. |
 | Filen | GETs retain recovery; directory content, path resolution and file-version POST queries explicitly retain safe recovery | Shared POST writes do not replay 5xx. Its separate encrypted-chunk download retry is read-only. |
 | Zoho | GET listing | Shared writes get the conservative default. A provider-specific reconciliation loop must retain a single-attempt transport and establish whether the item exists before repeating a create. |
@@ -55,7 +55,8 @@ this is not a promise that the failed write left the remote unchanged.
 
 Local HTTP fixtures cover committed-create-plus-503 for FileLu and pCloud,
 one 503 for FileLu version restore and version delete, 4shared resending the
-already-open file after its path is replaced,
+already-open file after its path is replaced, a 429 refusal then success for
+pCloud and 4shared uploads,
 whole-body single-attempt multipart upload without a false completion,
 GitLab commit POST, Internxt session allocation after 503 and malformed 200,
 safe POST query recovery, explicit 429 write refusal, mutating GET refusal-only,
