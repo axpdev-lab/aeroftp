@@ -294,7 +294,7 @@ impl RemoteBackend for McpRemoteBackend {
         let remote = remote.to_string();
         let local = local.to_string();
         self.with_provider(move |p| {
-            Box::pin(async move { p.download(&remote, &local, None).await })
+            Box::pin(async move { p.download_checked(&remote, &local, None, None).await })
         })
         .await
     }

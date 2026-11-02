@@ -1360,6 +1360,8 @@
             "aiKeysCount": "Funguo za AI: {count}",
             "oauthTokensCount": "Tokeni za OAuth: {count}",
             "configEntriesCount": "Maingizo ya usanidi: {count}",
+            "verifyDownloadHash": "Kagua vipakuliwa kwa hash ya seva",
+            "verifyDownloadHashHelp": "Baada ya kupakua, faili linalinganishwa na hash inayochapishwa na seva, na halihifadhiwi ikiwa zinatofautiana. Pale hash haitumiki, kama kwenye FTP, ukaguzi huu haufanyiki.",
             "importExistingLabel": "Ikiwa wasifu tayari upo",
             "importExistingSkip": "Ruka",
             "importExistingOverwrite": "Andika juu",

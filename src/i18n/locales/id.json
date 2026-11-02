@@ -1360,6 +1360,8 @@
             "aiKeysCount": "{count} kunci AI",
             "oauthTokensCount": "{count} token OAuth",
             "configEntriesCount": "{count} entri konfigurasi",
+            "verifyDownloadHash": "Periksa unduhan dengan hash server",
+            "verifyDownloadHashHelp": "Setelah unduhan selesai, file dibandingkan dengan hash yang dipublikasikan server dan tidak disimpan jika berbeda. Jika hash tidak digunakan, seperti pada FTP, pemeriksaan ini tidak dijalankan.",
             "importExistingLabel": "Jika profil sudah ada",
             "importExistingSkip": "Lewati",
             "importExistingOverwrite": "Timpa",

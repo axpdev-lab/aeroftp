@@ -123,6 +123,7 @@ export interface AppSettings {
    *  user can prune folder trees, reorder, then press Start (or Start all).
    *  Wired by TQ-4; APPENDIX-TRANSFER-QUEUE locked decision 1. */
   autoStartTransfers: boolean;
+  verifyDownloadHash: boolean;
   /** Glyph used to mark favourited servers in My Servers and the CLI profiles
    *  table. 'star' = ★ (default), 'heart' = ♥ (red in the GUI). Persisted in the
    *  shared `app_settings` vault key so the CLI renders the same marker (#270). */
@@ -170,6 +171,7 @@ const DEFAULTS: AppSettings = {
   introHubIconSize: DEFAULT_INTRO_HUB_ICON_SIZE,
   discoverHealthCheck: true,
   autoStartTransfers: true,
+  verifyDownloadHash: true,
   favoriteMarker: 'star',
   dateFormat: 'localized',
 };
@@ -208,6 +210,7 @@ export const useSettings = () => {
   const [introHubIconSize, setIntroHubIconSize] = useState<number>(DEFAULTS.introHubIconSize);
   const [discoverHealthCheck, setDiscoverHealthCheck] = useState(DEFAULTS.discoverHealthCheck);
   const [autoStartTransfers, setAutoStartTransfers] = useState(DEFAULTS.autoStartTransfers);
+  const [verifyDownloadHash, setVerifyDownloadHash] = useState(DEFAULTS.verifyDownloadHash);
   const [favoriteMarker, setFavoriteMarker] = useState<AppSettings['favoriteMarker']>(DEFAULTS.favoriteMarker);
   const [dateFormat, setDateFormat] = useState<AppSettings['dateFormat']>(DEFAULTS.dateFormat);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
@@ -259,6 +262,7 @@ export const useSettings = () => {
     }
     if (typeof parsed.discoverHealthCheck === 'boolean') setDiscoverHealthCheck(parsed.discoverHealthCheck);
     if (typeof parsed.autoStartTransfers === 'boolean') setAutoStartTransfers(parsed.autoStartTransfers);
+    if (typeof parsed.verifyDownloadHash === 'boolean') setVerifyDownloadHash(parsed.verifyDownloadHash);
     if (parsed.favoriteMarker === 'star' || parsed.favoriteMarker === 'heart') {
       setFavoriteMarker(parsed.favoriteMarker);
     }
@@ -368,6 +372,7 @@ export const useSettings = () => {
     introHubIconSize,
     discoverHealthCheck,
     autoStartTransfers,
+    verifyDownloadHash,
     favoriteMarker,
     dateFormat,
     showSettingsPanel,

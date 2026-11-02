@@ -1360,6 +1360,8 @@
             "aiKeysCount": "AI ključevi: {count}",
             "oauthTokensCount": "OAuth tokeni: {count}",
             "configEntriesCount": "Unosi konfiguracije: {count}",
+            "verifyDownloadHash": "Provjeri preuzimanja prema hashu poslužitelja",
+            "verifyDownloadHashHelp": "Nakon preuzimanja datoteka se uspoređuje s hashom koji objavljuje poslužitelj i ne zadržava se ako se razlikuju. Gdje se hash ne koristi, kao kod FTP-a, ova se provjera ne izvodi.",
             "importExistingLabel": "Ako profil već postoji",
             "importExistingSkip": "Preskoči",
             "importExistingOverwrite": "Prepiši",

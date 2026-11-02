@@ -1360,6 +1360,8 @@
             "aiKeysCount": "AI raktai: {count}",
             "oauthTokensCount": "OAuth prieigos raktai: {count}",
             "configEntriesCount": "Konfigūracijos įrašai: {count}",
+            "verifyDownloadHash": "Tikrinti atsisiuntimus pagal serverio maišą",
+            "verifyDownloadHashHelp": "Po atsisiuntimo failas palyginamas su serverio paskelbtu maišos kodu ir nepaliekamas, jei jie skiriasi. Kur maišos kodas nenaudojamas, kaip FTP atveju, ši patikra nevykdoma.",
             "importExistingLabel": "Jei profilis jau egzistuoja",
             "importExistingSkip": "Praleisti",
             "importExistingOverwrite": "Perrašyti",

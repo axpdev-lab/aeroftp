@@ -3373,7 +3373,12 @@ impl CloudService {
 
                     self.revoke_cloud_receipt(comparison);
                     provider
-                        .download(&remote_info.path, &local_path.to_string_lossy(), None)
+                        .download_checked(
+                            &remote_info.path,
+                            &local_path.to_string_lossy(),
+                            (remote_info.size > 0).then_some(remote_info.size),
+                            None,
+                        )
                         .await
                         .map_err(|e| format!("Download failed: {}", e))?;
                     // After download, preserve remote mtime on local file
@@ -3386,11 +3391,13 @@ impl CloudService {
             SyncAction::KeepBoth if !comparison.is_dir => {
                 let local_path = config.local_folder.join(local_rel);
                 // Rename local file with Dropbox-style conflict suffix to preserve both versions
+                let mut set_aside = None;
                 if local_path.exists() {
                     let conflict_path = local_path.with_file_name(conflict_rename(&local_path));
                     std::fs::rename(&local_path, &conflict_path).map_err(|e| {
                         format!("Failed to preserve local copy before download: {}", e)
                     })?;
+                    set_aside = Some(conflict_path);
                 }
                 // Download remote version to original path
                 if let Some(remote_info) = &comparison.remote_info {
@@ -3404,10 +3411,36 @@ impl CloudService {
                         }
                     }
                     self.revoke_cloud_receipt(comparison);
-                    provider
-                        .download(&remote_info.path, &local_path.to_string_lossy(), None)
-                        .await
-                        .map_err(|e| format!("KeepBoth download failed: {}", e))?;
+                    let downloaded = provider
+                        .download_checked(
+                            &remote_info.path,
+                            &local_path.to_string_lossy(),
+                            (remote_info.size > 0).then_some(remote_info.size),
+                            None,
+                        )
+                        .await;
+                    if let Err(e) = downloaded {
+                        // The path must not read as a local deletion next cycle,
+                        // which a two-way sync would carry to the remote copy. A
+                        // file that appeared there meanwhile is not replaced.
+                        let Some(copy) = &set_aside else {
+                            return Err(format!("KeepBoth download failed: {}", e));
+                        };
+                        let restored = if local_path.exists() {
+                            Err("the path holds a file again".to_string())
+                        } else {
+                            std::fs::rename(copy, &local_path).map_err(|why| why.to_string())
+                        };
+                        return Err(match restored {
+                            Ok(()) => format!("KeepBoth download failed: {}", e),
+                            Err(why) => format!(
+                                "KeepBoth download failed: {}; the local copy stays at {} ({})",
+                                e,
+                                copy.display(),
+                                why
+                            ),
+                        });
+                    }
                     // The original path now holds the remote copy, as after a
                     // Download: it keeps the remote time, and the baseline
                     // records it (see `baseline_entry_for`).

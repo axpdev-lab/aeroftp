@@ -1287,6 +1287,8 @@ pub struct SftpProvider {
     multi_thread_streams: usize,
     /// What the last `download` read, see `DownloadTime`.
     download_time: super::multi_thread::DownloadTime,
+    /// Whether the host is still asked for a hash on this session.
+    host_hash: HostHashMemory,
     /// File size at/above which intra-file parallelism engages.
     multi_thread_cutoff: u64,
     /// Per-provider read-ahead selection. The legacy environment is consulted
@@ -1345,6 +1347,7 @@ impl SftpProvider {
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
             connection_spec: None,
             download_time: Default::default(),
+            host_hash: HostHashMemory::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
@@ -1545,6 +1548,12 @@ impl SftpProvider {
             report_download_fallback(
                 "SFTP: the source changed or could not be verified after the parallel transfer",
             );
+            return Ok(false);
+        }
+        if let Err(differs) = temp.check_content(Path::new(local_path)).await {
+            temp.discard();
+            tracing::warn!("SFTP intra-file {}: {}", remote_path, differs);
+            report_download_fallback(super::content_check::ASSEMBLED_DIFFERS);
             return Ok(false);
         }
         match temp.publish(Path::new(local_path)).await {
@@ -2371,9 +2380,10 @@ impl StorageProvider for SftpProvider {
         // The posix-rename answer and its session belong to the connection
         // that was asked: after a dropped transport and a new dial it would be
         // a dead session, and every replace would fail on it. The same holds
-        // for the read-ahead's session.
+        // for the read-ahead's session, and for what the host answered on a hash.
         self.posix_rename = PosixRenameSupport::Unasked;
         *self.readahead_session.get_mut() = ReadaheadSupport::Unasked;
+        self.host_hash = HostHashMemory::default();
         // A reconnect over a connection still held (the GUI's silent
         // reconnect after a stalled session) closes it first instead of
         // overwriting the handle.
@@ -2819,6 +2829,34 @@ impl StorageProvider for SftpProvider {
 
     fn expect_moved_source(&mut self) {
         self.download_time.expect_moved();
+    }
+
+    async fn content_digest(
+        &mut self,
+        remote_path: &str,
+        size_hint: Option<u64>,
+    ) -> Option<super::content_check::ContentDigest> {
+        use super::content_check::{reading_limit, worth_asking, ContentDigest};
+        if !self.host_hash.worth_asking() || !worth_asking(ProviderType::Sftp) {
+            return None;
+        }
+        // A transfer worker dials on its first file, and this comes before it.
+        self.ensure_connected().await.ok()?;
+        // The host reads the whole file, so its limit needs the size.
+        let size = match size_hint {
+            Some(size) => Some(size),
+            None => self.size(remote_path).await.ok(),
+        };
+        let answer = tokio::time::timeout(reading_limit(size), self.checksum(remote_path)).await;
+        let Ok(answer) = answer else {
+            self.host_hash.stalled();
+            return None;
+        };
+        let digest = answer
+            .ok()
+            .and_then(|digests| ContentDigest::strongest(&digests));
+        self.host_hash.answered(digest.is_some());
+        digest
     }
 
     async fn download(
@@ -5704,6 +5742,12 @@ async fn sftp_readahead_download(
         }
     }
 
+    // The guard removes the staged file, and the old file keeps its name.
+    super::content_check::before_publish(&guard.path, Path::new(local_path))
+        .await
+        .map_err(|why| {
+            ProviderError::TransferFailed(format!("the download was not kept: {why}"))
+        })?;
     tokio::fs::rename(&guard.path, local_path)
         .await
         .map_err(|e| {
@@ -6337,8 +6381,59 @@ async fn sftp_read_one_range(
     }
 }
 
+/// What this session learned about asking the host for a hash. `checksum` shows
+/// a restricted shell, a missing `sha256sum`, one unreadable file and a failed
+/// channel alike, as no digest: only several in a row say it is the host. A wait
+/// that ran out stops the asking at once, so it is paid once and not per file.
+#[derive(Debug, Default)]
+struct HostHashMemory {
+    misses_in_a_row: u8,
+    stalled: bool,
+}
+
+impl HostHashMemory {
+    const MISSES_THAT_MEAN_THE_HOST: u8 = 3;
+
+    fn worth_asking(&self) -> bool {
+        !self.stalled && self.misses_in_a_row < Self::MISSES_THAT_MEAN_THE_HOST
+    }
+
+    fn answered(&mut self, with_a_digest: bool) {
+        self.misses_in_a_row = if with_a_digest {
+            0
+        } else {
+            self.misses_in_a_row.saturating_add(1)
+        };
+    }
+
+    fn stalled(&mut self) {
+        self.stalled = true;
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn one_file_without_a_digest_does_not_end_the_check_for_the_session() {
+        let mut memory = super::HostHashMemory::default();
+        memory.answered(false);
+        memory.answered(false);
+        assert!(memory.worth_asking());
+        memory.answered(true);
+        memory.answered(false);
+        memory.answered(false);
+        assert!(memory.worth_asking(), "a digest starts the count over");
+        memory.answered(false);
+        assert!(!memory.worth_asking(), "three in a row: it is the host");
+    }
+
+    #[test]
+    fn a_wait_that_ran_out_is_paid_once() {
+        let mut memory = super::HostHashMemory::default();
+        memory.stalled();
+        assert!(!memory.worth_asking());
+    }
+
     use super::*;
     use tokio::io::AsyncWriteExt;
 

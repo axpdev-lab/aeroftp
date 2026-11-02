@@ -5657,6 +5657,12 @@ async fn upload_folder(
     })
 }
 
+/// The GUI's setting for comparing finished downloads with the server's hash.
+#[tauri::command]
+async fn set_download_content_check(enabled: bool) {
+    providers::content_check::set_enabled(enabled);
+}
+
 #[tauri::command]
 async fn cancel_transfer(
     state: State<'_, AppState>,
@@ -14661,7 +14667,7 @@ async fn restore_sync_snapshot_cmd(
                 .as_mut()
                 .ok_or_else(|| "Not connected to any provider".to_string())?;
             provider
-                .download(&remote_file, &local_file.to_string_lossy(), None)
+                .download_checked(&remote_file, &local_file.to_string_lossy(), None, None)
                 .await
                 .map_err(|err| format!("Download failed: {}", err))
         } else {
@@ -21428,6 +21434,7 @@ pub fn run() {
             download_folder,
             upload_folder,
             cancel_transfer,
+            set_download_content_check,
             stop_starting_transfers,
             reset_cancel_flag,
             set_speed_limit,

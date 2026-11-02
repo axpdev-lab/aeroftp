@@ -385,6 +385,7 @@ impl SegmentedDownloadError {
                 if *reason == SOURCE_SIZE_CHANGED
                     || *reason == SOURCE_NOT_VERIFIED
                     || *reason == WINDOW_REFUSED
+                    || *reason == crate::providers::content_check::ASSEMBLED_DIFFERS
                     || *reason == PinRefusal::SourceChanged(String::new()).notice()
                     || *reason == PinRefusal::PinUnsupported.notice()
         )
@@ -423,17 +424,25 @@ pub async fn run_provider_segmented_download(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     cancel_token: CancellationToken,
 ) -> Result<(), SegmentedDownloadError> {
-    run_provider_segmented_download_with(
-        crate::transfer_dag::governor::global(),
-        primary,
-        remote_path,
-        local_path,
-        file_size,
-        segments,
-        on_progress,
-        cancel_token,
-    )
-    .await
+    // A publish refused for its content reports like any other: the single
+    // stream that takes over is checked in its turn.
+    let expected = tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
+        expected = primary.content_digest(remote_path, Some(file_size)) => expected,
+    };
+    crate::providers::content_check::ContentCheck::expecting(expected, local_path)
+        .scope(run_provider_segmented_download_with(
+            crate::transfer_dag::governor::global(),
+            primary,
+            remote_path,
+            local_path,
+            file_size,
+            segments,
+            on_progress,
+            cancel_token,
+        ))
+        .await
 }
 
 /// [`run_provider_segmented_download`] charging an explicit governor.
@@ -785,13 +794,33 @@ async fn run_provider_segmented_windows(
                         SOURCE_NOT_VERIFIED,
                     ))
                 }
-                None => match temp.publish(Path::new(local_path)).await {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(SegmentedDownloadError::unavailable(
-                        format!("segmented download: finalize failed: {}", e),
-                        "the segmented temporary could not be published",
-                    )),
-                },
+                None => {
+                    // It reads the whole file: a Stop does not wait for it, and
+                    // nothing is published after one.
+                    let checked = tokio::select! {
+                        biased;
+                        _ = cancel_token.cancelled() => None,
+                        checked = temp.check_content(Path::new(local_path)) => Some(checked),
+                    };
+                    let Some(checked) = checked else {
+                        temp.discard();
+                        return Err(SegmentedDownloadError::Cancelled);
+                    };
+                    if let Err(differs) = checked {
+                        temp.discard();
+                        return Err(SegmentedDownloadError::unavailable(
+                            format!("segmented download: {differs}"),
+                            crate::providers::content_check::ASSEMBLED_DIFFERS,
+                        ));
+                    }
+                    match temp.publish(Path::new(local_path)).await {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(SegmentedDownloadError::unavailable(
+                            format!("segmented download: finalize failed: {}", e),
+                            "the segmented temporary could not be published",
+                        )),
+                    }
+                }
             }
         }
         Ok(SegmentedRun::ServerIgnoredRange) => Err(SegmentedDownloadError::unavailable(
@@ -1465,7 +1494,8 @@ impl ProviderDownloadExecutor {
         let effective_timeout = self
             .runtime_settings
             .timeout_seconds
-            .max(size_based_secs + self.runtime_settings.timeout_seconds);
+            .max(size_based_secs + self.runtime_settings.timeout_seconds)
+            + crate::providers::content_check::allowance(file_size).as_secs();
 
         if *source_refused {
             provider.expect_moved_source();
@@ -1477,9 +1507,9 @@ impl ProviderDownloadExecutor {
                 attempt,
                 remote_path
             );
-            provider.resume_download(&remote_path, &local_path, partial_offset, progress_cb)
+            provider.resume_download_checked(&remote_path, &local_path, partial_offset, progress_cb)
         } else {
-            provider.download_with_size_hint(
+            provider.download_checked(
                 &remote_path,
                 &local_path,
                 (file_size > 0).then_some(file_size),
@@ -2645,6 +2675,7 @@ mod tests {
         assert!(refused(PinRefusal::SourceChanged(String::new()).notice()).refused_by_the_source());
         assert!(refused(PinRefusal::PinUnsupported.notice()).refused_by_the_source());
         assert!(refused(WINDOW_REFUSED).refused_by_the_source());
+        assert!(refused(crate::providers::content_check::ASSEMBLED_DIFFERS).refused_by_the_source());
         assert!(!refused("a segmented range transfer failed").refused_by_the_source());
         assert!(!SegmentedDownloadError::Cancelled.refused_by_the_source());
     }

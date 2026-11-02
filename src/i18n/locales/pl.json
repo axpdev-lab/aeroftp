@@ -1360,6 +1360,8 @@
             "aiKeysCount": "Klucze AI: {count}",
             "oauthTokensCount": "Tokeny OAuth: {count}",
             "configEntriesCount": "Wpisy konfiguracji: {count}",
+            "verifyDownloadHash": "Sprawdzaj pobrane pliki z hashem serwera",
+            "verifyDownloadHashHelp": "Po pobraniu plik jest porównywany z hashem publikowanym przez serwer i nie jest zachowywany, jeśli się różnią. Tam, gdzie hash nie jest używany, jak w FTP, ta kontrola nie jest wykonywana.",
             "importExistingLabel": "Jeśli profil już istnieje",
             "importExistingSkip": "Pomiń",
             "importExistingOverwrite": "Nadpisz",

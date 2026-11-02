@@ -122,7 +122,9 @@ pub async fn copy_via_download_upload(
     let temp_str = temp_path.to_string_lossy().into_owned();
 
     let result = async {
-        provider.download(from, &temp_str, None).await?;
+        provider
+            .download_checked(from, &temp_str, None, None)
+            .await?;
         provider.upload(&temp_str, to, None).await?;
         Ok::<(), ProviderError>(())
     }
