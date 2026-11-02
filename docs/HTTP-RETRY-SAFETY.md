@@ -71,11 +71,11 @@ policy, not the server's internal behavior. Internxt definite 4xx refusals retai
 the sanitized reason; 5xx and unreadable successful allocations retain the
 uncertain-outcome message.
 
-FileLu setting/share mutations require an explicit API status200 even when HTTP
-is200; missing status or a refused mutation is an error, not a reported change.
+FileLu setting/share mutations require an explicit API status 200 even when HTTP
+is 200; missing status or a refused mutation is an error, not a reported change.
 
 Internxt's [official SDK replaceFile contract](https://github.com/internxt/sdk/blob/29ad01efb9d14e32edf7a3f5c06badbab10986ea/src/drive/storage/index.ts#L875-L884)
-uses PUT/files/{uuid} with fileId and size. The
+uses PUT /files/{uuid} with fileId and size. The
 [desktop client](https://github.com/internxt/drive-desktop/blob/ee8c7b3d75688337cb018249c90c4ccf49205e88/src/infra/drive-server-wip/services/files.service.ts#L54-L83)
 uses the same pointer update after storing content. This preserves the existing
 name until publication, with no destructive fallback on a refused or uncertain
