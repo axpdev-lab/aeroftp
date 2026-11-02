@@ -47,6 +47,8 @@ interface CompareTabContentProps {
     scanProgressId?: string;
     /** The last compare was stopped by the user. */
     stopped?: boolean;
+    /** Why the last compare was refused. */
+    refused?: string;
     /** Start the recursive compare; absent when there is no pair to compare. */
     onStartCompare?: () => void;
     /** Stop the recursive compare that is running. */
@@ -250,6 +252,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
     loading,
     scanProgressId,
     stopped,
+    refused,
     onStartCompare,
     onStopCompare,
     leftLabel,
@@ -322,6 +325,7 @@ export const CompareTabContent: React.FC<CompareTabContentProps> = ({
                     loading={!!loading}
                     scanProgressId={scanProgressId}
                     stopped={stopped}
+                    refused={refused}
                     leftLabel={leftLabel}
                     rightLabel={rightLabel}
                     onStart={onStartCompare}

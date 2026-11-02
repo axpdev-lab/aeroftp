@@ -444,7 +444,8 @@ export class GuiController {
                 if (intent === 'show_view') return state.view === args.view;
                 if (intent === 'aerosync_open') return !!state.aerosync?.open;
                 if (intent === 'aerosync_close') return !state.aerosync?.open;
-                if (intent === 'aerosync_compare') return !!state.aerosync?.open && !state.aerosync.scanning && state.aerosync.entries !== null;
+                // A refused scan leaves no result: it ends the wait too, and reads as a failure below.
+                if (intent === 'aerosync_compare') return !!state.aerosync?.open && !state.aerosync.scanning && (state.aerosync.entries !== null || state.aerosync.scan_failed);
                 if (intent === 'disconnect') return !state.connected;
                 if (intent === 'settings_open') return state.settings?.open === args.area;
                 if (intent === 'tools_open') return !!state.tools?.open && (args.tool === undefined || state.tools.visible_panels.includes(args.tool as ToolPanel));
