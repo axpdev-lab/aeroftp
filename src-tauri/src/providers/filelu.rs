@@ -4930,19 +4930,19 @@ mod tests {
 
         let outcome = provider.download("/d/f.txt", local, None).await;
         assert!(
-            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404")),
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404") && m.contains("gone")),
             "{outcome:?}"
         );
         let outcome = provider.download_version("/d/f.txt", "V2", local).await;
         assert!(
-            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("403")),
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("403") && m.contains("denied")),
             "{outcome:?}"
         );
         assert!(!out.exists());
 
         let outcome = provider.download_to_bytes("/d/f.txt").await;
         assert!(
-            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404")),
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404") && m.contains("gone")),
             "{outcome:?}"
         );
     }
