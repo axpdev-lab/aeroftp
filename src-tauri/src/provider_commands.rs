@@ -2740,8 +2740,13 @@ async fn run_dag_download_leaf(
                 Some(p) => {
                     let result = {
                         let dl = async {
-                            p.download_checked(&remote_path, &local_path, None, progress_cb)
-                                .await
+                            p.download_checked(
+                                &remote_path,
+                                &local_path,
+                                (file_size > 0).then_some(file_size),
+                                progress_cb,
+                            )
+                            .await
                         };
                         match &cancel_token {
                             Some(tok) => tokio::select! {
@@ -3837,7 +3842,12 @@ pub async fn provider_download_file(
                     .await
             } else {
                 provider
-                    .download_checked(&remote_path, &local_path, None, progress_cb)
+                    .download_checked(
+                        &remote_path,
+                        &local_path,
+                        (file_size > 0).then_some(file_size),
+                        progress_cb,
+                    )
                     .await
             }
         };

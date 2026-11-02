@@ -502,11 +502,8 @@ impl FtpManager {
             Err(_) => {
                 let cwd = self.current_path.clone();
                 self.reconnect().await?;
+                self.change_dir(&cwd).await?;
                 let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
-                stream
-                    .cwd(&cwd)
-                    .await
-                    .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
                 stream
                     .transfer_type(FileType::Binary)
                     .await
