@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "{count} 件の OAuth トークン",
             "configEntriesCount": "{count} 件の設定エントリ",
             "verifyDownloadHash": "ダウンロードをサーバーのハッシュで検証する",
-            "verifyDownloadHashHelp": "ダウンロード後、サーバーが公開しているハッシュとファイルを照合し、一致しない場合はファイルを保持しません。FTPのようにハッシュを使用しない場合、ファイルはサイズのみで確認します。",
+            "verifyDownloadHashHelp": "ダウンロード後、サーバーが公開しているハッシュとファイルを照合し、一致しない場合はファイルを保持しません。FTPのようにハッシュを使用しない場合、この確認は実行されません。",
             "importExistingLabel": "プロファイルが既に存在する場合",
             "importExistingSkip": "スキップ",
             "importExistingOverwrite": "上書き",

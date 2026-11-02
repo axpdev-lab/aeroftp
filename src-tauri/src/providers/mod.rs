@@ -1322,11 +1322,24 @@ pub trait StorageProvider: Send + Sync {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         let expected = self.content_digest(remote_path, None).await;
-        let check = content_check::ContentCheck::expecting(expected, local_path);
+        let (first, rest) = multi_thread::share_progress(on_progress);
+        let check = content_check::ContentCheck::expecting(expected.clone(), local_path);
         let result = check
-            .scope(self.resume_download(remote_path, local_path, offset, on_progress))
+            .scope(self.resume_download(remote_path, local_path, offset, first))
             .await;
-        check.settle(result).await
+        let result = check.settle(result).await;
+        if !check.differs() {
+            return result;
+        }
+        // A digest that moved is a replacement, as in `download_checked`: the part
+        // is gone with the mismatch, and the new object is read from its start.
+        let fresh = self.content_digest(remote_path, None).await;
+        if fresh.is_none() || fresh == expected {
+            return result;
+        }
+        self.expect_moved_source();
+        self.download_checked(remote_path, local_path, None, rest)
+            .await
     }
 
     /// The modification time for the file the last `download` wrote, when a

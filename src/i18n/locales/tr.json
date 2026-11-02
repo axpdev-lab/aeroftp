@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "{count} OAuth belirteci",
             "configEntriesCount": "{count} yapılandırma girdisi",
             "verifyDownloadHash": "İndirmeleri sunucunun karmasıyla doğrula",
-            "verifyDownloadHashHelp": "İndirmeden sonra dosya, sunucunun yayımladığı karma değeriyle karşılaştırılır ve farklıysa saklanmaz. Karma değeri kullanılmayan yerlerde, FTP'de olduğu gibi, dosyalar yalnızca boyutuna göre denetlenir.",
+            "verifyDownloadHashHelp": "İndirmeden sonra dosya, sunucunun yayımladığı karma değeriyle karşılaştırılır ve farklıysa saklanmaz. Karma değeri kullanılmayan yerlerde, FTP'de olduğu gibi, bu denetim çalışmaz.",
             "importExistingLabel": "Profil zaten varsa",
             "importExistingSkip": "Atla",
             "importExistingOverwrite": "Üzerine yaz",

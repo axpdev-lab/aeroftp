@@ -291,8 +291,9 @@ fn response_declares_opaque_etag(headers: &reqwest::header::HeaderMap) -> bool {
         .get("x-oss-object-type")
         .and_then(|v| v.to_str().ok())
         .is_some_and(|v| !v.eq_ignore_ascii_case("Normal"));
+    // Tencent COS: the ETag of an SSE-COS object is not its MD5, AES256 included.
     kms || not_aes256("x-oss-server-side-encryption")
-        || not_aes256("x-cos-server-side-encryption")
+        || headers.contains_key("x-cos-server-side-encryption")
         || oss_object_is_not_plain
         || headers.contains_key("x-amz-server-side-encryption-customer-algorithm")
         || headers.contains_key("x-oss-server-side-encryption-customer-algorithm")
@@ -12951,6 +12952,30 @@ mod tests {
         );
     }
 
+    /// A resumed download whose tag moved reads the new object from its start, as
+    /// a fresh one does; with a tag that stayed, the file fails.
+    #[tokio::test]
+    async fn a_resume_against_a_replacement_gets_one_more_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x");
+        let out_text = out.to_str().unwrap();
+        let mut provider = provider_serving_content(b"hullo", &[HELLO_MD5, HULLO_MD5]).await;
+        provider
+            .resume_download_checked("/x", out_text, 0, None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), b"hullo");
+
+        std::fs::remove_file(&out).unwrap();
+        let mut provider = provider_serving_content(b"hullo", &[HELLO_MD5]).await;
+        let error = provider
+            .resume_download_checked("/x", out_text, 0, None)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(HELLO_MD5), "{error}");
+    }
+
     /// A tag that keeps moving is a file being written: one copy, unchecked.
     #[tokio::test]
     async fn a_source_that_keeps_changing_is_downloaded_unchecked() {
@@ -12985,6 +13010,7 @@ mod tests {
         };
         assert!(with("x-oss-server-side-encryption", "KMS"));
         assert!(with("x-cos-server-side-encryption", "cos/kms"));
+        assert!(with("x-cos-server-side-encryption", "AES256"));
         assert!(with("x-oss-object-type", "Appendable"));
         assert!(with(
             "x-cos-server-side-encryption-customer-algorithm",

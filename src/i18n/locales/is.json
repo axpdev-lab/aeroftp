@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "OAuth-tókar: {count}",
             "configEntriesCount": "Stillingafærslur: {count}",
             "verifyDownloadHash": "Athuga niðurhal með hakki þjónsins",
-            "verifyDownloadHashHelp": "Eftir niðurhal er skráin borin saman við hakkið sem þjónninn birtir og hún ekki geymd ef þau eru ólík. Þar sem hakk er ekki notað, eins og í FTP, eru skrár aðeins athugaðar eftir stærð.",
+            "verifyDownloadHashHelp": "Eftir niðurhal er skráin borin saman við hakkið sem þjónninn birtir og hún ekki geymd ef þau eru ólík. Þar sem hakk er ekki notað, eins og í FTP, er þessi athugun ekki framkvæmd.",
             "importExistingLabel": "Ef prófíll er þegar til",
             "importExistingSkip": "Sleppa",
             "importExistingOverwrite": "Skrifa yfir",

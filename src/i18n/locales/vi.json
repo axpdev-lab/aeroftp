@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "{count} token OAuth",
             "configEntriesCount": "{count} mục cấu hình",
             "verifyDownloadHash": "Kiểm tra tệp tải về bằng hash của máy chủ",
-            "verifyDownloadHashHelp": "Sau khi tải về, tệp được so sánh với hash mà máy chủ công bố và sẽ không được giữ lại nếu khác nhau. Khi không dùng hash, như với FTP, tệp chỉ được kiểm tra theo kích thước.",
+            "verifyDownloadHashHelp": "Sau khi tải về, tệp được so sánh với hash mà máy chủ công bố và sẽ không được giữ lại nếu khác nhau. Khi không dùng hash, như với FTP, bước kiểm tra này không chạy.",
             "importExistingLabel": "Nếu hồ sơ đã tồn tại",
             "importExistingSkip": "Bỏ qua",
             "importExistingOverwrite": "Ghi đè",

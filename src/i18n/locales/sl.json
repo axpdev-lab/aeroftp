@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "Žetoni OAuth: {count}",
             "configEntriesCount": "Vnosi konfiguracije: {count}",
             "verifyDownloadHash": "Preveri prenose z zgoščeno vrednostjo strežnika",
-            "verifyDownloadHashHelp": "Po prenosu se datoteka primerja z zgoščeno vrednostjo, ki jo objavi strežnik, in se ne obdrži, če se razlikujeta. Kjer se zgoščena vrednost ne uporablja, kot pri FTP, se datoteke preverjajo samo po velikosti.",
+            "verifyDownloadHashHelp": "Po prenosu se datoteka primerja z zgoščeno vrednostjo, ki jo objavi strežnik, in se ne obdrži, če se razlikujeta. Kjer se zgoščena vrednost ne uporablja, kot pri FTP, se to preverjanje ne izvede.",
             "importExistingLabel": "Če profil že obstaja",
             "importExistingSkip": "Preskoči",
             "importExistingOverwrite": "Prepiši",

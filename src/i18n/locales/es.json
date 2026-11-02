@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "Tokens OAuth: {count}",
             "configEntriesCount": "Entradas de configuración: {count}",
             "verifyDownloadHash": "Comprobar las descargas con el hash del servidor",
-            "verifyDownloadHashHelp": "Tras una descarga, se compara el archivo con el hash que publica el servidor y no se conserva si difieren. Cuando no se usa hash, como en FTP, los archivos solo se comprueban por tamaño.",
+            "verifyDownloadHashHelp": "Tras una descarga, se compara el archivo con el hash que publica el servidor y no se conserva si difieren. Cuando no se usa hash, como en FTP, esta comprobación no se ejecuta.",
             "importExistingLabel": "Si un perfil ya existe",
             "importExistingSkip": "Omitir",
             "importExistingOverwrite": "Sobrescribir",

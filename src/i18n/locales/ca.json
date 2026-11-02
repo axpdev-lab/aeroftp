@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "Tokens OAuth: {count}",
             "configEntriesCount": "Entrades de configuració: {count}",
             "verifyDownloadHash": "Comprova les descàrregues amb el hash del servidor",
-            "verifyDownloadHashHelp": "Després d'una descàrrega, es compara el fitxer amb el hash que publica el servidor i no es conserva si difereixen. Quan no s'usa cap hash, com a FTP, els fitxers només es comproven per la mida.",
+            "verifyDownloadHashHelp": "Després d'una descàrrega, es compara el fitxer amb el hash que publica el servidor i no es conserva si difereixen. Quan no s'usa cap hash, com a FTP, aquesta comprovació no s'executa.",
             "importExistingLabel": "Si un perfil ja existeix",
             "importExistingSkip": "Omet",
             "importExistingOverwrite": "Sobreescriu",

@@ -1361,7 +1361,7 @@
             "oauthTokensCount": "{count} OAuth-token",
             "configEntriesCount": "{count} konfigurációs bejegyzés",
             "verifyDownloadHash": "Letöltések ellenőrzése a szerver hash-értékével",
-            "verifyDownloadHashHelp": "Letöltés után a fájlt összehasonlítja a szerver által közzétett hash-értékkel, és nem tartja meg, ha eltérnek. Ahol nem használnak hash-t, például FTP esetén, a fájlokat csak méret alapján ellenőrzi.",
+            "verifyDownloadHashHelp": "Letöltés után a fájlt összehasonlítja a szerver által közzétett hash-értékkel, és nem tartja meg, ha eltérnek. Ahol nem használnak hash-t, például FTP esetén, ez az ellenőrzés nem fut le.",
             "importExistingLabel": "Ha a profil már létezik",
             "importExistingSkip": "Kihagyás",
             "importExistingOverwrite": "Felülírás",

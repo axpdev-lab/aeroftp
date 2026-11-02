@@ -3376,7 +3376,7 @@ impl CloudService {
                         .download_checked(
                             &remote_info.path,
                             &local_path.to_string_lossy(),
-                            None,
+                            (remote_info.size > 0).then_some(remote_info.size),
                             None,
                         )
                         .await
@@ -3415,21 +3415,29 @@ impl CloudService {
                         .download_checked(
                             &remote_info.path,
                             &local_path.to_string_lossy(),
-                            None,
+                            (remote_info.size > 0).then_some(remote_info.size),
                             None,
                         )
                         .await;
                     if let Err(e) = downloaded {
                         // The path must not read as a local deletion next cycle,
-                        // which a two-way sync would carry to the remote copy.
-                        let restored = set_aside
-                            .as_ref()
-                            .map_or(Ok(()), |copy| std::fs::rename(copy, &local_path));
+                        // which a two-way sync would carry to the remote copy. A
+                        // file that appeared there meanwhile is not replaced.
+                        let Some(copy) = &set_aside else {
+                            return Err(format!("KeepBoth download failed: {}", e));
+                        };
+                        let restored = if local_path.exists() {
+                            Err("the path holds a file again".to_string())
+                        } else {
+                            std::fs::rename(copy, &local_path).map_err(|why| why.to_string())
+                        };
                         return Err(match restored {
                             Ok(()) => format!("KeepBoth download failed: {}", e),
-                            Err(not_restored) => format!(
-                                "KeepBoth download failed: {}; the local copy stays under its conflict name: {}",
-                                e, not_restored
+                            Err(why) => format!(
+                                "KeepBoth download failed: {}; the local copy stays at {} ({})",
+                                e,
+                                copy.display(),
+                                why
                             ),
                         });
                     }

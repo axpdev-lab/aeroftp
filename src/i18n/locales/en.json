@@ -3935,7 +3935,7 @@
             "downloadSegments": "Download Segments per File",
             "downloadSegmentsAuto": "Auto (single stream)",
             "verifyDownloadHash": "Check downloads against the server's hash",
-            "verifyDownloadHashHelp": "After a download, compare the file with the hash the server publishes, and do not keep it if they differ. Where no hash is used, as on FTP, files are checked by size only.",
+            "verifyDownloadHashHelp": "After a download, compare the file with the hash the server publishes, and do not keep it if they differ. Where no hash is used, as on FTP, this check does not run.",
             "downloadSegmentsN": "{n} segments per file",
             "downloadSegmentsDesc": "Split each download into parallel byte ranges. An explicit value wins over the FTP/FTPS toolbar speed preset; Auto lets that preset decide (Safe keeps one stream). Effective on providers that support range requests (SFTP, FTP/FTPS, S3, HTTP) for files large enough to benefit.",
             "dropboxClientIdPlaceholder": "xxxxxxxxxxxxxxx",
