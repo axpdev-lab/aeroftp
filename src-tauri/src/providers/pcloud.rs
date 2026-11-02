@@ -2940,6 +2940,37 @@ mod tests {
             if m.contains("404") && m.contains("error page"))
     }
 
+    #[tokio::test]
+    async fn a_stalled_error_body_still_returns_the_content_hosts_status() {
+        use futures_util::StreamExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let stream = futures_util::stream::once(async {
+                Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"temporarily unavailable"))
+            })
+            .chain(futures_util::stream::pending());
+            (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                axum::body::Body::from_stream(stream),
+            )
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            PCloudProvider::content_response(resp),
+        )
+        .await
+        .expect("known HTTP failure must return within the excerpt deadline");
+        assert!(
+            matches!(&result, Err(ProviderError::TransferFailed(message))
+            if message.contains("HTTP 503") && message.contains("temporarily unavailable")),
+            "{result:?}"
+        );
+        server.abort();
+    }
+
     /// The content host serves what pCloud's file link names; a success still
     /// arrives whole through the plain-http fixture.
     #[tokio::test]
