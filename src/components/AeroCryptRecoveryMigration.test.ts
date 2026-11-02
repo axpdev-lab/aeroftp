@@ -1,0 +1,118 @@
+// @vitest-environment jsdom
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AeroCryptUnlock } from './AeroCryptUnlock';
+
+const { invoke, readProfiles, pickSave, writeTextFile } = vi.hoisted(() => ({
+    invoke: vi.fn(), readProfiles: vi.fn(), pickSave: vi.fn(), writeTextFile: vi.fn(),
+}));
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+vi.mock('../utils/serverProfileStore', () => ({ readSavedServerProfilesForWrite: readProfiles }));
+vi.mock('../utils/pickPath', () => ({ pickFile: vi.fn(), pickSave }));
+vi.mock('@tauri-apps/plugin-fs', () => ({ writeTextFile }));
+vi.mock('../i18n', () => ({ useTranslation: () => (key: string) => key }));
+vi.mock('qrcode.react', () => ({ QRCodeSVG: () => null }));
+
+let root: Root;
+let host: HTMLDivElement;
+let migrated: boolean;
+const oldKit = { vault_id: 'old-vault', version: 3, text: 'OLD RECOVERY KIT' };
+const freshKit = { vault_id: 'new-vault', version: 3, text: 'FRESH RECOVERY KIT' };
+const button = (key: string) => {
+    const found = Array.from(host.querySelectorAll('button')).find((b) => b.textContent?.trim() === key);
+    if (!found) throw new Error(`Missing button ${key}`);
+    return found;
+};
+const click = async (key: string) => { await act(async () => button(key).click()); };
+const mount = async () => {
+    await act(async () => root.render(createElement(AeroCryptUnlock, {
+        onClose: () => {}, onUnlocked: async () => {}, activeVaultId: 'active', profileId: 'profile', scope: '/vault',
+    })));
+};
+
+beforeEach(() => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.resetAllMocks();
+    migrated = false;
+    readProfiles.mockResolvedValue({ profiles: [], userId: 7 });
+    invoke.mockImplementation(async (command: string, args?: { account?: string; configJson?: string }) => {
+        switch (command) {
+            case 'aerocrypt_provider_marker_status': return { hasLegacyMarker: !migrated, hasCurrentMarker: migrated };
+            case 'aerocrypt_provider_read_config': return migrated ? 'NEW CONFIG' : 'OLD CONFIG';
+            case 'aerocrypt_profile_recovery_kit': return oldKit;
+            case 'get_credential': return args?.account?.includes('_pw_') ? 'secret' : '';
+            case 'aerocrypt_provider_migrate_legacy_marker': migrated = true; return { changed: true, legacyDeleted: true };
+            case 'store_overlay_metadata': throw new Error('cache write refused');
+            case 'aerocrypt_build_emergency_kit':
+                expect(args?.configJson).toBe('NEW CONFIG');
+                return freshKit;
+            default: return undefined;
+        }
+    });
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+});
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+
+describe('recovery kit after remote marker migration', () => {
+    it.each(['cache write', 'account read'])('hides the old kit on %s failure and rebuilds only from the live config', async (failure) => {
+        if (failure === 'account read') readProfiles.mockRejectedValue(new Error('account unavailable'));
+        await mount();
+        expect(host.textContent).toContain(oldKit.text);
+        const oldCacheReads = invoke.mock.calls.filter(([c]) => c === 'aerocrypt_profile_recovery_kit').length;
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(host.textContent).toContain('aerocryptNative.overlayMetadataNotSaved');
+        expect(host.textContent).not.toContain(oldKit.text);
+        expect(host.textContent).not.toContain('aerocryptNative.saveKit');
+        await click('aerocryptNative.showKit');
+        expect(host.textContent).toContain(freshKit.text);
+        expect(invoke.mock.calls.filter(([c]) => c === 'aerocrypt_profile_recovery_kit')).toHaveLength(oldCacheReads);
+        expect(writeTextFile).not.toHaveBeenCalled();
+    });
+
+    it('does not save an old kit when a file picker returns after migration', async () => {
+        let finishPicker!: (path: string) => void;
+        pickSave.mockReturnValue(new Promise<string>((resolve) => { finishPicker = resolve; }));
+        await mount();
+        // Start the async picker without awaiting its completion.
+        await click('aerocryptNative.saveKit');
+        await click('aerocryptNative.migrateLegacyMarker');
+        await act(async () => finishPicker('/tmp/recovery.txt'));
+        expect(writeTextFile).not.toHaveBeenCalled();
+        expect(host.textContent).toContain('aerocryptNative.overlayMetadataNotSaved');
+    });
+
+    it('does not let a pending hydration restore the old kit after migration', async () => {
+        let finishHydration!: (kit: typeof oldKit) => void;
+        const original = invoke.getMockImplementation()!;
+        invoke.mockImplementation((command: string, args?: { account?: string; configJson?: string }) => (
+            command === 'aerocrypt_profile_recovery_kit'
+                ? new Promise<typeof oldKit>((resolve) => { finishHydration = resolve; })
+                : original(command, args)
+        ));
+        await mount();
+        await click('aerocryptNative.migrateLegacyMarker');
+        await act(async () => finishHydration(oldKit));
+        expect(host.textContent).not.toContain(oldKit.text);
+        await click('aerocryptNative.showKit');
+        expect(host.textContent).toContain(freshKit.text);
+    });
+
+    it('offers the new cached kit when metadata persistence succeeds', async () => {
+        const original = invoke.getMockImplementation()!;
+        let cachedNew = false;
+        invoke.mockImplementation((command: string, args?: { account?: string; configJson?: string }) => {
+            if (command === 'store_overlay_metadata') { cachedNew = true; return Promise.resolve(); }
+            if (command === 'aerocrypt_profile_recovery_kit' && cachedNew) return Promise.resolve(freshKit);
+            return original(command, args);
+        });
+        await mount();
+        await click('aerocryptNative.migrateLegacyMarker');
+        expect(host.textContent).toContain(freshKit.text);
+        expect(host.textContent).not.toContain(oldKit.text);
+        expect(host.textContent).not.toContain('aerocryptNative.overlayMetadataNotSaved');
+    });
+});

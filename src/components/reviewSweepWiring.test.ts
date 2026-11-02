@@ -16,6 +16,6 @@ describe('a failure that would otherwise read as success', () => {
     it('says the recovery kit was not cached when the metadata write fails', () => {
         const start = cryptRaw.indexOf('const handleMigrateLegacyMarker');
         const body = cryptRaw.slice(start, cryptRaw.indexOf('setMarkerMigrating(false)', start));
-        expect(body).toMatch(/await invoke\('store_overlay_metadata'[^\n]*\n\s*\} catch \{[^}]*setError\(t\('aerocryptNative\.overlayMetadataNotSaved'\)\);\s*return;/);
+        expect(body).toMatch(/await invoke\('store_overlay_metadata'[^\n]*\n\s*kitMetadataStaleRef\.current = false;\n\s*\} catch \{[^}]*setError\(t\('aerocryptNative\.overlayMetadataNotSaved'\)\);\s*return;/);
     });
 });

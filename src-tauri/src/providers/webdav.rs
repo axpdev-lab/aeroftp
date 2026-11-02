@@ -5317,9 +5317,11 @@ impl StorageProvider for WebDavProvider {
         let mut results = Vec::new();
         let mut walk = crate::sync_core::FindWalk::new(path);
         let mut dirs_to_scan = vec![path.to_string()];
-        // A folder of many refused children asks about the account once in a while.
-        const FIND_ACCESS_RECHECK: std::time::Duration = std::time::Duration::from_secs(30);
-        let mut asked_at: Option<std::time::Instant> = None;
+        // Every skipped 403 needs current proof that the search root remains
+        // readable. Bound expensive root listings by failing explicitly once
+        // the budget is spent, never by treating old access as current proof.
+        const MAX_ACCESS_RECHECKS: usize = 8;
+        let mut access_rechecks = 0;
 
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match self.list(&dir).await {
@@ -5333,10 +5335,14 @@ impl StorageProvider for WebDavProvider {
                 // In the second case the folder searched refuses too, and what
                 // was found so far would read as a complete result.
                 Err(ProviderError::PermissionDenied(_)) => {
-                    if asked_at.is_none_or(|at| at.elapsed() >= FIND_ACCESS_RECHECK) {
-                        self.list(path).await?;
-                        asked_at = Some(std::time::Instant::now());
+                    if access_rechecks == MAX_ACCESS_RECHECKS {
+                        return Err(ProviderError::PermissionDenied(format!(
+                            "Search stopped after {MAX_ACCESS_RECHECKS} refused folders: \
+                             root access cannot be rechecked within the search budget"
+                        )));
                     }
+                    access_rechecks += 1;
+                    self.list(path).await?;
                     continue;
                 }
                 Err(_) => continue,
@@ -9905,15 +9911,25 @@ mod walk_scope_tests {
     /// A request path is resolved as a server resolves it; a collection not
     /// in `listings` is a 404.
     async fn provider_on_listings(listings: Listings) -> WebDavProvider {
+        provider_on_listings_with_requests(listings).await.0
+    }
+
+    async fn provider_on_listings_with_requests(
+        listings: Listings,
+    ) -> (WebDavProvider, Arc<std::sync::Mutex<Vec<String>>>) {
         // Set by a request under `/revoked`: from then on every path answers 403.
         let revoked = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = requests.clone();
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let revoked = revoked.clone();
+                let requests = recorded.clone();
                 async move {
                     let path = urlencoding::decode(req.uri().path())
                         .map(|p| crate::sync_core::walk_path_key(&p))
                         .unwrap_or_default();
+                    requests.lock().unwrap().push(path.clone());
                     if path.ends_with("/revoked") {
                         revoked.store(true, std::sync::atomic::Ordering::SeqCst);
                     }
@@ -9929,7 +9945,11 @@ mod walk_scope_tests {
                             .body(axum::body::Body::empty())
                             .unwrap();
                     }
-                    if path.ends_with("/refused") {
+                    if path
+                        .rsplit('/')
+                        .next()
+                        .is_some_and(|name| name.starts_with("refused"))
+                    {
                         return axum::response::Response::builder()
                             .status(403)
                             .body(axum::body::Body::empty())
@@ -9987,7 +10007,7 @@ mod walk_scope_tests {
         })
         .expect("provider");
         provider.connected = true;
-        provider
+        (provider, requests)
     }
 
     /// `/x` holds `a.txt` and the collection `d`; the root holds `keep.txt`
@@ -10037,6 +10057,66 @@ mod walk_scope_tests {
         assert!(
             matches!(outcome, Err(ProviderError::PermissionDenied(_))),
             "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_find_rechecks_access_after_each_refusal_even_if_the_last_check_was_recent() {
+        // The stack visits refused first, then a/revoked. The first root
+        // recheck succeeds; the later one must detect the account revocation.
+        const LISTINGS: Listings = &[
+            ("/x", &["a.txt", "a/", "refused/"]),
+            ("/x/a", &["revoked/"]),
+        ];
+        let (mut provider, requests) = provider_on_listings_with_requests(LISTINGS).await;
+        let result = provider.find("/x", "*.txt").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        let requests = requests.lock().unwrap();
+        let refused = requests.iter().position(|p| p == "/x/refused").unwrap();
+        let revoked = requests.iter().position(|p| p == "/x/a/revoked").unwrap();
+        assert!(
+            refused < revoked,
+            "the fixture first proves a folder-only refusal: {requests:?}"
+        );
+        assert_eq!(requests.iter().filter(|p| *p == "/x").count(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_find_stops_explicitly_instead_of_relisting_a_large_root_without_bound() {
+        const LISTINGS: Listings = &[(
+            "/x",
+            &[
+                "a.txt",
+                "refused1/",
+                "refused2/",
+                "refused3/",
+                "refused4/",
+                "refused5/",
+                "refused6/",
+                "refused7/",
+                "refused8/",
+                "refused9/",
+            ],
+        )];
+        let (mut provider, requests) = provider_on_listings_with_requests(LISTINGS).await;
+        let result = provider.find("/x", "*.txt").await;
+        assert!(
+            matches!(&result, Err(ProviderError::PermissionDenied(message)) if message.contains("search budget")),
+            "{result:?}"
+        );
+        // The initial listing plus eight rechecks. A ninth refusal fails the
+        // search rather than reporting its accumulated matches as complete.
+        assert_eq!(
+            requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|p| *p == "/x")
+                .count(),
+            9
         );
     }
 

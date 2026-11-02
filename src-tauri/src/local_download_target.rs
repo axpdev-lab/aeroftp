@@ -268,14 +268,7 @@ fn existing_spelling_problems(
         let held = entries.get(&guard.key(Path::new(name)));
         // Two Unicode spellings of one name are one file on a disk that folds them:
         // an update, not a replacement. Only the disk's listing shows which it keeps.
-        let wanted: String = name.nfc().collect();
-        let other = held
-            .filter(|names| !names.iter().any(|found| found == name))
-            .and_then(|names| {
-                names
-                    .iter()
-                    .find(|found| found.nfc().collect::<String>() != wanted)
-            });
+        let other = held.and_then(|names| conflicting_existing_spelling(names, name));
         if let Some(other) = other {
             problems.push(LocalTargetProblem {
                 path: file.clone(),
@@ -284,6 +277,20 @@ fn existing_spelling_problems(
         }
     }
     problems
+}
+
+/// Compare the entries actually returned by a directory listing. Keeping this
+/// separate from disk access also lets normalization-insensitive hosts test a
+/// listing containing two names that their own filesystem cannot hold apart.
+fn conflicting_existing_spelling<'a>(names: &'a [String], name: &str) -> Option<&'a str> {
+    if names.iter().any(|found| found == name) {
+        return None;
+    }
+    let wanted: String = name.nfc().collect();
+    names
+        .iter()
+        .find(|found| found.nfc().collect::<String>() != wanted)
+        .map(String::as_str)
 }
 
 /// The paths a run would download that `destination` cannot hold apart, or at
@@ -516,12 +523,19 @@ mod tests {
         std::fs::write(dest.path().join("cafe\u{301}.txt"), "mine").unwrap();
         let composed = ["caf\u{e9}.txt".to_string()];
         assert!(existing_spelling_problems(folds, dest.path(), &composed).is_empty());
-        // Another name beside that spelling is still one the download would replace.
-        std::fs::write(dest.path().join("CAF\u{c9}.txt"), "mine").unwrap();
+        // APFS cannot hold both entries. Use the exact server/directory listing
+        // here so every host exercises the two-entry decision without merging
+        // the fixture's names during setup.
+        let names = ["cafe\u{301}.txt".to_string(), "CAF\u{c9}.txt".to_string()];
         assert_eq!(
-            existing_spelling_problems(folds, dest.path(), &composed).len(),
-            1
+            conflicting_existing_spelling(&names, &composed[0]),
+            Some("CAF\u{c9}.txt")
         );
+        assert_eq!(
+            conflicting_existing_spelling(&names[..1], &composed[0]),
+            None
+        );
+        assert_eq!(conflicting_existing_spelling(&names, &names[0]), None);
     }
 
     #[test]
