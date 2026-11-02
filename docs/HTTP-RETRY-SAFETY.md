@@ -14,8 +14,10 @@ to the caller instead of repeating the write.
 * Use `refused_only()` for mutating GET RPCs or credential rotation.
 * A consumed stream in a built request cannot be replayed, including after 429.
   A rebuilding closure must recreate the same complete body for every attempt.
-* Transport failures and malformed success responses do not authorize a create
-  replay. Reconcile by an authoritative identity/idempotency key before doing so.
+* Definite non-timeout connection-establishment failures can retry within the
+  same bounded budget when the complete request can be rebuilt. A consumed
+  built stream cannot retry. Resets after sending, timeouts and malformed
+  acknowledgements do not authorize replay: reconcile uncertain writes first.
 
 The batch upload executor also respects this policy through the provider's
 `manages_upload_retries` contract (forwarded by compression/crypt overlays). It
@@ -41,7 +43,7 @@ this is not a promise that the failed write left the remote unchanged.
 | Azure | GET/HEAD | PUT create/copy and mutations do not replay ambiguous 5xx at the shared layer. |
 | S3 | GET/HEAD incl. range reads | PUT object/copy/part and POST multipart completion do not replay 5xx at the shared layer. |
 | Swift | GET/HEAD | PUT object/container, POST metadata and DELETE do not replay 5xx. One retry after explicit 401 and reauthentication remains. |
-| Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. Existing non-empty files publish a completed network upload through native UUID content replacement; there is no delete/create fallback. Existing empty overwrites fail closed because the confirmed replacement contract needs a network content ID. A concurrent create refusal is AlreadyExists. One explicit 401 recovery remains. |
+| Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. All existing names, including empty files, are refused with NotSupported before allocation; there is no UUID replacement or delete/create fallback. A concurrent create refusal is AlreadyExists. One explicit 401 recovery remains. |
 | Twake | GET listing and reads | POST mkdir/copy/share/restore and PUT/PATCH do not replay 5xx. Explicit 401 recovery remains. |
 | pCloud | Read GETs, download links, checksums, revisions, trash listing | Mutating GET create/copy/upload-create/save, rename/move, links and trash restore/clear use refusals only. `createfolderifnotexists` retains retries because it conditionally returns the same folder. Single-stream uploads recover bounded connection-establishment failures only, rebuilding the multipart body from the same open file; responses, timeouts and malformed acknowledgements do not restart the upload. |
 | GitLab | GET/HEAD incl. paginated reads | Commit POST and DELETE bypass the extra outer 5xx retry; other writes get the shared conservative default. |
@@ -73,6 +75,8 @@ uncertain-outcome message.
 
 FileLu setting/share mutations require an explicit API status 200 even when HTTP
 is 200; missing status or a refused mutation is an error, not a reported change.
+FileLu mutation diagnostics expose only HTTP/API status or numeric JSON error
+location, not arbitrary response text that can echo a password or API key.
 
 Internxt's [published replaceFile contract](https://github.com/internxt/sdk/blob/29ad01efb9d14e32edf7a3f5c06badbab10986ea/src/drive/storage/index.ts#L875-L884)
 updates an existing UUID, without an expected destination name or parent.
@@ -83,13 +87,11 @@ NotSupported before upload allocation, including empty files. There is no UUID
 update or delete/create fallback. This intentionally disables Internxt overwrites
 until a conditional replacement contract is established. Creation of new names,
 including empty files, remains available; a concurrent create conflict returns
-AlreadyExists without replay. The error distinction keeps a requested overwrite
-from being reported as a successful no-clobber skip.
+AlreadyExists without replay. NotSupported uses CLI exit 7 rather than AlreadyExists exit 9,
+which can mean nothing remains to upload.
 
 For a new nonempty file, content storage precedes a single metadata create.
 A failed create may leave an orphaned stored network object; an uncertain
 acknowledgement returns an error instead of allocating or publishing again.
 No atomic rename/replace capability is advertised, and no claim is made about
-unobserved production transactions. FileLu mutation diagnostics expose only
-HTTP/API status or numeric JSON error location, not arbitrary response text that
-can echo a password or API key.
+unobserved production transactions.

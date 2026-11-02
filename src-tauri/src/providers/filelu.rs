@@ -718,7 +718,11 @@ impl FileLuProvider {
             _ => return false,
         };
         let lower = msg.to_ascii_lowercase();
-        lower.contains("http 500")
+        let sanitized_api_status = lower
+            .strip_prefix("filelu mutation returned api error ")
+            .and_then(|status| status.parse::<u16>().ok());
+        matches!(sanitized_api_status, Some(500 | 502 | 503 | 504))
+            || lower.contains("http 500")
             || lower.contains("http 502")
             || lower.contains("http 503")
             || lower.contains("http 504")
@@ -2972,6 +2976,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fixed_id_delete_recovers_from_sanitized_body_level_5xx() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for is_dir in [false, true] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let recorded = calls.clone();
+            let app = axum::Router::new().fallback(axum::routing::get(move || {
+                let ordinal = recorded.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if ordinal == 0 {
+                        r#"{"status":503,"msg":"untrusted-secret"}"#
+                    } else {
+                        r#"{"status":200}"#
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = FileLuProvider::new(FileLuConfig {
+                api_key: secrecy::SecretString::from("fixture-key".to_string()),
+                initial_path: None,
+            });
+            p.connected = true;
+            p.api_origin_override = Some(format!("http://{addr}"));
+            let entry = CacheEntry {
+                is_dir,
+                fld_id: 77,
+                fld_token: None,
+                file_code: "fixed-code".into(),
+                size: 0,
+                modified: None,
+                hash: None,
+            };
+            p.remove_entry(&entry).await.unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
     async fn a_folder_create_committed_before_503_is_sent_once() {
         use std::sync::{
             atomic::{AtomicUsize, Ordering},
@@ -4185,6 +4232,16 @@ mod tests {
 
     #[test]
     fn test_is_filelu_transient_5xx_matches_body_status() {
+        for status in [500, 502, 503, 504] {
+            assert!(FileLuProvider::is_filelu_transient_5xx(
+                &ProviderError::ServerError(format!("FileLu mutation returned API error {status}"))
+            ));
+        }
+        for status in [400, 403, 5000, 5030] {
+            assert!(!FileLuProvider::is_filelu_transient_5xx(
+                &ProviderError::ServerError(format!("FileLu mutation returned API error {status}"))
+            ));
+        }
         assert!(FileLuProvider::is_filelu_transient_5xx(
             &ProviderError::ServerError("API error 500".into())
         ));

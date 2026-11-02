@@ -252,73 +252,49 @@ where
     F: FnMut() -> reqwest::RequestBuilder,
 {
     let _ = client;
-    // KE-A3: proactive tpslimit gate. No-op when the CLI did not install
-    // a limiter (GUI path, default). Sits BEFORE the first execute so
-    // retries also pay the rate-limit toll: an HTTP 429 followed by an
-    // immediate retry would otherwise leak past the cap.
-    super::tpslimit::maybe_acquire().await;
-
-    // The TTFB timer starts at the actual send, after the rate-limit toll:
-    // a proactive throttle wait is not part of the server's first-byte time.
-    // Keep the builder's own client, including its transport settings. A
-    // built request also exposes the actual method without cloning a stream.
-    let (attempt_client, request) = build().build_split();
-    let request = request?;
-    let mut method = request.method().clone();
-    let attempt_start = std::time::Instant::now();
-    let mut last_response = match attempt_client.execute(request).await {
-        Ok(response) => {
-            record_headers_received(attempt_start);
-            response
-        }
-        Err(error) => return Err(error),
-    };
-
-    for attempt in 0..config.max_retries {
-        if !can_retry_response(last_response.status().as_u16(), &method, config) {
-            if is_retryable_status(last_response.status().as_u16()) {
-                tracing::warn!(method = %method, status = %last_response.status(),
-                    "Not repeating an operation after an ambiguous server error; it may have completed. Check remote state before retrying.");
-            }
-            return Ok(last_response);
-        }
-
-        // Determine delay: prefer Retry-After, fall back to exponential backoff
-        let delay =
-            parse_retry_after(&last_response).unwrap_or_else(|| calculate_delay(attempt, config));
-
-        tracing::debug!(
-            "HTTP {} returned {}. Retry {}/{} after {:?}",
-            method,
-            last_response.status(),
-            attempt + 1,
-            config.max_retries,
-            delay
-        );
-
-        tokio::time::sleep(delay).await;
-
-        // KE-A3: each retry pays the same tpslimit toll as the original
-        // request. Without this, a 429 would let a retry bypass the
-        // proactive cap and saturate the backend the very instant the
-        // cooldown ended.
+    for attempt in 0..=config.max_retries {
+        // Retries, including definite connect refusals, pay the same limiter
+        // toll. The attempt timer starts only after this proactive wait.
         super::tpslimit::maybe_acquire().await;
-        // Each retried attempt that reaches headers is its own honest
-        // first-byte sample; retries never double-count a single attempt.
         let (attempt_client, request) = build().build_split();
         let request = request?;
-        method = request.method().clone();
+        let method = request.method().clone();
         let attempt_start = std::time::Instant::now();
-        last_response = match attempt_client.execute(request).await {
+        let delay = match attempt_client.execute(request).await {
             Ok(response) => {
                 record_headers_received(attempt_start);
-                response
+                if attempt == config.max_retries
+                    || !can_retry_response(response.status().as_u16(), &method, config)
+                {
+                    if is_retryable_status(response.status().as_u16()) {
+                        tracing::debug!(method = %method, status = %response.status(),
+                            "Returning response without replay; retry budget exhausted or operation may have completed");
+                    }
+                    return Ok(response);
+                }
+                let delay = parse_retry_after(&response)
+                    .unwrap_or_else(|| calculate_delay(attempt, config));
+                tracing::debug!(method = %method, status = %response.status(),
+                    retry = attempt + 1, "Retrying a refused or safe HTTP operation");
+                delay
             }
-            Err(error) => return Err(error),
+            Err(error) => {
+                // is_connect identifies connection establishment, before a
+                // request is sent. A reset after sending, a timeout or an
+                // unreadable acknowledgement is uncertain and never replayed.
+                // Built streams already force max_retries=0; factories must
+                // rebuild their complete body, exactly as for a 429 retry.
+                if attempt == config.max_retries || !error.is_connect() || error.is_timeout() {
+                    return Err(error);
+                }
+                tracing::debug!(method = %method, retry = attempt + 1,
+                    "Retrying HTTP connection establishment failure before send");
+                calculate_delay(attempt, config)
+            }
         };
+        tokio::time::sleep(delay).await;
     }
-
-    Ok(last_response)
+    unreachable!("the final attempt returns its response or error")
 }
 
 #[cfg(test)]
@@ -651,6 +627,139 @@ mod tests {
         .unwrap();
         assert_eq!(response.status(), 200);
         assert_eq!(*seen.lock().unwrap(), [14, 14]);
+    }
+
+    #[tokio::test]
+    async fn connect_refusal_rebuilds_the_whole_create_before_any_send() {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved);
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let received: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>> = Default::default();
+        let mut server = None;
+        let response = send_with_retry_replayable(
+            &client,
+            || {
+                attempts += 1;
+                if attempts == 2 {
+                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    listener.set_nonblocking(true).unwrap();
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let captured = received.clone();
+                    let app = axum::Router::new().fallback(axum::routing::post(
+                        move |body: axum::body::Bytes| {
+                            captured.lock().unwrap().push(body.to_vec());
+                            async { axum::http::StatusCode::OK }
+                        },
+                    ));
+                    server = Some(tokio::spawn(async move {
+                        axum::serve(listener, app).await.unwrap();
+                    }));
+                }
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"complete-create"))
+                });
+                client
+                    .post(format!("http://{addr}/up"))
+                    .body(reqwest::Body::wrap_stream(stream))
+            },
+            &fast_retries().refused_only(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(attempts, 2);
+        assert_eq!(*received.lock().unwrap(), [b"complete-create".to_vec()]);
+        server.unwrap().abort();
+    }
+
+    #[tokio::test]
+    async fn connect_refusal_uses_one_bounded_budget_and_consumed_streams_are_not_rebuilt() {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved);
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let result = send_with_retry_replayable(
+            &client,
+            || {
+                attempts += 1;
+                client.post(format!("http://{addr}/up")).body("create")
+            },
+            &fast_retries(),
+        )
+        .await;
+        assert!(result.unwrap_err().is_connect());
+        assert_eq!(attempts, 3);
+
+        let stream = futures_util::stream::once(async {
+            Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"not-replayable"))
+        });
+        let request = client
+            .post(format!("http://{addr}/up"))
+            .body(reqwest::Body::wrap_stream(stream))
+            .build()
+            .unwrap();
+        // u32::MAX would never finish if a consumed body were retried.
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            send_with_retry(
+                &client,
+                request,
+                &HttpRetryConfig {
+                    max_retries: u32::MAX,
+                    ..fast_retries()
+                },
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(result.unwrap_err().is_connect());
+    }
+
+    #[tokio::test]
+    async fn a_timeout_or_lost_acknowledgement_never_rebuilds_a_create() {
+        for timeout in [false, true] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                use tokio::io::AsyncReadExt;
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut bytes = [0; 4096];
+                let read = socket.read(&mut bytes).await.unwrap();
+                assert!(read > 0);
+                if timeout {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                // Close without an HTTP acknowledgement, after request bytes.
+            });
+            let client = Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_millis(100))
+                .build()
+                .unwrap();
+            let mut attempts = 0;
+            let error = send_with_retry_replayable(
+                &client,
+                || {
+                    attempts += 1;
+                    client.post(format!("http://{addr}/up")).body("create")
+                },
+                &fast_retries(),
+            )
+            .await
+            .unwrap_err();
+            assert!(!error.is_connect() || error.is_timeout());
+            assert_eq!(
+                attempts, 1,
+                "uncertain acknowledgement is not a connect refusal"
+            );
+            if timeout {
+                assert!(error.is_timeout());
+            }
+            server.abort();
+        }
     }
 
     #[test]
