@@ -38025,15 +38025,20 @@ async fn cmd_get_glob(
     // download.
     let mut files: Vec<(String, String, u64)> = Vec::new();
     let mut remote_mtimes: HashMap<String, String> = HashMap::new();
+    // The names together: two of one spelling would land on one file.
+    let names: Vec<String> = matched.iter().map(|entry| entry.name.clone()).collect();
+    let name_problems = ftp_client_gui_lib::local_download_target::local_target_problems(
+        Path::new(local_base),
+        &names,
+        &names,
+    );
     for entry in &matched {
         if validate_relative_path(&entry.name).is_none() {
             errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
             continue;
         }
-        if let Err(reason) =
-            ftp_client_gui_lib::local_download_target::refuse_unwritable_name(&entry.name)
-        {
-            errors.push(format!("{}: {reason}", entry.name));
+        if let Some(problem) = name_problems.iter().find(|p| p.path == entry.name) {
+            errors.push(format!("{}: {}", entry.name, problem.reason));
             continue;
         }
         let local_path = format!("{}/{}", local_base, entry.name);

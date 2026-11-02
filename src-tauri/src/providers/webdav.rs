@@ -5317,6 +5317,9 @@ impl StorageProvider for WebDavProvider {
         let mut results = Vec::new();
         let mut walk = crate::sync_core::FindWalk::new(path);
         let mut dirs_to_scan = vec![path.to_string()];
+        // A folder of many refused children asks about the account once in a while.
+        const FIND_ACCESS_RECHECK: std::time::Duration = std::time::Duration::from_secs(30);
+        let mut asked_at: Option<std::time::Instant> = None;
 
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match self.list(&dir).await {
@@ -5330,7 +5333,10 @@ impl StorageProvider for WebDavProvider {
                 // In the second case the folder searched refuses too, and what
                 // was found so far would read as a complete result.
                 Err(ProviderError::PermissionDenied(_)) => {
-                    self.list(path).await?;
+                    if asked_at.is_none_or(|at| at.elapsed() >= FIND_ACCESS_RECHECK) {
+                        self.list(path).await?;
+                        asked_at = Some(std::time::Instant::now());
+                    }
                     continue;
                 }
                 Err(_) => continue,

@@ -3377,14 +3377,17 @@ mod tests {
                             .unwrap();
                         seen.lock().unwrap().push(range);
                         std::fs::write(&path, vec![b'b'; rewritten]).unwrap();
-                        let later =
-                            std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
-                        std::fs::File::options()
-                            .write(true)
-                            .open(&path)
-                            .unwrap()
-                            .set_modified(later)
-                            .unwrap();
+                        // Only the date gives this one away; a different size stands on its own.
+                        if rewritten == 11 * 1024 * 1024 {
+                            let later =
+                                std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+                            std::fs::File::options()
+                                .write(true)
+                                .open(&path)
+                                .unwrap()
+                                .set_modified(later)
+                                .unwrap();
+                        }
                         return axum::http::StatusCode::PERMANENT_REDIRECT.into_response();
                     }
                     if req

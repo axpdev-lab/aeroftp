@@ -270,12 +270,12 @@ fn existing_spelling_problems(
         // an update, not a replacement. Only the disk's listing shows which it keeps.
         let wanted: String = name.nfc().collect();
         let other = held
-            .filter(|names| {
-                !names
+            .filter(|names| !names.iter().any(|found| found == name))
+            .and_then(|names| {
+                names
                     .iter()
-                    .any(|found| found == name || found.nfc().collect::<String>() == wanted)
-            })
-            .and_then(|names| names.first());
+                    .find(|found| found.nfc().collect::<String>() != wanted)
+            });
         if let Some(other) = other {
             problems.push(LocalTargetProblem {
                 path: file.clone(),
@@ -516,6 +516,12 @@ mod tests {
         std::fs::write(dest.path().join("cafe\u{301}.txt"), "mine").unwrap();
         let composed = ["caf\u{e9}.txt".to_string()];
         assert!(existing_spelling_problems(folds, dest.path(), &composed).is_empty());
+        // Another name beside that spelling is still one the download would replace.
+        std::fs::write(dest.path().join("CAF\u{c9}.txt"), "mine").unwrap();
+        assert_eq!(
+            existing_spelling_problems(folds, dest.path(), &composed).len(),
+            1
+        );
     }
 
     #[test]

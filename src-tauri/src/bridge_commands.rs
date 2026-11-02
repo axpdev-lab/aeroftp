@@ -250,9 +250,9 @@ fn store_rclone_provider_secrets(
         Some(s) => s,
         None => {
             return result
-                .provider_secrets
-                .keys()
-                .map(|id| {
+                .secrets_in_server_order()
+                .into_iter()
+                .map(|(id, _)| {
                     (
                         id.clone(),
                         "the vault is locked, so its sign-in was not stored".to_string(),

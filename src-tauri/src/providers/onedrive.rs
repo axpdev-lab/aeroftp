@@ -3521,13 +3521,17 @@ mod tests {
                         .await
                         .unwrap();
                     std::fs::write(&rewrite, vec![b'b'; rewritten]).unwrap();
-                    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
-                    std::fs::File::options()
-                        .write(true)
-                        .open(&rewrite)
-                        .unwrap()
-                        .set_modified(later)
-                        .unwrap();
+                    // Only the date gives this one away; a different size stands on its own.
+                    if rewritten == 11 * 1024 * 1024 {
+                        let later =
+                            std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+                        std::fs::File::options()
+                            .write(true)
+                            .open(&rewrite)
+                            .unwrap()
+                            .set_modified(later)
+                            .unwrap();
+                    }
                     return (
                         axum::http::StatusCode::ACCEPTED,
                         Json(serde_json::json!({"nextExpectedRanges": []})),

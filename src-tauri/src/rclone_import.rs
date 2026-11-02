@@ -1833,13 +1833,18 @@ pub struct RcloneImportResult {
 impl RcloneImportResult {
     /// The secrets in the order of the servers, not of the map, which changes from
     /// run to run: of two remotes with different OAuth apps, the first one decides
-    /// which app stays stored.
+    /// which app stays stored. Remotes with a token come first: their token refreshes
+    /// only with their own app.
     pub fn secrets_in_server_order(
         &self,
-    ) -> impl Iterator<Item = (&String, &crate::profile_export::ProviderSecrets)> {
-        self.servers
+    ) -> Vec<(&String, &crate::profile_export::ProviderSecrets)> {
+        let mut secrets: Vec<_> = self
+            .servers
             .iter()
             .filter_map(|server| Some((&server.id, self.provider_secrets.get(&server.id)?)))
+            .collect();
+        secrets.sort_by_key(|(_, secret)| secret.oauth.is_none());
+        secrets
     }
 }
 
@@ -3662,10 +3667,23 @@ mod tests {
         let result = import_rclone(&path).unwrap();
         let apps: Vec<_> = result
             .secrets_in_server_order()
+            .into_iter()
             .map(|(_, secrets)| secrets.oauth_client_id.clone().unwrap())
             .collect();
         let expected: Vec<_> = (0..8).map(|i| format!("app-{i}")).collect();
         assert_eq!(apps, expected);
+
+        // A token refreshes only with its own app: its remote chooses first.
+        std::fs::write(
+            &path,
+            "[a]\ntype = drive\nclient_id = no-token\nclient_secret = s\n\n\
+             [b]\ntype = drive\nclient_id = with-token\nclient_secret = s\n\
+             token = {\"access_token\":\"x\",\"refresh_token\":\"y\"}\n",
+        )
+        .unwrap();
+        let result = import_rclone(&path).unwrap();
+        let first = result.secrets_in_server_order()[0].1;
+        assert_eq!(first.oauth_client_id.as_deref(), Some("with-token"));
     }
 
     /// An app with no token yet is still kept: a later sign-in on this device needs it.

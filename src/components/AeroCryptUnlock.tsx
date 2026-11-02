@@ -402,10 +402,13 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                             try {
                                 await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
                             } catch {
+                                // The kit would still be the older one: not shown as this one.
                                 setError(t('aerocryptNative.overlayMetadataNotSaved'));
+                                return;
                             }
                         } else {
                             setError(t('aerocryptNative.overlayMetadataNotSaved'));
+                            return;
                         }
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,

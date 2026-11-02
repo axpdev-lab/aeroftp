@@ -2211,7 +2211,11 @@ impl StorageProvider for FtpProvider {
                 // A folder searched that cannot be read is not an empty result,
                 // and a failure that is not about one folder fails the search.
                 Err(e) if dir == root || !super::listing_failure_is_the_folders(&e) => {
-                    self.current_path = saved;
+                    // The server may stand in the failed folder: relative commands
+                    // after this would act there. A lost connection has none to move.
+                    if self.cd(&saved).await.is_err() {
+                        self.current_path = saved;
+                    }
                     return Err(e);
                 }
                 Err(_) => {
