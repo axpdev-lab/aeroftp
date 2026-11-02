@@ -5620,9 +5620,9 @@ dependencies = [
 
 [[package]]
 name = "lazy_static"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 dependencies = [
  "spin 0.9.9",
 ]
@@ -5734,9 +5734,9 @@ dependencies = [
 
 [[package]]
 name = "libunftp"
-version = "0.23.1"
+version = "0.24.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dc54288ecbf8beefa5cab3a9921ab03bf1f18a3a0872cbcdb5313fc0baebaeb"
+checksum = "7d94587cfb90dd87b7cced3bff07d32cb56ad1192baa5d688dfaa8728f22d48d"
 dependencies = [
  "async-trait",
  "bitflags 2.13.2",
@@ -5748,10 +5748,11 @@ dependencies = [
  "getrandom 0.4.3",
  "lazy_static",
  "moka",
- "nix 0.30.1",
+ "nix 0.31.3",
  "prometheus",
  "proxy-protocol",
  "rustls",
+ "rustls-webpki",
  "slog",
  "slog-stdlog",
  "thiserror 2.0.21",

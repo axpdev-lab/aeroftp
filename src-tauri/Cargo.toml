@@ -294,7 +294,7 @@ rpassword = "7"                                                        # Secure 
 ctrlc = "3"                                                            # Graceful Ctrl+C with cleanup
 globset = "0.4"                                                        # Glob patterns for batch transfers
 tempfile = "3"                                                        # Temporary files for stdin upload/resume workflows
-libunftp = "0.23"                                                      # FTP server framework (serve ftp)
+libunftp = "0.24"                                                      # FTP server framework (serve ftp)
 unftp-core = "0.1"                                                     # FTP server storage/auth traits
 
 # Interactive TUI (ncdu disk explorer)
