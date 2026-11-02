@@ -2185,6 +2185,12 @@ impl B2Provider {
             );
             return Ok(false);
         }
+        if let Err(differs) = temp.check_content(Path::new(local_path)).await {
+            temp.discard();
+            tracing::warn!("b2 multi-thread {}: {}", remote_path, differs);
+            report_download_fallback(super::content_check::ASSEMBLED_DIFFERS);
+            return Ok(false);
+        }
         match temp.publish(Path::new(local_path)).await {
             Ok(()) => Ok(true),
             Err(e) => Err(ProviderError::Other(format!(

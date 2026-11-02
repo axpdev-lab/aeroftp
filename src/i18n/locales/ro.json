@@ -1360,6 +1360,8 @@
             "aiKeysCount": "Chei AI: {count}",
             "oauthTokensCount": "Tokenuri OAuth: {count}",
             "configEntriesCount": "Intrări de configurare: {count}",
+            "verifyDownloadHash": "Verifică descărcările cu hash-ul serverului",
+            "verifyDownloadHashHelp": "După o descărcare, fișierul este comparat cu hash-ul publicat de server și nu este păstrat dacă diferă. Acolo unde nu se folosește hash, ca în cazul FTP, această verificare nu se execută.",
             "importExistingLabel": "Dacă un profil există deja",
             "importExistingSkip": "Omite",
             "importExistingOverwrite": "Suprascrie",

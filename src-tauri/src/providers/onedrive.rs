@@ -150,6 +150,32 @@ fn recycle_bin_not_exposed(
     )))
 }
 
+/// Shortcuts asked at once while a folder is listed: a folder of many empty
+/// shortcuts must not wait for them one by one.
+const SHORTCUT_PROBES: usize = 8;
+
+/// How long a listing waits for one such ask. A target that stalls stays a
+/// folder, and a walk that lists it reports what it finds: one slow shortcut
+/// does not hold up the listing of its parent.
+const SHORTCUT_PROBE_TIMEOUT: std::time::Duration = if cfg!(test) {
+    std::time::Duration::from_millis(300)
+} else {
+    std::time::Duration::from_secs(5)
+};
+
+/// The answer Graph gives for the children of a Personal Vault. Recognised on
+/// the code and the message: another 400 is a failure, and a walk must not skip
+/// a folder for it.
+fn object_handle_is_invalid(body: &str) -> bool {
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(body) else {
+        return false;
+    };
+    parsed["error"]["code"].as_str() == Some("invalidRequest")
+        && parsed["error"]["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("ObjectHandle is Invalid"))
+}
+
 async fn onedrive_error_from_response(
     response: reqwest::Response,
     context_prefix: &str,
@@ -1002,6 +1028,52 @@ impl OneDriveProvider {
         Ok(all_items)
     }
 
+    /// Whether `item` is a shortcut whose target cannot be listed: a Personal
+    /// Vault arrives as a folder shortcut that reads as empty and answers its
+    /// children with `400 ObjectHandle is Invalid`. Nothing else tells it from
+    /// a shortcut, and its name changes with the account's language. It is
+    /// reported like a link, which a compare or a sync leaves alone on both
+    /// sides, so one folder cannot fail a whole tree and a mirror cannot read it
+    /// as deleted. Only a shortcut that does not report children is asked.
+    async fn is_unreachable_shortcut(&self, item: &DriveItem, path: &str) -> bool {
+        if item
+            .folder
+            .as_ref()
+            .and_then(|f| f.child_count)
+            .unwrap_or(0)
+            != 0
+        {
+            return false;
+        }
+        let target = self
+            .remote_roots
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(path.trim_matches('/'))
+            .map(|(drive, id)| format!("{drive}/{id}"));
+        let Some(target) = target else {
+            return false;
+        };
+        // Any other failure says nothing about the folder: it stays a folder, and
+        // a walk that lists it fails as it would have.
+        let Ok(header) = self.auth_header().await else {
+            return false;
+        };
+        let Ok(response) = self
+            .client
+            .get(format!("{}/children?$top=1", self.api_item(&target)))
+            .header(AUTHORIZATION, header)
+            .send()
+            .await
+        else {
+            return false;
+        };
+        if response.status() != reqwest::StatusCode::BAD_REQUEST {
+            return false;
+        }
+        object_handle_is_invalid(&response.text().await.unwrap_or_default())
+    }
+
     /// Evict oldest half of cache when it exceeds the maximum size
     fn trim_cache_if_needed(&mut self) {
         const MAX_CACHE_SIZE: usize = 10_000;
@@ -1557,11 +1629,28 @@ impl StorageProvider for OneDriveProvider {
             (id, full_path)
         };
 
+        use futures_util::StreamExt;
         let items = self.list_children(&item_id, &parent_path).await?;
-        Ok(items
+        let this = &*self;
+        let parent = parent_path.as_str();
+        // Built first: a closure in the stream cannot be sent across this await.
+        let probes: Vec<_> = items
             .iter()
-            .map(|i| self.to_remote_entry(i, &parent_path))
-            .collect())
+            .map(|item| async move {
+                let mut entry = this.to_remote_entry(item, parent);
+                entry.is_symlink = tokio::time::timeout(
+                    SHORTCUT_PROBE_TIMEOUT,
+                    this.is_unreachable_shortcut(item, &entry.path),
+                )
+                .await
+                .unwrap_or(false);
+                entry
+            })
+            .collect();
+        Ok(futures_util::stream::iter(probes)
+            .buffered(SHORTCUT_PROBES)
+            .collect()
+            .await)
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -3459,6 +3548,245 @@ mod tests {
         assert_eq!(paths.iter().filter(|p| p.starts_with("POST ")).count(), 3);
         assert!(!paths.iter().any(|p| p.contains("deleted-parent-id")));
         assert!(paths.last().unwrap().contains("/root/children"));
+        server.abort();
+    }
+
+    /// Only the vault's own answer makes a link: any other failure leaves a folder,
+    /// and a walk that lists it fails as it would have.
+    #[tokio::test]
+    async fn another_failure_of_a_shortcut_leaves_it_a_folder() {
+        use axum::{http::StatusCode, routing::any, Json, Router};
+        use serde_json::json;
+        for (status, body) in [
+            (
+                StatusCode::BAD_REQUEST,
+                json!({"error": {"code": "invalidRequest", "message": "Bad filter"}}),
+            ),
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                json!({"error": {"code": "activityLimitReached", "message": "Slow down"}}),
+            ),
+        ] {
+            let listing = json!({"value": [{"id": "S", "name": "Shared", "size": 0, "remoteItem": {"id": "T",
+                "folder": {"childCount": 0}, "parentReference": {"driveId": "drv2"}}}]});
+            let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+                let listing = listing.clone();
+                let body = body.clone();
+                async move {
+                    if request.uri().path() == "/v1.0/me/drive/root/children" {
+                        (StatusCode::OK, Json(listing))
+                    } else {
+                        (status, Json(body))
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut p = OneDriveProvider::new(OneDriveConfig {
+                client_id: "fixture".into(),
+                client_secret: "fixture".into(),
+            });
+            p.api_origin_override = Some(format!("http://{addr}"));
+            p.test_access_token = Some("fixture".into());
+            p.current_item_id = "root".into();
+            p.current_path = "/".into();
+            let listed = p
+                .list(".")
+                .await
+                .expect("the listing does not fail on the probe");
+            assert!(listed[0].is_dir && !listed[0].is_symlink, "{status}");
+            server.abort();
+        }
+    }
+
+    /// A Personal Vault is a folder shortcut that cannot be listed: it reads as
+    /// a link, so a walk leaves it alone. An empty shortcut that lists stays a
+    /// folder, and one that reads as non-empty is not asked.
+    #[tokio::test]
+    async fn a_shortcut_that_cannot_be_listed_reads_as_a_link() {
+        use axum::{http::StatusCode, routing::any, Json, Router};
+        use serde_json::json;
+        let requests = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = requests.clone();
+        let shortcut = |id: &str, name: &str, target: &str, children: i32| {
+            json!({"id": id, "name": name, "size": 0, "remoteItem": {"id": target,
+                "folder": {"childCount": children}, "parentReference": {"driveId": "drv2"}}})
+        };
+        let listing = json!({"value": [
+            shortcut("V", "Personal Vault", "VAULT", 0),
+            {"id": "U", "name": "Uncounted", "size": 0, "remoteItem": {"id": "VAULT",
+                "folder": {}, "parentReference": {"driveId": "drv2"}}},
+            shortcut("E", "Empty", "EMPTY", 0),
+            shortcut("F", "Full", "FULL", 3),
+        ]});
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let seen = seen.clone();
+            let listing = listing.clone();
+            async move {
+                let path = request.uri().path().to_string();
+                seen.lock().unwrap().push(path.clone());
+                match path.as_str() {
+                    "/v1.0/me/drive/root/children" => (StatusCode::OK, Json(listing)),
+                    "/v1.0/drives/drv2/items/VAULT/children" => (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": {"code": "invalidRequest", "message": "ObjectHandle is Invalid"}})),
+                    ),
+                    _ => (StatusCode::OK, Json(json!({"value": []}))),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        p.current_item_id = "root".into();
+        p.current_path = "/".into();
+
+        let listed = p
+            .list(".")
+            .await
+            .expect("the listing does not fail on the vault");
+        let link = |name: &str| {
+            let entry = listed.iter().find(|e| e.name == name).unwrap();
+            assert!(entry.is_dir, "{name}");
+            entry.is_symlink
+        };
+        assert!(link("Personal Vault"));
+        assert!(link("Uncounted"));
+        assert!(!link("Empty"));
+        assert!(!link("Full"));
+        let asked = requests.lock().unwrap();
+        assert!(!asked.iter().any(|p| p.contains("/FULL/")), "{asked:?}");
+        server.abort();
+    }
+
+    /// A shortcut whose target stalls stays a folder and does not hold up the
+    /// listing of its parent.
+    #[tokio::test]
+    async fn a_stalled_shortcut_stays_a_folder() {
+        use axum::{http::StatusCode, routing::any, Json, Router};
+        use serde_json::json;
+        let listing = json!({"value": [{
+            "id": "SLOW", "name": "Slow", "size": 0,
+            "remoteItem": {"id": "SLOW", "folder": {"childCount": 0}, "parentReference": {"driveId": "drv2"}}
+        }]});
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let listing = listing.clone();
+            async move {
+                if request.uri().path() == "/v1.0/me/drive/root/children" {
+                    return (StatusCode::OK, Json(listing));
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                (StatusCode::OK, Json(json!({"value": []})))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        p.current_item_id = "root".into();
+        p.current_path = "/".into();
+
+        let started = std::time::Instant::now();
+        let listed = p.list(".").await.unwrap();
+        server.abort();
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].is_dir && !listed[0].is_symlink);
+    }
+
+    /// A folder of many empty shortcuts asks them side by side, within the
+    /// limit, and the listing keeps its order.
+    #[tokio::test]
+    async fn empty_shortcuts_are_asked_side_by_side_and_keep_their_order() {
+        use axum::{http::StatusCode, routing::any, Json, Router};
+        use serde_json::json;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let running = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let probes: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let (seen_running, seen_peak, seen_probes) =
+            (running.clone(), peak.clone(), probes.clone());
+        let names: Vec<String> = (0..20).map(|i| format!("S{i:02}")).collect();
+        let listing = json!({"value": names.iter().map(|name| json!({
+            "id": name, "name": name, "size": 0,
+            "remoteItem": {"id": name, "folder": {"childCount": 0}, "parentReference": {"driveId": "drv2"}},
+        })).collect::<Vec<_>>()});
+        let app = Router::new().fallback(any(move |request: axum::extract::Request| {
+            let listing = listing.clone();
+            let running = seen_running.clone();
+            let peak = seen_peak.clone();
+            let probes = seen_probes.clone();
+            async move {
+                let path = request.uri().path().to_string();
+                if path == "/v1.0/me/drive/root/children" {
+                    return (StatusCode::OK, Json(listing));
+                }
+                probes.lock().unwrap().push(path.clone());
+                let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                peak.fetch_max(now, Ordering::SeqCst);
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                running.fetch_sub(1, Ordering::SeqCst);
+                // One past the first batch cannot be read.
+                if path.contains("/S12/") {
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        Json(json!({"error": {"code": "invalidRequest", "message": "ObjectHandle is Invalid"}})),
+                    );
+                }
+                (StatusCode::OK, Json(json!({"value": []})))
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut p = OneDriveProvider::new(OneDriveConfig {
+            client_id: "fixture".into(),
+            client_secret: "fixture".into(),
+        });
+        p.api_origin_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("fixture".into());
+        p.current_item_id = "root".into();
+        p.current_path = "/".into();
+
+        let listed = p.list(".").await.unwrap();
+        assert_eq!(
+            listed.iter().map(|e| e.name.clone()).collect::<Vec<_>>(),
+            names
+        );
+        for entry in &listed {
+            assert!(entry.is_dir, "{}", entry.name);
+            assert_eq!(entry.is_symlink, entry.name == "S12", "{}", entry.name);
+        }
+        let mut asked = probes.lock().unwrap().clone();
+        asked.sort();
+        let expected: Vec<String> = names
+            .iter()
+            .map(|name| format!("/v1.0/drives/drv2/items/{name}/children"))
+            .collect();
+        assert_eq!(asked, expected, "each shortcut asked once");
+        let peak = peak.load(Ordering::SeqCst);
+        assert!((2..=SHORTCUT_PROBES).contains(&peak), "{peak}");
         server.abort();
     }
 

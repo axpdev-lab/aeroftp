@@ -492,6 +492,27 @@ impl FtpManager {
             tokio::fs::create_dir_all(parent).await?;
         }
 
+        // What the server says it holds: a short transfer must not take the name.
+        // A SIZE with no answer is no answer, as a refusal is. Its reply is still
+        // owed, so a new session keeps RETR from reading it as its own.
+        let sized =
+            tokio::time::timeout(self.timeouts.command_timeout, stream.size(remote_path)).await;
+        let expected_size = match sized {
+            Ok(answer) => answer.ok(),
+            Err(_) => {
+                let cwd = self.current_path.clone();
+                self.reconnect().await?;
+                self.change_dir(&cwd).await?;
+                let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+                stream
+                    .transfer_type(FileType::Binary)
+                    .await
+                    .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+                None
+            }
+        };
+        let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+
         // Download using retr_as_stream
         let mut data_stream = stream
             .retr_as_stream(remote_path)
@@ -507,6 +528,17 @@ impl FtpManager {
             .finish()
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+
+        if let Some(expected) = expected_size {
+            if buf.len() as u64 != expected as u64 {
+                return Err(FtpManagerError::OperationFailed(format!(
+                    "the download was not kept: {} bytes arrived and the server holds {}",
+                    buf.len(),
+                    expected
+                ))
+                .into());
+            }
+        }
 
         // Write to local file
         tokio::fs::write(local_path, buf).await?;
@@ -1151,6 +1183,66 @@ LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."
 pub(crate) mod exists_tests {
     use super::*;
 
+    /// A server that holds `held` bytes and sends `sent` of them.
+    async fn server_sending(held: usize, sent: usize) -> String {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut data_listener = None;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let verb = line.split_whitespace().next().unwrap_or("").to_string();
+                let reply = match verb.as_str() {
+                    "USER" => "331 password please\r\n".to_string(),
+                    "PASS" => "230 logged in\r\n".to_string(),
+                    "SIZE" => format!("213 {held}\r\n"),
+                    "PASV" => {
+                        let data = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = data.local_addr().unwrap().port();
+                        data_listener = Some(data);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "RETR" => {
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        write.write_all(b"150 opening\r\n").await.unwrap();
+                        data.write_all(&vec![7u8; sent]).await.unwrap();
+                        drop(data);
+                        "226 done\r\n".to_string()
+                    }
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn a_short_transfer_does_not_take_the_name() {
+        for (held, sent, kept) in [(10, 10, true), (10, 4, false)] {
+            let addr = server_sending(held, sent).await;
+            let mut ftp = FtpManager::new();
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.bin");
+            let outcome = ftp.download_file("/f.bin", out.to_str().unwrap()).await;
+            assert_eq!(outcome.is_ok(), kept, "{outcome:?}");
+            assert_eq!(out.exists(), kept);
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_ftp_manager_refuses_an_unverified_missing_answer() {
         let addr = vsftpd_like().await;
@@ -1173,6 +1265,8 @@ pub(crate) mod exists_tests {
         assert!(ftp.get_file_size("/missing").await.is_err());
     }
 
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
     /// A control connection that answers like vsftpd: the session starts in
@@ -1268,6 +1362,79 @@ pub(crate) mod exists_tests {
     /// file refuses with 550 too, and the file read as absent: a versioned
     /// backup skipped a source it should have kept and could take a taken
     /// destination for free.
+    /// A server that never answers SIZE on its first session and serves the file
+    /// on its second.
+    async fn stalls_on_size_once(body: &'static [u8]) -> (String, Arc<AtomicUsize>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let sessions = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&sessions);
+        tokio::spawn(async move {
+            loop {
+                let (socket, _) = listener.accept().await.unwrap();
+                let first = seen.fetch_add(1, Ordering::SeqCst) == 0;
+                tokio::spawn(async move {
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    let mut data_listener = None;
+                    write.write_all(b"220 ready\r\n").await.unwrap();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let cmd = line.split(' ').next().unwrap_or_default().to_string();
+                        let reply = match cmd.as_str() {
+                            "USER" => "331 password\r\n".to_string(),
+                            "PASS" => "230 in\r\n".to_string(),
+                            "PWD" => "257 \"/\"\r\n".to_string(),
+                            "TYPE" | "CWD" => "200 ok\r\n".to_string(),
+                            "SIZE" if first => continue,
+                            "SIZE" => format!("213 {}\r\n", body.len()),
+                            "PASV" => {
+                                let data =
+                                    tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                                let port = data.local_addr().unwrap().port();
+                                data_listener = Some(data);
+                                format!(
+                                    "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                                    port / 256,
+                                    port % 256
+                                )
+                            }
+                            "RETR" => {
+                                write.write_all(b"150 sending\r\n").await.unwrap();
+                                let (mut data, _) =
+                                    data_listener.take().unwrap().accept().await.unwrap();
+                                data.write_all(body).await.unwrap();
+                                data.shutdown().await.unwrap();
+                                "226 done\r\n".to_string()
+                            }
+                            "QUIT" => return,
+                            _ => "502 not implemented\r\n".to_string(),
+                        };
+                        write.write_all(reply.as_bytes()).await.unwrap();
+                    }
+                });
+            }
+        });
+        (addr, sessions)
+    }
+
+    /// The SIZE probe only guards against a short transfer: one that stalls does
+    /// not fail the download, and its late reply is left behind with its session.
+    #[tokio::test]
+    async fn a_size_with_no_answer_does_not_fail_the_download() {
+        let (addr, sessions) = stalls_on_size_once(b"hello").await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        let mut ftp = FtpManager::new();
+        ftp.timeouts.command_timeout = std::time::Duration::from_millis(200);
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.download_file("/a.txt", local.to_str().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&local).unwrap(), b"hello");
+        assert_eq!(sessions.load(Ordering::SeqCst), 2);
+    }
+
     #[tokio::test]
     async fn a_file_is_found_on_a_server_that_refuses_size_in_ascii() {
         let addr = vsftpd_like().await;

@@ -33,6 +33,8 @@ interface CompareScanStateProps {
     scanProgressId?: string;
     /** The last compare was stopped by the user. */
     stopped?: boolean;
+    /** Why the last compare was refused, from the backend. */
+    refused?: string;
     leftLabel: string;
     rightLabel: string;
     /** Start the compare of the pair. Absent: nothing can be compared yet. */
@@ -52,6 +54,7 @@ interface CompareScanStateProps {
 export const CompareScanState: React.FC<CompareScanStateProps> = ({
     loading,
     stopped,
+    refused,
     leftLabel,
     rightLabel,
     onStart,
@@ -93,6 +96,11 @@ export const CompareScanState: React.FC<CompareScanStateProps> = ({
             {stopped && (
                 <span className="font-medium text-amber-600 dark:text-amber-400">
                     {t('aerosync.compareStopped') || 'Compare stopped.'}
+                </span>
+            )}
+            {refused && (
+                <span role="alert" className="max-w-md break-words font-medium text-red-600 dark:text-red-400">
+                    {refused}
                 </span>
             )}
             <span className="break-all">
