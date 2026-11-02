@@ -2926,8 +2926,11 @@ mod tests {
         provider
     }
 
+    /// Refused with the status and the start of the error page, which says
+    /// what the host objected to.
     fn refused_with_404<T: std::fmt::Debug>(outcome: &Result<T, ProviderError>) -> bool {
-        matches!(outcome, Err(ProviderError::TransferFailed(m)) if m.contains("404"))
+        matches!(outcome, Err(ProviderError::TransferFailed(m))
+            if m.contains("404") && m.contains("error page"))
     }
 
     /// The content host serves what pCloud's file link names; a success still
