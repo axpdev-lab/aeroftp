@@ -41,7 +41,7 @@ describe('segmented publication boundaries', () => {
   it('reports success once the final file has been atomically committed', () => {
     // A missing anchor must fail here: slicing on -1 gives '' and turned a
     // renamed call into an unrelated-looking assertion failure.
-    const start = executor.indexOf('let published = match checked {');
+    const start = executor.indexOf('match temp.publish(Path::new(local_path)).await {');
     // Through the end of the function, so a cancellation added after the
     // publication arm is caught too.
     const end = executor.indexOf('\n}\n', start);

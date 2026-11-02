@@ -1550,6 +1550,12 @@ impl SftpProvider {
             );
             return Ok(false);
         }
+        if let Err(differs) = temp.check_content(Path::new(local_path)).await {
+            temp.discard();
+            tracing::warn!("SFTP intra-file {}: {}", remote_path, differs);
+            report_download_fallback(super::content_check::ASSEMBLED_DIFFERS);
+            return Ok(false);
+        }
         match temp.publish(Path::new(local_path)).await {
             Ok(()) => {
                 tracing::info!("SFTP: intra-file download complete: {}", remote_path);
@@ -5736,6 +5742,12 @@ async fn sftp_readahead_download(
         }
     }
 
+    // The guard removes the staged file, and the old file keeps its name.
+    super::content_check::before_publish(&guard.path, Path::new(local_path))
+        .await
+        .map_err(|why| {
+            ProviderError::TransferFailed(format!("the download was not kept: {why}"))
+        })?;
     tokio::fs::rename(&guard.path, local_path)
         .await
         .map_err(|e| {

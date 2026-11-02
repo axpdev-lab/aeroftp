@@ -2450,6 +2450,47 @@ async fn a_path_gone_on_both_sides_leaves_the_baseline() {
     assert!(!saved.files.contains_key("a.txt"));
 }
 
+/// A KeepBoth download that fails puts the local copy back: a path left empty
+/// reads as a local deletion next cycle, which a two-way sync sends to the remote.
+#[tokio::test]
+async fn keep_both_restores_the_local_copy_when_the_download_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        conflict_strategy: ConflictStrategy::KeepBoth,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "plan.txt", b"v1");
+    std::fs::write(root.path().join("plan.txt"), b"local edit").unwrap();
+    remote.put("/remote/plan.txt", b"remote edit!", SYNCED_AT + 500);
+    remote.state().refuse_download = true;
+
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &["plan.txt"])),
+        &mut remote,
+        None,
+    )
+    .await;
+    assert!(!done(run).0.errors.is_empty());
+    assert_eq!(
+        std::fs::read(root.path().join("plan.txt")).unwrap(),
+        b"local edit"
+    );
+    let copies = std::fs::read_dir(root.path())
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("AeroCloud conflict")
+        })
+        .count();
+    assert_eq!(copies, 0, "nothing stays under a conflict name");
+}
+
 /// KeepBoth sets the local copy aside and puts the remote one at the path.
 /// The baseline used to stay as it was, so the next cycle read the same
 /// conflict and set aside another copy, one per cycle; the watcher's own

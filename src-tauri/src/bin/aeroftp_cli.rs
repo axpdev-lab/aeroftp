@@ -36758,7 +36758,12 @@ async fn pget_segmented_download(
             // Asked last, on a session of its own like the reading above.
             let expected = if ftp_client_gui_lib::providers::content_check::enabled() {
                 let reading = run_until_interrupted(&cancelled, async {
-                    let (mut reader, _) = match create_and_connect(url, cli, format).await {
+                    let opened =
+                        ftp_client_gui_lib::providers::multi_thread::open_after_transfer(|| {
+                            create_and_connect(url, cli, format)
+                        })
+                        .await;
+                    let (mut reader, _) = match opened {
                         Ok(connected) => connected,
                         Err(error) => {
                             // Every window is in: a session that will not open
@@ -60258,6 +60263,16 @@ mod fuse_mount {
                 fs.get_cached(ROOT_INODE).unwrap().attr.kind,
                 FileType::Directory
             );
+        }
+
+        #[test]
+        fn a_successful_download_keeps_its_bytes() {
+            let dir = tempfile::tempdir().unwrap();
+            let tmp = dir.path().join("buffer");
+            std::fs::write(&tmp, b"remote bytes").unwrap();
+
+            assert!(write_buffer_ready(Ok(()), &tmp));
+            assert_eq!(std::fs::read(&tmp).unwrap(), b"remote bytes");
         }
 
         #[test]

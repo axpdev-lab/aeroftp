@@ -4226,6 +4226,15 @@ impl S3Provider {
             }
         }
 
+        // A file that is not what the server publishes goes to one stream, which
+        // is checked in its turn.
+        if let Err(differs) = segmented.check_content(&final_pathbuf).await {
+            return Err(ProviderError::ParallelRefused(format!(
+                "Object {key}: {}: {differs}",
+                super::content_check::ASSEMBLED_DIFFERS
+            )));
+        }
+
         // All ranges committed: atomic rename of the temporary onto the final
         // path, while it is still claimed.
         segmented
@@ -12897,6 +12906,30 @@ mod tests {
             .to_string();
         assert!(error.contains(HELLO_MD5), "{error}");
         assert_eq!(std::fs::read(&out).unwrap(), b"what was there");
+    }
+
+    /// Windows that do not hash to what the server publishes are not kept: one
+    /// stream reads the object again, and is checked in its turn.
+    #[tokio::test]
+    async fn windows_that_differ_from_the_hash_go_to_one_stream() {
+        use super::super::multi_thread::pin_server::{start, PinMode, OBJECT_SIZE};
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("big.bin");
+        let server = start(PinMode::HonouredWithAnotherMd5).await;
+        let mut provider = make_provider(Some(&format!("http://{}", server.addr)));
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let warnings = crate::providers::CallWarnings::default();
+        warnings
+            .scope(provider.download_checked("/big.bin", out.to_str().unwrap(), None, None))
+            .await
+            .unwrap();
+        let warnings = warnings.take();
+        assert!(
+            warnings.iter().any(|w| w.contains("using a single stream")),
+            "{warnings:?}"
+        );
+        assert_ne!(std::fs::read(&out).unwrap(), vec![7u8; OBJECT_SIZE]);
     }
 
     /// A tag that moved between the two readings is a replacement, not

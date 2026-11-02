@@ -217,7 +217,10 @@ pub(crate) async fn single_file_transfer(
     upload: bool,
     per_file_seconds: u64,
 ) -> Result<(), crate::providers::ProviderError> {
-    let timeout = bulk_timeout(per_file_seconds, 1, item.size);
+    let mut timeout = bulk_timeout(per_file_seconds, 1, item.size);
+    if !upload {
+        timeout += crate::providers::content_check::allowance(item.size);
+    }
     let operation = async {
         if upload {
             provider

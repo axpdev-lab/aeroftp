@@ -3367,6 +3367,20 @@ pub(crate) fn arm_download_streams(
     segments
 }
 
+/// Size and time of a download's target, to tell a file it wrote from the one
+/// that was already there. An atomic writer leaves that one alone until it renames.
+fn local_target_state(path: &str) -> Option<(u64, Option<std::time::SystemTime>)> {
+    let meta = std::fs::metadata(path).ok()?;
+    Some((meta.len(), meta.modified().ok()))
+}
+
+fn download_wrote_target(
+    before: Option<(u64, Option<std::time::SystemTime>)>,
+    after: Option<(u64, Option<std::time::SystemTime>)>,
+) -> bool {
+    after.is_some() && after != before
+}
+
 /// Download a file from the remote server
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -3808,6 +3822,7 @@ pub async fn provider_download_file(
     if source_refused {
         provider.expect_moved_source();
     }
+    let target_before = local_target_state(&local_path);
     let result = {
         let work = async {
             if let Some(Ok(())) = &segmented_result {
@@ -3855,8 +3870,11 @@ pub async fn provider_download_file(
     };
 
     // Partial local target is not a valid whole file after cancel (MTP has no resume).
+    // A file the download never touched is the old one, and it stays.
     if let Err(ref err) = result {
-        if crate::transfer_dag::error::message_names_a_cancellation(&err.to_string()) {
+        if crate::transfer_dag::error::message_names_a_cancellation(&err.to_string())
+            && download_wrote_target(target_before, local_target_state(&local_path))
+        {
             let _ = tokio::fs::remove_file(&local_path).await;
         }
     }
@@ -14215,6 +14233,22 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_cancelled_download_removes_only_what_it_wrote() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("f.bin");
+        let path = target.to_str().unwrap();
+
+        assert!(!download_wrote_target(None, local_target_state(path)));
+        std::fs::write(&target, b"partial").unwrap();
+        assert!(download_wrote_target(None, local_target_state(path)));
+
+        let before = local_target_state(path);
+        assert!(!download_wrote_target(before, local_target_state(path)));
+        std::fs::write(&target, b"partial, longer").unwrap();
+        assert!(download_wrote_target(before, local_target_state(path)));
+    }
 
     #[test]
     fn compare_inventory_retains_shared_and_remote_only_empty_folders() {

@@ -385,6 +385,7 @@ impl SegmentedDownloadError {
                 if *reason == SOURCE_SIZE_CHANGED
                     || *reason == SOURCE_NOT_VERIFIED
                     || *reason == WINDOW_REFUSED
+                    || *reason == crate::providers::content_check::ASSEMBLED_DIFFERS
                     || *reason == PinRefusal::SourceChanged(String::new()).notice()
                     || *reason == PinRefusal::PinUnsupported.notice()
         )
@@ -805,14 +806,14 @@ async fn run_provider_segmented_windows(
                         temp.discard();
                         return Err(SegmentedDownloadError::Cancelled);
                     };
-                    let published = match checked {
-                        Ok(()) => temp.publish(Path::new(local_path)).await,
-                        Err(differs) => {
-                            temp.discard();
-                            Err(differs)
-                        }
-                    };
-                    match published {
+                    if let Err(differs) = checked {
+                        temp.discard();
+                        return Err(SegmentedDownloadError::unavailable(
+                            format!("segmented download: {differs}"),
+                            crate::providers::content_check::ASSEMBLED_DIFFERS,
+                        ));
+                    }
+                    match temp.publish(Path::new(local_path)).await {
                         Ok(()) => Ok(()),
                         Err(e) => Err(SegmentedDownloadError::unavailable(
                             format!("segmented download: finalize failed: {}", e),
@@ -1493,7 +1494,8 @@ impl ProviderDownloadExecutor {
         let effective_timeout = self
             .runtime_settings
             .timeout_seconds
-            .max(size_based_secs + self.runtime_settings.timeout_seconds);
+            .max(size_based_secs + self.runtime_settings.timeout_seconds)
+            + crate::providers::content_check::allowance(file_size).as_secs();
 
         if *source_refused {
             provider.expect_moved_source();
@@ -2673,6 +2675,7 @@ mod tests {
         assert!(refused(PinRefusal::SourceChanged(String::new()).notice()).refused_by_the_source());
         assert!(refused(PinRefusal::PinUnsupported.notice()).refused_by_the_source());
         assert!(refused(WINDOW_REFUSED).refused_by_the_source());
+        assert!(refused(crate::providers::content_check::ASSEMBLED_DIFFERS).refused_by_the_source());
         assert!(!refused("a segmented range transfer failed").refused_by_the_source());
         assert!(!SegmentedDownloadError::Cancelled.refused_by_the_source());
     }

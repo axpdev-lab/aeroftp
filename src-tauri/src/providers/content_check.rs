@@ -97,6 +97,25 @@ pub fn reading_limit(size_hint: Option<u64>) -> Duration {
     Duration::from_secs(size_hint.unwrap_or(0).div_euclid(BYTES_PER_SECOND).max(15))
 }
 
+/// The notice of a fallback from windows that do not hash to what the server
+/// publishes: one stream reads the object again, and is checked in its turn.
+pub const ASSEMBLED_DIFFERS: &str = "the assembled file does not match the published hash";
+
+/// What the check adds to a download's time limit: the digest asked and the file
+/// hashed, each within [`reading_limit`]. A file that arrived in time is not lost
+/// to the check that follows it.
+pub fn allowance(size: u64) -> Duration {
+    allowance_when(enabled(), size)
+}
+
+fn allowance_when(enabled: bool, size: u64) -> Duration {
+    if enabled {
+        reading_limit(Some(size)) * 2
+    } else {
+        Duration::ZERO
+    }
+}
+
 #[derive(Debug)]
 struct State {
     local: PathBuf,
@@ -274,6 +293,16 @@ mod tests {
     fn md5_of_hello() -> Option<ContentDigest> {
         let digests = HashMap::from([("md5".to_string(), HELLO_MD5.to_string())]);
         ContentDigest::strongest(&digests)
+    }
+
+    #[test]
+    fn the_time_limit_grows_only_while_the_check_runs() {
+        assert_eq!(allowance_when(false, u64::MAX), Duration::ZERO);
+        assert_eq!(allowance_when(true, 0), Duration::from_secs(30));
+        assert_eq!(
+            allowance_when(true, 100 * 50 * 1024 * 1024),
+            Duration::from_secs(200)
+        );
     }
 
     #[test]

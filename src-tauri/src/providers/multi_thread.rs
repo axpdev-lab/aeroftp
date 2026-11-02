@@ -2645,6 +2645,12 @@ pub(crate) async fn try_http_concurrent_range_download(
                     );
                     return HttpRangeAttempt::Refused(fallback_progress);
                 }
+                if let Err(differs) = temp.check_content(Path::new(&req.local_path)).await {
+                    temp.discard();
+                    report_download_fallback(super::content_check::ASSEMBLED_DIFFERS);
+                    tracing::warn!("[multi-thread] {}: {differs}", req.url);
+                    return HttpRangeAttempt::Refused(fallback_progress);
+                }
                 match temp.publish(Path::new(&req.local_path)).await {
                     Ok(()) => HttpRangeAttempt::Completed,
                     Err(e) => HttpRangeAttempt::Failed(ProviderError::IoError(e)),
