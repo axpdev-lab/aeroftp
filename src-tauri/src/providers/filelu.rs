@@ -239,8 +239,10 @@ struct DirectLinkResult {
 /// The current one is not among them. Measured 2026-11-01 (undocumented).
 #[derive(Debug, Deserialize)]
 struct VersionsResult {
+    /// `None` when FileLu leaves the key out: a listing reads that as no
+    /// versions, a deletion's check cannot.
     #[serde(default)]
-    versions: Vec<VersionEntry>,
+    versions: Option<Vec<VersionEntry>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1575,8 +1577,7 @@ impl FileLuProvider {
         if status.is_success() {
             return Ok(resp);
         }
-        let body = resp.text().await.unwrap_or_default();
-        let excerpt: String = body.trim().chars().take(200).collect();
+        let excerpt = super::error_body_excerpt(resp, 200).await;
         Err(ProviderError::TransferFailed(format!(
             "Download HTTP {status}: {}",
             redact_key(&excerpt)
@@ -1629,11 +1630,25 @@ impl FileLuProvider {
         &mut self,
         path: &str,
     ) -> Result<(String, CacheEntry, Vec<VersionEntry>), ProviderError> {
+        let (norm, entry, versions) = self.fetch_versions(path).await?;
+        Ok((norm, entry, versions.unwrap_or_default()))
+    }
+
+    /// [`versions_of`](Self::versions_of), with FileLu's `versions` key as
+    /// it came: `None` when the answer left it out.
+    async fn fetch_versions(
+        &mut self,
+        path: &str,
+    ) -> Result<(String, CacheEntry, Option<Vec<VersionEntry>>), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
         let norm = self.resolve_path(path);
-        let entry = self.resolve_path_entry_mode(&norm, true).await?;
+        // The file's code is read afresh (a replace or a restore changes it),
+        // from a listing that only has to contain it: a parent folder too
+        // large to list whole does not stop the lookup.
+        self.path_cache.remove(&norm);
+        let entry = self.resolve_path_entry_mode(&norm, false).await?;
         if entry.is_dir || entry.file_code.is_empty() {
             return Err(ProviderError::InvalidPath(format!(
                 "{norm} is not a file: only files have versions"
@@ -2150,7 +2165,20 @@ impl StorageProvider for FileLuProvider {
         let url = self.api_url_with("file/version_delete", &[("version_code", version_id)]);
         let resp = self.get_with_retry(&url).await?;
         Self::ensure_api_ok(resp).await?;
-        let (norm, _, left) = self.versions_of(path).await?;
+        let accepted = |detail: String| {
+            ProviderError::ServerError(format!(
+                "FileLu accepted the deletion of version {version_id} of {path}, but {detail}"
+            ))
+        };
+        let (norm, _, left) = self
+            .fetch_versions(path)
+            .await
+            .map_err(|e| accepted(format!("the check that it is gone failed: {e}")))?;
+        let Some(left) = left else {
+            return Err(accepted(
+                "its answer to the check that it is gone lists no versions at all".to_string(),
+            ));
+        };
         if left.iter().any(|v| v.code.as_deref() == Some(version_id)) {
             return Err(ProviderError::ServerError(format!(
                 "FileLu accepted the deletion of version {version_id} of {norm}, but still lists it"
@@ -4781,18 +4809,33 @@ mod tests {
         );
     }
 
+    /// What the versions fixture does once a version is deleted.
+    #[derive(Clone, Copy, PartialEq)]
+    enum AfterDelete {
+        /// The version leaves the listing.
+        Removes,
+        /// The listing still holds it.
+        KeepsIt,
+        /// The listing answers without its `versions` key.
+        DropsTheKey,
+        /// The listing fails.
+        FailsToList,
+    }
+
     /// `/d/f.txt` (current code `CUR`) with the earlier versions `V2` and
     /// `V1`, as `file/versions` listed them on 2026-11-01. `version_delete`
-    /// removes the version it names unless `deletes_nothing`. Returns the
+    /// answers as `after_delete` says. Returns the
     /// provider and the calls, as [`provider_against`] records them.
     async fn provider_with_versions(
-        deletes_nothing: bool,
+        after_delete: AfterDelete,
     ) -> (
         FileLuProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
         let versions = std::sync::Arc::new(std::sync::Mutex::new(vec!["V2", "V1"]));
+        let deleted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         provider_against(move |origin, path, query| {
+            let deleted_now = deleted.load(std::sync::atomic::Ordering::SeqCst);
             let root = query.get("folder_path").map(String::as_str) == Some("/");
             let page_one = query.get("page").is_none_or(|p| p == "1");
             match path {
@@ -4806,6 +4849,16 @@ mod tests {
                 "/apiv2/folder/list" => {
                     r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9}],"folders":[]}}"#
                         .to_string()
+                }
+                "/api/file/versions"
+                    if deleted_now && after_delete == AfterDelete::FailsToList =>
+                {
+                    "!403 denied".to_string()
+                }
+                "/api/file/versions"
+                    if deleted_now && after_delete == AfterDelete::DropsTheKey =>
+                {
+                    r#"{"status":200,"msg":"OK","result":{"file_code":"CUR"}}"#.to_string()
                 }
                 "/api/file/versions" if query.get("file_code").map(String::as_str) == Some("CUR") => {
                     let listed: Vec<_> = versions
@@ -4835,7 +4888,8 @@ mod tests {
                 "/blob/CUR" => "!404 gone".to_string(),
                 "/blob/V2" => "!403 denied".to_string(),
                 "/api/file/version_delete" => {
-                    if !deletes_nothing {
+                    deleted.store(true, std::sync::atomic::Ordering::SeqCst);
+                    if after_delete != AfterDelete::KeepsIt {
                         let code = query.get("version_code").cloned().unwrap_or_default();
                         versions.lock().unwrap().retain(|v| *v != code);
                     }
@@ -4849,7 +4903,7 @@ mod tests {
 
     #[tokio::test]
     async fn versions_are_listed_newest_first_by_their_own_codes() {
-        let (mut provider, _) = provider_with_versions(false).await;
+        let (mut provider, _) = provider_with_versions(AfterDelete::Removes).await;
         assert!(provider.supports_versions());
         let versions = provider.list_versions("/d/f.txt").await.unwrap();
         let listed: Vec<(&str, Option<&str>, u64)> = versions
@@ -4869,7 +4923,7 @@ mod tests {
     /// the error page is not written as the file.
     #[tokio::test]
     async fn a_download_answered_with_an_http_error_fails_and_writes_nothing() {
-        let (mut provider, _) = provider_with_versions(false).await;
+        let (mut provider, _) = provider_with_versions(AfterDelete::Removes).await;
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("f.txt");
         let local = out.to_str().unwrap();
@@ -4896,7 +4950,7 @@ mod tests {
     /// Only files have versions: a folder is refused before FileLu is asked.
     #[tokio::test]
     async fn a_folder_has_no_versions_to_ask_for() {
-        let (mut provider, calls) = provider_with_versions(false).await;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
         let outcome = provider.list_versions("/d").await;
         assert!(
             matches!(outcome, Err(ProviderError::InvalidPath(_))),
@@ -4913,7 +4967,7 @@ mod tests {
     /// version of that file is used.
     #[tokio::test]
     async fn a_version_is_downloaded_by_its_code_and_only_if_listed() {
-        let (mut provider, calls) = provider_with_versions(false).await;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("v1.txt");
         provider
@@ -4931,7 +4985,7 @@ mod tests {
             calls.lock().unwrap()
         );
 
-        let (mut provider, calls) = provider_with_versions(false).await;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
         let outcome = provider
             .download_version("/d/f.txt", "OTHER", out.to_str().unwrap())
             .await;
@@ -4954,7 +5008,7 @@ mod tests {
     /// changes, so its cache entry goes.
     #[tokio::test]
     async fn a_restore_names_the_current_file_and_the_version() {
-        let (mut provider, calls) = provider_with_versions(false).await;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
         provider.restore_version("/d/f.txt", "V1").await.unwrap();
         assert!(
             calls
@@ -4967,7 +5021,7 @@ mod tests {
         );
         assert!(!provider.path_cache.contains_key("/d/f.txt"));
 
-        let (mut provider, calls) = provider_with_versions(false).await;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
         let outcome = provider.restore_version("/d/f.txt", "CUR").await;
         assert!(
             matches!(outcome, Err(ProviderError::NotFound(_))),
@@ -4989,7 +5043,7 @@ mod tests {
     /// sent: it would delete something else.
     #[tokio::test]
     async fn only_a_listed_version_is_deleted_and_the_deletion_is_checked() {
-        let (mut provider, calls) = provider_with_versions(false).await;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
         provider.delete_version("/d/f.txt", "V1").await.unwrap();
         assert!(
             calls
@@ -5002,7 +5056,7 @@ mod tests {
         );
 
         for code in ["CUR", "OTHER"] {
-            let (mut provider, calls) = provider_with_versions(false).await;
+            let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
             let outcome = provider.delete_version("/d/f.txt", code).await;
             assert!(
                 matches!(outcome, Err(ProviderError::NotFound(_))),
@@ -5019,11 +5073,98 @@ mod tests {
             );
         }
 
-        let (mut provider, _) = provider_with_versions(true).await;
+        let (mut provider, _) = provider_with_versions(AfterDelete::KeepsIt).await;
         let outcome = provider.delete_version("/d/f.txt", "V1").await;
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("still lists it")),
             "{outcome:?}"
+        );
+    }
+
+    /// A check that cannot show the version gone does not confirm the
+    /// deletion, and the error says FileLu accepted it.
+    #[tokio::test]
+    async fn a_deletion_the_check_cannot_confirm_is_an_error_that_names_the_acceptance() {
+        for (after, says) in [
+            (AfterDelete::DropsTheKey, "lists no versions at all"),
+            (AfterDelete::FailsToList, "the check that it is gone failed"),
+        ] {
+            let (mut provider, _) = provider_with_versions(after).await;
+            let outcome = provider.delete_version("/d/f.txt", "V1").await;
+            assert!(
+                matches!(outcome, Err(ProviderError::ServerError(ref m))
+                    if m.contains("accepted the deletion of version V1") && m.contains(says)),
+                "{outcome:?}"
+            );
+        }
+    }
+
+    /// The versions are asked for under the file's current code, not one
+    /// left in the cache from before a replace.
+    #[tokio::test]
+    async fn versions_are_asked_for_under_the_current_code() {
+        let (mut provider, _) = provider_with_versions(AfterDelete::Removes).await;
+        provider.path_cache.insert(
+            "/d/f.txt".to_string(),
+            CacheEntry {
+                is_dir: false,
+                fld_id: 7,
+                fld_token: None,
+                file_code: "STALE".to_string(),
+                size: 9,
+                modified: None,
+                hash: None,
+            },
+        );
+        let versions = provider.list_versions("/d/f.txt").await.unwrap();
+        assert_eq!(versions.len(), 2, "{versions:?}");
+    }
+
+    /// A parent folder too large to list whole still finds the file it
+    /// lists, and its versions with it.
+    #[tokio::test]
+    async fn a_file_in_a_folder_too_large_to_list_whole_has_its_versions() {
+        let (mut provider, calls) = provider_against(move |_, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            let page_one = query.get("page").is_none_or(|p| p == "1");
+            match path {
+                "/apiv2/folder/list" if root && page_one => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list" => {
+                    // Every page full: the listing never ends.
+                    let page = query.get("page").cloned().unwrap_or_default();
+                    let mut files: Vec<_> = (0..100)
+                        .map(|i| serde_json::json!({"name": format!("p{page}-{i}"), "file_code": format!("C{page}-{i}")}))
+                        .collect();
+                    if page_one {
+                        files[0] = serde_json::json!({"name": "f.txt", "file_code": "CUR"});
+                    }
+                    serde_json::json!({"status":200,"result":{"files":files,"folders":[]}}).to_string()
+                }
+                "/api/file/versions" => {
+                    r#"{"status":200,"result":{"versions":[{"code":"V1","size":1,"uploaded":"2026-11-01 11:31:51"}]}}"#
+                        .to_string()
+                }
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let versions = provider.list_versions("/d/f.txt").await;
+        assert!(
+            matches!(versions, Ok(ref v) if v.len() == 1),
+            "{versions:?}"
+        );
+        let calls = calls.lock().unwrap();
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.contains("file/versions") && c.contains("file_code=CUR")),
+            "{calls:?}"
         );
     }
 }
