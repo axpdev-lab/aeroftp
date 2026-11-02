@@ -8606,7 +8606,12 @@ pub async fn provider_compare_directories(
         // no rows, which is indistinguishable from the user having deleted its
         // contents. Running the preset remote-to-local then deletes the local
         // copies of files that are still sitting on the provider.
-        crate::ensure_scan_complete("remote", &remote_path, &inventory.completeness)?;
+        crate::ensure_scan_complete("remote", &remote_path, &inventory.completeness).map_err(
+            |refusal| match remote_boundaries.first_failure.as_deref() {
+                Some(failure) => format!("{refusal} First failure: {failure}"),
+                None => refusal,
+            },
+        )?;
 
         // The parallel scan stops early when the cancel flag is raised but
         // returns the partial results it gathered. Surface the same

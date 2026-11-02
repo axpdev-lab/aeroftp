@@ -500,6 +500,8 @@ pub struct UnseenPath {
 /// What a tree scan skipped or could not see, beyond the entries it returned.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ScanBoundaries {
+    /// The first listing that failed and why: what a refusal can tell the user.
+    pub first_failure: Option<String>,
     /// Symbolic links the scan listed and did not follow.
     pub links: Vec<SkippedLink>,
     /// Paths the scan could not see: a directory at the depth limit or one that
@@ -1469,6 +1471,9 @@ async fn scan_remote_tree_inventory_internal(
                 // deletion downstream, so count it instead of only warning, and
                 // bound it so no copy reaches into what it might hold.
                 completeness.list_errors += 1;
+                boundaries
+                    .first_failure
+                    .get_or_insert_with(|| failure.message.clone());
                 if failure.root_absent {
                     boundaries.root_missing = true;
                 } else {
@@ -1708,6 +1713,9 @@ async fn scan_remote_tree_locked(
                 // CLAUDE-AV-B3-13: an unlisted directory hides every file under
                 // it, which downstream reads as "these files were deleted".
                 completeness.list_errors += 1;
+                boundaries
+                    .first_failure
+                    .get_or_insert_with(|| failure.message.clone());
                 if failure.root_absent {
                     boundaries.root_missing = true;
                 } else {
@@ -4541,6 +4549,13 @@ pub(crate) mod tests {
             assert!(boundaries.root_missing, "(pool={pool})");
             assert_eq!(boundaries.unbounded, None, "(pool={pool})");
             assert!(boundaries.unseen.is_empty(), "(pool={pool})");
+            assert!(
+                boundaries
+                    .first_failure
+                    .as_deref()
+                    .is_some_and(|failure| failure.contains("failed to list")),
+                "a refusal can say why (pool={pool}): {boundaries:?}"
+            );
         }
     }
 
