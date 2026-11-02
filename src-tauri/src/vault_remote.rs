@@ -92,7 +92,7 @@ pub async fn vault_v2_download_remote(
         .ok_or("Temp path contains invalid UTF-8")?;
 
     provider
-        .download(&remote_path, local_str, None)
+        .download_checked(&remote_path, local_str, None, None)
         .await
         .map_err(|e| format!("Download failed: {}", e))?;
 

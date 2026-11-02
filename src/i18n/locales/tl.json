@@ -1360,6 +1360,8 @@
             "aiKeysCount": "{count} AI key",
             "oauthTokensCount": "{count} OAuth token",
             "configEntriesCount": "{count} entry ng config",
+            "verifyDownloadHash": "Suriin ang mga download gamit ang hash ng server",
+            "verifyDownloadHashHelp": "Pagkatapos ng download, ikinukumpara ang file sa hash na inilalathala ng server, at hindi ito itinatago kung magkaiba. Kung saan walang ginagamit na hash, tulad ng sa FTP, hindi isinasagawa ang pagsusuring ito.",
             "importExistingLabel": "Kung may profile nang umiiral",
             "importExistingSkip": "Laktawan",
             "importExistingOverwrite": "I-overwrite",

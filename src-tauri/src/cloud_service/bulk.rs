@@ -469,7 +469,7 @@ impl CloudService {
                 // Nothing of it was written: one download on its own, the
                 // single-file path's one attempt, its copy already kept.
                 other if goes_back_to_single_file(&other) => provider
-                    .download(&entry.remote_path, &entry.local_path, None)
+                    .download_checked(&entry.remote_path, &entry.local_path, None, None)
                     .await
                     .map_err(|e| e.to_string()),
                 BulkTransferOutcome::Failed(error) => Err(error.to_string()),
