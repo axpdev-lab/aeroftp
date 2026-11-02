@@ -30,6 +30,9 @@ struct RemoteState {
     refuse_rename: bool,
     refuse_upload: bool,
     refuse_download: bool,
+    /// Written, once, by a download that is about to be refused: an edit that
+    /// lands while it runs.
+    edit_during_download: Option<PathBuf>,
     unpublished: BTreeSet<String>,
     readiness_calls: Vec<String>,
     readiness_fails: bool,
@@ -164,6 +167,9 @@ impl StorageProvider for MemRemote {
         let mut state = self.state();
         state.downloads.push(remote_path.to_string());
         if state.refuse_download {
+            if let Some(path) = state.edit_during_download.take() {
+                std::fs::write(path, b"edited meanwhile").map_err(ProviderError::IoError)?;
+            }
             return Err(ProviderError::Other("fixture download refused".into()));
         }
         let (bytes, _) = state
@@ -2448,6 +2454,95 @@ async fn a_path_gone_on_both_sides_leaves_the_baseline() {
     .await;
     assert!(done(run).0.errors.is_empty());
     assert!(!saved.files.contains_key("a.txt"));
+}
+
+/// A KeepBoth download that fails puts the local copy back: a path left empty
+/// reads as a local deletion next cycle, which a two-way sync sends to the remote.
+#[tokio::test]
+async fn keep_both_restores_the_local_copy_when_the_download_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        conflict_strategy: ConflictStrategy::KeepBoth,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "plan.txt", b"v1");
+    std::fs::write(root.path().join("plan.txt"), b"local edit").unwrap();
+    remote.put("/remote/plan.txt", b"remote edit!", SYNCED_AT + 500);
+    remote.state().refuse_download = true;
+
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &["plan.txt"])),
+        &mut remote,
+        None,
+    )
+    .await;
+    assert!(!done(run).0.errors.is_empty());
+    assert_eq!(
+        std::fs::read(root.path().join("plan.txt")).unwrap(),
+        b"local edit"
+    );
+    let copies = std::fs::read_dir(root.path())
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .contains("AeroCloud conflict")
+        })
+        .count();
+    assert_eq!(copies, 0, "nothing stays under a conflict name");
+}
+
+/// A file that appeared at the path while the download ran is not replaced: both
+/// stay, and the error says where the copy set aside is.
+#[tokio::test]
+async fn keep_both_keeps_an_edit_made_during_a_download_that_fails() {
+    let root = tempfile::tempdir().unwrap();
+    let config = CloudConfig {
+        conflict_strategy: ConflictStrategy::KeepBoth,
+        ..pair(root.path())
+    };
+    let mut remote = MemRemote::new();
+    let mut index = empty_index(&config);
+    synced(&mut index, &remote, root.path(), "plan.txt", b"v1");
+    std::fs::write(root.path().join("plan.txt"), b"local edit").unwrap();
+    remote.put("/remote/plan.txt", b"remote edit!", SYNCED_AT + 500);
+    {
+        let mut state = remote.state();
+        state.refuse_download = true;
+        state.edit_during_download = Some(root.path().join("plan.txt"));
+    }
+
+    let (run, _) = execute(
+        &config,
+        work(prep(&config, &index, &["plan.txt"])),
+        &mut remote,
+        None,
+    )
+    .await;
+    let (result, _) = done(run);
+    assert!(
+        result
+            .errors
+            .iter()
+            .any(|e| e.contains("AeroCloud conflict")),
+        "{:?}",
+        result.errors
+    );
+    assert_eq!(
+        std::fs::read(root.path().join("plan.txt")).unwrap(),
+        b"edited meanwhile"
+    );
+    let copy = std::fs::read_dir(root.path())
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|path| path.to_string_lossy().contains("AeroCloud conflict"))
+        .expect("the copy set aside stays");
+    assert_eq!(std::fs::read(copy).unwrap(), b"local edit");
 }
 
 /// KeepBoth sets the local copy aside and puts the remote one at the path.

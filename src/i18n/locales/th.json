@@ -1360,6 +1360,8 @@
             "aiKeysCount": "คีย์ AI {count} รายการ",
             "oauthTokensCount": "โทเค็น OAuth {count} รายการ",
             "configEntriesCount": "รายการการกำหนดค่า {count} รายการ",
+            "verifyDownloadHash": "ตรวจสอบไฟล์ที่ดาวน์โหลดด้วยแฮชของเซิร์ฟเวอร์",
+            "verifyDownloadHashHelp": "หลังดาวน์โหลด ไฟล์จะถูกเทียบกับแฮชที่เซิร์ฟเวอร์เผยแพร่ และจะไม่เก็บไว้หากไม่ตรงกัน ในกรณีที่ไม่ใช้แฮช เช่น FTP จะไม่มีการตรวจสอบนี้",
             "importExistingLabel": "หากมีโปรไฟล์อยู่แล้ว",
             "importExistingSkip": "ข้าม",
             "importExistingOverwrite": "เขียนทับ",

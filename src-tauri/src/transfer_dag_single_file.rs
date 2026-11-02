@@ -348,9 +348,15 @@ impl CopyProviderHandle {
             Self::Optional(provider) => {
                 let mut guard = provider.lock().await;
                 let provider = guard.as_mut().ok_or(ProviderError::NotConnected)?;
-                provider.download(remote, local, None).await
+                provider.download_checked(remote, local, None, None).await
             }
-            Self::Required(provider) => provider.lock().await.download(remote, local, None).await,
+            Self::Required(provider) => {
+                provider
+                    .lock()
+                    .await
+                    .download_checked(remote, local, None, None)
+                    .await
+            }
         }
     }
 
@@ -991,7 +997,7 @@ pub async fn execute_single_file_dag_with(
                             );
                         };
                         let dl = async {
-                            p.download_with_size_hint(
+                            p.download_checked(
                                 &remote,
                                 &local,
                                 (file_size > 0).then_some(file_size),
@@ -1778,7 +1784,7 @@ pub async fn run_single_file_on_route(
                 }
                 TransferDirection::Download => {
                     provider
-                        .download(remote_path, local_path, progress_cb)
+                        .download_checked(remote_path, local_path, None, progress_cb)
                         .await
                 }
             }
