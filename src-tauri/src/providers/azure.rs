@@ -2421,7 +2421,7 @@ impl AzureProvider {
         // The stream is not a byte body, so send_with_auth_and_retry cannot
         // carry it. The executor no longer restarts the upload either. Each
         // attempt opens the file, stamps a fresh x-ms-date, and signs that
-        // attempt. Only a connection refusal before send is retried.
+        // attempt. A connection refusal before send, and an HTTP 429, are retried.
         let resp = super::send_rebuilt_on_connect_failure(
             || {
                 let mut headers = HeaderMap::new();

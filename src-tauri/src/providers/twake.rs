@@ -1272,9 +1272,10 @@ impl StorageProvider for TwakeProvider {
             };
 
             // The body is a stream, so every attempt reopens the file. A
-            // refused connection retries here. 401 and 409 stay on the loop
-            // above, and an HTTP response is not replayed. The hasher starts
-            // over so a retried stream does not append to the first digest.
+            // refused connection or an HTTP 429 is retried here. 401 and 409
+            // stay on the loop above. Any other HTTP response is not replayed.
+            // The hasher starts over so a retried stream does not append to
+            // the first digest.
             let hasher = std::sync::Arc::new(std::sync::Mutex::new(md5::Md5::new()));
             let bearer = self.bearer()?;
             let client = self.client.clone();

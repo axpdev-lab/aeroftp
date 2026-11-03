@@ -4781,7 +4781,7 @@ impl StorageProvider for WebDavProvider {
         // The single-PUT path used to map a 401 straight into
         // `upload_failure_error`'s catch-all, so a rotated nonce failed the
         // whole upload. Replay exactly once, on the same `stale=true` gate the
-        // other paths use. Each send retries only a connection refusal.
+        // other paths use. Each send retries a connection refusal and an HTTP 429.
         if response.status() == StatusCode::UNAUTHORIZED
             && self.should_replay_after_401(&response, &nonce_used)
         {

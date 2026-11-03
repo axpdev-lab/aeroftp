@@ -1008,7 +1008,8 @@ impl ZohoWorkdriveProvider {
         let path = std::path::PathBuf::from(local_path);
         let parent_id = parent_id.to_string();
         let filename = upload_filename_field(file_name);
-        // upload-id is minted per attempt: a refused connection sent nothing.
+        // upload-id is minted per attempt: a refused connection or an HTTP 429
+        // sends the file again.
         let resp = super::send_rebuilt_on_connect_failure(
             || {
                 let file = std::fs::File::open(&path)
@@ -3024,7 +3025,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // Both routes stream the file and report the bytes as they go out;
         // 100 percent waits for Zoho's answer (see `UploadProgress`).
         // The executor no longer restarts the upload, so each route retries
-        // only a connection refusal before send.
+        // a connection refusal before send and an HTTP 429.
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
 
         // #347: above 250 MB the single-request endpoint answers 413, so a

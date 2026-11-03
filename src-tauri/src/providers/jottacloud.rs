@@ -1821,8 +1821,8 @@ impl StorageProvider for JottacloudProvider {
         // Upload as multipart/form-data with "file" field (rclone-compatible).
         // The file part reports its bytes as they go out; 100 percent waits
         // for Jottacloud's answer (see `UploadProgress`). The payload is
-        // already in memory, so a refused connection rebuilds the form from
-        // the same bytes. An HTTP response is not replayed.
+        // already in memory, so a refused connection or an HTTP 429 rebuilds
+        // the form from the same bytes. Any other HTTP response is not replayed.
         let progress = super::upload_progress::UploadProgress::new(progress, total_size);
         progress.start();
         let payload = bytes::Bytes::from(data);

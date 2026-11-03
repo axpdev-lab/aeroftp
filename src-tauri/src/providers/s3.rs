@@ -396,6 +396,24 @@ fn s3_is_rate_limited(status: u16, body: &str) -> bool {
     false
 }
 
+/// Delay before another single-PUT attempt after S3 `SlowDown`.
+///
+/// HTTP 429 is retried by the shared upload helper. A generic 503 is not a
+/// throttle and must not be sent again: it may already have stored the
+/// object. `attempt` is how many SlowDown replies have already been followed.
+fn s3_slowdown_delay(
+    status: u16,
+    body: &str,
+    retry_after: Option<std::time::Duration>,
+    attempt: u32,
+    config: &super::HttpRetryConfig,
+) -> Option<std::time::Duration> {
+    if status != 503 || attempt >= config.max_retries || !s3_is_rate_limited(503, body) {
+        return None;
+    }
+    Some(retry_after.unwrap_or_else(|| super::http_retry::calculate_delay(attempt, config)))
+}
+
 /// KE-E1: Compute the marker tail to append to an S3 `ProviderError`
 /// message when the response was rate-limited and a usable `Retry-After`
 /// header was present. Returns `None` when the response is not a throttle
@@ -5642,7 +5660,8 @@ impl StorageProvider for S3Provider {
         // reports the bytes as they go out; 100 percent waits for the
         // server's answer (see `UploadProgress`). The executor no longer
         // restarts this upload. Each attempt opens the file and signs again.
-        // Only a connection refusal before send is retried.
+        // A connection refusal before send, an HTTP 429, and SlowDown are
+        // retried. Any other response stays where it arrived.
         use tokio_util::io::ReaderStream;
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
         progress.start();
@@ -5664,57 +5683,90 @@ impl StorageProvider for S3Provider {
             .first_or_octet_stream()
             .to_string();
         let client = self.client.clone();
-        let response = super::send_rebuilt_on_connect_failure(
-            || {
-                let file = std::fs::File::open(&path).map_err(ProviderError::IoError)?;
-                *hasher_slot.lock().unwrap_or_else(|e| e.into_inner()) = if hash_baseline {
-                    BaselineHasher::new(total_size)
-                } else {
-                    None
-                };
-                let stream_hasher = Arc::clone(&hasher_slot);
-                let source = ReaderStream::new(tokio::fs::File::from_std(file)).map(move |chunk| {
-                    if let Ok(bytes) = &chunk {
-                        if let Some(hasher) = stream_hasher
-                            .lock()
-                            .unwrap_or_else(|e| e.into_inner())
-                            .as_mut()
-                        {
-                            hasher.update(bytes);
-                        }
+        let retry = super::HttpRetryConfig::default();
+        let mut slowdown_attempt = 0u32;
+        let response = loop {
+            let response = super::send_rebuilt_on_connect_failure(
+                || {
+                    let file = std::fs::File::open(&path).map_err(ProviderError::IoError)?;
+                    *hasher_slot.lock().unwrap_or_else(|e| e.into_inner()) = if hash_baseline {
+                        BaselineHasher::new(total_size)
+                    } else {
+                        None
+                    };
+                    let stream_hasher = Arc::clone(&hasher_slot);
+                    let source =
+                        ReaderStream::new(tokio::fs::File::from_std(file)).map(move |chunk| {
+                            if let Ok(bytes) = &chunk {
+                                if let Some(hasher) = stream_hasher
+                                    .lock()
+                                    .unwrap_or_else(|e| e.into_inner())
+                                    .as_mut()
+                                {
+                                    hasher.update(bytes);
+                                }
+                            }
+                            chunk
+                        });
+                    let stream = crate::transfer_dag::throttle::throttle_stream(
+                        source,
+                        crate::transfer_dag::governor::TransferDirection::Upload,
+                    );
+                    let body = reqwest::Body::wrap_stream(progress.track(stream));
+                    let mut headers = HashMap::new();
+                    // B2: Add storage class + SSE headers before signing
+                    self.append_upload_headers(&mut headers);
+                    if let Some(mtime) = Self::source_mtime_metadata(&path) {
+                        headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime);
                     }
-                    chunk
-                });
-                let stream = crate::transfer_dag::throttle::throttle_stream(
-                    source,
-                    crate::transfer_dag::governor::TransferDirection::Upload,
-                );
-                let body = reqwest::Body::wrap_stream(progress.track(stream));
-                let mut headers = HashMap::new();
-                // B2: Add storage class + SSE headers before signing
-                self.append_upload_headers(&mut headers);
-                if let Some(mtime) = Self::source_mtime_metadata(&path) {
-                    headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime);
-                }
-                let authorization = self.sign_request("PUT", &url, &mut headers, payload_hash)?;
-                let mut request = client.put(&url);
-                for (name, value) in headers.iter() {
-                    request = request.header(name, value);
-                }
-                Ok(request
-                    .header("Authorization", &authorization)
-                    .header("Content-Length", total_size.to_string())
-                    .header("Content-Type", &content_type)
-                    .body(body))
-            },
-            &super::HttpRetryConfig::default(),
-            |error| {
-                super::http_send_error(error, |error| {
-                    ProviderError::NetworkError(error.to_string())
-                })
-            },
-        )
-        .await?;
+                    let authorization =
+                        self.sign_request("PUT", &url, &mut headers, payload_hash)?;
+                    let mut request = client.put(&url);
+                    for (name, value) in headers.iter() {
+                        request = request.header(name, value);
+                    }
+                    Ok(request
+                        .header("Authorization", &authorization)
+                        .header("Content-Length", total_size.to_string())
+                        .header("Content-Type", &content_type)
+                        .body(body))
+                },
+                &retry,
+                |error| {
+                    super::http_send_error(error, |error| {
+                        ProviderError::NetworkError(error.to_string())
+                    })
+                },
+            )
+            .await?;
+            if response.status() != StatusCode::SERVICE_UNAVAILABLE {
+                break response;
+            }
+            let retry_after = super::http_retry::parse_retry_after(&response);
+            let retry_header = response
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
+            let body = response.text().await.unwrap_or_default();
+            if let Some(delay) = s3_slowdown_delay(
+                StatusCode::SERVICE_UNAVAILABLE.as_u16(),
+                &body,
+                retry_after,
+                slowdown_attempt,
+                &retry,
+            ) {
+                slowdown_attempt += 1;
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+            return Err(ProviderError::TransferFailed(format_s3_error(
+                "Upload failed",
+                StatusCode::SERVICE_UNAVAILABLE,
+                &body,
+                retry_header.as_deref(),
+            )));
+        };
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -15227,6 +15279,92 @@ mod tests {
         );
     }
 
+    /// A single PUT retries SlowDown and HTTP 429, and leaves a plain 503
+    /// or a 500 on the first response.
+    #[tokio::test]
+    async fn single_put_retries_a_throttle_and_not_another_error() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        async fn serve(
+            first: axum::http::StatusCode,
+            body: &'static str,
+        ) -> (String, std::sync::Arc<AtomicUsize>) {
+            let puts = std::sync::Arc::new(AtomicUsize::new(0));
+            let seen = std::sync::Arc::clone(&puts);
+            let app = axum::Router::new().route(
+                "/test-bucket/{*key}",
+                axum::routing::put(move |_body: axum::body::Bytes| {
+                    let seen = std::sync::Arc::clone(&seen);
+                    async move {
+                        let n = seen.fetch_add(1, Ordering::SeqCst);
+                        if n == 0 {
+                            axum::http::Response::builder()
+                                .status(first)
+                                .header("retry-after", "0")
+                                .body(axum::body::Body::from(body))
+                                .unwrap()
+                        } else {
+                            axum::http::Response::builder()
+                                .status(axum::http::StatusCode::OK)
+                                .header("etag", "\"abc\"")
+                                .body(axum::body::Body::empty())
+                                .unwrap()
+                        }
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind");
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            (format!("http://{addr}"), puts)
+        }
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("src.bin");
+        std::fs::write(&path, b"payload").expect("write");
+        let local = path.to_str().unwrap();
+
+        let (origin, puts) = serve(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            r#"<?xml version="1.0"?><Error><Code>SlowDown</Code></Error>"#,
+        )
+        .await;
+        let mut provider = make_provider(Some(&origin));
+        provider.connected = true;
+        provider
+            .upload(local, "/slow.bin", None)
+            .await
+            .expect("SlowDown then success");
+        assert_eq!(puts.load(Ordering::SeqCst), 2);
+
+        let (origin, puts) = serve(axum::http::StatusCode::TOO_MANY_REQUESTS, "").await;
+        let mut provider = make_provider(Some(&origin));
+        provider.connected = true;
+        provider
+            .upload(local, "/busy.bin", None)
+            .await
+            .expect("429 then success");
+        assert_eq!(puts.load(Ordering::SeqCst), 2);
+
+        let (origin, puts) = serve(
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            r#"<Error><Code>ServiceUnavailable</Code></Error>"#,
+        )
+        .await;
+        let mut provider = make_provider(Some(&origin));
+        provider.connected = true;
+        let outcome = provider.upload(local, "/down.bin", None).await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(puts.load(Ordering::SeqCst), 1);
+
+        let (origin, puts) = serve(axum::http::StatusCode::INTERNAL_SERVER_ERROR, "no").await;
+        let mut provider = make_provider(Some(&origin));
+        provider.connected = true;
+        let outcome = provider.upload(local, "/err.bin", None).await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(puts.load(Ordering::SeqCst), 1);
+    }
+
     #[test]
     fn s3_is_rate_limited_recognises_429() {
         assert!(s3_is_rate_limited(429, ""));
@@ -15247,6 +15385,32 @@ mod tests {
             r#"<Error><Code>ServiceUnavailable</Code><Message>backend down</Message></Error>"#;
         assert!(!s3_is_rate_limited(503, body));
         assert!(!s3_is_rate_limited(503, ""));
+    }
+
+    #[test]
+    fn s3_slowdown_delay_follows_only_a_bounded_slowdown() {
+        let config = crate::providers::HttpRetryConfig {
+            max_retries: 2,
+            base_delay_ms: 1,
+            max_delay_ms: 5,
+            ..Default::default()
+        };
+        let slow = r#"<Error><Code>SlowDown</Code></Error>"#;
+        let other = r#"<Error><Code>ServiceUnavailable</Code></Error>"#;
+        assert_eq!(
+            s3_slowdown_delay(
+                503,
+                slow,
+                Some(std::time::Duration::from_secs(0)),
+                0,
+                &config
+            ),
+            Some(std::time::Duration::from_secs(0))
+        );
+        assert!(s3_slowdown_delay(503, slow, None, 0, &config).is_some());
+        assert_eq!(s3_slowdown_delay(503, other, None, 0, &config), None);
+        assert_eq!(s3_slowdown_delay(429, slow, None, 0, &config), None);
+        assert_eq!(s3_slowdown_delay(503, slow, None, 2, &config), None);
     }
 
     #[test]

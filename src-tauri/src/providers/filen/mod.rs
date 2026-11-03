@@ -2376,6 +2376,7 @@ impl StorageProvider for FilenProvider {
             .map_err(ProviderError::IoError)?;
 
         let mut in_flight: FuturesUnordered<_> = FuturesUnordered::new();
+        let chunk_retry = self.retry_config.clone();
         let mut next_index: u64 = 0;
         let mut transferred: u64 = 0;
         let mut eof = false;
@@ -2412,6 +2413,7 @@ impl StorageProvider for FilenProvider {
                 let parent_uuid = parent_uuid.clone();
                 let upload_key = upload_key.clone();
                 let file_key = file_key.clone();
+                let retry_config = chunk_retry.clone();
                 in_flight.push(async move {
                     upload_filen_chunk(
                         &client,
@@ -2423,6 +2425,7 @@ impl StorageProvider for FilenProvider {
                         &file_key,
                         index,
                         buf,
+                        &retry_config,
                     )
                     .await?;
                     Ok::<u64, ProviderError>(plaintext_len)
@@ -3263,6 +3266,7 @@ impl StorageProvider for FilenProvider {
             &meta.file_key,
             zero_index,
             data,
+            &self.retry_config,
         )
         .await?;
 
@@ -3439,6 +3443,7 @@ async fn upload_filen_chunk(
     file_key: &str,
     index: u64,
     plaintext: Vec<u8>,
+    retry_config: &HttpRetryConfig,
 ) -> Result<(), ProviderError> {
     let encrypted = FilenProvider::encrypt_file_content(&plaintext, file_key)?;
     drop(plaintext);
@@ -3461,8 +3466,8 @@ async fn upload_filen_chunk(
     let auth = HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
         .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?;
     let http = client.clone();
-    // The chunk is already encrypted. A refused connection sends those same
-    // bytes again. An HTTP response, including 429, is not replayed.
+    // The chunk is already encrypted. A refused connection or an HTTP 429
+    // sends those same bytes again. Any other HTTP response is not replayed.
     let resp = super::send_rebuilt_on_connect_failure(
         || {
             Ok(http
@@ -3470,7 +3475,7 @@ async fn upload_filen_chunk(
                 .header("Authorization", auth.clone())
                 .body(payload.clone()))
         },
-        &HttpRetryConfig::default(),
+        retry_config,
         |error| {
             super::http_send_error(error, |error| {
                 ProviderError::NetworkError(sanitize_filen_transport_error(&error))
@@ -5464,6 +5469,8 @@ mod tests {
         // would otherwise include uploadKey in the error string.
         let mut primary = FilenProvider::connected_for_test(demo_cfg());
         primary.ingest_base_override = Some("http://127.0.0.1:1".to_string());
+        primary.retry_config.base_delay_ms = 1;
+        primary.retry_config.max_delay_ms = 5;
         let api_key = primary.auth.api_key.expose_secret().to_string();
         let upload_key = "cafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeef";
         let file_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

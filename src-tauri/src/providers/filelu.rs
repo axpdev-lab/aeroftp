@@ -2995,39 +2995,61 @@ impl StorageProvider for FileLuProvider {
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_after_refusal(&clone_url).await?;
-        let body: serde_json::Value = resp.json().await.map_http_err(|e| {
-            ProviderError::ParseError(format!("clone response: {}", redact_key(&e.to_string())))
+        let http_status = resp.status();
+        let text = resp.text().await.map_http_err(|e| {
+            ProviderError::ParseError(format!(
+                "Failed to read clone response: {}",
+                e.without_url()
+            ))
         })?;
+        if !http_status.is_success() {
+            return Err(ProviderError::ServerError(
+                "FileLu clone was not acknowledged".into(),
+            ));
+        }
+        let body: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "FileLu clone returned invalid JSON at line {}, column {}",
+                e.line(),
+                e.column()
+            ))
+        })?;
+        if body.get("status").and_then(|s| s.as_i64()) != Some(200) {
+            return Err(ProviderError::ServerError(
+                "FileLu clone was not acknowledged".into(),
+            ));
+        }
+        // The clone id is an array element. HTTP 200 with no code is not a copy.
+        let cloned = body
+            .get("result")
+            .and_then(|result| result.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|entry| entry.get("filecode").or_else(|| entry.get("file_code")))
+            .and_then(|value| value.as_str())
+            .filter(|code| !code.is_empty())
+            .map(str::to_owned);
+        let Some(cloned) = cloned else {
+            return Err(ProviderError::ServerError(
+                "FileLu clone response has no file code".into(),
+            ));
+        };
 
-        // Step 2: Move the clone to the destination folder if needed
+        let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
+        let fld_id_str = dest_fld_id.to_string();
+        let move_url = self.api_url_with(
+            "file/set_folder",
+            &[("file_code", &cloned), ("fld_id", &fld_id_str)],
+        );
+        let move_resp = self.get_with_retry(&move_url).await?;
+        Self::ensure_api_ok(move_resp).await?;
 
-        // Extract cloned file code from response (array format)
-        if let Some(arr) = body.get("result").and_then(|r| r.as_array()) {
-            if let Some(cloned) = arr
-                .first()
-                .and_then(|e| e.get("filecode").or_else(|| e.get("file_code")))
-                .and_then(|v| v.as_str())
-            {
-                // Move to destination folder
-                let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
-                let fld_id_str = dest_fld_id.to_string();
-                let move_url = self.api_url_with(
-                    "file/set_folder",
-                    &[("file_code", cloned), ("fld_id", &fld_id_str)],
-                );
-                let move_resp = self.get_with_retry(&move_url).await?;
-                Self::ensure_api_ok(move_resp).await?;
-
-                // Rename if destination filename differs from source
-                if !dest_name.is_empty() && dest_name != src_name {
-                    let rename_url = self.api_url_with(
-                        "file/rename",
-                        &[("file_code", cloned), ("name", &dest_name)],
-                    );
-                    let rename_resp = self.get_with_retry(&rename_url).await?;
-                    Self::ensure_api_ok(rename_resp).await?;
-                }
-            }
+        if !dest_name.is_empty() && dest_name != src_name {
+            let rename_url = self.api_url_with(
+                "file/rename",
+                &[("file_code", &cloned), ("name", &dest_name)],
+            );
+            let rename_resp = self.get_with_retry(&rename_url).await?;
+            Self::ensure_api_ok(rename_resp).await?;
         }
 
         self.invalidate_cache_under(&dest_dir);
@@ -5126,6 +5148,50 @@ mod tests {
                 calls.lock().unwrap()
             );
         }
+    }
+
+    /// A refused clone, and a 200 with no file code, are not a completed copy.
+    /// The error stays on the status. It does not carry the response text.
+    #[tokio::test]
+    async fn a_clone_without_an_acknowledgement_or_file_code_is_not_a_copy() {
+        let (mut provider, calls) = provider_with_cached_tree_refusing(
+            &[("/d", "7"), ("/d/a.txt", "AAA")],
+            "/api/file/clone",
+        )
+        .await;
+        let outcome = provider.server_side_copy("/d/a.txt", "/d/b.txt").await;
+        let message = match &outcome {
+            Err(ProviderError::ServerError(message)) => message.clone(),
+            other => panic!("refused clone must fail: {other:?}"),
+        };
+        assert!(message.contains("not acknowledged"), "{message}");
+        assert!(!message.contains("denied"), "{message}");
+        let seen = calls.lock().unwrap().clone();
+        assert!(
+            seen.iter().any(|call| call.contains("/api/file/clone")),
+            "{seen:?}"
+        );
+        assert!(
+            seen.iter()
+                .all(|call| !call.contains("set_folder") && !call.contains("/api/file/rename")),
+            "{seen:?}"
+        );
+
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/d", "7"), ("/d/a.txt", "AAA")]).await;
+        let outcome = provider.server_side_copy("/d/a.txt", "/d/b.txt").await;
+        let message = match &outcome {
+            Err(ProviderError::ServerError(message)) => message.clone(),
+            other => panic!("a clone with no file code must fail: {other:?}"),
+        };
+        assert!(message.contains("no file code"), "{message}");
+        assert!(!message.contains("OK"), "{message}");
+        let seen = calls.lock().unwrap().clone();
+        assert!(
+            seen.iter()
+                .all(|call| !call.contains("set_folder") && !call.contains("/api/file/rename")),
+            "{seen:?}"
+        );
     }
 
     /// The trash record of a path that left the trash is dropped, not kept

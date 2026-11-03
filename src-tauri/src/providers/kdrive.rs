@@ -1239,7 +1239,7 @@ impl StorageProvider for KDriveProvider {
         );
 
         // The executor no longer restarts this upload. Rebuild the stream and
-        // retry only a connection refusal before any byte is sent.
+        // retry a connection refusal before any byte is sent, and an HTTP 429.
         let auth = self.auth_header()?;
         let path = std::path::PathBuf::from(local_path);
         let client = self.client.clone();
