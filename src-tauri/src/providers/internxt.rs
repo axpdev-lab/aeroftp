@@ -2702,7 +2702,7 @@ impl InternxtProvider {
         }
 
         let resp = self
-            .send_with_reauth(|this| {
+            .send_create_meta(|this| {
                 this.drive_request(reqwest::Method::POST, "/files")
                     .header(CONTENT_TYPE, "application/json; charset=utf-8")
                     .json(&body)
@@ -2800,6 +2800,48 @@ impl InternxtProvider {
             Box::pin(async move { this.send_auth_checked(rb).await })
         })
         .await
+    }
+
+    /// Create-meta is the publication. `is_connect` is a failure before the
+    /// request is sent. Any other transport failure can follow bytes that
+    /// already left, so it carries the uncertain-publish warning. Timeouts
+    /// stay `ProviderError::Timeout` and are annotated by the caller.
+    async fn send_create_meta<F>(
+        &mut self,
+        mut build: F,
+    ) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut(&Self) -> reqwest::RequestBuilder,
+    {
+        self.with_reauth(|this| {
+            let rb = build(this);
+            Box::pin(async move {
+                let request = rb.build().map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("Build request failed: {e}"))
+                })?;
+                let resp = send_with_retry(&this.client, request, &this.retry_config)
+                    .await
+                    .map_http_err(Self::map_create_meta_transport)?;
+                if resp.status().as_u16() == 401 {
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(internxt_auth_failure(
+                        "Internxt token expired or invalid",
+                        &super::sanitize_api_error(&body),
+                    ));
+                }
+                Ok(resp)
+            })
+        })
+        .await
+    }
+
+    fn map_create_meta_transport(error: reqwest::Error) -> ProviderError {
+        if error.is_connect() {
+            return ProviderError::ConnectionFailed(format!("Request failed: {error}"));
+        }
+        ProviderError::ConnectionFailed(format!(
+            "Request failed: {error}. It may have completed. Check remote state before retrying."
+        ))
     }
 
     /// Allocate at most one session after an ambiguous response. A 5xx,
@@ -3245,6 +3287,53 @@ mod tests {
             "{outcome:?}"
         );
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// A refused connect never sent the create. A peer that accepts the
+    /// request and then drops it may already have stored the name.
+    #[tokio::test]
+    async fn create_meta_warns_only_after_the_request_is_sent() {
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.retry_config.max_retries = 0;
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+
+        let refused = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let refused_addr = refused.local_addr().unwrap();
+        drop(refused);
+        provider.api_base = format!("http://{refused_addr}");
+        let message = provider
+            .create_file_meta(None, "R", "empty", "", 0)
+            .await
+            .expect_err("a refused connect is not a published file")
+            .to_string();
+        assert!(message.contains("Request failed"), "{message}");
+        assert!(!message.contains("may have completed"), "{message}");
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 8192];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await;
+            drop(socket);
+        });
+        provider.api_base = format!("http://{addr}");
+        let message = provider
+            .create_file_meta(None, "R", "empty", "", 0)
+            .await
+            .expect_err("a dropped create may already be stored")
+            .to_string();
+        assert!(message.contains("Request failed"), "{message}");
+        assert!(message.contains("may have completed"), "{message}");
+        assert!(
+            message.contains("Check remote state before retrying"),
+            "{message}"
+        );
     }
 
     /// A new name is published once after stored content; uncertain outcomes
