@@ -1545,12 +1545,14 @@ async fn a_resume_upload_never_needs_a_remote_prefix_read() {
     let fx = Fixture::new("scp-prefix-read-failed");
     let bin = fx.root.join("bin");
     std::fs::create_dir(&bin).unwrap();
-    std::fs::write(bin.join("head"), "#!/bin/sh\n: > prefix-read\nexit 1\n").unwrap();
-    std::fs::set_permissions(
-        bin.join("head"),
-        std::os::unix::fs::PermissionsExt::from_mode(0o755),
-    )
-    .unwrap();
+    for tool in ["head", "dd", "cat"] {
+        std::fs::write(bin.join(tool), "#!/bin/sh\n: > prefix-read\nexit 1\n").unwrap();
+        std::fs::set_permissions(
+            bin.join(tool),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+    }
     let mut options = fx.options(Sftp::Serve);
     options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
     let (port, _) = start(options).await;
@@ -1637,7 +1639,7 @@ async fn a_resume_upload_never_appends_a_tail_to_a_replaced_path() {
     }
 }
 
-/// An already-complete remote is not trusted as a permanently bound object:
+/// A remote with the full length but different bytes is not trusted:
 /// an explicit upload restart still sends the complete local source.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_complete_remote_does_not_turn_upload_restart_into_a_noop() {
@@ -1646,7 +1648,7 @@ async fn a_complete_remote_does_not_turn_upload_restart_into_a_noop() {
     let body = pattern(200_000);
     let local = fx.local("source");
     std::fs::write(&local, &body).unwrap();
-    std::fs::write(fx.remote().join("up"), &body).unwrap();
+    std::fs::write(fx.remote().join("up"), vec![b'X'; body.len()]).unwrap();
     let (progress, calls) = recorder();
     p.resume_upload(&s(&local), "up", body.len() as u64, progress)
         .await
