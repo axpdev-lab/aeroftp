@@ -6856,7 +6856,7 @@
             "autoAcceptLabel": "Automaatne nõustumine salvestatud sõpradelt",
             "autoAcceptDesc": "Jätke vahele küsimine failide puhul, mis tulevad teie sõbralistis olevatelt inimestelt. Tundmatud saatjad küsivad alati.",
             "notifyOnReceiveLabel": "Teavita mind, kui faili saabub",
-            "notifyOnReceiveDesc": "Kuva süsteemiteade iga vastuvõetud faili kohta, sealhulgas automaatselt vastuvõetud failide kohta, et oleksite teadlik isegi siis, kui AeroFTP pole fookuses.",
+            "notifyOnReceiveDesc": "Kuvage süsteemiteade iga vastuvõetud faili kohta, sealhulgas automaatselt vastuvõetud failide kohta, et oleksite teadlik isegi siis, kui AeroFTP pole fookuses.",
             "contacts": {
                 "title": "Kontaktid",
                 "intro": "Salvestatud kontaktid on teie AeroShare'i sõbrad: valige nad saatmisel ja (kui automaatne vastuvõtmine on sees) võtke neilt vastu ilma küsimuseta.",
