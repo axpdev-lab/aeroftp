@@ -34,7 +34,8 @@ cannot select another file. This is not a snapshot against in-place edits.
 Twake and S3 keep a separate digest for the attempt that completes.
 
 The batch upload executor also respects this policy through the provider's
-`manages_upload_retries` contract (forwarded by compression/crypt overlays). It
+`StorageProvider::manages_upload_retries` contract (forwarded by compression/crypt
+overlays), backed by `http_retry::manages_upload_retries_for(provider)`. It
 must not multiply the retry budget by starting the whole upload again after a
 5xx, timeout or malformed acknowledgement. The shared HTTP provider list lives
 with the HTTP policy; specialized provider recovery still owns its own budget.

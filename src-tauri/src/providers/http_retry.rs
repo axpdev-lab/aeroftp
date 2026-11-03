@@ -411,6 +411,7 @@ pub(crate) mod refusal {
 
     pub(crate) struct BoundRefusal {
         fd: RawSock,
+        owned: bool,
     }
 
     impl BoundRefusal {
@@ -434,7 +435,38 @@ pub(crate) mod refusal {
                 close_socket(fd);
                 panic!("bind loopback: {error}");
             }
-            Self { fd }
+            Self { fd, owned: true }
+        }
+
+        pub(crate) fn listen(mut self) -> std::net::TcpListener {
+            #[cfg(unix)]
+            let rc = unsafe { libc::listen(self.fd, 128) };
+            #[cfg(windows)]
+            let rc = unsafe { libc::listen(self.fd, 128) };
+            if rc != 0 {
+                panic!("listen: {}", socket_last_error());
+            }
+            let fd = self.fd;
+            self.owned = false;
+            #[cfg(unix)]
+            {
+                use std::os::unix::io::FromRawFd;
+                // SAFETY: fd is an owned listening TCP socket. The listener closes it.
+                unsafe { std::net::TcpListener::from_raw_fd(fd) }
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::FromRawSocket;
+                // SAFETY: fd is an owned listening TCP socket. The listener closes it.
+                #[cfg(target_pointer_width = "64")]
+                unsafe {
+                    std::net::TcpListener::from_raw_socket(fd as u64)
+                }
+                #[cfg(target_pointer_width = "32")]
+                unsafe {
+                    std::net::TcpListener::from_raw_socket(fd as u32)
+                }
+            }
         }
 
         pub(crate) fn addr(&self) -> std::net::SocketAddr {
@@ -482,7 +514,21 @@ pub(crate) mod refusal {
 
     impl Drop for BoundRefusal {
         fn drop(&mut self) {
-            close_socket(self.fd);
+            if self.owned {
+                close_socket(self.fd);
+                self.owned = false;
+            }
+        }
+    }
+
+    fn socket_last_error() -> std::io::Error {
+        #[cfg(unix)]
+        {
+            std::io::Error::last_os_error()
+        }
+        #[cfg(windows)]
+        {
+            windows_socket_error()
         }
     }
 
@@ -923,9 +969,8 @@ mod tests {
 
     #[tokio::test]
     async fn connect_refusal_rebuilds_the_whole_create_before_any_send() {
-        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = reserved.local_addr().unwrap();
-        drop(reserved);
+        let mut reserved = Some(refusal::BoundRefusal::bind());
+        let addr = reserved.as_ref().unwrap().addr();
         let client = Client::builder().no_proxy().build().unwrap();
         let mut attempts = 0;
         let received: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>> = Default::default();
@@ -935,7 +980,7 @@ mod tests {
             || {
                 attempts += 1;
                 if attempts == 2 {
-                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    let listener = reserved.take().unwrap().listen();
                     listener.set_nonblocking(true).unwrap();
                     let listener = tokio::net::TcpListener::from_std(listener).unwrap();
                     let captured = received.clone();
@@ -970,9 +1015,8 @@ mod tests {
     /// A 500 comes back from the first send. The 429 budget stops.
     #[tokio::test]
     async fn a_rebuilt_upload_retries_a_refusal_and_not_a_server_error() {
-        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = reserved.local_addr().unwrap();
-        drop(reserved);
+        let mut reserved = Some(refusal::BoundRefusal::bind());
+        let addr = reserved.as_ref().unwrap().addr();
         let client = Client::builder().no_proxy().build().unwrap();
         let mut attempts = 0;
         let received: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>> = Default::default();
@@ -981,7 +1025,7 @@ mod tests {
             || {
                 attempts += 1;
                 if attempts == 2 {
-                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    let listener = reserved.take().unwrap().listen();
                     listener.set_nonblocking(true).unwrap();
                     let listener = tokio::net::TcpListener::from_std(listener).unwrap();
                     let captured = received.clone();
@@ -1192,9 +1236,8 @@ mod tests {
 
     #[tokio::test]
     async fn connect_refusal_uses_one_bounded_budget_and_consumed_streams_are_not_rebuilt() {
-        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = reserved.local_addr().unwrap();
-        drop(reserved);
+        let reserved = refusal::BoundRefusal::bind();
+        let addr = reserved.addr();
         let client = Client::builder().no_proxy().build().unwrap();
         let mut attempts = 0;
         let result = send_with_retry_replayable(
