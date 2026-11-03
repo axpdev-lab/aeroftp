@@ -5664,13 +5664,17 @@ impl StorageProvider for S3Provider {
         // Streaming upload for files up to the multipart threshold. The body
         // reports the bytes as they go out; 100 percent waits for the
         // server's answer (see `UploadProgress`). The executor no longer
-        // restarts this upload. Each attempt opens the file and signs again.
+        // restarts this upload. Each attempt rewinds one open file and signs again.
         // A connection refusal before send, an HTTP 429, and SlowDown are
         // retried. Any other response stays where it arrived.
-        use tokio_util::io::ReaderStream;
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
         progress.start();
         let path = local_path.to_string();
+        let file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
+        let source_mtime = Self::source_mtime_metadata(&path);
         // Invalidate once. Each attempt stores its hasher in its own cell.
         // The baseline keeps the cell from the attempt that completed, so an
         // earlier stream cannot change it.
@@ -5693,9 +5697,8 @@ impl StorageProvider for S3Provider {
         let retry = super::HttpRetryConfig::default();
         let mut slowdown_attempt = 0u32;
         let response = loop {
-            let response = super::send_rebuilt_on_connect_failure(
-                || {
-                    let file = std::fs::File::open(&path).map_err(ProviderError::IoError)?;
+            let response = super::http_retry::send_rebuilt_async(
+                || async {
                     let cell = Arc::new(std::sync::Mutex::new(if hash_baseline {
                         BaselineHasher::new(total_size)
                     } else {
@@ -5703,8 +5706,11 @@ impl StorageProvider for S3Provider {
                     }));
                     *attempt_hasher.lock().unwrap_or_else(|e| e.into_inner()) =
                         Some(Arc::clone(&cell));
-                    let source =
-                        ReaderStream::new(tokio::fs::File::from_std(file)).map(move |chunk| {
+                    let source = cursor
+                        .attempt_stream(total_size)
+                        .await
+                        .map_err(ProviderError::IoError)?
+                        .map(move |chunk| {
                             if let Ok(bytes) = &chunk {
                                 if let Some(hasher) =
                                     cell.lock().unwrap_or_else(|e| e.into_inner()).as_mut()
@@ -5722,8 +5728,8 @@ impl StorageProvider for S3Provider {
                     let mut headers = HashMap::new();
                     // B2: Add storage class + SSE headers before signing
                     self.append_upload_headers(&mut headers);
-                    if let Some(mtime) = Self::source_mtime_metadata(&path) {
-                        headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime);
+                    if let Some(mtime) = &source_mtime {
+                        headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime.clone());
                     }
                     let authorization =
                         self.sign_request("PUT", &url, &mut headers, payload_hash)?;
@@ -5740,9 +5746,10 @@ impl StorageProvider for S3Provider {
                 &retry,
                 |error| {
                     super::http_send_error(error, |error| {
-                        ProviderError::NetworkError(error.to_string())
+                        ProviderError::NetworkError(error.without_url().to_string())
                     })
                 },
+                true,
             )
             .await?;
             if response.status() != StatusCode::SERVICE_UNAVAILABLE {
@@ -15395,6 +15402,27 @@ mod tests {
             r#"<Error><Code>ServiceUnavailable</Code><Message>backend down</Message></Error>"#;
         assert!(!s3_is_rate_limited(503, body));
         assert!(!s3_is_rate_limited(503, ""));
+    }
+
+    #[tokio::test]
+    async fn single_put_retry_keeps_the_open_file_after_path_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let original = b"original-bytes";
+        std::fs::write(&path, original).unwrap();
+        let (base, received, server) =
+            super::super::upload_cursor::replacement_fixture::serve(&path, String::new()).await;
+        let mut provider = make_provider(Some(&base));
+        provider.connected = true;
+        let outcome = provider
+            .upload(path.to_str().unwrap(), "/f.bin", None)
+            .await;
+        server.abort();
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![original.to_vec(), original.to_vec()]
+        );
+        outcome.expect("retry must send the original open file");
     }
 
     #[test]

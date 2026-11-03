@@ -26,6 +26,13 @@ to the caller instead of repeating the write.
   every other 503 in place. GitLab's byte-backed commit stays on
   `send_with_retry`.
 
+Streaming request rebuilders for pCloud, 4shared, Azure, kDrive, Koofr,
+Twake, S3 single PUT, WebDAV single PUT and both Zoho routes retain the
+original opened file through the shared cursor. Each retry waits for the
+preceding reader before rewinding, so replacing the pathname during backoff
+cannot select another file. This is not a snapshot against in-place edits.
+Twake and S3 keep a separate digest for the attempt that completes.
+
 The batch upload executor also respects this policy through the provider's
 `manages_upload_retries` contract (forwarded by compression/crypt overlays). It
 must not multiply the retry budget by starting the whole upload again after a

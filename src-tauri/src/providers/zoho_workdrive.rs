@@ -1016,19 +1016,20 @@ impl ZohoWorkdriveProvider {
     /// An HTTP 429 waits on WorkDrive's Retry-After, or 61 seconds when that
     /// header is absent. A connection refusal stays in the shared sender and
     /// reuses this attempt's token.
-    async fn send_paced_upload<F>(
+    async fn send_paced_upload<F, Fut>(
         &self,
         mut build: F,
         retry: &HttpRetryConfig,
     ) -> Result<reqwest::Response, ProviderError>
     where
-        F: FnMut(HeaderValue) -> Result<reqwest::RequestBuilder, ProviderError>,
+        F: FnMut(HeaderValue) -> Fut,
+        Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, ProviderError>>,
     {
         let mut refusal_attempt = 0u32;
         loop {
             let auth = self.auth_header().await?;
             let response = super::http_retry::send_rebuilt_async(
-                || std::future::ready(build(auth.clone())),
+                || build(auth.clone()),
                 retry,
                 |error| {
                     super::http_send_error(error, |error| {
@@ -1077,13 +1078,12 @@ impl ZohoWorkdriveProvider {
         parent_id: &str,
         file_name: &str,
         total_size: u64,
-        local_path: &str,
+        cursor: &super::upload_cursor::SharedUploadCursor,
         progress: &super::upload_progress::UploadProgress,
     ) -> Result<(), ProviderError> {
         let url = self.stream_upload_url(host);
         let retry = self.retry.clone();
         let client = self.client.clone();
-        let path = std::path::PathBuf::from(local_path);
         let parent_id = parent_id.to_string();
         let filename = upload_filename_field(file_name);
         // Each attempt takes a pacing turn and mints a new upload-id. A 429
@@ -1092,21 +1092,29 @@ impl ZohoWorkdriveProvider {
         let resp = self
             .send_paced_upload(
                 |auth| {
-                    let file = std::fs::File::open(&path)
-                        .map_err(|e| ProviderError::Other(format!("Open file error: {e}")))?;
-                    Ok(client
-                        .post(&url)
-                        .header(AUTHORIZATION, auth)
-                        .header(ACCEPT, HeaderValue::from_static("application/json"))
-                        .header(CONTENT_TYPE, "application/octet-stream")
-                        .header(reqwest::header::CONTENT_LENGTH, total_size)
-                        // "The name of the file should be URL encoded with UTF-8 Charset."
-                        .header("x-filename", filename.clone())
-                        .header("x-parent_id", parent_id.clone())
-                        .header("upload-id", uuid::Uuid::new_v4().to_string())
-                        .header("x-streammode", "1")
-                        .header("x-override-name-exist", "true")
-                        .body(progress.file_body(tokio::fs::File::from_std(file))))
+                    let client = client.clone();
+                    let url = url.clone();
+                    let parent_id = parent_id.clone();
+                    let filename = filename.clone();
+                    async move {
+                        let body = cursor
+                            .attempt_body(progress, total_size)
+                            .await
+                            .map_err(ProviderError::IoError)?;
+                        Ok(client
+                            .post(&url)
+                            .header(AUTHORIZATION, auth)
+                            .header(ACCEPT, HeaderValue::from_static("application/json"))
+                            .header(CONTENT_TYPE, "application/octet-stream")
+                            .header(reqwest::header::CONTENT_LENGTH, total_size)
+                            // "The name of the file should be URL encoded with UTF-8 Charset."
+                            .header("x-filename", filename.clone())
+                            .header("x-parent_id", parent_id.clone())
+                            .header("upload-id", uuid::Uuid::new_v4().to_string())
+                            .header("x-streammode", "1")
+                            .header("x-override-name-exist", "true")
+                            .body(body))
+                    }
                 },
                 &retry,
             )
@@ -3336,8 +3344,12 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
 
-        // Streaming upload: read file as a stream instead of loading into memory
-        let file_meta = tokio::fs::metadata(local_path)
+        // Retain this opened file for either route and all refusal retries.
+        let file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
+        let file_meta = file
+            .metadata()
             .await
             .map_err(|e| ProviderError::Other(format!("Metadata error: {}", e)))?;
         let total_size = file_meta.len();
@@ -3346,11 +3358,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             parent_id, file_name, total_size
         );
 
-        // Prove the file opens before either route, with the same error as
-        // before. Each attempt opens it again.
-        tokio::fs::File::open(local_path)
-            .await
-            .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
         // Both routes stream the file and report the bytes as they go out;
         // 100 percent waits for Zoho's answer (see `UploadProgress`).
         // The executor no longer restarts the upload. Each attempt takes a
@@ -3362,10 +3370,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // #347: above 250 MB the single-request endpoint answers 413, so a
         // large file goes to the upload server's stream API instead.
         if let Some(host) = large_upload_host(&self.config, total_size) {
-            self.stream_upload(
-                host, &parent_id, file_name, total_size, local_path, &progress,
-            )
-            .await?;
+            self.stream_upload(host, &parent_id, file_name, total_size, &cursor, &progress)
+                .await?;
             progress.complete();
             info!(
                 "Uploaded {} to {} via stream upload (parent_id={})",
@@ -3379,7 +3385,6 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let url = format!("{}/upload", self.api_base());
         let retry = self.retry.clone();
         let client = self.client.clone();
-        let path = std::path::PathBuf::from(local_path);
         let parent = parent_id.clone();
         let stored_name = file_name.to_string();
         // WorkDrive URL-decodes `filename`: sent as it was, `a+b.txt` was
@@ -3388,28 +3393,37 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // to itself.
         let encoded_name = upload_filename_field(file_name);
 
+        let cursor = &cursor;
+        let progress = &progress;
         // Override Accept header: upload response is NOT JSON:API format
         let resp = self
             .send_paced_upload(
                 |auth| {
-                    let file = std::fs::File::open(&path)
-                        .map_err(|e| ProviderError::Other(format!("Open file error: {e}")))?;
-                    let file_part = reqwest::multipart::Part::stream(
-                        progress.file_body(tokio::fs::File::from_std(file)),
-                    )
-                    .file_name(stored_name.clone())
-                    .mime_str("application/octet-stream")
-                    .map_err(|e| ProviderError::Other(format!("MIME error: {e}")))?;
-                    let form = reqwest::multipart::Form::new()
-                        .text("parent_id", parent.clone())
-                        .text("filename", encoded_name.clone())
-                        .text("override-name-exist", "true")
-                        .part("content", file_part);
-                    Ok(client
-                        .post(&url)
-                        .header(AUTHORIZATION, auth)
-                        .header(ACCEPT, HeaderValue::from_static("application/json"))
-                        .multipart(form))
+                    let client = client.clone();
+                    let url = url.clone();
+                    let stored_name = stored_name.clone();
+                    let encoded_name = encoded_name.clone();
+                    let parent = parent.clone();
+                    async move {
+                        let body = cursor
+                            .attempt_body(progress, total_size)
+                            .await
+                            .map_err(ProviderError::IoError)?;
+                        let file_part = reqwest::multipart::Part::stream(body)
+                            .file_name(stored_name.clone())
+                            .mime_str("application/octet-stream")
+                            .map_err(|e| ProviderError::Other(format!("MIME error: {e}")))?;
+                        let form = reqwest::multipart::Form::new()
+                            .text("parent_id", parent.clone())
+                            .text("filename", encoded_name.clone())
+                            .text("override-name-exist", "true")
+                            .part("content", file_part);
+                        Ok(client
+                            .post(&url)
+                            .header(AUTHORIZATION, auth)
+                            .header(ACCEPT, HeaderValue::from_static("application/json"))
+                            .multipart(form))
+                    }
                 },
                 &retry,
             )
@@ -6214,6 +6228,62 @@ mod tests {
         server.abort();
         let updates = updates.lock().unwrap().clone();
         (outcome, updates)
+    }
+
+    #[tokio::test]
+    async fn both_upload_routes_keep_the_open_file_after_path_replacement() {
+        for stream in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("f.bin");
+            let original = b"original-bytes";
+            std::fs::write(&path, original).unwrap();
+            let body =
+                r#"{"data":[{"attributes":{"file_name":"f.bin"},"type":"files"}]}"#.to_string();
+            let (base, received, server) =
+                super::super::upload_cursor::replacement_fixture::serve(&path, body).await;
+            let mut provider = ZohoWorkdriveProvider::new(config("com"));
+            provider.endpoint_override = Some(base);
+            provider.test_access_token = Some("fixture".into());
+            provider.connected = true;
+            let outcome = if stream {
+                let file = tokio::fs::File::open(&path).await.unwrap();
+                let cursor =
+                    super::super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
+                let progress =
+                    super::super::upload_progress::UploadProgress::new(None, original.len() as u64);
+                provider
+                    .stream_upload(
+                        "fixture",
+                        "ROOT",
+                        "f.bin",
+                        original.len() as u64,
+                        &cursor,
+                        &progress,
+                    )
+                    .await
+            } else {
+                provider
+                    .upload(path.to_str().unwrap(), "/f.bin", None)
+                    .await
+            };
+            server.abort();
+            let bodies = received.lock().unwrap();
+            assert_eq!(bodies.len(), 2);
+            for body in bodies.iter() {
+                assert!(
+                    body.windows(original.len())
+                        .any(|window| window == original),
+                    "stream={stream}"
+                );
+                assert!(
+                    !body
+                        .windows(original.len())
+                        .any(|window| window.iter().all(|b| *b == b'X')),
+                    "stream={stream}"
+                );
+            }
+            outcome.expect("retry must send the original open file");
+        }
     }
 
     /// `POST /upload`, the single-request route: the file goes out in the

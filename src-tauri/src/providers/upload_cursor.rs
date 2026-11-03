@@ -178,3 +178,50 @@ impl SharedUploadCursor {
         Ok(reqwest::Body::wrap_stream(progress.track(paced)))
     }
 }
+
+#[cfg(test)]
+pub(crate) mod replacement_fixture {
+    use std::sync::{Arc, Mutex};
+    pub(crate) type Received = Arc<Mutex<Vec<Vec<u8>>>>;
+
+    pub(crate) async fn serve(
+        source: &std::path::Path,
+        success_body: String,
+    ) -> (String, Received, tokio::task::JoinHandle<()>) {
+        let source = source.to_path_buf();
+        let replacement = vec![b'X'; std::fs::read(&source).unwrap().len()];
+        let received: Received = Arc::new(Mutex::new(Vec::new()));
+        let seen = Arc::clone(&received);
+        let app = axum::Router::new().fallback(axum::routing::any(move |body: bytes::Bytes| {
+            let source = source.clone();
+            let replacement = replacement.clone();
+            let success_body = success_body.clone();
+            let seen = Arc::clone(&seen);
+            async move {
+                let first = {
+                    let mut bodies = seen.lock().unwrap();
+                    bodies.push(body.to_vec());
+                    bodies.len() == 1
+                };
+                if first {
+                    let aside = source.with_extension("replacement");
+                    std::fs::write(&aside, replacement).unwrap();
+                    std::fs::rename(aside, source).unwrap();
+                }
+                (
+                    if first {
+                        axum::http::StatusCode::TOO_MANY_REQUESTS
+                    } else {
+                        axum::http::StatusCode::OK
+                    },
+                    [("retry-after", "0")],
+                    success_body,
+                )
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (base, received, server)
+    }
+}
