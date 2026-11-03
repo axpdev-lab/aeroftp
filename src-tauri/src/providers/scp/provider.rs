@@ -221,6 +221,12 @@ impl ScpProvider {
                     .read_exact(&mut remote_bytes[..n])
                     .await
                     .map_err(ProviderError::IoError)?;
+                crate::transfer_dag::governor::global()
+                    .charge(
+                        crate::transfer_dag::governor::TransferDirection::Download,
+                        n as u64,
+                    )
+                    .await;
                 local
                     .read_exact(&mut local_bytes[..n])
                     .await
@@ -683,6 +689,18 @@ impl StorageProvider for ScpProvider {
             self.session()?
                 .append(&full, &mut file, total - from, &mut on_bytes)
                 .await?;
+            // Another writer may have replaced the prefix after its check.
+            // Verify the complete result on the same opened local source;
+            // size alone cannot detect a same-length foreign prefix.
+            use tokio::io::AsyncSeekExt;
+            file.seek(std::io::SeekFrom::Start(0))
+                .await
+                .map_err(ProviderError::IoError)?;
+            if !self.prefix_matches(&full, &mut file, total).await {
+                return Err(ProviderError::TransferFailed(format!(
+                    "{full}: remote contents differ after the append"
+                )));
+            }
         } else {
             progress(total, total);
         }
@@ -827,18 +845,33 @@ impl StorageProvider for ScpProvider {
         let full = self.normalize_path(path);
         let meta = self.session()?.stat(&full).await?;
         let followed = if meta.kind == Kind::Symlink {
-            Some(self.session()?.stat_followed(&full).await?)
+            match self.session()?.stat_followed(&full).await {
+                Ok(attrs) => Some(attrs),
+                // Retain the link itself when its target is gone: the edit
+                // guard must still refuse to replace a dangling symlink.
+                Err(ProviderError::NotFound(_)) => None,
+                Err(e) => return Err(e),
+            }
         } else {
             None
         };
         let attrs = followed.as_ref().unwrap_or(&meta);
         let mut entry = remote_entry(
             last_component(&full).to_string(),
-            full,
+            full.clone(),
             attrs,
             attrs.kind == Kind::Dir,
         );
         entry.is_symlink = meta.kind == Kind::Symlink;
+        if entry.is_symlink && self.has("readlink") {
+            entry.link_target = match self.session()?.read_link(&full).await {
+                Ok(target) => Some(target),
+                // A link removed since lstat still must not be reported as
+                // a missing regular file to the staged-edit guard.
+                Err(ProviderError::NotFound(_)) => None,
+                Err(e) => return Err(e),
+            };
+        }
         Ok(entry)
     }
 

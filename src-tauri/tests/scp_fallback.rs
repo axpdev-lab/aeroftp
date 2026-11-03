@@ -814,6 +814,7 @@ async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
     assert!(link_stat.is_symlink && !link_stat.is_dir);
     assert_eq!(link_stat.size, target.size);
     assert_eq!(link_stat.modified, target.modified);
+    assert_eq!(link_stat.link_target.as_deref(), Some("target it's.bin"));
 
     // And a listing gives a link the size and kind of what it points to,
     // as SFTP's does; a link whose target cannot be read (dangling, looping,
@@ -844,6 +845,19 @@ async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
         (dir_stat.size, dir_stat.modified),
         (target_dir.size, target_dir.modified)
     );
+    let dangling_stat = p.stat("dangling").await.unwrap();
+    assert!(dangling_stat.is_symlink && !dangling_stat.is_dir);
+    assert_eq!(dangling_stat.link_target.as_deref(), Some("nowhere"));
+    let refusal = ftp_client_gui_lib::providers::inspect_edit_target(p.as_mut(), "dangling")
+        .await
+        .expect_err("must refuse editing a dangling symlink");
+    assert!(
+        matches!(refusal, ProviderError::InvalidPath(ref why) if why.contains("symbolic link"))
+    );
+    assert!(std::fs::symlink_metadata(r.join("dangling"))
+        .unwrap()
+        .file_type()
+        .is_symlink());
     let dangling = named("dangling");
     assert!(dangling.is_symlink && !dangling.is_dir);
     assert_eq!(dangling.size, "nowhere".len() as u64);
@@ -960,6 +974,34 @@ async fn a_server_without_head_still_resumes_but_reads_no_ranges() {
         .await
         .expect("whole upload when prefix cannot be compared");
     assert_eq!(std::fs::read(fx.remote().join("up.bin")).unwrap(), body);
+
+    // Leave a real partial with its source/version metadata, then exercise
+    // the unbounded dd/cat resume with head absent from this server.
+    let dest = fx.local("down.bin");
+    p.set_speed_limit(0, 128).await.unwrap();
+    {
+        let path = s(&dest);
+        let download = p.download("up.bin", &path, None);
+        tokio::pin!(download);
+        loop {
+            tokio::select! {
+                result = &mut download => panic!("download ended before cancellation: {result:?}"),
+                _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                    if std::fs::metadata(dest.with_file_name("down.bin.aerotmp")).map(|m| m.len()).unwrap_or(0) >= 32 * 1024 { break; }
+                }
+            }
+        }
+    }
+    let part = ftp_client_gui_lib::providers::atomic_write::resumable_part_len(&dest).await;
+    assert!(part >= 32 * 1024 && part < body.len() as u64);
+    p.set_speed_limit(0, 0).await.unwrap();
+    let (progress, calls) = recorder();
+    p.download("up.bin", &s(&dest), progress).await.unwrap();
+    assert_eq!(std::fs::read(&dest).unwrap(), body);
+    assert!(
+        calls.lock().unwrap()[0].0 > part,
+        "head-free read must resume beyond the partial"
+    );
 
     assert!(!p.transfer_optimization_hints().supports_range_download);
     let ranged = p.read_range("up.bin", 10, 10).await;
@@ -1443,10 +1485,16 @@ async fn scp_global_governor_charges_sequential_bytes_once_in_both_modes() {
         assert_eq!(down.granted_bytes() - before, body.len() as u64);
         std::fs::write(fx.remote().join(&name), &body[..32_000]).unwrap();
         let before = up.granted_bytes();
+        let verification_before = down.granted_bytes();
         p.resume_upload(&s(&local), &name, 32_000, None)
             .await
             .unwrap();
         assert_eq!(up.granted_bytes() - before, (body.len() - 32_000) as u64);
+        assert_eq!(
+            down.granted_bytes() - verification_before,
+            32_000 + body.len() as u64,
+            "the prefix and final whole-file verification must each pay exactly once"
+        );
     }
 }
 
@@ -1521,5 +1569,44 @@ async fn a_failed_prefix_comparison_restarts_upload_instead_of_appending() {
     assert!(
         calls.lock().unwrap()[0].0 < 80_000,
         "comparison failed: must restart from zero"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_append_refuses_a_foreign_prefix_installed_after_its_initial_check() {
+    let fx = Fixture::new("scp-append-raced-prefix");
+    let bin = fx.root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    // The prefix read uses head. When the later cat append actually starts,
+    // this competing write installs different bytes of the same length.
+    std::fs::write(
+        bin.join("cat"),
+        "#!/bin/sh\nprintf 'FOREIGN' > up\n: > raced\nexec /bin/cat \"$@\"\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        bin.join("cat"),
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    let mut options = fx.options(Sftp::Serve);
+    options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
+    let (port, _) = start(options).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    timed_connect(p.as_mut()).await.0.unwrap();
+    let local = fx.local("source");
+    std::fs::write(&local, b"CORRECT-tail").unwrap();
+    std::fs::write(fx.remote().join("up"), b"CORRECT").unwrap();
+    let result = p.resume_upload(&s(&local), "up", 7, None).await;
+    assert!(fx.remote().join("raced").exists());
+    assert_eq!(
+        std::fs::read(fx.remote().join("up")).unwrap(),
+        b"FOREIGN-tail"
+    );
+    assert!(
+        matches!(result, Err(ProviderError::TransferFailed(ref why)) if why.contains("contents differ after the append")),
+        "{result:?}"
     );
 }

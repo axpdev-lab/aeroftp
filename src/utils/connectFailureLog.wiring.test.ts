@@ -1,7 +1,11 @@
+// @vitest-environment jsdom
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
+import { act, createElement } from 'react';
+import { createRoot } from 'react-dom/client';
+import { ActivityLogProvider, useActivityLog, type ActivityLogContextValue } from '../hooks/useActivityLog';
 import APP from '../App.tsx?raw';
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 
@@ -25,7 +29,12 @@ function connectingRows(source: string): string[] {
 
 /** The rows of `connectingRows` whose connect does not run under `connectUnderRow`. */
 function unclosedRows(source: string): string[] {
-    return connectingRows(source).filter(name => !source.includes(`connectUnderRow(${name}, `));
+    const starts = [...source.matchAll(/connectingLogId(?:\s*:\s*(\w+))?\s*\}\s*=\s*await[^;]*?logConnectionSteps\(/g)];
+    return starts.flatMap((match, index) => {
+        const name = match[1] ?? 'connectingLogId';
+        const region = source.slice(match.index, starts[index + 1]?.index ?? source.length);
+        return region.includes(`connectUnderRow(${name}, `) ? [] : [name];
+    });
 }
 
 describe('connect failure log', () => {
@@ -38,11 +47,40 @@ describe('connect failure log', () => {
         const connect = run({ updateEntry: (...args: unknown[]) => entries.push(args) }, isConnectCancelledError);
         const cancelled = new Error(CONNECT_CANCELLED_MARKER);
         await expect(connect('row', async () => { throw cancelled; })).rejects.toBe(cancelled);
-        expect(entries).toEqual([['row', { status: 'pending' }]]);
+        expect(entries).toEqual([['row', { status: 'cancelled' }]]);
         entries.length = 0;
         const failed = new Error('connection refused');
         await expect(connect('row', async () => { throw failed; })).rejects.toBe(failed);
         expect(entries).toEqual([['row', { status: 'error' }]]);
+    });
+
+    it('a cancelled connecting row stops contributing to the actual active badge', async () => {
+        const host = document.createElement('div');
+        const root = createRoot(host);
+        let log!: ActivityLogContextValue;
+        const Probe = () => { log = useActivityLog(); return null; };
+        try {
+            await act(async () => { root.render(createElement(ActivityLogProvider, { children: createElement(Probe) })); });
+            let id = '';
+            await act(async () => { id = log.log('CONNECT', 'connecting', 'running'); });
+            expect(log.runningCount).toBe(1);
+            const start = APP.indexOf('const connectUnderRow = async');
+            const end = APP.indexOf('\n  };', start);
+            const handler = APP.slice(start, end).replace(/:\s*(?:string \| null|\(\) => Promise<unknown>|Promise<void>)/g, '');
+            const connect = new Function('humanLog', 'isConnectCancelledError', `${handler}\n  }; return connectUnderRow;`)(log, isConnectCancelledError);
+            await act(async () => { await expect(connect(id, async () => { throw new Error(CONNECT_CANCELLED_MARKER); })).rejects.toThrow(CONNECT_CANCELLED_MARKER); });
+            expect(log.entries[0].status).toBe('cancelled');
+            expect(log.runningCount).toBe(0);
+            expect(log.hasRunning).toBe(false);
+        } finally { await act(async () => root.unmount()); }
+    });
+
+    it('rejects an unwrapped duplicate even when another row has the same identifier', () => {
+        const source = `const { connectingLogId } = await logConnectionSteps(a, 22, 'sftp');
+            await connectUnderRow(connectingLogId, () => runConnect('connect_ftp', {}));
+            const { connectingLogId } = await logConnectionSteps(b, 22, 'scp');
+            await runConnect('connect_ftp', {});`;
+        expect(unclosedRows(source)).toEqual(['connectingLogId']);
     });
 
     it('finds every connect path that opens a "Connecting to" row', () => {

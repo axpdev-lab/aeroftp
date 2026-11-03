@@ -36,7 +36,7 @@ export type OperationType =
     | 'PROFILE_SAVE'
     | 'PROFILE_DUPLICATE';
 
-export type OperationStatus = 'pending' | 'running' | 'success' | 'error';
+export type OperationStatus = 'pending' | 'running' | 'success' | 'error' | 'cancelled';
 
 export interface LogEntry {
     id: string;
@@ -236,6 +236,7 @@ export function getOperationIcon(operation: OperationType): string {
 export function getStatusColorClass(status: OperationStatus): string {
     const colors: Record<OperationStatus, string> = {
         pending: 'text-gray-400',
+        cancelled: 'text-gray-400',
         running: 'text-blue-400',
         success: 'text-green-400',
         error: 'text-red-400',

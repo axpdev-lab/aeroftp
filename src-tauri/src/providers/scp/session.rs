@@ -73,6 +73,7 @@ const PROBED_TOOLS: &[&str] = &[
     "dd",
     "head",
     "cat",
+    "readlink",
 ];
 
 /// The output of one command.
@@ -530,6 +531,20 @@ where
             .pop()
             .map(|e| e.meta)
             .ok_or_else(|| ProviderError::ParseError(format!("stat {path}: unreadable ls line")))
+    }
+
+    /// The destination stored in a symlink, without following it. Remove
+    /// only readlink's terminating newline, preserving newlines in the name.
+    pub async fn read_link(&self, path: &str) -> Result<String, ProviderError> {
+        let command = format!("readlink -- {}", shell_quote(path)?);
+        let mut bytes = self
+            .run_ok("readlink", path, command.as_bytes())
+            .await?
+            .stdout;
+        if bytes.last() == Some(&b'\n') {
+            bytes.pop();
+        }
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 
     pub async fn mkdir(&self, path: &str) -> Result<(), ProviderError> {
