@@ -3292,32 +3292,61 @@ mod tests {
     /// A refused connect never sent the create. A peer that accepts the
     /// request and then drops it may already have stored the name.
     ///
-    /// The refusal is a socket that is bound and not listening. Closing a
-    /// listener and connecting to the released port is not that refusal on
-    /// Windows: the connect can outlast this client's two second limit, or
-    /// another test can take the port, and the error is then a timeout.
+    /// A controlled resolution failure exercises reqwest's connect phase
+    /// before any socket/request exists, independently of Windows SYN timing.
+    /// The second phase uses a real peer that reads the request then closes.
     #[tokio::test]
     async fn create_meta_warns_only_after_the_request_is_sent() {
         let mut provider = test_provider();
         provider.connected = true;
         provider.retry_config.max_retries = 0;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct BeforeConnectFailure(Arc<AtomicUsize>);
+        impl reqwest::dns::Resolve for BeforeConnectFailure {
+            fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionRefused,
+                        "fixture refused resolution before a connection",
+                    )
+                    .into())
+                })
+            }
+        }
+        let resolutions = Arc::new(AtomicUsize::new(0));
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .dns_resolver(Arc::new(BeforeConnectFailure(Arc::clone(&resolutions))))
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+        provider.api_base = "http://not-sent.invalid".into();
+        let error = provider
+            .create_file_meta(None, "R", "empty", "", 0)
+            .await
+            .expect_err("a failed connect is not a published file");
+        assert!(
+            matches!(&error, ProviderError::ConnectionFailed(_)),
+            "{error:?}"
+        );
+        assert!(
+            resolutions.load(Ordering::SeqCst) > 0,
+            "connect resolver was exercised"
+        );
+        let message = error.to_string();
+        assert!(message.contains("Request failed"), "{message}");
+        assert!(!message.contains("may have completed"), "{message}");
+
+        // Restore the ordinary connector for the real accepted-request case.
         provider.client = reqwest::Client::builder()
             .no_proxy()
             .timeout(std::time::Duration::from_secs(2))
             .build()
             .unwrap();
-
-        let refused = crate::providers::http_retry::refusal::BoundRefusal::bind();
-        let refused_addr = refused.addr();
-        provider.api_base = format!("http://{refused_addr}");
-        let message = provider
-            .create_file_meta(None, "R", "empty", "", 0)
-            .await
-            .expect_err("a refused connect is not a published file")
-            .to_string();
-        drop(refused);
-        assert!(message.contains("Request failed"), "{message}");
-        assert!(!message.contains("may have completed"), "{message}");
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
