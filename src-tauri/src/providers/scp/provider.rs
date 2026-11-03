@@ -195,6 +195,48 @@ impl ScpProvider {
         self.can_resume() && self.has("head")
     }
 
+    /// Compare a remote prefix byte for byte through one bounded stream. The
+    /// pipe bounds memory; either half failing drops the other SSH read. No
+    /// digest utility or persistent claim that this path still names that file.
+    async fn prefix_matches(&self, remote: &str, local: &mut tokio::fs::File, len: u64) -> bool {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        if !self.can_read_range() {
+            return false;
+        }
+        let (mut sink, mut source) = tokio::io::duplex(32 * 1024);
+        let read = async {
+            self.session()?
+                .read_at(remote, 0, Some(len), &mut sink, &mut |_| {})
+                .await?;
+            sink.shutdown().await.map_err(ProviderError::IoError)
+        };
+        let compare = async {
+            let mut remote_bytes = [0u8; 32 * 1024];
+            let mut local_bytes = [0u8; 32 * 1024];
+            let mut left = len;
+            while left > 0 {
+                let n = left.min(remote_bytes.len() as u64) as usize;
+                source
+                    .read_exact(&mut remote_bytes[..n])
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                local
+                    .read_exact(&mut local_bytes[..n])
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                if remote_bytes[..n] != local_bytes[..n] {
+                    return Err(ProviderError::TransferFailed(
+                        "upload prefix differs".into(),
+                    ));
+                }
+                left -= n as u64;
+            }
+            Ok(())
+        };
+        tokio::try_join!(read, compare).is_ok()
+    }
+
     /// A download into the partial SFTP keeps too (`.aerotmp`, or the file
     /// itself in place), going on from it when it was started from the
     /// version the server has now, by its record.
@@ -597,9 +639,10 @@ impl StorageProvider for ScpProvider {
     /// Go on with an interrupted upload by appending the local file's tail
     /// with `cat >>`. The tail starts where the remote file ends, never at
     /// the caller's offset: appending to a remote shorter than that offset
-    /// would leave a hole of the wrong bytes. A remote that is not a part of
-    /// the local file by its size (missing, empty, longer than the caller's
-    /// offset, as when another writer grew it since) is sent whole.
+    /// would leave a hole of the wrong bytes. Size alone is not proof: compare
+    /// the entire remote prefix with the same opened local file before any
+    /// append. A mismatch, unavailable bounded read, or failed comparison
+    /// sends the file whole, as do missing, empty and oversized remotes.
     async fn resume_upload(
         &mut self,
         local_path: &str,
@@ -607,12 +650,11 @@ impl StorageProvider for ScpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        use tokio::io::AsyncSeekExt;
-
         let full = self.normalize_path(remote_path);
-        let local = tokio::fs::metadata(local_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to stat local file: {e}"))
+        let mut file = tokio::fs::File::open(local_path).await.map_err(|e| {
+            ProviderError::TransferFailed(format!("Failed to open local file: {e}"))
         })?;
+        let local = file.metadata().await.map_err(ProviderError::IoError)?;
         let total = local.len();
         let remote = match self.session()?.stat_followed(&full).await {
             Ok(meta) if meta.kind == Kind::File => Some(meta.size),
@@ -627,6 +669,9 @@ impl StorageProvider for ScpProvider {
             }
             _ => return self.upload(local_path, remote_path, on_progress).await,
         };
+        if !self.prefix_matches(&full, &mut file, from).await {
+            return self.upload(local_path, remote_path, on_progress).await;
+        }
         tracing::info!("SCP: Appending {} from byte {} of {}", full, from, total);
         let progress = move |done: u64, total: u64| {
             if let Some(p) = &on_progress {
@@ -634,12 +679,6 @@ impl StorageProvider for ScpProvider {
             }
         };
         if from < total {
-            let mut file = tokio::fs::File::open(local_path).await.map_err(|e| {
-                ProviderError::TransferFailed(format!("Failed to open local file: {e}"))
-            })?;
-            file.seek(std::io::SeekFrom::Start(from))
-                .await
-                .map_err(ProviderError::IoError)?;
             let mut on_bytes = move |done: u64, _: u64| progress(from + done, total);
             self.session()?
                 .append(&full, &mut file, total - from, &mut on_bytes)
@@ -787,17 +826,20 @@ impl StorageProvider for ScpProvider {
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
         let full = self.normalize_path(path);
         let meta = self.session()?.stat(&full).await?;
-        let is_dir = match meta.kind {
-            Kind::Dir => true,
-            Kind::Symlink => self.is_directory(&full).await?,
-            _ => false,
+        let followed = if meta.kind == Kind::Symlink {
+            Some(self.session()?.stat_followed(&full).await?)
+        } else {
+            None
         };
-        Ok(remote_entry(
+        let attrs = followed.as_ref().unwrap_or(&meta);
+        let mut entry = remote_entry(
             last_component(&full).to_string(),
-            full.clone(),
-            &meta,
-            is_dir,
-        ))
+            full,
+            attrs,
+            attrs.kind == Kind::Dir,
+        );
+        entry.is_symlink = meta.kind == Kind::Symlink;
+        Ok(entry)
     }
 
     /// The size of what the path names: a symlink is followed, as SFTP's
@@ -839,7 +881,7 @@ impl StorageProvider for ScpProvider {
     }
 
     fn supports_chmod(&self) -> bool {
-        true
+        self.has("chmod")
     }
 
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {

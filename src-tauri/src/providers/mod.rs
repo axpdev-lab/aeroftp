@@ -3933,6 +3933,7 @@ impl ProviderFactory {
             ProviderType::Ftp,
             ProviderType::Ftps,
             ProviderType::Sftp,
+            ProviderType::Scp,
             ProviderType::WebDav,
             ProviderType::S3,
             ProviderType::AeroCloud,
@@ -4686,6 +4687,10 @@ mod tests {
     fn test_provider_factory_supported_types() {
         let types = ProviderFactory::supported_types();
         assert!(types.contains(&ProviderType::Ftp));
+        assert!(types.contains(&ProviderType::Scp));
+        assert!(types
+            .windows(2)
+            .any(|pair| pair == [ProviderType::Sftp, ProviderType::Scp]));
         assert!(types.contains(&ProviderType::WebDav));
         assert!(types.contains(&ProviderType::S3));
     }

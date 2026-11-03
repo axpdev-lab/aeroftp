@@ -7707,7 +7707,8 @@ const App: React.FC = () => {
     try {
       await run();
     } catch (error) {
-      if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'error' });
+      // A cancelled row is settled but neutral, never a failed connection.
+      if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: isConnectCancelledError(error) ? 'pending' : 'error' });
       throw error;
     }
   };

@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import APP from '../App.tsx?raw';
+import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 
 /**
  * A connect that fails must close the rows it opened in the Activity Log, and
@@ -28,6 +29,22 @@ function unclosedRows(source: string): string[] {
 }
 
 describe('connect failure log', () => {
+    it('settles a user-cancelled connect row neutrally and rethrows the cancellation', async () => {
+        const start = APP.indexOf('const connectUnderRow = async');
+        const end = APP.indexOf('\n  };', start);
+        const handler = APP.slice(start, end).replace(/:\s*(?:string \| null|\(\) => Promise<unknown>|Promise<void>)/g, '');
+        const run = new Function('humanLog', 'isConnectCancelledError', `${handler}\n  }; return connectUnderRow;`);
+        const entries: unknown[] = [];
+        const connect = run({ updateEntry: (...args: unknown[]) => entries.push(args) }, isConnectCancelledError);
+        const cancelled = new Error(CONNECT_CANCELLED_MARKER);
+        await expect(connect('row', async () => { throw cancelled; })).rejects.toBe(cancelled);
+        expect(entries).toEqual([['row', { status: 'pending' }]]);
+        entries.length = 0;
+        const failed = new Error('connection refused');
+        await expect(connect('row', async () => { throw failed; })).rejects.toBe(failed);
+        expect(entries).toEqual([['row', { status: 'error' }]]);
+    });
+
     it('finds every connect path that opens a "Connecting to" row', () => {
         expect(connectingRows(APP).length).toBeGreaterThanOrEqual(4);
     });

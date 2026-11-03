@@ -566,3 +566,132 @@ async fn a_rename_skipped_by_mv_n_is_reported_as_an_existing_target() {
     }
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bounded_reads_refuse_failed_seek_overlong_and_short_windows() {
+    for (tag, tool, script) in [
+        ("dd-fail", "dd", "#!/bin/sh\nexit 1\n"),
+        ("head-ignores-bound", "head", "#!/bin/sh\ncat\n"),
+        ("head-short", "head", "#!/bin/sh\n/usr/bin/head -c 1\n"),
+    ] {
+        let root = temp_dir(tag);
+        let bin = root.join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        std::fs::write(bin.join(tool), script).unwrap();
+        std::fs::set_permissions(
+            bin.join(tool),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        std::fs::write(root.join("bytes"), b"0123456789").unwrap();
+        let path = format!("{}:{}", s(&bin), system_path());
+        let scp = ScpSession::open(connect(&root, &path).await, IO)
+            .await
+            .unwrap();
+        let mut got = Vec::new();
+        let result = scp
+            .read_at(&s(&root.join("bytes")), 3, Some(2), &mut got, &mut |_| {})
+            .await;
+        assert!(result.is_err(), "{tag}: {result:?}");
+        assert!(got.len() <= 2, "{tag}: exceeded the sink's bound");
+        if tool == "dd" {
+            assert!(got.is_empty(), "a failed skip must not read offset zero");
+        }
+        // A failed window releases its channel: the session can still execute.
+        assert_eq!(scp.stat(&s(&root.join("bytes"))).await.unwrap().size, 10);
+        let _ = std::fs::remove_dir_all(root);
+    }
+    let root = temp_dir("exact-window");
+    std::fs::write(root.join("bytes"), b"0123456789").unwrap();
+    let scp = ScpSession::open(connect(&root, &system_path()).await, IO)
+        .await
+        .unwrap();
+    let mut got = Vec::new();
+    assert_eq!(
+        scp.read_at(&s(&root.join("bytes")), 3, Some(2), &mut got, &mut |_| {})
+            .await
+            .unwrap(),
+        2
+    );
+    assert_eq!(got, b"34");
+    assert!(scp
+        .read_at(
+            &s(&root.join("bytes")),
+            9,
+            Some(2),
+            &mut Vec::new(),
+            &mut |_| {}
+        )
+        .await
+        .is_err());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn find_follows_only_the_command_line_root_symlink() {
+    let root = temp_dir("find-root-link");
+    std::fs::create_dir_all(root.join("real/sub")).unwrap();
+    std::fs::create_dir(root.join("outside")).unwrap();
+    std::fs::write(root.join("real/a.log"), b"a").unwrap();
+    std::fs::write(root.join("real/sub/b.log"), b"b").unwrap();
+    std::fs::write(root.join("outside/secret.log"), b"secret").unwrap();
+    std::os::unix::fs::symlink("real", root.join("it's $(root)")).unwrap();
+    std::os::unix::fs::symlink(root.join("outside"), root.join("real/link")).unwrap();
+    std::os::unix::fs::symlink(root.join("real"), root.join("real/sub/loop")).unwrap();
+    let scp = ScpSession::open(connect(&root, &system_path()).await, IO)
+        .await
+        .unwrap();
+    let mut found = scp
+        .find_paths(
+            &s(&root.join("it's $(root)")),
+            &mut |name| name.ends_with(b".log"),
+            20,
+        )
+        .await
+        .unwrap();
+    found.sort();
+    assert_eq!(
+        found,
+        vec![
+            root.join("it's $(root)/a.log")
+                .as_os_str()
+                .as_bytes()
+                .to_vec(),
+            root.join("it's $(root)/sub/b.log")
+                .as_os_str()
+                .as_bytes()
+                .to_vec()
+        ]
+    );
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_running_worker_observes_parent_speed_limit_changes() {
+    let root = temp_dir("live-worker-limit");
+    let body = vec![b'x'; 512 * 1024];
+    std::fs::write(root.join("bytes"), &body).unwrap();
+    let scp = ScpSession::open(connect(&root, &system_path()).await, IO)
+        .await
+        .unwrap();
+    let worker = scp.worker();
+    let started = std::time::Instant::now();
+    let mut got = Vec::new();
+    let mut changed = false;
+    worker
+        .read_at(&s(&root.join("bytes")), 0, None, &mut got, &mut |n| {
+            if !changed && n >= 64 * 1024 {
+                scp.set_speed_limits(0, 256 * 1024);
+                changed = true;
+            }
+        })
+        .await
+        .unwrap();
+    assert!(changed);
+    assert_eq!(got, body);
+    assert!(
+        started.elapsed() >= Duration::from_millis(1500),
+        "worker kept an old private limit"
+    );
+    let _ = std::fs::remove_dir_all(root);
+}

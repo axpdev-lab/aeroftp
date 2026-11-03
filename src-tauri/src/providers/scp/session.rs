@@ -99,8 +99,8 @@ pub struct ScpSession<H: Handler> {
     /// The longest wait for the next bytes from the server.
     io_timeout: Duration,
     /// Transfer rates in bytes per second, 0 for no limit.
-    upload_limit_bps: AtomicU64,
-    download_limit_bps: AtomicU64,
+    upload_limit_bps: Arc<AtomicU64>,
+    download_limit_bps: Arc<AtomicU64>,
 }
 
 /// Bytes from a channel's stdout, read a byte, a line or a length at a time.
@@ -157,7 +157,7 @@ impl Incoming {
         n: u64,
         sink: &mut W,
         progress: &mut (dyn FnMut(u64, u64) + Send),
-        limit_bps: u64,
+        limit_bps: &AtomicU64,
     ) -> Result<(), ProviderError> {
         let mut done = 0u64;
         let start = Instant::now();
@@ -165,13 +165,20 @@ impl Incoming {
             self.fill().await?;
             let avail = (self.buf.len() - self.pos) as u64;
             let take = avail.min(n - done) as usize;
+            crate::transfer_dag::governor::global()
+                .charge(
+                    crate::transfer_dag::governor::TransferDirection::Download,
+                    take as u64,
+                )
+                .await;
             sink.write_all(&self.buf[self.pos..self.pos + take])
                 .await
                 .map_err(|e| ProviderError::TransferFailed(format!("writing the download: {e}")))?;
             self.pos += take;
             done += take as u64;
             progress(done, n);
-            crate::throttle_transfer(done, start.elapsed(), limit_bps).await;
+            crate::throttle_transfer(done, start.elapsed(), limit_bps.load(Ordering::Relaxed))
+                .await;
         }
         Ok(())
     }
@@ -269,8 +276,8 @@ where
             channels: Arc::new(Semaphore::new(CHANNELS_PER_CONNECTION)),
             probe: Probe::default(),
             io_timeout,
-            upload_limit_bps: AtomicU64::new(0),
-            download_limit_bps: AtomicU64::new(0),
+            upload_limit_bps: Arc::new(AtomicU64::new(0)),
+            download_limit_bps: Arc::new(AtomicU64::new(0)),
         };
         let mut script = String::from(
             "printf 'system=%s\\0' \"$(uname -s)\"; printf 'home=%s\\0' \"$(pwd)\"; for t in",
@@ -636,7 +643,6 @@ where
         let mut buf = vec![0u8; UPLOAD_CHUNK];
         let mut sent = 0u64;
         let start = Instant::now();
-        let limit_bps = self.upload_limit_bps.load(Ordering::Relaxed);
         while sent < size {
             let want = (size - sent).min(UPLOAD_CHUNK as u64) as usize;
             let n = src.read(&mut buf[..want]).await.map_err(io)?;
@@ -647,10 +653,21 @@ where
                     "{path}: the source ended after {sent} of {size} bytes"
                 )));
             }
+            crate::transfer_dag::governor::global()
+                .charge(
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                    n as u64,
+                )
+                .await;
             exec.stdin.write_all(&buf[..n]).await.map_err(io)?;
             sent += n as u64;
             progress(sent, size);
-            crate::throttle_transfer(sent, start.elapsed(), limit_bps).await;
+            crate::throttle_transfer(
+                sent,
+                start.elapsed(),
+                self.upload_limit_bps.load(Ordering::Relaxed),
+            )
+            .await;
         }
         exec.stdin.write_all(&[0]).await.map_err(io)?;
         reply_ok(incoming.reply().await?, path)?;
@@ -713,8 +730,9 @@ where
             exec.stdin.write_all(&[0]).await.map_err(io)?;
         };
         exec.stdin.write_all(&[0]).await.map_err(io)?;
-        let limit_bps = self.download_limit_bps.load(Ordering::Relaxed);
-        incoming.copy_to(size, sink, progress, limit_bps).await?;
+        incoming
+            .copy_to(size, sink, progress, &self.download_limit_bps)
+            .await?;
         reply_ok(incoming.reply().await?, path)?;
         exec.stdin.write_all(&[0]).await.map_err(io)?;
         sink.flush().await.map_err(io)?;
@@ -738,15 +756,15 @@ where
 
     /// A second session on the same connection, for a parallel transfer:
     /// every command opens its own exec channel, so sessions that share a
-    /// handle run side by side. It keeps this session's probe and rates.
+    /// handle run side by side. It keeps this session's probe and shares live rates.
     pub fn worker(&self) -> Self {
         Self {
             handle: self.handle.clone(),
             channels: self.channels.clone(),
             probe: self.probe.clone(),
             io_timeout: self.io_timeout,
-            upload_limit_bps: AtomicU64::new(self.upload_limit_bps.load(Ordering::Relaxed)),
-            download_limit_bps: AtomicU64::new(self.download_limit_bps.load(Ordering::Relaxed)),
+            upload_limit_bps: Arc::clone(&self.upload_limit_bps),
+            download_limit_bps: Arc::clone(&self.download_limit_bps),
         }
     }
 
@@ -854,12 +872,11 @@ where
             None => "cat".to_string(),
         };
         let cmd = format!(
-            "LC_ALL=C; export LC_ALL; {{ dd bs=1 skip={offset} count=0 2>/dev/null; {rest}; }} < {}",
+            "LC_ALL=C; export LC_ALL; {{ dd bs=1 skip={offset} count=0 2>/dev/null || exit 1; {rest}; }} < {}",
             shell_quote(path)?
         );
         let mut exec = self.exec(cmd.as_bytes()).await?;
         let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
-        let limit_bps = self.download_limit_bps.load(Ordering::Relaxed);
         let start = Instant::now();
         let mut done = 0u64;
         let mut stderr = Vec::new();
@@ -875,10 +892,33 @@ where
             .map_err(|_| ProviderError::Timeout)?;
             match next {
                 (true, Some(chunk)) => {
+                    let next = done.checked_add(chunk.len() as u64).ok_or_else(|| {
+                        ProviderError::TransferFailed(format!("{path}: range size overflow"))
+                    })?;
+                    if len.is_some_and(|len| next > len) {
+                        return Err(ProviderError::TransferFailed(format!(
+                            "{path}: the server exceeded the requested range"
+                        )));
+                    }
+                    // Bounded reads are charged by the segmented engine; only
+                    // an unbounded resume is a sequential download here.
+                    if len.is_none() {
+                        crate::transfer_dag::governor::global()
+                            .charge(
+                                crate::transfer_dag::governor::TransferDirection::Download,
+                                chunk.len() as u64,
+                            )
+                            .await;
+                    }
                     sink.write_all(&chunk).await.map_err(io)?;
-                    done += chunk.len() as u64;
+                    done = next;
                     progress(done);
-                    crate::throttle_transfer(done, start.elapsed(), limit_bps).await;
+                    crate::throttle_transfer(
+                        done,
+                        start.elapsed(),
+                        self.download_limit_bps.load(Ordering::Relaxed),
+                    )
+                    .await;
                 }
                 (true, None) => break,
                 (false, Some(chunk)) => {
@@ -907,6 +947,12 @@ where
             };
             return Err(command_error("read", path, &out));
         }
+        if len.is_some_and(|len| done != len) {
+            return Err(ProviderError::TransferFailed(format!(
+                "{path}: short range: received {done} bytes, expected {}",
+                len.unwrap()
+            )));
+        }
         Ok(done)
     }
 
@@ -927,7 +973,6 @@ where
         );
         let mut exec = self.exec(cmd.as_bytes()).await?;
         let io = |e: std::io::Error| ProviderError::TransferFailed(format!("{path}: {e}"));
-        let limit_bps = self.upload_limit_bps.load(Ordering::Relaxed);
         let start = Instant::now();
         let mut buf = vec![0u8; UPLOAD_CHUNK];
         let mut sent = 0u64;
@@ -941,12 +986,23 @@ where
             }
             // A `cat` that has already exited (the file was missing) closes
             // its stdin: its own message, below, says why.
+            crate::transfer_dag::governor::global()
+                .charge(
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                    n as u64,
+                )
+                .await;
             if exec.stdin.write_all(&buf[..n]).await.is_err() {
                 break;
             }
             sent += n as u64;
             progress(sent, len);
-            crate::throttle_transfer(sent, start.elapsed(), limit_bps).await;
+            crate::throttle_transfer(
+                sent,
+                start.elapsed(),
+                self.upload_limit_bps.load(Ordering::Relaxed),
+            )
+            .await;
         }
         let _ = exec.stdin.shutdown().await;
         let out = self.collect(exec).await?;
@@ -962,8 +1018,9 @@ where
     }
 
     /// The paths below the folder `root` whose last component `keep`
-    /// accepts, in `find` order, at most `limit` of them. `find` does not
-    /// follow symlinks, so a link back up the tree is never walked; a folder
+    /// accepts, in `find` order, at most `limit` of them. `find -H` follows
+    /// the root itself if it is a symlink, never links below it, so a link
+    /// back up the tree is never walked; a folder
     /// it cannot read is skipped, as SFTP's search skips one. Reading stops
     /// at `limit`, and dropping the channel ends `find`.
     ///
@@ -984,7 +1041,7 @@ where
         )
         .await?;
         let cmd = format!(
-            "LC_ALL=C; export LC_ALL; find {} -mindepth 1 -print0 2>/dev/null; :",
+            "LC_ALL=C; export LC_ALL; find -H {} -mindepth 1 -print0 2>/dev/null; :",
             shell_quote(root)?
         );
         let mut exec = self.exec(cmd.as_bytes()).await?;

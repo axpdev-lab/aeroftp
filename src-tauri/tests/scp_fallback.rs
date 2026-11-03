@@ -809,6 +809,11 @@ async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
     std::fs::write(r.join("target it's.bin"), pattern(12_345)).unwrap();
     std::os::unix::fs::symlink("target it's.bin", r.join("link")).unwrap();
     assert_eq!(p.size("link").await.unwrap(), 12_345);
+    let target = p.stat("target it's.bin").await.unwrap();
+    let link_stat = p.stat("link").await.unwrap();
+    assert!(link_stat.is_symlink && !link_stat.is_dir);
+    assert_eq!(link_stat.size, target.size);
+    assert_eq!(link_stat.modified, target.modified);
 
     // And a listing gives a link the size and kind of what it points to,
     // as SFTP's does; a link whose target cannot be read (dangling, looping,
@@ -832,6 +837,13 @@ async fn a_symlink_reports_its_file_and_a_read_to_memory_keeps_its_cap() {
     assert!(link.is_symlink && !link.is_dir);
     assert_eq!(link.size, 12_345, "a link lists with its own length");
     assert!(named("to dir").is_dir);
+    let dir_stat = p.stat("to dir").await.unwrap();
+    let target_dir = p.stat("a dir").await.unwrap();
+    assert!(dir_stat.is_symlink && dir_stat.is_dir);
+    assert_eq!(
+        (dir_stat.size, dir_stat.modified),
+        (target_dir.size, target_dir.modified)
+    );
     let dangling = named("dangling");
     assert!(dangling.is_symlink && !dangling.is_dir);
     assert_eq!(dangling.size, "nowhere".len() as u64);
@@ -915,9 +927,8 @@ async fn free_space_digests_and_search_come_from_the_server() {
     assert!(!r.join("pwned").exists() && !r.join("x").exists());
 }
 
-/// A server without `head` still goes on from an offset: a resumed download
-/// skips with `dd` and reads the rest with `cat`, an upload appends with
-/// `cat >>`. Only a bounded range read needs `head`.
+/// Without `head`, unbounded resumed downloads still have `dd`/`cat`.
+/// An upload cannot verify its bounded prefix, so safely sends the file whole.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_server_without_head_still_resumes_but_reads_no_ranges() {
     let fx = Fixture::new("scp-no-head");
@@ -947,7 +958,7 @@ async fn a_server_without_head_still_resumes_but_reads_no_ranges() {
     std::fs::write(fx.remote().join("up.bin"), &body[..80_000]).unwrap();
     p.resume_upload(&s(&local), "up.bin", 80_000, None)
         .await
-        .expect("append without head");
+        .expect("whole upload when prefix cannot be compared");
     assert_eq!(std::fs::read(fx.remote().join("up.bin")).unwrap(), body);
 
     assert!(!p.transfer_optimization_hints().supports_range_download);
@@ -1077,6 +1088,18 @@ async fn an_interrupted_upload_goes_on_by_appending_and_the_limit_paces_it() {
         .expect("append");
     assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
     assert!(calls.lock().unwrap()[0].0 > 100_000);
+
+    // A foreign prefix of the right size must be replaced, not appended to.
+    std::fs::write(r.join("up it's.bin"), vec![b'X'; 100_000]).unwrap();
+    let (progress, calls) = recorder();
+    p.resume_upload(&s(&local), "up it's.bin", 100_000, progress)
+        .await
+        .expect("whole after a foreign prefix");
+    assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
+    assert!(
+        calls.lock().unwrap()[0].0 < 100_000,
+        "must restart from zero"
+    );
 
     // An offset past the remote's end: the tail starts where the remote
     // ends, never past it.
@@ -1215,15 +1238,9 @@ async fn workers_share_the_connection_and_a_segmented_download_is_whole() {
         big[1000..6000]
     );
     let len = big.len() as u64;
-    assert_eq!(
-        w.read_range("big.bin", len - 10, 100).await.unwrap(),
-        big[big.len() - 10..]
-    );
-    assert!(w
-        .read_range("big.bin", len + 5, 100)
-        .await
-        .unwrap()
-        .is_empty());
+    // Bounded reads either deliver the exact window or refuse it, including EOF.
+    assert!(w.read_range("big.bin", len - 10, 100).await.is_err());
+    assert!(w.read_range("big.bin", len + 5, 100).await.is_err());
 
     let segments = provider_segmented_download_eligible(
         p.as_ref(),
@@ -1386,4 +1403,123 @@ async fn a_download_after_a_refusal_hands_over_the_time_it_read() {
         assert_eq!(p.take_download_time(false), None, "{case}: taken once");
         p.disconnect().await.unwrap();
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scp_global_governor_charges_sequential_bytes_once_in_both_modes() {
+    use ftp_client_gui_lib::transfer_dag::governor::{global, TransferDirection};
+    let fx = Fixture::new("scp-global-governor");
+    let gov = global();
+    struct Restore(
+        Arc<ftp_client_gui_lib::transfer_dag::governor::GlobalTransferGovernor>,
+        (u64, u64),
+    );
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            self.0.set_transfer_limits(self.1 .0, self.1 .1);
+        }
+    }
+    let _restore = Restore(gov.clone(), gov.transfer_limits());
+    gov.set_transfer_limits(1_000_000_000, 1_000_000_000);
+    let up = gov.directional_bandwidth(TransferDirection::Upload);
+    let down = gov.directional_bandwidth(TransferDirection::Download);
+    let body = pattern(96_000);
+    let local = fx.local("source");
+    std::fs::write(&local, &body).unwrap();
+    let mut providers: Vec<Box<dyn StorageProvider>> = vec![scp_session(&fx).await];
+    let (port, _) = start(fx.options(Sftp::Refuse)).await;
+    let mut fallback = SftpProvider::new(config(port, &fx.remote()));
+    timed_connect(&mut fallback).await.0.unwrap();
+    providers.push(Box::new(fallback));
+    for (i, p) in providers.iter_mut().enumerate() {
+        let name = format!("governed-{i}");
+        let before = up.granted_bytes();
+        p.upload(&s(&local), &name, None).await.unwrap();
+        assert_eq!(up.granted_bytes() - before, body.len() as u64);
+        let before = down.granted_bytes();
+        p.download(&name, &s(&fx.local(&format!("back-{i}"))), None)
+            .await
+            .unwrap();
+        assert_eq!(down.granted_bytes() - before, body.len() as u64);
+        std::fs::write(fx.remote().join(&name), &body[..32_000]).unwrap();
+        let before = up.granted_bytes();
+        p.resume_upload(&s(&local), &name, 32_000, None)
+            .await
+            .unwrap();
+        assert_eq!(up.granted_bytes() - before, (body.len() - 32_000) as u64);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_missing_chmod_disables_edit_without_invoking_it() {
+    let fx = Fixture::new("scp-no-chmod");
+    let bin = fx.root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    for dir in std::env::var("PATH").unwrap().split(':') {
+        for tool in std::fs::read_dir(dir).into_iter().flatten().flatten() {
+            let name = tool.file_name();
+            if name != "chmod" && !bin.join(&name).exists() {
+                let _ = std::os::unix::fs::symlink(tool.path(), bin.join(&name));
+            }
+        }
+    }
+    let mut options = fx.options(Sftp::Serve);
+    options.path = s(&bin);
+    let (port, seen) = start(options).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    timed_connect(p.as_mut()).await.0.unwrap();
+    assert!(!p.supports_chmod());
+    std::fs::write(fx.remote().join("edit.txt"), b"original").unwrap();
+    let original = ftp_client_gui_lib::providers::inspect_edit_target(p.as_mut(), "edit.txt")
+        .await
+        .unwrap();
+    assert_eq!(
+        original,
+        ftp_client_gui_lib::providers::EditOriginal::Nothing
+    );
+    let before = seen.execs();
+    assert!(ftp_client_gui_lib::providers::keep_edit_original(
+        p.as_mut(),
+        "staged",
+        "edit.txt",
+        &original
+    )
+    .await
+    .is_none());
+    assert_eq!(seen.execs(), before, "the editor must not execute chmod");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_prefix_comparison_restarts_upload_instead_of_appending() {
+    let fx = Fixture::new("scp-prefix-read-failed");
+    let bin = fx.root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    std::fs::write(bin.join("head"), "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::set_permissions(
+        bin.join("head"),
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    let mut options = fx.options(Sftp::Serve);
+    options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
+    let (port, _) = start(options).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    timed_connect(p.as_mut()).await.0.unwrap();
+    let body = pattern(200_000);
+    let local = fx.local("source");
+    std::fs::write(&local, &body).unwrap();
+    std::fs::write(fx.remote().join("up"), &body[..80_000]).unwrap();
+    let (progress, calls) = recorder();
+    p.resume_upload(&s(&local), "up", 80_000, progress)
+        .await
+        .unwrap();
+    assert_eq!(std::fs::read(fx.remote().join("up")).unwrap(), body);
+    assert!(
+        calls.lock().unwrap()[0].0 < 80_000,
+        "comparison failed: must restart from zero"
+    );
 }
