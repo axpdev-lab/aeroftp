@@ -3336,6 +3336,76 @@ mod tests {
         );
     }
 
+    /// The default budget must not send the metadata POST again after the
+    /// peer has accepted it and then dropped the socket. The zero-budget
+    /// case above cannot see that replay.
+    #[tokio::test]
+    async fn create_meta_reset_is_not_replayed_on_the_default_budget() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let mut provider = test_provider();
+        provider.connected = true;
+        assert_eq!(
+            provider.retry_config.max_retries,
+            HttpRetryConfig::default().max_retries
+        );
+        assert!(provider.retry_config.max_retries > 0);
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+
+        let posts = Arc::new(AtomicUsize::new(0));
+        let seen = posts.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = match listener.accept().await {
+                    Ok(accepted) => accepted,
+                    Err(_) => break,
+                };
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 8192];
+                while buf.len() < 16 * 1024 {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_millis(500),
+                        tokio::io::AsyncReadExt::read(&mut socket, &mut chunk),
+                    )
+                    .await
+                    {
+                        Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                        Ok(Ok(n)) => buf.extend_from_slice(&chunk[..n]),
+                    }
+                    if buf.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                if buf.starts_with(b"POST /drive/files ") {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                }
+                drop(socket);
+            }
+        });
+        provider.api_base = format!("http://{addr}");
+        let message = provider
+            .create_file_meta(None, "R", "empty", "", 0)
+            .await
+            .expect_err("a dropped create may already be stored")
+            .to_string();
+        server.abort();
+        assert!(message.contains("Request failed"), "{message}");
+        assert!(message.contains("may have completed"), "{message}");
+        assert!(
+            message.contains("Check remote state before retrying"),
+            "{message}"
+        );
+        assert_eq!(posts.load(Ordering::SeqCst), 1, "{message}");
+    }
+
     /// A new name is published once after stored content; uncertain outcomes
     /// neither replay metadata creation nor touch an unrelated existing file.
     #[tokio::test]
