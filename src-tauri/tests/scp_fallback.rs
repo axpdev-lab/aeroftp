@@ -1610,3 +1610,89 @@ async fn an_append_refuses_a_foreign_prefix_installed_after_its_initial_check() 
         "{result:?}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_failed_final_upload_read_is_not_reported_as_different_contents() {
+    let fx = Fixture::new("scp-final-verify-read-error");
+    let bin = fx.root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    // Initial prefix check (7 bytes) succeeds. Only the final complete read
+    // (12 bytes) is refused; the appended bytes on disk remain correct.
+    std::fs::write(bin.join("head"), "#!/bin/sh\nif [ \"$2\" = 12 ]; then echo 'verification temporarily unavailable' >&2; exit 1; fi\nexec /usr/bin/head \"$@\"\n").unwrap();
+    std::fs::set_permissions(
+        bin.join("head"),
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    let mut options = fx.options(Sftp::Serve);
+    options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
+    let (port, _) = start(options).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    timed_connect(p.as_mut()).await.0.unwrap();
+    let local = fx.local("source");
+    std::fs::write(&local, b"CORRECT-tail").unwrap();
+    std::fs::write(fx.remote().join("up"), b"CORRECT").unwrap();
+    let error = p
+        .resume_upload(&s(&local), "up", 7, None)
+        .await
+        .expect_err("verification must report its read failure");
+    assert_eq!(
+        std::fs::read(fx.remote().join("up")).unwrap(),
+        b"CORRECT-tail"
+    );
+    assert!(
+        error
+            .to_string()
+            .contains("verification temporarily unavailable"),
+        "{error}"
+    );
+    assert!(
+        !error.to_string().contains("contents differ"),
+        "a read failure is not a byte mismatch: {error}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_optional_readlink_failure_keeps_the_symlink_edit_refusal() {
+    let fx = Fixture::new("scp-readlink-refused");
+    let bin = fx.root.join("bin");
+    std::fs::create_dir(&bin).unwrap();
+    std::fs::write(
+        bin.join("readlink"),
+        "#!/bin/sh\necho 'readlink refused' >&2\nexit 1\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        bin.join("readlink"),
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+    let mut options = fx.options(Sftp::Serve);
+    options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
+    let (port, _) = start(options).await;
+    let mut profile = scp_profile(port, &fx.remote(), &[]);
+    profile.password = Some(PASSWORD.to_string());
+    let mut p = ProviderFactory::create(&profile).unwrap();
+    timed_connect(p.as_mut()).await.0.unwrap();
+    std::fs::write(fx.remote().join("target"), b"data").unwrap();
+    for (name, target) in [("link", "target"), ("dangling", "missing")] {
+        std::os::unix::fs::symlink(target, fx.remote().join(name)).unwrap();
+        let entry = p
+            .stat(name)
+            .await
+            .expect("target detail must not fail stat");
+        assert!(entry.is_symlink);
+        assert!(entry.link_target.is_none());
+        let result = ftp_client_gui_lib::providers::inspect_edit_target(p.as_mut(), name).await;
+        assert!(
+            matches!(result, Err(ProviderError::InvalidPath(ref why)) if why.contains("symbolic link")),
+            "{result:?}"
+        );
+        assert!(std::fs::symlink_metadata(fx.remote().join(name))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+}

@@ -198,18 +198,34 @@ impl ScpProvider {
     /// Compare a remote prefix byte for byte through one bounded stream. The
     /// pipe bounds memory; either half failing drops the other SSH read. No
     /// digest utility or persistent claim that this path still names that file.
-    async fn prefix_matches(&self, remote: &str, local: &mut tokio::fs::File, len: u64) -> bool {
+    async fn prefix_matches(
+        &self,
+        remote: &str,
+        local: &mut tokio::fs::File,
+        len: u64,
+    ) -> Result<bool, ProviderError> {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
         if !self.can_read_range() {
-            return false;
+            return Err(ProviderError::NotSupported(
+                "SCP prefix comparison needs dd, cat and head".into(),
+            ));
         }
+        // A mismatch must cancel the producer immediately: waiting for it
+        // after the consumer stops could fill the bounded pipe and hang.
+        enum ComparisonError {
+            Different,
+            Read(ProviderError),
+        }
+        let io = |e| ComparisonError::Read(ProviderError::IoError(e));
         let (mut sink, mut source) = tokio::io::duplex(32 * 1024);
         let read = async {
-            self.session()?
+            self.session()
+                .map_err(ComparisonError::Read)?
                 .read_at(remote, 0, Some(len), &mut sink, &mut |_| {})
-                .await?;
-            sink.shutdown().await.map_err(ProviderError::IoError)
+                .await
+                .map_err(ComparisonError::Read)?;
+            sink.shutdown().await.map_err(io)
         };
         let compare = async {
             let mut remote_bytes = [0u8; 32 * 1024];
@@ -220,27 +236,26 @@ impl ScpProvider {
                 source
                     .read_exact(&mut remote_bytes[..n])
                     .await
-                    .map_err(ProviderError::IoError)?;
+                    .map_err(io)?;
                 crate::transfer_dag::governor::global()
                     .charge(
                         crate::transfer_dag::governor::TransferDirection::Download,
                         n as u64,
                     )
                     .await;
-                local
-                    .read_exact(&mut local_bytes[..n])
-                    .await
-                    .map_err(ProviderError::IoError)?;
+                local.read_exact(&mut local_bytes[..n]).await.map_err(io)?;
                 if remote_bytes[..n] != local_bytes[..n] {
-                    return Err(ProviderError::TransferFailed(
-                        "upload prefix differs".into(),
-                    ));
+                    return Err(ComparisonError::Different);
                 }
                 left -= n as u64;
             }
             Ok(())
         };
-        tokio::try_join!(read, compare).is_ok()
+        match tokio::try_join!(read, compare) {
+            Ok(_) => Ok(true),
+            Err(ComparisonError::Different) => Ok(false),
+            Err(ComparisonError::Read(error)) => Err(error),
+        }
     }
 
     /// A download into the partial SFTP keeps too (`.aerotmp`, or the file
@@ -675,7 +690,11 @@ impl StorageProvider for ScpProvider {
             }
             _ => return self.upload(local_path, remote_path, on_progress).await,
         };
-        if !self.prefix_matches(&full, &mut file, from).await {
+        if !self
+            .prefix_matches(&full, &mut file, from)
+            .await
+            .unwrap_or(false)
+        {
             return self.upload(local_path, remote_path, on_progress).await;
         }
         tracing::info!("SCP: Appending {} from byte {} of {}", full, from, total);
@@ -696,7 +715,7 @@ impl StorageProvider for ScpProvider {
             file.seek(std::io::SeekFrom::Start(0))
                 .await
                 .map_err(ProviderError::IoError)?;
-            if !self.prefix_matches(&full, &mut file, total).await {
+            if !self.prefix_matches(&full, &mut file, total).await? {
                 return Err(ProviderError::TransferFailed(format!(
                     "{full}: remote contents differ after the append"
                 )));
@@ -864,13 +883,10 @@ impl StorageProvider for ScpProvider {
         );
         entry.is_symlink = meta.kind == Kind::Symlink;
         if entry.is_symlink && self.has("readlink") {
-            entry.link_target = match self.session()?.read_link(&full).await {
-                Ok(target) => Some(target),
-                // A link removed since lstat still must not be reported as
-                // a missing regular file to the staged-edit guard.
-                Err(ProviderError::NotFound(_)) => None,
-                Err(e) => return Err(e),
-            };
+            // A target refines the display/refusal message. Any failure of
+            // this optional read must retain the known symlink entry, so
+            // the edit guard still refuses it based on is_symlink.
+            entry.link_target = self.session()?.read_link(&full).await.ok();
         }
         Ok(entry)
     }

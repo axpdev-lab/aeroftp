@@ -33,7 +33,13 @@ function unclosedRows(source: string): string[] {
     return starts.flatMap((match, index) => {
         const name = match[1] ?? 'connectingLogId';
         const region = source.slice(match.index, starts[index + 1]?.index ?? source.length);
-        return region.includes(`connectUnderRow(${name}, `) ? [] : [name];
+        // Accept only the expression-callback forms the current callers use.
+        // This requires runConnect to be inside the wrapper; a leftover
+        // wrapper around a no-op followed by an unwrapped connect must fail.
+        const wrappedConnect = new RegExp(
+            `connectUnderRow\\(\\s*${name}\\s*,\\s*\\(\\)\\s*=>\\s*(?:connectScope\\.step\\(\\s*\\(\\)\\s*=>\\s*)?runConnect\\(`,
+        );
+        return wrappedConnect.test(region) ? [] : [name];
     });
 }
 
@@ -51,6 +57,10 @@ describe('connect failure log', () => {
         entries.length = 0;
         const failed = new Error('connection refused');
         await expect(connect('row', async () => { throw failed; })).rejects.toBe(failed);
+        expect(entries).toEqual([['row', { status: 'error' }]]);
+        entries.length = 0;
+        const serverFailure = new Error('server refused CONNECT_CANCELLED credentials');
+        await expect(connect('row', async () => { throw serverFailure; })).rejects.toBe(serverFailure);
         expect(entries).toEqual([['row', { status: 'error' }]]);
     });
 
@@ -80,6 +90,13 @@ describe('connect failure log', () => {
             await connectUnderRow(connectingLogId, () => runConnect('connect_ftp', {}));
             const { connectingLogId } = await logConnectionSteps(b, 22, 'scp');
             await runConnect('connect_ftp', {});`;
+        expect(unclosedRows(source)).toEqual(['connectingLogId']);
+    });
+
+    it('rejects a leftover wrapper when the actual connect is outside it', () => {
+        const source = `const { connectingLogId } = await logConnectionSteps(a, 22, 'scp');
+            await connectUnderRow(connectingLogId, () => Promise.resolve());
+            await runConnect('provider_connect', params);`;
         expect(unclosedRows(source)).toEqual(['connectingLogId']);
     });
 
