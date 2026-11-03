@@ -2041,7 +2041,8 @@ impl StorageProvider for InternxtProvider {
         if plain_size == 0 {
             let (name, ext) = Self::split_name_ext(&filename);
             self.create_file_meta(None, &parent_uuid, &name, &ext, 0)
-                .await?;
+                .await
+                .map_err(Self::annotate_stored_create_meta)?;
             return Ok(());
         }
 
