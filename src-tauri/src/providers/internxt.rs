@@ -2640,9 +2640,15 @@ impl InternxtProvider {
         }
     }
 
-    /// The content is already stored. A 5xx, or a success body that cannot
-    /// be read, does not prove the name is absent. A 4xx stays unchanged.
+    /// The content is already stored. A 5xx, a timeout, or a success body
+    /// that cannot be read, does not prove the name is absent. A 4xx stays
+    /// unchanged.
     fn annotate_stored_create_meta(error: ProviderError) -> ProviderError {
+        if matches!(error, ProviderError::Timeout) {
+            return ProviderError::ServerError(
+                "It may have completed. Check remote state before retrying.".into(),
+            );
+        }
         let ProviderError::ServerError(message) = error else {
             return error;
         };
@@ -3350,7 +3356,10 @@ mod tests {
             );
             if let Err(error) = &outcome {
                 let message = error.to_string();
-                if failure == "create503" || failure == "createcommit503" {
+                if failure == "create503"
+                    || failure == "createcommit503"
+                    || failure == "createtimeout"
+                {
                     assert!(
                         message.contains("may have completed"),
                         "{failure}: {message}"
@@ -3360,7 +3369,7 @@ mod tests {
                         "{failure}: {message}"
                     );
                 }
-                if failure == "create403" || failure == "createtimeout" {
+                if failure == "create403" {
                     assert!(
                         !message.contains("may have completed"),
                         "{failure}: {message}"
