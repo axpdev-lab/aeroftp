@@ -2178,7 +2178,8 @@ impl StorageProvider for InternxtProvider {
         }
         let (name, ext) = Self::split_name_ext(&filename);
         self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size)
-            .await?;
+            .await
+            .map_err(Self::annotate_stored_create_meta)?;
 
         progress.complete();
         internxt_log(&format!("Uploaded {} OK", filename));
@@ -2637,6 +2638,32 @@ impl InternxtProvider {
             Some(pos) if pos > 0 => (filename[..pos].to_string(), filename[pos + 1..].to_string()),
             _ => (filename.to_string(), String::new()),
         }
+    }
+
+    /// The content is already stored. A 5xx, or a success body that cannot
+    /// be read, does not prove the name is absent. A 4xx stays unchanged.
+    fn annotate_stored_create_meta(error: ProviderError) -> ProviderError {
+        let ProviderError::ServerError(message) = error else {
+            return error;
+        };
+        let uncertain = message.starts_with("Failed to parse create file meta response:")
+            || Self::create_meta_status_is_server_error(&message);
+        if !uncertain {
+            return ProviderError::ServerError(message);
+        }
+        ProviderError::ServerError(format!(
+            "{message}. It may have completed. Check remote state before retrying."
+        ))
+    }
+
+    fn create_meta_status_is_server_error(message: &str) -> bool {
+        let Some(rest) = message.strip_prefix("Create file meta failed (") else {
+            return false;
+        };
+        let Some(code) = rest.split(|c: char| !c.is_ascii_digit()).next() else {
+            return false;
+        };
+        matches!(code.parse::<u16>(), Ok(status) if (500..600).contains(&status))
     }
 
     /// Create file metadata in Drive after network upload
@@ -3321,6 +3348,25 @@ mod tests {
                 failure == "success",
                 "{failure}: {outcome:?}"
             );
+            if let Err(error) = &outcome {
+                let message = error.to_string();
+                if failure == "create503" || failure == "createcommit503" {
+                    assert!(
+                        message.contains("may have completed"),
+                        "{failure}: {message}"
+                    );
+                    assert!(
+                        message.contains("Check remote state before retrying"),
+                        "{failure}: {message}"
+                    );
+                }
+                if failure == "create403" || failure == "createtimeout" {
+                    assert!(
+                        !message.contains("may have completed"),
+                        "{failure}: {message}"
+                    );
+                }
+            }
             let expected = if ["success", "createcommit503", "createtimeout"].contains(&failure) {
                 "NEW"
             } else {
