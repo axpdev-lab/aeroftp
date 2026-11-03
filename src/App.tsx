@@ -501,6 +501,7 @@ import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useLatestCallback } from './hooks/useLatestCallback';
+import { useResumeProfileGuard } from './hooks/useResumeProfileGuard';
 import { useSettings } from './hooks/useSettings';
 import { useFontSizeShortcuts, FontSizeIndicator } from './hooks/useFontSizeShortcuts';
 import { useMouseBackButton } from './hooks/useMouseBackButton';
@@ -8568,7 +8569,7 @@ const App: React.FC = () => {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
       // Create session tab for FTP/FTPS/SFTP connections: pass fresh files to avoid stale closure
-      createSession(
+      await createSession(
         effectiveParams.displayName || effectiveParams.server,
         effectiveParams,
         ftpResponse?.current_path || quickConnectDirs.remoteDir || currentRemotePath,
@@ -10890,29 +10891,25 @@ const App: React.FC = () => {
   // TQ-7c smart resume: ensure the journal profile is live (auto-connect with
   // confirm when needed), then fire the stored retry callbacks. Never starts a
   // transfer while disconnected — that was the silent fail on Retry.
-  const fireRetryCallbacks = (ids: string[]) => {
+  const fireRetryCallbacks = (ids: string[], profileId?: string) => {
     for (const id of ids) {
       const cb = retryCallbacksRef.current.get(id);
       if (!cb) continue;
       // Callbacks are often async; Map type is () => void so ignore the
       // return type and still surface rejections.
       void Promise.resolve()
-        .then(() => cb())
+        .then(() => {
+          // A queued microtask must not outlive ownership of this profile.
+          if (profileId && !isLiveOnProfile(profileId)) return;
+          return cb();
+        })
         .catch((e) => {
           console.error('resume transfer failed', e);
         });
     }
   };
 
-  const isLiveOnProfile = (profileId: string): boolean => {
-    if (!isConnected) return false;
-    const active = sessions.find((s) => s.id === activeSessionId);
-    if (!active) return false;
-    return (
-      active.savedServerId === profileId
-      || active.connectionParams?.savedServerId === profileId
-    );
-  };
+  const { isLiveOnProfile, waitForLiveProfile } = useResumeProfileGuard(isConnected, sessions, activeSessionId);
 
   const connectSavedProfileForResume = async (profile: ServerProfile): Promise<boolean> => {
     const protocol = (profile.protocol || 'ftp') as ProviderType;
@@ -10927,7 +10924,7 @@ const App: React.FC = () => {
       setShowLocalPreview(false);
       setIsConnected(true);
       await switchSession(existing.id);
-      return true;
+      return waitForLiveProfile(profile.id);
     }
 
     notify.info(
@@ -11015,7 +11012,7 @@ const App: React.FC = () => {
           providerId: profile.providerId,
           savedServerId: profile.id,
         });
-        return true;
+        return waitForLiveProfile(profile.id);
       }
 
       if (isFourSharedProvider(protocol)) {
@@ -11058,7 +11055,7 @@ const App: React.FC = () => {
           providerId: profile.providerId,
           savedServerId: profile.id,
         });
-        return true;
+        return waitForLiveProfile(profile.id);
       }
 
       // Credential-based providers (FTP/SFTP/S3/WebDAV/API keys…).
@@ -11105,7 +11102,7 @@ const App: React.FC = () => {
         providerId: profile.providerId,
         savedServerId: profile.id,
       });
-      return true;
+      return waitForLiveProfile(profile.id);
     } catch (e) {
       if (isConnectCancelledError(e)) return false;
       logger.error('[TQ-7c] connect for resume failed', e);
@@ -11145,7 +11142,7 @@ const App: React.FC = () => {
         }
         transferQueue.clearRestoredFlags(groupIds);
         logResume(groupIds.length);
-        fireRetryCallbacks(groupIds);
+        fireRetryCallbacks(groupIds, profileId ?? undefined);
         continue;
       }
 
@@ -11153,7 +11150,7 @@ const App: React.FC = () => {
         transferQueue.clearRestoredFlags(groupIds);
         const live = sessions.find((s) => s.id === activeSessionId);
         logResume(groupIds.length, live?.serverName);
-        fireRetryCallbacks(groupIds);
+        fireRetryCallbacks(groupIds, profileId ?? undefined);
         continue;
       }
 
@@ -11194,11 +11191,11 @@ const App: React.FC = () => {
       if (!confirmed) continue;
 
       const ok = await connectSavedProfileForResume(profile);
-      if (!ok) continue;
+      if (!ok || !isLiveOnProfile(profileId)) continue;
 
       // The connect already logged "Connecting to X to resume transfers".
       transferQueue.clearRestoredFlags(groupIds);
-      fireRetryCallbacks(groupIds);
+      fireRetryCallbacks(groupIds, profileId ?? undefined);
     }
   };
 
