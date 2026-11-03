@@ -1049,6 +1049,12 @@ struct SharedUploadCursor {
     read_hold_ms: Arc<AtomicU64>,
     #[cfg(test)]
     hold_entered: Arc<AtomicBool>,
+    /// Set while the test hold still owns the cursor lock, before it lets go.
+    #[cfg(test)]
+    hold_released: Arc<AtomicBool>,
+    /// Set when a later attempt acquires the cursor after that release.
+    #[cfg(test)]
+    acquired_after_hold: Arc<AtomicBool>,
 }
 
 fn cursor_taken() -> std::io::Error {
@@ -1067,6 +1073,10 @@ impl SharedUploadCursor {
             read_hold_ms: Arc::new(AtomicU64::new(0)),
             #[cfg(test)]
             hold_entered: Arc::new(AtomicBool::new(false)),
+            #[cfg(test)]
+            hold_released: Arc::new(AtomicBool::new(false)),
+            #[cfg(test)]
+            acquired_after_hold: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -1080,9 +1090,17 @@ impl SharedUploadCursor {
     async fn claim(&self) -> std::io::Result<u64> {
         let file = Arc::clone(&self.file);
         let epoch = Arc::clone(&self.epoch);
+        #[cfg(test)]
+        let hold_released = Arc::clone(&self.hold_released);
+        #[cfg(test)]
+        let acquired_after_hold = Arc::clone(&self.acquired_after_hold);
         match tokio::task::spawn_blocking(move || {
             let mine = epoch.fetch_add(1, Ordering::AcqRel) + 1;
             let mut guard = file.lock().unwrap_or_else(|poison| poison.into_inner());
+            #[cfg(test)]
+            if hold_released.load(Ordering::SeqCst) {
+                acquired_after_hold.store(true, Ordering::SeqCst);
+            }
             if epoch.load(Ordering::Acquire) != mine {
                 return Err(cursor_taken());
             }
@@ -1111,6 +1129,8 @@ impl SharedUploadCursor {
         let read_hold_ms = Arc::clone(&self.read_hold_ms);
         #[cfg(test)]
         let hold_entered = Arc::clone(&self.hold_entered);
+        #[cfg(test)]
+        let hold_released = Arc::clone(&self.hold_released);
         let stream = futures_util::stream::unfold(Some(0u64), move |state| {
             let file = Arc::clone(&file);
             let epoch = Arc::clone(&epoch);
@@ -1118,10 +1138,10 @@ impl SharedUploadCursor {
             let read_hold_ms = Arc::clone(&read_hold_ms);
             #[cfg(test)]
             let hold_entered = Arc::clone(&hold_entered);
+            #[cfg(test)]
+            let hold_released = Arc::clone(&hold_released);
             async move {
-                let Some(offset) = state else {
-                    return None;
-                };
+                let offset = state?;
                 if file_size == 0 || offset >= file_size {
                     return None;
                 }
@@ -1137,6 +1157,9 @@ impl SharedUploadCursor {
                     if hold_ms > 0 {
                         hold_entered.store(true, Ordering::SeqCst);
                         std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+                        // Still holding the cursor. A retry blocked on this
+                        // lock observes the release only after this store.
+                        hold_released.store(true, Ordering::SeqCst);
                         if epoch.load(Ordering::Acquire) != mine {
                             return Err(cursor_taken());
                         }
@@ -3240,6 +3263,8 @@ mod tests {
         let cursor = SharedUploadCursor::from_tokio(file).await;
         cursor.set_read_hold_ms(200);
         let entered = Arc::clone(&cursor.hold_entered);
+        let released = Arc::clone(&cursor.hold_released);
+        let acquired = Arc::clone(&cursor.acquired_after_hold);
         let mut first = cursor.attempt_stream(payload.len() as u64).await.unwrap();
         let first_task = tokio::spawn(async move {
             let mut partial = Vec::new();
@@ -3263,13 +3288,15 @@ mod tests {
         })
         .await
         .expect("first read never entered the cursor");
-        let started = std::time::Instant::now();
         let mut second = cursor.attempt_stream(payload.len() as u64).await.unwrap();
-        let waited = started.elapsed();
         cursor.set_read_hold_ms(0);
         assert!(
-            waited >= std::time::Duration::from_millis(50),
-            "retry did not wait for the in-flight read: {waited:?}"
+            released.load(Ordering::SeqCst),
+            "the in-flight hold never released the cursor"
+        );
+        assert!(
+            acquired.load(Ordering::SeqCst),
+            "retry took the cursor before the hold released it"
         );
         let mut got = Vec::new();
         while let Some(item) = second.next().await {
