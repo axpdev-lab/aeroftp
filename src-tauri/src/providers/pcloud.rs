@@ -653,14 +653,13 @@ impl PCloudProvider {
         };
         let sep = if base_url.contains('?') { "&" } else { "?" };
         let url = format!("{}{}access_token={}", base_url, sep, token_raw);
-        let request =
-            self.client.get(&url).build().map_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+        let request = self.client.get(&url).build().map_err(|e| {
+            ProviderError::NetworkError(format!("Failed to build request: {}", e.without_url()))
+        })?;
 
         send_with_retry(&self.client, request, &config)
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
     }
 
     /// Recursively collect entries matching a pattern
@@ -3010,6 +3009,44 @@ mod tests {
         let mut p = PCloudProvider::connected_for_test(demo_cfg());
         p.test_access_token = Some("fixture-token".to_string());
         p
+    }
+
+    /// The access token is a query parameter. A refused connection, and a
+    /// request that cannot be built, must not repeat that URL.
+    #[tokio::test]
+    async fn a_token_query_stays_out_of_a_transport_or_build_error() {
+        let provider = fixture_connected();
+        let once = HttpRetryConfig {
+            max_retries: 0,
+            ..HttpRetryConfig::default()
+        };
+        // Bound and not listening, so Windows refuses at once. A closed
+        // port, including port 1, can sit until the client timeout.
+        let refused_socket = crate::providers::http_retry::refusal::BoundRefusal::bind();
+        let refused_addr = refused_socket.addr();
+        let refused = provider
+            .get_with_token_policy(&format!("http://{refused_addr}/pcloud"), once.clone())
+            .await
+            .expect_err("the bound port is not listening");
+        drop(refused_socket);
+        let text = match &refused {
+            ProviderError::NetworkError(message) => message.clone(),
+            other => panic!("a refused connection is a network error: {other:?}"),
+        };
+        assert!(!text.contains("fixture-token"), "{text}");
+        assert!(!text.contains("access_token"), "{text}");
+
+        let built = provider
+            .get_with_token_policy("http://[", once)
+            .await
+            .expect_err("the url cannot be built");
+        let text = match &built {
+            ProviderError::NetworkError(message) => message.clone(),
+            other => panic!("an unbuildable request is a network error: {other:?}"),
+        };
+        assert!(text.contains("Failed to build request"), "{text}");
+        assert!(!text.contains("fixture-token"), "{text}");
+        assert!(!text.contains("access_token"), "{text}");
     }
 
     #[tokio::test]

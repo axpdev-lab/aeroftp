@@ -3291,6 +3291,11 @@ mod tests {
 
     /// A refused connect never sent the create. A peer that accepts the
     /// request and then drops it may already have stored the name.
+    ///
+    /// The refusal is a socket that is bound and not listening. Closing a
+    /// listener and connecting to the released port is not that refusal on
+    /// Windows: the connect can outlast this client's two second limit, or
+    /// another test can take the port, and the error is then a timeout.
     #[tokio::test]
     async fn create_meta_warns_only_after_the_request_is_sent() {
         let mut provider = test_provider();
@@ -3302,15 +3307,15 @@ mod tests {
             .build()
             .unwrap();
 
-        let refused = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let refused_addr = refused.local_addr().unwrap();
-        drop(refused);
+        let refused = crate::providers::http_retry::refusal::BoundRefusal::bind();
+        let refused_addr = refused.addr();
         provider.api_base = format!("http://{refused_addr}");
         let message = provider
             .create_file_meta(None, "R", "empty", "", 0)
             .await
             .expect_err("a refused connect is not a published file")
             .to_string();
+        drop(refused);
         assert!(message.contains("Request failed"), "{message}");
         assert!(!message.contains("may have completed"), "{message}");
 

@@ -5180,6 +5180,76 @@ mod tests {
         );
     }
 
+    /// A documented clone object, and a result array, both name the copy.
+    /// `set_folder` and `rename` then use that code.
+    #[tokio::test]
+    async fn a_documented_clone_is_moved_and_renamed_with_its_file_code() {
+        for (label, body) in [
+            ("object", r#"{"status":200,"result":{"filecode":"CLONE"}}"#),
+            (
+                "array",
+                r#"{"status":200,"result":[{"file_code":"CLONE"}]}"#,
+            ),
+        ] {
+            let (mut provider, calls) = provider_against(move |_, path, _| {
+                if path.ends_with("/file/clone") {
+                    body.to_string()
+                } else {
+                    r#"{"status":200,"msg":"OK"}"#.to_string()
+                }
+            })
+            .await;
+            provider.path_cache.insert(
+                "/d".to_string(),
+                CacheEntry {
+                    is_dir: true,
+                    fld_id: 7,
+                    fld_token: None,
+                    file_code: String::new(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            provider.path_cache.insert(
+                "/d/a.txt".to_string(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: 0,
+                    fld_token: None,
+                    file_code: "AAA".to_string(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let outcome = provider.server_side_copy("/d/a.txt", "/d/b.txt").await;
+            assert!(outcome.is_ok(), "{label}: {outcome:?}");
+            let seen = calls.lock().unwrap().clone();
+            assert!(
+                seen.iter()
+                    .any(|call| { call.contains("/file/clone") && call.contains("file_code=AAA") }),
+                "{label}: {seen:?}"
+            );
+            assert!(
+                seen.iter().any(|call| {
+                    call.contains("set_folder")
+                        && call.contains("file_code=CLONE")
+                        && call.contains("fld_id=7")
+                }),
+                "{label}: {seen:?}"
+            );
+            assert!(
+                seen.iter().any(|call| {
+                    call.contains("/file/rename")
+                        && call.contains("file_code=CLONE")
+                        && call.contains("name=b.txt")
+                }),
+                "{label}: {seen:?}"
+            );
+        }
+    }
+
     /// The documented object and the array element are the same code. A
     /// missing status, a failed HTTP call, or an empty code is not a copy,
     /// and the error does not repeat the fixture text.

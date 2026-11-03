@@ -2467,7 +2467,7 @@ impl AzureProvider {
             &azure_retry_config(),
             |error| {
                 super::http_send_error(error, |error| {
-                    ProviderError::NetworkError(error.to_string())
+                    ProviderError::NetworkError(error.without_url().to_string())
                 })
             },
             true,

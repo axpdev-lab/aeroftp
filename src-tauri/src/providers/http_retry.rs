@@ -388,6 +388,207 @@ where
     unreachable!("the final attempt returns its response or error")
 }
 
+/// A 127.0.0.1 port that stays bound without listening.
+///
+/// `connect` is refused at once, and another test cannot bind the same
+/// address. Closing a listener and connecting to the released port is not
+/// that refusal on Windows: the connect can outlast a short client timeout,
+/// or another test can take the port, and the failure is then a timeout.
+#[cfg(test)]
+pub(crate) mod refusal {
+    #[cfg(unix)]
+    type RawSock = libc::c_int;
+    #[cfg(windows)]
+    type RawSock = usize;
+
+    #[cfg(windows)]
+    #[link(name = "ws2_32")]
+    extern "system" {
+        fn closesocket(s: usize) -> i32;
+        fn WSAStartup(version: u16, data: *mut std::ffi::c_void) -> i32;
+        fn WSAGetLastError() -> i32;
+    }
+
+    pub(crate) struct BoundRefusal {
+        fd: RawSock,
+    }
+
+    impl BoundRefusal {
+        pub(crate) fn bind() -> Self {
+            #[cfg(windows)]
+            {
+                // SAFETY: a large aligned buffer is enough for WSADATA. Winsock
+                // stays started for the process; this test does not clean it up.
+                unsafe {
+                    #[repr(align(8))]
+                    struct Buf([u8; 512]);
+                    let mut data = Buf([0; 512]);
+                    let rc = WSAStartup(0x0202, data.0.as_mut_ptr().cast());
+                    if rc != 0 {
+                        panic!("WSAStartup {rc}");
+                    }
+                }
+            }
+            let fd = open_socket();
+            if let Err(error) = bind_loopback(fd) {
+                close_socket(fd);
+                panic!("bind loopback: {error}");
+            }
+            Self { fd }
+        }
+
+        pub(crate) fn addr(&self) -> std::net::SocketAddr {
+            #[cfg(unix)]
+            {
+                let mut storage: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+                let mut len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+                // SAFETY: storage is a writable sockaddr_in and len is its size.
+                let rc = unsafe {
+                    libc::getsockname(
+                        self.fd,
+                        &mut storage as *mut libc::sockaddr_in as *mut libc::sockaddr,
+                        &mut len,
+                    )
+                };
+                if rc != 0 {
+                    panic!("getsockname: {}", std::io::Error::last_os_error());
+                }
+                let port = u16::from_be(storage.sin_port);
+                let ip = std::net::Ipv4Addr::from(u32::from_be(storage.sin_addr.s_addr));
+                std::net::SocketAddr::from((ip, port))
+            }
+            #[cfg(windows)]
+            {
+                let mut storage: libc::sockaddr = unsafe { std::mem::zeroed() };
+                let mut len = std::mem::size_of::<libc::sockaddr>() as libc::c_int;
+                // SAFETY: storage is a writable sockaddr and len is its size.
+                let rc = unsafe { libc::getsockname(self.fd, &mut storage, &mut len) };
+                if rc != 0 {
+                    panic!("getsockname: {}", windows_socket_error());
+                }
+                // sockaddr_in is family, then port in network order, then IPv4.
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        &storage as *const libc::sockaddr as *const u8,
+                        std::mem::size_of::<libc::sockaddr>(),
+                    )
+                };
+                let port = u16::from_be_bytes([bytes[2], bytes[3]]);
+                let ip = std::net::Ipv4Addr::new(bytes[4], bytes[5], bytes[6], bytes[7]);
+                std::net::SocketAddr::from((ip, port))
+            }
+        }
+    }
+
+    impl Drop for BoundRefusal {
+        fn drop(&mut self) {
+            close_socket(self.fd);
+        }
+    }
+
+    fn open_socket() -> RawSock {
+        #[cfg(unix)]
+        {
+            // SAFETY: AF_INET/SOCK_STREAM creates one TCP socket. We own the fd.
+            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+            if fd < 0 {
+                panic!("socket: {}", std::io::Error::last_os_error());
+            }
+            fd
+        }
+        #[cfg(windows)]
+        {
+            const AF_INET: libc::c_int = 2;
+            const SOCK_STREAM: libc::c_int = 1;
+            // SAFETY: Winsock is started. INVALID_SOCKET is all-bits-one.
+            let fd = unsafe { libc::socket(AF_INET, SOCK_STREAM, 0) };
+            if fd == usize::MAX {
+                panic!("socket: {}", windows_socket_error());
+            }
+            fd
+        }
+    }
+
+    fn bind_loopback(fd: RawSock) -> Result<(), std::io::Error> {
+        #[cfg(unix)]
+        {
+            let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+            #[cfg(any(
+                target_os = "macos",
+                target_os = "ios",
+                target_os = "freebsd",
+                target_os = "openbsd",
+                target_os = "netbsd",
+                target_os = "dragonfly"
+            ))]
+            {
+                addr.sin_len = std::mem::size_of::<libc::sockaddr_in>() as u8;
+            }
+            addr.sin_family = libc::AF_INET as libc::sa_family_t;
+            addr.sin_port = 0;
+            addr.sin_addr.s_addr = libc::htonl(libc::INADDR_LOOPBACK);
+            // SAFETY: addr is a full sockaddr_in for 127.0.0.1:0. No listen yet.
+            let rc = unsafe {
+                libc::bind(
+                    fd,
+                    &addr as *const libc::sockaddr_in as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                )
+            };
+            if rc != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        }
+        #[cfg(windows)]
+        {
+            let mut bytes = [0u8; 16];
+            bytes[..2].copy_from_slice(&2u16.to_ne_bytes());
+            // 127.0.0.1. 127.0.0.0 is not a bindable loopback on Windows.
+            bytes[4] = 127;
+            bytes[7] = 1;
+            let mut addr: libc::sockaddr = unsafe { std::mem::zeroed() };
+            // SAFETY: sockaddr is 16 bytes. The copy writes family, port 0, 127.0.0.1.
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    &mut addr as *mut libc::sockaddr as *mut u8,
+                    bytes.len(),
+                );
+            }
+            let rc = unsafe {
+                libc::bind(
+                    fd,
+                    &addr,
+                    std::mem::size_of::<libc::sockaddr>() as libc::c_int,
+                )
+            };
+            if rc != 0 {
+                return Err(windows_socket_error());
+            }
+            Ok(())
+        }
+    }
+
+    fn close_socket(fd: RawSock) {
+        #[cfg(unix)]
+        unsafe {
+            libc::close(fd);
+        }
+        #[cfg(windows)]
+        unsafe {
+            closesocket(fd);
+        }
+    }
+
+    #[cfg(windows)]
+    fn windows_socket_error() -> std::io::Error {
+        // SAFETY: WSAGetLastError reads the thread's last Winsock code.
+        let code = unsafe { WSAGetLastError() };
+        std::io::Error::from_raw_os_error(code)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
