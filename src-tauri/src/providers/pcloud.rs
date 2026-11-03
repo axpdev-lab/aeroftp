@@ -1266,33 +1266,36 @@ impl StorageProvider for PCloudProvider {
                 .unwrap_or_default()
         );
 
-        // Hold the original open file across retries. Reopening local_path
-        // could select a different file after a rename/replacement. A 429 is
-        // an explicit refusal and is retried. Any other response, a timeout,
-        // or a failure after the body starts returns at once. A consumed
-        // multipart stream is rebuilt from this same open file.
-        let source = &file;
+        // The handle stays the one opened here. A retry must not reopen
+        // local_path: a replacement could send a different file. try_clone
+        // shares the kernel offset, so a 429 retry would seek while the
+        // refused body can still be reading. The shared cursor waits for
+        // that read to leave, then rewinds. A refused connection never read
+        // the body. Any other response, a timeout, or a failure after the
+        // body starts returns at once.
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
         let reporter = &progress;
+        let cursor = &cursor;
         let client = &self.client;
         let url = &url;
         let token = &token;
         let resp = Self::send_upload_after_connect_failure(
-            || async move {
-                use tokio::io::AsyncSeekExt;
-                let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
-                reader
-                    .seek(std::io::SeekFrom::Start(0))
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                let body = reporter.file_body(reader);
-                let form = reqwest::multipart::Form::new()
-                    .text("access_token", token.clone())
-                    .part(
-                        "file",
-                        reqwest::multipart::Part::stream_with_length(body, file_size)
-                            .file_name(file_name.to_string()),
-                    );
-                Ok(client.post(url).multipart(form))
+            || {
+                let cursor = cursor.clone();
+                async move {
+                    let body = cursor
+                        .attempt_body(reporter, file_size)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    let form = reqwest::multipart::Form::new()
+                        .text("access_token", token.clone())
+                        .part(
+                            "file",
+                            reqwest::multipart::Part::stream_with_length(body, file_size)
+                                .file_name(file_name.to_string()),
+                        );
+                    Ok(client.post(url).multipart(form))
+                }
             },
             &HttpRetryConfig::default(),
         )
@@ -3448,6 +3451,67 @@ mod tests {
         assert_eq!(builds, 2);
         assert_eq!(calls.load(Ordering::SeqCst), 2);
         server.abort();
+    }
+
+    /// A 429 retry sends the original file again from the start. The refused
+    /// body must not keep the kernel offset that the next attempt rewinds.
+    #[tokio::test]
+    async fn upload_sends_the_original_file_again_after_a_429() {
+        use std::sync::{Arc, Mutex};
+
+        use crate::providers::upload_progress::fixture::{assert_real_progress, recorder};
+
+        let size = 300 * 1024;
+        let payload = (0..size as u32)
+            .map(|i| (i % 251) as u8)
+            .collect::<Vec<_>>();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), &payload).unwrap();
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let seen = bodies.clone();
+        let app = axum::Router::new().route(
+            "/uploadfile",
+            axum::routing::post(move |body: bytes::Bytes| {
+                seen.lock().unwrap().push(body.to_vec());
+                let n = seen.lock().unwrap().len();
+                async move {
+                    let status = if n == 1 {
+                        axum::http::StatusCode::TOO_MANY_REQUESTS
+                    } else {
+                        axum::http::StatusCode::OK
+                    };
+                    (status, [("retry-after", "0")], r#"{"result":0}"#)
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        server.abort();
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let bodies = bodies.lock().unwrap();
+        assert_eq!(
+            bodies.len(),
+            2,
+            "a 429 is one retry, then the stored upload"
+        );
+        for body in bodies.iter() {
+            let found = body.windows(16).position(|window| window == &payload[..16]);
+            let start = found.unwrap_or(usize::MAX);
+            assert_eq!(
+                body.get(start..start + payload.len()),
+                Some(payload.as_slice()),
+                "a retry sent a short or mixed body, len {}",
+                body.len()
+            );
+        }
+        assert_real_progress(&updates.lock().unwrap(), size as u64, true);
     }
 
     #[tokio::test]

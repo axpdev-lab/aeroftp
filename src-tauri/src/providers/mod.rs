@@ -89,6 +89,7 @@ pub mod totp_helper;
 pub mod tpslimit;
 pub mod twake;
 pub mod types;
+pub mod upload_cursor;
 pub mod upload_progress;
 pub mod upload_source;
 pub mod uploadcare;
