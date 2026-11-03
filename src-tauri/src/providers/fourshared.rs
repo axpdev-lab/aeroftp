@@ -11,6 +11,11 @@ use async_trait::async_trait;
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
+use std::io::{Read, Seek, SeekFrom};
+#[cfg(test)]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use tracing::{debug, info};
 
 use super::http_retry::{send_with_retry, HttpRetryConfig};
@@ -1028,6 +1033,154 @@ impl FourSharedProvider {
     }
 }
 
+/// One open file for every 4shared upload attempt. `try_clone` shares the
+/// kernel offset, so a retry that seeks while the refused body is still
+/// reading can send a short or mixed body. Each attempt takes the next epoch
+/// and waits until that read has released the cursor, then seeks to the start.
+/// The abandoned reader returns [`std::io::ErrorKind::Interrupted`] instead of
+/// another byte. The path stays the one opened for this upload.
+#[derive(Clone)]
+struct SharedUploadCursor {
+    file: Arc<Mutex<std::fs::File>>,
+    epoch: Arc<AtomicU64>,
+    /// Test-only pause, in milliseconds, taken while the cursor lock is held,
+    /// so a retry can be shown to wait out an in-flight read.
+    #[cfg(test)]
+    read_hold_ms: Arc<AtomicU64>,
+    #[cfg(test)]
+    hold_entered: Arc<AtomicBool>,
+}
+
+fn cursor_taken() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::Interrupted,
+        "4shared upload retry took the file cursor",
+    )
+}
+
+impl SharedUploadCursor {
+    async fn from_tokio(file: tokio::fs::File) -> Self {
+        Self {
+            file: Arc::new(Mutex::new(file.into_std().await)),
+            epoch: Arc::new(AtomicU64::new(0)),
+            #[cfg(test)]
+            read_hold_ms: Arc::new(AtomicU64::new(0)),
+            #[cfg(test)]
+            hold_entered: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    #[cfg(test)]
+    fn set_read_hold_ms(&self, ms: u64) {
+        self.read_hold_ms.store(ms, Ordering::Relaxed);
+    }
+
+    /// Claim the cursor and rewind it. A newer attempt that already claimed
+    /// it does not get seeked back by this one.
+    async fn claim(&self) -> std::io::Result<u64> {
+        let file = Arc::clone(&self.file);
+        let epoch = Arc::clone(&self.epoch);
+        match tokio::task::spawn_blocking(move || {
+            let mine = epoch.fetch_add(1, Ordering::AcqRel) + 1;
+            let mut guard = file.lock().unwrap_or_else(|poison| poison.into_inner());
+            if epoch.load(Ordering::Acquire) != mine {
+                return Err(cursor_taken());
+            }
+            guard.seek(SeekFrom::Start(0))?;
+            Ok(mine)
+        })
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(std::io::Error::other("4shared upload rewind task stopped")),
+        }
+    }
+
+    async fn attempt_stream(
+        &self,
+        file_size: u64,
+    ) -> std::io::Result<
+        std::pin::Pin<
+            Box<dyn futures_util::Stream<Item = Result<bytes::Bytes, std::io::Error>> + Send>,
+        >,
+    > {
+        let mine = self.claim().await?;
+        let file = Arc::clone(&self.file);
+        let epoch = Arc::clone(&self.epoch);
+        #[cfg(test)]
+        let read_hold_ms = Arc::clone(&self.read_hold_ms);
+        #[cfg(test)]
+        let hold_entered = Arc::clone(&self.hold_entered);
+        let stream = futures_util::stream::unfold(Some(0u64), move |state| {
+            let file = Arc::clone(&file);
+            let epoch = Arc::clone(&epoch);
+            #[cfg(test)]
+            let read_hold_ms = Arc::clone(&read_hold_ms);
+            #[cfg(test)]
+            let hold_entered = Arc::clone(&hold_entered);
+            async move {
+                let Some(offset) = state else {
+                    return None;
+                };
+                if file_size == 0 || offset >= file_size {
+                    return None;
+                }
+                let want = (64 * 1024).min((file_size - offset) as usize);
+                #[cfg(test)]
+                let hold_ms = read_hold_ms.load(Ordering::Relaxed);
+                let read = tokio::task::spawn_blocking(move || {
+                    let mut guard = file.lock().unwrap_or_else(|poison| poison.into_inner());
+                    if epoch.load(Ordering::Acquire) != mine {
+                        return Err(cursor_taken());
+                    }
+                    #[cfg(test)]
+                    if hold_ms > 0 {
+                        hold_entered.store(true, Ordering::SeqCst);
+                        std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+                        if epoch.load(Ordering::Acquire) != mine {
+                            return Err(cursor_taken());
+                        }
+                    }
+                    let mut buf = vec![0u8; want];
+                    let n = guard.read(&mut buf)?;
+                    if n == 0 {
+                        return Ok(None);
+                    }
+                    buf.truncate(n);
+                    Ok(Some(bytes::Bytes::from(buf)))
+                })
+                .await;
+                match read {
+                    Ok(Ok(Some(chunk))) => {
+                        let next = offset + chunk.len() as u64;
+                        Some((Ok(chunk), Some(next)))
+                    }
+                    Ok(Ok(None)) => None,
+                    Ok(Err(error)) => Some((Err(error), None)),
+                    Err(_) => Some((
+                        Err(std::io::Error::other("4shared upload read task stopped")),
+                        None,
+                    )),
+                }
+            }
+        });
+        Ok(Box::pin(stream))
+    }
+
+    async fn attempt_body(
+        &self,
+        progress: &super::upload_progress::UploadProgress,
+        file_size: u64,
+    ) -> std::io::Result<reqwest::Body> {
+        let stream = self.attempt_stream(file_size).await?;
+        let paced = crate::transfer_dag::throttle::throttle_stream(
+            stream,
+            crate::transfer_dag::governor::TransferDirection::Upload,
+        );
+        Ok(reqwest::Body::wrap_stream(progress.track(paced)))
+    }
+}
+
 impl FourSharedProvider {
     /// Retry a failed connection, or an explicit HTTP 429, within the budget.
     /// A 429 was refused, so the upload was not stored. Retry-After sets the
@@ -1509,13 +1662,16 @@ impl StorageProvider for FourSharedProvider {
             .map_err(|e| ProviderError::Other(format!("Read file metadata: {}", e)))?;
         let file_size = file_metadata.len();
 
-        // Streaming upload: read file as a stream instead of loading into memory
+        // Streaming upload: read file as a stream instead of loading into memory.
+        // The handle stays the one opened here. A retry must not reopen
+        // `local_path`: a replacement could send a different file.
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(|e| ProviderError::Other(format!("Open local file: {}", e)))?;
         // The bytes are reported as they go out; 100 percent waits for the
         // server's answer (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
+        let cursor = SharedUploadCursor::from_tokio(file).await;
 
         let sign_url = format!("{}/files", self.upload_base());
         let creds = self.credentials();
@@ -1530,13 +1686,13 @@ impl StorageProvider for FourSharedProvider {
         // The batch executor leaves the retry budget at zero because 4shared
         // reports that it manages upload retries. A refused connection never
         // read the body, and an HTTP 429 is an explicit refusal, so both are
-        // retried from a rewound clone of this open file. Reopening
-        // `local_path` could send a different file after a replacement. Any
-        // other response, a timeout, or a failure after the body starts is
-        // not replayed. Each attempt signs a new nonce and timestamp. The
-        // URL, folder id and file name stay the same.
-        let source = &file;
+        // retried from this open file. The next attempt waits until the
+        // previous read has left the cursor, then rewinds it. Any other
+        // response, a timeout, or a failure after the body starts is not
+        // replayed. Each attempt signs a new nonce and timestamp. The URL,
+        // folder id and file name stay the same.
         let reporter = &progress;
+        let cursor = &cursor;
         let client = &self.client;
         let target = &url;
         let signed_url = &sign_url;
@@ -1550,11 +1706,10 @@ impl StorageProvider for FourSharedProvider {
                     &creds,
                     &[("folderId", folder), ("fileName", name)],
                 );
+                let cursor = cursor.clone();
                 async move {
-                    use tokio::io::AsyncSeekExt;
-                    let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
-                    reader
-                        .seek(std::io::SeekFrom::Start(0))
+                    let body = cursor
+                        .attempt_body(reporter, file_size)
                         .await
                         .map_err(ProviderError::IoError)?;
                     Ok(client
@@ -1562,7 +1717,7 @@ impl StorageProvider for FourSharedProvider {
                         .header("Authorization", authorization)
                         .header("Content-Type", "application/octet-stream")
                         .header("Content-Length", file_size.to_string())
-                        .body(reporter.file_body(reader)))
+                        .body(body))
                 }
             },
             &HttpRetryConfig::default(),
@@ -2748,12 +2903,12 @@ mod tests {
             atomic::{AtomicUsize, Ordering},
             Arc, Mutex,
         };
-        use tokio::io::AsyncSeekExt;
 
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("f.bin");
         std::fs::write(&path, b"original-bytes").unwrap();
         let file = tokio::fs::File::open(&path).await.unwrap();
+        let cursor = SharedUploadCursor::from_tokio(file).await;
         let progress = crate::providers::upload_progress::UploadProgress::new(None, 14);
         let reserved = Mutex::new(Some(ReservedRefusal::bind()));
         let addr = reserved.lock().unwrap().as_ref().unwrap().addr();
@@ -2761,7 +2916,7 @@ mod tests {
         let seen = Arc::new(Mutex::new(Vec::new()));
         let server: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
-        let source = &file;
+        let cursor = &cursor;
         let reporter = &progress;
         let response = FourSharedProvider::send_upload_after_connect_failure(
             || {
@@ -2791,15 +2946,15 @@ mod tests {
                     }));
                 }
                 let request_client = client.clone();
+                let cursor = cursor.clone();
                 async move {
-                    let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
-                    reader
-                        .seek(std::io::SeekFrom::Start(0))
+                    let body = cursor
+                        .attempt_body(reporter, 14)
                         .await
                         .map_err(ProviderError::IoError)?;
                     Ok(request_client
                         .post(format!("http://{addr}/files"))
-                        .body(reporter.file_body(reader)))
+                        .body(body))
                 }
             },
             &HttpRetryConfig {
@@ -2991,6 +3146,139 @@ mod tests {
         let (outcome, updates) = upload_against_fixture(500).await;
         assert!(outcome.is_err());
         assert_real_progress(&updates, 300 * 1024, false);
+    }
+
+    /// The first `POST /files` is refused with 429 and the next one is stored.
+    /// The bar stays monotonic across that retry and reaches the total only
+    /// when the success answer is in. Both attempts send the whole file.
+    #[tokio::test]
+    async fn upload_reports_progress_across_a_429_retry() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+
+        use crate::providers::upload_progress::fixture::{
+            assert_real_progress, recorder, temp_file,
+        };
+
+        let seen = Arc::new(AtomicUsize::new(0));
+        let lengths = Arc::new(Mutex::new(Vec::new()));
+        let recorded = lengths.clone();
+        let app = axum::Router::new().route(
+            "/files",
+            axum::routing::post(move |body: bytes::Bytes| {
+                recorded.lock().unwrap().push(body.len());
+                let n = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    let status = if n == 0 {
+                        axum::http::StatusCode::TOO_MANY_REQUESTS
+                    } else {
+                        axum::http::StatusCode::OK
+                    };
+                    (status, [("retry-after", "0")], r#"{"id":"abc"}"#)
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.upload_base_override = Some(format!("http://{addr}"));
+        provider.root_folder_id = "r1".to_string();
+        provider.connected = true;
+        let file = temp_file(300 * 1024);
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        server.abort();
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(*lengths.lock().unwrap(), vec![300 * 1024, 300 * 1024]);
+        assert_real_progress(&updates.lock().unwrap(), 300 * 1024, true);
+    }
+
+    /// A second attempt reads the original bytes from the start. The first
+    /// attempt is cut off instead of sharing that cursor.
+    #[tokio::test]
+    async fn a_later_attempt_reads_the_original_bytes_from_the_start() {
+        use futures_util::StreamExt;
+
+        let payload = (0..200_000u32).map(|i| (i % 251) as u8).collect::<Vec<_>>();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, &payload).unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let cursor = SharedUploadCursor::from_tokio(file).await;
+        let mut first = cursor.attempt_stream(payload.len() as u64).await.unwrap();
+        let chunk = first.next().await.unwrap().unwrap();
+        assert_eq!(&payload[..chunk.len()], chunk.as_ref());
+        assert!(chunk.len() < payload.len());
+        let mut second = cursor.attempt_stream(payload.len() as u64).await.unwrap();
+        let error = first.next().await.unwrap().unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        let mut got = Vec::new();
+        while let Some(item) = second.next().await {
+            got.extend_from_slice(&item.expect("second attempt"));
+        }
+        assert_eq!(got, payload);
+    }
+
+    /// The retry waits until the read that still holds the cursor releases it,
+    /// then sends the original bytes from the start.
+    #[tokio::test]
+    async fn a_retry_waits_until_the_in_flight_read_releases_the_cursor() {
+        use futures_util::StreamExt;
+        use std::sync::atomic::Ordering;
+        use std::sync::Arc;
+
+        let payload = vec![9u8; 256 * 1024];
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        std::fs::write(&path, &payload).unwrap();
+        let file = tokio::fs::File::open(&path).await.unwrap();
+        let cursor = SharedUploadCursor::from_tokio(file).await;
+        cursor.set_read_hold_ms(200);
+        let entered = Arc::clone(&cursor.hold_entered);
+        let mut first = cursor.attempt_stream(payload.len() as u64).await.unwrap();
+        let first_task = tokio::spawn(async move {
+            let mut partial = Vec::new();
+            let mut interrupted = false;
+            while let Some(item) = first.next().await {
+                match item {
+                    Ok(chunk) => partial.extend_from_slice(&chunk),
+                    Err(error) => {
+                        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+                        interrupted = true;
+                        break;
+                    }
+                }
+            }
+            (partial, interrupted)
+        });
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            while !entered.load(Ordering::SeqCst) {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("first read never entered the cursor");
+        let started = std::time::Instant::now();
+        let mut second = cursor.attempt_stream(payload.len() as u64).await.unwrap();
+        let waited = started.elapsed();
+        cursor.set_read_hold_ms(0);
+        assert!(
+            waited >= std::time::Duration::from_millis(50),
+            "retry did not wait for the in-flight read: {waited:?}"
+        );
+        let mut got = Vec::new();
+        while let Some(item) = second.next().await {
+            got.extend_from_slice(&item.expect("second attempt reads the original file"));
+        }
+        assert_eq!(got, payload);
+        let (partial, interrupted) = first_task.await.unwrap();
+        assert!(interrupted);
+        assert!(payload.starts_with(&partial));
     }
 
     #[test]
