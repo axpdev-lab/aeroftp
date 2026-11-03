@@ -1026,7 +1026,9 @@ impl StorageProvider for GitHubProvider {
             .map_err(ProviderError::from)?;
 
         if items.len() >= 1000 {
-            return Err(ProviderError::ParseError(
+            // Not a ParseError, which a search skips as that folder's own: the
+            // matches left out would read as a complete result.
+            return Err(ProviderError::Other(
                 "GitHub Contents listing reached the 1000-entry cap; completeness cannot be verified".into()
             ));
         }
@@ -2096,7 +2098,7 @@ mod tests {
         let outcome = provider.list("/").await;
         server.abort();
         assert!(
-            matches!(outcome, Err(ProviderError::ParseError(_))),
+            matches!(&outcome, Err(ProviderError::Other(m)) if m.contains("1000-entry cap")),
             "a full capped page is incomplete"
         );
     }

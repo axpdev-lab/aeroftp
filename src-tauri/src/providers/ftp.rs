@@ -629,6 +629,31 @@ impl FtpProvider {
             || lower.contains("broken pipe")
     }
 
+    /// Only a dead control connection permits retrying navigation. Ordinary
+    /// server refusals (including 550) must not pass the broader data predicate.
+    async fn closed_control_failure(&self, err: &FtpError) -> bool {
+        match err {
+            FtpError::ConnectionError(io) => matches!(
+                io.kind(),
+                std::io::ErrorKind::BrokenPipe
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+                    | std::io::ErrorKind::NotConnected
+                    | std::io::ErrorKind::UnexpectedEof
+            ),
+            FtpError::UnexpectedResponse(reply) => reply.status == Status::NotAvailable,
+            FtpError::BadResponse => self.control_at_eof().await,
+            _ => false,
+        }
+    }
+
+    /// LIST is a read and may retry a transport error whose control socket is
+    /// now closed. Keep this separate from the predicate also used by writes.
+    fn closed_listing_failure(err: &ProviderError, control: AfterSiteReply) -> bool {
+        matches!(control, AfterSiteReply::Closed)
+            && matches!(err, ProviderError::ConnectionFailed(_))
+    }
+
     async fn reconnect_after_data_error(
         &mut self,
         operation: &str,
@@ -852,7 +877,14 @@ impl FtpProvider {
                 Ok(None) => return Err(self.listing_timed_out(&base_path)),
                 Err(e) => {
                     return Err(Self::classify_missing_path("listing", &base_path, &e)
-                        .unwrap_or_else(|| ProviderError::ServerError(e.to_string())))
+                        .unwrap_or_else(|| match e {
+                            // Preserve the transport type for LIST's closed-socket
+                            // retry, instead of confusing a 421 verdict with I/O.
+                            FtpError::ConnectionError(_) => {
+                                ProviderError::ConnectionFailed(e.to_string())
+                            }
+                            _ => ProviderError::ServerError(e.to_string()),
+                        }));
                 }
             }
         };
@@ -1696,7 +1728,13 @@ impl StorageProvider for FtpProvider {
         self.redial_if_a_reply_is_pending().await?;
         match self.list_inner(path).await {
             Ok(entries) => Ok(entries),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            Err(err)
+                if Self::is_stale_data_connection_error(&err)
+                    || Self::closed_listing_failure(
+                        &err,
+                        self.after_final_reply(std::time::Duration::ZERO).await,
+                    ) =>
+            {
                 self.reconnect_after_data_error("LIST", path, &err).await?;
                 self.list_inner(path).await
             }
@@ -1706,10 +1744,17 @@ impl StorageProvider for FtpProvider {
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        let path = stream
-            .pwd()
-            .await
+        let mut outcome = self.stream_mut()?.pwd().await;
+        if let Err(err) = &outcome {
+            if self.closed_control_failure(err).await {
+                let failure = ProviderError::ServerError(err.to_string());
+                let saved = self.current_path.clone();
+                self.reconnect_after_data_error("PWD", &saved, &failure)
+                    .await?;
+                outcome = self.stream_mut()?.pwd().await;
+            }
+        }
+        let path = outcome
             .map_err(|e| ProviderError::ServerError(e.to_string()))?
             .replace('\\', "/");
         self.current_path = path.clone();
@@ -1718,18 +1763,22 @@ impl StorageProvider for FtpProvider {
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        stream
-            .cwd(path)
-            .await
-            .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
-
-        self.current_path = stream
+        let mut outcome = self.stream_mut()?.cwd(path).await;
+        if let Err(err) = &outcome {
+            if self.closed_control_failure(err).await {
+                let failure = ProviderError::InvalidPath(err.to_string());
+                self.reconnect_after_data_error("CWD", path, &failure)
+                    .await?;
+                outcome = self.stream_mut()?.cwd(path).await;
+            }
+        }
+        outcome.map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+        self.current_path = self
+            .stream_mut()?
             .pwd()
             .await
             .unwrap_or_else(|_| path.to_string())
             .replace('\\', "/");
-
         Ok(())
     }
 
@@ -2214,9 +2263,27 @@ impl StorageProvider for FtpProvider {
             self.current_path = dir.clone();
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
-                // A folder searched that cannot be read is not an empty result.
-                Err(e) if dir == root => {
-                    self.current_path = saved;
+                // A folder searched that cannot be read is not an empty result,
+                // and a failure that is not about one folder fails the search.
+                Err(e) if dir == root || !super::listing_failure_is_the_folders(&e) => {
+                    // The server may stand in the failed folder: relative commands
+                    // after this would act there. A lost connection has none to move.
+                    // Restore this stream within the existing bound. Public cd now
+                    // retries navigation and must not redial during error cleanup.
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(5),
+                        self.restore_cwd(&saved),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) => self.current_path = saved,
+                        Err(_) => {
+                            // CWD may still owe a reply: never reuse this stream.
+                            self.stream = None;
+                            self.current_path = saved;
+                        }
+                    }
                     return Err(e);
                 }
                 Err(_) => {
@@ -9531,12 +9598,24 @@ pub(crate) mod walk_scope_tests {
 
     pub(crate) type Listings = &'static [(&'static str, &'static [&'static str])];
 
+    #[derive(Clone, Copy)]
+    enum FindFailureMode {
+        Reply421,
+        StallRestore,
+        CloseAfter421,
+    }
+
     /// One control connection of a server without MLSD that holds
     /// `listings`: each folder with the names its LIST rows carry (a name
     /// ending in `/` is a folder, the slash dropped). Paths are resolved
     /// against the working directory with `.` and `..` read as a server reads
     /// them; every DELE and RMD is logged with the path it reached.
-    async fn serve_tree(stream: TcpStream, listings: Listings, log: Arc<Mutex<Vec<String>>>) {
+    async fn serve_tree(
+        stream: TcpStream,
+        listings: Listings,
+        log: Arc<Mutex<Vec<String>>>,
+        mode: FindFailureMode,
+    ) {
         let (read, mut write) = stream.into_split();
         let mut lines = BufReader::new(read).lines();
         if write.write_all(b"220 ready\r\n").await.is_err() {
@@ -9544,6 +9623,7 @@ pub(crate) mod walk_scope_tests {
         }
         let mut data: Option<TcpListener> = None;
         let mut cwd = "/".to_string();
+        let mut find_failed = false;
         let held = |path: &str| listings.iter().any(|(folder, _)| *folder == path);
         while let Ok(Some(line)) = lines.next_line().await {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
@@ -9564,7 +9644,21 @@ pub(crate) mod walk_scope_tests {
                 "PWD" => format!("257 \"{cwd}\" is current\r\n"),
                 "CWD" => {
                     let target = resolve(&cwd, &argument);
-                    if held(&target) {
+                    if matches!(mode, FindFailureMode::StallRestore) && find_failed && target == "/"
+                    {
+                        // Leave CWD unanswered until the client drops the session.
+                        while let Ok(Some(_)) = lines.next_line().await {}
+                        return;
+                    }
+                    if target.ends_with("/down") {
+                        find_failed = true;
+                        if matches!(mode, FindFailureMode::CloseAfter421) {
+                            let _ = write.write_all(b"421 Service not available.\r\n").await;
+                            let _ = write.shutdown().await;
+                            return;
+                        }
+                        "421 Service not available.\r\n".to_string()
+                    } else if held(&target) {
                         cwd = target;
                         "250 Directory changed\r\n".to_string()
                     } else {
@@ -9636,13 +9730,23 @@ pub(crate) mod walk_scope_tests {
     /// legacy FTP session's walks (`crate::ftp::FtpManager`) are tested on it
     /// too.
     pub(crate) async fn tree_server(listings: Listings) -> (u16, Arc<Mutex<Vec<String>>>) {
+        tree_server_with_restore_mode(listings, FindFailureMode::Reply421).await
+    }
+
+    async fn tree_server_with_restore_mode(
+        listings: Listings,
+        mode: FindFailureMode,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
-                tokio::spawn(serve_tree(stream, listings, Arc::clone(&seen)));
+                if matches!(mode, FindFailureMode::CloseAfter421) {
+                    seen.lock().unwrap().push("ACCEPT_CONTROL".to_string());
+                }
+                tokio::spawn(serve_tree(stream, listings, Arc::clone(&seen), mode));
             }
         });
         (port, log)
@@ -9650,7 +9754,14 @@ pub(crate) mod walk_scope_tests {
 
     /// A connected provider on a [`serve_tree`] server, and its DELE/RMD log.
     async fn provider_on_tree(listings: Listings) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
-        let (port, log) = tree_server(listings).await;
+        provider_on_tree_with_restore_mode(listings, FindFailureMode::Reply421).await
+    }
+
+    async fn provider_on_tree_with_restore_mode(
+        listings: Listings,
+        mode: FindFailureMode,
+    ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        let (port, log) = tree_server_with_restore_mode(listings, mode).await;
         let mut provider = FtpProvider::new(FtpConfig {
             host: "127.0.0.1".to_string(),
             port,
@@ -9719,6 +9830,212 @@ pub(crate) mod walk_scope_tests {
                 "{listings:?}: {log:?}"
             );
         }
+    }
+
+    /// A subfolder that is gone leaves the rest of the search. A server that
+    /// stops answering fails it: the folders after it could not be read either.
+    #[tokio::test]
+    async fn a_find_skips_a_gone_folder_and_fails_on_a_server_failure() {
+        const GONE: Listings = &[("/x", &["a.txt", "gone/"])];
+        let (mut provider, _) = provider_on_tree(GONE).await;
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+
+        const DOWN: Listings = &[("/x", &["a.txt", "down/"])];
+        let (mut provider, _) = provider_on_tree(DOWN).await;
+        let outcome = provider.find("/x", "*.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(provider.current_path, "/", "the folder is restored");
+    }
+
+    #[tokio::test]
+    async fn a_failed_find_drops_a_session_whose_cwd_restore_never_answers() {
+        let (mut provider, _) = provider_on_tree_with_restore_mode(
+            &[("/", &["keep.txt", "x/"]), ("/x", &["down/"])],
+            FindFailureMode::StallRestore,
+        )
+        .await;
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(8), provider.find("/x", "*"))
+                .await
+                .expect("the five-second restore bound ends the search");
+        assert!(outcome.is_err());
+        assert!(
+            provider.stream.is_none(),
+            "a late CWD reply must not reach another command"
+        );
+        assert_eq!(provider.current_path, "/");
+        // A listing does not dial a missing stream implicitly. The caller gets
+        // NotConnected until an explicit connect establishes a fresh session.
+        assert!(matches!(
+            provider.list("/").await,
+            Err(ProviderError::NotConnected)
+        ));
+        provider
+            .connect()
+            .await
+            .expect("explicitly reconnect after the dropped session");
+        let entries = provider
+            .list("/")
+            .await
+            .expect("list on the fresh control stream");
+        assert!(entries.iter().any(|entry| entry.name == "keep.txt"));
+    }
+
+    /// After a closed 421 socket, the existing LIST retry must use a newly
+    /// accepted control connection, not report success on the dead session.
+    #[tokio::test]
+    async fn a_failed_find_observes_a_control_connection_closed_after_421() {
+        let (mut provider, log) = provider_on_tree_with_restore_mode(
+            &[("/", &["keep.txt", "x/"]), ("/x", &["down/"])],
+            FindFailureMode::CloseAfter421,
+        )
+        .await;
+        let accepted_connections = || {
+            log.lock()
+                .unwrap()
+                .iter()
+                .filter(|event| event.as_str() == "ACCEPT_CONTROL")
+                .count()
+        };
+        assert_eq!(accepted_connections(), 1);
+        let outcome =
+            tokio::time::timeout(std::time::Duration::from_secs(8), provider.find("/x", "*"))
+                .await
+                .expect("the closed control stream cannot stall restore");
+        assert!(outcome.is_err());
+        assert!(
+            provider.stream.is_some(),
+            "a synchronous restore failure retains the handle"
+        );
+        assert_eq!(provider.current_path, "/");
+        let before_listing = accepted_connections();
+        let entries = provider
+            .list("/")
+            .await
+            .expect("LIST retries the closed connection");
+        assert!(
+            accepted_connections() > before_listing,
+            "LIST must reconnect, not reuse a dead socket"
+        );
+        assert!(provider.is_connected());
+        assert_eq!(provider.current_path, "/");
+        let mut names: Vec<_> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(names, ["keep.txt", "x"]);
+    }
+
+    #[tokio::test]
+    async fn cd_reconnects_once_after_a_failed_find_and_keeps_its_relative_base() {
+        let (mut provider, log) = provider_on_tree_with_restore_mode(
+            &[
+                ("/", &["home/", "x/"]),
+                ("/home", &["sub/"]),
+                ("/home/sub", &[]),
+                ("/x", &["down/"]),
+            ],
+            FindFailureMode::CloseAfter421,
+        )
+        .await;
+        provider.cd("/home").await.unwrap();
+        assert!(provider.find("/x", "*").await.is_err());
+        assert!(provider.stream.is_some());
+        assert_eq!(provider.current_path, "/home");
+        let before = log.lock().unwrap().len();
+        provider
+            .cd("sub")
+            .await
+            .expect("retry relative CWD on a fresh connection");
+        assert_eq!(log.lock().unwrap().len(), before + 1, "one redial only");
+        assert_eq!(provider.current_path, "/home/sub");
+        assert_eq!(provider.pwd().await.unwrap(), "/home/sub");
+    }
+
+    #[tokio::test]
+    async fn pwd_reconnects_once_after_a_failed_find_and_restores_the_saved_directory() {
+        let (mut provider, log) = provider_on_tree_with_restore_mode(
+            &[("/", &["home/", "x/"]), ("/home", &[]), ("/x", &["down/"])],
+            FindFailureMode::CloseAfter421,
+        )
+        .await;
+        provider.cd("/home").await.unwrap();
+        assert!(provider.find("/x", "*").await.is_err());
+        assert!(provider.stream.is_some());
+        assert_eq!(provider.current_path, "/home");
+        let before = log.lock().unwrap().len();
+        assert_eq!(
+            provider.pwd().await.expect("retry PWD after reconnect"),
+            "/home"
+        );
+        assert_eq!(provider.current_path, "/home");
+        assert_eq!(log.lock().unwrap().len(), before + 1, "one redial only");
+    }
+
+    #[test]
+    fn closed_listing_retry_handles_windows_abort_without_widening_data_replay() {
+        let abort = ProviderError::ConnectionFailed("Connection error: An established connection was aborted by the software in your host machine. (os error 10053)".into());
+        assert!(FtpProvider::closed_listing_failure(
+            &abort,
+            AfterSiteReply::Closed
+        ));
+        assert!(!FtpProvider::closed_listing_failure(
+            &abort,
+            AfterSiteReply::Clean
+        ));
+        assert!(
+            !FtpProvider::is_stale_data_connection_error(&abort),
+            "do not widen the predicate used by writes"
+        );
+        for err in [
+            ProviderError::NotConnected,
+            ProviderError::ServerError("421 closing control connection".into()),
+            ProviderError::InvalidPath("550 refused".into()),
+            ProviderError::NotFound("absent".into()),
+        ] {
+            assert!(!FtpProvider::closed_listing_failure(
+                &err,
+                AfterSiteReply::Closed
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn navigation_does_not_redial_for_a_normal_refusal_or_a_live_malformed_reply() {
+        let (mut provider, log) =
+            provider_on_tree_with_restore_mode(&[("/", &[])], FindFailureMode::CloseAfter421).await;
+        let before = log.lock().unwrap().len();
+        assert!(matches!(
+            provider.cd("/missing").await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert_eq!(log.lock().unwrap().len(), before);
+        assert!(
+            !provider
+                .closed_control_failure(&FtpError::BadResponse)
+                .await
+        );
+        assert!(
+            !provider
+                .closed_control_failure(&FtpError::UnexpectedResponse(suppaftp::types::Response {
+                    status: Status::FileUnavailable,
+                    body: b"550 Permission denied".to_vec(),
+                }))
+                .await
+        );
+        assert!(
+            !provider
+                .closed_control_failure(&FtpError::ConnectionError(std::io::Error::from(
+                    std::io::ErrorKind::TimedOut
+                )))
+                .await
+        );
+    }
+
+    #[tokio::test]
+    async fn a_find_fails_when_its_root_cannot_be_listed() {
+        let (mut provider, _) = provider_on_tree(&[("/", &[])]).await;
+        assert!(provider.find("/missing-root", "*").await.is_err());
+        assert_eq!(provider.current_path, "/");
     }
 
     /// A search follows only folders inside the one searched, once each.

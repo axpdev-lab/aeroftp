@@ -3811,6 +3811,16 @@ mod tests {
     /// and the session is released.
     #[tokio::test]
     async fn a_file_rewritten_during_a_session_upload_is_not_published() {
+        rewritten_during_a_session_upload(11 * 1024 * 1024 + 1).await;
+    }
+
+    /// The same size is not the same file: the date gives the rewrite away.
+    #[tokio::test]
+    async fn a_same_size_rewrite_during_the_upload_is_not_published() {
+        rewritten_during_a_session_upload(11 * 1024 * 1024).await;
+    }
+
+    async fn rewritten_during_a_session_upload(rewritten: usize) {
         use axum::{response::IntoResponse, routing::any, Json, Router};
         use std::sync::{Arc, Mutex};
         let dir = tempfile::tempdir().unwrap();
@@ -3838,7 +3848,24 @@ mod tests {
                     axum::body::to_bytes(req.into_body(), usize::MAX)
                         .await
                         .unwrap();
-                    std::fs::write(&rewrite, vec![b'b'; 11 * 1024 * 1024 + 1]).unwrap();
+                    // `write` moves the modification time as well as the
+                    // bytes. The same-size case needs that date to move.
+                    // The different-size case puts the old date back, so
+                    // a size check that disappeared would let this pass.
+                    let original_modified =
+                        std::fs::metadata(&rewrite).unwrap().modified().unwrap();
+                    std::fs::write(&rewrite, vec![b'b'; rewritten]).unwrap();
+                    let stamp = if rewritten == 11 * 1024 * 1024 {
+                        std::time::SystemTime::now() + std::time::Duration::from_secs(3600)
+                    } else {
+                        original_modified
+                    };
+                    std::fs::File::options()
+                        .write(true)
+                        .open(&rewrite)
+                        .unwrap()
+                        .set_modified(stamp)
+                        .unwrap();
                     return (
                         axum::http::StatusCode::ACCEPTED,
                         Json(serde_json::json!({"nextExpectedRanges": []})),
@@ -3859,11 +3886,30 @@ mod tests {
         p.api_origin_override = Some(format!("http://{addr}"));
         p.test_access_token = Some("fixture".into());
 
+        let original_modified = std::fs::metadata(&local).unwrap().modified().unwrap();
         let outcome = p
             .resume_upload(local.to_str().unwrap(), "/big.bin", 0, None)
             .await;
         server.abort();
-        assert!(outcome.is_err(), "a file that changed is not published");
+        let error = outcome
+            .expect_err("a file that changed is not published")
+            .to_string();
+        let after = std::fs::metadata(&local).unwrap().modified().unwrap();
+        if rewritten == 11 * 1024 * 1024 {
+            assert_ne!(
+                after, original_modified,
+                "the same-size case moves the date"
+            );
+            assert!(error.contains("modification time moved"), "{error}");
+            assert!(!error.contains("became"), "{error}");
+        } else {
+            assert_eq!(
+                after, original_modified,
+                "the different-size case keeps the original date"
+            );
+            assert!(error.contains("became"), "{error}");
+            assert!(!error.contains("modification time"), "{error}");
+        }
         let requests = seen.lock().unwrap();
         assert_eq!(
             requests

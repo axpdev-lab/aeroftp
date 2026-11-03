@@ -1830,6 +1830,38 @@ pub struct RcloneImportResult {
     pub provider_secrets: std::collections::HashMap<String, crate::profile_export::ProviderSecrets>,
 }
 
+impl RcloneImportResult {
+    /// The secrets in the order of the servers, not of the map, which changes from
+    /// run to run: of two remotes with different OAuth apps, the first one decides
+    /// which app stays stored. Refreshable tokens come first: their refresh
+    /// works only with their own app. Access-only tokens follow, then app-only
+    /// remotes; equal classes keep the config's order.
+    pub fn secrets_in_server_order(
+        &self,
+    ) -> Vec<(&String, &crate::profile_export::ProviderSecrets)> {
+        let mut secrets: Vec<_> = self
+            .servers
+            .iter()
+            .filter_map(|server| Some((&server.id, self.provider_secrets.get(&server.id)?)))
+            .collect();
+        secrets.sort_by_key(|(_, secret)| {
+            let refreshable = secret
+                .oauth
+                .as_deref()
+                .and_then(|token| serde_json::from_str::<serde_json::Value>(token).ok())
+                .and_then(|token| {
+                    token
+                        .get("refresh_token")
+                        .and_then(|value| value.as_str())
+                        .map(|refresh| !refresh.trim().is_empty())
+                })
+                .unwrap_or(false);
+            (!refreshable, secret.oauth.is_none())
+        });
+        secrets
+    }
+}
+
 /// A remote that was skipped (unsupported type).
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -3636,6 +3668,88 @@ pub fn export_rclone(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Which OAuth app stays stored does not change from run to run.
+    #[test]
+    fn the_secrets_follow_the_order_of_the_servers() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let remotes: String = (0..8)
+            .map(|i| format!("[r{i}]\ntype = drive\nclient_id = app-{i}\nclient_secret = s\n\n"))
+            .collect();
+        std::fs::write(&path, remotes).unwrap();
+        let result = import_rclone(&path).unwrap();
+        let apps: Vec<_> = result
+            .secrets_in_server_order()
+            .into_iter()
+            .map(|(_, secrets)| secrets.oauth_client_id.clone().unwrap())
+            .collect();
+        let expected: Vec<_> = (0..8).map(|i| format!("app-{i}")).collect();
+        assert_eq!(apps, expected);
+
+        // A token refreshes only with its own app: its remote chooses first.
+        std::fs::write(
+            &path,
+            "[a]\ntype = drive\nclient_id = no-token\nclient_secret = s\n\n\
+             [b]\ntype = drive\nclient_id = with-token\nclient_secret = s\n\
+             token = {\"access_token\":\"x\",\"refresh_token\":\"y\"}\n",
+        )
+        .unwrap();
+        let result = import_rclone(&path).unwrap();
+        let first = result.secrets_in_server_order()[0].1;
+        assert_eq!(first.oauth_client_id.as_deref(), Some("with-token"));
+    }
+
+    #[test]
+    fn refreshable_tokens_precede_access_only_and_app_only_remotes_stably() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let remotes = [
+            ("app-only", ""),
+            ("access-only", r#"{"access_token":"a"}"#),
+            (
+                "empty-refresh",
+                r#"{"access_token":"a","refresh_token":"  "}"#,
+            ),
+            (
+                "refresh-first",
+                r#"{"access_token":"a","refresh_token":"r"}"#,
+            ),
+            (
+                "refresh-second",
+                r#"{"access_token":"b","refresh_token":"s"}"#,
+            ),
+        ]
+        .into_iter()
+        .map(|(name, token)| {
+            format!(
+                "[{name}]\ntype = drive\nclient_id = {name}\nclient_secret = s\n{}\n",
+                if token.is_empty() {
+                    String::new()
+                } else {
+                    format!("token = {token}\n")
+                }
+            )
+        })
+        .collect::<String>();
+        std::fs::write(&path, remotes).unwrap();
+        let result = import_rclone(&path).unwrap();
+        let apps: Vec<_> = result
+            .secrets_in_server_order()
+            .iter()
+            .map(|(_, secret)| secret.oauth_client_id.as_deref().unwrap())
+            .collect();
+        assert_eq!(
+            apps,
+            [
+                "refresh-first",
+                "refresh-second",
+                "access-only",
+                "empty-refresh",
+                "app-only"
+            ]
+        );
+    }
 
     /// An app with no token yet is still kept: a later sign-in on this device needs it.
     #[test]

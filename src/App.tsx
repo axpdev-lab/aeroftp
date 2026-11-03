@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { useRemoteSearchRequest } from './hooks/useRemoteSearchRequest';
 import { ConnectScope, type ProfileConnector, type RegisterProfileConnector } from './gui/connectScope';
 import { runOwnedConnectionCleanup } from './gui/connectionCleanup';
 import { buildGeneralProjection, type AiSettingsProjection } from './gui/settingsSchema';
@@ -844,7 +845,6 @@ const App: React.FC = () => {
   const scanInFlightRef = useRef(false); // Synchronous re-entry latch for scanUsedStorage
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
   const [remoteSearchResults, setRemoteSearchResults] = useState<RemoteFile[] | null>(null);
-  const [remoteSearching, setRemoteSearching] = useState(false);
   const [showRemoteSearchBar, setShowRemoteSearchBar] = useState(false);
   // File versions dialog
   const [versionsDialog, setVersionsDialog] = useState<{ path: string; name: string } | null>(null);
@@ -4499,8 +4499,10 @@ const App: React.FC = () => {
                     notify.info(t('aerocryptNative.legacyMarkerAlreadyCurrent'));
                   }
                 } catch (err) {
-                  humanLog.updateEntry(logId, { status: 'error', message: String(err) });
-                  notify.error('AeroCrypt', String(err));
+                  const message = err && typeof err === 'object' && 'message' in err && typeof err.message === 'string'
+                    ? err.message : String(err);
+                  humanLog.updateEntry(logId, { status: 'error', message });
+                  notify.error('AeroCrypt', message);
                 }
               })();
             },
@@ -6829,27 +6831,42 @@ const App: React.FC = () => {
     }
   }, [showConnectionScreen]);
 
+  const remoteSearchRequest = useRemoteSearchRequest(JSON.stringify([
+    activeSessionId, isConnected, showRemoteSearchBar, currentRemotePath,
+    liveConnectionParams.server, liveConnectionParams.username, liveConnectionParams.protocol,
+  ]));
+  const remoteSearching = remoteSearchRequest.pendingCount > 0;
+  const cancelRemoteSearch = useCallback(() => {
+    // This invalidates results; it does not interrupt native provider_find.
+    remoteSearchRequest.cancel();
+  }, [remoteSearchRequest.cancel]);
+
   const handleRemoteSearch = async (query: string) => {
     if (!query.trim()) {
+      remoteSearchRequest.cancel();
       setRemoteSearchResults(null);
       return;
     }
-    setRemoteSearching(true);
+    const { isCurrent, finish } = remoteSearchRequest.begin();
     try {
       const results = await invoke<RemoteFile[]>('provider_find', {
         path: currentRemotePath || '/',
         pattern: `*${query.trim()}*`,
       });
+      if (!isCurrent()) return;
       setRemoteSearchResults(results);
       if (results.length >= REMOTE_SEARCH_RESULT_LIMIT) {
         notify.warning(t('common.warning'), t('common.searchLimited', { count: REMOTE_SEARCH_RESULT_LIMIT }) || `Showing the first ${REMOTE_SEARCH_RESULT_LIMIT} matches. Search a smaller folder to see the rest.`);
       }
     } catch (error) {
+      if (!isCurrent()) return;
       // An empty list would read as "nothing matches".
       setRemoteSearchResults([]);
       notify.error(t('common.error'), String(error));
+      // With notifications off too: the empty panel alone would say the same.
+      if (!showToastNotifications) toastError(t('common.error'), String(error));
     } finally {
-      setRemoteSearching(false);
+      finish();
     }
   };
 
@@ -7526,6 +7543,8 @@ const App: React.FC = () => {
   }, [isConnected, getActiveProviderProtocol]);
 
   const switchGitHubBranch = useCallback(async (branch: string) => {
+    cancelRemoteSearch();
+    setRemoteSearchResults(null);
     const baseParams = normalizeProviderConnectionParams(liveConnectionParams);
     const nextParams: ConnectionParams = {
       ...baseParams,
@@ -7543,6 +7562,9 @@ const App: React.FC = () => {
     try {
       const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
       await invoke('provider_disconnect').catch(() => {});
+      // Also close the failure path: reconnect/listing may never complete.
+      cancelRemoteSearch();
+      setRemoteSearchResults(null);
       await runConnect('provider_connect', providerParams);
 
       // One spinner over both attempts: the retry at the provider root is the
@@ -7561,6 +7583,9 @@ const App: React.FC = () => {
       setRemoteFiles(response.files);
       setCurrentRemotePath(response.current_path);
       setSelectedRemoteFiles(new Set());
+      // Searches started during reconnect may still belong to the old branch.
+      cancelRemoteSearch();
+      setRemoteSearchResults(null);
       if (activeSessionId) {
         setSessions(prev => prev.map(session =>
           session.id === activeSessionId
@@ -7576,6 +7601,8 @@ const App: React.FC = () => {
       await refreshGitHubContext(true);
       notify.success('GitHub', t('github.branchSwitched', { branch }));
     } catch (error) {
+      cancelRemoteSearch();
+      setRemoteSearchResults(null);
       // W3.1: user-cancelled branch-switch reconnect, not an error.
       if (isConnectCancelledError(error)) return;
       if (isListingCancelled(error)) return;
@@ -7584,7 +7611,7 @@ const App: React.FC = () => {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
       setLoading(false);
     }
-  }, [activeSessionId, liveConnectionParams, currentRemotePath, notify, refreshGitHubContext, runConnect, t]);
+  }, [activeSessionId, liveConnectionParams, currentRemotePath, notify, refreshGitHubContext, runConnect, t, cancelRemoteSearch]);
 
   const requestGitHubBatchCommitMessage = useCallback((
     files: { local: string; remote: string }[],
@@ -19792,6 +19819,7 @@ const App: React.FC = () => {
                     {isConnected && (
                       <button
                         onClick={() => {
+                          cancelRemoteSearch();
                           if (remoteSearchResults !== null) {
                             setRemoteSearchResults(null);
                             setRemoteSearchQuery('');
@@ -19855,11 +19883,12 @@ const App: React.FC = () => {
                         type="text"
                         placeholder={t('search.remote_placeholder') || 'Search remote files...'}
                         value={remoteSearchQuery}
-                        onChange={e => setRemoteSearchQuery(e.target.value)}
+                        onChange={e => { cancelRemoteSearch(); setRemoteSearchResults(null); setSelectedRemoteFiles(new Set()); setRemoteSearchQuery(e.target.value); }}
                         onKeyDown={e => {
                           if (e.key === 'Enter' && remoteSearchQuery.trim()) {
                             handleRemoteSearch(remoteSearchQuery);
                           } else if (e.key === 'Escape') {
+                            cancelRemoteSearch();
                             setShowRemoteSearchBar(false);
                             setRemoteSearchQuery('');
                             setRemoteSearchResults(null);
@@ -19872,7 +19901,7 @@ const App: React.FC = () => {
                         <span className="text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">{t('search.resultsCount', { count: sortedRemoteFiles.length })}</span>
                       )}
                       <button
-                        onClick={() => { setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
+                        onClick={() => { cancelRemoteSearch(); setShowRemoteSearchBar(false); setRemoteSearchQuery(''); setRemoteSearchResults(null); }}
                         className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 flex-shrink-0"
                       >
                         <X size={14} />
