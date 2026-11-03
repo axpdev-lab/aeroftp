@@ -6,8 +6,9 @@
 //! those of SFTP. The operations are [`ScpSession`]'s.
 //!
 //! A download that stopped goes on from its partial, read from that offset
-//! by `dd` and `cat`; an upload goes on by appending with `cat >>`. A replace
-//! is `mv -f`, the server's `rename(2)`.
+//! by `dd` and `cat`; an interrupted upload is sent whole. Separate exec
+//! commands cannot bind an append to a previously verified file descriptor.
+//! A replace is `mv -f`, the server's `rename(2)`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -184,7 +185,7 @@ impl ScpProvider {
     }
 
     /// Whether the server has what going on from an offset takes: `dd` to
-    /// skip to it and `cat` for the rest, or `cat >>` to append.
+    /// skip to it and `cat` for the rest of a download.
     fn can_resume(&self) -> bool {
         ["dd", "cat"].iter().all(|t| self.has(t))
     }
@@ -193,69 +194,6 @@ impl ScpProvider {
     /// takes, and `head` to stop at the range's end.
     fn can_read_range(&self) -> bool {
         self.can_resume() && self.has("head")
-    }
-
-    /// Compare a remote prefix byte for byte through one bounded stream. The
-    /// pipe bounds memory; either half failing drops the other SSH read. No
-    /// digest utility or persistent claim that this path still names that file.
-    async fn prefix_matches(
-        &self,
-        remote: &str,
-        local: &mut tokio::fs::File,
-        len: u64,
-    ) -> Result<bool, ProviderError> {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-        if !self.can_read_range() {
-            return Err(ProviderError::NotSupported(
-                "SCP prefix comparison needs dd, cat and head".into(),
-            ));
-        }
-        // A mismatch must cancel the producer immediately: waiting for it
-        // after the consumer stops could fill the bounded pipe and hang.
-        enum ComparisonError {
-            Different,
-            Read(ProviderError),
-        }
-        let io = |e| ComparisonError::Read(ProviderError::IoError(e));
-        let (mut sink, mut source) = tokio::io::duplex(32 * 1024);
-        let read = async {
-            self.session()
-                .map_err(ComparisonError::Read)?
-                .read_at(remote, 0, Some(len), &mut sink, &mut |_| {})
-                .await
-                .map_err(ComparisonError::Read)?;
-            sink.shutdown().await.map_err(io)
-        };
-        let compare = async {
-            let mut remote_bytes = [0u8; 32 * 1024];
-            let mut local_bytes = [0u8; 32 * 1024];
-            let mut left = len;
-            while left > 0 {
-                let n = left.min(remote_bytes.len() as u64) as usize;
-                source
-                    .read_exact(&mut remote_bytes[..n])
-                    .await
-                    .map_err(io)?;
-                crate::transfer_dag::governor::global()
-                    .charge(
-                        crate::transfer_dag::governor::TransferDirection::Download,
-                        n as u64,
-                    )
-                    .await;
-                local.read_exact(&mut local_bytes[..n]).await.map_err(io)?;
-                if remote_bytes[..n] != local_bytes[..n] {
-                    return Err(ComparisonError::Different);
-                }
-                left -= n as u64;
-            }
-            Ok(())
-        };
-        match tokio::try_join!(read, compare) {
-            Ok(_) => Ok(true),
-            Err(ComparisonError::Different) => Ok(false),
-            Err(ComparisonError::Read(error)) => Err(error),
-        }
     }
 
     /// A download into the partial SFTP keeps too (`.aerotmp`, or the file
@@ -653,95 +591,25 @@ impl StorageProvider for ScpProvider {
         self.can_resume()
     }
 
+    /// Separate SCP exec commands cannot retain the verified remote file's
+    /// descriptor for an append. Do not advertise upload append as safe.
     fn supports_resume_upload_append(&self) -> bool {
-        self.can_resume()
+        false
     }
 
-    /// Go on with an interrupted upload by appending the local file's tail
-    /// with `cat >>`. The tail starts where the remote file ends, never at
-    /// the caller's offset: appending to a remote shorter than that offset
-    /// would leave a hole of the wrong bytes. Size alone is not proof: compare
-    /// the entire remote prefix with the same opened local file before any
-    /// append. A mismatch, unavailable bounded read, or failed comparison
-    /// sends the file whole, as do missing, empty and oversized remotes.
+    /// Restart an interrupted upload through the ordinary whole-file SCP
+    /// path. A prefix read followed by `cat >> path` can append to a different
+    /// writer's replacement, and checking afterwards cannot undo that write.
+    /// Without a descriptor spanning verification and append, never send just
+    /// the tail, and never try to restore a possibly foreign file on failure.
     async fn resume_upload(
         &mut self,
         local_path: &str,
         remote_path: &str,
-        offset: u64,
+        _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let full = self.normalize_path(remote_path);
-        let mut file = tokio::fs::File::open(local_path).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to open local file: {e}"))
-        })?;
-        let local = file.metadata().await.map_err(ProviderError::IoError)?;
-        let total = local.len();
-        let remote = match self.session()?.stat_followed(&full).await {
-            Ok(meta) if meta.kind == Kind::File => Some(meta.size),
-            Ok(_) | Err(ProviderError::NotFound(_)) => None,
-            Err(e) => return Err(e),
-        };
-        let from = match remote {
-            Some(size)
-                if offset > 0 && size > 0 && size <= offset.min(total) && self.can_resume() =>
-            {
-                size
-            }
-            _ => return self.upload(local_path, remote_path, on_progress).await,
-        };
-        if !self
-            .prefix_matches(&full, &mut file, from)
-            .await
-            .unwrap_or(false)
-        {
-            return self.upload(local_path, remote_path, on_progress).await;
-        }
-        tracing::info!("SCP: Appending {} from byte {} of {}", full, from, total);
-        let progress = move |done: u64, total: u64| {
-            if let Some(p) = &on_progress {
-                p(done, total);
-            }
-        };
-        if from < total {
-            let mut on_bytes = move |done: u64, _: u64| progress(from + done, total);
-            self.session()?
-                .append(&full, &mut file, total - from, &mut on_bytes)
-                .await?;
-            // Another writer may have replaced the prefix after its check.
-            // Verify the complete result on the same opened local source;
-            // size alone cannot detect a same-length foreign prefix.
-            use tokio::io::AsyncSeekExt;
-            file.seek(std::io::SeekFrom::Start(0))
-                .await
-                .map_err(ProviderError::IoError)?;
-            if !self.prefix_matches(&full, &mut file, total).await? {
-                return Err(ProviderError::TransferFailed(format!(
-                    "{full}: remote contents differ after the append"
-                )));
-            }
-        } else {
-            progress(total, total);
-        }
-        let now = self.session()?.stat_followed(&full).await?.size;
-        if now != total {
-            return Err(ProviderError::TransferFailed(format!(
-                "{full}: {now} bytes after the append, expected {total}"
-            )));
-        }
-        // The source's time, as a whole upload stamps it.
-        if let Some(secs) = local
-            .modified()
-            .ok()
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
-        {
-            if self.has("touch") {
-                let cmd = format!("touch -d @{secs} -- {}", shell_quote(&full)?);
-                let _ = self.session()?.run(cmd.as_bytes()).await;
-            }
-        }
-        Ok(())
+        self.upload(local_path, remote_path, on_progress).await
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {

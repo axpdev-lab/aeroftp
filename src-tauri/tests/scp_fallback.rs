@@ -354,7 +354,8 @@ async fn an_sftp_profile_reaches_a_server_without_sftp_over_scp() {
         // SCP mode offers what its delegate does, and nothing it cannot
         // do: it goes on with transfers and reads ranges (the server has
         // `dd`, `cat` and `head`), and it has no delta sync.
-        assert!(p.supports_resume() && p.supports_resume_upload_append());
+        assert!(p.supports_resume());
+        assert!(!p.supports_resume_upload_append());
         assert!(p.transfer_optimization_hints().supports_range_download);
         assert!(!p.transfer_optimization_hints().supports_delta_sync);
         assert!(!p.supports_delta_sync());
@@ -942,7 +943,7 @@ async fn free_space_digests_and_search_come_from_the_server() {
 }
 
 /// Without `head`, unbounded resumed downloads still have `dd`/`cat`.
-/// An upload cannot verify its bounded prefix, so safely sends the file whole.
+/// Uploads restart whole even when a server does offer bounded prefix reads.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_server_without_head_still_resumes_but_reads_no_ranges() {
     let fx = Fixture::new("scp-no-head");
@@ -965,7 +966,8 @@ async fn a_server_without_head_still_resumes_but_reads_no_ranges() {
     let mut p = ProviderFactory::create(&profile).expect("factory");
     timed_connect(p.as_mut()).await.0.expect("connect");
 
-    assert!(p.supports_resume() && p.supports_resume_upload_append());
+    assert!(p.supports_resume());
+    assert!(!p.supports_resume_upload_append());
     let body = pattern(200_000);
     let local = fx.local("up.bin");
     std::fs::write(&local, &body).unwrap();
@@ -1114,22 +1116,22 @@ async fn a_transfer_given_up_part_way_closes_its_channel() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_interrupted_upload_goes_on_by_appending_and_the_limit_paces_it() {
+async fn an_interrupted_upload_restarts_whole_and_the_limit_paces_it() {
     let fx = Fixture::new("scp-resume-up");
     let mut p = scp_session(&fx).await;
     let r = fx.remote();
     let body = pattern(300_000);
     let local = fx.local("up.bin");
     std::fs::write(&local, &body).unwrap();
-    assert!(p.supports_resume_upload_append());
+    assert!(!p.supports_resume_upload_append());
 
     std::fs::write(r.join("up it's.bin"), &body[..100_000]).unwrap();
     let (progress, calls) = recorder();
     p.resume_upload(&s(&local), "up it's.bin", 100_000, progress)
         .await
-        .expect("append");
+        .expect("whole upload");
     assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
-    assert!(calls.lock().unwrap()[0].0 > 100_000);
+    assert!(calls.lock().unwrap()[0].0 < 100_000, "must start from zero");
 
     // A foreign prefix of the right size must be replaced, not appended to.
     std::fs::write(r.join("up it's.bin"), vec![b'X'; 100_000]).unwrap();
@@ -1143,12 +1145,11 @@ async fn an_interrupted_upload_goes_on_by_appending_and_the_limit_paces_it() {
         "must restart from zero"
     );
 
-    // An offset past the remote's end: the tail starts where the remote
-    // ends, never past it.
+    // A stale offset beyond the remote's end still restarts from zero.
     std::fs::write(r.join("up it's.bin"), &body[..50_000]).unwrap();
     p.resume_upload(&s(&local), "up it's.bin", 200_000, None)
         .await
-        .expect("append from the remote's end");
+        .expect("whole despite stale offset");
     assert_eq!(std::fs::read(r.join("up it's.bin")).unwrap(), body);
 
     // A remote grown past the caller's offset since it was measured (another
@@ -1489,11 +1490,11 @@ async fn scp_global_governor_charges_sequential_bytes_once_in_both_modes() {
         p.resume_upload(&s(&local), &name, 32_000, None)
             .await
             .unwrap();
-        assert_eq!(up.granted_bytes() - before, (body.len() - 32_000) as u64);
+        assert_eq!(up.granted_bytes() - before, body.len() as u64);
         assert_eq!(
             down.granted_bytes() - verification_before,
-            32_000 + body.len() as u64,
-            "the prefix and final whole-file verification must each pay exactly once"
+            0,
+            "whole-file restart must not read an unbound remote prefix"
         );
     }
 }
@@ -1540,11 +1541,11 @@ async fn a_missing_chmod_disables_edit_without_invoking_it() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_failed_prefix_comparison_restarts_upload_instead_of_appending() {
+async fn a_resume_upload_never_needs_a_remote_prefix_read() {
     let fx = Fixture::new("scp-prefix-read-failed");
     let bin = fx.root.join("bin");
     std::fs::create_dir(&bin).unwrap();
-    std::fs::write(bin.join("head"), "#!/bin/sh\nexit 1\n").unwrap();
+    std::fs::write(bin.join("head"), "#!/bin/sh\n: > prefix-read\nexit 1\n").unwrap();
     std::fs::set_permissions(
         bin.join("head"),
         std::os::unix::fs::PermissionsExt::from_mode(0o755),
@@ -1568,89 +1569,94 @@ async fn a_failed_prefix_comparison_restarts_upload_instead_of_appending() {
     assert_eq!(std::fs::read(fx.remote().join("up")).unwrap(), body);
     assert!(
         calls.lock().unwrap()[0].0 < 80_000,
-        "comparison failed: must restart from zero"
+        "must restart from zero"
     );
+    assert!(!fx.remote().join("prefix-read").exists());
 }
 
+/// Replace the pathname after the old prefix read finishes, before its
+/// later `cat >> path` opens the destination. The old provider appends its
+/// tail to the foreign inode. A whole upload performs neither that prefix
+/// read nor the later append, in explicit SCP and SFTP fallback mode.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_append_refuses_a_foreign_prefix_installed_after_its_initial_check() {
-    let fx = Fixture::new("scp-append-raced-prefix");
-    let bin = fx.root.join("bin");
-    std::fs::create_dir(&bin).unwrap();
-    // The prefix read uses head. When the later cat append actually starts,
-    // this competing write installs different bytes of the same length.
-    std::fs::write(
-        bin.join("cat"),
-        "#!/bin/sh\nprintf 'FOREIGN' > up\n: > raced\nexec /bin/cat \"$@\"\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(
-        bin.join("cat"),
-        std::os::unix::fs::PermissionsExt::from_mode(0o755),
-    )
-    .unwrap();
-    let mut options = fx.options(Sftp::Serve);
-    options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
-    let (port, _) = start(options).await;
-    let mut profile = scp_profile(port, &fx.remote(), &[]);
-    profile.password = Some(PASSWORD.to_string());
-    let mut p = ProviderFactory::create(&profile).unwrap();
-    timed_connect(p.as_mut()).await.0.unwrap();
-    let local = fx.local("source");
-    std::fs::write(&local, b"CORRECT-tail").unwrap();
-    std::fs::write(fx.remote().join("up"), b"CORRECT").unwrap();
-    let result = p.resume_upload(&s(&local), "up", 7, None).await;
-    assert!(fx.remote().join("raced").exists());
-    assert_eq!(
-        std::fs::read(fx.remote().join("up")).unwrap(),
-        b"FOREIGN-tail"
-    );
-    assert!(
-        matches!(result, Err(ProviderError::TransferFailed(ref why)) if why.contains("contents differ after the append")),
-        "{result:?}"
-    );
+async fn a_resume_upload_never_appends_a_tail_to_a_replaced_path() {
+    for fallback in [false, true] {
+        let fx = Fixture::new(&format!("scp-no-unbound-append-{fallback}"));
+        let bin = fx.root.join("bin");
+        std::fs::create_dir(&bin).unwrap();
+        std::fs::write(
+            bin.join("head"),
+            "#!/bin/sh\n/usr/bin/head \"$@\"\nstatus=$?\nif [ \"$status\" = 0 ] && [ \"$2\" = 80000 ] && [ ! -e raced ]; then\n mv up verified-original\n mv foreign-candidate up\n : > raced\nfi\nexit \"$status\"\n",
+        ).unwrap();
+        std::fs::set_permissions(
+            bin.join("head"),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+        let mut options = fx.options(if fallback { Sftp::Refuse } else { Sftp::Serve });
+        options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
+        let (port, _) = start(options).await;
+        let mut p: Box<dyn StorageProvider> = if fallback {
+            Box::new(SftpProvider::new(config(port, &fx.remote())))
+        } else {
+            let mut profile = scp_profile(port, &fx.remote(), &[]);
+            profile.password = Some(PASSWORD.to_string());
+            ProviderFactory::create(&profile).unwrap()
+        };
+        timed_connect(p.as_mut()).await.0.unwrap();
+        let local = fx.local("source");
+        let body = pattern(200_000);
+        std::fs::write(&local, &body).unwrap();
+        std::fs::write(fx.remote().join("up"), &body[..80_000]).unwrap();
+        let foreign = vec![b'X'; 80_000];
+        std::fs::write(fx.remote().join("foreign-candidate"), &foreign).unwrap();
+        let (progress, calls) = recorder();
+        let result = p.resume_upload(&s(&local), "up", 80_000, progress).await;
+        if fx.remote().join("raced").exists() {
+            let raced = std::fs::read(fx.remote().join("up")).unwrap();
+            assert_eq!(&raced[..80_000], &foreign);
+            assert_eq!(&raced[80_000..], &body[80_000..]);
+            panic!(
+                "replacement received the local tail: foreign_prefix={} tail={} result={result:?}",
+                foreign.len(),
+                raced.len() - foreign.len()
+            );
+        }
+        assert_eq!(
+            std::fs::read(fx.remote().join("foreign-candidate")).unwrap(),
+            foreign
+        );
+        result.unwrap();
+        assert!(!p.supports_resume_upload_append());
+        assert!(!fx.remote().join("verified-original").exists());
+        assert_eq!(std::fs::read(fx.remote().join("up")).unwrap(), body);
+        assert!(
+            calls.lock().unwrap()[0].0 < 80_000,
+            "the whole source must be sent"
+        );
+    }
 }
 
+/// An already-complete remote is not trusted as a permanently bound object:
+/// an explicit upload restart still sends the complete local source.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_failed_final_upload_read_is_not_reported_as_different_contents() {
-    let fx = Fixture::new("scp-final-verify-read-error");
-    let bin = fx.root.join("bin");
-    std::fs::create_dir(&bin).unwrap();
-    // Initial prefix check (7 bytes) succeeds. Only the final complete read
-    // (12 bytes) is refused; the appended bytes on disk remain correct.
-    std::fs::write(bin.join("head"), "#!/bin/sh\nif [ \"$2\" = 12 ]; then echo 'verification temporarily unavailable' >&2; exit 1; fi\nexec /usr/bin/head \"$@\"\n").unwrap();
-    std::fs::set_permissions(
-        bin.join("head"),
-        std::os::unix::fs::PermissionsExt::from_mode(0o755),
-    )
-    .unwrap();
-    let mut options = fx.options(Sftp::Serve);
-    options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
-    let (port, _) = start(options).await;
-    let mut profile = scp_profile(port, &fx.remote(), &[]);
-    profile.password = Some(PASSWORD.to_string());
-    let mut p = ProviderFactory::create(&profile).unwrap();
-    timed_connect(p.as_mut()).await.0.unwrap();
+async fn a_complete_remote_does_not_turn_upload_restart_into_a_noop() {
+    let fx = Fixture::new("scp-complete-upload-restart");
+    let mut p = scp_session(&fx).await;
+    let body = pattern(200_000);
     let local = fx.local("source");
-    std::fs::write(&local, b"CORRECT-tail").unwrap();
-    std::fs::write(fx.remote().join("up"), b"CORRECT").unwrap();
-    let error = p
-        .resume_upload(&s(&local), "up", 7, None)
+    std::fs::write(&local, &body).unwrap();
+    std::fs::write(fx.remote().join("up"), &body).unwrap();
+    let (progress, calls) = recorder();
+    p.resume_upload(&s(&local), "up", body.len() as u64, progress)
         .await
-        .expect_err("verification must report its read failure");
+        .unwrap();
+    assert_eq!(std::fs::read(fx.remote().join("up")).unwrap(), body);
+    let calls = calls.lock().unwrap();
+    assert!(calls[0].0 < body.len() as u64, "must restart from zero");
     assert_eq!(
-        std::fs::read(fx.remote().join("up")).unwrap(),
-        b"CORRECT-tail"
-    );
-    assert!(
-        error
-            .to_string()
-            .contains("verification temporarily unavailable"),
-        "{error}"
-    );
-    assert!(
-        !error.to_string().contains("contents differ"),
-        "a read failure is not a byte mismatch: {error}"
+        calls.last().copied(),
+        Some((body.len() as u64, body.len() as u64))
     );
 }
 
