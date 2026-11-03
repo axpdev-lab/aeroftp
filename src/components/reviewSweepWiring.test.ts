@@ -74,6 +74,10 @@ describe('a failure that would otherwise read as success', () => {
         const end = appRaw.indexOf('  const requestGitHubBatchCommitMessage', start);
         const { code } = await transformWithOxc(appRaw.slice(start, end), 'branch-switch.ts');
         let resume!: (value: unknown) => void;
+        let connected!: () => void;
+        let failConnect!: (error: Error) => void;
+        let connecting!: () => void;
+        const connectionStarted = new Promise<void>((resolve) => { connecting = resolve; });
         let matches: unknown = null;
         let installedFiles: unknown;
         const cancel = vi.fn();
@@ -84,7 +88,10 @@ describe('a failure that would otherwise read as success', () => {
             buildProviderParams: () => new Promise((resolve) => { resume = resolve; }),
             setLoading: vi.fn(), remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false },
             invoke: vi.fn(async (command: string) => command === 'provider_list_files' ? { files: ['NEW'], current_path: '/' } : undefined),
-            runConnect: outcome === 'connect-failure' ? vi.fn().mockRejectedValue(new Error('connect failed')) : vi.fn(), withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: vi.fn(),
+            runConnect: vi.fn(() => {
+                connecting();
+                return new Promise<void>((resolve, reject) => { connected = resolve; failConnect = reject; });
+            }), withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: vi.fn(),
             setConnectionParams: vi.fn(), setRemoteFiles: (files: unknown) => { installedFiles = files; }, setCurrentRemotePath: vi.fn(),
             setSelectedRemoteFiles: vi.fn(), activeSessionId: null, currentRemotePath: '/',
             setSessions: vi.fn(), refreshGitHubContext: vi.fn(), notify: { success: vi.fn(), error: vi.fn() },
@@ -92,8 +99,12 @@ describe('a failure that would otherwise read as success', () => {
         };
         const handler = new Function(...Object.keys(context), `${code}\nreturn switchGitHubBranch;`)(...Object.values(context));
         const switching = handler('new');
-        matches = ['OLD BRANCH MATCH']; // A new search finishes while reconnect awaits.
         resume({ effectiveParams: {}, providerParams: {} });
+        await connectionStarted;
+        expect(cancel).toHaveBeenCalledTimes(2); // The pre-connect resets have already run.
+        matches = ['MATCH DURING runConnect'];
+        if (outcome === 'success') connected();
+        else failConnect(new Error('connect failed'));
         await switching;
         if (outcome === 'success') {
             expect(installedFiles).toEqual(['NEW']);
@@ -102,8 +113,8 @@ describe('a failure that would otherwise read as success', () => {
             expect(installedFiles).toBeUndefined();
             expect(context.notify.error).toHaveBeenCalledOnce();
         }
-        expect(cancel).toHaveBeenCalledTimes(outcome === 'success' ? 3 : 2);
         expect(matches).toBe(null);
+        expect(cancel).toHaveBeenCalledTimes(3);
     });
 
     it('clears old matches when the query edit cancels result ownership', () => {

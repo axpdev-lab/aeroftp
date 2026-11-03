@@ -7601,6 +7601,8 @@ const App: React.FC = () => {
       await refreshGitHubContext(true);
       notify.success('GitHub', t('github.branchSwitched', { branch }));
     } catch (error) {
+      cancelRemoteSearch();
+      setRemoteSearchResults(null);
       // W3.1: user-cancelled branch-switch reconnect, not an error.
       if (isConnectCancelledError(error)) return;
       if (isListingCancelled(error)) return;
