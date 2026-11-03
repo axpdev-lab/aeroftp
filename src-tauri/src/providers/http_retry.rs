@@ -330,9 +330,9 @@ where
 /// caller that waits on its own clock passes `false` and handles the 429
 /// after this returns it. A connection refusal is still retried here.
 pub(crate) async fn send_rebuilt_async<F, Fut, E, C>(
-    mut build: F,
+    build: F,
     config: &HttpRetryConfig,
-    mut on_transport: C,
+    on_transport: C,
     retry_http_429: bool,
 ) -> Result<Response, E>
 where
@@ -340,7 +340,35 @@ where
     Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, E>>,
     C: FnMut(reqwest::Error) -> E,
 {
-    for attempt in 0..=config.max_retries {
+    let mut remaining_retries = config.max_retries;
+    send_rebuilt_async_with_budget(
+        build,
+        config,
+        on_transport,
+        retry_http_429,
+        &mut remaining_retries,
+    )
+    .await
+}
+
+/// Rebuild requests without replenishing retries spent by an outer refusal loop.
+/// Initialize `remaining_retries` once to `config.max_retries` per upload. This
+/// helper and the caller each consume one retry only when they will send again;
+/// when none remain the final response/error is returned without another send.
+pub(crate) async fn send_rebuilt_async_with_budget<F, Fut, E, C>(
+    mut build: F,
+    config: &HttpRetryConfig,
+    mut on_transport: C,
+    retry_http_429: bool,
+    remaining_retries: &mut u32,
+) -> Result<Response, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, E>>,
+    C: FnMut(reqwest::Error) -> E,
+{
+    loop {
+        let attempt = config.max_retries.saturating_sub(*remaining_retries);
         // The same toll as the shared wrapper, including a definite refusal.
         super::tpslimit::maybe_acquire().await;
         let builder = build().await?;
@@ -354,10 +382,8 @@ where
         match attempt_client.execute(request).await {
             Ok(response) => {
                 record_headers_received(attempt_start);
-                if retry_http_429
-                    && attempt < config.max_retries
-                    && response.status().as_u16() == 429
-                {
+                if retry_http_429 && *remaining_retries > 0 && response.status().as_u16() == 429 {
+                    *remaining_retries -= 1;
                     let delay = parse_retry_after(&response)
                         .unwrap_or_else(|| calculate_delay(attempt, config));
                     tracing::debug!(
@@ -372,7 +398,8 @@ where
                 return Ok(response);
             }
             Err(error) => {
-                if attempt < config.max_retries && error.is_connect() && !error.is_timeout() {
+                if *remaining_retries > 0 && error.is_connect() && !error.is_timeout() {
+                    *remaining_retries -= 1;
                     tracing::debug!(
                         method = %method,
                         retry = attempt + 1,
@@ -385,7 +412,6 @@ where
             }
         }
     }
-    unreachable!("the final attempt returns its response or error")
 }
 
 /// A 127.0.0.1 port that stays bound without listening.

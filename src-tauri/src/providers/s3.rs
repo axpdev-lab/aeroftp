@@ -5695,9 +5695,10 @@ impl StorageProvider for S3Provider {
             .to_string();
         let client = self.client.clone();
         let retry = super::HttpRetryConfig::default();
-        let mut slowdown_attempt = 0u32;
+        // One allowance across connect refusals, HTTP 429 and SlowDown.
+        let mut remaining_retries = retry.max_retries;
         let response = loop {
-            let response = super::http_retry::send_rebuilt_async(
+            let response = super::http_retry::send_rebuilt_async_with_budget(
                 || async {
                     let cell = Arc::new(std::sync::Mutex::new(if hash_baseline {
                         BaselineHasher::new(total_size)
@@ -5750,6 +5751,7 @@ impl StorageProvider for S3Provider {
                     })
                 },
                 true,
+                &mut remaining_retries,
             )
             .await?;
             if response.status() != StatusCode::SERVICE_UNAVAILABLE {
@@ -5766,10 +5768,10 @@ impl StorageProvider for S3Provider {
                 StatusCode::SERVICE_UNAVAILABLE.as_u16(),
                 &body,
                 retry_after,
-                slowdown_attempt,
+                retry.max_retries.saturating_sub(remaining_retries),
                 &retry,
             ) {
-                slowdown_attempt += 1;
+                remaining_retries -= 1;
                 tokio::time::sleep(delay).await;
                 continue;
             }
@@ -15293,6 +15295,56 @@ mod tests {
             seen.lock().unwrap().as_deref(),
             Some("1725600000.123000000"),
             "the PUT must carry the source mtime as x-amz-meta-mtime"
+        );
+    }
+
+    /// All explicit refusals share the same single-PUT retry allowance.
+    #[tokio::test]
+    async fn single_put_shared_retry_budget_bounds_mixed_throttles() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let sends = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&sends);
+        let app = axum::Router::new().route(
+            "/test-bucket/{*key}",
+            axum::routing::put(move |_body: axum::body::Bytes| {
+                let n = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    let (status, body) = if n % 4 == 3 {
+                        (503, "<Error><Code>SlowDown</Code></Error>")
+                    } else {
+                        (429, "")
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .header("retry-after", "0")
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("body.bin");
+        std::fs::write(&path, b"payload").unwrap();
+        let mut provider = make_provider(Some(&origin));
+        provider.connected = true;
+        let outcome = provider
+            .upload(path.to_str().unwrap(), "/budget.bin", None)
+            .await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(_))),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            sends.load(Ordering::SeqCst),
+            4,
+            "429 and SlowDown must not reset each other's allowance"
         );
     }
 

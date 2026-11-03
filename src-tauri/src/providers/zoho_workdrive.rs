@@ -1025,10 +1025,10 @@ impl ZohoWorkdriveProvider {
         F: FnMut(HeaderValue) -> Fut,
         Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, ProviderError>>,
     {
-        let mut refusal_attempt = 0u32;
+        let mut remaining_retries = retry.max_retries;
         loop {
             let auth = self.auth_header().await?;
-            let response = super::http_retry::send_rebuilt_async(
+            let response = super::http_retry::send_rebuilt_async_with_budget(
                 || build(auth.clone()),
                 retry,
                 |error| {
@@ -1037,21 +1037,22 @@ impl ZohoWorkdriveProvider {
                     })
                 },
                 false,
+                &mut remaining_retries,
             )
             .await?;
-            if response.status().as_u16() != 429 || refusal_attempt >= retry.max_retries {
+            if response.status().as_u16() != 429 || remaining_retries == 0 {
                 return Ok(response);
             }
             let wait = zoho_retry_wait(
                 response.status(),
                 zoho_retry_after(&response),
-                refusal_attempt,
+                retry.max_retries.saturating_sub(remaining_retries),
                 retry,
             );
             drop(response);
-            refusal_attempt += 1;
+            remaining_retries -= 1;
             debug!(
-                retry = refusal_attempt,
+                retry = retry.max_retries.saturating_sub(remaining_retries),
                 "Waiting on Zoho WorkDrive after HTTP 429"
             );
             tokio::time::sleep(wait).await;
@@ -6228,6 +6229,86 @@ mod tests {
         server.abort();
         let updates = updates.lock().unwrap().clone();
         (outcome, updates)
+    }
+
+    /// A 429 must not replenish retries already spent on failed connects.
+    #[tokio::test]
+    async fn paced_upload_shared_retry_budget_bounds_mixed_refusals() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct RefusedResolution;
+        impl reqwest::dns::Resolve for RefusedResolution {
+            fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+                Box::pin(async {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionRefused,
+                        "fixture before connect",
+                    )
+                    .into())
+                })
+            }
+        }
+        let sends = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::clone(&sends);
+        let app =
+            axum::Router::new().fallback(axum::routing::post(move |_body: axum::body::Bytes| {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async {
+                    (
+                        axum::http::StatusCode::TOO_MANY_REQUESTS,
+                        [("retry-after", "0")],
+                        "refused",
+                    )
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/upload", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.test_access_token = Some("fixture".into());
+        let refused = reqwest::Client::builder()
+            .no_proxy()
+            .dns_resolver(Arc::new(RefusedResolution))
+            .build()
+            .unwrap();
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let builds = Arc::new(AtomicUsize::new(0));
+        let count = Arc::clone(&builds);
+        let retry = HttpRetryConfig {
+            max_retries: 3,
+            base_delay_ms: 0,
+            max_delay_ms: 0,
+            ..HttpRetryConfig::default()
+        };
+        let response = provider
+            .send_paced_upload(
+                move |auth| {
+                    let n = count.fetch_add(1, Ordering::SeqCst);
+                    let request = if n.is_multiple_of(2) {
+                        refused.post("http://refused.invalid/upload")
+                    } else {
+                        client.post(&url)
+                    };
+                    std::future::ready(Ok(request.header(AUTHORIZATION, auth).body("payload")))
+                },
+                &retry,
+            )
+            .await
+            .unwrap();
+        server.abort();
+        assert_eq!(response.status().as_u16(), 429);
+        assert_eq!(
+            builds.load(Ordering::SeqCst),
+            4,
+            "one initial attempt and three retries total"
+        );
+        assert_eq!(
+            sends.load(Ordering::SeqCst),
+            2,
+            "the two failed connects consumed the other attempts"
+        );
     }
 
     #[tokio::test]
