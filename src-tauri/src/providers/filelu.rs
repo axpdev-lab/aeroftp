@@ -2966,16 +2966,18 @@ impl StorageProvider for FileLuProvider {
             }
         }
 
-        // Step 1: Clone the file (creates copy in same folder)
+        // Resolve both paths before cloning: a failed destination lookup must
+        // not leave a new copy next to the source.
         let file_code = self.resolve_file_code(&norm_from).await?;
+        let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
+        let fld_id_str = dest_fld_id.to_string();
+        // Step 1: Clone the file (creates copy in same folder)
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_after_refusal(&clone_url).await?;
         // Object `result.filecode` or the first element of a result array.
         // HTTP success with no code is not a copy.
         let cloned = read_filelu_clone(resp).await?.code;
 
-        let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
-        let fld_id_str = dest_fld_id.to_string();
         let move_url = self.api_url_with(
             "file/set_folder",
             &[("file_code", &cloned), ("fld_id", &fld_id_str)],
@@ -5365,6 +5367,97 @@ mod tests {
                 .all(|call| !call.contains("set_folder") && !call.contains("/api/file/rename")),
             "{seen:?}"
         );
+    }
+
+    /// An invalid destination must not leave a new clone next to the source.
+    #[tokio::test]
+    async fn copy_preflight_rejects_destination_lookup_failures_before_clone() {
+        for case in ["missing", "listing-failed", "not-directory"] {
+            let (mut provider, calls) = provider_against(move |_, path, _| {
+                if path.ends_with("/file/clone") {
+                    return r#"{"status":200,"result":{"filecode":"STRAY"}}"#.into();
+                }
+                match case {
+                    "listing-failed" => r#"!403 {"status":403,"msg":"listing refused"}"#.into(),
+                    "not-directory" => r#"{"status":200,"result":{"files":[{"name":"dest","file_code":"OCCUPANT"}],"folders":[]}}"#.into(),
+                    _ => r#"{"status":200,"result":{"files":[],"folders":[]}}"#.into(),
+                }
+            }).await;
+            provider.path_cache.insert(
+                "/source.txt".into(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: 0,
+                    fld_token: None,
+                    file_code: "SRC".into(),
+                    size: 1,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let result = provider
+                .server_side_copy("/source.txt", "/dest/copy.txt")
+                .await;
+            match case {
+                "missing" => assert!(
+                    matches!(result, Err(ProviderError::NotFound(_))),
+                    "{result:?}"
+                ),
+                "listing-failed" => assert!(
+                    matches!(result, Err(ProviderError::ServerError(_))),
+                    "{result:?}"
+                ),
+                "not-directory" => assert!(
+                    matches!(result, Err(ProviderError::InvalidPath(_))),
+                    "{result:?}"
+                ),
+                _ => unreachable!(),
+            }
+            assert!(
+                calls.lock().unwrap().is_empty(),
+                "{case}: no clone/move/rename before destination verification: {:?}",
+                calls.lock().unwrap()
+            );
+        }
+    }
+
+    /// A capped destination listing cannot authorize the clone either.
+    #[tokio::test]
+    async fn copy_preflight_rejects_capped_destination_without_mutation() {
+        use std::sync::atomic::Ordering;
+        for hybrid in [false, true] {
+            let mut f = cap_fixture(hybrid).await;
+            f.provider.path_cache.insert(
+                "/source.txt".into(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: 0,
+                    fld_token: None,
+                    file_code: "SRC".into(),
+                    size: 1,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let result = f
+                .provider
+                .server_side_copy("/source.txt", "/big/not-in-prefix/copy.txt")
+                .await;
+            f.server.abort();
+            assert!(
+                f.lookaheads.load(Ordering::SeqCst) > 0,
+                "destination lookup must reach the cap"
+            );
+            assert!(
+                matches!(result, Err(ProviderError::ParseError(_))),
+                "{result:?}"
+            );
+            assert_eq!(
+                f.writes.load(Ordering::SeqCst),
+                0,
+                "no clone/move/rename after uncertain lookup"
+            );
+        }
     }
 
     /// A documented clone object, and a result array, both name the copy.
