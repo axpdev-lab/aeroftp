@@ -1960,24 +1960,38 @@ impl FileLuProvider {
             &[("url", remote_url), ("fld_id", &fld_id.to_string())],
         );
         let resp = self.get_after_refusal(&url).await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "HTTP {}: FileLu remote upload refused",
+                resp.status()
+            )));
+        }
         // Response is an array: [{"file_code":"..."}]
         let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
                 "remote_url_upload read failed: {}",
-                redact_key(&e.to_string())
+                e.without_url()
             ))
         })?;
         #[derive(Deserialize)]
         struct RemoteUploadEntry {
             file_code: Option<String>,
         }
-        let entries: Vec<RemoteUploadEntry> = serde_json::from_str(&text)
-            .map_err(|e| ProviderError::ParseError(format!("remote_url_upload: {e}")))?;
+        let entries: Vec<RemoteUploadEntry> = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "remote_url_upload returned invalid JSON at line {}, column {}",
+                e.line(),
+                e.column()
+            ))
+        })?;
         let code = entries
             .into_iter()
             .next()
             .and_then(|e| e.file_code)
-            .unwrap_or_default();
+            .filter(|code| !code.trim().is_empty())
+            .ok_or_else(|| {
+                ProviderError::ServerError("FileLu remote upload returned no file code".into())
+            })?;
         self.invalidate_cache_under(&norm);
         Ok(code)
     }
@@ -5097,6 +5111,99 @@ mod tests {
             name_missing_path(ProviderError::ServerError("denied".into()), "/x"),
             ProviderError::ServerError(_)
         ));
+    }
+
+    /// A remote upload succeeds only after an HTTP success with a real code.
+    /// Refused or malformed responses must not echo the submitted private URL.
+    #[tokio::test]
+    async fn remote_url_upload_requires_acknowledgement_without_exposing_url() {
+        const PRIVATE_URL: &str =
+            "https://fixture-user:fixture-password@example.invalid/private-token";
+        for (response, expected) in [
+            (r#"[{"file_code":"NEW"}]"#, "success"),
+            ("[]", "missing"),
+            ("[{}]", "missing"),
+            (r#"[{"file_code":""}]"#, "missing"),
+            (r#"[{"file_code":"   "}]"#, "missing"),
+            (r#"[{"file_code":null}]"#, "missing"),
+            (
+                r#"[{"file_code":{"url":"https://fixture-user:fixture-password@example.invalid/private-token"}}]"#,
+                "parse",
+            ),
+            (
+                r#"{"echo":"https://fixture-user:fixture-password@example.invalid/private-token"}"#,
+                "parse",
+            ),
+            (
+                r#"!403 [{"file_code":"NEW","url":"https://fixture-user:fixture-password@example.invalid/private-token"}]"#,
+                "refused",
+            ),
+            (
+                r#"!503 {"echo":"https://fixture-user:fixture-password@example.invalid/private-token"}"#,
+                "uncertain",
+            ),
+        ] {
+            let (mut provider, calls) = provider_against(move |_, path, query| {
+                assert_eq!(path, "/api/upload/url");
+                assert_eq!(query.get("url").map(String::as_str), Some(PRIVATE_URL));
+                assert_eq!(query.get("fld_id").map(String::as_str), Some("7"));
+                response.into()
+            })
+            .await;
+            provider.path_cache.insert(
+                "/d".into(),
+                CacheEntry {
+                    is_dir: true,
+                    fld_id: 7,
+                    fld_token: None,
+                    file_code: String::new(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let outcome = provider.remote_url_upload(PRIVATE_URL, "/d").await;
+            if expected == "success" {
+                assert_eq!(outcome.unwrap(), "NEW");
+                assert!(!provider.path_cache.contains_key("/d"));
+            } else {
+                let error = outcome.expect_err(expected);
+                match expected {
+                    "parse" => assert!(
+                        matches!(&error, ProviderError::ParseError(message) if message.contains("line") && message.contains("column")),
+                        "{error:?}"
+                    ),
+                    "missing" => assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message.contains("no file code")),
+                        "{error:?}"
+                    ),
+                    "refused" => assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message.contains("403")),
+                        "{error:?}"
+                    ),
+                    "uncertain" => assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message.contains("may have completed")),
+                        "{error:?}"
+                    ),
+                    _ => unreachable!(),
+                }
+                let message = error.to_string();
+                for secret in [
+                    PRIVATE_URL,
+                    "fixture-user",
+                    "fixture-password",
+                    "private-token",
+                ] {
+                    assert!(!message.contains(secret), "{expected}: {message}");
+                }
+                assert!(provider.path_cache.contains_key("/d"));
+            }
+            assert_eq!(
+                calls.lock().unwrap().len(),
+                1,
+                "no uncertain mutation replay"
+            );
+        }
     }
 
     /// A source may vanish after lookup but before the path mutation. Only
