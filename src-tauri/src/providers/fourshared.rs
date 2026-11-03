@@ -2491,6 +2491,246 @@ mod tests {
         assert!(!p.replace_sets_aside());
     }
 
+    /// A 127.0.0.1 port that stays bound without listening.
+    ///
+    /// `connect` is refused, and another process cannot bind the same address.
+    /// `listen` accepts on that same socket, so the port is never released.
+    struct ReservedRefusal {
+        fd: RawSock,
+        owned: bool,
+    }
+
+    #[cfg(unix)]
+    type RawSock = libc::c_int;
+    #[cfg(windows)]
+    type RawSock = usize;
+
+    #[cfg(windows)]
+    #[link(name = "ws2_32")]
+    extern "system" {
+        fn closesocket(s: usize) -> i32;
+        fn WSAStartup(version: u16, data: *mut std::ffi::c_void) -> i32;
+        fn WSAGetLastError() -> i32;
+    }
+
+    impl ReservedRefusal {
+        fn bind() -> Self {
+            #[cfg(windows)]
+            {
+                // SAFETY: a large aligned buffer is enough for WSADATA. Winsock
+                // stays started for the process; this test does not clean it up.
+                unsafe {
+                    #[repr(align(8))]
+                    struct Buf([u8; 512]);
+                    let mut data = Buf([0; 512]);
+                    let rc = WSAStartup(0x0202, data.0.as_mut_ptr().cast());
+                    if rc != 0 {
+                        panic!("WSAStartup {rc}");
+                    }
+                }
+            }
+            let fd = open_reserved_socket();
+            if let Err(error) = bind_loopback(fd) {
+                close_reserved(fd);
+                panic!("bind loopback: {error}");
+            }
+            Self { fd, owned: true }
+        }
+
+        fn addr(&self) -> std::net::SocketAddr {
+            #[cfg(unix)]
+            {
+                let mut storage: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+                let mut len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+                // SAFETY: storage is a writable sockaddr_in and len is its size.
+                let rc = unsafe {
+                    libc::getsockname(
+                        self.fd,
+                        &mut storage as *mut libc::sockaddr_in as *mut libc::sockaddr,
+                        &mut len,
+                    )
+                };
+                if rc != 0 {
+                    panic!("getsockname: {}", std::io::Error::last_os_error());
+                }
+                let port = u16::from_be(storage.sin_port);
+                let ip = std::net::Ipv4Addr::from(u32::from_be(storage.sin_addr.s_addr));
+                std::net::SocketAddr::from((ip, port))
+            }
+            #[cfg(windows)]
+            {
+                let mut storage: libc::sockaddr = unsafe { std::mem::zeroed() };
+                let mut len = std::mem::size_of::<libc::sockaddr>() as libc::c_int;
+                // SAFETY: storage is a writable sockaddr and len is its size.
+                let rc = unsafe { libc::getsockname(self.fd, &mut storage, &mut len) };
+                if rc != 0 {
+                    panic!("getsockname: {}", windows_socket_error());
+                }
+                // sockaddr_in is family, then port in network order, then IPv4.
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        &storage as *const libc::sockaddr as *const u8,
+                        std::mem::size_of::<libc::sockaddr>(),
+                    )
+                };
+                let port = u16::from_be_bytes([bytes[2], bytes[3]]);
+                let ip = std::net::Ipv4Addr::new(bytes[4], bytes[5], bytes[6], bytes[7]);
+                std::net::SocketAddr::from((ip, port))
+            }
+        }
+
+        fn listen(mut self) -> std::net::TcpListener {
+            #[cfg(unix)]
+            let rc = unsafe { libc::listen(self.fd, 128) };
+            #[cfg(windows)]
+            let rc = unsafe { libc::listen(self.fd, 128) };
+            if rc != 0 {
+                panic!("listen: {}", reserved_last_error());
+            }
+            let fd = self.fd;
+            self.owned = false;
+            #[cfg(unix)]
+            {
+                use std::os::unix::io::FromRawFd;
+                // SAFETY: fd is an owned listening TCP socket. The listener closes it.
+                unsafe { std::net::TcpListener::from_raw_fd(fd) }
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::FromRawSocket;
+                // SAFETY: fd is an owned listening TCP socket. The listener closes it.
+                #[cfg(target_pointer_width = "64")]
+                unsafe {
+                    std::net::TcpListener::from_raw_socket(fd as u64)
+                }
+                #[cfg(target_pointer_width = "32")]
+                unsafe {
+                    std::net::TcpListener::from_raw_socket(fd as u32)
+                }
+            }
+        }
+    }
+
+    impl Drop for ReservedRefusal {
+        fn drop(&mut self) {
+            if self.owned {
+                close_reserved(self.fd);
+                self.owned = false;
+            }
+        }
+    }
+
+    fn open_reserved_socket() -> RawSock {
+        #[cfg(unix)]
+        {
+            // SAFETY: AF_INET/SOCK_STREAM creates one TCP socket. We own the fd.
+            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+            if fd < 0 {
+                panic!("socket: {}", std::io::Error::last_os_error());
+            }
+            fd
+        }
+        #[cfg(windows)]
+        {
+            const AF_INET: libc::c_int = 2;
+            const SOCK_STREAM: libc::c_int = 1;
+            // SAFETY: Winsock is started. INVALID_SOCKET is all-bits-one.
+            let fd = unsafe { libc::socket(AF_INET, SOCK_STREAM, 0) };
+            if fd == usize::MAX {
+                panic!("socket: {}", windows_socket_error());
+            }
+            fd
+        }
+    }
+
+    fn bind_loopback(fd: RawSock) -> Result<(), std::io::Error> {
+        #[cfg(unix)]
+        {
+            let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+            #[cfg(any(
+                target_os = "macos",
+                target_os = "ios",
+                target_os = "freebsd",
+                target_os = "openbsd",
+                target_os = "netbsd",
+                target_os = "dragonfly"
+            ))]
+            {
+                addr.sin_len = std::mem::size_of::<libc::sockaddr_in>() as u8;
+            }
+            addr.sin_family = libc::AF_INET as libc::sa_family_t;
+            addr.sin_port = 0;
+            addr.sin_addr.s_addr = libc::htonl(libc::INADDR_LOOPBACK);
+            // SAFETY: addr is a full sockaddr_in for 127.0.0.1:0. No listen yet.
+            let rc = unsafe {
+                libc::bind(
+                    fd,
+                    &addr as *const libc::sockaddr_in as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                )
+            };
+            if rc != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        }
+        #[cfg(windows)]
+        {
+            let mut bytes = [0u8; 16];
+            bytes[..2].copy_from_slice(&2u16.to_ne_bytes());
+            bytes[4] = 127;
+            let mut addr: libc::sockaddr = unsafe { std::mem::zeroed() };
+            // SAFETY: sockaddr is 16 bytes. The copy writes family, port 0, 127.0.0.1.
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    &mut addr as *mut libc::sockaddr as *mut u8,
+                    bytes.len(),
+                );
+            }
+            let rc = unsafe {
+                libc::bind(
+                    fd,
+                    &addr,
+                    std::mem::size_of::<libc::sockaddr>() as libc::c_int,
+                )
+            };
+            if rc != 0 {
+                return Err(windows_socket_error());
+            }
+            Ok(())
+        }
+    }
+
+    fn close_reserved(fd: RawSock) {
+        #[cfg(unix)]
+        unsafe {
+            libc::close(fd);
+        }
+        #[cfg(windows)]
+        unsafe {
+            closesocket(fd);
+        }
+    }
+
+    fn reserved_last_error() -> std::io::Error {
+        #[cfg(unix)]
+        {
+            std::io::Error::last_os_error()
+        }
+        #[cfg(windows)]
+        {
+            windows_socket_error()
+        }
+    }
+
+    #[cfg(windows)]
+    fn windows_socket_error() -> std::io::Error {
+        // SAFETY: WSAGetLastError reads the thread's last Winsock code.
+        let code = unsafe { WSAGetLastError() };
+        std::io::Error::from_raw_os_error(code)
+    }
+
     /// A refused connection is retried from the already-open file. Replacing
     /// the path between attempts must not change the bytes that are sent.
     #[tokio::test]
@@ -2506,9 +2746,8 @@ mod tests {
         std::fs::write(&path, b"original-bytes").unwrap();
         let file = tokio::fs::File::open(&path).await.unwrap();
         let progress = crate::providers::upload_progress::UploadProgress::new(None, 14);
-        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = reserved.local_addr().unwrap();
-        drop(reserved);
+        let reserved = Mutex::new(Some(ReservedRefusal::bind()));
+        let addr = reserved.lock().unwrap().as_ref().unwrap().addr();
         let builds = Arc::new(AtomicUsize::new(0));
         let seen = Arc::new(Mutex::new(Vec::new()));
         let server: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
@@ -2522,7 +2761,12 @@ mod tests {
                     let replaced = dir.path().join("f.bin.new");
                     std::fs::write(&replaced, b"replaced-bytes").unwrap();
                     std::fs::rename(&replaced, &path).unwrap();
-                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    let listener = reserved
+                        .lock()
+                        .unwrap()
+                        .take()
+                        .expect("refused port still reserved")
+                        .listen();
                     listener.set_nonblocking(true).unwrap();
                     let listener = tokio::net::TcpListener::from_std(listener).unwrap();
                     let received = seen.clone();
@@ -2621,9 +2865,8 @@ mod tests {
 
     #[tokio::test]
     async fn connection_retries_stop_when_the_budget_is_spent() {
-        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let addr = reserved.local_addr().unwrap();
-        drop(reserved);
+        let reserved = ReservedRefusal::bind();
+        let addr = reserved.addr();
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let mut builds = 0;
         let response = FourSharedProvider::send_upload_after_connect_failure(
@@ -2642,6 +2885,7 @@ mod tests {
         .await;
         assert!(response.is_err());
         assert_eq!(builds, 3);
+        drop(reserved);
     }
 
     /// HTTP 429 is a refusal, not an uncertain write. The executor no longer
