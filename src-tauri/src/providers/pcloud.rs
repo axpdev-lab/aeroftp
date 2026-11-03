@@ -553,45 +553,26 @@ impl PCloudProvider {
     /// response, a timeout, or a failure after the body starts returns
     /// immediately. Each attempt rebuilds the entire body.
     async fn send_upload_after_connect_failure<F, Fut>(
-        mut build: F,
+        build: F,
         config: &HttpRetryConfig,
     ) -> Result<reqwest::Response, ProviderError>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, ProviderError>>,
     {
-        let mut retries = 0;
-        loop {
-            // The shared retry loop takes a permit before every attempt,
-            // including a connection that was refused. This loop is outside
-            // that helper, so it pays the same toll itself.
-            super::tpslimit::maybe_acquire().await;
-            match build().await?.send().await {
-                Ok(response)
-                    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
-                        && retries < config.max_retries =>
-                {
-                    let delay = super::http_retry::parse_retry_after(&response)
-                        .unwrap_or_else(|| super::http_retry::calculate_delay(retries, config));
-                    tokio::time::sleep(delay).await;
-                    retries += 1;
-                }
-                Ok(response) => return Ok(response),
-                Err(error)
-                    if error.is_connect()
-                        && !error.is_timeout()
-                        && retries < config.max_retries =>
-                {
-                    tokio::time::sleep(super::http_retry::calculate_delay(retries, config)).await;
-                    retries += 1;
-                }
-                Err(error) => {
-                    return Err(super::http_send_error(error, |error| {
-                        ProviderError::NetworkError(sanitize_api_error(&error.to_string()))
-                    }))
-                }
-            }
-        }
+        super::http_retry::send_rebuilt_async(
+            build,
+            config,
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::NetworkError(sanitize_api_error(
+                        &error.without_url().to_string(),
+                    ))
+                })
+            },
+            true,
+        )
+        .await
     }
 
     /// pCloud's create/copy/upload-save commands are GET RPCs, not reads.
@@ -617,11 +598,13 @@ impl PCloudProvider {
             .get(url)
             .header("Authorization", auth)
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::NetworkError(format!("Failed to build request: {}", e.without_url()))
+            })?;
 
         send_with_retry(&self.client, request, &config)
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
     }
 
     /// Send GET with access_token as query param (no Authorization header).
@@ -3097,6 +3080,80 @@ mod tests {
         assert!(text.contains("Failed to build request"), "{text}");
         assert!(!text.contains("fixture-token"), "{text}");
         assert!(!text.contains("access_token"), "{text}");
+    }
+
+    /// Sharing passwords and imported source URLs are query parameters too.
+    /// Build failures, connection refusals and timeouts must not expose them.
+    #[tokio::test]
+    async fn header_authenticated_get_errors_do_not_expose_sensitive_query_urls() {
+        let provider = fixture_connected();
+        let once = HttpRetryConfig {
+            max_retries: 0,
+            ..HttpRetryConfig::default()
+        };
+        let query = "linkpassword=private-share-password&url=https%3A%2F%2Falice%3Aprivate-source-password%40example.invalid%2Fprivate-source";
+        let assert_redacted = |error: ProviderError| {
+            let text = error.to_string();
+            for secret in [
+                "linkpassword",
+                "private-share-password",
+                "private-source-password",
+                "example.invalid",
+                "private-source",
+            ] {
+                assert!(!text.contains(secret), "request URL leaked: {text}");
+            }
+        };
+
+        let refused = crate::providers::http_retry::refusal::BoundRefusal::bind();
+        let url = format!("http://{}/getfilepublink?{query}", refused.addr());
+        let error = provider
+            .get_with_policy(&url, "Bearer fixture", once.clone())
+            .await
+            .expect_err("bound socket is not listening");
+        assert!(
+            matches!(&error, ProviderError::NetworkError(_)),
+            "{error:?}"
+        );
+        assert_redacted(error);
+
+        let error = provider
+            .get_with_policy(&url, "invalid\nheader", once.clone())
+            .await
+            .expect_err("invalid header prevents request construction");
+        assert!(
+            matches!(&error, ProviderError::NetworkError(message) if message.contains("Failed to build request")),
+            "{error:?}"
+        );
+        assert_redacted(error);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().route(
+            "/downloadfile",
+            axum::routing::get(|| async {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                "late"
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = fixture_connected();
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .unwrap();
+        let error = provider
+            .get_with_policy(
+                &format!("http://{addr}/downloadfile?{query}"),
+                "Bearer fixture",
+                once,
+            )
+            .await
+            .expect_err("response headers never arrive before the timeout");
+        server.abort();
+        assert!(matches!(&error, ProviderError::Timeout), "{error:?}");
+        assert_redacted(error);
     }
 
     /// A provider whose file and thumbnail links name a content host on the

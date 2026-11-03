@@ -1037,42 +1037,24 @@ impl FourSharedProvider {
     /// once. Each attempt pays the shared request-rate permit, then rebuilds
     /// the body.
     async fn send_upload_after_connect_failure<F, Fut>(
-        mut build: F,
+        build: F,
         config: &HttpRetryConfig,
     ) -> Result<reqwest::Response, ProviderError>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, ProviderError>>,
     {
-        let mut retries = 0;
-        loop {
-            super::tpslimit::maybe_acquire().await;
-            match build().await?.send().await {
-                Ok(response)
-                    if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS
-                        && retries < config.max_retries =>
-                {
-                    let delay = super::http_retry::parse_retry_after(&response)
-                        .unwrap_or_else(|| super::http_retry::calculate_delay(retries, config));
-                    tokio::time::sleep(delay).await;
-                    retries += 1;
-                }
-                Ok(response) => return Ok(response),
-                Err(error)
-                    if error.is_connect()
-                        && !error.is_timeout()
-                        && retries < config.max_retries =>
-                {
-                    tokio::time::sleep(super::http_retry::calculate_delay(retries, config)).await;
-                    retries += 1;
-                }
-                Err(error) => {
-                    return Err(super::http_send_error(error, |error| {
-                        ProviderError::NetworkError(error.to_string())
-                    }));
-                }
-            }
-        }
+        super::http_retry::send_rebuilt_async(
+            build,
+            config,
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::NetworkError(error.without_url().to_string())
+                })
+            },
+            true,
+        )
+        .await
     }
 
     /// The API's delete of a folder, which takes whatever the folder holds
