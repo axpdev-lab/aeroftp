@@ -978,6 +978,51 @@ impl ZohoWorkdriveProvider {
         self.config.api_base()
     }
 
+    /// Each attempt takes a pacing turn and a fresh token before it is built.
+    /// An HTTP 429 waits on WorkDrive's Retry-After, or 61 seconds when that
+    /// header is absent. A connection refusal stays in the shared sender and
+    /// reuses this attempt's token.
+    async fn send_paced_upload<F>(
+        &self,
+        mut build: F,
+        retry: &HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut(HeaderValue) -> Result<reqwest::RequestBuilder, ProviderError>,
+    {
+        let mut refusal_attempt = 0u32;
+        loop {
+            let auth = self.auth_header().await?;
+            let response = super::http_retry::send_rebuilt_async(
+                || std::future::ready(build(auth.clone())),
+                retry,
+                |error| {
+                    super::http_send_error(error, |error| {
+                        ProviderError::ConnectionFailed(error.to_string())
+                    })
+                },
+                false,
+            )
+            .await?;
+            if response.status().as_u16() != 429 || refusal_attempt >= retry.max_retries {
+                return Ok(response);
+            }
+            let wait = zoho_retry_wait(
+                response.status(),
+                zoho_retry_after(&response),
+                refusal_attempt,
+                retry,
+            );
+            drop(response);
+            refusal_attempt += 1;
+            debug!(
+                retry = refusal_attempt,
+                "Waiting on Zoho WorkDrive after HTTP 429"
+            );
+            tokio::time::sleep(wait).await;
+        }
+    }
+
     /// Stream upload endpoint on the region's upload server.
     fn stream_upload_url(&self, host: &str) -> String {
         #[cfg(test)]
@@ -1002,40 +1047,36 @@ impl ZohoWorkdriveProvider {
         progress: &super::upload_progress::UploadProgress,
     ) -> Result<(), ProviderError> {
         let url = self.stream_upload_url(host);
-        let auth = self.auth_header().await?;
         let retry = self.retry.clone();
         let client = self.client.clone();
         let path = std::path::PathBuf::from(local_path);
         let parent_id = parent_id.to_string();
         let filename = upload_filename_field(file_name);
-        // upload-id is minted per attempt: a refused connection or an HTTP 429
-        // sends the file again.
-        let resp = super::send_rebuilt_on_connect_failure(
-            || {
-                let file = std::fs::File::open(&path)
-                    .map_err(|e| ProviderError::Other(format!("Open file error: {e}")))?;
-                Ok(client
-                    .post(&url)
-                    .header(AUTHORIZATION, auth.clone())
-                    .header(ACCEPT, HeaderValue::from_static("application/json"))
-                    .header(CONTENT_TYPE, "application/octet-stream")
-                    .header(reqwest::header::CONTENT_LENGTH, total_size)
-                    // "The name of the file should be URL encoded with UTF-8 Charset."
-                    .header("x-filename", filename.clone())
-                    .header("x-parent_id", parent_id.clone())
-                    .header("upload-id", uuid::Uuid::new_v4().to_string())
-                    .header("x-streammode", "1")
-                    .header("x-override-name-exist", "true")
-                    .body(progress.file_body(tokio::fs::File::from_std(file))))
-            },
-            &retry,
-            |error| {
-                super::http_send_error(error, |error| {
-                    ProviderError::ConnectionFailed(error.to_string())
-                })
-            },
-        )
-        .await?;
+        // Each attempt takes a pacing turn and mints a new upload-id. A 429
+        // waits on WorkDrive's Retry-After, or 61 seconds when that header
+        // is absent. A refused connection stays in the shared sender.
+        let resp = self
+            .send_paced_upload(
+                |auth| {
+                    let file = std::fs::File::open(&path)
+                        .map_err(|e| ProviderError::Other(format!("Open file error: {e}")))?;
+                    Ok(client
+                        .post(&url)
+                        .header(AUTHORIZATION, auth)
+                        .header(ACCEPT, HeaderValue::from_static("application/json"))
+                        .header(CONTENT_TYPE, "application/octet-stream")
+                        .header(reqwest::header::CONTENT_LENGTH, total_size)
+                        // "The name of the file should be URL encoded with UTF-8 Charset."
+                        .header("x-filename", filename.clone())
+                        .header("x-parent_id", parent_id.clone())
+                        .header("upload-id", uuid::Uuid::new_v4().to_string())
+                        .header("x-streammode", "1")
+                        .header("x-override-name-exist", "true")
+                        .body(progress.file_body(tokio::fs::File::from_std(file))))
+                },
+                &retry,
+            )
+            .await?;
 
         let status = resp.status();
         let text = resp.text().await;
@@ -3024,8 +3065,10 @@ impl StorageProvider for ZohoWorkdriveProvider {
             .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
         // Both routes stream the file and report the bytes as they go out;
         // 100 percent waits for Zoho's answer (see `UploadProgress`).
-        // The executor no longer restarts the upload, so each route retries
-        // a connection refusal before send and an HTTP 429.
+        // The executor no longer restarts the upload. Each attempt takes a
+        // pacing turn. A 429 waits on WorkDrive's Retry-After, or 61 seconds
+        // when that header is absent. A connection refusal stays in the
+        // shared sender.
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
 
         // #347: above 250 MB the single-request endpoint answers 413, so a
@@ -3046,7 +3089,6 @@ impl StorageProvider for ZohoWorkdriveProvider {
         // Zoho WorkDrive upload uses multipart/form-data
         // parent_id and override-name-exist go in the form body (per Zoho docs)
         let url = format!("{}/upload", self.api_base());
-        let auth = self.auth_header().await?;
         let retry = self.retry.clone();
         let client = self.client.clone();
         let path = std::path::PathBuf::from(local_path);
@@ -3059,35 +3101,31 @@ impl StorageProvider for ZohoWorkdriveProvider {
         let encoded_name = upload_filename_field(file_name);
 
         // Override Accept header: upload response is NOT JSON:API format
-        let resp = super::send_rebuilt_on_connect_failure(
-            || {
-                let file = std::fs::File::open(&path)
-                    .map_err(|e| ProviderError::Other(format!("Open file error: {e}")))?;
-                let file_part = reqwest::multipart::Part::stream(
-                    progress.file_body(tokio::fs::File::from_std(file)),
-                )
-                .file_name(stored_name.clone())
-                .mime_str("application/octet-stream")
-                .map_err(|e| ProviderError::Other(format!("MIME error: {e}")))?;
-                let form = reqwest::multipart::Form::new()
-                    .text("parent_id", parent.clone())
-                    .text("filename", encoded_name.clone())
-                    .text("override-name-exist", "true")
-                    .part("content", file_part);
-                Ok(client
-                    .post(&url)
-                    .header(AUTHORIZATION, auth.clone())
-                    .header(ACCEPT, HeaderValue::from_static("application/json"))
-                    .multipart(form))
-            },
-            &retry,
-            |error| {
-                super::http_send_error(error, |error| {
-                    ProviderError::ConnectionFailed(error.to_string())
-                })
-            },
-        )
-        .await?;
+        let resp = self
+            .send_paced_upload(
+                |auth| {
+                    let file = std::fs::File::open(&path)
+                        .map_err(|e| ProviderError::Other(format!("Open file error: {e}")))?;
+                    let file_part = reqwest::multipart::Part::stream(
+                        progress.file_body(tokio::fs::File::from_std(file)),
+                    )
+                    .file_name(stored_name.clone())
+                    .mime_str("application/octet-stream")
+                    .map_err(|e| ProviderError::Other(format!("MIME error: {e}")))?;
+                    let form = reqwest::multipart::Form::new()
+                        .text("parent_id", parent.clone())
+                        .text("filename", encoded_name.clone())
+                        .text("override-name-exist", "true")
+                        .part("content", file_part);
+                    Ok(client
+                        .post(&url)
+                        .header(AUTHORIZATION, auth)
+                        .header(ACCEPT, HeaderValue::from_static("application/json"))
+                        .multipart(form))
+                },
+                &retry,
+            )
+            .await?;
 
         let status = resp.status();
         if !status.is_success() {

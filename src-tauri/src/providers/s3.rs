@@ -5666,15 +5666,17 @@ impl StorageProvider for S3Provider {
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
         progress.start();
         let path = local_path.to_string();
-        // Invalidate once. A fresh hasher is stored for the attempt that
-        // actually completes, so a refused connection cannot append into it.
+        // Invalidate once. Each attempt stores its hasher in its own cell.
+        // The baseline keeps the cell from the attempt that completed, so an
+        // earlier stream cannot change it.
         let baseline_store = self
             .begin_baseline(key, total_size)
             .await
             .map(|(store, _hasher)| store);
         let hash_baseline = baseline_store.is_some();
-        let hasher_slot: Arc<std::sync::Mutex<Option<BaselineHasher>>> =
-            Arc::new(std::sync::Mutex::new(None));
+        let attempt_hasher: Arc<
+            std::sync::Mutex<Option<Arc<std::sync::Mutex<Option<BaselineHasher>>>>>,
+        > = Arc::new(std::sync::Mutex::new(None));
         let url = self.build_url(key);
         // For streaming, we use UNSIGNED-PAYLOAD since we cannot hash the stream upfront
         let payload_hash = "UNSIGNED-PAYLOAD";
@@ -5689,19 +5691,18 @@ impl StorageProvider for S3Provider {
             let response = super::send_rebuilt_on_connect_failure(
                 || {
                     let file = std::fs::File::open(&path).map_err(ProviderError::IoError)?;
-                    *hasher_slot.lock().unwrap_or_else(|e| e.into_inner()) = if hash_baseline {
+                    let cell = Arc::new(std::sync::Mutex::new(if hash_baseline {
                         BaselineHasher::new(total_size)
                     } else {
                         None
-                    };
-                    let stream_hasher = Arc::clone(&hasher_slot);
+                    }));
+                    *attempt_hasher.lock().unwrap_or_else(|e| e.into_inner()) =
+                        Some(Arc::clone(&cell));
                     let source =
                         ReaderStream::new(tokio::fs::File::from_std(file)).map(move |chunk| {
                             if let Ok(bytes) = &chunk {
-                                if let Some(hasher) = stream_hasher
-                                    .lock()
-                                    .unwrap_or_else(|e| e.into_inner())
-                                    .as_mut()
+                                if let Some(hasher) =
+                                    cell.lock().unwrap_or_else(|e| e.into_inner()).as_mut()
                                 {
                                     hasher.update(bytes);
                                 }
@@ -5775,7 +5776,11 @@ impl StorageProvider for S3Provider {
                     .get(reqwest::header::ETAG)
                     .and_then(|value| value.to_str().ok())
                     .map(str::to_owned);
-                let finished = hasher_slot.lock().unwrap_or_else(|e| e.into_inner()).take();
+                let finished = attempt_hasher
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take()
+                    .and_then(|cell| cell.lock().unwrap_or_else(|e| e.into_inner()).take());
                 self.save_baseline(key, baseline_store.zip(finished), etag)
                     .await;
                 progress.complete();

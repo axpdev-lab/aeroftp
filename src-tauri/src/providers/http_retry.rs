@@ -310,16 +310,40 @@ where
 pub async fn send_rebuilt_on_connect_failure<F, E, C>(
     mut build: F,
     config: &HttpRetryConfig,
-    mut on_transport: C,
+    on_transport: C,
 ) -> Result<Response, E>
 where
     F: FnMut() -> Result<reqwest::RequestBuilder, E>,
     C: FnMut(reqwest::Error) -> E,
 {
+    send_rebuilt_async(
+        move || std::future::ready(build()),
+        config,
+        on_transport,
+        true,
+    )
+    .await
+}
+
+/// [`send_rebuilt_on_connect_failure`] when the next attempt has to be built
+/// asynchronously. `retry_http_429` keeps the shared refusal backoff. A
+/// caller that waits on its own clock passes `false` and handles the 429
+/// after this returns it. A connection refusal is still retried here.
+pub(crate) async fn send_rebuilt_async<F, Fut, E, C>(
+    mut build: F,
+    config: &HttpRetryConfig,
+    mut on_transport: C,
+    retry_http_429: bool,
+) -> Result<Response, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, E>>,
+    C: FnMut(reqwest::Error) -> E,
+{
     for attempt in 0..=config.max_retries {
         // The same toll as the shared wrapper, including a definite refusal.
         super::tpslimit::maybe_acquire().await;
-        let builder = build()?;
+        let builder = build().await?;
         let (attempt_client, request) = builder.build_split();
         let request = match request {
             Ok(request) => request,
@@ -330,7 +354,10 @@ where
         match attempt_client.execute(request).await {
             Ok(response) => {
                 record_headers_received(attempt_start);
-                if attempt < config.max_retries && response.status().as_u16() == 429 {
+                if retry_http_429
+                    && attempt < config.max_retries
+                    && response.status().as_u16() == 429
+                {
                     let delay = parse_retry_after(&response)
                         .unwrap_or_else(|| calculate_delay(attempt, config));
                     tracing::debug!(
@@ -858,6 +885,43 @@ mod tests {
         assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
         assert_eq!(attempts, 3, "max_retries 2 is three sends, then the 429");
         assert_eq!(*seen.lock().unwrap(), [15, 15, 15]);
+    }
+
+    /// The caller can keep the 429. The shared backoff must not run, even
+    /// when the budget and the delay would otherwise retry for an hour.
+    #[tokio::test]
+    async fn a_rebuilt_upload_can_leave_a_refusal_to_the_caller() {
+        let (url, seen) = always_refusal_server().await;
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            send_rebuilt_async(
+                || {
+                    attempts += 1;
+                    let stream = futures_util::stream::once(async {
+                        Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"caller-waits"))
+                    });
+                    std::future::ready(Ok::<_, reqwest::Error>(
+                        client.post(&url).body(reqwest::Body::wrap_stream(stream)),
+                    ))
+                },
+                &HttpRetryConfig {
+                    max_retries: 2,
+                    base_delay_ms: 3_600_000,
+                    max_delay_ms: 3_600_000,
+                    ..fast_retries()
+                },
+                |error| error,
+                false,
+            ),
+        )
+        .await
+        .expect("a caller-owned 429 must not take the shared backoff")
+        .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(attempts, 1);
+        assert_eq!(*seen.lock().unwrap(), [12]);
     }
 
     /// First response is 429 with `Retry-After: 0`. Later responses are 200.

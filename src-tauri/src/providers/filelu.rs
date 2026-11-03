@@ -1797,62 +1797,12 @@ impl FileLuProvider {
 
         let url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_after_refusal(&url).await?;
-        let status = resp.status();
-        let body = resp.text().await.map_http_err(|e| {
-            ProviderError::NetworkError(format!(
-                "clone_file read failed: {}",
-                redact_key(&e.to_string())
-            ))
-        })?;
-        if !status.is_success() {
-            return Err(ProviderError::ServerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
-        }
-
-        let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
-            ProviderError::ParseError(format!(
-                "clone_file: {}. Body: {}",
-                e,
-                &body[..body.floor_char_boundary(200)]
-            ))
-        })?;
-
-        let status_code = value.get("status").and_then(|s| s.as_i64()).unwrap_or(200);
-        if status_code != 200 {
-            let msg = value
-                .get("msg")
-                .and_then(|m| m.as_str())
-                .unwrap_or("clone failed");
-            return Err(ProviderError::ServerError(msg.to_string()));
-        }
-
-        let result = value.get("result");
-        let mut new_code = result
-            .and_then(|r| r.get("filecode").or_else(|| r.get("file_code")))
-            .and_then(|c| c.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let mut out_url = result
-            .and_then(|r| r.get("url"))
-            .and_then(|u| u.as_str())
-            .unwrap_or_default()
-            .to_string();
-
-        // Some API variants may return an array [{file_code: ...}] without wrapped result.
-        if new_code.is_empty() {
-            if let Some(arr) = value.as_array() {
-                if let Some(first) = arr.first() {
-                    if let Some(code) = first.get("file_code").and_then(|c| c.as_str()) {
-                        new_code = code.to_string();
-                    }
-                }
-            }
-        }
+        let cloned = read_filelu_clone(resp).await?;
+        let new_code = cloned.code;
+        let mut out_url = cloned.url.unwrap_or_default();
 
         // FileLu clone defaults to root on some accounts: force same source folder.
-        if !new_code.is_empty() && source_parent_fld_id != 0 {
+        if source_parent_fld_id != 0 {
             let fld_id_str = source_parent_fld_id.to_string();
             let set_folder_url = self.api_url_with(
                 "file/set_folder",
@@ -1864,22 +1814,20 @@ impl FileLuProvider {
         }
 
         // Keep cloned file path-unique in AeroFTP model (FileLu may allow same-name duplicates).
-        if !new_code.is_empty() {
-            for n in 1..=20 {
-                let candidate_name = Self::build_clone_name(&source_name, n);
-                let rename_url = self.api_url_with(
-                    "file/rename",
-                    &[("file_code", &new_code), ("name", &candidate_name)],
-                );
-                let rename_resp = self.get_with_retry(&rename_url).await?;
-                if Self::ensure_api_ok(rename_resp).await.is_ok() {
-                    self.invalidate_cache_under(&source_parent);
-                    break;
-                }
+        for n in 1..=20 {
+            let candidate_name = Self::build_clone_name(&source_name, n);
+            let rename_url = self.api_url_with(
+                "file/rename",
+                &[("file_code", &new_code), ("name", &candidate_name)],
+            );
+            let rename_resp = self.get_with_retry(&rename_url).await?;
+            if Self::ensure_api_ok(rename_resp).await.is_ok() {
+                self.invalidate_cache_under(&source_parent);
+                break;
             }
         }
 
-        if out_url.is_empty() && !new_code.is_empty() {
+        if out_url.is_empty() {
             out_url = format!("https://filelu.com/{}", new_code);
         }
         Ok(out_url)
@@ -2995,44 +2943,9 @@ impl StorageProvider for FileLuProvider {
         let file_code = self.resolve_file_code(&norm_from).await?;
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
         let resp = self.get_after_refusal(&clone_url).await?;
-        let http_status = resp.status();
-        let text = resp.text().await.map_http_err(|e| {
-            ProviderError::ParseError(format!(
-                "Failed to read clone response: {}",
-                e.without_url()
-            ))
-        })?;
-        if !http_status.is_success() {
-            return Err(ProviderError::ServerError(
-                "FileLu clone was not acknowledged".into(),
-            ));
-        }
-        let body: serde_json::Value = serde_json::from_str(&text).map_err(|e| {
-            ProviderError::ParseError(format!(
-                "FileLu clone returned invalid JSON at line {}, column {}",
-                e.line(),
-                e.column()
-            ))
-        })?;
-        if body.get("status").and_then(|s| s.as_i64()) != Some(200) {
-            return Err(ProviderError::ServerError(
-                "FileLu clone was not acknowledged".into(),
-            ));
-        }
-        // The clone id is an array element. HTTP 200 with no code is not a copy.
-        let cloned = body
-            .get("result")
-            .and_then(|result| result.as_array())
-            .and_then(|arr| arr.first())
-            .and_then(|entry| entry.get("filecode").or_else(|| entry.get("file_code")))
-            .and_then(|value| value.as_str())
-            .filter(|code| !code.is_empty())
-            .map(str::to_owned);
-        let Some(cloned) = cloned else {
-            return Err(ProviderError::ServerError(
-                "FileLu clone response has no file code".into(),
-            ));
-        };
+        // Object `result.filecode` or the first element of a result array.
+        // HTTP success with no code is not a copy.
+        let cloned = read_filelu_clone(resp).await?.code;
 
         let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
         let fld_id_str = dest_fld_id.to_string();
@@ -3076,6 +2989,79 @@ impl StorageProvider for FileLuProvider {
             ..Default::default()
         }
     }
+}
+
+/// A FileLu `file/clone` body that named the copy it stored.
+struct FileLuClone {
+    code: String,
+    url: Option<String>,
+}
+
+fn clone_code_from_entry(entry: &serde_json::Value) -> Option<String> {
+    entry
+        .get("filecode")
+        .or_else(|| entry.get("file_code"))
+        .and_then(|value| value.as_str())
+        .filter(|code| !code.is_empty())
+        .map(str::to_owned)
+}
+
+/// HTTP success and API status 200, plus a code from a result object or from
+/// the first element of a result array. A bare array has no status, so it is
+/// not an acknowledgement. The error text does not include the body.
+fn filelu_clone_from_body(
+    http_success: bool,
+    body: &serde_json::Value,
+) -> Result<FileLuClone, ProviderError> {
+    if !http_success || body.get("status").and_then(|status| status.as_i64()) != Some(200) {
+        return Err(ProviderError::ServerError(
+            "FileLu clone was not acknowledged".into(),
+        ));
+    }
+    let result = body.get("result");
+    let code = result.and_then(|result| {
+        if result.is_object() {
+            clone_code_from_entry(result)
+        } else {
+            result
+                .as_array()
+                .and_then(|entries| entries.first())
+                .and_then(clone_code_from_entry)
+        }
+    });
+    let Some(code) = code else {
+        return Err(ProviderError::ServerError(
+            "FileLu clone response has no file code".into(),
+        ));
+    };
+    let url = result
+        .filter(|result| result.is_object())
+        .and_then(|result| result.get("url"))
+        .and_then(|url| url.as_str())
+        .filter(|url| !url.is_empty())
+        .map(str::to_owned);
+    Ok(FileLuClone { code, url })
+}
+
+async fn read_filelu_clone(resp: reqwest::Response) -> Result<FileLuClone, ProviderError> {
+    let http_success = resp.status().is_success();
+    let text = resp.text().await.map_http_err(|error| {
+        ProviderError::ParseError(format!(
+            "Failed to read clone response: {}",
+            error.without_url()
+        ))
+    })?;
+    if !http_success {
+        return filelu_clone_from_body(false, &serde_json::Value::Null);
+    }
+    let body: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+        ProviderError::ParseError(format!(
+            "FileLu clone returned invalid JSON at line {}, column {}",
+            error.line(),
+            error.column()
+        ))
+    })?;
+    filelu_clone_from_body(true, &body)
 }
 
 // ─── MIME helper ─────────────────────────────────────────────────────────
@@ -5192,6 +5178,81 @@ mod tests {
                 .all(|call| !call.contains("set_folder") && !call.contains("/api/file/rename")),
             "{seen:?}"
         );
+    }
+
+    /// The documented object and the array element are the same code. A
+    /// missing status, a failed HTTP call, or an empty code is not a copy,
+    /// and the error does not repeat the fixture text.
+    #[test]
+    fn a_clone_code_comes_from_a_result_object_or_the_first_array_element() {
+        let object = serde_json::json!({
+            "status": 200,
+            "result": {"filecode": "ABC", "url": "https://filelu.com/ABC"}
+        });
+        let ack = filelu_clone_from_body(true, &object).unwrap();
+        assert_eq!(ack.code, "ABC");
+        assert_eq!(ack.url.as_deref(), Some("https://filelu.com/ABC"));
+
+        let array = serde_json::json!({
+            "status": 200,
+            "result": [{"file_code": "DEF"}]
+        });
+        let ack = filelu_clone_from_body(true, &array).unwrap();
+        assert_eq!(ack.code, "DEF");
+        assert!(ack.url.is_none());
+
+        let object_file_code = serde_json::json!({
+            "status": 200,
+            "result": {"file_code": "JKL"}
+        });
+        assert_eq!(
+            filelu_clone_from_body(true, &object_file_code)
+                .unwrap()
+                .code,
+            "JKL"
+        );
+
+        let cases = [
+            (
+                false,
+                serde_json::json!({"status":200,"result":{"filecode":"ABC"},"msg":"secret"}),
+                "not acknowledged",
+                "secret",
+            ),
+            (
+                true,
+                serde_json::json!([{"file_code":"GHI"}]),
+                "not acknowledged",
+                "GHI",
+            ),
+            (
+                true,
+                serde_json::json!({"result":{"filecode":"ABC"},"msg":"OK"}),
+                "not acknowledged",
+                "OK",
+            ),
+            (
+                true,
+                serde_json::json!({"status":200,"result":{"filecode":""},"msg":"OK"}),
+                "no file code",
+                "OK",
+            ),
+            (
+                true,
+                serde_json::json!({"status":200,"msg":"OK"}),
+                "no file code",
+                "OK",
+            ),
+        ];
+        for (http_success, body, needle, absent) in cases {
+            let message = match filelu_clone_from_body(http_success, &body) {
+                Err(ProviderError::ServerError(message)) => message,
+                Err(error) => panic!("clone must fail as a server error: {error}"),
+                Ok(_) => panic!("clone must fail"),
+            };
+            assert!(message.contains(needle), "{message}");
+            assert!(!message.contains(absent), "{message}");
+        }
     }
 
     /// The trash record of a path that left the trash is dropped, not kept

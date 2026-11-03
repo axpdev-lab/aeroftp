@@ -1274,18 +1274,22 @@ impl StorageProvider for TwakeProvider {
             // The body is a stream, so every attempt reopens the file. A
             // refused connection or an HTTP 429 is retried here. 401 and 409
             // stay on the loop above. Any other HTTP response is not replayed.
-            // The hasher starts over so a retried stream does not append to
-            // the first digest.
-            let hasher = std::sync::Arc::new(std::sync::Mutex::new(md5::Md5::new()));
+            // Each attempt owns a new digest. An earlier stream cannot update
+            // the one compared after the attempt that completed.
+            let sent_hasher: std::sync::Arc<
+                std::sync::Mutex<Option<std::sync::Arc<std::sync::Mutex<md5::Md5>>>>,
+            > = std::sync::Arc::new(std::sync::Mutex::new(None));
             let bearer = self.bearer()?;
             let client = self.client.clone();
             let replacing = existing.is_some();
             let resp = super::send_rebuilt_on_connect_failure(
                 || {
-                    if let Ok(mut digest) = hasher.lock() {
-                        *digest = md5::Md5::new();
-                    }
-                    let body = Self::upload_body(local_path, &progress, hasher.clone())?;
+                    let hasher = std::sync::Arc::new(std::sync::Mutex::new(md5::Md5::new()));
+                    *sent_hasher
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner()) =
+                        Some(std::sync::Arc::clone(&hasher));
+                    let body = Self::upload_body(local_path, &progress, hasher)?;
                     let builder = if replacing {
                         client.put(&url)
                     } else {
@@ -1328,9 +1332,16 @@ impl StorageProvider for TwakeProvider {
             if !resp.status().is_success() {
                 return Err(Self::error_from(resp, &abs).await);
             }
-            let sent_md5 = hasher
+            let sent_md5 = sent_hasher
                 .lock()
-                .map(|h| hex::encode(h.clone().finalize()))
+                .unwrap_or_else(|error| error.into_inner())
+                .as_ref()
+                .and_then(|hasher| {
+                    hasher
+                        .lock()
+                        .ok()
+                        .map(|digest| hex::encode(digest.clone().finalize()))
+                })
                 .unwrap_or_default();
             break (resp, sent_md5);
         };

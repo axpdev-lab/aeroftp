@@ -1081,20 +1081,35 @@ impl StorageProvider for KoofrProvider {
             }
         );
 
-        // The executor no longer restarts this upload. Rebuild the stream and
-        // retry a connection refusal before any byte is sent, and an HTTP 429.
+        // The executor no longer restarts this upload. The file is opened
+        // once and each attempt streams that cursor. A connection refusal
+        // before any byte is sent, and an HTTP 429, are retried.
         let auth = self.auth_header()?;
-        let path = std::path::PathBuf::from(local_path);
+        let file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {e}")))?;
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
         let client = self.client.clone();
-        let resp = super::send_rebuilt_on_connect_failure(
+        let reporter = &progress;
+        let resp = super::http_retry::send_rebuilt_async(
             || {
-                let file = std::fs::File::open(&path)
-                    .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {e}")))?;
-                Ok(client
-                    .post(&url)
-                    .header(AUTHORIZATION, auth.clone())
-                    .header(CONTENT_TYPE, "application/octet-stream")
-                    .body(progress.file_body(tokio::fs::File::from_std(file))))
+                let cursor = cursor.clone();
+                let auth = auth.clone();
+                let client = client.clone();
+                let url = url.clone();
+                async move {
+                    let body = cursor
+                        .attempt_body(reporter, file_size)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!("Open file failed: {e}"))
+                        })?;
+                    Ok(client
+                        .post(&url)
+                        .header(AUTHORIZATION, auth)
+                        .header(CONTENT_TYPE, "application/octet-stream")
+                        .body(body))
+                }
             },
             &HttpRetryConfig::default(),
             |error| {
@@ -1102,6 +1117,7 @@ impl StorageProvider for KoofrProvider {
                     ProviderError::TransferFailed(format!("Upload failed: {error}"))
                 })
             },
+            true,
         )
         .await?;
 

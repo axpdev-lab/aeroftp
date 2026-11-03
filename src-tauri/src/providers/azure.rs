@@ -2415,42 +2415,54 @@ impl AzureProvider {
     ) -> Result<(), ProviderError> {
         let progress = super::upload_progress::UploadProgress::new(progress, file_len);
         progress.start();
-        let path = local_path.to_string();
         let sas = self.config.sas_token.is_some();
         let client = self.client.clone();
         // The stream is not a byte body, so send_with_auth_and_retry cannot
-        // carry it. The executor no longer restarts the upload either. Each
-        // attempt opens the file, stamps a fresh x-ms-date, and signs that
-        // attempt. A connection refusal before send, and an HTTP 429, are retried.
-        let resp = super::send_rebuilt_on_connect_failure(
+        // carry it. The executor no longer restarts the upload either. The
+        // file is opened once. Each attempt streams that cursor, stamps a
+        // fresh x-ms-date, and signs that attempt. A connection refusal
+        // before send, and an HTTP 429, are retried.
+        let file = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
+        let reporter = &progress;
+        let resp = super::http_retry::send_rebuilt_async(
             || {
-                let mut headers = HeaderMap::new();
-                let now = chrono::Utc::now()
-                    .format("%a, %d %b %Y %H:%M:%S GMT")
-                    .to_string();
-                headers.insert(
-                    "x-ms-date",
-                    HeaderValue::from_str(&now)
-                        .map_err(|e| ProviderError::Other(format!("Invalid header value: {e}")))?,
-                );
-                headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
-                headers.insert("x-ms-blob-type", HeaderValue::from_static("BlockBlob"));
-                headers.insert(CONTENT_LENGTH, HeaderValue::from(file_len));
-                let auth = self.sign_request("PUT", url, &headers, file_len)?;
-                let file = std::fs::File::open(&path).map_err(ProviderError::IoError)?;
-                let body = progress.file_body(tokio::fs::File::from_std(file));
-                let builder = if sas {
-                    client.put(&auth).headers(headers).body(body)
-                } else {
+                let cursor = cursor.clone();
+                let client = client.clone();
+                async move {
+                    let mut headers = HeaderMap::new();
+                    let now = chrono::Utc::now()
+                        .format("%a, %d %b %Y %H:%M:%S GMT")
+                        .to_string();
                     headers.insert(
-                        "Authorization",
-                        HeaderValue::from_str(&auth).map_err(|e| {
+                        "x-ms-date",
+                        HeaderValue::from_str(&now).map_err(|e| {
                             ProviderError::Other(format!("Invalid header value: {e}"))
                         })?,
                     );
-                    client.put(url).headers(headers).body(body)
-                };
-                Ok(builder)
+                    headers.insert("x-ms-version", HeaderValue::from_static(API_VERSION));
+                    headers.insert("x-ms-blob-type", HeaderValue::from_static("BlockBlob"));
+                    headers.insert(CONTENT_LENGTH, HeaderValue::from(file_len));
+                    let signed = self.sign_request("PUT", url, &headers, file_len)?;
+                    let body = cursor
+                        .attempt_body(reporter, file_len)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    let builder = if sas {
+                        client.put(&signed).headers(headers).body(body)
+                    } else {
+                        headers.insert(
+                            "Authorization",
+                            HeaderValue::from_str(&signed).map_err(|e| {
+                                ProviderError::Other(format!("Invalid header value: {e}"))
+                            })?,
+                        );
+                        client.put(url).headers(headers).body(body)
+                    };
+                    Ok(builder)
+                }
             },
             &azure_retry_config(),
             |error| {
@@ -2458,6 +2470,7 @@ impl AzureProvider {
                     ProviderError::NetworkError(error.to_string())
                 })
             },
+            true,
         )
         .await?;
 
