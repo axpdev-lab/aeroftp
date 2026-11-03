@@ -3271,6 +3271,7 @@ mod tests {
             "create503",
             "createcommit503",
             "createtimeout",
+            "createbroken",
             "success",
         ] {
             let pointer = Arc::new(Mutex::new("NONE".to_string()));
@@ -3320,6 +3321,7 @@ mod tests {
                         if failure == "create403" { return (StatusCode::FORBIDDEN, "create refused").into_response(); }
                         if failure == "create503" { return (StatusCode::SERVICE_UNAVAILABLE, "create uncertain").into_response(); }
                         *stored.lock().unwrap() = "NEW".into();
+                        if failure == "createbroken" { return (StatusCode::OK, "broken create").into_response(); }
                         if failure == "createcommit503" { return (StatusCode::SERVICE_UNAVAILABLE, "lost acknowledgement").into_response(); }
                         if failure == "createtimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
                         return axum::Json(serde_json::json!({"uuid":"NEW_FILE"})).into_response();
@@ -3360,6 +3362,7 @@ mod tests {
                 if failure == "create503"
                     || failure == "createcommit503"
                     || failure == "createtimeout"
+                    || failure == "createbroken"
                 {
                     assert!(
                         message.contains("may have completed"),
@@ -3377,7 +3380,14 @@ mod tests {
                     );
                 }
             }
-            let expected = if ["success", "createcommit503", "createtimeout"].contains(&failure) {
+            let expected = if [
+                "success",
+                "createcommit503",
+                "createtimeout",
+                "createbroken",
+            ]
+            .contains(&failure)
+            {
                 "NEW"
             } else {
                 "NONE"
