@@ -411,7 +411,12 @@ fn s3_slowdown_delay(
     if status != 503 || attempt >= config.max_retries || !s3_is_rate_limited(503, body) {
         return None;
     }
-    Some(retry_after.unwrap_or_else(|| super::http_retry::calculate_delay(attempt, config)))
+    let cap = std::time::Duration::from_millis(config.max_delay_ms);
+    Some(
+        retry_after
+            .map(|hint| hint.min(cap))
+            .unwrap_or_else(|| super::http_retry::calculate_delay(attempt, config)),
+    )
 }
 
 /// KE-E1: Compute the marker tail to append to an S3 `ProviderError`
@@ -15412,6 +15417,18 @@ mod tests {
             ),
             Some(std::time::Duration::from_secs(0))
         );
+        for (hint_ms, expected_ms) in [(3, 3), (300_000, 5)] {
+            assert_eq!(
+                s3_slowdown_delay(
+                    503,
+                    slow,
+                    Some(std::time::Duration::from_millis(hint_ms)),
+                    0,
+                    &config
+                ),
+                Some(std::time::Duration::from_millis(expected_ms)),
+            );
+        }
         assert!(s3_slowdown_delay(503, slow, None, 0, &config).is_some());
         assert_eq!(s3_slowdown_delay(503, other, None, 0, &config), None);
         assert_eq!(s3_slowdown_delay(429, slow, None, 0, &config), None);

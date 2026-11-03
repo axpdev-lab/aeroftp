@@ -219,6 +219,10 @@ struct UploadServerResponse {
 #[derive(Debug, Deserialize)]
 struct StatusOnlyResponse {
     status: Option<u32>,
+    // Inspect the one known missing-file message without echoing response
+    // text. Other message shapes remain irrelevant to a status-only reply.
+    #[serde(default)]
+    msg: serde_json::Value,
 }
 
 /// Upload response entry returned by upload CGI endpoint
@@ -748,6 +752,15 @@ impl FileLuProvider {
         })?;
         match parsed.status {
             Some(200) => Ok(()),
+            Some(404)
+                if parsed.msg.as_str().map(str::trim)
+                    == Some("No file found in specified folder") =>
+            {
+                // Fixed text only: path-aware callers map it to NotFound.
+                Err(ProviderError::ServerError(
+                    "No file found in specified folder".into(),
+                ))
+            }
             Some(status) => Err(ProviderError::ServerError(format!(
                 "FileLu mutation returned API error {status}"
             ))),
@@ -5084,6 +5097,73 @@ mod tests {
             name_missing_path(ProviderError::ServerError("denied".into()), "/x"),
             ProviderError::ServerError(_)
         ));
+    }
+
+    /// A source may vanish after lookup but before the path mutation. Only
+    /// the known 404 message maps to NotFound; arbitrary server text stays hidden.
+    #[tokio::test]
+    async fn vanished_path_mutations_are_not_found_without_echoing_server_text() {
+        for (response, missing) in [
+            (
+                r#"{"status":404,"msg":"  No file found in specified folder  "}"#,
+                true,
+            ),
+            (r#"{"status":404,"msg":"private-response-secret"}"#, false),
+        ] {
+            let (mut provider, calls) = provider_against(move |_, _, _| response.to_string()).await;
+            let entry = CacheEntry {
+                is_dir: false,
+                fld_id: 7,
+                fld_token: None,
+                file_code: String::new(),
+                size: 1,
+                modified: None,
+                hash: None,
+            };
+            for outcome in [
+                provider.move_entry(&entry, "/d/missing.bin", "/dst").await,
+                provider
+                    .rename_entry(&entry, "/d/missing.bin", "new.bin")
+                    .await,
+            ] {
+                let error = outcome.expect_err("the mutation was refused");
+                if missing {
+                    assert!(
+                        matches!(&error, ProviderError::NotFound(path) if path == "/d/missing.bin"),
+                        "{error:?}"
+                    );
+                } else {
+                    assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message == "FileLu mutation returned API error 404"),
+                        "{error:?}"
+                    );
+                }
+                assert!(!error.to_string().contains("private-response-secret"));
+            }
+            assert_eq!(
+                calls.lock().unwrap().len(),
+                2,
+                "path mutations must not retry the API 404"
+            );
+        }
+        // Adding message inspection must not reject a successful status
+        // merely because an unrelated message has a non-string shape.
+        let (mut provider, _) =
+            provider_against(|_, _, _| r#"{"status":200,"msg":{"unrelated":"value"}}"#.into())
+                .await;
+        let entry = CacheEntry {
+            is_dir: false,
+            fld_id: 7,
+            fld_token: None,
+            file_code: String::new(),
+            size: 1,
+            modified: None,
+            hash: None,
+        };
+        provider
+            .rename_entry(&entry, "/d/file.bin", "new.bin")
+            .await
+            .unwrap();
     }
 
     /// A replace renames the file at the destination aside, under a name that

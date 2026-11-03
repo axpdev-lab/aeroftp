@@ -50,7 +50,7 @@ this is not a promise that the failed write left the remote unchanged.
 | Azure | GET/HEAD | PUT create/copy and mutations do not replay ambiguous 5xx at the shared layer. Single Put Blob opens the file once and streams that cursor, signs a fresh date on each attempt, and retries a connection refusal before send and an HTTP 429. A non-timeout send error omits the request URL, so a SAS query stays out of the message. Put Block stays on the byte-body path. |
 | S3 | GET/HEAD incl. range reads | PUT object/copy/part and POST multipart completion do not replay 5xx at the shared layer. The single PUT rebuilds and signs the stream and retries a connection refusal before send, an HTTP 429, and 503 SlowDown. Every other 503 stays on that response. The baseline digest belongs to the attempt that completed. Multipart parts stay on the signed byte-body path. |
 | Swift | GET/HEAD | PUT object/container, POST metadata and DELETE do not replay 5xx. One retry after explicit 401 and reauthentication remains. |
-| Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. All existing names, including empty files, are refused with NotSupported before allocation; there is no UUID replacement or delete/create fallback. A concurrent create refusal is AlreadyExists. One explicit 401 recovery remains. |
+| Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. All existing names, including empty files, are refused with AlreadyExists before allocation; there is no UUID replacement or delete/create fallback. A concurrent create refusal is AlreadyExists. One explicit 401 recovery remains. |
 | Twake | GET listing and reads | POST mkdir/copy/share/restore and PUT/PATCH do not replay 5xx. Explicit 401 recovery remains. The file upload retries a connection refusal before send and an HTTP 429; one 401 refresh and one 409 lookup stay outside that retry. The digest compared with the server belongs to the attempt that completed. |
 | pCloud | Read GETs, download links, checksums, revisions, trash listing | Mutating GET create/copy/upload-create/save, rename/move, links and trash restore/clear use refusals only. `createfolderifnotexists` retains retries because it conditionally returns the same folder. Single-stream uploads recover bounded connection-establishment failures and an explicit HTTP 429, rebuilding the multipart body from the same open file through the shared cursor. A token sent in the query is omitted from a build error and from a transport error. The cursor waits out an in-flight read before it rewinds. A 429 waits for Retry-After when present, otherwise the shared backoff. Other responses, timeouts and malformed acknowledgements do not restart the upload. Each of those attempts acquires the shared request-rate permit before it is sent. |
 | GitLab | GET/HEAD incl. paginated reads | Commit POST and DELETE bypass the extra outer 5xx retry; other writes get the shared conservative default. |
@@ -99,12 +99,12 @@ updates an existing UUID, without an expected destination name or parent.
 The public server implementation also updates by UUID and user rather than a
 client-supplied name/parent condition. A concurrent rename can therefore move the
 selected file before that update. AeroFTP refuses any already-existing name with
-NotSupported before upload allocation, including empty files. There is no UUID
+AlreadyExists before upload allocation, including empty files. There is no UUID
 update or delete/create fallback. This intentionally disables Internxt overwrites
 until a conditional replacement contract is established. Creation of new names,
 including empty files, remains available; a concurrent create conflict returns
-AlreadyExists without replay. NotSupported uses CLI exit 7 rather than AlreadyExists exit 9,
-which can mean nothing remains to upload.
+AlreadyExists without replay. Both existing-name conflicts use CLI exit 9,
+so callers can use their normal path-conflict handling while preserving the original.
 
 For a new nonempty file, content storage precedes a single metadata create.
 A failed create may leave an orphaned stored network object; an uncertain

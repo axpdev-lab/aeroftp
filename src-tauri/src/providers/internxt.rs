@@ -2033,7 +2033,7 @@ impl StorageProvider for InternxtProvider {
             .await?
             .is_some()
         {
-            return Err(ProviderError::NotSupported(
+            return Err(ProviderError::AlreadyExists(
                 "Internxt cannot safely overwrite an existing name without conditional replacement; the original was kept".into(),
             ));
         }
@@ -3589,7 +3589,7 @@ mod tests {
             .upload(local.path().to_str().unwrap(), "/src/keep.txt", None)
             .await;
         assert!(
-            matches!(outcome, Err(ProviderError::NotSupported(_))),
+            matches!(outcome, Err(ProviderError::AlreadyExists(ref message)) if message.contains("the original was kept")),
             "{outcome:?}"
         );
         assert_eq!(store.lock().unwrap()[0].0, "EXISTING");
@@ -3636,7 +3636,7 @@ mod tests {
                 .upload(local.path().to_str().unwrap(), "/keep.txt", None)
                 .await;
             assert!(
-                matches!(outcome, Err(ProviderError::NotSupported(_))),
+                matches!(outcome, Err(ProviderError::AlreadyExists(ref message)) if message.contains("the original was kept")),
                 "{outcome:?}"
             );
             assert!(
