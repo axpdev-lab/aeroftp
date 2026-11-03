@@ -286,6 +286,10 @@ pub struct KoofrProvider {
     /// Multi-thread concurrent-Range download (rclone `--multi-thread-streams`).
     /// `1` = disabled (default). Set via `set_multi_thread_download`.
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
+    /// The caller saw a refusal: the next `download` reads a moved object.
+    expects_moved_source: bool,
     /// Files at or above this size use the concurrent-Range path when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
@@ -330,6 +334,8 @@ impl KoofrProvider {
             space_total: 0,
             space_used: 0,
             account_email: None,
+            download_time: Default::default(),
+            expects_moved_source: false,
             multi_thread_streams: 1,
             multi_thread_cutoff: 8 * 1024 * 1024,
             #[cfg(test)]
@@ -524,30 +530,32 @@ impl KoofrProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".into();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." {
+        if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        let normalized = Self::normalize_path(trimmed);
-        if normalized.starts_with('/') {
-            normalized
-        } else {
-            let base = self.current_path.trim_end_matches('/');
-            format!("{}/{}", base, normalized)
+        // The input's leading slash decides: normalize_path always prepends
+        // one, so its result made every relative path absolute and skipped
+        // the current_path join. It takes `\` for a separator, so a leading
+        // one is the root too.
+        if path.starts_with(['/', '\\']) {
+            return Self::normalize_path(path);
         }
+        let base = self.current_path.trim_end_matches('/');
+        Self::normalize_path(&format!("{}/{}", base, path))
     }
 
     /// Split "/a/b/file.txt" → ("/a/b", "file.txt")
@@ -810,8 +818,8 @@ impl StorageProvider for KoofrProvider {
             .map(|f| self.file_to_entry(f, &resolved))
             .collect();
 
-        // Update current_path on successful listing
-        self.current_path = resolved;
+        // A listing does not move the current folder: `cd` does. Moved, a
+        // relative path listed twice reached `docs/docs`.
         Ok(entries)
     }
 
@@ -864,6 +872,18 @@ impl StorageProvider for KoofrProvider {
         Ok(())
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.expects_moved_source = true;
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -884,6 +904,8 @@ impl StorageProvider for KoofrProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.download_time.begin();
+        let mut source_refused = std::mem::take(&mut self.expects_moved_source);
 
         let mut on_progress = on_progress;
 
@@ -899,6 +921,7 @@ impl StorageProvider for KoofrProvider {
         // Koofr content auth is a static Basic header (no per-request nonce),
         // so it is safe to replay concurrently through the live client.
         if self.multi_thread_streams >= 2
+            && !source_refused
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
             let req = super::multi_thread::HttpRangeRequest {
@@ -916,8 +939,24 @@ impl StorageProvider for KoofrProvider {
                 super::multi_thread::HttpRangeAttempt::Completed => return Ok(()),
                 super::multi_thread::HttpRangeAttempt::Failed(e) => return Err(e),
                 super::multi_thread::HttpRangeAttempt::Fallback(p) => on_progress = p,
+                super::multi_thread::HttpRangeAttempt::Refused(p) => {
+                    self.download_time.refused();
+                    source_refused = true;
+                    on_progress = p;
+                }
             }
         }
+        // The time a listing shows here is set by the client that uploaded, which
+        // the response's Last-Modified need not repeat. Two readings around the
+        // stream give the same value: if they agree, that is the object it read.
+        let time_before = if source_refused {
+            self.stat(remote_path)
+                .await
+                .ok()
+                .and_then(|entry| entry.modified)
+        } else {
+            None
+        };
 
         let request = self
             .client
@@ -963,6 +1002,16 @@ impl StorageProvider for KoofrProvider {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
 
+        if source_refused && time_before.is_some() {
+            let time_after = self
+                .stat(remote_path)
+                .await
+                .ok()
+                .and_then(|entry| entry.modified);
+            if time_after == time_before {
+                self.download_time.read(time_after);
+            }
+        }
         Ok(())
     }
 
@@ -1590,6 +1639,7 @@ impl StorageProvider for KoofrProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         // Out of place this provider keeps no part: its downloads write
         // through `AtomicFile`, which removes its temporary when it fails. An
         // offset handed in out of place was measured on someone else's part
@@ -2079,6 +2129,28 @@ pub async fn koofr_empty_trash(
 #[cfg(test)]
 mod tests {
     #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::KoofrProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(super::KoofrProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::KoofrProvider::new(super::KoofrConfig {
+            email: "user@example.com".to_string(),
+            password: secrecy::SecretString::from("pass".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
+        // A relative path joins the current folder.
+        assert_eq!(p.resolve_path("child"), "/Cloud/child");
+    }
+
+    #[test]
     fn probe_contract_koofr_does_not_erase_http_failures() {
         let body = r#"{"error":{"code":"NotFound","message":"missing"}}"#;
         for status in [403, 429, 500] {
@@ -2262,6 +2334,49 @@ mod tests {
 
     /// A rename onto its own path is a no-op everywhere else; Koofr refused
     /// it (live on 2026-09-26). Nothing is sent.
+    /// A listing does not move the current folder: `cd` does. Koofr's
+    /// listing moved it, and with a relative path joined to the current
+    /// folder, a relative path listed twice (the CLI's sync doctor lists the
+    /// root it was given, then walks it) reached `/docs/docs`.
+    #[tokio::test]
+    async fn a_listing_leaves_the_current_folder_where_it_is() {
+        use std::sync::{Arc, Mutex};
+        let listed: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&listed);
+        let app = axum::Router::new().route(
+            "/mounts/M/files/list",
+            axum::routing::get(move |uri: axum::http::Uri| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://h{uri}")).unwrap();
+                    let path = url
+                        .query_pairs()
+                        .find(|(k, _)| k == "path")
+                        .map(|(_, v)| v.to_string())
+                        .unwrap_or_default();
+                    seen.lock().unwrap().push(path);
+                    axum::Json(serde_json::json!({ "files": [] }))
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        provider.list("docs").await.expect("first listing");
+        provider.list("docs").await.expect("second listing");
+        assert_eq!(*listed.lock().unwrap(), ["/docs", "/docs"]);
+        assert_eq!(provider.pwd().await.unwrap(), "/");
+    }
+
     #[tokio::test]
     async fn a_rename_onto_its_own_path_sends_nothing() {
         let (mut provider, calls) = provider_on_refusing_koofr().await;

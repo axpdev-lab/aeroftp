@@ -257,12 +257,6 @@ fn validate_yd_url(url: &str) -> Result<(), ProviderError> {
 }
 
 #[derive(Debug, Deserialize)]
-struct YdFilesResourceList {
-    #[serde(default)]
-    items: Vec<YdResource>,
-}
-
-#[derive(Debug, Deserialize)]
 struct YdError {
     #[serde(default)]
     error: String,
@@ -403,6 +397,8 @@ fn is_yandex_retryable_auth_error(err: &ProviderError) -> bool {
 pub struct YandexDiskProvider {
     client: reqwest::Client,
     resume_account: String,
+    authenticated_account: Option<String>,
+    authenticated_login: Option<String>,
     access_token: SecretString,
     connected: bool,
     current_path: String,
@@ -428,12 +424,20 @@ impl YandexDiskProvider {
         Self {
             client,
             resume_account: uuid::Uuid::new_v4().to_string(),
+            authenticated_account: None,
+            authenticated_login: None,
             access_token: SecretString::from(access_token),
             connected: false,
             current_path: initial_path.unwrap_or_else(|| "/".to_string()),
             #[cfg(test)]
             api_base_override: None,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_api_base(mut self, base: &str) -> Self {
+        self.api_base_override = Some(base.into());
+        self
     }
 
     /// `API_BASE`, pointed at a local double in tests.
@@ -503,7 +507,7 @@ impl YandexDiskProvider {
     /// Resolve a relative path against current_path with traversal validation.
     fn resolve_path_safe(&self, path: &str) -> Result<String, ProviderError> {
         validate_yd_path(path)?;
-        let resolved = if path.is_empty() || path == "." || path == "/" {
+        let resolved = if path.is_empty() || path == "." {
             self.current_path.clone()
         } else if path.starts_with('/') || path.starts_with("disk:") {
             path.to_string()
@@ -1067,6 +1071,18 @@ impl YandexDiskProvider {
 
 #[async_trait]
 impl StorageProvider for YandexDiskProvider {
+    fn account_email(&self) -> Option<String> {
+        self.connected
+            .then(|| self.authenticated_login.clone())
+            .flatten()
+    }
+
+    fn sync_namespace_identity(&self) -> Option<String> {
+        self.connected
+            .then(|| self.authenticated_account.clone())
+            .flatten()
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1082,9 +1098,11 @@ impl StorageProvider for YandexDiskProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         yd_log("Connecting: verifying token via GET /v1/disk/");
 
+        self.authenticated_account = None;
+        self.authenticated_login = None;
         let resp = self
             .client
-            .get(format!("{}/", API_BASE))
+            .get(format!("{}/", self.api_base()))
             .header(AUTHORIZATION, self.auth_header())
             .send()
             .await
@@ -1099,13 +1117,15 @@ impl StorageProvider for YandexDiskProvider {
             ProviderError::ConnectionFailed(format!("Failed to parse disk info: {}", e))
         })?;
         if let Some(user) = info.user {
+            self.authenticated_login = (!user.login.is_empty()).then(|| user.login.clone());
             let account = if user.uid.is_empty() {
                 user.login
             } else {
                 user.uid
             };
             if !account.is_empty() {
-                self.resume_account = account;
+                self.resume_account = account.clone();
+                self.authenticated_account = Some(account);
             }
         }
 
@@ -1741,59 +1761,10 @@ impl StorageProvider for YandexDiskProvider {
         true
     }
 
-    async fn find(
-        &mut self,
-        _path: &str,
-        pattern: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
-        if !self.connected {
-            return Err(ProviderError::NotConnected);
-        }
-        // Use flat file list and filter by pattern
-        let mut results = Vec::new();
-        let mut offset: u64 = 0;
-        let limit: u64 = 1000;
-
-        loop {
-            let url = format!(
-                "{}/resources/files?limit={}&offset={}",
-                API_BASE, limit, offset
-            );
-            let resp = self
-                .send_with_reauth(|this| {
-                    this.client
-                        .get(&url)
-                        .header(AUTHORIZATION, this.auth_header())
-                })
-                .await?;
-
-            if !resp.status().is_success() {
-                return Err(self.parse_error(resp).await);
-            }
-
-            let list: YdFilesResourceList = resp
-                .json()
-                .await
-                .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
-
-            let count = list.items.len() as u64;
-            for item in &list.items {
-                if super::matches_find_pattern(&item.name, pattern) {
-                    results.push(resource_to_entry(item));
-                }
-            }
-
-            if count < limit {
-                break;
-            }
-            offset += count;
-            // Safety cap
-            if offset > 50_000 {
-                break;
-            }
-        }
-
-        Ok(results)
+    async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -2103,6 +2074,36 @@ impl StorageProvider for YandexDiskProvider {
 
 #[cfg(test)]
 mod tests {
+    /// `/` is the disk's root, also after a `cd`: a search or a listing of the
+    /// root used to read the current folder instead.
+    #[test]
+    fn the_root_is_the_root_after_a_cd() {
+        let mut p = YandexDiskProvider::new("fixture".to_string(), None);
+        p.current_path = "/docs".to_string();
+        assert_eq!(p.resolve_path_safe("/").unwrap(), "/");
+        assert_eq!(p.resolve_path_safe(".").unwrap(), "/docs");
+    }
+
+    #[tokio::test]
+    async fn reconnect_does_not_reuse_an_old_account_when_user_info_is_absent() {
+        use super::*;
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::get(|| async { axum::Json(serde_json::json!({})) }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            YandexDiskProvider::new("token".into(), None).with_test_api_base(&endpoint);
+        provider.authenticated_account = Some("old-uid".into());
+        provider.authenticated_login = Some("old-login".into());
+        provider.connected = true;
+        provider.connect().await.unwrap();
+        assert!(provider.account_email().is_none());
+        assert!(provider.sync_namespace_identity().is_none());
+        server.abort();
+    }
 
     /// A Yandex Disk double holding the files `/a.txt` and `/b.txt` and the
     /// folder `/d`. A move onto a taken path without `overwrite=true`
@@ -2456,6 +2457,44 @@ mod tests {
         assert_eq!(provider.resolve_path("file.txt"), "/Documents/file.txt");
         assert_eq!(provider.resolve_path("/absolute/path"), "/absolute/path");
         assert_eq!(provider.resolve_path("disk:/something"), "disk:/something");
+    }
+
+    /// #1457: `/` is the root from any folder. It read as the current folder,
+    /// so the root button and a typed `/` stayed where they were.
+    #[tokio::test]
+    async fn a_cd_to_the_root_leaves_the_folder() {
+        use std::sync::{Arc, Mutex};
+        let asked: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&asked);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let query = urlencoding::decode(req.uri().query().unwrap_or(""))
+                        .unwrap()
+                        .to_string();
+                    seen.lock().unwrap().push(query);
+                    axum::Json(serde_json::json!({
+                        "name": "disk",
+                        "path": "disk:/",
+                        "type": "dir",
+                    }))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = YandexDiskProvider::new("t".to_string(), None);
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider.current_path = "/a/b".to_string();
+
+        provider.cd("/").await.expect("the root exists");
+        server.abort();
+
+        assert_eq!(provider.current_path, "/");
+        let asked = asked.lock().unwrap();
+        assert_eq!(asked[0], "path=disk:/");
     }
 
     #[test]

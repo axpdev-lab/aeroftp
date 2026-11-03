@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useLayoutEffect } from 'react';
 import { updateAppSettings } from '../utils/appSettings';
 import { useTranslation } from '../i18n';
 import { clampAppFontSize, MIN_APP_FONT_SIZE, MAX_APP_FONT_SIZE } from './useSettings';
@@ -18,7 +18,7 @@ export const useFontSizeShortcuts = (
 ): Indicator | null => {
     const [indicator, setIndicator] = useState<Indicator | null>(null);
     const fontSizeRef = useRef(fontSize);
-    fontSizeRef.current = fontSize;
+    useLayoutEffect(() => { fontSizeRef.current = fontSize; }, [fontSize]);
     const seqRef = useRef(0);
 
     useEffect(() => {

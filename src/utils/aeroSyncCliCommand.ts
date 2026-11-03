@@ -30,6 +30,7 @@
  */
 import type { AeroSyncPairKind } from '../components/AeroSync/types';
 import type { PresetDirection, SyncPreset } from './syncPresets';
+import type { CompareResult } from './compareEndpoints';
 
 /**
  * Whether `aeroftp-cli sync --exclude P` excludes at least what the compare
@@ -56,6 +57,13 @@ export type CliShell = 'posix' | 'powershell';
 export interface CliCommandInput {
     pairKind: AeroSyncPairKind | null;
     preset: SyncPreset;
+    updateOnly?: boolean;
+    /** Effective compare window; the CLI raises it to backend precision too. */
+    modifyWindowMs?: number;
+    /** Required true for Update; also gates `--modify-window` emission. */
+    timestampsComparable?: boolean;
+    /** Required true for Update: whole-second CLI ordering must preserve GUI-kept files. */
+    updateTimestampPrecisionSafe?: boolean;
     direction: PresetDirection;
     /** Saved server name, when the connection came from a saved server. */
     profileName?: string | null;
@@ -85,7 +93,7 @@ export type CliCommandResult =
  * different folder from the one the Plan compared.
  */
 function cliReachesSameRemoteFolder(remotePath: string, initialPath: string | null | undefined): boolean {
-    const base = (initialPath ?? '').trim();
+    const base = initialPath ?? '';
     if (base === '' || base === '/') return remotePath.replace(/^\/+/, '') !== '';
     return remotePath.startsWith(base.replace(/\/+$/, ''));
 }
@@ -95,6 +103,10 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
 
     if (input.pairKind !== 'local-remote' && input.pairKind !== 'remote-local') return none('local-pair');
     if (!input.profileName) return none('unsaved-server');
+    if (input.updateOnly
+        && (input.timestampsComparable !== true || input.updateTimestampPrecisionSafe !== true)) {
+        return none('overwrites-newer');
+    }
     if (input.preset === 'backup' || input.preset === 'update') return none('overwrites-newer');
     if (input.preset === 'bisync') return none('two-way');
     if (input.canary) return none('canary');
@@ -113,6 +125,11 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
         '--direction', towardsRemote ? 'upload' : 'download',
         '--delete',
     ];
+    if (input.updateOnly) argv.push('--update');
+    if (input.timestampsComparable !== false
+        && input.modifyWindowMs != null && Number.isFinite(input.modifyWindowMs)) {
+        argv.push('--modify-window', String(Math.ceil(Math.max(0, input.modifyWindowMs) / 1000)));
+    }
     for (const pattern of input.excludes) argv.push('--exclude', pattern);
     // The CLI writes sidecars after uploads only; on a download the Plan's
     // error correction verifies and repairs, which the CLI does not do. That
@@ -124,6 +141,25 @@ export function buildCliSyncCommand(input: CliCommandInput): CliCommandResult {
         argv.push(`--error-correction=${input.errorCorrectionPct}`);
     }
     return { kind: 'command', argv, text: argv.map((arg) => quoteArg(arg, input.shell)).join(' ') };
+}
+
+/** Native CLI quantizes dates to Unix seconds; never offer a less protective command. */
+export function cliPreservesUpdateDestinations(result: CompareResult, direction: PresetDirection): boolean {
+    const tolerance = result.appliedOptions.mtimeToleranceMs;
+    if (result.appliedOptions.policy === 'size-only' || !Number.isFinite(tolerance)) return false;
+    const seconds = Math.ceil(Math.max(0, tolerance) / 1000);
+    return result.entries.every((entry) => {
+        // Source-only/destination-only rows have no paired timestamp decision.
+        if (entry.nameMatchBlocked) return false;
+        if (entry.bucket === 'only-left' || entry.bucket === 'only-right') return true;
+        if (entry.leftIsDir && entry.rightIsDir) return true;
+        const source = direction === 'left-to-right' ? entry.leftMtimeMs : entry.rightMtimeMs;
+        const destination = direction === 'left-to-right' ? entry.rightMtimeMs : entry.leftMtimeMs;
+        if (source == null || destination == null || !Number.isFinite(source) || !Number.isFinite(destination)
+            || entry.leftIsDir !== entry.rightIsDir) return false;
+        return destination - source <= tolerance
+            || Math.floor(destination / 1000) - Math.floor(source / 1000) > seconds;
+    });
 }
 
 const SAFE_BARE = /^[A-Za-z0-9_\/.:=+-]+$/;

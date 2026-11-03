@@ -45,3 +45,16 @@ describe('My Servers filter chips: AeroShare (peer)', () => {
     expect(matching).toEqual(['peer']);
   });
 });
+
+describe('My Servers filter chips: SCP', () => {
+  it('lists an SCP profile under FTP / SFTP and nowhere else', () => {
+    // The cloud chip is a catch-all: a server protocol missing from its
+    // exclusion list would show an SSH router as a cloud account.
+    const SPECIAL = new Set(['all', 'favorites', 'encrypted', 'active']);
+    const matching = FILTER_CHIPS
+      .filter((c) => !SPECIAL.has(c.id))
+      .filter((c) => c.matchFn('scp'))
+      .map((c) => c.id);
+    expect(matching).toEqual(['ftp']);
+  });
+});

@@ -18,6 +18,7 @@
             "loading": "Načítava sa...",
             "error": "Chyba",
             "success": "Úspech",
+            "searchLimited": "Zobrazuje sa prvých {count} zhôd. Hľadajte v menšom priečinku, aby ste videli zvyšok.",
             "warning": "Upozornenie",
             "info": "Informácie",
             "confirm": "Potvrdiť",
@@ -598,7 +599,8 @@
             "setAsPublic": "Nastaviť ako verejný",
             "makeAllPrivate": "Nastaviť všetko ako súkromné",
             "dropboxRestoreLimit": "AeroFTP môže obnoviť obnoviteľné verzie súborov. Priečinky obnovte v časti Odstránené súbory na dropbox.com. Otáznik znamená, že Dropbox nerozpoznal typ položky.",
-            "openWithDefaultApp": "Otvoriť predvolenou aplikáciou"
+            "openWithDefaultApp": "Otvoriť predvolenou aplikáciou",
+            "extractHereUncheckedConfirm": "Názvy v archíve {name} nie je možné pred rozbalením prečítať, takže AeroFTP nemôže skontrolovať, čo by „Rozbaliť tu“ v tomto priečinku prepísalo. „Rozbaliť do priečinka“ nikdy nič neprepisuje."
         },
         "transfer": {
             "transferring": "Prenáša sa...",
@@ -1358,6 +1360,8 @@
             "aiKeysCount": "Kľúče AI: {count}",
             "oauthTokensCount": "Tokeny OAuth: {count}",
             "configEntriesCount": "Položky konfigurácie: {count}",
+            "verifyDownloadHash": "Overovať stiahnuté súbory podľa hashu servera",
+            "verifyDownloadHashHelp": "Po stiahnutí sa súbor porovná s hashom, ktorý server zverejňuje, a ak sa líšia, neponechá sa. Tam, kde sa hash nepoužíva, napríklad pri FTP, táto kontrola nebeží.",
             "importExistingLabel": "Ak profil už existuje",
             "importExistingSkip": "Preskočiť",
             "importExistingOverwrite": "Prepísať",
@@ -1370,7 +1374,8 @@
             "importJottaChainWarning": "Jottacloud obnovuje prihlásenie pri každom pripojení a {names} teraz zdieľa jedno s inou kópiou: kópia, ktorá sa pripojí prvá, odhlási druhú (zariadenie, z ktorého súbor pochádza, alebo profil, z ktorého bola duplikovaná). Druhú prihláste znova pomocou nového Personal Login Token.",
             "importOauthAppKept": "{names} prišli s inou vlastnou aplikáciou OAuth, než akú má toto zariadenie pre daného poskytovateľa. Uložená aplikácia sa zachovala, takže sa prihláste znova, ak sa tieto profily prestanú pripájať.",
             "importTargetChanged": "{names} neboli prepísané: súbor ich smeruje na iný server a ich uložené heslá a tokeny tam nesmú ísť. Importujte s možnosťou Duplikovať, aby ste pridali kópiu zo súboru, alebo najprv odstráňte profil.",
-            "importSharedSecretsFailed": "{names} boli importované, ale zdieľané tajomstvo alebo reláciu zo súboru sa nepodarilo uložiť. Ak sa tieto profily nepripoja, prihláste sa do nich znova."
+            "importSharedSecretsFailed": "{names} boli importované, ale zdieľané tajomstvo alebo reláciu zo súboru sa nepodarilo uložiť. Ak sa tieto profily nepripoja, prihláste sa do nich znova.",
+            "keystoreDatabasesFailed": "Import sa skončil, ale tieto databázy sa nepodarilo obnoviť a ponechávajú si pôvodný obsah: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1593,9 @@
             "aerocloudEnabled": "AeroCloud povolené",
             "selectPairLocalFolder": "Vyberte miestny priečinok pre pár",
             "secondsAgo": "pred {count}s",
-            "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}"
+            "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}",
+            "updateOnlyHint": "Jednosmerná aktualizácia zachováva novšie cieľové súbory. Keď je prídavné zálohovanie vypnuté, odstránia sa iba nezmenené súbory, ktoré existujú výlučne v cieli a majú overený doklad o prenose cez AeroCloud. Ostatné súbory zostávajú na kontrolu v AeroSync. Zásady konfliktov sa ignorujú; neznáme dátumy zostávajú nevyriešené.",
+            "untrackedDestinationFiles": "{count} cieľových súborov bolo zachovaných na kontrolu: ich história prenosov nie je overená alebo sa zmenili od posledného prenosu cez AeroCloud. Pred rozhodnutím o odstránení ich skontrolujte v AeroSync."
         },
         "statusBar": {
             "connected": "Pripojený",
@@ -1742,7 +1749,9 @@
             "transferComplete": "Skopírované súbory: {count}",
             "permissionsSessionChanged": "Pripojenie sa od otvorenia tohto dialógu zmenilo, preto sa nič nezmenilo. Otvorte Oprávnenia znova na aktuálnom pripojení.",
             "createFailed": "Vytvorenie zlyhalo",
-            "unknownServer": "neznámemu serveru"
+            "unknownServer": "neznámemu serveru",
+            "scpModeTitle": "Pripojené cez SCP",
+            "scpModeBody": "{host} nemá SFTP, preto AeroFTP používa SCP na rovnakom pripojení."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -2343,7 +2352,13 @@
             "imagekitDesc": "Mediálna CDN + úložisko (20 GB zadarmo)",
             "uploadcareDesc": "Mediálna CDN v EÚ (3 GB zadarmo)",
             "cloudinaryDesc": "Mediálna CDN (25 kreditov/mesiac zadarmo)",
-            "backblazeDesc": "Natívne API Backblaze B2 v4"
+            "backblazeDesc": "Natívne API Backblaze B2 v4",
+            "scpDesc": "Kopírovanie súborov cez SSH",
+            "scpTooltip": "SCP cez SSH pre servery bez SFTP.",
+            "scpOnlyNote": "SCP používajte len pre servery bez SFTP, napríklad routery s OpenWrt.",
+            "allowScpFallback": "Povoliť záložné SCP",
+            "allowScpFallbackHint": "Ak server nemá SFTP, pripojenie pokračuje cez SCP, ako to robí WinSCP.",
+            "discoverScp": "Kopírovanie súborov cez SSH pre servery bez SFTP"
         },
         "shortcuts": {
             "title": "Klávesové skratky",
@@ -2469,7 +2484,9 @@
             "flattenScanning": "Skenovanie podstromu...",
             "flattenTruncated": "skrátené",
             "flattenTruncatedHint": "Dosiahnutý limit 5 000 položiek; spresnite filter alebo prejdite do podpriečinka.",
-            "local_placeholder_flatten": "Filtrovať lokálne súbory... (* pre rekurziu)"
+            "local_placeholder_flatten": "Filtrovať lokálne súbory... (* pre rekurziu)",
+            "flattenNameClash": "{names}: vybrané vo viac ako jednom priečinku. Po vložení na jedno miesto by sa navzájom prepísali; pracujte vždy len s jedným z každého.",
+            "flattenNameClashTitle": "Rovnaký názov vo viacerých priečinkoch"
         },
         "versions": {
             "title": "Verzie súboru",
@@ -4179,7 +4196,10 @@
             "drivesLeftPanel": "Jednotky ľavého panela",
             "drivesRightPanel": "Jednotky pravého panela",
             "modeGroupLabel": "Režim bočného panela",
-            "placesSidebarLabel": "Bočný panel miest"
+            "placesSidebarLabel": "Bočný panel miest",
+            "mountFailed": "Pripojenie zlyhalo",
+            "partitions_need_udisks2": "V balíku snap sa nepripojené oddiely zobrazia a dajú sa pripojiť aj vysunúť po pripojení oprávnenia udisks2. Spustite toto v termináli a potom sa vráťte do AeroFTP:",
+            "volume_action_needs_udisks2": "V balíku snap si pripojenie aj vysunutie vyžadujú oprávnenie udisks2. Spustite toto v termináli a skúste to znova: {command}"
         },
         "viewMode": {
             "list": "Zoznam",
@@ -4307,7 +4327,8 @@
                 "koofr-proprietary": "Vlastný hash služby Koofr. Porovnáva sa len s iným hashom služby Koofr.",
                 "github-blob-sha": "SHA-1 objektu git blob, vypočítaná z hlavičky objektu a z jeho obsahu, takže sa nezhoduje s obyčajnou SHA-1 toho istého súboru.",
                 "immich-asset-checksum": "Kontrolný súčet položky, ktorý si Immich zaznamená pri nahraní.",
-                "crypt-overlay-ciphertext": "Odtlačok pokrýva zašifrované bajty uložené na serveri."
+                "crypt-overlay-ciphertext": "Odtlačok pokrýva zašifrované bajty uložené na serveri.",
+                "scp-shell-digests": "Vypočíta vzdialený hostiteľ pomocou sha256sum alebo md5sum cez SSH kanál: bajty sa čítajú na serveri a nikdy sa vám neposielajú. Každý odtlačok sa ponúka len vtedy, ak hostiteľ má príslušný nástroj."
             },
             "readOnlyIsLinkTarget": "Toto je symbolický odkaz: oprávnenia patria súboru, na ktorý ukazuje. Ak ich chcete zmeniť, otvorte vlastnosti daného súboru.",
             "exactBytes": "({bytes} B)"
@@ -4853,7 +4874,8 @@
             "relocateSuccessMove": "„{name}“ presunuté do {user}",
             "relocateAlreadyPresent": "„{name}“ je už uložené v {user}",
             "relocateError": "Server sa nepodarilo preniesť: {error}",
-            "relocateWrongPassword": "Nesprávne heslo pre {user}."
+            "relocateWrongPassword": "Nesprávne heslo pre {user}.",
+            "relocateSecretsNotCopied": "„{name}“ sa dostalo do {user}, ale uložené heslo alebo token nie, preto si ich tam vypýta znova."
         },
         "cyberTools": {
             "title": "Bezpečnostné nástroje",
@@ -5318,7 +5340,7 @@
             "runAgain": "Spustiť znova",
             "copyResult": "Kopírovať výsledok",
             "copied": "Skopírované",
-            "unsupportedProvider": "Speed Test je v tejto verzii dostupný pre FTP, FTPS, SFTP, S3 a WebDAV.",
+            "unsupportedProvider": "Speed Test je v tejto verzii dostupný pre FTP, FTPS, SFTP, SCP, S3 a WebDAV.",
             "noSupportedServers": "Žiadny uložený server zatiaľ nepodporuje Speed Test",
             "errorReadOnly": "Server nepovoľuje zápis",
             "errorNotSupported": "Speed Test nie je pre tento typ poskytovateľa dostupný",
@@ -5756,7 +5778,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Spoločnosť"
+                "parentCompany": "Spoločnosť",
+                "customScp": "SCP"
             },
             "healthCheck": "Kontrola dostupnosti",
             "storageVersioning": "Verzie súborov: {size}",
@@ -6130,7 +6153,8 @@
             "totalEntries": "Celkový počet záznamov",
             "differences": "Rozdiely",
             "totalBytes": "Celkový počet bajtov",
-            "mirrorHint": "Tlačidlá zrkadlenia zaradia zodpovedajúce záznamy do jednotného plánovača prenosov na kontrolu.",
+            "mirrorHint": "Tlačidlá zrkadlenia prenášajú zodpovedajúce záznamy. Nepripravujú ich na kontrolu.",
+            "exportFailed": "Nepodarilo sa zapísať export: {error}",
             "mirrorLeftToRight": "Zrkadliť zľava doprava",
             "mirrorRightToLeft": "Zrkadliť sprava doľava",
             "directionLeftRight": "Zľava doprava",
@@ -6341,7 +6365,10 @@
             "progressCopy": "[kópia]",
             "deleteCount": "Na odstránenie: {count}",
             "overwriteCount": "Na prepísanie: {count}",
-            "conflictCount": "Konflikty: {count}"
+            "conflictCount": "Konflikty: {count}",
+            "updateOnly": "Preskočiť novšie cieľové súbory (jednosmerná aktualizácia)",
+            "updateOnlyHint": "Skopíruje chýbajúce alebo zmenené zdrojové súbory, zachová novšie súbory v cieli a odstráni položky, ktoré sú iba v cieli. Súbory bez porovnateľných dátumov sa porovnajú podľa veľkosti; rozdiely vo veľkosti zostanú na posúdenie.",
+            "rescanNeeded": "Pred exportom aktualizačného skriptu spustite nové porovnanie s aktuálnymi nastaveniami."
         },
         "accountLock": {
             "title": "Vyberte účet",
@@ -6585,7 +6612,8 @@
             "keyslotsSetAsideRevocation": "Predchádzajúca značka stále otvára trezor faktorom, ktorý odstraňujete alebo nahrádzate. Každá kópia ponechaná v priečinku trezora sa po zmene odstráni a kópia, ktorú nemožno odstrániť, sa nahlási ako chyba. Kópia v koši úložiska alebo vo verziách súborov sa nezasiahne: ich vyprázdnenie odstráni tieto kópie, ale nie kópiu, ktorú si ponechal niekto iný, takže odvolanie nedokončí.",
             "keyslotsSetAsideConsent": "Rozumiem: nahradiť značku na tomto serveri premenovaním starej nabok",
             "keyslotsSetAsideConsentRequired": "Tento server môže nahradiť značku trezora iba premenovaním starej nabok: na pokračovanie to potvrďte v poli vyššie.",
-            "keyslotsMarkerReplaceUnsupported": "Tento server nemôže nahradiť značku trezora, preto sa zmeny slotov tu odmietajú. Otvorte rovnaké úložisko cez server, ktorý nahrádza súbor jedným krokom (napríklad SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Tento server nemôže nahradiť značku trezora, preto sa zmeny slotov tu odmietajú. Otvorte rovnaké úložisko cez server, ktorý nahrádza súbor jedným krokom (napríklad SFTP).",
+            "overlayMetadataNotSaved": "Migrácia prebehla úspešne, ale súprava na obnovenie offline ešte nie je uložená vo vyrovnávacej pamäti. Stane sa tak pri ďalšom odomknutí."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Šifrovanie)",

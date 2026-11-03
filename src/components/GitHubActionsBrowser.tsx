@@ -6,7 +6,7 @@
  * Modal dialog for viewing GitHub Actions workflow runs with live status.
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import {
   X, RefreshCw, Loader2, ExternalLink, CheckCircle, XCircle,
   Clock, AlertTriangle, Play, RotateCcw, StopCircle, GitBranch,
@@ -106,7 +106,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
   }, []);
 
   const runsRef = useRef(runs);
-  runsRef.current = runs;
+  useLayoutEffect(() => { runsRef.current = runs; }, [runs]);
 
   useEffect(() => {
     if (isOpen) {

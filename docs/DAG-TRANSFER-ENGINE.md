@@ -219,10 +219,13 @@ shared mutex. The current independent-worker set is:
 **pCloud** (DAG-P1-05C, 2026-07-19): multipart session API remains
 **`LockedSingle`**. Live probes with independent workers on one `uploadid`
 returned result **2068** ("Error writing to upload") on part 2 for every
-attempt (including with `uploadsize=`). Serial multipart still completes
-(with occasional 2068 + CLI retry). Result **4006** throttle is now mapped
-to typed DAG `RateLimited`. Hints still advertise `multipart_max_parallel=2`
-for a future re-attempt if the service contract changes.
+attempt (including with `uploadsize=`). Result **4006** throttle is now mapped
+to typed DAG `RateLimited`. Hints advertise `multipart_max_parallel=1`, which
+chains the parts in order: with 2 the graph fanned them out and the service
+answered 2068, more often the more parts a file had (Requested 123). Files
+under 4 GiB use single-shot `uploadfile`, as rclone does for every size: the
+session takes about twice as long, because the server closes the connection
+after each request.
 
 **Filen native** (DAG-P1-05D, 2026-07-19): promoted. Transfer clones share
 `Arc` config + auth/crypto snapshots (API key + master-key ring), seed only

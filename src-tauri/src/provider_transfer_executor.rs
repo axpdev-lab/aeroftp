@@ -385,6 +385,7 @@ impl SegmentedDownloadError {
                 if *reason == SOURCE_SIZE_CHANGED
                     || *reason == SOURCE_NOT_VERIFIED
                     || *reason == WINDOW_REFUSED
+                    || *reason == crate::providers::content_check::ASSEMBLED_DIFFERS
                     || *reason == PinRefusal::SourceChanged(String::new()).notice()
                     || *reason == PinRefusal::PinUnsupported.notice()
         )
@@ -423,17 +424,25 @@ pub async fn run_provider_segmented_download(
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     cancel_token: CancellationToken,
 ) -> Result<(), SegmentedDownloadError> {
-    run_provider_segmented_download_with(
-        crate::transfer_dag::governor::global(),
-        primary,
-        remote_path,
-        local_path,
-        file_size,
-        segments,
-        on_progress,
-        cancel_token,
-    )
-    .await
+    // A publish refused for its content reports like any other: the single
+    // stream that takes over is checked in its turn.
+    let expected = tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => return Err(SegmentedDownloadError::Cancelled),
+        expected = primary.content_digest(remote_path, Some(file_size)) => expected,
+    };
+    crate::providers::content_check::ContentCheck::expecting(expected, local_path)
+        .scope(run_provider_segmented_download_with(
+            crate::transfer_dag::governor::global(),
+            primary,
+            remote_path,
+            local_path,
+            file_size,
+            segments,
+            on_progress,
+            cancel_token,
+        ))
+        .await
 }
 
 /// [`run_provider_segmented_download`] charging an explicit governor.
@@ -785,13 +794,33 @@ async fn run_provider_segmented_windows(
                         SOURCE_NOT_VERIFIED,
                     ))
                 }
-                None => match temp.publish(Path::new(local_path)).await {
-                    Ok(()) => Ok(()),
-                    Err(e) => Err(SegmentedDownloadError::unavailable(
-                        format!("segmented download: finalize failed: {}", e),
-                        "the segmented temporary could not be published",
-                    )),
-                },
+                None => {
+                    // It reads the whole file: a Stop does not wait for it, and
+                    // nothing is published after one.
+                    let checked = tokio::select! {
+                        biased;
+                        _ = cancel_token.cancelled() => None,
+                        checked = temp.check_content(Path::new(local_path)) => Some(checked),
+                    };
+                    let Some(checked) = checked else {
+                        temp.discard();
+                        return Err(SegmentedDownloadError::Cancelled);
+                    };
+                    if let Err(differs) = checked {
+                        temp.discard();
+                        return Err(SegmentedDownloadError::unavailable(
+                            format!("segmented download: {differs}"),
+                            crate::providers::content_check::ASSEMBLED_DIFFERS,
+                        ));
+                    }
+                    match temp.publish(Path::new(local_path)).await {
+                        Ok(()) => Ok(()),
+                        Err(e) => Err(SegmentedDownloadError::unavailable(
+                            format!("segmented download: finalize failed: {}", e),
+                            "the segmented temporary could not be published",
+                        )),
+                    }
+                }
             }
         }
         Ok(SegmentedRun::ServerIgnoredRange) => Err(SegmentedDownloadError::unavailable(
@@ -1324,6 +1353,8 @@ impl ProviderDownloadExecutor {
         let retry_policy = self.runtime_settings.retry_policy();
         let mut last_error = String::new();
 
+        // Kept across attempts: a retry after a refusal reads the moved object too.
+        let mut source_refused = false;
         for attempt in 0..=retry_policy.max_retries {
             if self.cancel_token.is_cancelled() {
                 last_error = "Transfer cancelled by user".to_string();
@@ -1346,7 +1377,13 @@ impl ProviderDownloadExecutor {
             // leaves an honest count behind.
             note_transfer_attempt(&self.attempt_counts, &entry.id, attempt + 1);
             match self
-                .download_attempt(provider, &mut entry, &file_transfer_id, attempt)
+                .download_attempt(
+                    provider,
+                    &mut entry,
+                    &file_transfer_id,
+                    attempt,
+                    &mut source_refused,
+                )
                 .await
             {
                 Ok(()) => {
@@ -1356,6 +1393,8 @@ impl ProviderDownloadExecutor {
                 }
                 Err(error) => {
                     last_error = error;
+                    // The next attempt forgets a refusal inside the provider.
+                    source_refused |= provider.download_was_refused();
                     if attempt_is_over(self.cancel_token.is_cancelled(), &last_error) {
                         break;
                     }
@@ -1384,6 +1423,7 @@ impl ProviderDownloadExecutor {
         entry: &mut TransferEntry,
         file_transfer_id: &str,
         attempt: u32,
+        source_refused: &mut bool,
     ) -> Result<(), String> {
         let remote_path = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
@@ -1434,7 +1474,10 @@ impl ProviderDownloadExecutor {
             {
                 SegmentedAttempt::NotTaken => {}
                 SegmentedAttempt::Finished(result) => return result,
-                SegmentedAttempt::Refused => self.read_entry_again(provider, entry).await,
+                SegmentedAttempt::Refused => {
+                    *source_refused = true;
+                    self.read_entry_again(provider, entry).await;
+                }
             }
         }
         let file_size = entry.size;
@@ -1451,8 +1494,12 @@ impl ProviderDownloadExecutor {
         let effective_timeout = self
             .runtime_settings
             .timeout_seconds
-            .max(size_based_secs + self.runtime_settings.timeout_seconds);
+            .max(size_based_secs + self.runtime_settings.timeout_seconds)
+            + crate::providers::content_check::allowance(file_size).as_secs();
 
+        if *source_refused {
+            provider.expect_moved_source();
+        }
         let dl_future = if partial_offset > 0 {
             tracing::info!(
                 "Resuming download from {} bytes (attempt {}): {}",
@@ -1460,9 +1507,9 @@ impl ProviderDownloadExecutor {
                 attempt,
                 remote_path
             );
-            provider.resume_download(&remote_path, &local_path, partial_offset, progress_cb)
+            provider.resume_download_checked(&remote_path, &local_path, partial_offset, progress_cb)
         } else {
-            provider.download_with_size_hint(
+            provider.download_checked(
                 &remote_path,
                 &local_path,
                 (file_size > 0).then_some(file_size),
@@ -1475,7 +1522,7 @@ impl ProviderDownloadExecutor {
         // only taking effect at the next file/retry boundary. Dropping the future
         // tears the transport stream down (russh SFTP is async).
         let cancel = self.cancel_token.clone();
-        tokio::select! {
+        let result = tokio::select! {
             biased;
             _ = cancel.cancelled() => Err("Transfer cancelled by user".to_string()),
             res = tokio::time::timeout(Duration::from_secs(effective_timeout), dl_future) => {
@@ -1487,17 +1534,27 @@ impl ProviderDownloadExecutor {
                     )),
                 }
             }
+        };
+        // The response that carried the bytes knows better than any reading
+        // before it, and better than the listing if a fallback ran inside the
+        // provider, which this path cannot see.
+        if result.is_ok() {
+            if let Some(time) = provider.take_download_time(*source_refused) {
+                entry.modified = Some(time);
+            }
         }
+        result
     }
 
     /// What one stream is about to read may not be what the listing saw: its
     /// size sets the time limit and its time goes on the local file. One reading,
     /// only after a refusal. If it fails the listing stands: an old time makes the
     /// next sync see the remote as newer and download again, which loses nothing.
-    /// A replacement dated before the listed time is the case this misses: the
-    /// local file looks newer and a sync skips the remote until it passes that
-    /// time. Clearing the time is worse, the local write time is later still. The
-    /// exact time is the one of the response carrying the bytes (Requested 129).
+    /// A provider whose transfer reports a time replaces this one after the
+    /// download. Otherwise a replacement dated before the listed time is the case
+    /// this misses: the local file looks newer and a sync skips the remote until
+    /// it passes that time. Clearing the time is worse, the local write time is
+    /// later still.
     async fn read_entry_again(
         &self,
         provider: &mut dyn StorageProvider,
@@ -2618,6 +2675,7 @@ mod tests {
         assert!(refused(PinRefusal::SourceChanged(String::new()).notice()).refused_by_the_source());
         assert!(refused(PinRefusal::PinUnsupported.notice()).refused_by_the_source());
         assert!(refused(WINDOW_REFUSED).refused_by_the_source());
+        assert!(refused(crate::providers::content_check::ASSEMBLED_DIFFERS).refused_by_the_source());
         assert!(!refused("a segmented range transfer failed").refused_by_the_source());
         assert!(!SegmentedDownloadError::Cancelled.refused_by_the_source());
     }
@@ -3477,7 +3535,10 @@ mod tests {
         ranges: Option<ScriptedRanges>,
         cancel_on_mkdir: Option<CancellationToken>,
         upload_calls: usize,
+        carried_time: Option<String>,
         stat_reading: StatReading,
+        moved_source_expected: bool,
+        native_refusal: bool,
     }
 
     /// What the fake's `stat` does when it has no scripted ranges.
@@ -3499,7 +3560,10 @@ mod tests {
                 ranges: None,
                 cancel_on_mkdir: None,
                 upload_calls: 0,
+                carried_time: None,
                 stat_reading: StatReading::default(),
+                moved_source_expected: false,
+                native_refusal: false,
             }
         }
 
@@ -3534,6 +3598,33 @@ mod tests {
             }
             Ok(Box::new(worker))
         }
+        fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+            self.carried_time.take().filter(|_| source_refused)
+        }
+        fn expect_moved_source(&mut self) {
+            self.moved_source_expected = true;
+        }
+        fn download_was_refused(&self) -> bool {
+            self.native_refusal
+        }
+        fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+            if self.ranges.is_some() {
+                ProviderTransferExecutorKind::HttpClonePool
+            } else {
+                ProviderTransferExecutorKind::LockedSingle
+            }
+        }
+        fn transfer_capabilities(&self) -> TransferCapabilities {
+            TransferCapabilities {
+                strict_concurrent_range_download: if self.ranges.is_some() {
+                    Capability::Supported
+                } else {
+                    Capability::Unsupported
+                },
+                ..TransferCapabilities::default()
+            }
+        }
+
         async fn read_range(
             &mut self,
             _path: &str,
@@ -4332,6 +4423,86 @@ mod tests {
         assert!(singles.lock().unwrap().is_empty());
     }
 
+    /// The reading before the stream can already be old when the stream starts,
+    /// so what carried the bytes has the last word, and only after a refusal.
+    #[tokio::test]
+    async fn the_time_of_what_carried_the_bytes_replaces_the_one_read_before() {
+        const LISTED: &str = "2000-01-01T00:00:00Z";
+        const CARRIED: &str = "2026-10-21T07:28:00Z";
+        for (refused, modified) in [(true, CARRIED), (false, LISTED)] {
+            let mut provider = FlakyDownloadProvider::fail_first(0);
+            provider.carried_time = Some(CARRIED.to_string());
+            let executor = retry_download_executor(
+                FlakyDownloadProvider::fail_first(0),
+                0,
+                CancellationToken::new(),
+            );
+            let dir = tempfile::tempdir().unwrap();
+            let mut entry = retry_entry(dir.path());
+            entry.modified = Some(LISTED.to_string());
+            let mut source_refused = refused;
+            executor
+                .download_attempt(&mut provider, &mut entry, "id", 1, &mut source_refused)
+                .await
+                .unwrap();
+            assert_eq!(entry.modified.as_deref(), Some(modified), "{refused}");
+        }
+    }
+
+    /// Windows the source refuses do not end the attempt: the same call goes on
+    /// with one stream, and the entry takes the time of what carried the bytes.
+    #[tokio::test]
+    async fn a_refusal_of_the_windows_reaches_the_stream_of_the_same_attempt() {
+        const LISTED: &str = "2000-01-01T00:00:00Z";
+        const CARRIED: &str = "2026-10-21T07:28:00Z";
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: None,
+        });
+        provider.carried_time = Some(CARRIED.to_string());
+        // Planned on the listing's size; the reading before the windows finds
+        // the object is another size now.
+        provider.stat_reading = StatReading::Answers(2, None);
+        let executor = ProviderDownloadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(Mutex::new(None)),
+            ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 0,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(2),
+                sftp_download_preset: None,
+            },
+            CancellationToken::new(),
+            ProviderExecutorSessionModel::HttpClonePool {
+                provider_type: ProviderType::S3,
+                max_leases: 4,
+            },
+            TransferCapabilities::default(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let mut entry = retry_entry(dir.path());
+        entry.size = 64 * 1024 * 1024;
+        entry.modified = Some(LISTED.to_string());
+        let mut source_refused = false;
+        executor
+            .download_attempt(&mut provider, &mut entry, "id", 0, &mut source_refused)
+            .await
+            .unwrap();
+        assert!(source_refused);
+        assert_eq!(entry.modified.as_deref(), Some(CARRIED));
+        assert_eq!(std::fs::read(&entry.local_path).unwrap(), b"ok");
+        assert!(provider.moved_source_expected);
+    }
+
     /// The reading after a refusal takes what it can use and leaves the rest as
     /// listed, and a Stop does not wait for a server that does not answer.
     #[tokio::test]
@@ -4431,6 +4602,27 @@ mod tests {
             None,
             "consumed once, never double counted"
         );
+    }
+
+    /// A refusal inside the provider is gone when the retry begins: the executor
+    /// carries it, or the retry reads the moved object and keeps the listed time.
+    #[tokio::test]
+    async fn a_retry_after_a_refusal_inside_the_provider_takes_its_time() {
+        const CARRIED: &str = "2026-10-21T07:28:00Z";
+        let dir = tempfile::tempdir().expect("tempdir");
+        let mut provider = FlakyDownloadProvider::fail_first(1);
+        provider.native_refusal = true;
+        provider.carried_time = Some(CARRIED.to_string());
+        let executor = retry_download_executor(provider, 2, CancellationToken::new());
+        let mut entry = retry_entry(dir.path());
+        entry.modified = Some("2000-01-01T00:00:00Z".to_string());
+        let local = entry.local_path.clone();
+        let outcome = executor.execute(entry).await;
+        assert!(matches!(outcome, TransferOutcome::Success), "{outcome:?}");
+        let written =
+            filetime::FileTime::from_last_modification_time(&std::fs::metadata(&local).unwrap())
+                .unix_seconds();
+        assert_eq!(written, crate::parse_remote_mtime(CARRIED).unwrap());
     }
 
     /// CodeRabbit on #1350: a create-only upload whose first attempt lost

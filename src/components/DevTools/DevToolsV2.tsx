@@ -557,10 +557,12 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
         return () => window.removeEventListener('file-changed', handleFileChanged);
     }, [editorFile]);
 
-    // Keep mounted after first open to preserve AIChat state (history, conversations)
-    const hasBeenOpenedRef = useRef(false);
-    if (isOpen) hasBeenOpenedRef.current = true;
-    if (!hasBeenOpenedRef.current) return null;
+    // Keep mounted after first open to preserve AIChat state (history, conversations).
+    // State, not a ref: the render reads it, and an update during render is
+    // React's own way to adjust state from props.
+    const [hasBeenOpened, setHasBeenOpened] = useState(isOpen);
+    if (isOpen && !hasBeenOpened) setHasBeenOpened(true);
+    if (!hasBeenOpened) return null;
 
     // Max height: leave space for header (~56px) + statusbar (~32px)
     const maxHeight = 'calc(100vh - 88px)';

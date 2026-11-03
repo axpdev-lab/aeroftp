@@ -248,6 +248,15 @@ pub async fn aerocrypt_provider_marker_status(
     })
 }
 
+/// Whether a failed migration could have changed a published marker. Unknown
+/// transport outcomes after publication starts must keep the old kit invalid.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AeroCryptMarkerMigrationFailure {
+    pub message: String,
+    pub marker_may_have_changed: bool,
+}
+
 /// Convert an explicitly detected legacy headed marker to the new TSV marker.
 /// This is never automatic: callers must pass the unlock factors, we verify the
 /// legacy config MAC, write and verify the new marker, then delete the legacy one.
@@ -257,106 +266,119 @@ pub async fn aerocrypt_provider_migrate_legacy_marker(
     password: String,
     keyfile_path: Option<String>,
     base_path: Option<String>,
-) -> Result<AeroCryptMarkerMigrationResult, String> {
-    if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
-        return Err("password or keyfile required to migrate the AeroCrypt marker".to_string());
-    }
-    let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
-    let mut provider_lock = provider_state.provider.lock().await;
-    let slot = provider_lock
-        .as_mut()
-        .ok_or_else(|| "Not connected to any provider".to_string())?;
-    // Same peel as read_config/marker_status: migrate must see cleartext marker names.
-    let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
+) -> Result<AeroCryptMarkerMigrationResult, AeroCryptMarkerMigrationFailure> {
+    let mut marker_may_have_changed = false;
+    let outcome: Result<AeroCryptMarkerMigrationResult, String> = async {
+        if password.is_empty() && keyfile_path.as_deref().unwrap_or("").trim().is_empty() {
+            return Err("password or keyfile required to migrate the AeroCrypt marker".to_string());
+        }
+        let keyfile_digest = resolve_ui_keyfile_digest(keyfile_path.as_deref())?;
+        let mut provider_lock = provider_state.provider.lock().await;
+        let slot = provider_lock
+            .as_mut()
+            .ok_or_else(|| "Not connected to any provider".to_string())?;
+        // Same peel as read_config/marker_status: migrate must see cleartext marker names.
+        let provider = crate::crypt_overlay_provider::concrete_provider_mut(slot.as_mut());
 
-    let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
-    let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
-    let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
-    let legacy_exists = provider
-        .exists(&legacy_path)
-        .await
-        .map_err(|e| format!("Failed to probe legacy AeroCrypt marker: {e}"))?;
-    if !legacy_exists {
-        return Ok(AeroCryptMarkerMigrationResult {
-            changed: false,
-            legacy_deleted: false,
-            warning: None,
-        });
-    }
-
-    let legacy_text = read_marker_text(provider, &legacy_path).await?;
-    let (legacy_config, legacy_master) =
-        validate_marker_for_migration(&legacy_text, &password, keyfile_digest).await?;
-    let rebuilt_marker = overlay::rebuild_config_v3(&legacy_config, &legacy_master)?;
-    validate_marker_for_migration(&rebuilt_marker, &password, keyfile_digest).await?;
-
-    let current_exists = provider
-        .exists(&current_path)
-        .await
-        .map_err(|e| format!("Failed to probe current AeroCrypt marker: {e}"))?;
-    if current_exists {
-        let current_text = read_marker_text(provider, &current_path).await?;
-        validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
-    } else {
-        let temp = std::env::temp_dir().join(format!(
-            "aeroftp_aerocrypt_marker_{}_{}.tsv",
-            chrono::Utc::now().timestamp_millis(),
-            uuid::Uuid::new_v4()
-        ));
-        // Asked before ANY temporary exists, local or remote (G119). The
-        // remote half is the contract, "the marker is unchanged"; the local
-        // half is why this sits above the `write` and not below it, because
-        // the `?` here returns before the `remove_file` further down and
-        // would leave the staging file in the temp directory.
-        let publish = crate::providers::ensure_marker_replace(provider, &current_path, false, None)
+        let cwd = resolve_overlay_cwd(provider, base_path.as_deref()).await;
+        let current_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_WRITE_NAME);
+        let legacy_path = join_remote_path(&cwd, overlay::CRYPT_CONFIG_LEGACY_NAME);
+        let legacy_exists = provider
+            .exists(&legacy_path)
             .await
-            .map_err(|e| e.to_string())?;
-        tokio::fs::write(&temp, rebuilt_marker.as_bytes())
-            .await
-            .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
-        let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
-        let upload = provider
-            .upload(&temp.to_string_lossy(), &remote_tmp, None)
-            .await
-            .map_err(|e| format!("Failed to upload staged AeroCrypt marker: {e}"));
-        let _ = tokio::fs::remove_file(&temp).await;
-        upload?;
+            .map_err(|e| format!("Failed to probe legacy AeroCrypt marker: {e}"))?;
+        if !legacy_exists {
+            return Ok(AeroCryptMarkerMigrationResult {
+                changed: false,
+                legacy_deleted: false,
+                warning: None,
+            });
+        }
 
-        let staged = match provider.download_to_bytes(&remote_tmp).await {
-            Ok(bytes) => bytes,
-            Err(e) => {
+        let legacy_text = read_marker_text(provider, &legacy_path).await?;
+        let (legacy_config, legacy_master) =
+            validate_marker_for_migration(&legacy_text, &password, keyfile_digest).await?;
+        let rebuilt_marker = overlay::rebuild_config_v3(&legacy_config, &legacy_master)?;
+        validate_marker_for_migration(&rebuilt_marker, &password, keyfile_digest).await?;
+
+        let current_exists = provider
+            .exists(&current_path)
+            .await
+            .map_err(|e| format!("Failed to probe current AeroCrypt marker: {e}"))?;
+        if current_exists {
+            let current_text = read_marker_text(provider, &current_path).await?;
+            validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
+        } else {
+            let temp = std::env::temp_dir().join(format!(
+                "aeroftp_aerocrypt_marker_{}_{}.tsv",
+                chrono::Utc::now().timestamp_millis(),
+                uuid::Uuid::new_v4()
+            ));
+            // Asked before ANY temporary exists, local or remote (G119). The
+            // remote half is the contract, "the marker is unchanged"; the local
+            // half is why this sits above the `write` and not below it, because
+            // the `?` here returns before the `remove_file` further down and
+            // would leave the staging file in the temp directory.
+            let publish =
+                crate::providers::ensure_marker_replace(provider, &current_path, false, None)
+                    .await
+                    .map_err(|e| e.to_string())?;
+            tokio::fs::write(&temp, rebuilt_marker.as_bytes())
+                .await
+                .map_err(|e| format!("Failed to stage AeroCrypt marker: {e}"))?;
+            let remote_tmp = format!("{current_path}.aerotmp-{}", uuid::Uuid::new_v4());
+            let upload = provider
+                .upload(&temp.to_string_lossy(), &remote_tmp, None)
+                .await
+                .map_err(|e| format!("Failed to upload staged AeroCrypt marker: {e}"));
+            let _ = tokio::fs::remove_file(&temp).await;
+            upload?;
+
+            let staged = match provider.download_to_bytes(&remote_tmp).await {
+                Ok(bytes) => bytes,
+                Err(e) => {
+                    let _ = provider.delete(&remote_tmp).await;
+                    return Err(format!("Failed to verify staged AeroCrypt marker: {e}"));
+                }
+            };
+            if staged != rebuilt_marker.as_bytes() {
                 let _ = provider.delete(&remote_tmp).await;
-                return Err(format!("Failed to verify staged AeroCrypt marker: {e}"));
-            }
-        };
-        if staged != rebuilt_marker.as_bytes() {
-            let _ = provider.delete(&remote_tmp).await;
-            return Err(
+                return Err(
                 "staged AeroCrypt marker failed byte-for-byte verification; legacy marker retained"
                     .to_string(),
             );
+            }
+            let staged_text = String::from_utf8(staged)
+                .map_err(|e| format!("Staged AeroCrypt marker is not valid UTF-8: {e}"))?;
+            validate_marker_for_migration(&staged_text, &password, keyfile_digest).await?;
+            // A failed acknowledgement can hide a successful publication. From
+            // this point the renderer must not restore the old cached recovery kit.
+            marker_may_have_changed = true;
+            if let Err(e) = publish.publish(provider, &remote_tmp, &current_path).await {
+                let _ = provider.delete(&remote_tmp).await;
+                return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
+            }
         }
-        let staged_text = String::from_utf8(staged)
-            .map_err(|e| format!("Staged AeroCrypt marker is not valid UTF-8: {e}"))?;
-        validate_marker_for_migration(&staged_text, &password, keyfile_digest).await?;
-        if let Err(e) = publish.publish(provider, &remote_tmp, &current_path).await {
-            let _ = provider.delete(&remote_tmp).await;
-            return Err(format!("Failed to publish verified AeroCrypt marker: {e}"));
-        }
-    }
 
-    let current_text = read_marker_text(provider, &current_path).await?;
-    validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
-    let warning = match provider.delete(&legacy_path).await {
-        Ok(()) => None,
-        Err(e) => Some(format!(
-            "current marker verified, but legacy marker could not be deleted: {e}"
-        )),
-    };
-    Ok(AeroCryptMarkerMigrationResult {
-        changed: warning.is_none(),
-        legacy_deleted: warning.is_none(),
-        warning,
+        let current_text = read_marker_text(provider, &current_path).await?;
+        validate_marker_for_migration(&current_text, &password, keyfile_digest).await?;
+        marker_may_have_changed = true;
+        let warning = match provider.delete(&legacy_path).await {
+            Ok(()) => None,
+            Err(e) => Some(format!(
+                "current marker verified, but legacy marker could not be deleted: {e}"
+            )),
+        };
+        Ok(AeroCryptMarkerMigrationResult {
+            changed: warning.is_none(),
+            legacy_deleted: warning.is_none(),
+            warning,
+        })
+    }
+    .await;
+    outcome.map_err(|message| AeroCryptMarkerMigrationFailure {
+        message,
+        marker_may_have_changed,
     })
 }
 
@@ -432,14 +454,14 @@ pub async fn aerocrypt_provider_create_remote(
         )?
     };
     let config = overlay::parse_config(&config_json)?;
-    let root = overlay_create_root(&base_path, target_subpath.as_deref());
+    let root = overlay_create_root(&base_path, target_subpath.as_deref())?;
 
     let mut provider_lock = provider_state.provider.lock().await;
     let provider = provider_lock
         .as_mut()
         .ok_or_else(|| "Not connected to any provider".to_string())?;
     log::debug!("[aerocrypt][create_remote] root={:?}", root);
-    if root != base_path.trim() {
+    if root != base_path {
         let _ = provider.mkdir(&root).await; // idempotent
     }
     write_new_overlay_config(provider.as_mut(), &root, &config_json, force).await?;
@@ -536,16 +558,29 @@ pub struct AeroCryptCreatedVault {
 /// absolute folder the dialog was opened on), or `subpath` under it. The
 /// subpath is always relative to `base`, its slashes trimmed, so `/x` typed in
 /// the field does not escape to the remote root.
-pub(crate) fn overlay_create_root(base: &str, subpath: Option<&str>) -> String {
-    let base = base.trim();
+///
+/// The folder is taken as given (`/reports ` is not `/reports`), but the
+/// overlay anchor trims the ends of its folder (`norm_anchor`, and
+/// `normCryptScope` in the app): a vault at `/reports ` would sit outside its
+/// own anchor `/reports`, and the raw write guard
+/// (`path_is_outside_crypt_scope`) would take `/reports /a.txt` for a folder
+/// outside the vault and let it be written in clear. Such a root is refused; a
+/// folder below it (`/reports /New`) is anchored as created.
+pub(crate) fn overlay_create_root(base: &str, subpath: Option<&str>) -> Result<String, String> {
     let base = if base.is_empty() { "/" } else { base };
-    match subpath
+    let root = match subpath
         .map(|s| s.trim().trim_matches('/'))
         .filter(|s| !s.is_empty())
     {
         Some(sub) => join_remote_path(base, sub),
         None => base.to_string(),
+    };
+    if root.trim() != root {
+        return Err(format!(
+            "An encrypted folder cannot begin or end with a space: '{root}'. Create the vault in a folder below it, or rename the folder."
+        ));
     }
+    Ok(root)
 }
 
 /// Build and return the mandatory Emergency Kit from a (persisted) config JSON.
@@ -1689,14 +1724,42 @@ mod tests {
     /// it, never at the provider's pwd, and a typed `/x` stays under it.
     #[test]
     fn dialog_create_roots_the_vault_at_or_under_its_folder() {
-        assert_eq!(overlay_create_root("/home/u", None), "/home/u");
-        assert_eq!(overlay_create_root("/home/u", Some("  ")), "/home/u");
-        assert_eq!(overlay_create_root("/home/u", Some("New")), "/home/u/New");
-        assert_eq!(overlay_create_root("/home/u", Some("/New/")), "/home/u/New");
-        assert_eq!(overlay_create_root("/home/u/", Some("a/b")), "/home/u/a/b");
-        assert_eq!(overlay_create_root("/", Some("New")), "/New");
-        assert_eq!(overlay_create_root("", Some("New")), "/New");
-        assert_eq!(overlay_create_root("", None), "/");
+        let root = |base, subpath| overlay_create_root(base, subpath).expect("a root");
+        assert_eq!(root("/home/u", None), "/home/u");
+        assert_eq!(root("/home/u", Some("  ")), "/home/u");
+        assert_eq!(root("/home/u", Some("New")), "/home/u/New");
+        assert_eq!(root("/home/u", Some("/New/")), "/home/u/New");
+        assert_eq!(root("/home/u/", Some("a/b")), "/home/u/a/b");
+        assert_eq!(root("/", Some("New")), "/New");
+        assert_eq!(root("", Some("New")), "/New");
+        assert_eq!(root("/reports ", Some("New")), "/reports /New");
+        assert_eq!(root("", None), "/");
+    }
+
+    /// The anchor of a vault is its root with the ends trimmed: a root that
+    /// begins or ends with a space is refused, since the vault would sit
+    /// outside its anchor. A root whose spaced name is not at an end is
+    /// anchored as created.
+    #[test]
+    fn a_vault_root_the_anchor_would_change_is_refused() {
+        for (base, subpath) in [
+            ("/reports ", None),
+            (" /reports", None),
+            ("/home/u/ ", None),
+        ] {
+            let refused = overlay_create_root(base, subpath).expect_err(base);
+            assert!(
+                refused.contains("cannot begin or end with a space"),
+                "{refused}"
+            );
+        }
+        for (base, subpath) in [("/reports ", Some("New")), ("/reports /", None)] {
+            let root = overlay_create_root(base, subpath).expect("a root");
+            assert_eq!(
+                crate::crypt_overlay_provider::norm_anchor(&root),
+                root.trim_end_matches('/')
+            );
+        }
     }
 
     /// A backend that cannot put one marker over another refuses the slot

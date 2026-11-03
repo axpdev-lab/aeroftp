@@ -498,13 +498,16 @@ impl JottacloudProvider {
                     continue;
                 }
                 // MUV-4: mirror into the active user's partition (per-profile only).
-                if account != "jottacloud_refresh" {
-                    crate::user_partitions::mirror_active_credential(
+                if account != "jottacloud_refresh"
+                    && crate::user_partitions::mirror_active_credential(
                         store,
                         account,
                         "jottacloud_refresh",
                         &json,
-                    );
+                    )
+                    .is_err()
+                {
+                    ok = false;
                 }
             }
             ok
@@ -518,13 +521,19 @@ impl JottacloudProvider {
                 return;
             }
         }
-        // Try auto-init vault
+        // Try auto-init vault. Also a second attempt after a failed write: Jotta has
+        // already rotated the chain, and the old one in the vault is of no use.
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = write_all(&store);
-                jotta_log("Refresh token persisted to auto-initialized vault");
+                if write_all(&store) {
+                    jotta_log("Refresh token persisted to auto-initialized vault");
+                    return;
+                }
             }
         }
+        // Readers prefer the partition row: a stale one holds a rotated chain, so this
+        // must not read as a success.
+        jotta_log("Refresh token NOT fully persisted: the vault or the partition refused it");
     }
 
     /// Read one refresh chain: the active user's partition, falling back to the
@@ -881,24 +890,25 @@ impl JottacloudProvider {
     }
 
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim().replace('\\', "/");
-        if trimmed.is_empty() || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        let path = path.replace('\\', "/");
+        if path.is_empty() || path == "/" {
             return "/".to_string();
         }
-        let p = if trimmed.starts_with('/') {
-            trimmed
+        let p = if path.starts_with('/') {
+            path
         } else {
-            format!("/{}", trimmed)
+            format!("/{}", path)
         };
         p.trim_end_matches('/').to_string()
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        let path = path.trim();
         if path.is_empty() || path == "." {
             return self.current_path.clone();
         }
-        if path.starts_with('/') {
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
             return Self::normalize_path(path);
         }
         let base = self.current_path.trim_end_matches('/');
@@ -1139,9 +1149,14 @@ impl JottacloudProvider {
 
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
-        // trim_text(true) is SAFE here: entry names arrive as attributes
-        // (xml_text::attr_value), never as Text events; only scalars do.
-        reader.config_mut().trim_text(true);
+        // Entry names arrive as attributes (xml_text::attr_value); element
+        // text holds the scalars. A scalar can still carry an entity (a MIME
+        // parameter such as `name=&quot;A &amp; B&quot;`), which quick-xml
+        // hands over in pieces, so each element's pieces are joined in
+        // `current_text` and the value is applied, trimmed once, at its end
+        // tag. No trim_text: it trims every piece, spaces next to an entity
+        // included.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut depth: u32 = 0;
@@ -1163,6 +1178,7 @@ impl JottacloudProvider {
         let mut current_state = String::new();
         let mut current_deleted = false; // skip trashed files
         let mut current_tag = String::new();
+        let mut current_text = String::new();
 
         loop {
             match reader.read_event_into(&mut buf) {
@@ -1256,6 +1272,7 @@ impl JottacloudProvider {
                         }
                         _ => {
                             current_tag = tag;
+                            current_text.clear();
                         }
                     }
                 }
@@ -1357,38 +1374,50 @@ impl JottacloudProvider {
                         "currentRevision" => {
                             in_revision = false;
                         }
+                        // The end of a scalar element: its pieces are all in.
+                        _ if in_file && tag == current_tag => {
+                            let text = current_text.trim();
+                            // <deleted> tag at file level (outside revision) marks trashed files
+                            if current_tag == "deleted" && !text.is_empty() {
+                                current_deleted = true;
+                            }
+                            if in_revision {
+                                match current_tag.as_str() {
+                                    "size" => {
+                                        current_size = text.parse().unwrap_or(0);
+                                    }
+                                    "mime" => {
+                                        current_mime = text.to_string();
+                                    }
+                                    "md5" => {
+                                        current_md5 = text.to_string();
+                                    }
+                                    "state" => {
+                                        current_state = text.to_string();
+                                    }
+                                    "modified" | "updated" if current_modified.is_empty() => {
+                                        current_modified = Self::parse_jotta_time(text);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                        }
                         _ => {}
                     }
 
                     depth = depth.saturating_sub(1);
                     current_tag.clear();
+                    current_text.clear();
                 }
                 Ok(Event::Text(ref e)) => {
-                    let text = e.as_ref().trim().to_string();
-                    if in_file {
-                        // <deleted> tag at file level (outside revision) marks trashed files
-                        if current_tag == "deleted" && !text.is_empty() {
-                            current_deleted = true;
-                        }
-                        if in_revision {
-                            match current_tag.as_str() {
-                                "size" => {
-                                    current_size = text.parse().unwrap_or(0);
-                                }
-                                "mime" => {
-                                    current_mime = text;
-                                }
-                                "md5" => {
-                                    current_md5 = text;
-                                }
-                                "state" => {
-                                    current_state = text;
-                                }
-                                "modified" | "updated" if current_modified.is_empty() => {
-                                    current_modified = Self::parse_jotta_time(&text);
-                                }
-                                _ => {}
-                            }
+                    if in_file && !current_tag.is_empty() {
+                        current_text.push_str(e.as_ref());
+                    }
+                }
+                Ok(Event::GeneralRef(ref e)) => {
+                    if in_file && !current_tag.is_empty() {
+                        if let Some(expanded) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                            current_text.push_str(&expanded);
                         }
                     }
                 }
@@ -1525,7 +1554,8 @@ impl StorageProvider for JottacloudProvider {
         // Step 6: Navigate to initial path
         self.current_path = "/".to_string();
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 self.current_path = Self::normalize_path(&initial);
             }
@@ -1946,36 +1976,9 @@ impl StorageProvider for JottacloudProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let resolved = self.resolve_path(path);
-        // Use recursive listing and filter by pattern
-        let url = format!("{}?mode=list", self.jfs_url(&resolved));
-
-        let resp = self.get_with_retry(&url).await?;
-
-        let status = resp.status();
-        if !status.is_success() {
-            let body = resp.text().await.unwrap_or_default();
-            let detail = format!(
-                "Find {resolved} failed ({status}): {}",
-                sanitize_api_error(&body)
-            );
-            return Err(match status.as_u16() {
-                401 => ProviderError::AuthenticationFailed(detail),
-                403 => ProviderError::PermissionDenied(detail),
-                404 => ProviderError::NotFound(resolved),
-                _ => ProviderError::ServerError(detail),
-            });
-        }
-
-        let xml = resp.text().await.map_http_err(|e| {
-            ProviderError::ParseError(format!("Could not read Jottacloud find response: {e}"))
-        })?;
-        let all_entries = Self::parse_folder_xml(&xml, &resolved);
-
-        Ok(all_entries
-            .into_iter()
-            .filter(|e| super::matches_find_pattern(&e.name, pattern))
-            .collect())
+        // The search API answers outside the folder or without the hit's real
+        // path, and a caller acts on that path.
+        super::find_by_walk(self, path, pattern).await
     }
 
     async fn storage_info(&mut self) -> Result<StorageInfo, ProviderError> {
@@ -2076,6 +2079,13 @@ impl StorageProvider for JottacloudProvider {
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
         // REST API doesn't need keep-alive
         Ok(())
+    }
+
+    fn sync_namespace_identity(&self) -> Option<String> {
+        (self.connected && !self.username.trim().is_empty()).then(|| {
+            serde_json::json!([self.username, self.config.device, self.config.mountpoint])
+                .to_string()
+        })
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
@@ -2341,6 +2351,9 @@ impl JottacloudProvider {
     /// Relative path under the live mountpoint: strip
     /// `/{user}/{device}/{mount}` from the trash `<abspath>` (the original
     /// parent) and append the entry name. Root-level items stay `/{name}`.
+    /// The parent's names are the stored ones, `reports％` for `reports%`:
+    /// each is decoded like a listed name, since `jfs_url` encodes the path
+    /// again and an encoded name would reach another folder.
     fn trash_relative_path(abspath: &str, name: &str) -> String {
         let parts: Vec<&str> = abspath
             .trim_matches('/')
@@ -2349,7 +2362,11 @@ impl JottacloudProvider {
             .collect();
         // 0 user, 1 device, 2 mountpoint, 3… original parent under that mount.
         let parent = if parts.len() > 3 {
-            parts[3..].join("/")
+            parts[3..]
+                .iter()
+                .map(|s| crate::restricted_chars::decode_leaf(ProviderType::Jottacloud, s))
+                .collect::<Vec<_>>()
+                .join("/")
         } else {
             String::new()
         };
@@ -2368,12 +2385,16 @@ impl JottacloudProvider {
         use quick_xml::Reader;
 
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // Any character of a scalar can arrive as a reference (`1&#50;3` is
+        // 123), in pieces around it: they are joined in `text` and applied,
+        // trimmed once, at the element's end tag.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
         let mut depth: u32 = 0;
         let mut root_is_file = false;
         let mut in_revision = false;
         let mut tag = String::new();
+        let mut text = String::new();
         let mut size: u64 = 0;
         let mut md5 = String::new();
         let mut created = String::new();
@@ -2390,22 +2411,30 @@ impl JottacloudProvider {
                         in_revision = true;
                     }
                     tag = name;
+                    text.clear();
                 }
                 Ok(Event::End(ref e)) => {
+                    if in_revision && e.name().as_ref() == tag {
+                        let value = text.trim();
+                        match tag.as_str() {
+                            "size" => size = value.parse().unwrap_or(0),
+                            "md5" => md5 = value.to_string(),
+                            "created" if created.is_empty() => created = value.to_string(),
+                            "modified" if modified.is_empty() => modified = value.to_string(),
+                            _ => {}
+                        }
+                    }
                     if e.name().as_ref() == "currentRevision" {
                         in_revision = false;
                     }
                     depth = depth.saturating_sub(1);
                     tag.clear();
+                    text.clear();
                 }
-                Ok(Event::Text(ref e)) if in_revision => {
-                    let text = e.as_ref().trim().to_string();
-                    match tag.as_str() {
-                        "size" => size = text.parse().unwrap_or(0),
-                        "md5" => md5 = text,
-                        "created" if created.is_empty() => created = text,
-                        "modified" if modified.is_empty() => modified = text,
-                        _ => {}
+                Ok(Event::Text(ref e)) if in_revision => text.push_str(e.as_ref()),
+                Ok(Event::GeneralRef(ref e)) if in_revision => {
+                    if let Some(expanded) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        text.push_str(&expanded);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -2437,13 +2466,18 @@ impl JottacloudProvider {
 
         let mut children = Vec::new();
         let mut reader = Reader::from_str(xml);
-        reader.config_mut().trim_text(true);
+        // Names arrive as attributes; the revision scalars are element text,
+        // where any character can arrive as a reference (`1&#50;3` is 123, and
+        // the size goes into the restore request). Their pieces are joined in
+        // `text` and applied, trimmed once, at the element's end tag.
+        reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
         let mut depth: u32 = 0;
         let mut in_file = false;
         let mut in_revision = false;
         let mut tag = String::new();
+        let mut text = String::new();
         let mut cur_name = String::new();
         let mut cur_deleted = false;
         let mut cur_size: u64 = 0;
@@ -2504,6 +2538,7 @@ impl JottacloudProvider {
                         in_revision = true;
                     }
                     tag = name;
+                    text.clear();
                 }
                 Ok(Event::Empty(ref e)) => {
                     // Live folders arrive as `<folder name="x"/>`.
@@ -2532,6 +2567,18 @@ impl JottacloudProvider {
                     }
                 }
                 Ok(Event::End(ref e)) => {
+                    if in_revision && e.name().as_ref() == tag {
+                        let value = text.trim();
+                        match tag.as_str() {
+                            "size" => cur_size = value.parse().unwrap_or(0),
+                            "md5" => cur_md5 = value.to_string(),
+                            "created" if cur_created.is_empty() => cur_created = value.to_string(),
+                            "modified" if cur_modified.is_empty() => {
+                                cur_modified = value.to_string()
+                            }
+                            _ => {}
+                        }
+                    }
                     match e.name().as_ref() {
                         "currentRevision" => in_revision = false,
                         "file" if in_file => {
@@ -2564,15 +2611,12 @@ impl JottacloudProvider {
                     }
                     depth = depth.saturating_sub(1);
                     tag.clear();
+                    text.clear();
                 }
-                Ok(Event::Text(ref e)) if in_revision => {
-                    let text = e.as_ref().trim().to_string();
-                    match tag.as_str() {
-                        "size" => cur_size = text.parse().unwrap_or(0),
-                        "md5" => cur_md5 = text,
-                        "created" if cur_created.is_empty() => cur_created = text,
-                        "modified" if cur_modified.is_empty() => cur_modified = text,
-                        _ => {}
+                Ok(Event::Text(ref e)) if in_revision => text.push_str(e.as_ref()),
+                Ok(Event::GeneralRef(ref e)) if in_revision => {
+                    if let Some(expanded) = super::xml_text::xml_entity_to_str(e.as_ref()) {
+                        text.push_str(&expanded);
                     }
                 }
                 Ok(Event::Eof) => break,
@@ -3120,16 +3164,16 @@ impl JottacloudProvider {
         let mut entries = Vec::new();
         let mut reader = Reader::from_str(xml);
         // Names arrive as attributes. `<abspath>` is Text + GeneralRef and
-        // is accumulated (then trimmed once) rather than assigned per chunk.
+        // is accumulated, as given, rather than assigned per chunk: a folder
+        // name may end with a space.
         //
         // Trimming is left OFF here on purpose: quick-xml trims every Text
         // EVENT, not the node, so an entity splits `Photos &amp; Videos` into
         // three events whose own edges carry the spaces. Trimming per event
-        // welds the pieces into `Photos&Videos`, and the single trim applied
-        // when the path is derived cannot put back what was already dropped.
-        // The scalars that need it (`size`, `state`, `modified`) trim
-        // themselves below, where a whitespace-only event is also harmless
-        // because it never matches their tag.
+        // welds the pieces into `Photos&Videos`.
+        // The revision scalars (`size`, `state`, `modified`) arrive in pieces
+        // the same way (`1&#50;3` is three of them), so they are joined in
+        // `current_text` and applied, trimmed once, at their end tag.
         reader.config_mut().trim_text(false);
         let mut buf = Vec::new();
 
@@ -3148,6 +3192,7 @@ impl JottacloudProvider {
         let mut current_abspath = String::new();
         let mut current_state = String::new();
         let mut current_tag = String::new();
+        let mut current_text = String::new();
         let mut pending_folder_name = String::new();
         let mut pending_folder_deleted = String::new();
         let mut pending_folder_abspath = String::new();
@@ -3217,6 +3262,7 @@ impl JottacloudProvider {
                         }
                         _ => {
                             current_tag = tag;
+                            current_text.clear();
                         }
                     }
                 }
@@ -3274,7 +3320,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: pending_folder_name.clone(),
                                     path: Self::trash_relative_path(
-                                        pending_folder_abspath.trim(),
+                                        &pending_folder_abspath,
                                         &pending_folder_name,
                                     ),
                                     is_dir: true,
@@ -3313,7 +3359,7 @@ impl JottacloudProvider {
                                 entries.push(RemoteEntry {
                                     name: current_name.clone(),
                                     path: Self::trash_relative_path(
-                                        current_abspath.trim(),
+                                        &current_abspath,
                                         &current_name,
                                     ),
                                     is_dir: false,
@@ -3332,10 +3378,27 @@ impl JottacloudProvider {
                         "currentRevision" => {
                             in_revision = false;
                         }
+                        // The end of a revision scalar: its pieces are all in.
+                        _ if in_revision && in_file && tag == current_tag => {
+                            let text = current_text.trim();
+                            match current_tag.as_str() {
+                                "size" => {
+                                    current_size = text.parse().unwrap_or(0);
+                                }
+                                "state" => {
+                                    current_state = text.to_string();
+                                }
+                                "modified" | "updated" if current_modified.is_empty() => {
+                                    current_modified = Self::parse_jotta_time(text);
+                                }
+                                _ => {}
+                            }
+                        }
                         _ => {}
                     }
                     depth = depth.saturating_sub(1);
                     current_tag.clear();
+                    current_text.clear();
                 }
                 Ok(Event::Text(ref e)) => {
                     if current_tag.as_str() == "abspath" {
@@ -3349,28 +3412,20 @@ impl JottacloudProvider {
                         } else if child_folder_depth == Some(depth.saturating_sub(1)) {
                             pending_folder_abspath.push_str(chunk);
                         }
-                    } else if in_revision && in_file {
-                        let text = e.as_ref().trim().to_string();
-                        match current_tag.as_str() {
-                            "size" => {
-                                current_size = text.parse().unwrap_or(0);
-                            }
-                            "state" => {
-                                current_state = text;
-                            }
-                            "modified" | "updated" if current_modified.is_empty() => {
-                                current_modified = Self::parse_jotta_time(&text);
-                            }
-                            _ => {}
-                        }
+                    } else if in_revision && in_file && !current_tag.is_empty() {
+                        current_text.push_str(e.as_ref());
                     }
                 }
-                Ok(Event::GeneralRef(ref e)) if current_tag.as_str() == "abspath" => {
+                Ok(Event::GeneralRef(ref e)) => {
                     if let Some(ch) = super::xml_text::xml_entity_to_str(e.as_ref()) {
-                        if in_file && !in_revision {
-                            current_abspath.push_str(&ch);
-                        } else if child_folder_depth == Some(depth.saturating_sub(1)) {
-                            pending_folder_abspath.push_str(&ch);
+                        if current_tag.as_str() == "abspath" {
+                            if in_file && !in_revision {
+                                current_abspath.push_str(&ch);
+                            } else if child_folder_depth == Some(depth.saturating_sub(1)) {
+                                pending_folder_abspath.push_str(&ch);
+                            }
+                        } else if in_revision && in_file && !current_tag.is_empty() {
+                            current_text.push_str(&ch);
                         }
                     }
                 }
@@ -3401,6 +3456,22 @@ fn refresh_or_login_token(refresh: Result<bool, ProviderError>) -> Result<bool, 
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_namespace_identity_tracks_authenticated_account_and_discovered_mount() {
+        let mut provider = test_provider();
+        assert!(provider.sync_namespace_identity().is_none());
+        provider.connected = true;
+        let initial = provider.sync_namespace_identity().unwrap();
+        provider.config.mountpoint = "Other".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.mountpoint = "Archive".into();
+        provider.config.device = "OtherDevice".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.device = "Jotta".into();
+        provider.username = "other-user".into();
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+    }
+
     #[tokio::test]
     async fn probe_contract_jotta_does_not_report_a_failed_find_as_empty() {
         let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -3743,6 +3814,22 @@ mod tests {
         assert_real_progress(&updates, 300 * 1024, false);
     }
 
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(JottacloudProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(JottacloudProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+        // A leading backslash is the root, as normalize_path reads it.
+        assert_eq!(p.resolve_path("\\docs\\a "), "/docs/a ");
+        assert_eq!(p.resolve_path("sub\\a"), "/Cloud/sub/a");
+    }
+
     fn test_provider() -> JottacloudProvider {
         let config = JottacloudConfig {
             login_token: SecretString::from("test-token".to_string()),
@@ -3769,7 +3856,7 @@ mod tests {
     fn normalize_path_trims_and_normalizes_separators() {
         assert_eq!(JottacloudProvider::normalize_path(""), "/");
         assert_eq!(JottacloudProvider::normalize_path("/"), "/");
-        assert_eq!(JottacloudProvider::normalize_path("   "), "/");
+        assert_eq!(JottacloudProvider::normalize_path("   "), "/   ");
         assert_eq!(JottacloudProvider::normalize_path("foo"), "/foo");
         assert_eq!(JottacloudProvider::normalize_path("/foo/bar/"), "/foo/bar");
         assert_eq!(JottacloudProvider::normalize_path(r"\foo\bar"), "/foo/bar");
@@ -4002,6 +4089,90 @@ mod tests {
         let entries = JottacloudProvider::parse_trash_xml(xml);
         let file = entries.iter().find(|e| !e.is_dir).expect("file");
         assert_eq!(file.path, "/Photos & Videos/x.txt");
+    }
+
+    #[test]
+    fn parse_trash_xml_keeps_a_parent_name_that_ends_with_a_space() {
+        // `reports ` and `reports` are two folders. The parent taken from
+        // `<abspath>` was trimmed, so an entry deleted from `reports ` would
+        // be restored to `reports`.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="q3">
+      <abspath>/user123/Jotta/Archive/reports </abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/reports </abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/reports /q3");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/reports /x.txt");
+    }
+
+    /// The revision scalars of a trashed file arrive in pieces around a
+    /// reference too, and each piece used to replace the value: `1&#50;3`
+    /// listed a size of 3, and the date lost everything before its `&#x5A;`.
+    #[test]
+    fn parse_trash_xml_keeps_entities_in_revision_scalars() {
+        let xml = r#"<mountPoint name="Trash">
+  <files>
+    <file name="x.txt">
+      <abspath>/user123/Jotta/Archive/reports</abspath>
+      <currentRevision>
+        <state>COMPLE&#84;ED</state>
+        <modified>2026-09-01-T10:40:48&#x5A;</modified>
+        <size> 1&#50;3 </size>
+      </currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.size, 123);
+        assert_eq!(
+            file.modified,
+            Some(JottacloudProvider::parse_jotta_time(
+                "2026-09-01-T10:40:48Z"
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_trash_xml_decodes_the_stored_names_of_the_parent() {
+        // `reports% ` is stored as `reports％ ` and named so in `<abspath>`.
+        // Kept encoded, the path was encoded again by `jfs_url`, and restore
+        // or purge reached `reports‛％ `, another name.
+        let xml = r#"<mountPoint name="Trash">
+  <folders>
+    <folder name="q3">
+      <abspath>/user123/Jotta/Archive/reports％ /a：b</abspath>
+    </folder>
+  </folders>
+  <files>
+    <file name="x％.txt">
+      <abspath>/user123/Jotta/Archive/reports％ </abspath>
+      <currentRevision><size>1</size></currentRevision>
+    </file>
+  </files>
+</mountPoint>"#;
+        let entries = JottacloudProvider::parse_trash_xml(xml);
+        let folder = entries.iter().find(|e| e.is_dir).expect("folder");
+        assert_eq!(folder.path, "/reports% /a:b/q3");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file");
+        assert_eq!(file.path, "/reports% /x%.txt");
+        // Back to the stored names once, as the listing writes them.
+        let url = test_provider().jfs_url(&file.path);
+        assert!(
+            url.ends_with("/reports%EF%BC%85%20/x%EF%BC%85.txt"),
+            "{url}"
+        );
     }
 
     #[test]
@@ -4278,6 +4449,38 @@ mod tests {
         assert!(JottacloudProvider::parse_folder_xml("", "/").is_empty());
     }
 
+    /// A scalar with an entity in it arrives in pieces around the reference.
+    /// `<mime>` kept only the last piece, so a MIME parameter lost everything
+    /// before its first `&amp;`; the pieces are joined, and the spaces next
+    /// to a reference kept, before the value is trimmed once.
+    #[test]
+    fn parse_folder_xml_keeps_entities_in_element_text() {
+        let xml = r#"<folder name="Docs">
+            <files>
+                <file name="notes.txt">
+                    <currentRevision>
+                        <state>COMPLE&#84;ED</state>
+                        <size> 12 </size>
+                        <mime>text/plain; name=&quot;A &amp; B&quot;</mime>
+                        <md5>0123456789abcdef0123456789abcdef</md5>
+                    </currentRevision>
+                </file>
+            </files>
+        </folder>"#;
+
+        let entries = JottacloudProvider::parse_folder_xml(xml, "/Docs");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].size, 12);
+        assert_eq!(
+            entries[0].mime_type.as_deref(),
+            Some("text/plain; name=\"A & B\"")
+        );
+        assert_eq!(
+            entries[0].metadata.get("md5").map(String::as_str),
+            Some("0123456789abcdef0123456789abcdef")
+        );
+    }
+
     /// A station can hold two refresh chains for one profile (GUI per-profile,
     /// CLI singleton); a bound provider must try both, most specific first,
     /// and an unbound one only the singleton. A rotated token goes back to
@@ -4506,6 +4709,46 @@ mod tests {
         // Garbage yields no children, never a panic.
         assert!(JottacloudProvider::parse_folder_tombstone_children("junk").is_empty());
         assert!(JottacloudProvider::parse_folder_tombstone_children("").is_empty());
+    }
+
+    /// Any character of a revision scalar can arrive as a reference, and
+    /// quick-xml hands the value over in pieces around it: `1&#50;3` was read
+    /// as 3, and that size goes into the cphash restore request.
+    #[test]
+    fn revision_scalars_keep_their_entity_references() {
+        let revision = r#"<currentRevision>
+                <created>2026-09-01-T10:40:48Z</created>
+                <modified>2026-09-01-T10:40:48&#x5A;</modified>
+                <size>1&#50;3</size>
+                <md5> d84d3caf340bd500&#49;93971c9eecb7255 </md5>
+            </currentRevision>"#;
+        let expected = (
+            123,
+            "d84d3caf340bd500193971c9eecb7255".to_string(),
+            "2026-09-01-T10:40:48Z".to_string(),
+            "2026-09-01-T10:40:48Z".to_string(),
+        );
+
+        let file =
+            format!(r#"<file name="a.txt" deleted="2026-09-01-T10:41:34Z">{revision}</file>"#);
+        assert_eq!(
+            JottacloudProvider::parse_jfs_file_revision(&file),
+            Some(expected.clone())
+        );
+
+        let folder = format!(
+            r#"<folder name="f" deleted="2026-09-01-T10:41:34Z"><files>
+                <file name="a.txt" deleted="2026-09-01-T10:41:34Z">{revision}</file>
+            </files></folder>"#
+        );
+        assert_eq!(
+            JottacloudProvider::parse_folder_tombstone_children(&folder),
+            vec![TombstoneChild::File {
+                name: "a.txt".to_string(),
+                deleted: true,
+                revision: Some(expected),
+            }]
+        );
     }
 
     #[test]

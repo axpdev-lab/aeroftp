@@ -217,7 +217,10 @@ pub(crate) async fn single_file_transfer(
     upload: bool,
     per_file_seconds: u64,
 ) -> Result<(), crate::providers::ProviderError> {
-    let timeout = bulk_timeout(per_file_seconds, 1, item.size);
+    let mut timeout = bulk_timeout(per_file_seconds, 1, item.size);
+    if !upload {
+        timeout += crate::providers::content_check::allowance(item.size);
+    }
     let operation = async {
         if upload {
             provider
@@ -225,7 +228,7 @@ pub(crate) async fn single_file_transfer(
                 .await
         } else {
             provider
-                .download(&item.remote_path, &item.local_path, None)
+                .download_checked(&item.remote_path, &item.local_path, None, None)
                 .await
         }
     };
@@ -425,7 +428,11 @@ pub(crate) async fn execute_provider_bulk(
         settled[index] = Some(match result {
             Some(Ok(())) => {
                 if !upload {
-                    crate::preserve_remote_mtime(&entry.local_path, entry.modified.as_deref());
+                    let read_time = provider.take_download_time(false);
+                    crate::preserve_remote_mtime(
+                        &entry.local_path,
+                        read_time.as_deref().or(entry.modified.as_deref()),
+                    );
                 }
                 emit_event(sink.as_ref(), entry, upload, "file_complete", None);
                 TransferOutcome::Success

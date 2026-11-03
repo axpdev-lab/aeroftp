@@ -170,15 +170,15 @@ impl fmt::Debug for TuiSession {
 }
 
 fn normalize_remote_cwd(path: &str) -> String {
-    let trimmed = path.trim();
-    if trimmed.is_empty() || trimmed == "." {
+    // As given: `/reports ` is its own folder, and a name of spaces a name.
+    if path.is_empty() || path == "." {
         return "/".to_string();
     }
 
-    let with_root = if trimmed.starts_with('/') {
-        trimmed.to_string()
+    let with_root = if path.starts_with('/') {
+        path.to_string()
     } else {
-        format!("/{}", trimmed)
+        format!("/{}", path)
     };
 
     let normalized = with_root.trim_end_matches('/');
@@ -253,5 +253,20 @@ mod tests {
 
         state.mark_cancelled();
         assert_eq!(state.phase, TuiSessionPhase::Cancelled);
+    }
+
+    /// The initial folder and every folder the session moves to keep the
+    /// spaces of their names: `/reports ` and `/reports` are two folders.
+    #[test]
+    fn a_folder_keeps_the_spaces_of_its_name() {
+        let mut state =
+            TuiSessionState::planned_from_selection(&sample_user(), &sample_profile("/reports "));
+        assert_eq!(state.cwd, "/reports ");
+        state.mark_connected(" a/b /");
+        assert_eq!(state.cwd, "/ a/b ");
+        state.mark_connected("   ");
+        assert_eq!(state.cwd, "/   ");
+        state.mark_connected("");
+        assert_eq!(state.cwd, "/");
     }
 }

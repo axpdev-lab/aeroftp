@@ -14,6 +14,7 @@ import { useTranslation, translate } from '../../i18n';
 import { guardedUnlisten } from '../../hooks/useTauriListener';
 import { splitPathsByType } from './pathStaging';
 import { copyText } from '../../utils/clipboard';
+import { resolveUniqueExtractDir } from '../../utils/extractOrchestrator';
 
 /** Where Error Correction parity lives relative to the vault container. */
 export type RecoveryPlacement = 'embedded' | 'detached' | 'both';
@@ -1537,12 +1538,16 @@ export function useVaultState(props: UseVaultStateProps): VaultState {
     };
 
     // Ehud #2: one-click "extract all" to a chosen folder (v3 recursive backend).
+    // Into a folder of its own there, named after the vault ("name (2)" when
+    // taken), as the Extract window does: the chosen folder's own entries are
+    // never written over.
     const handleExtractAll = async () => {
-        const destPath = await pickFile({ directory: true });
-        if (!destPath || typeof destPath !== 'string') return;
+        const chosen = await pickFile({ directory: true });
+        if (!chosen || typeof chosen !== 'string') return;
 
         setLoading(true);
         try {
+            const destPath = await resolveUniqueExtractDir(chosen, vaultPath.split(/[\\/]/).pop() || 'vault');
             let count: number;
             if (isPlaintextZip) {
                 count = await invoke<number>('aerovz_extract_all', { vaultPath, destPath });

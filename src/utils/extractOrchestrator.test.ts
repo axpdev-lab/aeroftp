@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { describe, it, expect } from 'vitest';
-import { archiveStem, inferGeneralKind, isWrongPasswordError, needsPasswordPrompt } from './extractOrchestrator';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }));
+vi.mock('@tauri-apps/api/core', () => ({ invoke }));
+
+import { archiveStem, extractCollisionList, extractCollisions, extractHereCollisions, inferGeneralKind, isWrongPasswordError, needsPasswordPrompt } from './extractOrchestrator';
 
 describe('archiveStem (Extract-to-folder destination derivation)', () => {
     it('strips single archive extensions', () => {
@@ -108,5 +112,62 @@ describe('isWrongPasswordError (extract error routing)', () => {
         expect(isWrongPasswordError("Entry 'James' password.txt' not found in archive")).toBe(false);
         expect(isWrongPasswordError("Failed to extract entry 'James' password.txt': Permission denied")).toBe(false);
         expect(isWrongPasswordError("Failed to extract entry 'a.txt': Wrong password")).toBe(true);
+    });
+});
+
+describe('extractCollisions (what an "Extract here" would write over)', () => {
+    it('names each top-level entry the folder already holds, once', () => {
+        expect(extractCollisions(['docs/a.txt', 'docs/b.txt', 'readme.md', 'new.txt'], ['docs', 'readme.md', 'other']))
+            .toEqual(['docs', 'readme.md']);
+    });
+
+    it('reads Windows separators and a leading slash', () => {
+        expect(extractCollisions(['docs\\a.txt', '/readme.md'], ['docs', 'readme.md'])).toEqual(['docs', 'readme.md']);
+    });
+
+    it('reads past a leading "./", as a tar of "." lists its entries', () => {
+        // `tar -cf a.tar .` lists `./`, `./docs/` and `./docs/a.txt`, and
+        // list_tar returns them as they are: `.` was the name compared.
+        expect(extractCollisions(['./', './docs/', './docs/a.txt', './readme.md'], ['docs', 'readme.md'])).toEqual(['docs', 'readme.md']);
+        expect(extractCollisions(['././docs/a.txt'], ['docs'])).toEqual(['docs']);
+        expect(extractCollisions(['/./docs/b.txt'], ['docs'])).toEqual(['docs']);
+        expect(extractCollisions(['./', '.'], ['docs'])).toEqual([]);
+    });
+
+    it('finds nothing in a folder that holds none of the entries', () => {
+        expect(extractCollisions(['docs/a.txt', 'readme.md'], ['other'])).toEqual([]);
+        expect(extractCollisions([], ['docs'])).toEqual([]);
+    });
+
+    it('compares the top-level name only: a file below a same-named folder lands elsewhere', () => {
+        expect(extractCollisions(['x/docs'], ['docs'])).toEqual([]);
+    });
+
+    it('compares without case, as a case-insensitive file system would write', () => {
+        expect(extractCollisions(['Docs/a.txt', 'README.md'], ['docs', 'readme.md'])).toEqual(['Docs', 'README.md']);
+    });
+
+    it('lists five names and counts the rest', () => {
+        expect(extractCollisionList(['a', 'b'])).toBe('a, b');
+        expect(extractCollisionList(['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toBe('a, b, c, d, e, +2');
+    });
+});
+
+describe('extractHereCollisions (the folder an "Extract here" writes into)', () => {
+    beforeEach(() => invoke.mockReset());
+
+    it('lists the folder with its hidden entries and names what it holds', async () => {
+        invoke.mockResolvedValue([{ name: '.config' }, { name: 'docs' }, { name: 'other' }]);
+        await expect(extractHereCollisions(['.config/app.ini', 'docs/a.txt', 'new.txt'], '/home/u/Downloads'))
+            .resolves.toEqual(['.config', 'docs']);
+        expect(invoke).toHaveBeenCalledWith('get_local_files', { path: '/home/u/Downloads', showHidden: true });
+    });
+
+    it('fails when the folder cannot be listed, rather than taking it as empty', async () => {
+        // An empty listing would let the extraction replace files without asking.
+        invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_local_files') throw new Error('Permission denied');
+        });
+        await expect(extractHereCollisions(['docs/a.txt'], '/home/u/Downloads')).rejects.toThrow('Permission denied');
     });
 });

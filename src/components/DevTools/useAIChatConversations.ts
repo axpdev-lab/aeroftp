@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useLayoutEffect } from 'react';
 import { pickSave } from '../../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { AIProviderType } from '../../types/ai';
@@ -27,11 +27,11 @@ export function useAIChatConversations() {
 
     const historyLoadedRef = useRef(false);
     const messagesRef = useRef(messages);
-    messagesRef.current = messages;
+    useLayoutEffect(() => { messagesRef.current = messages; }, [messages]);
     const conversationsRef = useRef(conversations);
-    conversationsRef.current = conversations;
+    useLayoutEffect(() => { conversationsRef.current = conversations; });
     const activeConversationIdRef = useRef(activeConversationId);
-    activeConversationIdRef.current = activeConversationId;
+    useLayoutEffect(() => { activeConversationIdRef.current = activeConversationId; });
     // The key a new chat counts its tokens under until the save gives it an id.
     const newChatKeyRef = useRef<string>(crypto.randomUUID());
     // BUG-007: Track saved content per message ID to detect streaming updates

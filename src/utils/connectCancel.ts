@@ -12,8 +12,8 @@ export const CONNECT_CANCELLED_MARKER = 'CONNECT_CANCELLED';
 
 export function isConnectCancelledError(error: unknown): boolean {
   if (error == null) return false;
-  if (error instanceof Error) return error.message.includes(CONNECT_CANCELLED_MARKER);
-  return String(error).includes(CONNECT_CANCELLED_MARKER);
+  if (error instanceof Error) return error.message === CONNECT_CANCELLED_MARKER;
+  return String(error) === CONNECT_CANCELLED_MARKER;
 }
 
 // IPC panic safety net (v4.1.3): a panicking Tauri command never answers its

@@ -30,6 +30,7 @@ export interface KeystoreImportResult {
     userPartitionsRekeyed?: number;
     userPartitionsUnreadable?: number;
     userPartitionsBackupPath?: string;
+    sqliteDbsFailed?: string[];
 }
 
 interface KeystoreImportResultModalProps {
@@ -48,7 +49,8 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
     const rekeyed = result.userPartitionsRekeyed ?? 0;
     const unreadable = result.userPartitionsUnreadable ?? 0;
     const requiresRestart = !!result.requiresRestart;
-    const hasWarning = unreadable > 0;
+    const failedDatabases = result.sqliteDbsFailed ?? [];
+    const hasWarning = unreadable > 0 || failedDatabases.length > 0;
 
     const handleRestart = async () => {
         setRestarting(true);
@@ -96,6 +98,15 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
                         <div className="flex items-start gap-2 mb-3 text-sm text-emerald-700 dark:text-emerald-300">
                             <KeyRound size={16} className="mt-0.5 flex-shrink-0" />
                             <span>{t('settings.keystoreRekeyedPartitions', { count: rekeyed })}</span>
+                        </div>
+                    )}
+
+                    {failedDatabases.length > 0 && (
+                        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3">
+                            <div className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200">
+                                <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+                                <span>{t('settings.keystoreDatabasesFailed', { names: failedDatabases.join(', ') })}</span>
+                            </div>
                         </div>
                     )}
 

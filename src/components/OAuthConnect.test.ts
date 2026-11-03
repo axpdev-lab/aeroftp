@@ -7,11 +7,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { OAuthConnect } from './OAuthConnect';
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), t: (key: string) => key }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), t: (key: string) => key, startAuth: vi.fn(), connect: vi.fn() }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../i18n', () => ({ useTranslation: () => mocks.t, useI18n: () => ({ t: mocks.t }) }));
 vi.mock('../hooks/useOAuth2', () => ({
-    useOAuth2: () => ({ isAuthenticating: false, error: null, startAuth: vi.fn(), connect: vi.fn() }),
+    useOAuth2: () => ({ isAuthenticating: false, error: null, startAuth: mocks.startAuth, connect: mocks.connect }),
     OAUTH_APPS: Object.fromEntries(['google_drive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zoho_workdrive', 'yandexdisk'].map(p => [p, { help_url: 'https://example.test/help' }])),
 }));
 
@@ -138,5 +138,39 @@ describe('OAuth vault loading lifetime', () => {
         await act(async () => resolveId('box-id'));
         expect(field('Id').value).toBe('pcloud-id');
         expect(field('Secret').value).toBe('pcloud-secret');
+    });
+});
+
+describe('saving the OAuth app before a sign-in', () => {
+    const signInWith = async (saved: () => Promise<unknown>) => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation((command: string, args: { account?: string }) =>
+            command === 'store_oauth_app' ? saved() : previous(command, args));
+        mocks.startAuth.mockReset();
+        mocks.connect.mockReset();
+        await render('dropbox');
+        const type = (input: HTMLInputElement, value: string) => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        };
+        await act(async () => {
+            type(field('Id'), 'typed-id');
+            type(field('Secret'), 'typed-secret');
+        });
+        const button = [...container.querySelectorAll('button')].find(b => b.className.includes('bg-blue-600') || b.textContent?.toLowerCase().includes('signin'));
+        await act(async () => { button!.click(); });
+    };
+
+    it('stops the sign-in and shows why when the app could not be saved', async () => {
+        await signInWith(async () => { throw new Error('PROFILE_LIST_BUSY'); });
+        expect(mocks.startAuth).not.toHaveBeenCalled();
+        expect(mocks.connect).not.toHaveBeenCalled();
+        expect(container.textContent).toContain('PROFILE_LIST_BUSY');
+    });
+
+    it('goes on to the sign-in once the app is saved, as one call', async () => {
+        await signInWith(async () => undefined);
+        expect(mocks.invoke).toHaveBeenCalledWith('store_oauth_app', { provider: 'dropbox', clientId: 'typed-id', clientSecret: 'typed-secret' });
+        expect(mocks.startAuth).toHaveBeenCalledTimes(1);
     });
 });

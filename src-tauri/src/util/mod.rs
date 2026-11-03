@@ -16,6 +16,7 @@ pub mod provider_guard;
 pub mod scratch;
 pub mod shutdown;
 pub mod size;
+pub mod start_folder;
 pub mod temp_name;
 
 pub use abort_on_drop::AbortOnDrop;

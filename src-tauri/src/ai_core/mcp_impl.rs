@@ -294,7 +294,7 @@ impl RemoteBackend for McpRemoteBackend {
         let remote = remote.to_string();
         let local = local.to_string();
         self.with_provider(move |p| {
-            Box::pin(async move { p.download(&remote, &local, None).await })
+            Box::pin(async move { p.download_checked(&remote, &local, None, None).await })
         })
         .await
     }
@@ -389,8 +389,12 @@ impl RemoteBackend for McpRemoteBackend {
     async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
         let path = path.to_string();
         let pattern = pattern.to_string();
-        self.with_provider(move |p| Box::pin(async move { p.find(&path, &pattern).await }))
-            .await
+        self.with_provider(move |p| {
+            Box::pin(
+                async move { crate::providers::find_or_walk(p.as_mut(), &path, &pattern).await },
+            )
+        })
+        .await
     }
 
     async fn storage_info(&self) -> Result<StorageQuota, String> {

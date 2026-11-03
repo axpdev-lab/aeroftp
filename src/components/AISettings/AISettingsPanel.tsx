@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { TransferProgressBar } from '../TransferProgressBar';
 import { Checkbox } from '../ui/Checkbox';
@@ -265,7 +265,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     const [settings, setSettings] = useState<AISettings>(getDefaultAISettings());
     const [settingsLoaded, setSettingsLoaded] = useState(false);
     const settingsRef = useRef(settings);
-    settingsRef.current = settings;
+    useLayoutEffect(() => { settingsRef.current = settings; });
     // Deliberate human API-key edits not yet flushed to the keyring. Only
     // providers with a pending generation are written to `ai_apikey_*`: a plain
     // preference change (or a controller update) never re-writes a stored

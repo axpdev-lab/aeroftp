@@ -29,6 +29,7 @@ pub mod box_provider;
 pub mod bulk;
 pub mod checksum_matrix;
 pub mod cloudinary;
+pub mod content_check;
 pub mod directory;
 pub mod drime_cloud;
 pub mod dropbox;
@@ -76,10 +77,12 @@ pub mod s3;
 pub(crate) mod s3_delta;
 pub mod s3_delta_baseline;
 pub mod s3_delta_plan;
+pub mod scp;
 pub mod served_file;
 pub mod sftp;
 #[cfg(test)]
 mod share_link_capability_guard;
+pub mod shell_quote;
 pub mod sts;
 pub mod swift;
 pub mod totp_helper;
@@ -185,6 +188,184 @@ pub fn matches_find_pattern(name: &str, pattern: &str) -> bool {
     } else {
         name.to_lowercase().contains(&pattern.to_lowercase())
     }
+}
+
+/// Results a search returns, as the providers that walk their own tree do. A
+/// caller that gets this many cannot tell whether there are more, and says so.
+pub const FIND_RESULT_LIMIT: usize = 500;
+
+/// Folders a search lists before it gives up. The provider is held while it
+/// walks, and a search with few matches would otherwise read a whole account.
+const FIND_FOLDER_LIMIT: usize = 20_000;
+
+/// How long a walk goes on starting new listings. The provider is held while it
+/// walks, so the commands behind it wait. Checked between listings: a listing cut
+/// halfway could leave a session unusable, and each is bounded by its provider.
+const FIND_WALK_BUDGET: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// One absolute root for the walk and the listing, with `.` and `..` resolved.
+fn search_root(start: &str, path: &str) -> String {
+    let joined = if path.starts_with('/') {
+        path.to_string()
+    } else {
+        format!("{start}/{path}")
+    };
+    let mut segments: Vec<&str> = Vec::new();
+    for segment in joined.split('/') {
+        match segment {
+            "" | "." => {}
+            ".." => {
+                segments.pop();
+            }
+            segment => segments.push(segment),
+        }
+    }
+    format!("/{}", segments.join("/"))
+}
+
+/// Whether a failed listing speaks about that folder alone. Anything else would
+/// fail the folders after it too, and a partial result would read as a complete
+/// one: a lost connection or expired sign-in, and a server or generic error, the
+/// variants several providers give to a 401 or a 429.
+fn listing_failure_is_the_folders(error: &ProviderError) -> bool {
+    matches!(
+        error,
+        ProviderError::NotFound(_)
+            | ProviderError::PermissionDenied(_)
+            | ProviderError::InvalidPath(_)
+            | ProviderError::ParseError(_)
+    )
+}
+
+/// Search under `path` by walking its listings, so every hit is under `path`
+/// and carries the path `list` gives it, which a caller may go on to delete.
+/// The folder searched failing, or a failure that is not about one folder, is
+/// an error, not an empty or partial result. A subfolder that cannot be listed
+/// is skipped with a warning, and a link is not followed.
+pub(crate) async fn find_by_walk<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    find_by_walk_within(provider, path, pattern, FIND_WALK_BUDGET).await
+}
+
+pub(crate) async fn find_by_walk_within<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+    budget: std::time::Duration,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    // A listing may answer from what it kept: without a session that would read
+    // as a search that found nothing.
+    if !provider.is_connected() {
+        return Err(ProviderError::NotConnected);
+    }
+    // Some providers move their current folder as they list: a search must not
+    // leave a later relative upload or delete in the last folder it walked.
+    let start = provider.pwd().await?;
+    let found = walk_for_find(provider, path, pattern, &start, budget).await;
+    if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
+        provider.cd(&start).await?;
+    }
+    found
+}
+
+async fn walk_for_find<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+    start: &str,
+    budget: std::time::Duration,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    let root = search_root(start, path);
+    let mut walk = crate::sync_core::FindWalk::new(&root);
+    let mut folders = vec![root.clone()];
+    let mut listed = 0;
+    let mut results = Vec::new();
+    let started = std::time::Instant::now();
+    while let Some(folder) = folders.pop() {
+        listed += 1;
+        if listed > FIND_FOLDER_LIMIT {
+            return Err(ProviderError::Other(format!(
+                "Search stopped after {FIND_FOLDER_LIMIT} folders under {root}: search a smaller folder"
+            )));
+        }
+        if started.elapsed() >= budget {
+            return Err(ProviderError::Other(format!(
+                "Search stopped after {} s under {root}: search a smaller folder",
+                budget.as_secs()
+            )));
+        }
+        let entries = match provider.list(&folder).await {
+            Ok(entries) => entries,
+            Err(error) if folder == root || !listing_failure_is_the_folders(&error) => {
+                return Err(error)
+            }
+            Err(error) => {
+                tracing::warn!("find: skipping {folder:?}: {error}");
+                continue;
+            }
+        };
+        let sorted = walk.sort(&folder, entries);
+        for (path, step) in &sorted.refused {
+            tracing::warn!(
+                "find: skipping {path:?}, named in {folder}: {}",
+                step.reason()
+            );
+        }
+        folders.extend(sorted.follow);
+        for entry in sorted.entries {
+            if matches_find_pattern(&entry.name, pattern) {
+                results.push(entry);
+                if results.len() >= FIND_RESULT_LIMIT {
+                    return Ok(results);
+                }
+            }
+        }
+    }
+    Ok(results)
+}
+
+/// The provider's own search, or a walk where it has none, never more than
+/// [`FIND_RESULT_LIMIT`]: a caller reads that many as a search cut short.
+pub(crate) async fn find_or_walk<P>(
+    provider: &mut P,
+    path: &str,
+    pattern: &str,
+) -> Result<Vec<RemoteEntry>, ProviderError>
+where
+    P: StorageProvider + ?Sized,
+{
+    let mut found = match provider.find(path, pattern).await {
+        Err(ProviderError::NotSupported(_)) => find_by_walk(provider, path, pattern).await,
+        found => found,
+    }?;
+    found.truncate(FIND_RESULT_LIMIT);
+    Ok(found)
+}
+
+/// A local file's modification time in whole seconds, for a provider to keep on
+/// an upload. Without it the server stamps the time of the upload, and a Compare
+/// afterwards reads identical files as newer on that side (Requested 125).
+pub(crate) fn local_modified(path: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    use chrono::Timelike;
+    let modified = std::fs::metadata(path).ok()?.modified().ok()?;
+    chrono::DateTime::<chrono::Utc>::from(modified).with_nanosecond(0)
+}
+
+/// [`local_modified`] as RFC 3339, the form Drive, OneDrive and Dropbox take.
+pub(crate) fn local_modified_rfc3339(path: &str) -> Option<String> {
+    local_modified(path).map(|date| date.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
 }
 
 /// H2: Maximum size for download_to_bytes operations (500 MB).
@@ -411,6 +592,114 @@ fn unescape_xml_entities(s: &str) -> String {
         .replace("&amp;", "&")
 }
 
+/// The start of an error response's body, for a message. At most `max`
+/// bytes and five seconds are spent, including a body that stalls or trickles.
+/// Preserve bytes already read if the total deadline expires.
+pub(crate) async fn error_body_excerpt(mut resp: reqwest::Response, max: usize) -> String {
+    let mut body = Vec::new();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    while body.len() < max {
+        match tokio::time::timeout_at(deadline, resp.chunk()).await {
+            Ok(Ok(Some(chunk))) => {
+                let take = chunk.len().min(max - body.len());
+                body.extend_from_slice(&chunk[..take]);
+            }
+            _ => break,
+        }
+    }
+    body.truncate(max);
+    String::from_utf8_lossy(&body).trim().to_string()
+}
+
+#[cfg(test)]
+mod error_body_excerpt_tests {
+    use super::*;
+    use futures_util::StreamExt;
+
+    /// An error page that never ends still yields its first bytes, at once.
+    #[tokio::test]
+    async fn an_endless_error_body_is_read_only_up_to_the_excerpt() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let endless = futures_util::stream::repeat_with(|| {
+                Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"error page "))
+            });
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                axum::body::Body::from_stream(endless),
+            )
+        });
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let excerpt = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            error_body_excerpt(resp, 200),
+        )
+        .await
+        .expect("the excerpt stops at its limit");
+        assert_eq!(excerpt.len(), 200, "{excerpt:?}");
+        assert!(excerpt.starts_with("error page error page"), "{excerpt:?}");
+    }
+
+    #[tokio::test]
+    async fn a_stalled_error_body_returns_its_prefix_within_the_total_deadline() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let stream = futures_util::stream::once(async {
+                Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"error page"))
+            })
+            .chain(futures_util::stream::pending());
+            (
+                axum::http::StatusCode::BAD_GATEWAY,
+                axum::body::Body::from_stream(stream),
+            )
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        // No short client read timeout: the excerpt's own total bound must win.
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let excerpt = tokio::time::timeout(
+            std::time::Duration::from_secs(6),
+            error_body_excerpt(resp, 200),
+        )
+        .await
+        .expect("a stalled error must not delay its known status indefinitely");
+        assert_eq!(excerpt, "error page");
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_trickling_error_does_not_restart_the_total_deadline_for_each_chunk() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let stream = futures_util::stream::unfold((), |()| async {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                Some((Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"x")), ()))
+            });
+            (
+                axum::http::StatusCode::BAD_GATEWAY,
+                axum::body::Body::from_stream(stream),
+            )
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let excerpt = tokio::time::timeout(
+            std::time::Duration::from_secs(6),
+            error_body_excerpt(resp, 200),
+        )
+        .await
+        .expect("fresh chunks must not restart the five-second deadline");
+        assert!(!excerpt.is_empty());
+        assert!(
+            excerpt.len() < 200,
+            "the time limit must win before the byte limit"
+        );
+        server.abort();
+    }
+}
+
 /// GAP-A10: Sanitize API error response bodies to prevent leaking sensitive data.
 /// Truncates to first line (max 200 chars), strips potential tokens/keys.
 pub fn sanitize_api_error(body: &str) -> String {
@@ -627,6 +916,7 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         ProviderType::Ftp
         | ProviderType::Ftps
         | ProviderType::Sftp
+        | ProviderType::Scp
         | ProviderType::WebDav
         | ProviderType::Swift
         | ProviderType::GitLab
@@ -849,6 +1139,8 @@ pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Dur
         ProviderType::Ftp | ProviderType::Ftps => None,
         // `attrs.mtime`, Unix seconds.
         ProviderType::Sftp => SECOND,
+        // `ls --full-time`, read to the second; `scp -p` stamps seconds.
+        ProviderType::Scp => SECOND,
         // `getlastmodified`, RFC 1123.
         ProviderType::WebDav => SECOND,
         // `LastModified` carries milliseconds, but the ListObjects value is
@@ -972,6 +1264,12 @@ pub trait StorageProvider: Send + Sync {
         None
     }
 
+    /// Non-secret authenticated namespace for persistent sync authority, when an
+    /// account label alone omits the actual device, mount or client namespace.
+    fn sync_namespace_identity(&self) -> Option<String> {
+        None
+    }
+
     /// Stable identity for the process-global transfer governor. Direct
     /// providers normally expose a `user@host` display name; cloud providers
     /// expose their account or tenant label. Implementations with richer
@@ -1035,6 +1333,134 @@ pub trait StorageProvider: Send + Sync {
     ) -> Result<(), ProviderError> {
         let _ = size_hint;
         self.download(remote_path, local_path, on_progress).await
+    }
+
+    /// The caller saw a refusal and the next `download` reads a moved object. A
+    /// provider that has no time in its response (FTP, Koofr) reads it around the
+    /// transfer then; the others hand over the time their response carried.
+    fn expect_moved_source(&mut self) {}
+
+    /// The provider's own parallel path was refused in the download that just
+    /// ended. A caller that retries the entry says so with
+    /// [`Self::expect_moved_source`]: a new download forgets it, and would read
+    /// the moved object in windows that carry no time.
+    fn download_was_refused(&self) -> bool {
+        false
+    }
+
+    /// The digest a download of `remote_path` is compared with, if there is one.
+    /// Any failure to read it only leaves the file unchecked.
+    async fn content_digest(
+        &mut self,
+        remote_path: &str,
+        size_hint: Option<u64>,
+    ) -> Option<content_check::ContentDigest> {
+        if !content_check::worth_asking(self.provider_type()) {
+            return None;
+        }
+        let limit = content_check::reading_limit(size_hint);
+        let digests = tokio::time::timeout(limit, self.checksum(remote_path))
+            .await
+            .ok()?
+            .ok()?;
+        content_check::ContentDigest::strongest(&digests)
+    }
+
+    /// [`Self::download_with_size_hint`], compared with the hash the server
+    /// publishes before the file is published. A difference is read once more:
+    /// the same digest means the bytes are wrong, and the file fails. A digest that
+    /// moved means the object was replaced, which gets one more download. One that
+    /// moves again is a file being written, which no hash can vouch for: a copy of
+    /// it is taken unchecked, as it always was, and the log says so.
+    /// With no hash to compare, size alone decides, as it always did.
+    async fn download_checked(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        size_hint: Option<u64>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let Some(expected) = self.content_digest(remote_path, size_hint).await else {
+            log::debug!("[content-check] {local_path}: no usable hash, size alone decides");
+            return self
+                .download_with_size_hint(remote_path, local_path, size_hint, on_progress)
+                .await;
+        };
+        let (first, rest) = multi_thread::share_progress(on_progress);
+        let check = content_check::ContentCheck::expecting(Some(expected.clone()), local_path);
+        let result = check
+            .scope(self.download_with_size_hint(remote_path, local_path, size_hint, first))
+            .await;
+        let result = check.settle(result).await;
+        if !check.differs() {
+            return result;
+        }
+        let fresh = match self.content_digest(remote_path, size_hint).await {
+            Some(fresh) if fresh != expected => fresh,
+            _ => return result,
+        };
+        let (second, third) = multi_thread::share_progress(rest);
+        self.expect_moved_source();
+        let check = content_check::ContentCheck::expecting(Some(fresh.clone()), local_path);
+        let again = check
+            .scope(self.download_with_size_hint(remote_path, local_path, size_hint, second))
+            .await;
+        let again = check.settle(again).await;
+        if !check.differs() {
+            return again;
+        }
+        match self.content_digest(remote_path, size_hint).await {
+            Some(latest) if latest != fresh => {
+                log::warn!(
+                    "[content-check] {local_path}: the source keeps changing, downloaded unchecked"
+                );
+                self.expect_moved_source();
+                self.download_with_size_hint(remote_path, local_path, size_hint, third)
+                    .await
+            }
+            _ => again,
+        }
+    }
+
+    /// [`Self::resume_download`], with the whole file compared before it is
+    /// published. A part that does not match is discarded by its writer, so the
+    /// caller's next attempt starts over.
+    async fn resume_download_checked(
+        &mut self,
+        remote_path: &str,
+        local_path: &str,
+        offset: u64,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let expected = self.content_digest(remote_path, None).await;
+        let (first, rest) = multi_thread::share_progress(on_progress);
+        let check = content_check::ContentCheck::expecting(expected.clone(), local_path);
+        let result = check
+            .scope(self.resume_download(remote_path, local_path, offset, first))
+            .await;
+        let result = check.settle(result).await;
+        if !check.differs() {
+            return result;
+        }
+        // A digest that moved is a replacement, as in `download_checked`: the part
+        // is gone with the mismatch, and the new object is read from its start.
+        let fresh = self.content_digest(remote_path, None).await;
+        if fresh.is_none() || fresh == expected {
+            return result;
+        }
+        self.expect_moved_source();
+        self.download_checked(remote_path, local_path, None, rest)
+            .await
+    }
+
+    /// The modification time for the file the last `download` wrote, when a
+    /// refusal shows the listing's may describe another object: the provider's
+    /// own (it refused its parallel path) or the caller's (`source_refused`).
+    /// Taken once. `None` keeps the time the caller has: a plain download, or a
+    /// protocol whose transfer carries no time.
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        let _ = source_refused;
+        None
     }
 
     /// Download a file to memory (returns bytes)
@@ -3338,7 +3764,13 @@ impl ProviderFactory {
             }
             ProviderType::Sftp => {
                 let sftp_config = SftpConfig::from_provider_config(config)?;
-                Ok(Box::new(SftpProvider::new(sftp_config)))
+                let mut provider = SftpProvider::new(sftp_config);
+                provider.set_scp_fallback(sftp::scp_fallback_allowed(config));
+                Ok(Box::new(provider))
+            }
+            ProviderType::Scp => {
+                let scp_config = SftpConfig::from_provider_config(config)?;
+                Ok(Box::new(scp::provider::ScpProvider::new(scp_config)))
             }
             ProviderType::AeroCloud => {
                 // AeroCloud uses FTP internally but is configured via CloudPanel
@@ -3501,6 +3933,7 @@ impl ProviderFactory {
             ProviderType::Ftp,
             ProviderType::Ftps,
             ProviderType::Sftp,
+            ProviderType::Scp,
             ProviderType::WebDav,
             ProviderType::S3,
             ProviderType::AeroCloud,
@@ -4224,12 +4657,40 @@ mod http_resume_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_local_date_reads_in_whole_seconds_in_rfc3339() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("a.bin");
+        let file = std::fs::File::create(&path).unwrap();
+        let date = std::time::UNIX_EPOCH + std::time::Duration::new(1_614_834_367, 500_000_000);
+        file.set_modified(date).unwrap();
+        drop(file);
+        assert_eq!(
+            local_modified_rfc3339(path.to_str().unwrap()).as_deref(),
+            Some("2021-03-04T05:06:07Z")
+        );
+        assert_eq!(local_modified_rfc3339("/no/such/file"), None);
+
+        let file = std::fs::File::options().write(true).open(&path).unwrap();
+        file.set_modified(std::time::UNIX_EPOCH - std::time::Duration::from_secs(86_400))
+            .unwrap();
+        drop(file);
+        assert_eq!(
+            local_modified_rfc3339(path.to_str().unwrap()).as_deref(),
+            Some("1969-12-31T00:00:00Z")
+        );
+    }
+
     use super::*;
 
     #[test]
     fn test_provider_factory_supported_types() {
         let types = ProviderFactory::supported_types();
         assert!(types.contains(&ProviderType::Ftp));
+        assert!(types.contains(&ProviderType::Scp));
+        assert!(types
+            .windows(2)
+            .any(|pair| pair == [ProviderType::Sftp, ProviderType::Scp]));
         assert!(types.contains(&ProviderType::WebDav));
         assert!(types.contains(&ProviderType::S3));
     }

@@ -46,6 +46,10 @@ pub struct CloudPathPair {
 
     #[serde(default = "default_preserve_remote_deletes")]
     pub preserve_remote_deletes: bool,
+    /// One-way Update keeps newer destinations; deletion requires a proven Cloud
+    /// transfer to this side and unchanged destination metadata. Old indices grant no proof.
+    #[serde(default)]
+    pub update_only: bool,
 
     #[serde(default)]
     pub compress_enabled: bool,
@@ -99,6 +103,7 @@ impl CloudPathPair {
             connection_params: legacy.connection_params.clone(),
             sync_direction: legacy.sync_direction,
             preserve_remote_deletes: legacy.preserve_remote_deletes,
+            update_only: legacy.update_only,
             compress_enabled: legacy.compress_enabled,
             compress_level: legacy.compress_level,
             conflict_strategy: legacy.conflict_strategy.clone(),
@@ -134,6 +139,7 @@ impl CloudPathPair {
             public_url_base: None,
             sync_direction: self.sync_direction,
             preserve_remote_deletes: self.preserve_remote_deletes,
+            update_only: self.update_only,
             compress_enabled: self.compress_enabled,
             compress_level: self.compress_level,
             protocol_type: self.protocol_type.clone(),
@@ -252,6 +258,7 @@ pub fn new_cloud_path_pair(
         connection_params: serde_json::Value::Null,
         sync_direction: CompareDirection::Bidirectional,
         preserve_remote_deletes: default_preserve_remote_deletes(),
+        update_only: false,
         compress_enabled: false,
         compress_level: default_compress_level(),
         conflict_strategy: ConflictStrategy::default(),
@@ -279,6 +286,7 @@ mod tests {
             connection_params: serde_json::Value::Null,
             sync_direction: CompareDirection::Bidirectional,
             preserve_remote_deletes: true,
+            update_only: false,
             compress_enabled: false,
             compress_level: default_compress_level(),
             conflict_strategy: ConflictStrategy::default(),
@@ -306,6 +314,7 @@ mod tests {
             protocol_type: "sftp".into(),
             sync_direction: CompareDirection::LocalToRemote,
             preserve_remote_deletes: false,
+            update_only: true,
             compress_enabled: true,
             compress_level: 9,
             exclude_patterns: vec!["*.tmp".into()],
@@ -316,6 +325,8 @@ mod tests {
         assert_eq!(pair.protocol_type, "sftp");
         assert_eq!(pair.sync_direction, CompareDirection::LocalToRemote);
         assert!(!pair.preserve_remote_deletes);
+        assert!(pair.update_only);
+        assert!(pair.to_cloud_config().update_only);
         assert!(pair.compress_enabled);
         assert_eq!(pair.compress_level, 9);
         assert_eq!(pair.exclude_patterns, vec!["*.tmp".to_string()]);

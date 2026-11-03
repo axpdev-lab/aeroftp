@@ -548,7 +548,7 @@ fn path_violates_root(path: &str, boundary: Option<&str>) -> bool {
         return false;
     }
     let path_trimmed = path.trim_end_matches('/');
-    !path_trimmed.starts_with(root_trimmed) && path_trimmed != root_trimmed
+    path_trimmed != root_trimmed && !path_trimmed.starts_with(&format!("{root_trimmed}/"))
 }
 
 /// WebDAV Storage Provider
@@ -578,6 +578,8 @@ pub struct WebDavProvider {
     /// Multi-thread concurrent-Range download (rclone `--multi-thread-streams`).
     /// `1` = disabled (default). Set via `set_multi_thread_download`.
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     /// Files at or above this size use the concurrent-Range path when
     /// `multi_thread_streams >= 2`.
     multi_thread_cutoff: u64,
@@ -1056,6 +1058,7 @@ impl WebDavProvider {
             connected: false,
             digest_auth: None,
             server_root: None,
+            download_time: Default::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: 8 * 1024 * 1024,
             single_file_mode: None,
@@ -1356,17 +1359,34 @@ impl WebDavProvider {
                         _ => {}
                     }
                 }
+                // Every piece goes in, whitespace included: an ETag arrives as
+                // `&quot;abc&quot;` from SabreDAV (Nextcloud, ownCloud), so it
+                // is Text pieces around GeneralRef ones, and a space between
+                // two references is part of the value. Scalars are trimmed
+                // once below.
                 Ok(Event::Text(ref t)) => {
                     if let Some(tag) = current_tag.as_deref() {
-                        let text = t.as_ref().to_string();
-                        if !text.trim().is_empty() {
-                            match tag {
-                                "getcontentlength" => size_text.push_str(&text),
-                                "getlastmodified" => modified_text.push_str(&text),
-                                "getcontenttype" => content_type_text.push_str(&text),
-                                "getetag" => etag_text.push_str(&text),
-                                _ => {}
-                            }
+                        let text = t.as_ref();
+                        match tag {
+                            "getcontentlength" => size_text.push_str(text),
+                            "getlastmodified" => modified_text.push_str(text),
+                            "getcontenttype" => content_type_text.push_str(text),
+                            "getetag" => etag_text.push_str(text),
+                            _ => {}
+                        }
+                    }
+                }
+                Ok(Event::GeneralRef(ref reference)) => {
+                    if let (Some(tag), Some(expanded)) = (
+                        current_tag.as_deref(),
+                        super::xml_text::xml_entity_to_str(reference.as_ref()),
+                    ) {
+                        match tag {
+                            "getcontentlength" => size_text.push_str(&expanded),
+                            "getlastmodified" => modified_text.push_str(&expanded),
+                            "getcontenttype" => content_type_text.push_str(&expanded),
+                            "getetag" => etag_text.push_str(&expanded),
+                            _ => {}
                         }
                     }
                 }
@@ -1536,38 +1556,11 @@ impl WebDavProvider {
             }
         };
 
-        // Host-specific User-Agent workaround for FileLu WebDAV.
-        //
-        // FileLu's WebDAV frontend (`webdav.filelu.com`, fronted by
-        // Cloudflare) returns `500 Internal Server Error` on GET
-        // requests whose User-Agent does not match a small allow-list.
-        // Empirically (2026-05-26, FileLu PRO account, AeroFTP v4.0.0):
-        //
-        //   `AeroFTP/4`                                   → 500 ISE
-        //   `WebDAV-Client/4.0 (compatible; AeroFTP)`     → 500 ISE
-        //   `curl/8.0.0`                                  → 500 ISE
-        //   `rclone/v1.74.0`                              → 200 OK
-        //
-        // PROPFIND/PUT/DELETE/MKCOL accept every UA on that list; only
-        // GET enforces the filter, so the issue is invisible until the
-        // first download attempt against `webdav.filelu.com`. The
-        // discriminator is not a simple keyword block (`curl` also
-        // fails); the most plausible cause is a Cloudflare WAF rule
-        // whitelisting a small set of known WebDAV clients on that
-        // hostname. We send `rclone/v1.74.0` here as a per-host
-        // workaround so FileLu downloads work for our users today;
-        // FileLu engineering has been briefed and asked to whitelist
-        // the real `AeroFTP/<n>` UA on their WAF. The override is
-        // host-scoped (`filelu.com`) so the standard AeroFTP UA stays
-        // in place for every other WebDAV server — notably pCloud,
-        // which relies on the major-version-pinned UA for honest
-        // device tracking.
-        let host_lower = self.config.url.to_ascii_lowercase();
-        let user_agent_override: Option<&'static str> = if host_lower.contains("filelu.com") {
-            Some("rclone/v1.74.0")
-        } else {
-            None
-        };
+        // FileLu's WebDAV frontend used to refuse GET with a 500 to every
+        // User-Agent but a few known clients, and this call sent rclone's for
+        // `filelu.com`. FileLu now accepts AeroFTP's own (checked 2026-11-01:
+        // GET 200, ranges 206, PUT, MOVE, COPY, DELETE), and rclone's is
+        // answered 206 on a plain GET. Every server gets the AeroFTP agent.
 
         // A rotated Digest nonce is replayed at most once per call, tracked
         // here rather than by attempt number: the 425 loop may already have
@@ -1591,9 +1584,6 @@ impl WebDavProvider {
             let mut req = self.request(method.clone(), path);
             if let Some(ref r) = referer {
                 req = req.header("Referer", r);
-            }
-            if let Some(ua) = user_agent_override {
-                req = req.header("User-Agent", ua);
             }
             let response = req.send().await.map_err(send_error)?;
 
@@ -3288,17 +3278,31 @@ impl WebDavProvider {
                             // ...) the input has no percent-encoding and decode is a
                             // no-op; on the Filen bridge it un-mangles the name. Issue
                             // #128.
-                            let name = if !displayname.trim().is_empty() {
-                                urlencoding::decode(displayname.trim())
-                                    .unwrap_or_else(|_| displayname.trim().into())
-                                    .into_owned()
+                            // The spaces around a name are part of it: ` a`
+                            // and `a ` are two other files than `a`, and a
+                            // name of spaces is a name. The href names the
+                            // resource, so a displayname that says its name
+                            // with other spaces around it takes the href's:
+                            // the entry's path must reach that resource. A
+                            // displayname that names something else (a
+                            // server whose href is not the name) is the name.
+                            let leaf = decoded_href
+                                .trim_end_matches('/')
+                                .rsplit('/')
+                                .next()
+                                .unwrap_or("")
+                                .to_string();
+                            let name = if displayname.is_empty() {
+                                leaf
                             } else {
-                                decoded_href
-                                    .trim_end_matches('/')
-                                    .rsplit('/')
-                                    .next()
-                                    .unwrap_or("")
-                                    .to_string()
+                                let shown = urlencoding::decode(&displayname)
+                                    .unwrap_or_else(|_| displayname.as_str().into())
+                                    .into_owned();
+                                if shown.trim() == leaf.trim() {
+                                    leaf
+                                } else {
+                                    shown
+                                }
                             };
 
                             if name.is_empty() || name == "." || name == ".." {
@@ -3390,11 +3394,14 @@ impl WebDavProvider {
 
                 Ok(Event::CData(ref e)) => {
                     if let Some(ref tag) = current_tag {
-                        let text = e.as_ref().trim().to_string();
-                        if !text.is_empty() {
+                        // As in the text arm, the name is read as given:
+                        // `<![CDATA[ a.txt ]]>` names ` a.txt `.
+                        let raw = e.as_ref().to_string();
+                        let text = raw.trim().to_string();
+                        if !text.is_empty() || (tag == "displayname" && !raw.is_empty()) {
                             match tag.as_str() {
                                 "href" => href = text,
-                                "displayname" => displayname = text,
+                                "displayname" => displayname.push_str(&raw),
                                 "getcontentlength" => getcontentlength = text,
                                 "getlastmodified" => getlastmodified = text,
                                 "getcontenttype" => getcontenttype = text,
@@ -4141,12 +4148,12 @@ impl StorageProvider for WebDavProvider {
                             self.connected = true;
                             // Issue #175: server_root is the auto-detected path.
                             // current_path defaults to it; if the user supplied
-                            // a relative initial_path, append it under the root.
+                            // a relative initial_path, append it under the root,
+                            // as given: `reports ` is its own folder.
                             let user_initial = self
                                 .config
                                 .initial_path
                                 .as_deref()
-                                .map(str::trim)
                                 .filter(|p| !p.is_empty() && *p != "/");
                             let starting_path = match user_initial {
                                 Some(rel) => {
@@ -4288,6 +4295,7 @@ impl StorageProvider for WebDavProvider {
                     "Session expired".to_string(),
                 ))
             }
+            StatusCode::FORBIDDEN => Err(ProviderError::PermissionDenied(list_path)),
             status => {
                 tracing::error!("[WebDAV] Server error: {}", status);
                 Err(ProviderError::ServerError(format!(
@@ -4314,6 +4322,13 @@ impl StorageProvider for WebDavProvider {
             .server_root
             .as_deref()
             .or(self.config.initial_path.as_deref());
+        // `/` is the top of this connection, as `list` reads it. A server whose
+        // files live under a root (Nextcloud) would refuse it as above that root.
+        let root = boundary
+            .filter(|root| !root.is_empty())
+            .unwrap_or("/")
+            .to_string();
+        let path = if path == "/" { root.as_str() } else { path };
         if path_violates_root(path, boundary) {
             return Err(ProviderError::InvalidPath(format!(
                 "Cannot navigate above WebDAV root: {}",
@@ -4463,6 +4478,18 @@ impl StorageProvider for WebDavProvider {
         Ok(())
     }
 
+    fn download_was_refused(&self) -> bool {
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
@@ -4483,6 +4510,7 @@ impl StorageProvider for WebDavProvider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        self.download_time.begin();
 
         let mut on_progress = on_progress;
 
@@ -4492,6 +4520,7 @@ impl StorageProvider for WebDavProvider {
         // The probe + closure go through the live reqwest client with a
         // precomputed Basic header; no credential is reconstructed.
         if self.multi_thread_streams >= 2
+            && !self.download_time.is_refused()
             && self.digest_auth.is_none()
             && !super::multi_thread::size_hint_rules_out_ranges(size_hint, self.multi_thread_cutoff)
         {
@@ -4529,6 +4558,10 @@ impl StorageProvider for WebDavProvider {
                 super::multi_thread::HttpRangeAttempt::Completed => return Ok(()),
                 super::multi_thread::HttpRangeAttempt::Failed(e) => return Err(e),
                 super::multi_thread::HttpRangeAttempt::Fallback(p) => on_progress = p,
+                super::multi_thread::HttpRangeAttempt::Refused(p) => {
+                    self.download_time.refused();
+                    on_progress = p;
+                }
             }
         }
 
@@ -4551,6 +4584,7 @@ impl StorageProvider for WebDavProvider {
                 let total_size = full_object_total
                     .or_else(|| response.content_length())
                     .unwrap_or(0);
+                let read_time = super::multi_thread::response_time(response.headers());
                 let mut stream = response.bytes_stream();
                 let mut atomic = super::atomic_write::AtomicFile::new(local_path)
                     .await
@@ -4608,6 +4642,7 @@ impl StorageProvider for WebDavProvider {
                 }
                 atomic.commit().await.map_err(ProviderError::IoError)?;
 
+                self.download_time.read(read_time);
                 Ok(())
             }
             StatusCode::NOT_FOUND => Err(ProviderError::NotFound(remote_path.to_string())),
@@ -5282,10 +5317,34 @@ impl StorageProvider for WebDavProvider {
         let mut results = Vec::new();
         let mut walk = crate::sync_core::FindWalk::new(path);
         let mut dirs_to_scan = vec![path.to_string()];
+        // Every skipped 403 needs current proof that the search root remains
+        // readable. Bound expensive root listings by failing explicitly once
+        // the budget is spent, never by treating old access as current proof.
+        const MAX_ACCESS_RECHECKS: usize = 8;
+        let mut access_rechecks = 0;
 
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match self.list(&dir).await {
                 Ok(e) => e,
+                // A folder searched that cannot be read is not an empty result,
+                // and a failure that is not about one folder fails the search.
+                Err(e) if dir == path || !super::listing_failure_is_the_folders(&e) => {
+                    return Err(e)
+                }
+                // A 403 can be this folder's or the end of the account's access.
+                // In the second case the folder searched refuses too, and what
+                // was found so far would read as a complete result.
+                Err(ProviderError::PermissionDenied(_)) => {
+                    if access_rechecks == MAX_ACCESS_RECHECKS {
+                        return Err(ProviderError::PermissionDenied(format!(
+                            "Search stopped after {MAX_ACCESS_RECHECKS} refused folders: \
+                             root access cannot be rechecked within the search budget"
+                        )));
+                    }
+                    access_rechecks += 1;
+                    self.list(path).await?;
+                    continue;
+                }
                 Err(_) => continue,
             };
 
@@ -5911,6 +5970,7 @@ impl StorageProvider for WebDavProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -6558,6 +6618,33 @@ mod tests {
         assert!(!local.exists(), "a stalled download leaves no file behind");
     }
 
+    /// Nextcloud and ownCloud refuse a PROPFIND on `/`; the root found under
+    /// `/remote.php/dav/files/<user>/` takes the initial folder as given.
+    #[tokio::test]
+    async fn a_discovered_nextcloud_root_keeps_the_spaces_of_the_initial_folder() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |req: axum::extract::Request| async move {
+                if req.method().as_str() == "PROPFIND"
+                    && req.uri().path() == "/remote.php/dav/files/user/"
+                {
+                    axum::http::StatusCode::MULTI_STATUS
+                } else {
+                    axum::http::StatusCode::METHOD_NOT_ALLOWED
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut config = test_config(&base);
+        config.initial_path = Some("reports ".to_string());
+        let mut provider = WebDavProvider::new(config).expect("provider");
+        let outcome = provider.connect().await;
+        server.abort();
+        outcome.expect("connect");
+        assert_eq!(provider.current_path, "/remote.php/dav/files/user/reports ");
+    }
+
     fn test_config(url: &str) -> WebDavConfig {
         WebDavConfig {
             url: url.to_string(),
@@ -6595,6 +6682,26 @@ mod tests {
         outcome.unwrap();
         assert_eq!(*received.lock().unwrap(), [("/up", 1024 * 1024)]);
         assert_real_progress(&updates.lock().unwrap(), 1024 * 1024, true);
+    }
+
+    #[tokio::test]
+    async fn a_refused_download_reports_the_time_of_what_carried_its_bytes() {
+        use super::super::multi_thread::pin_server::{start, PinMode, WHOLE_READ_TIME};
+        let server = start(PinMode::RefusedReplaced).await;
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("http://{}/", server.addr))).unwrap();
+        provider.connected = true;
+        provider.set_multi_thread_download(4, 1024 * 1024);
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("big.bin");
+        provider
+            .download("/big.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            provider.take_download_time(false).as_deref(),
+            Some(WHOLE_READ_TIME)
+        );
     }
 
     #[tokio::test]
@@ -7142,6 +7249,115 @@ mod tests {
         assert_eq!(entries[1].name, "a & b.txt");
     }
 
+    /// A displayname that begins or ends with a space names that file, in a
+    /// text node or in a CDATA section: it was trimmed, so ` a.txt ` was
+    /// listed as `a.txt` at `/dav/a.txt`, and every operation on it reached
+    /// another file or none. The href names the resource: a displayname that
+    /// says the href's name with other spaces around it (` b.txt ` for
+    /// `/dav/b.txt`) takes the href's, so the entry's path reaches the file.
+    /// A displayname that names something else than the href is the name.
+    #[test]
+    fn parse_propfind_keeps_the_spaces_around_a_displayname() {
+        let provider = WebDavProvider::new(test_config("https://example.com/dav"))
+            .expect("Failed to create WebDavProvider");
+
+        let xml = r#"<?xml version="1.0"?>
+        <d:multistatus xmlns:d="DAV:">
+            <d:response>
+                <d:href>/dav/%20a.txt%20</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> a.txt </d:displayname>
+                        <d:resourcetype/>
+                        <d:getcontentlength>3</d:getcontentlength>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>  </d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20c.txt%20</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[ c.txt ]]></d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20%20%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[   ]]></d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/b.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> b.txt </d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/d.txt</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname><![CDATA[  d.txt]]></d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/%20/</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname>    </d:displayname>
+                        <d:resourcetype><d:collection/></d:resourcetype>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+            <d:response>
+                <d:href>/dav/e7</d:href>
+                <d:propstat>
+                    <d:prop>
+                        <d:displayname> e.txt</d:displayname>
+                        <d:resourcetype/>
+                    </d:prop>
+                </d:propstat>
+            </d:response>
+        </d:multistatus>"#;
+
+        let entries = provider.parse_propfind_response(xml, "/dav").unwrap();
+        let named: Vec<(&str, &str)> = entries
+            .iter()
+            .map(|e| (e.name.as_str(), e.path.as_str()))
+            .collect();
+        assert_eq!(
+            named,
+            [
+                (" a.txt ", "/dav/ a.txt "),
+                ("  ", "/dav/  "),
+                (" c.txt ", "/dav/ c.txt "),
+                ("   ", "/dav/   "),
+                ("b.txt", "/dav/b.txt"),
+                ("d.txt", "/dav/d.txt"),
+                (" ", "/dav/ "),
+                (" e.txt", "/dav/ e.txt"),
+            ]
+        );
+    }
+
     /// CR-536 regression: a whitespace-ONLY Text fragment between two entity
     /// refs (`a&amp; &amp;b.txt`) is part of the name, not indentation, and
     /// must survive in displayname parsing.
@@ -7367,6 +7583,11 @@ mod tests {
         // Completely off-tree
         assert!(path_violates_root("/", root));
         assert!(path_violates_root("/etc/passwd", root));
+        // A name that only starts like the root is another folder.
+        assert!(path_violates_root(
+            "/remote.php/dav/files/testuser2/Docs",
+            root
+        ));
     }
 
     #[tokio::test]
@@ -8419,6 +8640,40 @@ mod tests {
         assert_eq!(entry.path, "/my file.txt");
     }
 
+    /// SabreDAV (Nextcloud, ownCloud) writes the quotes of an ETag as
+    /// `&quot;`. Without the reference arm the quotes were dropped, and a
+    /// single-file entry carried no quotes where the listing carries them.
+    /// The raw space between two references arrives as a whitespace-only
+    /// piece and belongs to the value as much as `&#32;` does.
+    #[test]
+    fn extract_single_file_entry_keeps_entities_in_the_props() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?>
+            <d:multistatus xmlns:d="DAV:">
+                <d:response>
+                    <d:href>/s/AbCd</d:href>
+                    <d:propstat>
+                        <d:prop>
+                            <d:resourcetype/>
+                            <d:getcontentlength>10</d:getcontentlength>
+                            <d:getcontenttype>text/plain; charset=&quot;utf-8&quot;</d:getcontenttype>
+                            <d:getetag>&quot;a&amp; &amp;b&#32;1&quot;</d:getetag>
+                        </d:prop>
+                        <d:status>HTTP/1.1 200 OK</d:status>
+                    </d:propstat>
+                </d:response>
+            </d:multistatus>"#;
+
+        let entry = WebDavProvider::extract_single_file_entry(xml, "/s/AbCd/notes.txt").unwrap();
+        assert_eq!(
+            entry.metadata.get("etag").map(String::as_str),
+            Some("\"a& &b 1\"")
+        );
+        assert_eq!(
+            entry.mime_type.as_deref(),
+            Some("text/plain; charset=\"utf-8\"")
+        );
+    }
+
     /// Issue #264 — when single-file mode is active, `build_url` must return
     /// the configured URL verbatim regardless of the path argument the
     /// caller supplies. The bridge has no browseable structure beyond the
@@ -9307,6 +9562,22 @@ mod collection_redirect_tests {
         assert_eq!(stub.downgraded_hits.load(Ordering::SeqCst), 0);
     }
 
+    /// #1457: `/` is the top of the connection. On a server whose files live
+    /// under a root, `cd("/")` was refused as above that root, so the root
+    /// button and a typed `/` failed with an error.
+    #[tokio::test]
+    async fn cd_to_the_slash_goes_to_the_server_root() {
+        let stub = spawn_downgrading_server(collection_answer).await;
+        let mut provider = provider(&stub.base);
+        provider.server_root = Some("/remote.php/dav/files/u/".to_string());
+        provider.current_path = "/remote.php/dav/files/u/Docs".to_string();
+
+        provider.cd("/").await.expect("the root of the connection");
+
+        assert_eq!(provider.current_path, "/remote.php/dav/files/u/");
+        assert_eq!(seen(&stub), vec!["PROPFIND /remote.php/dav/files/u/"]);
+    }
+
     /// The quota PROPFIND asks about the current directory, a collection.
     #[tokio::test]
     async fn storage_info_asks_in_the_collection_form() {
@@ -9640,48 +9911,88 @@ mod walk_scope_tests {
     /// A request path is resolved as a server resolves it; a collection not
     /// in `listings` is a 404.
     async fn provider_on_listings(listings: Listings) -> WebDavProvider {
-        let app = axum::Router::new().fallback(axum::routing::any(
-            move |req: axum::extract::Request| async move {
-                let path = urlencoding::decode(req.uri().path())
-                    .map(|p| crate::sync_core::walk_path_key(&p))
-                    .unwrap_or_default();
-                let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path) else {
-                    return axum::response::Response::builder()
-                        .status(404)
-                        .body(axum::body::Body::empty())
-                        .unwrap();
-                };
-                let response = |href: &str, name: &str, collection: bool| {
-                    let kind = if collection { "<d:collection/>" } else { "" };
-                    format!(
-                        "<d:response><d:href>{href}</d:href><d:propstat><d:prop>\
+        provider_on_listings_with_requests(listings).await.0
+    }
+
+    async fn provider_on_listings_with_requests(
+        listings: Listings,
+    ) -> (WebDavProvider, Arc<std::sync::Mutex<Vec<String>>>) {
+        // Set by a request under `/revoked`: from then on every path answers 403.
+        let revoked = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let recorded = requests.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let revoked = revoked.clone();
+                let requests = recorded.clone();
+                async move {
+                    let path = urlencoding::decode(req.uri().path())
+                        .map(|p| crate::sync_core::walk_path_key(&p))
+                        .unwrap_or_default();
+                    requests.lock().unwrap().push(path.clone());
+                    if path.ends_with("/revoked") {
+                        revoked.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    if revoked.load(std::sync::atomic::Ordering::SeqCst) {
+                        return axum::response::Response::builder()
+                            .status(403)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if path.ends_with("/signed-out") {
+                        return axum::response::Response::builder()
+                            .status(401)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    if path
+                        .rsplit('/')
+                        .next()
+                        .is_some_and(|name| name.starts_with("refused"))
+                    {
+                        return axum::response::Response::builder()
+                            .status(403)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    }
+                    let Some((_, names)) = listings.iter().find(|(folder, _)| *folder == path)
+                    else {
+                        return axum::response::Response::builder()
+                            .status(404)
+                            .body(axum::body::Body::empty())
+                            .unwrap();
+                    };
+                    let response = |href: &str, name: &str, collection: bool| {
+                        let kind = if collection { "<d:collection/>" } else { "" };
+                        format!(
+                            "<d:response><d:href>{href}</d:href><d:propstat><d:prop>\
                              <d:displayname>{name}</d:displayname>\
                              <d:resourcetype>{kind}</d:resourcetype>\
                              <d:getcontentlength>1</d:getcontentlength></d:prop>\
                              <d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>"
-                    )
-                };
-                let base = path.trim_end_matches('/');
-                let mut body = String::from(
+                        )
+                    };
+                    let base = path.trim_end_matches('/');
+                    let mut body = String::from(
                     "<?xml version=\"1.0\" encoding=\"utf-8\"?><d:multistatus xmlns:d=\"DAV:\">",
                 );
-                body.push_str(&response(&format!("{base}/"), "", true));
-                for (i, name) in names.iter().enumerate() {
-                    let (name, collection) = match name.strip_suffix('/') {
-                        Some(folder) => (folder, true),
-                        None => (*name, false),
-                    };
-                    let slash = if collection { "/" } else { "" };
-                    body.push_str(&response(&format!("{base}/e{i}{slash}"), name, collection));
+                    body.push_str(&response(&format!("{base}/"), "", true));
+                    for (i, name) in names.iter().enumerate() {
+                        let (name, collection) = match name.strip_suffix('/') {
+                            Some(folder) => (folder, true),
+                            None => (*name, false),
+                        };
+                        let slash = if collection { "/" } else { "" };
+                        body.push_str(&response(&format!("{base}/e{i}{slash}"), name, collection));
+                    }
+                    body.push_str("</d:multistatus>");
+                    axum::response::Response::builder()
+                        .status(207)
+                        .header("content-type", "application/xml; charset=utf-8")
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
                 }
-                body.push_str("</d:multistatus>");
-                axum::response::Response::builder()
-                    .status(207)
-                    .header("content-type", "application/xml; charset=utf-8")
-                    .body(axum::body::Body::from(body))
-                    .unwrap()
-            },
-        ));
+            }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.ok() });
@@ -9696,7 +10007,7 @@ mod walk_scope_tests {
         })
         .expect("provider");
         provider.connected = true;
-        provider
+        (provider, requests)
     }
 
     /// `/x` holds `a.txt` and the collection `d`; the root holds `keep.txt`
@@ -9723,6 +10034,91 @@ mod walk_scope_tests {
             ("/y", &["y.txt"]),
         ],
     ];
+
+    /// A collection under the one searched that is gone or refused leaves the rest of the
+    /// search. A sign-in that ended under it fails the search: the folders
+    /// after it could not be read either.
+    #[tokio::test]
+    async fn a_find_skips_a_gone_collection_and_fails_on_an_ended_session() {
+        const GONE: Listings = &[("/x", &["a.txt", "gone/", "refused/"])];
+        let mut provider = provider_on_listings(GONE).await;
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+
+        const SIGNED_OUT: Listings = &[("/x", &["a.txt", "signed-out/"])];
+        let mut provider = provider_on_listings(SIGNED_OUT).await;
+        let outcome = provider.find("/x", "*.txt").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+
+        // A 403 that also refuses the folder searched is the account's, not the folder's.
+        const REVOKED: Listings = &[("/x", &["a.txt", "revoked/"])];
+        let mut provider = provider_on_listings(REVOKED).await;
+        let outcome = provider.find("/x", "*.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::PermissionDenied(_))),
+            "{outcome:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_find_rechecks_access_after_each_refusal_even_if_the_last_check_was_recent() {
+        // The stack visits refused first, then a/revoked. The first root
+        // recheck succeeds; the later one must detect the account revocation.
+        const LISTINGS: Listings = &[
+            ("/x", &["a.txt", "a/", "refused/"]),
+            ("/x/a", &["revoked/"]),
+        ];
+        let (mut provider, requests) = provider_on_listings_with_requests(LISTINGS).await;
+        let result = provider.find("/x", "*.txt").await;
+        assert!(
+            matches!(result, Err(ProviderError::PermissionDenied(_))),
+            "{result:?}"
+        );
+        let requests = requests.lock().unwrap();
+        let refused = requests.iter().position(|p| p == "/x/refused").unwrap();
+        let revoked = requests.iter().position(|p| p == "/x/a/revoked").unwrap();
+        assert!(
+            refused < revoked,
+            "the fixture first proves a folder-only refusal: {requests:?}"
+        );
+        assert_eq!(requests.iter().filter(|p| *p == "/x").count(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_find_stops_explicitly_instead_of_relisting_a_large_root_without_bound() {
+        const LISTINGS: Listings = &[(
+            "/x",
+            &[
+                "a.txt",
+                "refused1/",
+                "refused2/",
+                "refused3/",
+                "refused4/",
+                "refused5/",
+                "refused6/",
+                "refused7/",
+                "refused8/",
+                "refused9/",
+            ],
+        )];
+        let (mut provider, requests) = provider_on_listings_with_requests(LISTINGS).await;
+        let result = provider.find("/x", "*.txt").await;
+        assert!(
+            matches!(&result, Err(ProviderError::PermissionDenied(message)) if message.contains("search budget")),
+            "{result:?}"
+        );
+        // The initial listing plus eight rechecks. A ninth refusal fails the
+        // search rather than reporting its accumulated matches as complete.
+        assert_eq!(
+            requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|p| *p == "/x")
+                .count(),
+            9
+        );
+    }
 
     /// A search follows only collections inside the one searched, once each.
     #[tokio::test]

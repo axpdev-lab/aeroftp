@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Link2, Copy, Check, X, Loader2, AlertTriangle, Key, RefreshCw, Clock, Shield, Eye, Trash2, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
@@ -81,7 +81,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   const [manageCopiedId, setManageCopiedId] = useState<string | null>(null);
 
   const humanLogRef = React.useRef(humanLog);
-  humanLogRef.current = humanLog;
+  useLayoutEffect(() => { humanLogRef.current = humanLog; });
 
   const loadExistingLinks = useCallback(async () => {
     setManageLoading(true);

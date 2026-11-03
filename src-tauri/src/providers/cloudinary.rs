@@ -342,7 +342,8 @@ impl CloudinaryProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        if path.trim().is_empty() {
+        // A name of spaces is a name, not the current folder.
+        if path.is_empty() {
             return self.current_path.clone();
         }
         if path.starts_with('/') {
@@ -673,10 +674,14 @@ impl CloudinaryProvider {
         if source == target {
             return Ok(());
         }
-        let entry = self.stat(&source).await?;
+        // `stat` resolves its path: it takes the input, as given. The
+        // resolved path is relative to the root and would be resolved again
+        // against the current folder (`photos/a.jpg` from `photos` became
+        // `photos/photos/a.jpg`).
+        let entry = self.stat(from).await?;
         // The trait promises no overwrite: refuse an occupied destination
         // before either branch runs.
-        let displaced = match self.stat(&target).await {
+        let displaced = match self.stat(to).await {
             Ok(_) if !overwrite => return Err(ProviderError::AlreadyExists(to.to_string())),
             Ok(occupant) => Some(occupant),
             Err(ProviderError::NotFound(_)) => None,
@@ -1358,9 +1363,11 @@ impl StorageProvider for CloudinaryProvider {
             return Err(ProviderError::NotConnected);
         }
         let resolved = self.resolve_path(path);
-        let entry = self.stat(&resolved).await?;
+        // `stat` and `rmdir` resolve the path themselves: they take the
+        // input, not `resolved` (see `move_asset`).
+        let entry = self.stat(path).await?;
         if entry.is_dir {
-            self.rmdir(&resolved).await
+            self.rmdir(path).await
         } else {
             let public_id = entry.metadata.get("public_id").cloned().ok_or_else(|| {
                 ProviderError::NotFound("Missing Cloudinary public_id".to_string())
@@ -1902,7 +1909,8 @@ fn folder_to_entry(folder: &CloudinarySubFolder, parent: &str) -> RemoteEntry {
 /// its public id when it has none: the name on a dynamic-folder account.
 fn resource_display_name(item: &CloudinaryResource) -> String {
     if let Some(ref dn) = item.display_name {
-        if !dn.trim().is_empty() {
+        // As given: a name of spaces is a name too.
+        if !dn.is_empty() {
             let mut name = dn.clone();
             if let Some(ref fmt) = item.format {
                 if !name
@@ -2133,6 +2141,41 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    /// A display name of spaces names the asset: read as absent, the asset
+    /// went by its public id, and a lookup of the name it was given failed.
+    #[test]
+    fn a_display_name_keeps_its_spaces() {
+        let asset = |display: &str| {
+            serde_json::from_value::<super::CloudinaryResource>(serde_json::json!({
+                "public_id": "photos/x1", "display_name": display, "format": "jpg",
+                "bytes": 3, "resource_type": "image",
+            }))
+            .unwrap()
+        };
+        assert_eq!(super::resource_display_name(&asset("   ")), "   .jpg");
+        assert_eq!(super::resource_display_name(&asset(" a ")), " a .jpg");
+        assert_eq!(super::resource_display_name(&asset("")), "x1.jpg");
+    }
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder. Paths here carry
+        // no leading slash.
+        assert_eq!(super::normalize_path("/ a"), " a");
+        assert_eq!(super::normalize_path("/a /b "), "a /b ");
+        let mut p = super::CloudinaryProvider::new(super::CloudinaryConfig {
+            cloud_name: "test".to_string(),
+            api_key: "test".to_string(),
+            api_secret: secrecy::SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "a ");
+    }
+
     use super::*;
 
     /// The dedupe took an `upload` and a `private` asset with one public id
@@ -2605,8 +2648,8 @@ mod tests {
     /// A fixed-folder Cloudinary double whose folder listings are given
     /// whole: each `(folder key, JSON array of subfolders)` in `subfolders`
     /// (any other folder holds none), and the image public ids in `images`,
-    /// listed by prefix. Returns a provider on it and every DELETE, as
-    /// `DELETE <path>?<query>`.
+    /// listed by prefix. Returns a provider on it and every DELETE and
+    /// rename, as `DELETE <path>?<query>` and `POST <path>?<query>`.
     async fn provider_on_folder_listings(
         subfolders: &'static [(&'static str, &'static str)],
         images: &'static [&'static str],
@@ -2621,6 +2664,11 @@ mod tests {
                 async move {
                     let path = req.uri().path().to_string();
                     let query = req.uri().query().unwrap_or("").to_string();
+                    if req.method() == axum::http::Method::POST && path.ends_with("/rename") {
+                        let query = urlencoding::decode(&query).unwrap_or_default().into_owned();
+                        seen.lock().unwrap().push(format!("POST {path}?{query}"));
+                        return axum::Json(serde_json::json!({})).into_response();
+                    }
                     if req.method() == axum::http::Method::DELETE {
                         let query = urlencoding::decode(&query).unwrap_or_default().into_owned();
                         let public_id = query.rsplit('=').next().unwrap_or("").to_string();
@@ -2689,6 +2737,58 @@ mod tests {
         provider.connected = true;
         provider.api_base_override = Some(format!("http://{addr}"));
         (provider, deletes)
+    }
+
+    /// After `cd` into a folder, an action on a path reaches what the path
+    /// names. `delete` and the move resolved the path, then handed the
+    /// result to `stat` and `rmdir`, which resolved it again against the
+    /// current folder: `/photos/a.jpg` from `photos` became
+    /// `photos/photos/a.jpg`, and the action failed as not found or went to
+    /// another folder.
+    #[tokio::test]
+    async fn an_action_after_cd_reaches_what_its_path_names() {
+        const SUBFOLDERS: &[(&str, &str)] = &[
+            ("", r#"[{"name":"photos","path":"photos"}]"#),
+            ("photos", r#"[{"name":"sub","path":"photos/sub"}]"#),
+        ];
+        let (mut provider, calls) =
+            provider_on_folder_listings(SUBFOLDERS, &["photos/a", "photos/b"]).await;
+        provider.cd("/photos").await.expect("cd");
+        provider
+            .delete("/photos/a.jpg")
+            .await
+            .expect("delete a file");
+        provider
+            .delete("/photos/sub")
+            .await
+            .expect("delete a folder");
+        provider
+            .rename("/photos/b.jpg", "/photos/c.jpg")
+            .await
+            .expect("rename");
+        let calls = calls.lock().unwrap().clone();
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.starts_with("DELETE /resources/") && c.ends_with("=photos/a")),
+            "{calls:?}"
+        );
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.starts_with("DELETE /folders/photos/sub?")),
+            "{calls:?}"
+        );
+        assert!(
+            calls.iter().any(|c| c.starts_with("POST /image/rename?")
+                && c.contains("from_public_id=photos/b&")
+                && c.contains("to_public_id=photos/c")),
+            "{calls:?}"
+        );
+        assert!(
+            calls.iter().all(|c| !c.contains("photos/photos")),
+            "{calls:?}"
+        );
     }
 
     /// The images `keep` (at the root), `tree/a` and `other/o`, and the

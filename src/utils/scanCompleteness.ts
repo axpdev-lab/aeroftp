@@ -51,3 +51,15 @@ export function describeScanIncompleteError(error: unknown): string {
   const tail = raw.slice(at + SCAN_INCOMPLETE_MARKER.length).replace(/^\s*:\s*/, '');
   return tail.length > 0 ? tail : raw;
 }
+
+/**
+ * The compare fields of the AeroSync context once a scan has ended. A refused
+ * scan leaves no result, so the window says why and offers another try: zero
+ * rows under zero differences read as a folder pair in sync, while the reason
+ * went by in a notification.
+ */
+export function compareOutcome<T>(resolved: T, refused: string | undefined) {
+  return refused === undefined
+    ? { compareResult: resolved, compareRefused: undefined, compareIdle: false }
+    : { compareResult: null, compareRefused: refused, compareIdle: true };
+}

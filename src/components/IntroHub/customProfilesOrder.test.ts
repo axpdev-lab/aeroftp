@@ -22,10 +22,10 @@ describe('CUSTOM / GENERIC SERVERS follow the one badge order (#347)', () => {
         expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
     });
 
-    it('reads WebDAV, SFTP, FTP, S3, the sequence the badges already use', () => {
+    it('reads WebDAV, SFTP, SCP, FTP, S3, the sequence the badges already use', () => {
         // Spelled out rather than derived, so a change to the shared order has
         // to be made deliberately here too instead of passing silently.
-        expect(CUSTOM_PROFILES.map(p => p.protocol)).toEqual(['webdav', 'sftp', 'ftp', 's3']);
+        expect(CUSTOM_PROFILES.map(p => p.protocol)).toEqual(['webdav', 'sftp', 'scp', 'ftp', 's3']);
     });
 
     it('ranks every entry it lists, so none of them sorts as a native API', () => {
@@ -51,6 +51,7 @@ describe('CUSTOM / GENERIC SERVERS follow the one badge order (#347)', () => {
         expect(CUSTOM_PROFILES.map(p => [p.protocol, p.method])).toEqual([
             ['webdav', 'WebDAV'],
             ['sftp', 'SFTP'],
+            ['scp', 'SCP'],
             ['ftp', 'FTP'],
             ['s3', 'S3'],
         ]);

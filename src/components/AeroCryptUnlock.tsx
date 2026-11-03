@@ -17,6 +17,7 @@
 import * as React from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { readSavedServerProfilesForWrite } from '../utils/serverProfileStore';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { Lock, Unlock, Loader2, X, FileKey } from 'lucide-react';
@@ -141,9 +142,16 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     const [vaultInfo, setVaultInfo] = useState<AeroCryptVaultInfo | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     const [kitData, setKitData] = useState<AerocryptEmergencyKit | null>(null);
+    // A marker migration can succeed even when its new metadata cannot be
+    // cached. Until that cache is current, recovery must read the live config.
+    const kitMetadataStaleRef = useRef(false);
+    const kitGenerationRef = useRef(0);
     const [kitQrLevel, setKitQrLevel] = useState<'L' | 'M' | 'Q' | 'H'>('H');
     const [markerStatus, setMarkerStatus] = useState<AeroCryptMarkerStatus | null>(null);
     const [markerMigrating, setMarkerMigrating] = useState(false);
+    // Save and marker mutation cannot overlap, including their first awaits.
+    const kitOperationRef = useRef(false);
+    const [kitOperationBusy, setKitOperationBusy] = useState(false);
     const vaultInfoRef = useRef<AeroCryptVaultInfo | null>(null);
     // True when the provider overlay is already live (auto-unlock / badge) so the
     // modal shows the unlocked panel without inventing a fake AECR v2 stub.
@@ -183,6 +191,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     useEffect(() => {
         if (!activeVaultId) return;
         let cancelled = false;
+        const generation = kitGenerationRef.current;
         (async () => {
             try {
                 const status = await refreshMarkerStatus();
@@ -196,7 +205,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,
                         });
-                        if (!cancelled && kit?.text) {
+                        if (!cancelled && generation === kitGenerationRef.current && !kitMetadataStaleRef.current && kit?.text) {
                             setKitData(kit);
                             setVaultInfo({
                                 vault_id: kit.vault_id || 'provider',
@@ -209,7 +218,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                         // fall through to config-only hydration
                     }
                 }
-                if (cancelled) return;
+                if (cancelled || generation !== kitGenerationRef.current || kitMetadataStaleRef.current) return;
                 // Heuristic version: legacy-only remote is still AECR content v3 but
                 // pre-Tier-1 marker; show v3 when we have config, else keep 3 as default.
                 const version = configJson ? 3 : 3;
@@ -339,7 +348,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         }
     };
 
-    const handleMigrateLegacyMarker = async () => {
+    const migrateLegacyMarker = async () => {
         // When the provider overlay is already unlocked (auto-unlock path), the
         // password may be empty here: re-use the stored profile password if any.
         let pw = password;
@@ -363,7 +372,16 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
         setMarkerMigrating(true);
         setError(null);
         setSuccess(null);
+        const previousKit = kitData;
+        const previousMetadataStale = kitMetadataStaleRef.current;
         try {
+            // The account this migration runs under: a switch during it must not put the metadata elsewhere.
+            const accountRead = await readSavedServerProfilesForWrite().catch(() => null);
+            // Invalidate before sending the mutation: the server can change
+            // its marker before this call returns, or lose the acknowledgement.
+            kitMetadataStaleRef.current = true;
+            kitGenerationRef.current += 1;
+            setKitData(null);
             const result = await invoke<AeroCryptMarkerMigrationResult>('aerocrypt_provider_migrate_legacy_marker', {
                 password: pw || '',
                 keyfilePath: kf || null,
@@ -381,6 +399,13 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                         (await invoke<string | null>('aerocrypt_provider_read_config', {
                             basePath: vaultRoot,
                         })) || '';
+                    if (configJson && activeVaultId) {
+                        // This is the live post-migration config, even when the
+                        // local metadata write below fails. A pending old-kit
+                        // hydration must not leave an already-open overlay on
+                        // the unlock panel or restore the old configuration.
+                        setVaultInfo({ vault_id: 'provider', version: 3, config_json: configJson });
+                    }
                     if (configJson && profileId) {
                         // Parse salt from TSV/JSON for salt-of-record.
                         let saltB64 = '';
@@ -394,56 +419,89 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                 /* ignore */
                             }
                         }
-                        await invoke('store_credential', {
-                            account: `aerocrypt_overlay_config_${profileId}`,
-                            password: configJson,
-                        });
-                        if (saltB64) {
-                            await invoke('store_credential', {
-                                account: `aerocrypt_overlay_salt_${profileId}`,
-                                password: saltB64,
-                            });
+                        // A failed read gives no account to bind this to, so it is not saved here.
+                        if (accountRead) {
+                            try {
+                                await invoke('store_overlay_metadata', { profileId, configJson, salt: saltB64 || null, expectedUserId: accountRead.userId ?? null });
+                                kitMetadataStaleRef.current = false;
+                            } catch {
+                                // The kit would still be the older one: not shown as this one.
+                                setError(t('aerocryptNative.overlayMetadataNotSaved'));
+                                return;
+                            }
+                        } else {
+                            setError(t('aerocryptNative.overlayMetadataNotSaved'));
+                            return;
                         }
                         const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                             profileId,
                         });
                         setKitData(kit);
-                        setVaultInfo({
-                            vault_id: kit.vault_id || 'provider',
-                            version: kit.version || 3,
-                            config_json: configJson,
-                        });
+                        if (activeVaultId) {
+                            setVaultInfo({
+                                vault_id: kit.vault_id || 'provider',
+                                version: kit.version || 3,
+                                config_json: configJson,
+                            });
+                        }
                     }
                 } catch {
                     /* kit may warm on next connect */
                 }
             } else {
+                // Another client may have migrated the marker. Do not restore
+                // our earlier kit or trust its cache: Show must read it live.
                 setSuccess(t('aerocryptNative.legacyMarkerAlreadyCurrent'));
             }
         } catch (e) {
-            setError(String(e));
+            const failure = e && typeof e === 'object' ? e as { message?: unknown; markerMayHaveChanged?: unknown } : null;
+            if (failure?.markerMayHaveChanged === false) {
+                // The backend certifies no marker publication was attempted.
+                // Never infer this from an error message or a lost reply.
+                kitMetadataStaleRef.current = previousMetadataStale;
+                setKitData(previousKit);
+            }
+            setError(typeof failure?.message === 'string' ? failure.message : String(e));
         } finally {
             setMarkerMigrating(false);
+        }
+    };
+
+    const handleMigrateLegacyMarker = async () => {
+        if (kitOperationRef.current) return;
+        kitOperationRef.current = true;
+        setKitOperationBusy(true);
+        try {
+            await migrateLegacyMarker();
+        } finally {
+            kitOperationRef.current = false;
+            setKitOperationBusy(false);
         }
     };
 
     // On-demand recovery kit: prefer the keystore kit (works offline after one
     // connect, includes vault_id backfill). Fall back to remote marker config.
     const showRecoveryKit = async () => {
+        // The ref also covers clicks before React renders disabled controls.
+        if (kitOperationRef.current) return;
+        const generation = kitGenerationRef.current;
         setError(null);
         try {
-            if (profileId) {
+            if (profileId && !kitMetadataStaleRef.current) {
                 try {
                     const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_profile_recovery_kit', {
                         profileId,
                     });
-                    setKitData(kit);
-                    return;
+                    if (generation !== kitGenerationRef.current) return;
+                    if (!kitMetadataStaleRef.current) {
+                        setKitData(kit);
+                        return;
+                    }
                 } catch {
                     /* try live remote config */
                 }
             }
-            let configJson = vaultInfo?.config_json || '';
+            let configJson = kitMetadataStaleRef.current ? '' : vaultInfo?.config_json || '';
             if (!configJson) {
                 configJson =
                     (await invoke<string | null>('aerocrypt_provider_read_config', {
@@ -451,14 +509,16 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                     })) || '';
             }
             if (!configJson) {
-                setError(t('aerocryptNative.kitUnavailable'));
+                if (generation === kitGenerationRef.current) setError(t('aerocryptNative.kitUnavailable'));
                 return;
             }
             const kit = await invoke<AerocryptEmergencyKit>('aerocrypt_build_emergency_kit', {
                 configJson,
             });
+            if (generation !== kitGenerationRef.current) return;
             setKitData(kit);
         } catch (e) {
+            if (generation !== kitGenerationRef.current) return;
             const msg = String(e);
             if (/vault_id/i.test(msg)) {
                 setError(t('aerocryptNative.kitNeedsVaultIdUpgrade'));
@@ -469,7 +529,10 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
     };
 
     const saveKitToFile = async () => {
-        if (!kitData) return;
+        if (!kitData || kitOperationRef.current) return;
+        kitOperationRef.current = true;
+        setKitOperationBusy(true);
+        const generation = kitGenerationRef.current;
         try {
             const slug = (profileId || 'profile')
                 .replace(/[\\/:*?"<>|]+/g, '')
@@ -482,10 +545,17 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                 filters: [{ name: 'Text', extensions: ['txt'] }],
             });
             if (!path) return;
+            if (generation !== kitGenerationRef.current) {
+                setError(t('aerocryptNative.overlayMetadataNotSaved'));
+                return;
+            }
             await writeTextFile(path, kitData.text);
             setSuccess(t('aerocryptNative.kitSaved', { path }));
         } catch (e) {
             setError(String(e));
+        } finally {
+            kitOperationRef.current = false;
+            setKitOperationBusy(false);
         }
     };
 
@@ -766,7 +836,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => void handleMigrateLegacyMarker()}
-                                        disabled={loading || markerMigrating}
+                                        disabled={loading || markerMigrating || kitOperationBusy}
                                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {markerMigrating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileKey className="w-3.5 h-3.5" />}
@@ -826,7 +896,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => void handleMigrateLegacyMarker()}
-                                        disabled={loading || markerMigrating}
+                                        disabled={loading || markerMigrating || kitOperationBusy}
                                         className="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         {markerMigrating ? (
@@ -882,7 +952,7 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                                     </div>
 
                                     <div className="flex gap-2">
-                                        <button onClick={saveKitToFile} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
+                                        <button onClick={saveKitToFile} disabled={kitOperationBusy} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.saveKit')}</button>
                                         <button onClick={printKit} className="flex-1 px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.printKit')}</button>
                                         <button onClick={() => setKitData(null)} className="px-3 py-1.5 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('aerocryptNative.hideKit')}</button>
                                     </div>
@@ -890,7 +960,8 @@ export const AeroCryptUnlock: React.FC<AeroCryptUnlockProps> = ({
                             ) : (
                                 <button
                                     onClick={showRecoveryKit}
-                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 rounded hover:bg-amber-50 dark:hover:bg-amber-900/30"
+                                    disabled={markerMigrating || kitOperationBusy}
+                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 rounded hover:bg-amber-50 dark:hover:bg-amber-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <FileKey className="w-4 h-4" />
                                     {t('aerocryptNative.showKit')}

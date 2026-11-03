@@ -17,6 +17,18 @@ import fixture420 from '../../src-tauri/tests/fixtures/aerosync/mirror-turbo-4.2
 import fixture424 from '../../src-tauri/tests/fixtures/aerosync/mirror-4.2.4.aerosync?raw';
 
 describe('AeroSync template import application', () => {
+    it('restores Mirror Update and clears it when an older template is imported', () => {
+        const template = JSON.parse(fixture424) as SyncTemplate;
+        const updated = overlayLivePlanOnTemplate(template, { preset: 'mirror', updateOnly: true });
+        expect(overlayLivePlanOnTemplate(updated, { verifyPolicy: 'size_only' }).profile.update_only).toBe(true);
+        const imported = settingsFromTemplate(updated);
+        expect(imported.ok).toBe(true);
+        if (!imported.ok) return;
+        expect(buildAeroSyncTabStatePatch(imported.settings, 'local-remote')['plan.updateOnly']).toBe(true);
+        const legacy = settingsFromTemplate(template);
+        if (!legacy.ok) throw new Error('fixture refused');
+        expect(buildAeroSyncTabStatePatch(legacy.settings, 'local-remote')['plan.updateOnly']).toBe(false);
+    });
     it('exports the edited or cleared Sync exclusions, including after a tab switch', () => {
         const store = createTabStateStore();
         expect(readSyncExcludePatterns(store, [])).toEqual([]);
@@ -293,6 +305,7 @@ describe('AeroSync template import application', () => {
             'sync.destination': '/to',
             'sync.exclude': '',
             'plan.preset': 'bisync',
+            'plan.updateOnly': false,
             'plan.direction': 'left-to-right',
         });
     });

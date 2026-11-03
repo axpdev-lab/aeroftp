@@ -260,8 +260,30 @@ pub async fn vault_v2_extract_entry(
 /// overwrite each other: silent data loss. This extracts each file entry into its own
 /// parent directory (which the crate then appends the file name to) and pre-creates
 /// every directory entry, including empty ones. Returns the count of entries written.
+///
+/// The crate never writes over an existing file: it refuses it, and an extraction
+/// into a folder that holds one of the vault's files used to stop there, with the
+/// entries before it written and the ones after it not. Such an extraction is now
+/// refused before anything is written, naming the files in the way.
 pub(crate) fn extract_all_v2_tree(vault: &Vault, dest: &std::path::Path) -> Result<u32, String> {
     let entries = vault.list().map_err(|e| e.to_string())?;
+    let existing: Vec<&str> = entries
+        .iter()
+        .filter(|e| !e.is_dir && std::fs::symlink_metadata(dest.join(&e.name)).is_ok())
+        .map(|e| e.name.as_str())
+        .collect();
+    if !existing.is_empty() {
+        let more = existing.len().saturating_sub(5);
+        return Err(format!(
+            "Nothing was extracted: already in the destination: {}{}",
+            existing[..existing.len().min(5)].join(", "),
+            if more > 0 {
+                format!(", +{more}")
+            } else {
+                String::new()
+            }
+        ));
+    }
     std::fs::create_dir_all(dest)
         .map_err(|e| format!("Failed to create output directory: {}", e))?;
     let mut count = 0u32;
@@ -1620,6 +1642,47 @@ mod tests {
             snap.get("d2/x.txt").unwrap(),
             "duplicate basenames collapsed via core path"
         );
+    }
+
+    #[test]
+    fn v2_extract_all_refuses_an_existing_file_before_writing_anything() {
+        // The crate refuses to write over a file entry by entry: an extraction
+        // into a folder holding one of the vault's files stopped there, half
+        // done.
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path().join("refuse.aerovault");
+        let scratch = dir.path().join("scratch");
+        fs::create_dir_all(&scratch).unwrap();
+        let pw = "v2-refuse-existing-pw-12345";
+        let files = [
+            ("a.txt", b"vault a".to_vec()),
+            ("d/b.txt", b"vault b".to_vec()),
+            ("z.txt", b"vault z".to_vec()),
+        ];
+        build_v2_vault(&vault, pw, false, &["d"], &files, &scratch);
+
+        let out = dir.path().join("out");
+        fs::create_dir_all(out.join("d")).unwrap();
+        fs::write(out.join("d/b.txt"), b"mine").unwrap();
+        let before = snapshot_tree(&out);
+
+        let v = super::Vault::open(&vault, pw).unwrap();
+        let err = super::extract_all_v2_tree(&v, &out).unwrap_err();
+        assert!(err.contains("d/b.txt"), "names the file in the way: {err}");
+        assert!(
+            !err.contains("a.txt") && !err.contains("z.txt"),
+            "names only the files in the way: {err}"
+        );
+        assert_eq!(
+            snapshot_tree(&out),
+            before,
+            "nothing written, the existing file kept"
+        );
+
+        // A folder of the vault that is there already is not in the way.
+        fs::remove_file(out.join("d/b.txt")).unwrap();
+        super::extract_all_v2_tree(&v, &out).unwrap();
+        assert_eq!(fs::read(out.join("d/b.txt")).unwrap(), b"vault b");
     }
 
     /// AeroMount (#322): the v2 `ReadableVault` adapter must walk the full tree and

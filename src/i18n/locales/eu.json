@@ -18,6 +18,7 @@
             "loading": "Kargatzen...",
             "error": "Errorea",
             "success": "Arrakasta",
+            "searchLimited": "Lehen {count} emaitzak erakusten dira. Bilatu karpeta txikiago batean gainerakoak ikusteko.",
             "warning": "Abisua",
             "info": "Informazioa",
             "confirm": "Berretsi",
@@ -598,7 +599,8 @@
             "setAsPublic": "Ezarri publiko gisa",
             "makeAllPrivate": "Egin denak pribatu",
             "dropboxRestoreLimit": "AeroFTP-k fitxategien bertsio berreskuragarriak lehenera ditzake. Berreskuratu karpetak dropbox.com-eko Ezabatutako fitxategiak ataletik. Galdera-markak esan nahi du Dropbox-ek ez duela elementu mota identifikatu.",
-            "openWithDefaultApp": "Ireki aplikazio lehenetsiarekin"
+            "openWithDefaultApp": "Ireki aplikazio lehenetsiarekin",
+            "extractHereUncheckedConfirm": "{name} barruko izenak ezin dira erauzi aurretik irakurri, beraz AeroFTP-k ezin du egiaztatu «Erauzi hemen» aukerak karpeta honetan zer gainidatziko lukeen. «Erauzi karpetara» aukerak ez du inoiz ezer gainidatziko."
         },
         "transfer": {
             "transferring": "Transferitzen...",
@@ -1358,6 +1360,8 @@
             "aiKeysCount": "{count} AI gako",
             "oauthTokensCount": "{count} OAuth token",
             "configEntriesCount": "{count} konfigurazio-sarrera",
+            "verifyDownloadHash": "Egiaztatu deskargak zerbitzariaren hash-arekin",
+            "verifyDownloadHashHelp": "Deskarga baten ondoren, fitxategia zerbitzariak argitaratzen duen hash-arekin alderatzen da, eta ez da gordetzen desberdinak badira. Hash-ik erabiltzen ez denean, FTP-n bezala, egiaztapen hau ez da exekutatzen.",
             "importExistingLabel": "Profila lehendik badago bada",
             "importExistingSkip": "Saltatu",
             "importExistingOverwrite": "Gainidatzi",
@@ -1370,7 +1374,8 @@
             "importJottaChainWarning": "Jottacloudek konexio bakoitzean berritzen du saio-hasiera, eta {names} orain beste kopia batekin partekatzen du bat: lehenengo konektatzen den kopiak bestearen saioa ixten du (fitxategia nondik etorri den gailua, edo bikoiztu zen profila). Hasi saioa berriro bestean Personal Login Token berri batekin.",
             "importOauthAppKept": "{names} OAuth aplikazio pertsonalizatu desberdin batekin iritsi dira, gailu honek hornitzaile horretarako duenarekin alderatuta. Gordetako aplikazioa mantendu da, beraz, hasi saioa berriro profil hauek konektatzeari uzten badiote.",
             "importTargetChanged": "{names} ez dira gainidatzi: fitxategiak beste zerbitzari batera bideratzen ditu, eta gordetako pasahitzak eta tokenak ez dira hara joan behar. Inportatu Bikoiztu aukerarekin fitxategiko kopia gehitzeko, edo ezabatu lehenengo profila.",
-            "importSharedSecretsFailed": "{names} inportatu dira, baina fitxategiko partekatutako sekretu bat edo saio bat ezin izan da gorde. Hasi saioa berriro profil hauetan, konektatzen ez badira."
+            "importSharedSecretsFailed": "{names} inportatu dira, baina fitxategiko partekatutako sekretu bat edo saio bat ezin izan da gorde. Hasi saioa berriro profil hauetan, konektatzen ez badira.",
+            "keystoreDatabasesFailed": "Inportazioa amaitu da, baina datu-base hauek ezin izan dira berrezarri eta lehen zutena gordetzen dute: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1593,9 @@
             "aerocloudEnabled": "AeroCloud gaituta",
             "selectPairLocalFolder": "Hautatu bikoterako karpeta lokala",
             "secondsAgo": "{count}s duela",
-            "conflictsCount": "Arreta behar duten gatazkak: {count}"
+            "conflictsCount": "Arreta behar duten gatazkak: {count}",
+            "updateOnlyHint": "Noranzko bakarreko eguneratzeak helmugako fitxategi berriagoak mantentzen ditu. Babeskopia gehigarria desaktibatuta dagoenean, helmugan soilik dauden aldatu gabeko fitxategiak bakarrik ezabatzen dira, egiaztatutako AeroCloud transferentzia-agiria badute. Beste fitxategiak AeroSync-en berrikusteko geratzen dira. Gatazka-politika ez da kontuan hartzen; data ezezagunak ebatzi gabe geratzen dira.",
+            "untrackedDestinationFiles": "Helmugako {count} fitxategi berrikusteko mantendu dira: haien transferentzia-historia ez dago egiaztatuta edo azken AeroCloud transferentziaren ondoren aldatu dira. Berrikusi AeroSync-en, ezabatzea erabaki aurretik."
         },
         "statusBar": {
             "connected": "Konektatuta",
@@ -1742,7 +1749,9 @@
             "transferComplete": "{count} fitxategi kopiatu dira",
             "permissionsSessionChanged": "Elkarrizketa-koadroa ireki zenetik konexioa aldatu da, beraz, ez da ezer aldatu. Ireki Baimenak berriro uneko konexioan.",
             "createFailed": "Sorrerak huts egin du",
-            "unknownServer": "Ezezaguna"
+            "unknownServer": "Ezezaguna",
+            "scpModeTitle": "SCP bidez konektatuta",
+            "scpModeBody": "{host} zerbitzariak ez du SFTPrik, beraz AeroFTP SCP erabiltzen ari da konexio berean."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -2343,7 +2352,13 @@
             "imagekitDesc": "Multimedia CDN + biltegia (20 GB doan)",
             "uploadcareDesc": "EBko multimedia CDN (3 GB doan)",
             "cloudinaryDesc": "Multimedia CDN (25 kreditu hilean doan)",
-            "backblazeDesc": "Backblaze B2 API natiboa v4"
+            "backblazeDesc": "Backblaze B2 API natiboa v4",
+            "scpDesc": "Fitxategiak kopiatzea SSH bidez",
+            "scpTooltip": "SCP SSH bidez, SFTPrik ez duten zerbitzarientzat.",
+            "scpOnlyNote": "Erabili SCP SFTPrik gabeko zerbitzarietarako soilik, adibidez OpenWrt bideratzaileetarako.",
+            "allowScpFallback": "Baimendu SCP ordezko gisa",
+            "allowScpFallbackHint": "Zerbitzariak SFTPrik ez badu, SCP bidez jarraitzen du konexio berean, WinSCPk egiten duen bezala.",
+            "discoverScp": "Fitxategiak kopiatzea SSH bidez SFTPrik gabeko zerbitzarietarako"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",
@@ -2469,7 +2484,9 @@
             "flattenScanning": "Azpizuhaitza eskaneatzen...",
             "flattenTruncated": "moztua",
             "flattenTruncatedHint": "5.000 sarrerako muga iritsi da; iragazkia findu edo azpikarpeta batera jaitsi.",
-            "local_placeholder_flatten": "Iragazi fitxategi lokalak... (* errekurtsiborako)"
+            "local_placeholder_flatten": "Iragazi fitxategi lokalak... (* errekurtsiborako)",
+            "flattenNameClash": "{names}: karpeta bat baino gehiagotan hautatuta. Toki bakarrean jarriz gero, elkarren ordezkatuko lukete; jardun izen bakoitzeko bat aldiko.",
+            "flattenNameClashTitle": "Izen bera karpeta bat baino gehiagotan"
         },
         "versions": {
             "title": "Fitxategi bertsioak",
@@ -4179,7 +4196,10 @@
             "drivesLeftPanel": "Ezkerreko paneleko unitateak",
             "drivesRightPanel": "Eskuineko paneleko unitateak",
             "modeGroupLabel": "Alboko barraren modua",
-            "placesSidebarLabel": "Lekuen alboko barra"
+            "placesSidebarLabel": "Lekuen alboko barra",
+            "mountFailed": "Muntatzeak huts egin du",
+            "partitions_need_udisks2": "Snap-ean, muntatu gabeko partizioak agertzen dira, eta muntatu eta kanporatu daitezke, udisks2 baimena konektatzen denean. Exekutatu hau terminal batean eta itzuli AeroFTP-ra:",
+            "volume_action_needs_udisks2": "Snap-ean, muntatzeko eta kanporatzeko udisks2 baimena behar da. Exekutatu hau terminal batean eta saiatu berriro: {command}"
         },
         "viewMode": {
             "list": "Zerrenda",
@@ -4307,7 +4327,8 @@
                 "koofr-proprietary": "Koofren hash propioa. Koofren beste hash batekin soilik alderatzen da.",
                 "github-blob-sha": "git bloben SHA-1a, git goiburu bat eta edukia hartuta kalkulatua, beraz ez dator bat fitxategi beraren SHA-1 soilarekin.",
                 "immich-asset-checksum": "Immichek igotzean erregistratzen duen elementuaren kontrol-batura.",
-                "crypt-overlay-ciphertext": "Laburpenak zerbitzarian gordetako byte zifratuak hartzen ditu."
+                "crypt-overlay-ciphertext": "Laburpenak zerbitzarian gordetako byte zifratuak hartzen ditu.",
+                "scp-shell-digests": "Urruneko ostalariak sha256sum edo md5sum erabiliz kalkulatzen du, SSH kanal baten bidez: byteak zerbitzarian irakurtzen dira eta ez zaizkizu inoiz bidaltzen. Laburpen bakoitza ostalariak dagokion tresna duenean soilik eskaintzen da."
             },
             "readOnlyIsLinkTarget": "Hau esteka sinbolikoa da: baimenak seinalatzen duen fitxategiarenak dira. Aldatzeko, ireki fitxategi horren propietateak.",
             "exactBytes": "({bytes} byte)"
@@ -4853,7 +4874,8 @@
             "relocateSuccessMove": "«{name}» {user}(e)ra eraman da",
             "relocateAlreadyPresent": "«{name}» dagoeneko gordeta dago {user}(e)n",
             "relocateError": "Ezin izan da zerbitzaria transferitu: {error}",
-            "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat."
+            "relocateWrongPassword": "Pasahitz okerra {user}(r)entzat.",
+            "relocateSecretsNotCopied": "«{name}» {user}(e)ra iritsi da, baina gordetako pasahitza edo tokena ez, beraz, han berriro eskatuko ditu."
         },
         "cyberTools": {
             "title": "Segurtasun tresnak",
@@ -5337,7 +5359,7 @@
             "runAgain": "Exekutatu berriro",
             "copyResult": "Kopiatu emaitza",
             "copied": "Kopiatuta",
-            "unsupportedProvider": "Bertsio honetan Speed Test eskuragarri dago FTP, FTPS, SFTP, S3 eta WebDAV-rako.",
+            "unsupportedProvider": "Bertsio honetan Speed Test eskuragarri dago FTP, FTPS, SFTP, SCP, S3 eta WebDAV-rako.",
             "noSupportedServers": "Gordetako zerbitzaririk ez du oraindik Speed Test onartzen",
             "errorReadOnly": "Zerbitzariak ez du idazketa onartzen",
             "errorNotSupported": "Speed Test ez dago eskuragarri hornitzaile mota honentzat",
@@ -5775,7 +5797,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Enpresa"
+                "parentCompany": "Enpresa",
+                "customScp": "SCP"
             },
             "healthCheck": "Erabilgarritasun-egiaztapena",
             "storageVersioning": "Fitxategi-bertsioak: {size}",
@@ -6149,7 +6172,8 @@
             "totalEntries": "Sarrera guztiak",
             "differences": "Desberdintasunak",
             "totalBytes": "Byte guztiak",
-            "mirrorHint": "Ispilu botoiek bat datozen sarrerak transferentzia-planifikatzaile bateratuan ilaratzen dituzte berrikusteko.",
+            "mirrorHint": "Ispilu botoiek bat datozen sarrerak transferitzen dituzte. Ez dituzte berrikusteko prestatzen.",
+            "exportFailed": "Ezin izan da esportazioa idatzi: {error}",
             "mirrorLeftToRight": "Ispilatu ezkerretik eskuinera",
             "mirrorRightToLeft": "Ispilatu eskuinetik ezkerrera",
             "directionLeftRight": "Ezkerretik Eskuinera",
@@ -6360,7 +6384,10 @@
             "progressCopy": "[kopia]",
             "deleteCount": "Ezabatzeko: {count}",
             "overwriteCount": "Gainidazteko: {count}",
-            "conflictCount": "{count} gatazka"
+            "conflictCount": "{count} gatazka",
+            "updateOnly": "Saltatu helmugako fitxategi berriagoak (noranzko bakarreko eguneratzea)",
+            "updateOnlyHint": "Kopiatzen ditu iturburuko falta diren edo aldatutako fitxategiak, helmugako fitxategi berriagoak mantentzen ditu eta helmugan soilik dauden sarrerak ezabatzen ditu. Data alderagarririk ez duten fitxategiak tamainaren arabera alderatzen dira; tamaina-desberdintasunak berrikusteko uzten dira.",
+            "rescanNeeded": "Exekutatu beste konparazio bat uneko ezarpenekin eguneratze-script bat esportatu aurretik."
         },
         "accountLock": {
             "title": "Aukeratu kontu bat",
@@ -6604,7 +6631,8 @@
             "keyslotsSetAsideRevocation": "Aurreko markatzaileak oraindik kutxa gotorra irekitzen du kentzen ari zaren edo ordezkatzen ari zaren faktorearekin. Kutxa gotorraren karpetan geratzen den kopia bakoitza ezabatzen da aldaketaren ondoren, eta ezin den kopia bat errore gisa jakinarazten da. Biltegiratzeko zakarrontziko edo fitxategi-bertsioetako kopiara ez da iristen: hustuz gero kopia horiek kentzen dira, baina ez beste norbaitek gorde duena, beraz ez da indargabetzea osatzen.",
             "keyslotsSetAsideConsent": "Ulertzen dut: ordezkatu markatzailea zerbitzari honetan zaharra alboratuz berrizendatuta",
             "keyslotsSetAsideConsentRequired": "Zerbitzari honek kutxa gotorraren markatzailea zaharra alboratuz berrizendatuta bakarrik ordezkatu dezake: baieztatu goiko laukian jarraitzeko.",
-            "keyslotsMarkerReplaceUnsupported": "Zerbitzari honek ezin du kutxa gotorraren markatzailea ordezkatu, beraz hemen zirrikituen aldaketak baztertzen dira. Ireki biltegiratze bera fitxategi bat urrats bakarrean ordezkatzen duen zerbitzari baten bidez (adibidez SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Zerbitzari honek ezin du kutxa gotorraren markatzailea ordezkatu, beraz hemen zirrikituen aldaketak baztertzen dira. Ireki biltegiratze bera fitxategi bat urrats bakarrean ordezkatzen duen zerbitzari baten bidez (adibidez SFTP).",
+            "overlayMetadataNotSaved": "Migrazioak ondo funtzionatu du, baina lineaz kanpoko berreskuratze-kita ez dago oraindik cachean gordeta. Hurrengo desblokeoan gordeko da."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Zifratzea)",

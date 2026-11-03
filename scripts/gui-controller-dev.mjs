@@ -73,8 +73,22 @@ async function main() {
             if (!password) throw Error('Set AEROFTP_GUI_TEST_MASTER for the owned DEV master');
             body = `const controller = window.__aeroftpController;
                 if (!controller.state().locked) return { unlocked: true, already_unlocked: true };
-                const input = document.querySelector('input[type=password]');
-                if (!input?.closest('form')) throw Error('DEV unlock form unavailable');
+                // The form appears when the boot ends. Still none then, with a store
+                // that says it is not locked: the GUI is held by the account picker or
+                // another boot screen, or the vault failed to open. A password fixes neither.
+                const formDeadline = Date.now() + 20000;
+                let input = document.querySelector('input[type=password]');
+                while (!input?.closest('form') && controller.state().locked && Date.now() < formDeadline) {
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    input = document.querySelector('input[type=password]');
+                }
+                if (!controller.state().locked) return { unlocked: true, already_unlocked: true };
+                if (!input?.closest('form')) {
+                    const status = await window.__TAURI_INTERNALS__.invoke('get_credential_store_status').catch(() => null);
+                    throw Error(status && !status.is_locked
+                        ? 'The GUI stays locked while the master-password store is unlocked, so a password cannot fix it. Check the account picker or another boot screen, then the fixture and the master'
+                        : 'DEV unlock form unavailable');
+                }
                 Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(input, ${JSON.stringify(password)});
                 input.dispatchEvent(new Event('input', { bubbles: true }));
                 await new Promise(resolve => setTimeout(resolve, 50)); input.closest('form').requestSubmit();

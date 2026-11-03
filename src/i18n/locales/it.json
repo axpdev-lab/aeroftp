@@ -24,6 +24,7 @@
             "loading": "Caricamento...",
             "error": "Errore",
             "success": "Successo",
+            "searchLimited": "Mostrate le prime {count} corrispondenze. Cerca in una cartella più piccola per vedere le altre.",
             "warning": "Attenzione",
             "info": "Info",
             "confirm": "Conferma",
@@ -841,7 +842,13 @@
             "imagekitDesc": "CDN multimediale + archiviazione (20 GB gratis)",
             "uploadcareDesc": "CDN multimediale UE (3 GB gratis)",
             "cloudinaryDesc": "CDN multimediale (25 crediti/mese gratis)",
-            "backblazeDesc": "API nativa Backblaze B2 v4"
+            "backblazeDesc": "API nativa Backblaze B2 v4",
+            "scpDesc": "Copia di file via SSH",
+            "scpTooltip": "SCP su SSH, per i server senza SFTP.",
+            "scpOnlyNote": "Usa SCP solo per i server senza SFTP, ad esempio i router OpenWrt.",
+            "allowScpFallback": "Consenti il ripiego su SCP",
+            "allowScpFallbackHint": "Se il server non ha SFTP, prosegue con SCP sulla stessa connessione, come fa WinSCP.",
+            "discoverScp": "Copia di file via SSH per i server senza SFTP"
         },
         "browser": {
             "remote": "Remoto",
@@ -1067,7 +1074,8 @@
             "setAsPublic": "Rendi Pubblico",
             "makeAllPrivate": "Rendi tutto privato",
             "dropboxRestoreLimit": "AeroFTP può ripristinare le versioni recuperabili dei file. Ripristina le cartelle da File eliminati su dropbox.com. Un punto interrogativo indica che Dropbox non ha identificato il tipo di elemento.",
-            "openWithDefaultApp": "Apri con l'app predefinita"
+            "openWithDefaultApp": "Apri con l'app predefinita",
+            "extractHereUncheckedConfirm": "I nomi dentro {name} non si possono leggere prima dell'estrazione, quindi AeroFTP non può verificare cosa sovrascriverebbe Estrai qui in questa cartella. Estrai nella cartella non sovrascrive mai."
         },
         "transfer": {
             "transferring": "Trasferimento in corso...",
@@ -1833,6 +1841,8 @@
             "aiKeysCount": "Chiavi AI: {count}",
             "oauthTokensCount": "Token OAuth: {count}",
             "configEntriesCount": "Voci di configurazione: {count}",
+            "verifyDownloadHash": "Verifica i download con l'hash del server",
+            "verifyDownloadHashHelp": "Dopo un download, il file viene confrontato con l'hash pubblicato dal server e non viene conservato se differiscono. Dove non si usa alcun hash, come con FTP, questo controllo non viene eseguito.",
             "importExistingLabel": "Se un profilo esiste già",
             "importExistingSkip": "Salta",
             "importExistingOverwrite": "Sovrascrivi",
@@ -1845,7 +1855,8 @@
             "importJottaChainWarning": "Jottacloud rinnova l'accesso a ogni connessione, e {names} ora ne condivide uno con un'altra copia: la copia che si connette per prima disconnette l'altra (il dispositivo da cui proviene il file, o il profilo da cui è stata duplicata). Accedi di nuovo all'altra con un nuovo Personal Login Token.",
             "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta: accedi di nuovo se questi profili smettono di connettersi.",
             "importTargetChanged": "{names} non sono stati sovrascritti: il file li fa puntare a un altro server, e le password e i token memorizzati non devono arrivarci. Importa con Duplica per aggiungere la copia dal file, oppure elimina prima il profilo.",
-            "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono."
+            "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono.",
+            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}."
         },
         "appearance": {
             "patternCross": "Croce",
@@ -2077,7 +2088,9 @@
             "aerocloudEnabled": "AeroCloud attivato",
             "selectPairLocalFolder": "Seleziona cartella locale per la coppia",
             "secondsAgo": "{count}s fa",
-            "conflictsCount": "Conflitti da risolvere: {count}"
+            "conflictsCount": "Conflitti da risolvere: {count}",
+            "updateOnlyHint": "L’aggiornamento unidirezionale conserva i file di destinazione più recenti. Con il backup additivo disattivato, vengono eliminati solo i file invariati presenti esclusivamente nella destinazione e con una ricevuta di trasferimento AeroCloud verificata. Gli altri file restano da esaminare in AeroSync. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte.",
+            "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli."
         },
         "statusBar": {
             "connected": "Connesso",
@@ -2317,7 +2330,9 @@
             "transferComplete": "{count} file copiati",
             "permissionsSessionChanged": "La connessione è cambiata da quando questa finestra è stata aperta, quindi non è stato modificato nulla. Riapri Permessi sulla connessione corrente.",
             "createFailed": "Creazione non riuscita",
-            "unknownServer": "Sconosciuto"
+            "unknownServer": "Sconosciuto",
+            "scpModeTitle": "Connesso con SCP",
+            "scpModeBody": "{host} non ha SFTP, quindi AeroFTP usa SCP sulla stessa connessione."
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -2694,6 +2709,8 @@
             "search_files": "Cerca file",
             "clear": "Cancella ricerca",
             "resultsCount": "{count} risultati",
+            "flattenNameClash": "{names}: selezionati in più di una cartella. Messi in un solo posto si sostituirebbero a vicenda; agisci su uno per volta.",
+            "flattenNameClashTitle": "Stesso nome in più cartelle",
             "flattenRecursive": "Ricorsivo",
             "flattenScanning": "Scansione sottoalbero...",
             "flattenTruncated": "troncato",
@@ -4471,7 +4488,8 @@
             "keyslotsSetAsideRevocation": "Il marker precedente apre ancora il vault con il fattore che stai rimuovendo o sostituendo. Dopo la modifica ogni copia rimasta nella cartella del vault viene eliminata, e una copia che non si riesce a eliminare viene segnalata come errore. Le copie nel cestino o nelle versioni dei file dello storage restano: svuotarli elimina quelle copie, non una che qualcun altro ha conservato, quindi non completa la revoca.",
             "keyslotsSetAsideConsent": "Ho capito: su questo server sostituisci il marker mettendo da parte quello attuale",
             "keyslotsSetAsideConsentRequired": "Su questo server il marker del vault si può sostituire solo mettendo da parte quello attuale: conferma nella casella qui sopra per continuare.",
-            "keyslotsMarkerReplaceUnsupported": "Questo server non può sostituire il marker del vault, quindi qui le modifiche agli slot vengono rifiutate. Apri lo stesso storage tramite un server che sostituisce un file in un solo passaggio (per esempio SFTP)."
+            "keyslotsMarkerReplaceUnsupported": "Questo server non può sostituire il marker del vault, quindi qui le modifiche agli slot vengono rifiutate. Apri lo stesso storage tramite un server che sostituisce un file in un solo passaggio (per esempio SFTP).",
+            "overlayMetadataNotSaved": "La migrazione è riuscita, ma il kit di ripristino offline non è ancora in cache. Lo sarà al prossimo sblocco."
         },
         "cryptomator": {
             "confirmPassword": "Conferma Password",
@@ -4627,7 +4645,10 @@
             "drivesLeftPanel": "Unità pannello sinistro",
             "drivesRightPanel": "Unità pannello destro",
             "modeGroupLabel": "Modalità barra laterale",
-            "placesSidebarLabel": "Barra laterale dei luoghi"
+            "placesSidebarLabel": "Barra laterale dei luoghi",
+            "mountFailed": "Montaggio non riuscito",
+            "partitions_need_udisks2": "Nello snap le partizioni non montate compaiono, e si possono montare ed espellere, dopo aver collegato il permesso udisks2. Esegui questo comando in un terminale, poi torna su AeroFTP:",
+            "volume_action_needs_udisks2": "Nello snap, montare ed espellere richiedono il permesso udisks2. Esegui questo comando in un terminale, poi riprova: {command}"
         },
         "viewMode": {
             "list": "Lista",
@@ -4755,7 +4776,8 @@
                 "koofr-proprietary": "L'hash proprietario di Koofr. Si confronta solo con un altro hash Koofr.",
                 "github-blob-sha": "Lo SHA-1 del blob git, calcolato su un'intestazione git più il contenuto, quindi non corrisponde a un semplice SHA-1 dello stesso file.",
                 "immich-asset-checksum": "Il checksum dell'asset che Immich registra al momento del caricamento.",
-                "crypt-overlay-ciphertext": "L'hash copre i byte cifrati memorizzati sul server."
+                "crypt-overlay-ciphertext": "L'hash copre i byte cifrati memorizzati sul server.",
+                "scp-shell-digests": "Calcolato dall'host remoto con sha256sum o md5sum su un canale SSH: i byte vengono letti sul server, mai inviati a te. Ogni digest viene offerto solo se l'host ha il relativo strumento."
             },
             "readOnlyIsLinkTarget": "Questo è un collegamento simbolico: i permessi appartengono al file a cui punta. Per modificarli apri le proprietà di quel file.",
             "exactBytes": "({bytes} byte)"
@@ -5355,7 +5377,8 @@
             "relocateSuccessMove": "\"{name}\" spostato in {user}",
             "relocateAlreadyPresent": "\"{name}\" è già salvato in {user}",
             "relocateError": "Impossibile trasferire il server: {error}",
-            "relocateWrongPassword": "Password errata per {user}."
+            "relocateWrongPassword": "Password errata per {user}.",
+            "relocateSecretsNotCopied": "\"{name}\" è arrivato in {user}, ma la password o il token salvati no, quindi li chiederà di nuovo lì."
         },
         "dialog": {
             "deleteFile": "Eliminare \"{name}\"?",
@@ -5682,7 +5705,7 @@
             "runAgain": "Esegui di nuovo",
             "copyResult": "Copia risultato",
             "copied": "Copiato",
-            "unsupportedProvider": "In questa release Speed Test e disponibile per FTP, FTPS, SFTP, S3 e WebDAV.",
+            "unsupportedProvider": "In questa release Speed Test e disponibile per FTP, FTPS, SFTP, SCP, S3 e WebDAV.",
             "noSupportedServers": "Nessun server salvato supporta ancora Speed Test",
             "errorReadOnly": "Il server non consente scrittura",
             "errorNotSupported": "Speed Test non e disponibile per questo provider",
@@ -6066,7 +6089,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Azienda"
+                "parentCompany": "Azienda",
+                "customScp": "SCP"
             },
             "confirmDeleteServer": "Eliminare il server \"{name}\"? Verranno rimosse le credenziali salvate e l'operazione non potrà essere annullata.",
             "renameWithHotkey": "Rinomina (F2)",
@@ -6383,7 +6407,8 @@
             "totalEntries": "Voci totali",
             "differences": "Differenze",
             "totalBytes": "Byte totali",
-            "mirrorHint": "I pulsanti di mirror accodano le voci corrispondenti nel transfer planner unificato per la revisione.",
+            "mirrorHint": "I pulsanti di mirror trasferiscono le voci corrispondenti. Non le mettono in attesa di revisione.",
+            "exportFailed": "Impossibile scrivere l'esportazione: {error}",
             "mirrorLeftToRight": "Mirror da sinistra a destra",
             "mirrorRightToLeft": "Mirror da destra a sinistra",
             "directionLeftRight": "Sinistra a Destra",
@@ -6594,7 +6619,10 @@
             "progressCopy": "[copia]",
             "deleteCount": "Da eliminare: {count}",
             "overwriteCount": "Da sovrascrivere: {count}",
-            "conflictCount": "Conflitti: {count}"
+            "conflictCount": "Conflitti: {count}",
+            "updateOnly": "Salta i file di destinazione più recenti (aggiornamento unidirezionale)",
+            "updateOnlyHint": "Copia i file di origine mancanti o modificati, conserva i file di destinazione più recenti ed elimina le voci presenti solo nella destinazione. I file senza date confrontabili vengono confrontati in base alla dimensione; le differenze di dimensione restano in attesa di revisione.",
+            "rescanNeeded": "Esegui un nuovo confronto con le impostazioni attuali prima di esportare uno script di aggiornamento."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrapper / Overlay",

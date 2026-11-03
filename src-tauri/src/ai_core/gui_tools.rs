@@ -172,7 +172,7 @@ pub async fn dispatch_gui_tool(
             let name = match tool_name {
                 "gui_state" => "state", "gui_wait" => "wait", _ => args.get("intent").and_then(Value::as_str).ok_or("invalid_args")?,
             };
-            if tool_name == "gui_run" && !["show_view", "navigate", "refresh", "select", "connect", "disconnect", "stop", "settings_open", "settings_read", "settings_update", "settings_close", "tools_open", "tools_read", "tools_close"].contains(&name) {
+            if tool_name == "gui_run" && !["show_view", "navigate", "refresh", "select", "connect", "disconnect", "stop", "settings_open", "settings_read", "settings_update", "settings_close", "tools_open", "tools_read", "tools_close", "aerosync_open", "aerosync_compare", "aerosync_close"].contains(&name) {
                 return Err("unsupported_intent".into());
             }
             let parameters: serde_json::Map<String, Value> = object.iter()
@@ -810,7 +810,7 @@ pub async fn dispatch_gui_tool(
                         None => return Err("No active provider connection".into()),
                     };
                     provider
-                        .download(remote_path, &local_path, None)
+                        .download_checked(remote_path, &local_path, None, None)
                         .await
                         .map_err(|e| e.to_string())
                 } else if has_ftp(&app_state).await {

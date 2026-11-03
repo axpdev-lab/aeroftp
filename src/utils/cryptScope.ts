@@ -21,6 +21,17 @@ export const normCryptScope = (s?: string | null): string => {
   return '/' + t.replace(/^\/+|\/+$/g, '');
 };
 
+/**
+ * The Remote Path a connect lands on, as given: `/docs ` is its own folder.
+ * Its slashes are normalized as in `normCryptScope`, but not its spaces: the
+ * anchor's trim would land on another folder. Empty or `/` is the on-wire
+ * root ('').
+ */
+export const normLandingPath = (s?: string | null): string => {
+  const t = (s || '').replace(/^\/+|\/+$/g, '');
+  return t ? '/' + t : '';
+};
+
 export const resolveUsernameTemplate = (
   path: string | null | undefined,
   username: string | null | undefined,
@@ -45,7 +56,9 @@ export const connectLandsOutsideOverlay = (
 ): boolean => {
   const island = normCryptScope(overlayPath);
   if (!island) return false;
-  const landing = normCryptScope(remotePath);
+  // The folder the connect opens, read as navigation reads it: `/Crypt ` is
+  // another folder than an island at `/Crypt`, and opens outside it.
+  const landing = normLandingPath(remotePath);
   if (!landing) return true;
   if (landing === island || landing.startsWith(island + '/')) return false;
   return true;

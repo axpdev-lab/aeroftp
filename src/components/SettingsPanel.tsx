@@ -3,7 +3,7 @@
 
 import { TID } from '../utils/testIds';
 import * as React from 'react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { sendNotification } from '@tauri-apps/plugin-notification';
@@ -193,6 +193,7 @@ interface AppSettings {
      *  immediately on drag/drop or click. When false, transfers are parked
      *  in the queue panel as `staged` for prune-then-start workflows. */
     autoStartTransfers: boolean;
+    verifyDownloadHash: boolean;
     // File Handling
     fileExistsAction: 'ask' | 'overwrite' | 'skip' | 'rename' | 'resume' | 'overwrite_if_newer' | 'overwrite_if_different' | 'skip_if_identical';
     preserveTimestamps: boolean;
@@ -253,6 +254,7 @@ const defaultSettings: AppSettings = {
     downloadSegments: 0,
     sftpDownloadPreset: DEFAULT_SFTP_DOWNLOAD_PRESET,
     autoStartTransfers: true,
+    verifyDownloadHash: true,
     fileExistsAction: 'ask',
     preserveTimestamps: true,
     transferMode: 'auto',
@@ -389,9 +391,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
     const [settings, setSettings] = useState<AppSettings>(defaultSettings);
     const settingsBase = useRef<AppSettings>(defaultSettings);
     const settingsDraft = useRef<AppSettings>(defaultSettings);
-    settingsDraft.current = settings;
+    useLayoutEffect(() => { settingsDraft.current = settings; }, [settings]);
     const panelOpen = useRef(isOpen);
-    panelOpen.current = isOpen;
+    useLayoutEffect(() => { panelOpen.current = isOpen; }, [isOpen]);
     const settingsLoadRevision = useRef(0);
     const [portableMode, setPortableMode] = useState<boolean | null>(null);
     const autostartAtOpen = useRef<boolean | null>(null);
@@ -864,17 +866,15 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
             const providers = ['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'] as const;
             for (const p of providers) {
                 const creds = oauthSettings[p];
-                if (creds.clientId) {
-                    await invoke('store_credential', {
-                        account: `oauth_${p}_client_id`,
-                        password: creds.clientId,
-                    }).catch(console.error);
-                }
-                if (creds.clientSecret) {
-                    await invoke('store_credential', {
-                        account: `oauth_${p}_client_secret`,
-                        password: creds.clientSecret,
-                    }).catch(console.error);
+                // A field the user emptied is stored empty, which readers take as no
+                // value; one that was always empty stays out of the vault.
+                const edited = oauthEdits.current[p];
+                const clientId = creds.clientId || edited?.clientId ? creds.clientId : null;
+                const clientSecret = creds.clientSecret || edited?.clientSecret ? creds.clientSecret : null;
+                if (clientId !== null || clientSecret !== null) {
+                    // A failure reaches the save's own handler: the panel stays open
+                    // with the edit, and Save tries again.
+                    await invoke('store_oauth_app', { provider: p, clientId, clientSecret });
                 }
             }
             // Remove legacy OAuth settings from localStorage
@@ -914,7 +914,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
         } catch (e) {
             logger.warn('Settings save failed:', e);
             window.dispatchEvent(new CustomEvent('aeroftp-toast', {
-                detail: { type: 'error', title: t('toast.saveFailed'), message: String(e) },
+                detail: { type: 'error', title: t('toast.saveFailed'), message: String(e), important: true },
             }));
             setSaveState('idle');
         }
@@ -1659,6 +1659,25 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                 ))}
                                             </select>
                                             <p className="text-xs text-gray-500 mt-1">{t('settings.downloadSegmentsDesc')}</p>
+                                        </div>
+
+                                        <div>
+                                            <label className="flex items-start gap-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={settings.verifyDownloadHash}
+                                                    onChange={(e) => updateSetting('verifyDownloadHash', e.target.checked)}
+                                                    className="mt-1 w-4 h-4 rounded text-amber-500 focus:ring-amber-500"
+                                                />
+                                                <span className="flex-1">
+                                                    <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+                                                        {t('settings.verifyDownloadHash')}
+                                                    </span>
+                                                    <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                        {t('settings.verifyDownloadHashHelp')}
+                                                    </span>
+                                                </span>
+                                            </label>
                                         </div>
 
                                         <div>
@@ -3745,6 +3764,7 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             profilesAfterDecisions?: number;
                                                                             // #347: the import succeeded, the decisions did not.
                                                                             profileDecisionsError?: string;
+                                                                            sqliteDbsFailed?: string[];
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,
@@ -3810,9 +3830,11 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             !!result.requiresRestart ||
                                                                             (result.userPartitionsUnreadable ?? 0) > 0 ||
                                                                             (result.userPartitionsRekeyed ?? 0) > 0 ||
-                                                                            !!result.userPartitionsBackupPath
+                                                                            !!result.userPartitionsBackupPath ||
+                                                                            !!result.sqliteDbsFailed?.length
                                                                         ) {
                                                                             setKeystoreImportResult({
+                                                                                sqliteDbsFailed: result.sqliteDbsFailed,
                                                                                 imported: result.imported,
                                                                                 skipped: result.skipped,
                                                                                 requiresRestart: result.requiresRestart,
@@ -3850,7 +3872,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             onServersChanged?.();
                                                                         } catch (err) {
                                                                             logger.warn('Imported server profiles could not be read', err);
-                                                                            setKeystoreImportResult(null);
+                                                                            // The databases that failed stay listed: this error is about something else.
+                                                                            if (!result.sqliteDbsFailed?.length) setKeystoreImportResult(null);
                                                                             setKeystoreMessage({ type: 'error', text: String(err) });
                                                                             return;
                                                                         }

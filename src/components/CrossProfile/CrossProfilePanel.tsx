@@ -19,7 +19,7 @@ import { useGuardedClose } from '../../hooks/useGuardedClose';
 import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 
 const getDefaultRemotePath = (profile: ServerProfile | null): string =>
-    profile?.initialPath?.trim() ? profile.initialPath.trim() : '/';
+    profile?.initialPath || '/';
 
 interface CrossProfilePlanEntry {
     source_path: string;
@@ -138,7 +138,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                     if (match) {
                         seededSourceRef.current = true;
                         setSourceProfile(match);
-                        setSourcePath(initialSourcePath?.trim() || getDefaultRemotePath(match));
+                        setSourcePath(initialSourcePath || getDefaultRemotePath(match));
                     }
                 }
                 if (initialDestProfileId && initialDestProfileId !== initialSourceProfileId) {
@@ -146,7 +146,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                     if (match) {
                         seededDestRef.current = true;
                         setDestProfile(match);
-                        setDestPath(initialDestPath?.trim() || getDefaultRemotePath(match));
+                        setDestPath(initialDestPath || getDefaultRemotePath(match));
                     }
                 }
             }

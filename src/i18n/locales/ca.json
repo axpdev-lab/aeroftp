@@ -18,6 +18,7 @@
             "loading": "Carregant...",
             "error": "Error",
             "success": "Exit",
+            "searchLimited": "Es mostren les primeres {count} coincidències. Cerca en una carpeta més petita per veure la resta.",
             "warning": "Avís",
             "info": "Informació",
             "confirm": "Confirmar",
@@ -598,7 +599,8 @@
             "setAsPublic": "Establir com a públic",
             "makeAllPrivate": "Fes-ho tot privat",
             "dropboxRestoreLimit": "AeroFTP pot restaurar revisions recuperables de fitxers. Restauri les carpetes des de Fitxers suprimits a dropbox.com. Un signe d'interrogació indica que Dropbox no ha identificat el tipus d'element.",
-            "openWithDefaultApp": "Obre amb l'aplicació predeterminada"
+            "openWithDefaultApp": "Obre amb l'aplicació predeterminada",
+            "extractHereUncheckedConfirm": "Els noms dins de {name} no es poden llegir abans d'extreure, així que AeroFTP no pot comprovar què sobreescriuria «Extreure aquí» en aquesta carpeta. «Extreure a carpeta» mai sobreescriu."
         },
         "transfer": {
             "transferring": "Transferint...",
@@ -1358,6 +1360,8 @@
             "aiKeysCount": "Claus d'AI: {count}",
             "oauthTokensCount": "Tokens OAuth: {count}",
             "configEntriesCount": "Entrades de configuració: {count}",
+            "verifyDownloadHash": "Comprova les descàrregues amb el hash del servidor",
+            "verifyDownloadHashHelp": "Després d'una descàrrega, es compara el fitxer amb el hash que publica el servidor i no es conserva si difereixen. Quan no s'usa cap hash, com a FTP, aquesta comprovació no s'executa.",
             "importExistingLabel": "Si un perfil ja existeix",
             "importExistingSkip": "Omet",
             "importExistingOverwrite": "Sobreescriu",
@@ -1370,7 +1374,8 @@
             "importJottaChainWarning": "Jottacloud renova l'inici de sessió a cada connexió, i {names} ara en comparteix un amb una altra còpia: la còpia que es connecta primer tanca la sessió de l'altra (el dispositiu d'on ve el fitxer, o el perfil del qual es va duplicar). Torni a iniciar sessió a l'altra amb un Personal Login Token nou.",
             "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació emmagatzemada: torni a iniciar la sessió si aquests perfils deixen de connectar-se.",
             "importTargetChanged": "{names} no s'han sobreescrit: el fitxer els fa apuntar a un altre servidor, i les contrasenyes i els tokens desats no hi han d'anar. Importi amb Duplica per afegir la còpia del fitxer, o elimini primer el perfil.",
-            "importSharedSecretsFailed": "S'ha importat {names}, però no s'ha pogut desar un secret compartit o una sessió del fitxer. Torni a iniciar la sessió en aquests perfils si no es connecten."
+            "importSharedSecretsFailed": "S'ha importat {names}, però no s'ha pogut desar un secret compartit o una sessió del fitxer. Torni a iniciar la sessió en aquests perfils si no es connecten.",
+            "keystoreDatabasesFailed": "La importació ha acabat, però no s'han pogut restaurar aquestes bases de dades i conserven el que contenien: {names}."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1588,7 +1593,9 @@
             "aerocloudEnabled": "AeroCloud activat",
             "selectPairLocalFolder": "Seleccioni la carpeta local per a la parella",
             "secondsAgo": "fa {count}s",
-            "conflictsCount": "Conflictes per revisar: {count}"
+            "conflictsCount": "Conflictes per revisar: {count}",
+            "updateOnlyHint": "L’actualització unidireccional conserva els fitxers de destinació més nous. Amb la còpia de seguretat additiva desactivada, només se suprimeixen els fitxers exclusius de la destinació que no han canviat i tenen un comprovant de transferència d’AeroCloud verificat. Els altres fitxers queden per revisar a AeroSync. S’ignora la política de conflictes; les dates desconegudes queden sense resoldre.",
+            "untrackedDestinationFiles": "S’han conservat {count} fitxers de destinació per revisar-los: el seu historial de transferències no està verificat o han canviat després de l’última transferència d’AeroCloud. Revisa’ls a AeroSync abans de decidir si els vols suprimir."
         },
         "statusBar": {
             "connected": "Connectat",
@@ -1742,7 +1749,9 @@
             "transferComplete": "{count} fitxers copiats",
             "permissionsSessionChanged": "La connexió ha canviat des que es va obrir aquest diàleg, així que no s'ha canviat res. Torni a obrir Permisos a la connexió actual.",
             "createFailed": "Ha fallat la creació",
-            "unknownServer": "Desconegut"
+            "unknownServer": "Desconegut",
+            "scpModeTitle": "Connectat amb SCP",
+            "scpModeBody": "{host} no té SFTP, així que AeroFTP fa servir SCP a la mateixa connexió."
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -2343,7 +2352,13 @@
             "imagekitDesc": "CDN multimèdia + emmagatzematge (20 GB gratuïts)",
             "uploadcareDesc": "CDN multimèdia de la UE (3 GB gratuïts)",
             "cloudinaryDesc": "CDN multimèdia (25 crèdits/mes gratuïts)",
-            "backblazeDesc": "API nativa de Backblaze B2 v4"
+            "backblazeDesc": "API nativa de Backblaze B2 v4",
+            "scpDesc": "Còpia de fitxers per SSH",
+            "scpTooltip": "SCP sobre SSH, per a servidors sense SFTP.",
+            "scpOnlyNote": "Feu servir SCP només per a servidors sense SFTP, per exemple encaminadors OpenWrt.",
+            "allowScpFallback": "Permet recórrer a SCP",
+            "allowScpFallbackHint": "Si el servidor no té SFTP, continua per SCP a la mateixa connexió, com fa WinSCP.",
+            "discoverScp": "Còpia de fitxers per SSH per a servidors sense SFTP"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -2469,7 +2484,9 @@
             "flattenScanning": "S'està escanejant el subarbre...",
             "flattenTruncated": "truncat",
             "flattenTruncatedHint": "S'ha assolit el límit de 5.000 entrades; refini el filtre o entri en una subcarpeta.",
-            "local_placeholder_flatten": "Filtra fitxers locals... (* per recursiu)"
+            "local_placeholder_flatten": "Filtra fitxers locals... (* per recursiu)",
+            "flattenNameClash": "{names}: seleccionats en més d'una carpeta. Si es posen en un sol lloc, es substituirien entre ells; treballa amb un de cada nom alhora.",
+            "flattenNameClashTitle": "El mateix nom en més d'una carpeta"
         },
         "versions": {
             "title": "Versions del fitxer",
@@ -4179,7 +4196,10 @@
             "drivesLeftPanel": "Unitats del panell esquerre",
             "drivesRightPanel": "Unitats del panell dret",
             "modeGroupLabel": "Mode de la barra lateral",
-            "placesSidebarLabel": "Barra lateral de llocs"
+            "placesSidebarLabel": "Barra lateral de llocs",
+            "mountFailed": "Ha fallat el muntatge",
+            "partitions_need_udisks2": "Al snap, les particions desmuntades apareixen, i es poden muntar i expulsar, quan es connecta el permís udisks2. Executa això en un terminal i torna a AeroFTP:",
+            "volume_action_needs_udisks2": "Al snap, muntar i expulsar requereixen el permís udisks2. Executa això en un terminal i torna-ho a provar: {command}"
         },
         "viewMode": {
             "list": "Llista",
@@ -4307,7 +4327,8 @@
                 "koofr-proprietary": "El hash propi de Koofr. Només es compara amb un altre hash de Koofr.",
                 "github-blob-sha": "L'SHA-1 del blob de git, calculat sobre una capçalera git més el contingut, de manera que no coincideix amb un SHA-1 simple del mateix fitxer.",
                 "immich-asset-checksum": "La suma de verificació de l'element que Immich registra en pujar-lo.",
-                "crypt-overlay-ciphertext": "El hash cobreix els bytes xifrats desats al servidor."
+                "crypt-overlay-ciphertext": "El hash cobreix els bytes xifrats desats al servidor.",
+                "scp-shell-digests": "El calcula el host remot amb sha256sum o md5sum a través d'un canal SSH: els bytes es llegeixen al servidor i no se us envien mai. Cada resum només s'ofereix quan el host té l'eina corresponent."
             },
             "readOnlyIsLinkTarget": "Això és un enllaç simbòlic: els permisos pertanyen al fitxer al qual apunta. Obri les propietats d'aquest fitxer per canviar-los.",
             "exactBytes": "({bytes} bytes)"
@@ -4853,7 +4874,8 @@
             "relocateSuccessMove": "«{name}» s'ha mogut a {user}",
             "relocateAlreadyPresent": "«{name}» ja està desat a {user}",
             "relocateError": "No s'ha pogut transferir el servidor: {error}",
-            "relocateWrongPassword": "Contrasenya incorrecta per a {user}."
+            "relocateWrongPassword": "Contrasenya incorrecta per a {user}.",
+            "relocateSecretsNotCopied": "«{name}» ha arribat a {user}, però la contrasenya o el token desats no, així que els tornarà a demanar allà."
         },
         "cyberTools": {
             "title": "Eines de seguretat",
@@ -5337,7 +5359,7 @@
             "runAgain": "Executa de nou",
             "copyResult": "Copia resultat",
             "copied": "Copiat",
-            "unsupportedProvider": "En aquesta versió Speed Test està disponible per a FTP, FTPS, SFTP, S3 i WebDAV.",
+            "unsupportedProvider": "En aquesta versió Speed Test està disponible per a FTP, FTPS, SFTP, SCP, S3 i WebDAV.",
             "noSupportedServers": "Encara cap servidor desat suporta Speed Test",
             "errorReadOnly": "El servidor no permet escriptura",
             "errorNotSupported": "Speed Test no està disponible per a aquest tipus de proveïdor",
@@ -5775,7 +5797,8 @@
                 "customSftp": "SFTP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV",
-                "parentCompany": "Empresa"
+                "parentCompany": "Empresa",
+                "customScp": "SCP"
             },
             "healthCheck": "Comprovació de disponibilitat",
             "storageVersioning": "Versions del fitxer: {size}",
@@ -6149,7 +6172,8 @@
             "totalEntries": "Entrades totals",
             "differences": "Diferències",
             "totalBytes": "Bytes totals",
-            "mirrorHint": "Els botons de mirall encuen les entrades coincidents al planificador de transferències unificat per a revisió.",
+            "mirrorHint": "Els botons de mirall transfereixen les entrades coincidents. No les deixen en espera de revisió.",
+            "exportFailed": "No s'ha pogut escriure l'exportació: {error}",
             "mirrorLeftToRight": "Reflectir d'esquerra a dreta",
             "mirrorRightToLeft": "Reflectir de dreta a esquerra",
             "directionLeftRight": "Esquerra a Dreta",
@@ -6360,7 +6384,10 @@
             "progressCopy": "[còpia]",
             "deleteCount": "{count} per eliminar",
             "overwriteCount": "{count} per sobreescriure",
-            "conflictCount": "Conflictes: {count}"
+            "conflictCount": "Conflictes: {count}",
+            "updateOnly": "Omet els fitxers de destinació més nous (actualització unidireccional)",
+            "updateOnlyHint": "Copia els fitxers d’origen que falten o han canviat, conserva els fitxers més nous de la destinació i suprimeix les entrades que només hi ha a la destinació. Els fitxers sense dates comparables es comparen per mida; les diferències de mida queden pendents de revisió.",
+            "rescanNeeded": "Executa una nova comparació amb la configuració actual abans d’exportar un script d’actualització."
         },
         "accountLock": {
             "title": "Triï un compte",
@@ -6604,7 +6631,8 @@
             "keyslotsSetAsideRevocation": "El marcador anterior encara obre el cofre amb el factor que elimina o substitueix. Totes les còpies que quedin a la carpeta del cofre se suprimeixen després del canvi, i una còpia que no es pugui suprimir s'informa com a error. No s'arriba a una còpia a la paperera o a les versions de fitxers de l'emmagatzematge: buidar-les elimina aquestes còpies, però no una que algú altre hagi conservat, de manera que no completa la revocació.",
             "keyslotsSetAsideConsent": "Ho entenc: substitueix el marcador en aquest servidor reanomenant l'anterior a part",
             "keyslotsSetAsideConsentRequired": "Aquest servidor només pot substituir el marcador del cofre reanomenant l'anterior a part: confirmi-ho a la casella de dalt per continuar.",
-            "keyslotsMarkerReplaceUnsupported": "Aquest servidor no pot substituir el marcador del cofre, per això aquí es rebutgen els canvis de ranures. Obri el mateix emmagatzematge mitjançant un servidor que substitueixi un fitxer en un sol pas (SFTP, per exemple)."
+            "keyslotsMarkerReplaceUnsupported": "Aquest servidor no pot substituir el marcador del cofre, per això aquí es rebutgen els canvis de ranures. Obri el mateix emmagatzematge mitjançant un servidor que substitueixi un fitxer en un sol pas (SFTP, per exemple).",
+            "overlayMetadataNotSaved": "La migració s'ha completat, però el kit de recuperació fora de línia encara no s'ha desat a la memòria cau. Es farà en el pròxim desbloqueig."
         },
         "aerocryptProfile": {
             "enable": "Crypt (Xifratge)",

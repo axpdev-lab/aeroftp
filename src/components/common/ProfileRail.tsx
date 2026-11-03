@@ -13,6 +13,7 @@ const PROTOCOL_COLORS: Record<string, string> = {
     ftp: 'from-blue-500 to-cyan-400',
     ftps: 'from-green-500 to-emerald-400',
     sftp: 'from-purple-500 to-violet-400',
+    scp: 'from-purple-500 to-violet-400',
     webdav: 'from-orange-500 to-amber-400',
     s3: 'from-amber-500 to-yellow-400',
     aerocloud: 'from-sky-400 to-blue-500',
@@ -188,9 +189,9 @@ export const ProfileRail: React.FC<ProfileRailProps> = ({
                                     </span>
                                     {renderBadges?.(profile)}
                                 </div>
-                                {profile.initialPath?.trim() && (
+                                {profile.initialPath && (
                                     <div className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
-                                        {profile.initialPath.trim()}
+                                        {profile.initialPath}
                                     </div>
                                 )}
                             </div>

@@ -607,14 +607,15 @@ impl OAuth2Manager {
         store: &crate::credential_store::CredentialStore,
         account: &str,
         json: &str,
-    ) {
-        if let Some(user) = self.credential_user {
+    ) -> Result<(), ProviderError> {
+        let mirrored = if let Some(user) = self.credential_user {
             crate::user_partitions::mirror_credential_for_user_typed(
                 store, user, account, "oauth", json,
-            );
+            )
         } else {
-            crate::user_partitions::mirror_active_credential(store, account, "oauth", json);
-        }
+            crate::user_partitions::mirror_active_credential(store, account, "oauth", json)
+        };
+        mirrored.map_err(|e| ProviderError::Other(format!("Failed to store tokens: {e}")))
     }
     pub async fn begin_headless(
         &self,
@@ -923,7 +924,7 @@ impl OAuth2Manager {
             // MUV-4: mirror the refreshed token into the active user's partition
             // (per-profile keys only; the legacy singleton stays vault-only).
             if !profile_id.is_empty() {
-                self.mirror_tokens(&store, &account, &json);
+                self.mirror_tokens(&store, &account, &json)?;
             }
             info!("Tokens stored in credential vault for {:?}", provider);
             return Ok(());
@@ -936,7 +937,7 @@ impl OAuth2Manager {
                     .store(&account, &json)
                     .map_err(|e| ProviderError::Other(format!("Failed to store tokens: {}", e)))?;
                 if !profile_id.is_empty() {
-                    self.mirror_tokens(&store, &account, &json);
+                    self.mirror_tokens(&store, &account, &json)?;
                 }
                 info!("Tokens stored in auto-initialized vault for {:?}", provider);
                 return Ok(());

@@ -659,7 +659,7 @@ export const AGENT_TOOLS: AITool[] = [
         name: 'gui_run',
         description: 'Run a visible GUI intent through the same navigation, selection, refresh, disconnect, Stop or bounded Settings handlers as the buttons. The human can interrupt. Saved profiles connect by exact profile_id with vault credentials kept internal. Settings intents cover only the owned safe surface (allowlisted general preferences; AI provider/model enabled flags, per-provider default model, bounded generation parameters). No click, script, unlock, credential or API-key read/write, or file-write action is supported.',
         parameters: [
-            { name: 'intent', type: 'string', description: 'GUI action', required: true, enum: ['show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', 'settings_open', 'settings_read', 'settings_update', 'settings_close', 'tools_open', 'tools_read', 'tools_close'] },
+            { name: 'intent', type: 'string', description: 'GUI action', required: true, enum: ['show_view', 'navigate', 'refresh', 'select', 'connect', 'disconnect', 'stop', 'settings_open', 'settings_read', 'settings_update', 'settings_close', 'tools_open', 'tools_read', 'tools_close', 'aerosync_open', 'aerosync_compare', 'aerosync_close'] },
             { name: 'profile_id', type: 'string', description: 'Exact saved profile ID for connect', required: false, maxLength: 256 },
             { name: 'panel', type: 'string', description: 'Panel for navigate, refresh or select', required: false, enum: ['remote', 'local', 'local2'] },
             { name: 'view', type: 'string', description: 'View for show_view', required: false, enum: ['servers', 'files'] },

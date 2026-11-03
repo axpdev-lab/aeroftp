@@ -1,0 +1,2 @@
+ls: unrecognized option: version
+Linux 3886a28f97f3 6.17.0-1032-oem #32-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 24 05:46:26 UTC 2026 x86_64 GNU/Linux

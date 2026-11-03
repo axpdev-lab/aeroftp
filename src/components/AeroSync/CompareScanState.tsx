@@ -33,6 +33,8 @@ interface CompareScanStateProps {
     scanProgressId?: string;
     /** The last compare was stopped by the user. */
     stopped?: boolean;
+    /** Why the last compare was refused, from the backend. */
+    refused?: string;
     leftLabel: string;
     rightLabel: string;
     /** Start the compare of the pair. Absent: nothing can be compared yet. */
@@ -52,6 +54,7 @@ interface CompareScanStateProps {
 export const CompareScanState: React.FC<CompareScanStateProps> = ({
     loading,
     stopped,
+    refused,
     leftLabel,
     rightLabel,
     onStart,
@@ -95,13 +98,19 @@ export const CompareScanState: React.FC<CompareScanStateProps> = ({
                     {t('aerosync.compareStopped') || 'Compare stopped.'}
                 </span>
             )}
+            {refused && (
+                <span role="alert" className="max-w-md break-words font-medium text-red-600 dark:text-red-400">
+                    {refused}
+                </span>
+            )}
             <span className="break-all">
                 {t('aerosync.comparePair', { left: leftLabel, right: rightLabel }) || `${leftLabel} ↔ ${rightLabel}`}
             </span>
             <span className="max-w-md text-xs text-gray-400 dark:text-gray-500">
                 {t('aerosync.compareStartHint') || 'The compare reads both folders and every folder under them. On a large tree it can take a while, and you can stop it.'}
             </span>
-            <button type="button" onClick={onStart} className={`${buttonCls} bg-blue-500 hover:bg-blue-600`}>
+            <button
+                data-testid="aerosync.compare.start" type="button" onClick={onStart} className={`${buttonCls} bg-blue-500 hover:bg-blue-600`}>
                 <Play size={12} />
                 {t('aerosync.startCompare') || 'Start compare'}
             </button>

@@ -103,6 +103,8 @@ export interface AeroSyncContext {
      * render a scanning placeholder instead of the empty-state hint.
      */
     compareLoading?: boolean;
+    /** The recursive scan failed: what `compareResult` holds is not its comparison. */
+    compareFailed?: boolean;
     /** Identity of the backend compare whose global progress events belong to this dialog. */
     scanProgressId?: string;
     /**
@@ -113,6 +115,8 @@ export interface AeroSyncContext {
     compareIdle?: boolean;
     /** The last compare was stopped by the user. */
     compareStopped?: boolean;
+    /** Why the last compare was refused, so it left no result. */
+    compareRefused?: string;
     /**
      * GAP-6: an interrupted connected-remote sync journal for this path
      * pair, if one exists. When set, the dialog surfaces a resume banner.
@@ -170,6 +174,8 @@ export interface AeroSyncContext {
 export interface AeroSyncDialogProps {
     isOpen: boolean;
     onClose: () => void;
+    /** A sync or a restore runs in the window, or no longer does. */
+    onBusyChange?: (busy: boolean) => void;
     initialTab?: AeroSyncTab;
     context: AeroSyncContext;
     onApplyMirrorLeftToRight: (entries: CompareResultEntry[]) => void;

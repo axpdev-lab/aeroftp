@@ -1,6 +1,6 @@
 import { ServerProfile } from '../types';
 
-export const SPEEDTEST_SUPPORTED_PROTOCOLS = ['ftp', 'ftps', 'sftp', 's3', 'webdav'] as const;
+export const SPEEDTEST_SUPPORTED_PROTOCOLS = ['ftp', 'ftps', 'sftp', 'scp', 's3', 'webdav'] as const;
 
 export type SpeedTestSupportedProtocol = typeof SPEEDTEST_SUPPORTED_PROTOCOLS[number];
 
@@ -63,6 +63,8 @@ export interface SpeedTestProviderConnectionParams {
     private_key_path?: string | null;
     key_passphrase?: string | null;
     timeout?: number | null;
+    /** SFTP: present, and false, only when the profile turned the SCP fallback off. */
+    allow_scp_fallback?: false;
     tls_mode?: string | null;
     verify_cert?: boolean | null;
 }

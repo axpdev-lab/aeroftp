@@ -14,6 +14,8 @@ import { mergeAppSettingsDraft } from './appSettingsDraft';
 import { ConnectScope } from '../gui/connectScope';
 import { normalizeGuiPresentation } from '../gui/presentation';
 import { connectionProfileDefaults } from '../providers/connectionManifest';
+import { getProviderById } from '../providers';
+import { storedPresetForSave } from './protocolSwitch';
 import type { ServerProfile } from '../types';
 
 // Run the production closures, with their captured IPC and React state cells
@@ -61,8 +63,8 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         aeroCryptOverlayFields: vi.fn(async () => ({})), migrateCryptCredentials: vi.fn(),
         normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, connectionProfileDefaults,
         findDuplicateProfile: () => undefined,
-        getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false,
-        syncPersistedModeCredentials: vi.fn(), carryFavoriteServer: vi.fn(), carryServerGroups: vi.fn(),
+        getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false, storedPresetForSave, getProviderById,
+        syncPersistedModeCredentials: vi.fn(async () => true), carryFavoriteServer: vi.fn(), carryServerGroups: vi.fn(),
         deleteModeCredentials: vi.fn(), warnIfSavedByOtherAccount: vi.fn(),
         setSavedServersUpdate: vi.fn(), logActivity: vi.fn(), setGitHubAlert: vi.fn(),
         endEditSession: vi.fn(), setConnectionName: vi.fn(), setSaveConnection: vi.fn(), setPersistModeCredentials: vi.fn(),
@@ -96,6 +98,7 @@ function settingsSaveFixture(launchOnStartup: boolean, autostartAtOpen: boolean 
         mergeAppSettingsDraft, normalizeGuiPresentation, updateAppSettings: vi.fn(async () => ({ ...settings })),
         clampAppFontSize: (v: unknown) => v, normalizeAppFontFamily: (v: unknown) => v, clampIntroHubIconSize: (v: unknown) => v,
         SETTINGS_VAULT_KEY: 'settings', SETTINGS_KEY: 'settings', OAUTH_SETTINGS_KEY: 'oauth',
+        oauthEdits: { current: {} },
         oauthSettings: Object.fromEntries(['googledrive', 'dropbox', 'onedrive', 'box', 'pcloud', 'fourshared', 'zohoworkdrive', 'yandexdisk'].map(p => [p, {}])),
         localStorage: { removeItem: vi.fn() }, enableAutostart: vi.fn(), disableAutostart: vi.fn(), isAutostartEnabled: vi.fn(),
         setSettings: vi.fn(), setHasChanges: vi.fn(), setSaveState: vi.fn(), onClose: vi.fn(), setTimeout: vi.fn(),
@@ -134,9 +137,12 @@ describe('saved profile write rejection in production handlers', () => {
         const fn = await execute(connection, [name], f.context);
         await fn[name]();
         expect(f.context.setGitHubAlert).toHaveBeenCalled();
-        for (const n of ['syncPersistedModeCredentials', 'deleteModeCredentials', 'carryFavoriteServer', 'carryServerGroups', 'setSavedServersUpdate', 'endEditSession', 'onFormSaved']) {
+        // A convert stores the new mode map before the list: the original map must stay.
+        const stopped = ['syncPersistedModeCredentials', 'deleteModeCredentials', 'carryFavoriteServer', 'carryServerGroups', 'setSavedServersUpdate', 'endEditSession', 'onFormSaved'];
+        for (const n of stopped.filter(n => name !== 'handleConvertMode' || !n.endsWith('ModeCredentials'))) {
             expect(f.context[n], n).not.toHaveBeenCalled();
         }
+        if (name === 'handleConvertMode') expect(f.context.deleteModeCredentials).not.toHaveBeenCalledWith('old');
         expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
     });
 
@@ -147,6 +153,18 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.setGitHubAlert).toHaveBeenCalled();
         expect(f.store).not.toHaveBeenCalled();
         expect(f.context.tryStoreCredential).not.toHaveBeenCalled();
+    });
+
+    it('stops a convert before the list when the new mode map cannot be stored', async () => {
+        const f = fixture('none');
+        f.context.syncPersistedModeCredentials.mockResolvedValue(false);
+        const fn = await execute(connection, ['handleConvertMode'], f.context);
+        await fn.handleConvertMode();
+        expect(f.store).not.toHaveBeenCalled();
+        // The new map goes, the original stays.
+        expect(f.context.deleteModeCredentials).toHaveBeenCalledTimes(1);
+        expect(f.context.deleteModeCredentials).not.toHaveBeenCalledWith('old');
+        expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
     });
 
     it('keeps the convert Undo available if restoring the profiles fails', async () => {
@@ -312,6 +330,22 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.onFormSaved).toHaveBeenCalledTimes(1);
         expect(f.context.syncPersistedModeCredentials).toHaveBeenCalledWith('old');
     });
+
+    it.each([['scp', undefined], ['ftp', undefined], ['sftp', 'sourceforge']] as const)(
+        'an SFTP preset edited to %s saves providerId %s, so it reopens as the protocol saved',
+        async (protocol, providerId) => {
+            // The switch dropped the preset from the form; the save must not
+            // take it back from the stored profile.
+            const f = fixture('none');
+            Object.assign(f.servers[0], { protocol: 'sftp', providerId: 'sourceforge' });
+            f.context.protocol = protocol;
+            const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
+            await fn.handleConnectAndSave();
+            const saved = (f.store.mock.calls[0][0] as ServerProfile[]).find(s => s.id === 'old');
+            expect(saved).toMatchObject({ protocol });
+            expect(saved?.providerId).toBe(providerId);
+        },
+    );
 
     it.each(['handleSaveAsNew', 'handleConvertMode'] as const)('%s honors custom icon removal when switching modes', async name => {
         const f = fixture('none');

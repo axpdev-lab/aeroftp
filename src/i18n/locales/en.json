@@ -1622,7 +1622,9 @@
             "aerocloudEnabled": "AeroCloud enabled",
             "selectPairLocalFolder": "Select local folder for pair",
             "secondsAgo": "{count}s ago",
-            "conflictsCount": "Conflicts needing attention: {count}"
+            "conflictsCount": "Conflicts needing attention: {count}",
+            "updateOnlyHint": "One-way Update keeps newer destination files. With additive backup off, only unchanged destination-only files with a verified AeroCloud transfer receipt are deleted. Other files stay for review in AeroSync. The conflict policy is ignored; unknown dates stay unresolved.",
+            "untrackedDestinationFiles": "{count} destination files were kept for review: their transfer history is unverified or they changed after the last AeroCloud transfer. Review them in AeroSync before deciding on deletion."
         },
         "common": {
             "about": "About",
@@ -1685,6 +1687,7 @@
             "up": "Up",
             "upload": "Upload",
             "version": "Version",
+            "searchLimited": "Showing the first {count} matches. Search a smaller folder to see the rest.",
             "warning": "Warning",
             "yes": "Yes",
             "goToActiveSession": "Go to active session",
@@ -2130,6 +2133,7 @@
             "extract": "Extract",
             "extract7zHere": "Extract 7z Here",
             "extractHere": "Extract Here",
+            "extractHereUncheckedConfirm": "The names inside {name} cannot be read before extracting, so AeroFTP cannot check what Extract Here would overwrite in this folder. Extract to Folder never overwrites.",
             "extracting": "Extracting...",
             "extractionFailed": "Extraction failed",
             "extractOverwriteConfirm": "Extracting here will overwrite {count} existing item(s): {names}. Continue?",
@@ -2390,7 +2394,8 @@
             "keyslotsRecoveryAutoOffered": "A recovery slot was auto-added because this vault would have been keyfile-only. Save the recovery code below.",
             "keyslotsRecoverySaveOnce": "Save this recovery code now (shown once):",
             "keyslotsRecoveryCopy": "Copy code",
-            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password)."
+            "keyslotsUnlockWithRecovery": "You can also unlock with a recovery code (paste it as the password).",
+            "overlayMetadataNotSaved": "The migration succeeded, but the offline recovery kit is not cached yet. It will be at the next unlock."
         },
         "cryptomator": {
             "confirmPassword": "Confirm Password",
@@ -2767,7 +2772,7 @@
             "runAgain": "Run again",
             "copyResult": "Copy result",
             "copied": "Copied",
-            "unsupportedProvider": "Speed Test is available for FTP, FTPS, SFTP, S3, and WebDAV in this release.",
+            "unsupportedProvider": "Speed Test is available for FTP, FTPS, SFTP, SCP, S3, and WebDAV in this release.",
             "noSupportedServers": "No saved servers support Speed Test yet",
             "errorReadOnly": "Server does not allow writes",
             "errorNotSupported": "Speed Test is not available for this provider type",
@@ -3404,6 +3409,7 @@
                 "s3-etag": "The ETag is the object MD5 only for single-part objects that are not SSE-KMS or SSE-C encrypted. A multipart ETag carries a `-N` suffix and is omitted rather than guessed. An SSE-KMS or SSE-C ETag can still be 32 hex characters and then passes the same shape check as a real digest, so a reported ETag is advisory for such an object.",
                 "b2-unverified": "Large files have no usable SHA-1, and neither do uploads B2 recorded as unverified.",
                 "sftp-sha256sum": "Computed by the remote host with sha256sum over an SSH channel: the bytes are read on the server, never sent to you. Omitted if the host has no sha256sum.",
+                "scp-shell-digests": "Computed by the remote host with sha256sum or md5sum over an SSH channel: the bytes are read on the server, never sent to you. Each digest is offered only when the host has its tool.",
                 "ftp-negotiated": "Depends on what the server advertises in FEAT: HASH, or the older XMD5, XSHA1 and XCRC.",
                 "webdav-oc-checksums": "Only ownCloud and Nextcloud publish checksums, and only for files uploaded by a client that sent one.",
                 "drive-workspace-docs": "Native Google Workspace documents have no byte stream and therefore no digest.",
@@ -3579,6 +3585,11 @@
             "selectRegion": "Select region...",
             "sftpDesc": "SSH File Transfer",
             "sftpTooltip": "SFTP over SSH - secure shell file transfer, supports key authentication",
+            "scpDesc": "SSH file copy",
+            "scpTooltip": "SCP over SSH, for servers that have no SFTP.",
+            "scpOnlyNote": "Use SCP only for servers without SFTP, for example OpenWrt routers.",
+            "allowScpFallback": "Allow SCP fallback",
+            "allowScpFallbackHint": "If the server has no SFTP, continue over SCP on the same connection, as WinSCP does.",
             "swiftDesc": "OpenStack Swift Object Storage",
             "swiftTooltip": "OpenStack Swift - compatible with Blomp, OVH, Rackspace cloud storage",
             "sshAuth": "SSH Authentication (Optional)",
@@ -3701,6 +3712,7 @@
             "discoverBackblazeNative": "Native B2 v4 API: large-file workflow, server-side copy, version history (10 GB free)",
             "discoverFtpFtps": "File Transfer Protocol (plain or TLS)",
             "discoverSftp": "SSH File Transfer",
+            "discoverScp": "SSH file copy for servers without SFTP",
             "discoverRebexFtp": "Public read-only FTP test server",
             "discoverRebexSftp": "Public read-only SFTP test server",
             "discoverAzureBlob": "Azure Blob Storage",
@@ -3791,10 +3803,13 @@
             "relocateSuccessMove": "Moved \"{name}\" to {user}",
             "relocateAlreadyPresent": "\"{name}\" is already saved in {user}",
             "relocateError": "Could not transfer the server: {error}",
-            "relocateWrongPassword": "Wrong password for {user}."
+            "relocateWrongPassword": "Wrong password for {user}.",
+            "relocateSecretsNotCopied": "{name} reached {user}, but its saved password or token did not, so it will ask for them again there."
         },
         "search": {
             "clear": "Clear search",
+            "flattenNameClash": "{names}: selected in more than one folder. Put in one place, they would replace each other; act on one of each at a time.",
+            "flattenNameClashTitle": "Same name in more than one folder",
             "flattenRecursive": "Recursive",
             "flattenScanning": "Scanning subtree...",
             "flattenTruncated": "truncated",
@@ -3926,6 +3941,8 @@
             "dateFormatLocalized": "Localized",
             "downloadSegments": "Download Segments per File",
             "downloadSegmentsAuto": "Auto (single stream)",
+            "verifyDownloadHash": "Check downloads against the server's hash",
+            "verifyDownloadHashHelp": "After a download, compare the file with the hash the server publishes, and do not keep it if they differ. Where no hash is used, as on FTP, this check does not run.",
             "downloadSegmentsN": "{n} segments per file",
             "downloadSegmentsDesc": "Split each download into parallel byte ranges. An explicit value wins over the FTP/FTPS toolbar speed preset; Auto lets that preset decide (Safe keeps one stream). Effective on providers that support range requests (SFTP, FTP/FTPS, S3, HTTP) for files large enough to benefit.",
             "dropboxClientIdPlaceholder": "xxxxxxxxxxxxxxx",
@@ -4430,7 +4447,8 @@
             "serverProfilesCount": "{count} server profiles",
             "aiKeysCount": "{count} AI keys",
             "oauthTokensCount": "{count} OAuth tokens",
-            "configEntriesCount": "{count} config entries"
+            "configEntriesCount": "{count} config entries",
+            "keystoreDatabasesFailed": "The import finished, but these databases could not be restored and keep what they held: {names}."
         },
         "sharing": {
             "add": "Add",
@@ -4538,7 +4556,10 @@
             "drivesLeftPanel": "Drives left panel",
             "drivesRightPanel": "Drives right panel",
             "modeGroupLabel": "Sidebar mode",
-            "placesSidebarLabel": "Places sidebar"
+            "placesSidebarLabel": "Places sidebar",
+            "mountFailed": "Mount failed",
+            "partitions_need_udisks2": "In the snap, unmounted partitions appear, and can be mounted and ejected, once its udisks2 permission is connected. Run this in a terminal, then return to AeroFTP:",
+            "volume_action_needs_udisks2": "In the snap, mounting and ejecting need its udisks2 permission. Run this in a terminal, then try again: {command}"
         },
         "statusbar": {
             "activityLog": "Activity Log",
@@ -4837,6 +4858,8 @@
             "compressedDesc": "Created {name}",
             "connected": "Connected",
             "connectedTo": "Connected to {server}",
+            "scpModeTitle": "Connected with SCP",
+            "scpModeBody": "{host} has no SFTP, so AeroFTP is using SCP on the same connection.",
             "connecting": "Connecting",
             "connectingTo": "Connecting to {server}...",
             "connectionFailed": "Connection failed: {error}",
@@ -6065,6 +6088,7 @@
                 "customProfiles": "Custom / generic servers",
                 "customFtp": "FTP / FTPS",
                 "customSftp": "SFTP",
+                "customScp": "SCP",
                 "customS3": "S3",
                 "customWebdav": "WebDAV"
             },
@@ -6420,7 +6444,8 @@
             "totalBytes": "Total bytes",
             "outOfSyncItemsPct": "Items out of sync",
             "outOfSyncBytesPct": "Bytes out of sync",
-            "mirrorHint": "Mirror buttons stage the matching entries in the unified transfer planner for review.",
+            "mirrorHint": "Mirror buttons transfer the matching entries. They do not stage them for review.",
+            "exportFailed": "Could not write the export: {error}",
             "mirrorLeftToRight": "Mirror left to right",
             "mirrorRightToLeft": "Mirror right to left",
             "directionLeftRight": "Left to Right",
@@ -6629,7 +6654,10 @@
             "progressCopy": "[copy]",
             "deleteCount": "{count} to delete",
             "overwriteCount": "{count} to overwrite",
-            "conflictCount": "Conflicts: {count}"
+            "conflictCount": "Conflicts: {count}",
+            "updateOnly": "Skip newer destination files (One-way Update)",
+            "updateOnlyHint": "Copy missing or changed source files, keep newer destination files, and delete destination-only entries. Files without comparable dates are compared by size; size differences are left for review.",
+            "rescanNeeded": "Run a new comparison with the current settings before exporting an Update script."
         },
         "aerocryptProfile": {
             "overlaysSection": "Wrappers / Overlays",

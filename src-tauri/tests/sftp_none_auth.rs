@@ -156,10 +156,15 @@ impl Handler for AuthHandler {
     }
 
     /// Reached only once the client has proved it holds the key.
-    async fn auth_publickey(&mut self, _user: &str, key: &PublicKey) -> Result<Auth, Self::Error> {
+    async fn auth_publickey(
+        &mut self,
+        _user: &str,
+        key: russh::server::VerifiedPublicKey<'_>,
+    ) -> Result<Auth, Self::Error> {
         self.policy.record("publickey");
         Ok(
-            if self.policy.key.as_ref().map(PublicKey::key_data) == Some(key.key_data()) {
+            if self.policy.key.as_ref().map(PublicKey::key_data) == Some(key.public_key.key_data())
+            {
                 Auth::Accept
             } else {
                 Auth::reject()

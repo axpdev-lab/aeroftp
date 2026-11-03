@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { FtpSession } from '../types';
 import { loadSavedServerProfiles } from '../utils/serverProfileStore';
@@ -9,8 +9,8 @@ import { logger } from '../utils/logger';
 
 // FTP/FTPS use ftp_manager (suppaftp) → detect_server_favicon
 const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
-// SFTP/S3/WebDAV use StorageProvider (ProviderState) → detect_provider_favicon
-const PROVIDER_PROTOCOLS = new Set(['sftp', 's3', 'webdav']);
+// SFTP/SCP/S3/WebDAV use StorageProvider (ProviderState) → detect_provider_favicon
+const PROVIDER_PROTOCOLS = new Set(['sftp', 'scp', 's3', 'webdav']);
 
 /**
  * Hook that detects project favicons from connected FTP/FTPS/SFTP/S3/WebDAV servers.
@@ -24,9 +24,9 @@ export function useFaviconDetection(
 ) {
   const checkedRef = useRef<Set<string>>(new Set());
   const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
+  useLayoutEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   const callbackRef = useRef(onFaviconDetected);
-  callbackRef.current = onFaviconDetected;
+  useLayoutEffect(() => { callbackRef.current = onFaviconDetected; }, [onFaviconDetected]);
 
   // Track status of the active session so the effect re-runs when it transitions
   // (e.g. connecting → connected). Previously the effect only depended on

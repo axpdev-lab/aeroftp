@@ -646,7 +646,8 @@ impl OpenDriveProvider {
         if path.is_empty() || path == "." {
             return Ok(self.current_path.clone());
         }
-        if path.starts_with('/') {
+        // `normalize_path` takes `\` for a separator: a leading one is the root too.
+        if path.starts_with(['/', '\\']) {
             normalize_path(path)
         } else {
             normalize_path(&format!(
@@ -3313,6 +3314,21 @@ mod tests {
         assert_eq!(normalize_path("/a/./b").unwrap(), "/a/b");
         assert_eq!(normalize_path(r"a\b\c").unwrap(), "/a/b/c");
         assert_eq!(normalize_path("/a/b/../../..").unwrap(), "/");
+    }
+
+    #[test]
+    fn a_leading_backslash_is_the_root_and_a_relative_path_joins_the_current_folder() {
+        let mut p = OpenDriveProvider::new(OpenDriveConfig {
+            host: "https://dev.opendrive.com".into(),
+            username: "u".into(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("\\docs\\a ").unwrap(), "/docs/a ");
+        assert_eq!(p.resolve_path("/docs").unwrap(), "/docs");
+        assert_eq!(p.resolve_path("sub\\a").unwrap(), "/Cloud/sub/a");
     }
 
     #[test]

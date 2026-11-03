@@ -63,14 +63,10 @@ export async function loadModeCredentials(profileId: string): Promise<ModeCreden
 }
 
 export async function storeModeCredentials(profileId: string, map: ModeCredentialMap): Promise<void> {
-    try {
-        await invoke('store_credential', {
-            account: accountFor(profileId),
-            password: JSON.stringify(stripSingleUseSecrets(map)),
-        });
-    } catch (err) {
-        console.error('Failed to persist per-mode credentials:', err);
-    }
+    await invoke('store_credential', {
+        account: accountFor(profileId),
+        password: JSON.stringify(stripSingleUseSecrets(map)),
+    });
 }
 
 export async function deleteModeCredentials(profileId: string): Promise<void> {

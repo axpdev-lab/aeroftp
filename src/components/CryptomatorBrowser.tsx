@@ -18,6 +18,7 @@ import { useModalFileView } from './modalview/useModalFileView';
 import { ModalViewToolbar } from './modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from './modalview/ModalFileGrid';
 import { SaveAllMenu, SaveAllTarget } from './common/SaveAllMenu';
+import { resolveUniqueExtractDir } from '../utils/extractOrchestrator';
 import { MountVaultButton } from './common/MountVaultButton';
 
 interface CryptomatorBrowserProps {
@@ -201,6 +202,10 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         setSavingAll(true);
         setError(null);
         try {
+            // A folder of its own in the folder chosen, named after the vault
+            // ("name (2)" when taken): the chosen folder's own entries are
+            // never written over.
+            if (target === 'folder') destPath = await resolveUniqueExtractDir(destPath, vaultInfo.name);
             const report = await invoke<{ files: number; dirs: number; skipped: string[] }>('cryptomator_save_all', {
                 vaultId: vaultInfo.vaultId,
                 destPath,

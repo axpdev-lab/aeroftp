@@ -287,6 +287,8 @@ export interface ProfileRelocation {
     moved: boolean;
     alreadyPresent: boolean;
     inserted: boolean;
+    /** Secrets that did not reach the target: the profile will ask for them again. */
+    secretsNotCopied?: string[];
 }
 
 export const relocateServerProfile = (

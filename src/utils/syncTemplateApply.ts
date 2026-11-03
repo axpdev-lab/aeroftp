@@ -44,6 +44,7 @@ export interface ImportedSyncSettings {
     remotePath: string;
     direction: SyncDirection;
     deleteOrphans: boolean;
+    updateOnly?: boolean;
     excludePatterns: string[];
     /** True for script formats that append their backup folder to the user's patterns. */
     excludePatternsIncludeBackupDir?: boolean;
@@ -65,6 +66,7 @@ export interface ImportedSyncSettings {
 /** Live Plan controls that a .aerosync export preserves. */
 export interface LivePlanExport {
     preset?: SyncPreset;
+    updateOnly?: boolean;
     direction?: SyncDirection;
     conflictPolicy?: ConflictPolicy;
     versionedBackup?: VersionedBackupConfig;
@@ -110,6 +112,7 @@ export function settingsFromTemplate(template: SyncTemplate): TemplateImportResu
         remotePath: paths.remote,
         direction: template.profile.direction,
         deleteOrphans: template.profile.delete_orphans,
+        updateOnly: template.profile.update_only === true,
         excludePatterns: template.exclude_patterns,
         excludePatternsIncludeBackupDir: false,
         preset: template.profile.mode,
@@ -191,7 +194,11 @@ export function overlayLivePlanOnTemplate(template: SyncTemplate, live: LivePlan
         profile: {
             ...template.profile,
             ...(live.preset
-                ? { mode: live.preset, delete_orphans: live.preset === 'mirror' }
+                ? {
+                    mode: live.preset,
+                    delete_orphans: live.preset === 'mirror',
+                    update_only: live.preset === 'mirror' && (live.updateOnly ?? template.profile.update_only ?? false),
+                }
                 : {}),
             ...(live.direction ? { direction: live.direction } : {}),
             ...(conflict ? { conflict_mode: conflict } : {}),
@@ -220,6 +227,7 @@ export function settingsFromLegacyScript(script: SyncScriptMeta): ImportedSyncSe
         remotePath: script.remote_path,
         direction: script.direction,
         deleteOrphans: script.delete_orphans,
+        updateOnly: script.update_only === true,
         excludePatterns: script.exclude_patterns,
         backupDir: script.backup_dir ?? undefined,
     };
@@ -232,6 +240,7 @@ export function settingsFromAerosyncScript(script: AerosyncImportScriptResult): 
         remotePath: imported.remote_path,
         direction: imported.profile.direction,
         deleteOrphans: imported.profile.delete_orphans,
+        updateOnly: imported.profile.update_only === true,
         excludePatterns: imported.profile.exclude_patterns,
         backupDir: imported.backup_dir ?? undefined,
         verifyPolicy: imported.profile.verify_policy,
@@ -296,6 +305,7 @@ export function buildAeroSyncTabStatePatch(
             : settings.excludePatterns
         ).join(', '),
         'plan.preset': planPreset(settings),
+        'plan.updateOnly': settings.updateOnly === true,
         'plan.direction': planDirection(settings.direction, pairKind),
     };
     if (settings.versionedBackup) {

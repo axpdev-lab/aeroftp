@@ -122,6 +122,67 @@ export function isWrongPasswordError(err: unknown): boolean {
     );
 }
 
+/**
+ * What an "Extract here" into a folder would write over: the top-level names of
+ * the archive's entries that the folder already holds. An entry `docs/a.txt`
+ * lands in `docs`, so `docs` is the name compared. Compared without case: on a
+ * case-insensitive file system `Docs/a.txt` lands in `docs`, and asking once
+ * too often costs a click where not asking costs a file. A leading `./` (a tar
+ * made with `tar -cf a.tar .` lists `./docs/a.txt`) or `/` is not a name. Pure.
+ */
+export function extractCollisions(entryNames: readonly string[], destNames: Iterable<string>): string[] {
+    const dest = new Set([...destNames].map(n => n.toLowerCase()));
+    const found = new Set<string>();
+    for (const entry of entryNames) {
+        const norm = entry.replace(/\\/g, '/').replace(/^(?:\.\/|\/)+/, '');
+        const slash = norm.indexOf('/');
+        const top = slash === -1 ? norm : norm.slice(0, slash);
+        if (top && dest.has(top.toLowerCase())) found.add(top);
+    }
+    return [...found];
+}
+
+/**
+ * The entries an "Extract here" into `destDir` would write over, from the
+ * folder's own listing, hidden entries included. A folder that cannot be listed
+ * is not taken as empty: the error goes to the caller, which stops, since an
+ * empty listing would let the extraction replace files without asking.
+ */
+export async function extractHereCollisions(
+    entryNames: readonly string[],
+    destDir: string,
+    listDir: (path: string) => Promise<readonly { name: string }[]> = (path) =>
+        invoke<{ name: string }[]>('get_local_files', { path, showHidden: true }),
+): Promise<string[]> {
+    return extractCollisions(entryNames, (await listDir(destDir)).map(f => f.name));
+}
+
+/** The names an overwrite confirmation lists: the first five, then how many more. Pure. */
+export function extractCollisionList(collisions: readonly string[]): string {
+    return collisions.slice(0, 5).join(', ') + (collisions.length > 5 ? `, +${collisions.length - 5}` : '');
+}
+
+/**
+ * The kind of an encrypted `.aerovault`: the security levels write v2, the
+ * experimental one v3, and each has its own extract command.
+ */
+export async function aeroVaultKind(path: string): Promise<'aerovault_v2' | 'aerovault_v3'> {
+    return (await invoke<boolean>('is_vault_v3', { path })) ? 'aerovault_v3' : 'aerovault_v2';
+}
+
+/**
+ * The entry names of a `.aerozip` or a v3 vault, for {@link extractCollisions}.
+ * Both write an entry over an existing file of the same path, so an "Extract
+ * here" asks first. A v2 vault is not listed: its extraction refuses an
+ * existing file before it writes anything.
+ */
+export async function aeroEntryNames(kind: 'aerozip' | 'aerovault_v3', archivePath: string, password: string | null): Promise<string[]> {
+    const info = kind === 'aerozip'
+        ? await invoke<{ files: { name: string }[] }>('aerovz_open_archive', { vaultPath: archivePath })
+        : await invoke<{ files: { name: string }[] }>('vault_v3_open', { vaultPath: archivePath, password: password ?? '' });
+    return info.files.map(f => f.name);
+}
+
 /** Probe an archive/vault for its kind + whether a password is required. */
 export function probeArchive(path: string): Promise<ExtractProbe> {
     return invoke<ExtractProbe>('extract_probe', { path });

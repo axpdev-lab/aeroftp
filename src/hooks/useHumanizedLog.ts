@@ -9,7 +9,7 @@
  * NO EMOJIS - Professional icon-based feedback only
  */
 
-import { useCallback, useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useActivityLog, OperationType } from './useActivityLog';
 import { useI18n, useTranslation } from '../i18n';
 
@@ -53,7 +53,8 @@ export type HumanizedOperationType =
 // ============================================================================
 
 export function useHumanizedLog() {
-    const activityLog = useActivityLog();
+    // The context object changes with every entry; these two never do.
+    const { log, updateEntry } = useActivityLog();
     const t = useTranslation();
     const { language } = useI18n();
     const lastNavigatePathRef = useRef<{ remote: string | null; local: string | null }>({
@@ -135,8 +136,8 @@ export function useHumanizedLog() {
                             operation.includes('SYNC') ? 'INFO' :
                                 operation as OperationType;
 
-        return activityLog.log(opType, message, 'running');
-    }, [t, activityLog]);
+        return log(opType, message, 'running');
+    }, [t, log]);
 
     /**
      * Log a humanized success
@@ -159,11 +160,11 @@ export function useHumanizedLog() {
                                 operation as OperationType;
 
         if (existingId) {
-            activityLog.updateEntry(existingId, { status: 'success', message });
+            updateEntry(existingId, { status: 'success', message });
             return existingId;
         }
-        return activityLog.log(opType, message, 'success');
-    }, [t, activityLog]);
+        return log(opType, message, 'success');
+    }, [t, log, updateEntry]);
 
     /**
      * Log a humanized error
@@ -179,11 +180,11 @@ export function useHumanizedLog() {
         const opType = 'ERROR';
 
         if (existingId) {
-            activityLog.updateEntry(existingId, { status: 'error', message });
+            updateEntry(existingId, { status: 'error', message });
             return existingId;
         }
-        return activityLog.log(opType, message, 'error');
-    }, [t, activityLog]);
+        return log(opType, message, 'error');
+    }, [t, log, updateEntry]);
 
     /**
      * Log navigation (instant success)
@@ -217,27 +218,29 @@ export function useHumanizedLog() {
         }
 
         lastNavigatePathRef.current[panelKey] = currentPath;
-        return activityLog.log('NAVIGATE', message, 'success');
-    }, [t, activityLog, language]);
+        return log('NAVIGATE', message, 'success');
+    }, [t, log, language]);
 
     /**
      * Specialized log functions using translations
      */
     const logRaw = useCallback((key: string, type: OperationType, params: Record<string, string | number> = {}, status: 'running' | 'success' | 'error' = 'running') => {
         const message = t(key, params);
-        return activityLog.log(type, message, status);
-    }, [t, activityLog]);
+        return log(type, message, status);
+    }, [t, log]);
 
-    return {
+    // One object for as long as the language stays: callers keep it in their
+    // callbacks' dependencies.
+    return useMemo(() => ({
         logStart,
         logSuccess,
         logError,
         logNavigate,
         logRaw,
         // Expose raw log for legacy/custom calls if needed
-        log: activityLog.log,
-        updateEntry: activityLog.updateEntry,
-    };
+        log,
+        updateEntry,
+    }), [logStart, logSuccess, logError, logNavigate, logRaw, log, updateEntry]);
 }
 
 export default useHumanizedLog;

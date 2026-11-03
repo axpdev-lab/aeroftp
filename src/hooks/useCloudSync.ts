@@ -12,7 +12,7 @@
  *   - menu-event listener for tray actions (sync_now, pause, open_folder, check_update)
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createTauriListener } from './useTauriListener';
 import { logger } from '../utils/logger';
@@ -46,7 +46,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
 
   // Refs for callbacks to avoid stale closures without re-subscribing
   const callbacksRef = useRef({ activityLog, humanLog, t, checkForUpdate, cloudServerName, onSyncComplete: options.onSyncComplete });
-  callbacksRef.current = { activityLog, humanLog, t, checkForUpdate, cloudServerName, onSyncComplete: options.onSyncComplete };
+  useLayoutEffect(() => { callbacksRef.current = { activityLog, humanLog, t, checkForUpdate, cloudServerName, onSyncComplete: options.onSyncComplete }; });
 
   useEffect(() => {
     const formatBytes = (bytes: number): string => {

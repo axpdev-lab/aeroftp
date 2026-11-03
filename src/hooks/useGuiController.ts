@@ -46,7 +46,9 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
         const service = new GuiController(() => ({ ...current.current.source,
             // The owned Settings dialog is a first-class controller surface, so
             // it does not self-block; any OTHER modal still interrupts control.
-            blocked: current.current.source.blocked || Array.from(document.querySelectorAll('[aria-modal="true"]')).some(modal =>
+            // The AeroSync window is one too: the controller opens it and only its own
+            // intents run while it is open.
+            blocked: current.current.source.blocked || Array.from(document.querySelectorAll('[aria-modal="true"]:not([data-gui-owned="aerosync"])')).some(modal =>
                 modal.getAttribute('data-gui-owned') !== 'settings' || modal.getAttribute('data-gui-safe') !== 'true' ||
                 ![ownedSettingsArea.current, requestedSettingsArea.current].some(area => area && modal.getAttribute('data-gui-area') === area)) }), () => ({ ...current.current.handlers,
                 stop: async () => { ownedSettingsArea.current = null; requestedSettingsArea.current = null; await current.current.handlers.stop(); },
@@ -60,6 +62,11 @@ export function useGuiController(source: GuiSource, handlers: GuiHandlers, audit
                     await committed(); return result;
                 },
                 refresh: async panel => { await current.current.handlers.refresh(panel); await committed(); },
+                // The window may be open already: the Compare is read once its scan state is the new one.
+                aeroSyncCompare: async () => {
+                    if (!current.current.handlers.aeroSyncCompare) throw new GuiError('action_failed');
+                    await current.current.handlers.aeroSyncCompare(); await committed();
+                },
                 settingsOpen: async (area, scope) => {
                     if (!current.current.handlers.settingsOpen) throw new GuiError('blocked');
                     requestedSettingsArea.current = area;

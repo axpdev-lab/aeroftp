@@ -17,7 +17,7 @@
  * and Redo (Ctrl+Y, Ctrl+Shift+Z) walk through; Ctrl+S saves (#1075).
  */
 
-import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useMemo, useLayoutEffect } from 'react';
 import { ZoomIn, ZoomOut, RotateCw, Maximize2, Minimize2, Move, Pipette, Pencil, X, SquareDashedBottom, ChevronLeft, ChevronRight, Undo2, Redo2, Save, CheckCircle2 } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -177,7 +177,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     const [reloadedSrc, setReloadedSrc] = useState<string | null>(null);
     const baseSrc = reloadedSrc ?? imageSrc;
     const baseSrcRef = useRef(baseSrc);
-    baseSrcRef.current = baseSrc;
+    useLayoutEffect(() => { baseSrcRef.current = baseSrc; }, [baseSrc]);
     const fileExt = (file.name.split('.').pop() ?? '').toLowerCase();
     // The preview of the edited geometry (crop, turn, mirror).
     const [shapedSrc, setShapedSrc] = useState<string | null>(null);
@@ -371,13 +371,13 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
     // place, as image viewers do; the step follows the size of the scroll, so
     // a touchpad zooms smoothly and a mouse wheel notch is about 20 %.
     const zoomRef = useRef(zoom);
-    zoomRef.current = zoom;
+    useLayoutEffect(() => { zoomRef.current = zoom; });
     const positionRef = useRef(position);
-    positionRef.current = position;
+    useLayoutEffect(() => { positionRef.current = position; });
     const navRef = useRef({ onNext, onPrevious });
-    navRef.current = { onNext, onPrevious };
+    useLayoutEffect(() => { navRef.current = { onNext, onPrevious }; }, [onNext, onPrevious]);
     const wheelState = useRef({ cropMode, editMode, isFitToScreen });
-    wheelState.current = { cropMode, editMode, isFitToScreen };
+    useLayoutEffect(() => { wheelState.current = { cropMode, editMode, isFitToScreen }; }, [cropMode, editMode, isFitToScreen]);
 
     const zoomAt = useCallback((clientX: number, clientY: number, factor: number) => {
         const el = containerRef.current;

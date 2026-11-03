@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, useLayoutEffect } from 'react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -62,7 +62,7 @@ export const Toast: React.FC<ToastProps> = ({
 }: ToastProps) => {
     const [isExiting, setIsExiting] = useState(false);
     const onCloseRef = useRef(onClose);
-    onCloseRef.current = onClose;
+    useLayoutEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
     useEffect(() => {
         if (duration > 0) {
@@ -186,7 +186,10 @@ export const useToast = () => {
     const warning = useCallback((title: string, message?: string): string => addToast('warning', title, message), [addToast]);
     const info = useCallback((title: string, message?: string): string => addToast('info', title, message), [addToast]);
 
-    return {
+    // One object per list of toasts: a caller that depends on the hook's result
+    // (or on a function built from it) would otherwise see a new one on every
+    // render of its component.
+    return useMemo(() => ({
         toasts,
         addToast,
         addToastWithAction,
@@ -195,7 +198,7 @@ export const useToast = () => {
         error,
         warning,
         info,
-    };
+    }), [toasts, addToast, addToastWithAction, removeToast, success, error, warning, info]);
 };
 
 export default Toast;

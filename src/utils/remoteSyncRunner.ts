@@ -586,7 +586,8 @@ const runSync = async (
                 : invoke('delete_remote_file', { path: sidecarPath, isDir: false });
         await sidecarInvoke.catch(() => undefined);
     };
-    /** Record a file the backup step failed: its destination copy is untouched. */
+    /** Record a file refused before writing, by the backup step or for its name:
+     *  its destination copy is untouched. */
     const failBackup = (item: SyncRunFile, journalEntry: SyncJournalEntry | undefined, e: unknown): void => {
         const errInfo: SyncErrorInfo = {
             kind: 'disk_error',
@@ -691,6 +692,11 @@ const runSync = async (
     // this run knows no time of (a remote that lists none, a run resumed from
     // its journal): read when a download completed, and before an upload.
     const landedStates = new Map<string, { size: number | null; modified: string | null }>();
+    // When each upload ended. The index reads a remote date up to this moment as
+    // the stamp of our own upload, so a remote edit made later in the run stays
+    // an edit. A bulk reports its files together, so they share the end of its
+    // call. The journal keeps it for a resumed run, which sees no such upload.
+    const uploadsEnded = new Map<string, string>();
     const readLocalState = async (path: string) => {
         const props = await invoke<{ size?: number; modified: string | null } | undefined>(
             'get_file_properties',
@@ -710,6 +716,8 @@ const runSync = async (
         const landed = landedStates.get(item.relativePath);
         entry.local_size = landed?.size ?? item.size;
         entry.local_modified = landed ? landed.modified : item.mtime;
+        const ended = uploadsEnded.get(item.relativePath);
+        if (ended) entry.uploaded_at = ended;
     };
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
@@ -738,9 +746,49 @@ const runSync = async (
             .catch(() => null);
         bulk = support && (support.upload || support.download) ? support : null;
     }
+    // Requested 124: a name this disk cannot hold, or cannot tell from another
+    // one in this run, fails on its own and leaves nothing behind. Written
+    // anyway, two files would become one and the contents of the first be lost.
+    const localNameProblems = new Map<string, string>();
+    const downloads = files.filter((f) => f.action === 'download' && !f.isDir).map((f) => f.relativePath);
+    const localTargets = [...downloads, ...dirs.local];
+    if (localTargets.length > 0) {
+        try {
+            const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
+                destination: localBase,
+                paths: localTargets,
+                files: downloads,
+            });
+            if (Array.isArray(problems)) {
+                problems.forEach((problem) => localNameProblems.set(problem.path, problem.reason));
+            }
+        } catch (error) {
+            // Not knowing is not a pass: writing could lose a file.
+            localTargets.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${String(error)}`));
+        }
+    }
+    // On a local pair an upload writes to a disk too, with the same limits.
+    const localPairUploads = config.isLocalLocal
+        ? files.filter((f) => f.action === 'upload' && !f.isDir).map((f) => f.relativePath)
+        : [];
+    if (localPairUploads.length > 0) {
+        try {
+            const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
+                destination: remoteBase,
+                paths: localPairUploads,
+                files: localPairUploads,
+            });
+            if (Array.isArray(problems)) {
+                problems.forEach((problem) => localNameProblems.set(problem.path, problem.reason));
+            }
+        } catch (error) {
+            localPairUploads.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${String(error)}`));
+        }
+    }
     const bulkEligible = (f: SyncRunFile): boolean =>
         bulk !== null
         && !f.isDir
+        && !localNameProblems.has(f.relativePath)
         // A source spelled differently (keep-both, Unicode counterpart) keeps
         // the single-file command, which writes under the destination name.
         && f.sourcePath == null
@@ -822,7 +870,9 @@ const runSync = async (
                 bulk = null;
             }
         }
+        const bulkEnded = new Date().toISOString();
         send.forEach((f, k) => {
+            if (action === 'upload' && results?.[k]?.status === 'completed') uploadsEnded.set(f.relativePath, bulkEnded);
             bulkPrepared.set(f.relativePath, results?.[k] ?? { status: 'not_attempted' });
         });
     };
@@ -849,7 +899,7 @@ const runSync = async (
         for (let i = 1; i < parts.length; i++) {
             const dir = parts.slice(0, i).join('/');
             if (f.action === 'upload') remoteParentDirs.add(dir);
-            if (f.action === 'download') localParentDirs.add(dir);
+            if (f.action === 'download' && !localNameProblems.has(f.relativePath)) localParentDirs.add(dir);
         }
     }
     const byDepth = (a: string, b: string): number =>
@@ -896,6 +946,18 @@ const runSync = async (
         }
     }
     for (const dir of [...dirs.local].sort(byDepth)) {
+        const problem = localNameProblems.get(dir);
+        if (problem) {
+            const errInfo: SyncErrorInfo = {
+                kind: 'disk_error',
+                message: problem,
+                retryable: false,
+                file_path: dir,
+            };
+            errors.push(errInfo);
+            setStatus(dir, 'error', problem);
+            continue;
+        }
         try {
             await invoke('create_local_folder', { path: `${localBase}/${dir}` });
             dirsCreated++;
@@ -936,10 +998,22 @@ const runSync = async (
         // status, so treating skipped like completed would drop the files
         // Resume is supposed to transfer.
         if (deps.resumeJournal && journalEntry?.status === 'completed') {
-            if (journalEntry.action === 'upload') uploaded++;
-            else if (journalEntry.action === 'download') downloaded++;
+            if (journalEntry.action === 'upload') {
+                uploaded++;
+                if (journalEntry.uploaded_at) uploadsEnded.set(item.relativePath, journalEntry.uploaded_at);
+            } else if (journalEntry.action === 'download') downloaded++;
             else deleted++;
             totalBytes += journalEntry.bytes_transferred;
+            completed++;
+            callbacks.onProgress?.(completed, files.length);
+            continue;
+        }
+
+        const nameProblem = item.action === 'download' || (item.action === 'upload' && config.isLocalLocal)
+            ? localNameProblems.get(item.relativePath)
+            : undefined;
+        if (nameProblem) {
+            failBackup(item, journalEntry, new Error(nameProblem));
             completed++;
             callbacks.onProgress?.(completed, files.length);
             continue;
@@ -1031,6 +1105,7 @@ const runSync = async (
             if (result.success) {
                 didTransfer = true;
                 uploaded++;
+                if (!sentByBulk) uploadsEnded.set(item.relativePath, new Date().toISOString());
                 totalBytes += item.size;
                 if (journalEntry) {
                     journalEntry.status = 'completed';
@@ -1426,6 +1501,7 @@ const runSync = async (
                         size,
                         modified,
                         is_dir: false,
+                        ...(uploadsEnded.has(f.relativePath) ? { uploaded_at: uploadsEnded.get(f.relativePath) } : {}),
                     };
                     // Upload: relativePath is the remote spelling. Download:
                     // sourcePath is. Keep-both fails the NFC test above, so
@@ -1442,6 +1518,7 @@ const runSync = async (
                 }
             }
             for (const dir of [...dirs.remote, ...dirs.local]) {
+                if (localNameProblems.has(dir)) continue;
                 mergedFiles[dir] = { size: 0, modified: null, is_dir: true };
             }
             for (const key of Object.keys(spellings)) {

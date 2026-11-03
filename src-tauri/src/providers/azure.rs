@@ -193,6 +193,8 @@ struct BlobItem {
 
 /// Azure Blob Storage Provider
 pub struct AzureProvider {
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
     config: AzureConfig,
     client: reqwest::Client,
     connected: bool,
@@ -226,6 +228,7 @@ impl Clone for AzureProvider {
             client: self.client.clone(),
             connected: self.connected,
             current_prefix: self.current_prefix.clone(),
+            download_time: Default::default(),
             upload_concurrency_override: self.upload_concurrency_override,
             disable_checksum: self.disable_checksum,
             access_tier_override: self.access_tier_override.clone(),
@@ -314,6 +317,7 @@ impl AzureProvider {
             client,
             connected: false,
             current_prefix: String::new(),
+            download_time: Default::default(),
             upload_concurrency_override: None,
             disable_checksum: false,
             access_tier_override: None,
@@ -1588,12 +1592,21 @@ impl StorageProvider for AzureProvider {
 
     /// AZ-003: Download with progress callback support.
     /// AZ-005: Uses retry for the initial GET request.
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        self.download_time.expect_moved();
+    }
+
     async fn download(
         &mut self,
         remote_path: &str,
         local_path: &str,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         let blob_path = self.resolve_blob_path(remote_path);
         let url = self.blob_url(&blob_path);
 
@@ -1628,6 +1641,7 @@ impl StorageProvider for AzureProvider {
             .unwrap_or(0);
 
         // H-01: Streaming download: chunked writes instead of buffering entire response
+        let read_time = super::multi_thread::response_time(resp.headers());
         let mut stream = resp.bytes_stream();
         let mut atomic = super::atomic_write::AtomicFile::new(local_path)
             .await
@@ -1656,6 +1670,7 @@ impl StorageProvider for AzureProvider {
             ProviderError::TransferFailed(format!("Failed to finalize download: {}", e))
         })?;
 
+        self.download_time.read(read_time);
         Ok(())
     }
 
@@ -1781,6 +1796,7 @@ impl StorageProvider for AzureProvider {
         _offset: u64,
         progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.download_time.begin();
         let blob_path = self.resolve_blob_path(remote_path);
         let url = self.blob_url(&blob_path);
 
@@ -3155,6 +3171,32 @@ mod tests {
         let mut provider = AzureProvider::new(config);
         provider.connected = true;
         (provider, log)
+    }
+
+    #[tokio::test]
+    async fn a_download_keeps_the_time_of_its_response_for_a_caller_that_saw_a_refusal() {
+        const SERVED: &str = "Wed, 21 Oct 2026 07:28:00 GMT";
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            axum::response::Response::builder()
+                .header("last-modified", SERVED)
+                .body(axum::body::Body::from(vec![7u8; 16]))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("x.bin");
+        provider
+            .download("/x.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(provider.take_download_time(false), None, "a plain download");
+        assert_eq!(provider.take_download_time(true).as_deref(), Some(SERVED));
     }
 
     /// A blob service double for container `mycontainer` that answers the

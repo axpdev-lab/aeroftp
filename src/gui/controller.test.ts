@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GuiController, GuiError, buildGuiSnapshot, validateGuiRequest, type GuiSource, type GuiHandlers, type GuiRequest, type GuiPanel, type GuiLease, type GuiIntent } from './controller';
 
 let source: GuiSource;
@@ -313,4 +313,91 @@ it('captures actor before yielding; invalid labels and forged fields never dispa
         expect((await controller.run({ name: 'disconnect' }, bad)).error).toBe('invalid_args');
     }
     expect(handlers.disconnect).not.toHaveBeenCalled();
+});
+
+it('says what is wrong with a request: the field and what it accepts', () => {
+    const detail = (request: Parameters<typeof validateGuiRequest>[0]) => {
+        try { validateGuiRequest(request); } catch (error) { return (error as GuiError).detail; }
+        return undefined;
+    };
+    expect(detail({ name: 'state', timeout_ms: 40000 })).toBe('timeout_ms must be an integer from 100 to 30000');
+    expect(detail({ name: 'state', args: { nope: 1 } })).toContain('"nope"');
+    expect(detail({ name: 'aerosync_compare', args: { path: 'x' } })).toContain('allowed: none');
+});
+
+it('returns the detail of a refused request, not only its code', async () => {
+    const reply = await controller.run({ name: 'state', timeout_ms: 40000 });
+    expect(reply).toMatchObject({ ok: false, error: 'invalid_args', detail: 'timeout_ms must be an integer from 100 to 30000' });
+});
+
+describe('the AeroSync intents', () => {
+    beforeEach(() => {
+        source.aerosync = { open: false, scanning: false, entries: null, busy: false, scan_failed: false };
+        handlers.aeroSyncOpen = vi.fn(() => { source.aerosync = { open: true, scanning: false, entries: null, busy: false, scan_failed: false }; });
+        handlers.aeroSyncClose = vi.fn(() => { source.aerosync = { open: false, scanning: false, entries: null, busy: false, scan_failed: false }; });
+    });
+
+    it('opens and closes the window, and reports it in the state', async () => {
+        expect(await controller.run({ name: 'aerosync_open' })).toMatchObject({ ok: true, snapshot: { aerosync: { open: true } } });
+        expect(await controller.run({ name: 'aerosync_close' })).toMatchObject({ ok: true, snapshot: { aerosync: { open: false } } });
+    });
+
+    it('waits for the Compare to have a result, not only to start', async () => {
+        handlers.aeroSyncCompare = vi.fn(() => {
+            source.aerosync = { open: true, scanning: true, entries: null, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: 3, busy: false, scan_failed: false }; }, 300);
+        });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: true, snapshot: { aerosync: { scanning: false, entries: 3 } } });
+    });
+
+    it('waits for the new result when the window already holds one', async () => {
+        source.aerosync = { open: true, scanning: false, entries: 1, busy: false, scan_failed: false };
+        handlers.aeroSyncCompare = vi.fn(async () => {
+            source.aerosync = { open: true, scanning: true, entries: 1, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: 3, busy: false, scan_failed: false }; }, 300);
+        });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: true, snapshot: { aerosync: { scanning: false, entries: 3 } } });
+    });
+
+    it('reports a failed scan as an error, not as a Compare with no differences', async () => {
+        handlers.aeroSyncCompare = vi.fn(() => {
+            source.aerosync = { open: true, scanning: true, entries: null, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: 0, busy: false, scan_failed: true }; }, 100);
+        });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: false, error: 'action_failed', snapshot: { aerosync: { scan_failed: true } } });
+    });
+
+    it('ends the wait on a refused scan, which leaves no result', async () => {
+        handlers.aeroSyncCompare = vi.fn(() => {
+            source.aerosync = { open: true, scanning: true, entries: null, busy: false, scan_failed: false };
+            setTimeout(() => { source.aerosync = { open: true, scanning: false, entries: null, busy: false, scan_failed: true }; }, 100);
+        });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: false, error: 'action_failed' });
+    });
+
+    it('refuses a Compare with no second side at once', async () => {
+        handlers.aeroSyncCompare = vi.fn(() => { throw new GuiError('blocked', 'needs a connected server or the second local panel'); });
+        const reply = await controller.run({ name: 'aerosync_compare', timeout_ms: 5000 });
+        expect(reply).toMatchObject({ ok: false, error: 'blocked' });
+    });
+
+    it('refuses to close the window or scan while a sync or a restore runs in it', async () => {
+        source.aerosync = { open: true, scanning: false, entries: 1, busy: true, scan_failed: false };
+        for (const name of ['aerosync_close', 'aerosync_compare', 'aerosync_open'] as const) {
+            expect(await controller.run({ name })).toMatchObject({ ok: false, error: 'busy' });
+        }
+        expect(handlers.aeroSyncClose).not.toHaveBeenCalled();
+        expect(source.aerosync.open).toBe(true);
+    });
+
+    it('blocks the panels while the window is open', async () => {
+        source.aerosync = { open: true, scanning: false, entries: 1, busy: false, scan_failed: false };
+        expect(await controller.run({ name: 'refresh', args: { panel: 'local' } })).toMatchObject({ ok: false, error: 'blocked' });
+        expect(handlers.refresh).not.toHaveBeenCalled();
+        expect((await controller.run({ name: 'state' })).ok).toBe(true);
+    });
 });

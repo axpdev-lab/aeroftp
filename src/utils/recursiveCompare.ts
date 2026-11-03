@@ -16,7 +16,7 @@
 // every `CompareResultEntry` it produces carries `relativePath`, and
 // `presetToSyncRun` + `remoteSyncRunner` already honour nested paths.
 
-import type { CompareSummary, FileComparison, FileInfo, SyncStatus } from '../types';
+import type { CompareSummary, FileComparison, FileInfo, ModifyWindow, SyncStatus } from '../types';
 import type {
     CompareBucket,
     CompareBucketStats,
@@ -118,6 +118,7 @@ export const adaptFileComparisons = (
     comparisons: FileComparison[] | null | undefined,
     leftIsLocal: boolean,
     summary?: CompareSummary | null,
+    modifyWindow?: ModifyWindow | null,
 ): CompareResult => {
     const buckets: Record<CompareBucket, CompareResultEntry[]> = {
         'only-left': [],
@@ -228,11 +229,15 @@ export const adaptFileComparisons = (
         buckets,
         stats,
         totals,
-        // The recursive scan already classified every entry server-side;
-        // the echoed options exist only for the Compare tab's policy label.
+        // Preserve the backend's effective rule for Plan and CLI export.
+        // Missing/invalid runtime metadata cannot authorize timestamp writes.
         appliedOptions: {
-            policy: 'size-and-mtime',
-            mtimeToleranceMs: 2000,
+            policy: modifyWindow?.kind === 'seconds'
+                && Number.isSafeInteger(modifyWindow.secs) && modifyWindow.secs >= 0
+                && Number.isSafeInteger(modifyWindow.secs * 1000) ? 'size-and-mtime' : 'size-only',
+            mtimeToleranceMs: modifyWindow?.kind === 'seconds'
+                && Number.isSafeInteger(modifyWindow.secs) && modifyWindow.secs >= 0
+                && Number.isSafeInteger(modifyWindow.secs * 1000) ? modifyWindow.secs * 1000 : 0,
             skipDirectoryComparison: true,
         },
     };

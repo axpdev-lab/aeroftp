@@ -24,18 +24,19 @@ use super::{
 
 /// pCloud chunked-upload size threshold (S3-T01).
 ///
-/// Below this size the runner uses the legacy single-shot `uploadfile`
-/// multipart-form path; at or above, it switches to the
-/// `upload_create`/`upload_write`/`upload_save` session API so the DAG
-/// shaped-graph can dispatch chunks and benefit from per-chunk retry.
-const PCLOUD_MULTIPART_THRESHOLD: u64 = 4 * 1024 * 1024;
+/// Below this size the runner uses the single-shot `uploadfile` path, as
+/// rclone does for every size; at or above, it switches to the
+/// `upload_create`/`upload_write`/`upload_save` session API, so a failure costs
+/// one part and not a file this large. The session takes about twice as long:
+/// 75 s against 44 s (rclone 34 s) for 320 MiB, and the server closes the
+/// connection after each request (Requested 123).
+const PCLOUD_MULTIPART_THRESHOLD: u64 = 4 * 1024 * 1024 * 1024;
 
 /// pCloud chunked-upload preferred part size (S3-T01).
 ///
-/// pCloud's `upload_write` accepts any byte-aligned chunk; 4 MiB matches
-/// the threshold and keeps the per-chunk HTTP round-trip cost amortized
-/// against pCloud's ~30 ms RTT on the EU/US APIs.
-const PCLOUD_MULTIPART_PART_SIZE: u64 = 4 * 1024 * 1024;
+/// pCloud's `upload_write` accepts any byte-aligned chunk. A part is what a
+/// failure costs; each one also pays for a new connection.
+const PCLOUD_MULTIPART_PART_SIZE: u64 = 64 * 1024 * 1024;
 
 /// pCloud JSON result code for throttle (often inside HTTP 200).
 const PCLOUD_RESULT_THROTTLE: u32 = 4006;
@@ -131,10 +132,10 @@ fn trash_refused_to_oauth() -> ProviderError {
 pub(crate) const PCLOUD_TRASH_NOT_PURGED: &str =
     "pCloud keeps deleted items in its trash and an OAuth login cannot empty it; empty the Trash on pcloud.com to free the space";
 
-/// Live DAG-P1-05C blocker: concurrent `upload_write` on one `uploadid`
-/// returns result `2068` ("Error writing to upload"). Serial multipart still
-/// works (with occasional retry). Promotion to `HttpClonePool` is therefore
-/// withheld; executor stays `LockedSingle`.
+/// `upload_write` on one `uploadid` answers result `2068` ("Error writing to
+/// upload") when parts do not arrive one after the other (Requested 123), so a
+/// file takes one chunk slot, which chains its parts in order. Promotion to
+/// `HttpClonePool` is withheld for the same reason; executor stays `LockedSingle`.
 #[allow(dead_code)]
 const PCLOUD_RESULT_WRITE_ERROR: u32 = 2068;
 
@@ -160,6 +161,19 @@ fn pcloud_throttle_error(context: &str, error: Option<&str>) -> ProviderError {
 }
 
 /// pCloud folder metadata
+/// pCloud dates its items in RFC 2822; every other provider reports ISO 8601.
+fn iso_modified<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let date = Option::<String>::deserialize(deserializer)?;
+    Ok(date.map(|date| {
+        crate::parse_remote_datetime(&date)
+            .map(|parsed| parsed.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+            .unwrap_or(date)
+    }))
+}
+
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
 struct PCloudMetadata {
@@ -170,6 +184,7 @@ struct PCloudMetadata {
     isfile: Option<bool>,
     #[serde(default)]
     size: u64,
+    #[serde(default, deserialize_with = "iso_modified")]
     modified: Option<String>,
     created: Option<String>,
     path: Option<String>,
@@ -242,7 +257,7 @@ struct PCloudPubLinkEntry {
     link: Option<String>,
     #[serde(default)]
     created: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "iso_modified")]
     modified: Option<String>,
     /// Metadata contains the path for the linked file/folder
     metadata: Option<PCloudPubLinkMeta>,
@@ -263,6 +278,7 @@ struct PCloudRevision {
     revisionid: u64,
     #[serde(default)]
     size: u64,
+    #[serde(default, deserialize_with = "iso_modified")]
     modified: Option<String>,
 }
 
@@ -315,6 +331,9 @@ struct PCloudMultipartMeta {
     name: String,
     total: u64,
     part: u64,
+    /// The local file's date, in seconds, kept at `upload_save`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mtime: Option<i64>,
 }
 
 impl PCloudMultipartMeta {
@@ -430,6 +449,42 @@ impl PCloudProvider {
             return base.as_str();
         }
         self.config.api_base()
+    }
+
+    /// URL on a content host that a pCloud file link names. Tests that point
+    /// the API at a local fixture get plain http, so the fixture can serve
+    /// the content too.
+    fn content_url(&self, host: &str, path: &str) -> String {
+        #[cfg(test)]
+        if self
+            .api_base_override
+            .as_deref()
+            .is_some_and(|base| base.starts_with("http://"))
+        {
+            return format!("http://{host}{path}");
+        }
+        format!("https://{host}{path}")
+    }
+
+    /// A content host answering with anything but 200 does not serve the
+    /// whole file, and reqwest returns it like any other response.
+    async fn content_response(resp: reqwest::Response) -> Result<reqwest::Response, ProviderError> {
+        let status = resp.status();
+        // A whole file comes with 200: a 204 has no body and a 206 only part.
+        if status == reqwest::StatusCode::OK {
+            return Ok(resp);
+        }
+        // Any other success carries file bytes, not an error page.
+        if status.is_success() {
+            return Err(ProviderError::TransferFailed(format!(
+                "pCloud content host answered HTTP {status}: not the whole file"
+            )));
+        }
+        let excerpt = super::error_body_excerpt(resp, 200).await;
+        Err(ProviderError::TransferFailed(format!(
+            "pCloud content host answered HTTP {status}: {}",
+            sanitize_api_error(&excerpt)
+        )))
     }
 
     /// Get Authorization header with Bearer token (token never exposed in URL)
@@ -952,7 +1007,7 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, path);
+        let download_url = self.content_url(&host, &path);
 
         // Step 2: Streaming download (no retry for data stream: only the link request is retried)
         let resp = self
@@ -961,6 +1016,7 @@ impl StorageProvider for PCloudProvider {
             .send()
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = Self::content_response(resp).await?;
 
         use futures_util::StreamExt;
 
@@ -1033,7 +1089,7 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, path);
+        let download_url = self.content_url(&host, &path);
 
         // Step 2: Resumable download (pCloud CDN URLs don't need auth)
         super::http_resumable_download(
@@ -1093,7 +1149,7 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, path);
+        let download_url = self.content_url(&host, &path);
 
         // Step 2: Download
         let resp = self
@@ -1102,6 +1158,7 @@ impl StorageProvider for PCloudProvider {
             .send()
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let resp = Self::content_response(resp).await?;
 
         // H2: Size-limited download to prevent OOM on large files
         super::response_bytes_with_limit(resp, super::MAX_DOWNLOAD_TO_BYTES).await
@@ -1150,10 +1207,13 @@ impl StorageProvider for PCloudProvider {
             );
 
         let url = format!(
-            "{}/uploadfile?path={}&filename={}&nopartial=1",
+            "{}/uploadfile?path={}&filename={}&nopartial=1{}",
             self.api_base(),
             urlencoding::encode(dir_path),
-            urlencoding::encode(file_name)
+            urlencoding::encode(file_name),
+            super::local_modified(local_path)
+                .map(|date| format!("&mtime={}", date.timestamp()))
+                .unwrap_or_default()
         );
 
         // Note: multipart uploads cannot use send_with_retry because the stream body
@@ -1749,13 +1809,15 @@ impl StorageProvider for PCloudProvider {
             .ok_or_else(|| ProviderError::Other("No thumbnail path".to_string()))?;
 
         // Fetch thumbnail bytes and encode as base64 data URI
-        let thumb_url = format!("https://{}{}", host, thumb_path);
-        let bytes = self
+        let thumb_url = self.content_url(&host, &thumb_path);
+        let resp = self
             .client
             .get(&thumb_url)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let bytes = Self::content_response(resp)
+            .await?
             .bytes()
             .await
             .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
@@ -1844,13 +1906,15 @@ impl StorageProvider for PCloudProvider {
             .path
             .ok_or_else(|| ProviderError::TransferFailed("No download path".to_string()))?;
 
-        let download_url = format!("https://{}{}", host, dl_path);
-        let bytes = self
+        let download_url = self.content_url(&host, &dl_path);
+        let resp = self
             .client
             .get(&download_url)
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let bytes = Self::content_response(resp)
+            .await?
             .bytes()
             .await
             .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
@@ -1978,14 +2042,10 @@ impl StorageProvider for PCloudProvider {
             supports_multipart: true,
             multipart_threshold: PCLOUD_MULTIPART_THRESHOLD,
             multipart_part_size: PCLOUD_MULTIPART_PART_SIZE,
-            // pCloud's free tier is rate-limited around 2 API calls/sec per
-            // IP. Keeping the fan-out at 2 leaves slack for the runner's
-            // commit + abort calls without tripping `4006 Throttle limit
-            // reached`.
-            // Hints still advertise fan-out 2 for future promotion, but the
-            // executor stays LockedSingle after live DAG-P1-05C evidence that
-            // concurrent upload_write on one uploadid returns result 2068.
-            multipart_max_parallel: 2,
+            // One slot chains the parts in order. With two, the graph may
+            // dispatch any ready part and `upload_write` answers 2068: 4 failed
+            // attempts in 8 uploads of 10 parts, against none in 24 chained.
+            multipart_max_parallel: 1,
             supports_resume_download: true,
             supports_resume_upload: true,
             ..Default::default()
@@ -2000,10 +2060,9 @@ impl StorageProvider for PCloudProvider {
     //      parent + `name` + `total` + `part` so subsequent calls don't
     //      need to re-resolve the path.
     //   2. `upload_write?uploadid=N&uploadoffset=M` PUT with the raw chunk
-    //      body. Offsets are handle-derived. Live evidence (DAG-P1-05C)
-    //      shows concurrent writes on the same uploadid return result
-    //      2068, so the executor remains LockedSingle even though hints
-    //      advertise multipart_max_parallel=2.
+    //      body. Offsets are handle-derived. Parts out of order on one
+    //      uploadid return result 2068, so the hints advertise one chunk
+    //      slot and the executor remains LockedSingle.
     //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises and atomically
     //      moves the staged bytes into place. Idempotent: a repeated call
     //      on the same uploadid returns the same fileid.
@@ -2014,7 +2073,7 @@ impl StorageProvider for PCloudProvider {
         remote_path: &str,
         total_size: u64,
         _content_type: Option<&str>,
-        _local_source_path: Option<&str>,
+        local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2047,6 +2106,9 @@ impl StorageProvider for PCloudProvider {
             name: file_name,
             total: total_size,
             part: pcloud_runner_part_size(total_size),
+            mtime: local_source_path
+                .and_then(super::local_modified)
+                .map(|date| date.timestamp()),
         };
         Ok(MultipartHandle {
             upload_id: meta.encode(),
@@ -2109,8 +2171,8 @@ impl StorageProvider for PCloudProvider {
 
         // Contract: `uploadid` + immutable handle-derived `uploadoffset`.
         // Live DAG-P1-05C tried adding `uploadsize=data.len()`; concurrent
-        // writes still returned 2068 and serial demoted runs did not improve,
-        // so the unverified parameter is not sent (baton: no blind add).
+        // writes still returned 2068, so the unverified parameter is not sent
+        // (baton: no blind add).
         let url = format!(
             "{}/upload_write?uploadid={}&uploadoffset={}",
             self.api_base(),
@@ -2189,11 +2251,14 @@ impl StorageProvider for PCloudProvider {
         }
 
         let url = format!(
-            "{}/upload_save?uploadid={}&folderid={}&name={}",
+            "{}/upload_save?uploadid={}&folderid={}&name={}{}",
             self.api_base(),
             meta.uploadid,
             meta.folderid,
-            urlencoding::encode(&meta.name)
+            urlencoding::encode(&meta.name),
+            meta.mtime
+                .map(|mtime| format!("&mtime={mtime}"))
+                .unwrap_or_default()
         );
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
@@ -2387,6 +2452,31 @@ impl PCloudProvider {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dates_read_as_iso_like_every_other_provider() {
+        let read = |date: &str| {
+            let json = format!(r#"{{"name":"a","modified":{date}}}"#);
+            serde_json::from_str::<PCloudMetadata>(&json)
+                .unwrap()
+                .modified
+        };
+        assert_eq!(
+            read(r#""Sat, 31 Oct 2026 07:18:16 +0000""#).as_deref(),
+            Some("2026-10-31T07:18:16Z")
+        );
+        assert_eq!(read(r#""not a date""#).as_deref(), Some("not a date"));
+        let missing: PCloudMetadata = serde_json::from_str(r#"{"name":"a"}"#).unwrap();
+        assert_eq!(missing.modified, None);
+
+        const DATE: &str = r#""modified":"Sat, 31 Oct 2026 07:18:16 +0000""#;
+        let link: PCloudPubLinkEntry =
+            serde_json::from_str(&format!(r#"{{"linkid":1,{DATE}}}"#)).unwrap();
+        assert_eq!(link.modified.as_deref(), Some("2026-10-31T07:18:16Z"));
+        let revision: PCloudRevision =
+            serde_json::from_str(&format!(r#"{{"revisionid":1,{DATE}}}"#)).unwrap();
+        assert_eq!(revision.modified.as_deref(), Some("2026-10-31T07:18:16Z"));
+    }
+
     use super::*;
 
     fn test_provider() -> PCloudProvider {
@@ -2501,6 +2591,7 @@ mod tests {
             name: "file with spaces & symbols.bin".to_string(),
             total: 1024 * 1024 * 1024,
             part: 4 * 1024 * 1024,
+            mtime: None,
         };
         let encoded = meta.encode();
         let decoded = PCloudMultipartMeta::decode(&encoded).expect("decode roundtrip");
@@ -2539,10 +2630,32 @@ mod tests {
         assert!(hints.supports_multipart);
         assert_eq!(hints.multipart_threshold, PCLOUD_MULTIPART_THRESHOLD);
         assert_eq!(hints.multipart_part_size, PCLOUD_MULTIPART_PART_SIZE);
-        // Hints keep fan-out 2 for future promotion; executor remains LockedSingle.
-        assert_eq!(hints.multipart_max_parallel, 2);
+        // Requested 123: two slots send parts out of order and pCloud answers 2068.
+        assert_eq!(hints.multipart_max_parallel, 1);
+        // Requested 123: an ordinary file goes in one request, as with rclone.
+        assert_eq!(hints.multipart_threshold, 4 * 1024 * 1024 * 1024);
         assert!(hints.supports_resume_download);
         assert!(hints.supports_resume_upload);
+    }
+
+    /// Requested 123, through the hints to the plan: a file below the threshold
+    /// goes in one request, not in parts.
+    #[test]
+    fn a_file_below_the_threshold_is_planned_as_one_request() {
+        use crate::transfer_dag::builder::{TransferDagBuilder, TransferDirection};
+        use crate::transfer_dag::capabilities::TransferCapabilities;
+        use crate::transfer_dag::graph::TransferNodeKind;
+        let hints = test_provider().transfer_optimization_hints();
+        let caps = TransferCapabilities::from_provider_hints(ProviderType::PCloud, &hints, false);
+        assert_eq!(caps.multipart_threshold, 4 * 1024 * 1024 * 1024);
+        let built =
+            TransferDagBuilder::shaped_file(TransferDirection::Upload, &caps, 100 * 1024 * 1024);
+        assert_eq!(built.profile.upload_parts, 1);
+        assert_eq!(built.transfer.len(), 1);
+        assert_eq!(
+            built.dag.nodes()[built.transfer[0]].kind,
+            TransferNodeKind::UploadFile
+        );
     }
 
     // ---- DAG-P1-05C: evidence-backed LockedSingle retention ----
@@ -2792,6 +2905,151 @@ mod tests {
         p
     }
 
+    /// A provider whose file and thumbnail links name a content host on the
+    /// same local fixture, which answers the content with `status`.
+    async fn provider_with_content(status: u16) -> PCloudProvider {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let link = format!(r#"{{"result":0,"hosts":["{addr}"],"path":"/content"}}"#);
+        let app = axum::Router::new()
+            .route(
+                "/getfilelink",
+                axum::routing::get({
+                    let link = link.clone();
+                    move || async move { link }
+                }),
+            )
+            .route(
+                "/getthumblink",
+                axum::routing::get(move || async move { link }),
+            )
+            .route(
+                "/content",
+                axum::routing::get(move || async move {
+                    let status = axum::http::StatusCode::from_u16(status).unwrap();
+                    let body = if status.is_success() {
+                        "DATA"
+                    } else {
+                        "error page"
+                    };
+                    (status, body)
+                }),
+            );
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        provider
+    }
+
+    /// Refused with the status and the start of the error page, which says
+    /// what the host objected to.
+    fn refused_with_404<T: std::fmt::Debug>(outcome: &Result<T, ProviderError>) -> bool {
+        matches!(outcome, Err(ProviderError::TransferFailed(m))
+            if m.contains("404") && m.contains("error page"))
+    }
+
+    #[tokio::test]
+    async fn a_stalled_error_body_still_returns_the_content_hosts_status() {
+        use futures_util::StreamExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let stream = futures_util::stream::once(async {
+                Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"temporarily unavailable"))
+            })
+            .chain(futures_util::stream::pending());
+            (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                axum::body::Body::from_stream(stream),
+            )
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            PCloudProvider::content_response(resp),
+        )
+        .await
+        .expect("known HTTP failure must return within the excerpt deadline");
+        assert!(
+            matches!(&result, Err(ProviderError::TransferFailed(message))
+            if message.contains("HTTP 503") && message.contains("temporarily unavailable")),
+            "{result:?}"
+        );
+        server.abort();
+    }
+
+    /// The content host serves what pCloud's file link names; a success still
+    /// arrives whole through the plain-http fixture.
+    #[tokio::test]
+    async fn a_download_from_the_content_host_arrives() {
+        let mut provider = provider_with_content(200).await;
+        assert_eq!(provider.download_to_bytes("/f.txt").await.unwrap(), b"DATA");
+    }
+
+    /// A content host answering 404 serves an error page, not the file: the
+    /// download fails and writes nothing.
+    #[tokio::test]
+    async fn a_download_answered_with_an_http_error_fails_and_writes_nothing() {
+        let mut provider = provider_with_content(404).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        let outcome = provider
+            .download("/f.txt", out.to_str().unwrap(), None)
+            .await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
+        assert!(!out.exists());
+    }
+
+    /// A success that is not the whole file (204 has no body, 206 only part)
+    /// fails like an error, on disk and in memory.
+    #[tokio::test]
+    async fn a_download_answered_with_less_than_the_whole_file_fails() {
+        for status in [204u16, 206] {
+            let mut provider = provider_with_content(status).await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("f.txt");
+            let on_disk = provider
+                .download("/f.txt", out.to_str().unwrap(), None)
+                .await;
+            let in_memory = provider.download_to_bytes("/f.txt").await;
+            for outcome in [on_disk.map(|_| ()), in_memory.map(|_| ())] {
+                assert!(
+                    matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains(&status.to_string()) && !m.contains("DATA")),
+                    "{status}: {outcome:?}"
+                );
+            }
+            assert!(!out.exists(), "{status}");
+        }
+    }
+
+    #[tokio::test]
+    async fn an_in_memory_download_answered_with_an_http_error_fails() {
+        let mut provider = provider_with_content(404).await;
+        let outcome = provider.download_to_bytes("/f.txt").await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
+    }
+
+    #[tokio::test]
+    async fn a_version_download_answered_with_an_http_error_fails_and_writes_nothing() {
+        let mut provider = provider_with_content(404).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("v.txt");
+        let outcome = provider
+            .download_version("/f.txt", "7", out.to_str().unwrap())
+            .await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
+        assert!(!out.exists());
+    }
+
+    /// An error page is not a thumbnail: it would be shown as a broken image.
+    #[tokio::test]
+    async fn a_thumbnail_answered_with_an_http_error_fails() {
+        let mut provider = provider_with_content(404).await;
+        let outcome = provider.get_thumbnail("/f.jpg").await;
+        assert!(refused_with_404(&outcome), "{outcome:?}");
+    }
+
     #[tokio::test]
     async fn a_trash_refusal_is_an_api_limit_and_a_bad_token_is_still_a_bad_token() {
         // 1000 on a trash endpoint is pCloud saying OAuth cannot use the trash
@@ -2937,11 +3195,11 @@ mod tests {
             p.transfer_executor_kind(),
             can_clone,
         );
-        // LockedSingle keeps file/session serial even when multipart hints say 2.
+        // LockedSingle keeps file/session serial, and one chunk slot chains parts.
         assert_eq!(caps.file_parallel, Capability::Unsupported);
         assert_eq!(caps.session_pool, Capability::Unsupported);
         assert_eq!(caps.max_file_slots, Some(1));
-        assert_eq!(caps.max_chunk_slots, Some(2));
+        assert_eq!(caps.max_chunk_slots, Some(1));
         assert_eq!(caps.rate_limited_api, Capability::Supported);
 
         let model = resolve_session_model(
@@ -2998,6 +3256,7 @@ mod tests {
             name: "t.bin".into(),
             total: 64,
             part: 64,
+            mtime: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -3054,6 +3313,7 @@ mod tests {
             name: "t.bin".into(),
             total: 64,
             part: 64,
+            mtime: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),
@@ -3113,6 +3373,7 @@ mod tests {
             name: "t.bin".into(),
             total: 64,
             part: 64,
+            mtime: None,
         };
         let handle = MultipartHandle {
             upload_id: meta.encode(),

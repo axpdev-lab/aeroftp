@@ -1173,13 +1173,13 @@ impl InternxtProvider {
 
     /// Normalize path: ensure leading /, remove trailing /, collapse //, resolve . and ..
     fn normalize_path(path: &str) -> String {
-        let trimmed = path.trim();
-        if trimmed.is_empty() || trimmed == "." || trimmed == "/" {
+        // Spaces are part of a name: ` a` and `a ` are not `a`.
+        if path.is_empty() || path == "." || path == "/" {
             return "/".to_string();
         }
 
         let mut segments: Vec<&str> = Vec::new();
-        for seg in trimmed.split('/') {
+        for seg in path.split('/') {
             match seg {
                 "" | "." => continue,
                 ".." => {
@@ -1438,7 +1438,8 @@ impl InternxtProvider {
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
                 internxt_log(&format!(
@@ -1677,7 +1678,8 @@ impl StorageProvider for InternxtProvider {
 
         // Navigate to initial path if specified
         if let Some(ref initial) = self.config.initial_path {
-            let initial = initial.trim().to_string();
+            // As given: a name may begin or end with a space.
+            let initial = initial.to_string();
             if !initial.is_empty() && initial != "/" {
                 let normalized = Self::normalize_path(&initial);
                 internxt_log(&format!(
@@ -3828,6 +3830,19 @@ mod tests {
             .cloned()
             .unwrap();
         assert_eq!((file.1.as_str(), file.2.as_str()), ("a.txt", "D"));
+    }
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(InternxtProvider::normalize_path("/ a"), "/ a");
+        assert_eq!(InternxtProvider::normalize_path("/a /b "), "/a /b ");
+        let mut p = test_provider();
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
     }
 
     fn test_provider() -> InternxtProvider {

@@ -34,6 +34,7 @@ const KNOWN_META_FIELDS: &[&str] = &[
     "compare_size",
     "compare_checksum",
     "conflict_mode",
+    "modify_window",
     "backup_dir",
 ];
 
@@ -153,6 +154,8 @@ pub struct AerosyncScriptProfile {
     pub resync: bool,
     #[serde(default)]
     pub watch: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modify_window: Option<u64>,
     /// The Plan's versioned-backup folder at export time, kept in the
     /// metadata block. The SYNC line excludes it too; an import restores it
     /// to the Plan and leaves it out of the user's patterns.
@@ -288,6 +291,12 @@ pub fn generate_script(profile: &AerosyncScriptProfile, app_version: &str) -> St
     }
     if profile.track_renames {
         out.push_str(" \\\n  --track-renames");
+    }
+    if profile.profile.update_only && profile.profile.direction != CompareDirection::Bidirectional {
+        out.push_str(" \\\n  --update");
+        if let Some(secs) = profile.modify_window {
+            out.push_str(&format!(" \\\n  --modify-window {secs}"));
+        }
     }
     if profile.skip_matching {
         out.push_str(" \\\n  --skip-matching");
@@ -552,6 +561,7 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
             .and_then(|v| serde_json::from_value::<VerifyPolicy>(v.clone()).ok())
             .unwrap_or_default(),
         delete_orphans: parsed_sync.delete_orphans,
+        update_only: parsed_sync.update_only,
         parallel_streams: metadata_json
             .get("parallel_streams")
             .and_then(|v| v.as_u64())
@@ -591,6 +601,7 @@ pub fn parse_script(content: &str) -> Result<ParsedScript, ParseError> {
         skip_matching: parsed_sync.skip_matching,
         resync: parsed_sync.resync,
         watch: parsed_sync.watch,
+        modify_window: parsed_sync.modify_window,
         backup_dir: metadata_json
             .get("backup_dir")
             .and_then(|v| v.as_str())
@@ -946,6 +957,7 @@ struct ParsedSyncLine {
     path_pair: (String, String),
     direction: CompareDirection,
     delete_orphans: bool,
+    update_only: bool,
     dry_run: bool,
     track_renames: bool,
     skip_matching: bool,
@@ -956,6 +968,7 @@ struct ParsedSyncLine {
     /// `--max-delete` as written, so an edited cap is reported on import
     /// instead of being replaced in silence by the next export.
     max_delete: Option<String>,
+    modify_window: Option<u64>,
     /// Flags the template has no field for, dropped on import and named in
     /// a warning.
     not_kept: Vec<String>,
@@ -991,6 +1004,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     let mut positional: Vec<String> = Vec::new();
     let mut direction: Option<CompareDirection> = None;
     let mut delete_orphans = false;
+    let mut update_only = false;
     let mut dry_run = false;
     let mut track_renames = false;
     let mut skip_matching = false;
@@ -999,6 +1013,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
     let mut conflict_mode: Option<String> = None;
     let mut exclude_patterns: Vec<String> = Vec::new();
     let mut max_delete: Option<String> = None;
+    let mut modify_window: Option<u64> = None;
     let mut not_kept: Vec<String> = Vec::new();
     let mut it = tokens.into_iter().peekable();
     while let Some(tok) = it.next() {
@@ -1021,6 +1036,27 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
                     );
             }
             "--delete" => delete_orphans = true,
+            "--update" => {
+                if inline.is_some() {
+                    return Err(ParseError::MalformedSync {
+                        line,
+                        message: "--update takes no value".into(),
+                    });
+                }
+                update_only = true;
+            }
+            "--modify-window" => {
+                let value = flag_value(inline, &mut it, "--modify-window", "seconds", line)?;
+                modify_window =
+                    Some(
+                        value
+                            .parse::<u64>()
+                            .map_err(|_| ParseError::MalformedSync {
+                                line,
+                                message: format!("invalid --modify-window value '{value}'"),
+                            })?,
+                    );
+            }
             "--dry-run" => dry_run = true,
             "--track-renames" => track_renames = true,
             "--skip-matching" => skip_matching = true,
@@ -1079,6 +1115,12 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         line,
         message: "missing --direction".to_string(),
     })?;
+    if update_only && direction == CompareDirection::Bidirectional {
+        return Err(ParseError::MalformedSync {
+            line,
+            message: "--update needs --direction upload or download".to_string(),
+        });
+    }
     if direction == CompareDirection::Bidirectional && conflict_mode.as_deref() == Some("source") {
         return Err(ParseError::MalformedSync {
             line,
@@ -1091,6 +1133,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         path_pair: (local, remote),
         direction,
         delete_orphans,
+        update_only,
         dry_run,
         track_renames,
         skip_matching,
@@ -1099,6 +1142,7 @@ fn parse_sync(body: &str, line: usize) -> Result<ParsedSyncLine, ParseError> {
         conflict_mode,
         exclude_patterns,
         max_delete,
+        modify_window,
         not_kept,
     })
 }
@@ -1159,6 +1203,34 @@ pub fn tokenize_script_line(body: &str) -> Result<Vec<String>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn update_rejects_an_attached_value() {
+        for value in ["false", "true", ""] {
+            assert!(matches!(
+                parse_sync(&format!("/local /remote --direction upload --update={value}"), 1),
+                Err(ParseError::MalformedSync { message, .. }) if message == "--update takes no value"
+            ));
+        }
+        assert!(
+            parse_sync("/local /remote --direction upload --update", 1)
+                .unwrap()
+                .update_only
+        );
+    }
+
+    #[test]
+    fn mirror_update_round_trips_as_executable_delete_and_update_flags() {
+        let mut profile = sample(SyncProfile::mirror());
+        profile.profile.update_only = true;
+        let script = generate_script(&profile, "test");
+        assert!(script.contains("--delete"));
+        assert!(script.contains("--update"));
+        let imported = parse_script(&script).unwrap();
+        assert!(imported.profile.profile.update_only);
+        assert!(imported.profile.profile.delete_orphans);
+        assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
+    }
 
     /// An exclusion that starts with a dash could not be exported and read
     /// back: the import took `--exclude -tmp`, which the CLI refuses, and
@@ -1257,7 +1329,33 @@ mod tests {
             skip_matching: false,
             resync: false,
             watch: false,
+            modify_window: None,
             backup_dir: None,
+        }
+    }
+
+    #[test]
+    fn update_scripts_round_trip_the_modify_window() {
+        let mut original = sample(SyncProfile::mirror());
+        original.profile.update_only = true;
+        for window in [Some(60), Some(0), None] {
+            original.modify_window = window;
+            let text = generate_script(&original, "4.2.5-test");
+            if let Some(secs) = window {
+                assert!(
+                    text.contains(&format!("  --update \\\n  --modify-window {secs}")),
+                    "{text}"
+                );
+            } else {
+                assert!(!text.contains("--modify-window"), "{text}");
+            }
+            let parsed = parse_script(&text).expect("must parse");
+            assert_eq!(parsed.profile.modify_window, window);
+            assert!(parsed.unmapped_fields.is_empty());
+            assert!(!parsed
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("--modify-window")));
         }
     }
 

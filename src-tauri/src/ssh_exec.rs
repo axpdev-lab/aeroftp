@@ -13,12 +13,18 @@
 //!   so that an active SFTP session can spin up additional exec channels without
 //!   re-authenticating.
 //! - The channel is split into read/write halves. A detached reader task drains
-//!   `ChannelMsg::Data` into an mpsc for stdout and `ChannelMsg::ExtendedData { ext: 1 }`
-//!   into an mpsc for stderr. Exit status is delivered over a oneshot.
+//!   `ChannelMsg::Data` into a bounded mpsc for stdout and `ChannelMsg::ExtendedData { ext: 1 }`
+//!   into a bounded mpsc for stderr. Exit status is delivered over a oneshot. A full
+//!   stdout queue stops the reader, which stops russh reading the socket, so the server
+//!   waits for a slow consumer instead of the client buffering the stream; stderr past
+//!   its queue is dropped, never waited on.
 //! - stdin is a `'static` `AsyncWrite` obtained from the write half (russh clones the
 //!   underlying mpsc sender, so detached use is safe).
-//! - When [`ExecSession`] is dropped the reader task is aborted; remote process receives
-//!   EOF and, if it respects it, terminates.
+//! - When [`ExecSession`] is dropped the reader task is aborted and the channel is closed
+//!   (`CHANNEL_CLOSE`), so a command abandoned part way (an error, a cap, a cancel) does
+//!   not keep its channel open on the server. A split channel has no close of its own on
+//!   drop (russh installs one only in `into_stream`); a close for a channel the server
+//!   already closed is a no-op in russh, and channel ids are not reused while one is open.
 
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
@@ -37,14 +43,45 @@ use tokio::sync::{mpsc, oneshot, Mutex as TokioMutex};
 
 /// Handle to a running remote command.
 ///
-/// Drop to tear down: the inner reader task is aborted and the write half is released,
-/// which (combined with EOF propagation) will typically signal the remote process to exit.
+/// Drop to tear down: the inner reader task is aborted and the channel is closed, which
+/// ends the remote command whether or not it read its input to the end.
 pub struct ExecSession {
     pub stdin: Box<dyn AsyncWrite + Send + Unpin>,
-    pub stdout_rx: mpsc::UnboundedReceiver<Vec<u8>>,
-    pub stderr_rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    pub stdout_rx: mpsc::Receiver<Vec<u8>>,
+    pub stderr_rx: mpsc::Receiver<Vec<u8>>,
     pub exit_rx: oneshot::Receiver<u32>,
     _reader: ReaderGuard,
+    close: CloseOnDrop,
+}
+
+impl ExecSession {
+    /// Keep `item` until the channel's close has been sent: a caller's place
+    /// for the channel among a connection's limited channels goes back only
+    /// once the server has been told the channel is gone.
+    pub fn hold_until_closed<T: Send + 'static>(&mut self, item: T) {
+        self.close.held.push(Box::new(item));
+    }
+}
+
+/// Closes the channel on drop, then lets go of what was held until then.
+struct CloseOnDrop {
+    half: Option<russh::ChannelWriteHalf<russh::client::Msg>>,
+    held: Vec<Box<dyn Send>>,
+}
+
+impl Drop for CloseOnDrop {
+    fn drop(&mut self) {
+        let Some(half) = self.half.take() else { return };
+        let held = std::mem::take(&mut self.held);
+        // Best effort, as russh's own close on drop: outside a runtime there
+        // is no connection left to tell.
+        if let Ok(runtime) = tokio::runtime::Handle::try_current() {
+            runtime.spawn(async move {
+                let _ = half.close().await;
+                drop(held);
+            });
+        }
+    }
 }
 
 /// RAII guard that aborts the reader task when the session is dropped.
@@ -121,18 +158,29 @@ impl ExitTracker {
     }
 }
 
+/// Stdout chunks held for a consumer that is behind: about 2 MiB at the
+/// 32 KiB packets SSH servers send. The queue, not the size of the stream,
+/// bounds what a download into a slow sink holds in memory.
+const STDOUT_QUEUE: usize = 64;
+
+/// Stderr chunks held before further stderr is dropped.
+const STDERR_QUEUE: usize = 64;
+
 /// Open a remote exec channel on `handle_shared` and run `command`.
+///
+/// `command` is bytes, not text: the remote shell takes any byte but NUL, and
+/// a path read back from the server need not be UTF-8.
 ///
 /// Returns immediately after the exec request has been acknowledged; caller pumps I/O
 /// by reading `stdout_rx` / `stderr_rx` and writing to `stdin`. Remote exit status is
 /// delivered on `exit_rx` (lossy if the process exits abnormally: `EXIT_ABNORMAL`).
 ///
-/// The handle mutex is held only for the duration of `channel_open_session()` + `exec()`
+/// The handle mutex is held only for the duration of `channel_open_session()`
 /// (typically microseconds); concurrent SFTP operations on the same handle are not
 /// measurably impacted.
 pub async fn ssh_exec<H>(
     handle_shared: Arc<TokioMutex<Handle<H>>>,
-    command: &str,
+    command: impl AsRef<[u8]>,
 ) -> Result<ExecSession, String>
 where
     H: Handler<Error = russh::Error> + Send + Sync + 'static,
@@ -145,16 +193,23 @@ where
             .map_err(|e| format!("ssh exec: open channel: {}", e))?
     };
 
-    channel
-        .exec(true, command.as_bytes())
+    // Split first, so a failed exec request closes the channel too.
+    let (mut read_half, write_half) = channel.split();
+    let close = CloseOnDrop {
+        half: Some(write_half),
+        held: Vec::new(),
+    };
+    let write_half = close.half.as_ref().expect("just set");
+
+    write_half
+        .exec(true, command.as_ref())
         .await
         .map_err(|e| format!("ssh exec: request: {}", e))?;
 
-    let (mut read_half, write_half) = channel.split();
     let stdin: Box<dyn AsyncWrite + Send + Unpin> = Box::new(write_half.make_writer());
 
-    let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
-    let (stderr_tx, stderr_rx) = mpsc::unbounded_channel();
+    let (stdout_tx, stdout_rx) = mpsc::channel(STDOUT_QUEUE);
+    let (stderr_tx, stderr_rx) = mpsc::channel(STDERR_QUEUE);
     let (exit_tx, exit_rx) = oneshot::channel::<u32>();
 
     let reader_task = tokio::spawn(async move {
@@ -183,20 +238,23 @@ where
                 }
             };
             // Forward payload before interpreting control so the server's
-            // stdout/stderr ordering is preserved. The send happens in the
-            // guard; a closed consumer (send error) tears the reader down.
-            match &msg {
-                ChannelMsg::Data { data } if stdout_tx.send(data.to_vec()).is_err() => {
-                    break 'outer;
-                }
-                // SSH_EXTENDED_DATA_STDERR = 1 per RFC 4254 §5.2.
-                // Other ext streams are silently discarded.
-                ChannelMsg::ExtendedData { data, ext: 1 }
-                    if stderr_tx.send(data.to_vec()).is_err() =>
-                {
-                    break 'outer;
-                }
-                _ => {}
+            // stdout/stderr ordering is preserved. A closed consumer (send
+            // error) tears the reader down.
+            let forwarded = match &msg {
+                // Waits while the consumer is behind: the backpressure.
+                ChannelMsg::Data { data } => stdout_tx.send(data.to_vec()).await.is_ok(),
+                // SSH_EXTENDED_DATA_STDERR = 1 per RFC 4254 §5.2. Never
+                // waited on: a consumer reading only stdout must not stall
+                // on diagnostics, so a full queue drops them. Other ext
+                // streams are silently discarded.
+                ChannelMsg::ExtendedData { data, ext: 1 } => !matches!(
+                    stderr_tx.try_send(data.to_vec()),
+                    Err(mpsc::error::TrySendError::Closed(_))
+                ),
+                _ => true,
+            };
+            if !forwarded {
+                break 'outer;
             }
             match tracker.observe(&msg) {
                 ReaderControl::Continue => {}
@@ -222,6 +280,7 @@ where
         stderr_rx,
         exit_rx,
         _reader: ReaderGuard(reader_task),
+        close,
     })
 }
 
@@ -231,7 +290,7 @@ where
 /// is unnecessary. Returns `(stdout_bytes, exit_code)`. Stderr is captured separately.
 pub async fn ssh_exec_collect<H>(
     handle_shared: Arc<TokioMutex<Handle<H>>>,
-    command: &str,
+    command: impl AsRef<[u8]>,
     max_output_bytes: usize,
 ) -> Result<(Vec<u8>, Vec<u8>, u32), String>
 where

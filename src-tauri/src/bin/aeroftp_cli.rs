@@ -130,6 +130,7 @@ const SUPPORTED_URL_SCHEMES: &[&str] = &[
     "ftp",
     "ftps",
     "sftp",
+    "scp",
     "webdav",
     "webdavs",
     "s3",
@@ -284,6 +285,16 @@ struct Cli {
         help_heading = "Connection options"
     )]
     trust_host_key: bool,
+
+    /// SFTP: refuse a server that has no SFTP instead of continuing over SCP
+    /// on the same connection
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
+    no_scp_fallback: bool,
 
     /// 2FA code (Filen, Internxt)
     #[arg(
@@ -494,6 +505,17 @@ struct Cli {
     )]
     immutable: bool,
 
+    /// Do not compare a finished download with the hash the server publishes.
+    /// The check reads the whole file once more, and asks the server for its
+    /// hash; a server with none is checked by size alone either way.
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Transfer options"
+    )]
+    ignore_checksum: bool,
+
     /// Recursive `put`: skip a file or folder whose name contains a character
     /// the destination backend forbids and upload the rest, reporting each
     /// skipped path, instead of refusing the whole batch up front (the
@@ -642,7 +664,9 @@ struct Cli {
     /// (rclone `--multi-thread-streams`). Default 4, applied only to files at
     /// or above `--multi-thread-cutoff` (250M), the same shape as rclone's
     /// default (4 streams above 256Mi); `1` disables. Range 1-16.
-    /// Honored by S3/Azure (native), SFTP (N independent connections) and,
+    /// Honored by S3/Azure (native), SFTP (N independent connections), SCP
+    /// (exec channels of its one connection, up to 8, when the server has
+    /// `dd`, `cat` and `head`) and,
     /// after a live strict 206 probe, by WebDAV (Basic/anonymous auth; Digest
     /// excluded) and Koofr. Any backend or server that does not prove Range
     /// honesty falls back to single-stream transparently. Reads default from
@@ -4411,6 +4435,9 @@ enum VaultCommands {
         password: Option<String>,
         /// Destination directory (created if needed)
         dest: String,
+        /// Replace files that already exist in the destination
+        #[arg(long)]
+        overwrite: bool,
         /// Vault format: auto (detect from file) | v2 | v3
         #[arg(long = "vault-version", short = 'V', default_value = "auto")]
         vault_version: String,
@@ -6072,6 +6099,9 @@ struct CliConnectResult {
     username: String,
     server_info: Option<String>,
     elapsed_ms: u64,
+    /// SFTP went on over SCP: the server has no SFTP.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    scp_fallback: bool,
 }
 
 #[derive(Serialize)]
@@ -9650,6 +9680,19 @@ fn apply_google_drive_runtime_knobs(provider: &mut Box<dyn StorageProvider>, cli
 static SESSION_TRANSFERRED_BYTES: AtomicU64 = AtomicU64::new(0);
 /// Print "Using profile: ..." only once per session (avoids noise from parallel workers).
 static PROFILE_INFO_PRINTED: AtomicBool = AtomicBool::new(false);
+/// The servers already named in the "has no SFTP" note: a command that opens
+/// several connections to one server (`pget`'s workers) says it once.
+static SCP_NOTE_PRINTED: std::sync::Mutex<std::collections::BTreeSet<String>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+/// Whether the "has no SFTP" note for `server` is still to be printed in
+/// this process; asking marks it printed.
+fn scp_note_first_time(server: &str) -> bool {
+    SCP_NOTE_PRINTED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(server.to_string())
+}
 /// Print the MEGAcmd warm-up notice only once per session (#275).
 static MEGACMD_WARMUP_NOTICE_PRINTED: AtomicBool = AtomicBool::new(false);
 /// Set early in main() when the user passed `--json` or `--format json`.
@@ -9671,6 +9714,10 @@ struct CliBase {
     path: String,
     /// Proton Drive's start folder; `None` for every other provider.
     start_folder: Option<String>,
+    /// What a URL named below its folder when that is not a folder: a file,
+    /// or a name not there yet. A command given no path acts on it, never on
+    /// the folder that holds it (`rm sftp://host/a/b -r` removed all of `/a`).
+    url_target: Option<String>,
 }
 
 impl CliBase {
@@ -9678,12 +9725,28 @@ impl CliBase {
         Self {
             path: path.into(),
             start_folder,
+            url_target: None,
         }
     }
 
+    fn with_url_target(mut self, url_target: Option<String>) -> Self {
+        self.url_target = url_target;
+        self
+    }
+
+    /// The path a command given no path of its own works on: the URL's
+    /// target when it named one, otherwise the base.
+    fn own_path(&self) -> &str {
+        self.url_target.as_deref().unwrap_or(&self.path)
+    }
+
     /// The base of a connected provider: Proton Drive's start folder is where
-    /// its session stands right after connecting.
+    /// its session stands right after connecting, and a relative initial
+    /// folder is the folder the session entered (`util::start_folder`): a
+    /// base left relative was applied twice and `a.txt` reached
+    /// `docs/docs/a.txt`.
     async fn for_provider(path: impl Into<String>, provider: &mut dyn StorageProvider) -> Self {
+        let path = ftp_client_gui_lib::util::start_folder::as_entered(&path.into(), provider).await;
         let start_folder = if provider.provider_type() == ProviderType::Proton {
             Some(provider.pwd().await.unwrap_or_else(|_| "/".to_string()))
         } else {
@@ -9725,6 +9788,9 @@ trait RemoteBase {
     fn start_folder(&self) -> Option<&str> {
         None
     }
+    fn url_target(&self) -> Option<&str> {
+        None
+    }
 }
 
 impl RemoteBase for str {
@@ -9745,6 +9811,9 @@ impl RemoteBase for CliBase {
     }
     fn start_folder(&self) -> Option<&str> {
         self.start_folder.as_deref()
+    }
+    fn url_target(&self) -> Option<&str> {
+        self.url_target.as_deref()
     }
 }
 
@@ -10740,6 +10809,51 @@ fn partial_resume_plan(local_bytes: u64, remote_size: Option<u64>) -> ResumePlan
     }
 }
 
+/// A download this machine cannot write, refused before anything is created. A
+/// destination already complete writes nothing, so it comes before this.
+fn refuse_local_name(local_path: &str) -> Result<(), ProviderError> {
+    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(local_path)
+        .map_err(ProviderError::InvalidPath)
+}
+
+/// Take out of a sync's plan the files `destination` cannot hold as they are, and
+/// say why. One of them written anyway would change name, leave an empty file or
+/// replace another file of the run. A conflict copy goes with its download: left
+/// in, each run would upload another copy of a conflict that stays open.
+fn refuse_download_names(
+    destination: &Path,
+    to_download: &mut Vec<&str>,
+    to_conflict_upload: &mut Vec<(String, String)>,
+) -> Vec<String> {
+    if to_download.is_empty() {
+        return Vec::new();
+    }
+    let paths: Vec<String> = to_download.iter().map(|path| path.to_string()).collect();
+    let problems = ftp_client_gui_lib::local_download_target::local_target_problems(
+        destination,
+        &paths,
+        &paths,
+    );
+    take_refused_names(problems, to_download, to_conflict_upload)
+}
+
+fn take_refused_names(
+    problems: Vec<ftp_client_gui_lib::local_download_target::LocalTargetProblem>,
+    to_download: &mut Vec<&str>,
+    to_conflict_upload: &mut Vec<(String, String)>,
+) -> Vec<String> {
+    let refused: std::collections::HashSet<&str> = problems
+        .iter()
+        .map(|problem| problem.path.as_str())
+        .collect();
+    to_download.retain(|path| !refused.contains(path));
+    to_conflict_upload.retain(|(path, _)| !refused.contains(path.as_str()));
+    problems
+        .iter()
+        .map(|problem| format!("download {}: {}", problem.path, problem.reason))
+        .collect()
+}
+
 async fn download_with_resume(
     provider: &mut dyn StorageProvider,
     remote_path: &str,
@@ -10763,8 +10877,9 @@ async fn download_with_resume(
             ftp_client_gui_lib::providers::atomic_write::resumable_part_len(Path::new(local_path))
                 .await;
         if offset > 0 {
+            refuse_local_name(local_path)?;
             return provider
-                .resume_download(remote_path, local_path, offset, progress_cb)
+                .resume_download_checked(remote_path, local_path, offset, progress_cb)
                 .await;
         }
         // Out of place the destination is a finished file, never a part: one
@@ -10791,8 +10906,9 @@ async fn download_with_resume(
             }
         }
     }
+    refuse_local_name(local_path)?;
     provider
-        .download_with_size_hint(remote_path, local_path, size_hint, progress_cb)
+        .download_checked(remote_path, local_path, size_hint, progress_cb)
         .await
 }
 
@@ -11060,6 +11176,14 @@ async fn cli_run_single_file_dag(
     server_url: Option<&str>,
     cancelled: Option<&Arc<AtomicBool>>,
 ) -> (Box<dyn StorageProvider>, Result<(), ProviderError>) {
+    if matches!(
+        direction,
+        ftp_client_gui_lib::transfer_dag::TransferDirection::Download
+    ) {
+        if let Err(refused) = refuse_local_name(local) {
+            return (provider, Err(refused));
+        }
+    }
     // Data-driven routing decision (Phase B), shared with the community
     // benchmark so a measurement takes the path a real transfer takes.
     let decision = ftp_client_gui_lib::transfer_dag_single_file::pick_single_file_route(
@@ -11241,7 +11365,11 @@ async fn download_transfer_on(
     // (same as the shared executor and the GUI).
     let mut landed = None;
     if result.is_ok() {
-        ftp_client_gui_lib::preserve_remote_mtime(&local_path, remote_modified.as_deref());
+        let read_time = provider.take_download_time(false);
+        ftp_client_gui_lib::preserve_remote_mtime(
+            &local_path,
+            read_time.as_deref().or(remote_modified.as_deref()),
+        );
         let bytes = std::fs::metadata(&local_path).map(|m| m.len()).unwrap_or(0);
         session_transfer_add(bytes);
         // What the download left, read as it ends: an edit made later is a
@@ -12951,7 +13079,7 @@ fn resolve_password(
     // 3. Environment variable (protocol-specific, then generic)
     let env_vars = match provider_type {
         ProviderType::Ftp | ProviderType::Ftps => vec!["FTP_PASSWORD", "AEROFTP_PASSWORD"],
-        ProviderType::Sftp => vec!["SFTP_PASSWORD", "AEROFTP_PASSWORD"],
+        ProviderType::Sftp | ProviderType::Scp => vec!["SFTP_PASSWORD", "AEROFTP_PASSWORD"],
         ProviderType::WebDav => vec!["WEBDAV_PASSWORD", "AEROFTP_PASSWORD"],
         ProviderType::S3 => vec!["AWS_SECRET_ACCESS_KEY", "AEROFTP_PASSWORD"],
         _ => vec!["AEROFTP_PASSWORD"],
@@ -13078,6 +13206,24 @@ fn local_target_to_provider_config(
     Ok((config, path))
 }
 
+/// The SSH flags (`--key`, `--key-passphrase`, `--trust-host-key`,
+/// `--no-scp-fallback`) as connection extras, the same for a URL and for a
+/// saved profile.
+fn apply_cli_ssh_extras(cli: &Cli, extra: &mut HashMap<String, String>) {
+    if let Some(ref key) = cli.key {
+        extra.insert("private_key_path".to_string(), key.clone());
+    }
+    if let Some(ref kp) = cli.key_passphrase {
+        extra.insert("key_passphrase".to_string(), kp.clone());
+    }
+    if cli.trust_host_key {
+        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
+    }
+    if cli.no_scp_fallback {
+        extra.insert("allow_scp_fallback".to_string(), "false".to_string());
+    }
+}
+
 fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, String), String> {
     if let Some(target) = local_path_target(url) {
         return local_target_to_provider_config(target?);
@@ -13106,6 +13252,7 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         "ftp" => (ProviderType::Ftp, host_str.clone()),
         "ftps" => (ProviderType::Ftps, host_str.clone()),
         "sftp" | "ssh" => (ProviderType::Sftp, host_str.clone()),
+        "scp" => (ProviderType::Scp, host_str.clone()),
         "webdav" | "http" => {
             let port_str = url_obj
                 .port()
@@ -13243,10 +13390,11 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     let url_path = match provider_type {
         ProviderType::WebDav | ProviderType::GitHub | ProviderType::GitLab => "/".to_string(),
         _ => {
-            if url_obj.path().is_empty() || url_obj.path() == "/" {
+            let path = url_path_decoded(&url_obj);
+            if path.is_empty() || path == "/" {
                 "/".to_string()
             } else {
-                url_obj.path().to_string()
+                path
             }
         }
     };
@@ -13265,11 +13413,16 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     //    exists (a single leading segment like `/dir` is still ambiguous
     //    but we keep it as-is to avoid regressing `ls ftp://host/dir`)
     //
-    // The full URL path is stashed under `extra["url_target"]` so
-    // single-target commands can surface it when no explicit path arg
-    // was provided.
-    let (initial_path, url_target_hint) = {
-        let trimmed = url_path.trim();
+    // The full URL path is stashed under `extra["url_target"]`.
+    // `connect_with_base_path` stats it once connected: a folder becomes the
+    // base, and anything else is what a command given no path acts on.
+    let (initial_path, url_target_hint) = if provider_type == ProviderType::WebDav {
+        // The folder of the URL went into the base URL above; its last name,
+        // when the URL does not end with `/`, is the target.
+        ("/".to_string(), webdav_url_target(&url_obj)?)
+    } else {
+        // Not trimmed: a decoded name may begin or end with a space.
+        let trimmed = url_path.as_str();
         if trimmed.is_empty() || trimmed == "/" {
             ("/".to_string(), None)
         } else if trimmed.ends_with('/') {
@@ -13290,20 +13443,18 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
             }
         }
     };
+    // A decoded URL path can hold what a positional path may not (`%2E%2E`
+    // is `..`), and either part can become what a command acts on.
+    check_remote_path_safe(&initial_path).map_err(|e| e.to_string())?;
+    if let Some(target) = url_target_hint.as_deref() {
+        check_remote_path_safe(target).map_err(|e| e.to_string())?;
+    }
 
     // Build extra HashMap from CLI flags
     let mut extra = HashMap::new();
 
     // SFTP
-    if let Some(ref key) = cli.key {
-        extra.insert("private_key_path".to_string(), key.clone());
-    }
-    if let Some(ref kp) = cli.key_passphrase {
-        extra.insert("key_passphrase".to_string(), kp.clone());
-    }
-    if cli.trust_host_key {
-        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
-    }
+    apply_cli_ssh_extras(cli, &mut extra);
 
     // Warn about secrets on command line (visible in process list)
     if cli.token.is_some() && std::env::var("AEROFTP_TOKEN").is_err() && !cli.quiet {
@@ -13368,6 +13519,41 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
     };
 
     Ok((config, initial_path))
+}
+
+/// The path of a URL as the user named it. `Url` keeps it percent-encoded,
+/// so `a%20b` stayed `a%20b` and `mkdir sftp://host/a%20b` made a folder of
+/// that name. A `%` not followed by two hex digits (`100% done` typed as is)
+/// stays a `%`; bytes that do not decode to UTF-8 keep the encoded form.
+fn url_path_decoded(url_obj: &url::Url) -> String {
+    let raw = url_obj.path();
+    percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map(|path| path.into_owned())
+        .unwrap_or_else(|_| raw.to_string())
+}
+
+/// What a WebDAV URL names below the base URL `url_to_provider_config`
+/// builds from it: `/name` for `.../folder/name`, nothing for `.../folder/`.
+/// A last name that encodes a `/` (`a%2Fb`) is refused: decoded, it would
+/// name `b` beside the folder, and kept encoded it reaches the server as
+/// `a%252Fb`, another name again.
+fn webdav_url_target(url_obj: &url::Url) -> Result<Option<String>, String> {
+    let raw = url_obj.path().rsplit('/').next().unwrap_or("");
+    if raw.is_empty() {
+        return Ok(None);
+    }
+    let name = percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map(|name| name.into_owned())
+        .unwrap_or_else(|_| raw.to_string());
+    if name.contains('/') {
+        return Err(
+            "The last name in the URL encodes a '/' (%2F), which no WebDAV name can hold"
+                .to_string(),
+        );
+    }
+    Ok(Some(format!("/{name}")))
 }
 
 fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), String> {
@@ -14024,7 +14210,10 @@ fn change_profiles_in_legacy_blob<R, E>(
         ));
     }
     let db = user_partitions::cli_db_path().map_err(&failed)?;
-    let _lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    let lock = user_partitions::ProfileListLock::acquire_for_path(&db).map_err(&failed)?;
+    if !lock.is_exclusive() {
+        return Err(failed(user_partitions::NO_FILE_LOCKS.to_string()));
+    }
     // The partition answers again: this was a passing fault, and the blob would hold
     // a change the next load replaces with the partition's list.
     if user_partitions::cli_list_server_profiles_for_user(store, user_id).is_ok() {
@@ -15368,10 +15557,12 @@ fn aerocloud_print_sync_result(
             // each carries the reason the comparison already computed.
             "skippedFolders": r.skipped_details.iter().filter(|e| e.is_dir).count(),
             "skippedFiles": r.skipped_details.iter().filter(|e| !e.is_dir).count(),
+            "reviewRequiredFiles": r.skipped_details.iter().filter(|e| e.needs_review).count(),
             "skippedDetails": r.skipped_details.iter().map(|e| serde_json::json!({
                 "path": e.path,
                 "reason": e.reason,
                 "isDir": e.is_dir,
+                "needsReview": e.needs_review,
             })).collect::<Vec<_>>(),
             "conflicts": r.conflicts,
             "errors": r.errors,
@@ -15392,9 +15583,22 @@ fn aerocloud_print_sync_result(
         // list goes to stderr so the summary on stdout keeps its shape for
         // whoever parses it, and it is capped because a large exclude rule
         // should not turn a summary into a listing.
+        let review_required = r
+            .skipped_details
+            .iter()
+            .filter(|entry| entry.needs_review)
+            .count();
+        if review_required > 0 {
+            println!("  review required: {review_required} destination files kept for review");
+        }
         if !r.skipped_details.is_empty() && !quiet {
             const SHOWN: usize = 10;
-            for entry in r.skipped_details.iter().take(SHOWN) {
+            let entries = r
+                .skipped_details
+                .iter()
+                .filter(|entry| entry.needs_review)
+                .chain(r.skipped_details.iter().filter(|entry| !entry.needs_review));
+            for entry in entries.take(SHOWN) {
                 eprintln!(
                     "  skipped: {}{} ({})",
                     entry.path,
@@ -19351,7 +19555,7 @@ async fn download_tui_session_via_cli_handler(
             });
         }));
     provider
-        .download(&resolved, local_path, on_progress)
+        .download_checked(&resolved, local_path, None, on_progress)
         .await
         .map_err(|err| format!("download failed: {}", err))
 }
@@ -19811,7 +20015,7 @@ async fn edit_fetch_remote(
     }
     let provider = session.provider_mut();
     provider
-        .download(&resolved, &tmp_str, None)
+        .download_checked(&resolved, &tmp_str, None, None)
         .await
         .map_err(|err| format!("download failed: {}", err))?;
     // Re-assert 0o600 in case the provider truncated and recreated the file with
@@ -26786,7 +26990,7 @@ fn persist_new_profile_entry(
 fn protocol_needs_network_fields(protocol: &str) -> bool {
     matches!(
         protocol,
-        "ftp" | "ftps" | "sftp" | "webdav" | "webdavs" | "s3" | "swift"
+        "ftp" | "ftps" | "sftp" | "scp" | "webdav" | "webdavs" | "s3" | "swift"
     )
 }
 
@@ -27728,6 +27932,13 @@ fn cmd_profile_relocate_user(
 
     if let Some(p) = target_passphrase.as_mut() {
         p.zeroize();
+    }
+
+    if !relocation.secrets_not_copied.is_empty() {
+        eprintln!(
+            "Warning: {} of this profile's secrets did not reach the target account, so it will ask for them again there",
+            relocation.secrets_not_copied.len()
+        );
     }
 
     if relocation.moved {
@@ -30264,7 +30475,11 @@ async fn cmd_agent_connect(cli: &Cli, query: &str) -> i32 {
         return 2;
     }
 
-    let payload = ftp_client_gui_lib::agent_session::build_agent_connect_payload(query).await;
+    let payload = ftp_client_gui_lib::agent_session::build_agent_connect_payload_with(
+        query,
+        cli.no_scp_fallback,
+    )
+    .await;
     println!(
         "{}",
         serde_json::to_string_pretty(&payload).unwrap_or_default()
@@ -30974,7 +31189,7 @@ async fn connect_mtp_device_profile(
 
     // GUI parity: land on saved remote path when set. Absolute path resolution
     // still works if cd fails; warn and keep listing via initialPath join.
-    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+    if !initial_path.is_empty() && initial_path != "/" {
         if let Err(e) = mtp.cd(&initial_path).await {
             if !cli.quiet {
                 eprintln!(
@@ -30985,7 +31200,7 @@ async fn connect_mtp_device_profile(
         }
     }
 
-    let path_out = if initial_path.trim().is_empty() {
+    let path_out = if initial_path.is_empty() {
         "/".to_string()
     } else {
         initial_path
@@ -31031,7 +31246,7 @@ async fn connect_mtp_device_profile_agent(
         .await
         .map_err(|e| format!("Failed to open MTP device: {}", e))?;
 
-    if !initial_path.trim().is_empty() && initial_path.trim() != "/" {
+    if !initial_path.is_empty() && initial_path != "/" {
         if let Err(e) = mtp.cd(&initial_path).await {
             // Soft: agent list/get still resolve absolute paths from initial_path.
             eprintln!(
@@ -31041,7 +31256,7 @@ async fn connect_mtp_device_profile_agent(
         }
     }
 
-    let path_out = if initial_path.trim().is_empty() {
+    let path_out = if initial_path.is_empty() {
         "/".to_string()
     } else {
         initial_path
@@ -31257,15 +31472,7 @@ fn profile_value_to_provider_config(
     }
 
     // CLI overrides take precedence
-    if let Some(ref key) = cli.key {
-        extra.insert("private_key_path".to_string(), key.clone());
-    }
-    if let Some(ref kp) = cli.key_passphrase {
-        extra.insert("key_passphrase".to_string(), kp.clone());
-    }
-    if cli.trust_host_key {
-        extra.insert("trust_unknown_hosts".to_string(), "true".to_string());
-    }
+    apply_cli_ssh_extras(cli, &mut extra);
     if let Some(ref tls) = cli.tls {
         extra.insert("tls_mode".to_string(), tls.clone());
     }
@@ -31715,7 +31922,7 @@ async fn create_and_connect_with(
     apply_overlay: bool,
     synth_profile: Option<&serde_json::Value>,
 ) -> Result<(Box<dyn StorageProvider>, CliBase, ConnectMetadata), i32> {
-    let (provider, path, metadata) = connect_with_base_path(
+    let (provider, path, url_target, metadata) = connect_with_base_path(
         url,
         cli,
         profile_override,
@@ -31725,7 +31932,9 @@ async fn create_and_connect_with(
     )
     .await?;
     let mut provider = provider;
-    let base = CliBase::for_provider(path, provider.as_mut()).await;
+    let base = CliBase::for_provider(path, provider.as_mut())
+        .await
+        .with_url_target(url_target);
     Ok((provider, base, metadata))
 }
 
@@ -31737,7 +31946,15 @@ async fn connect_with_base_path(
     format: OutputFormat,
     apply_overlay: bool,
     synth_profile: Option<&serde_json::Value>,
-) -> Result<(Box<dyn StorageProvider>, String, ConnectMetadata), i32> {
+) -> Result<
+    (
+        Box<dyn StorageProvider>,
+        String,
+        Option<String>,
+        ConnectMetadata,
+    ),
+    i32,
+> {
     // Check if the selected profile points to an OAuth provider - handle separately
     // Uses the same strict matching as profile_to_provider_config (exact → ID → disambiguated substring)
     if let Some(profile_name) = profile_override {
@@ -31802,7 +32019,7 @@ async fn connect_with_base_path(
                             } else {
                                 provider
                             };
-                            return Ok((provider, path, metadata));
+                            return Ok((provider, path, None, metadata));
                         }
                         let initial_path = profile
                             .get("initialPath")
@@ -31859,7 +32076,7 @@ async fn connect_with_base_path(
                             } else {
                                 p
                             };
-                            return Ok((p, path, metadata));
+                            return Ok((p, path, None, metadata));
                         }
                     }
                 }
@@ -31895,6 +32112,7 @@ async fn connect_with_base_path(
         None => resolve_url_or_profile_with(url, cli, profile_override, format)?,
     };
     let metadata = ConnectMetadata::from_config(&config);
+    let url_target = config.extra.get("url_target").cloned();
 
     dump_connection_info(cli, &config);
 
@@ -31937,6 +32155,17 @@ async fn connect_with_base_path(
         let code = provider_error_to_exit_code(&e);
         print_error(format, &connect_failure_message(&e), code);
         return Err(code);
+    }
+    // A server with no SFTP went on over SCP: said once per server, on
+    // stderr, where it mixes with no listing and no JSON.
+    if !cli.quiet
+        && ftp_client_gui_lib::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut())
+        && scp_note_first_time(&provider.display_name())
+    {
+        eprintln!(
+            "Note: {} has no SFTP; connected with SCP on the same connection.",
+            provider.display_name()
+        );
     }
 
     // Apply speed limit if set
@@ -32038,13 +32267,76 @@ async fn connect_with_base_path(
     // callers fall back to whole-file paths. Fail-closed on a bound profile.
     // Skipped (raw provider) for the standalone `crypt` commands, which are the
     // crypt layer themselves and would otherwise double-encrypt (F4).
-    let provider = if apply_overlay {
+    let mut provider = if apply_overlay {
         cli_apply_crypt_overlay(provider, cli, profile_override, format).await?
     } else {
         provider
     };
 
-    Ok((provider, path, metadata))
+    // The URL named something inside the folder the session entered (see
+    // `url_to_provider_config`). A folder becomes the base, so `rm URL -r`
+    // and `rm URL name` stay inside it; a file, or a name not there yet, is
+    // what a command given no path acts on. A failure leaves the name's kind
+    // unknown, and guessing it would send a path given beside the URL to the
+    // wrong folder.
+    let (path, url_target) = match url_target {
+        Some(target) => match url_target_is_folder(provider.as_mut(), &target).await {
+            Ok(true) => (target, None),
+            Ok(false) => (path, Some(target)),
+            Err(e) => {
+                let code = provider_error_to_exit_code(&e);
+                print_error(
+                    format,
+                    &format!(
+                        "Cannot tell whether '{}' is a file or a folder: {}",
+                        sanitize_filename(&target),
+                        e
+                    ),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return Err(code);
+            }
+        },
+        None => (path, None),
+    };
+
+    Ok((provider, path, url_target, metadata))
+}
+
+/// Whether the name a URL ends with is a folder. A folder of an object store
+/// can be invisible to `stat`: a prefix with no marker still lists its
+/// contents, and an empty one is only its `name/` marker, which a `stat` of
+/// the name without the slash does not find (flat Azure even reports the
+/// marker as a file; with the bare name missing, anything at `name/` is a
+/// folder). Only a not-found answer to the name means "not a folder"; after
+/// it, the listing and the marker can only agree by not finding the path or
+/// by refusing it (`InvalidPath`: FTP answers a CWD into a missing folder
+/// that way, since vsftpd says the same for a forbidden one). Any other
+/// failure is `Err`, as the kind cannot be told.
+async fn url_target_is_folder(
+    provider: &mut dyn StorageProvider,
+    target: &str,
+) -> Result<bool, ProviderError> {
+    match provider.stat(target).await {
+        Ok(entry) => return Ok(entry.is_dir),
+        Err(e) if is_not_found_error(&e) => {}
+        Err(e) => return Err(e),
+    }
+    let agrees_it_is_absent =
+        |e: &ProviderError| is_not_found_error(e) || matches!(e, ProviderError::InvalidPath(_));
+    match provider.list(target).await {
+        Ok(entries) if !entries.is_empty() => return Ok(true),
+        Ok(_) => {}
+        Err(e) if agrees_it_is_absent(&e) => {}
+        Err(e) => return Err(e),
+    }
+    let marker = format!("{}/", target.trim_end_matches('/'));
+    match provider.stat(&marker).await {
+        Ok(_) => Ok(true),
+        Err(e) if agrees_it_is_absent(&e) => Ok(false),
+        Err(e) => Err(e),
+    }
 }
 
 // ── Command Handlers ───────────────────────────────────────────────
@@ -32127,6 +32419,21 @@ enum ToolExposureKind {
     RemoteModify,
     Destructive,
     Execution,
+}
+
+/// The folder `serve` publishes. A URL that names a file, or a name not
+/// there yet, is refused: as the root it lists nothing and every request
+/// below it misses.
+fn serve_root(path: &str, url_path: &CliBase) -> Result<String, String> {
+    if path == "/" {
+        if let Some(target) = url_path.url_target.as_deref() {
+            return Err(format!(
+                "Cannot serve '{}': it is not a folder",
+                sanitize_filename(target)
+            ));
+        }
+    }
+    serve_effective_base_path(path, url_path.own_path()).map_err(|e| e.to_string())
 }
 
 fn serve_effective_base_path(path: &str, url_path: &str) -> Result<String, RemotePathError> {
@@ -32530,6 +32837,17 @@ fn resolve_cli_remote_path_unchecked_with_note<B: RemoteBase + ?Sized>(
     user_path: &str,
     emit_resolution_note: bool,
 ) -> String {
+    if user_path.is_empty() {
+        if let Some(target) = initial_path.url_target() {
+            if emit_resolution_note && !JSON_MODE.load(Ordering::Relaxed) {
+                eprintln!(
+                    "Note: no path given; using the one in the URL, '{}'",
+                    sanitize_filename(target)
+                );
+            }
+            return target.to_string();
+        }
+    }
     resolve_cli_remote_path_in(
         initial_path.base_path(),
         user_path,
@@ -32547,7 +32865,8 @@ fn resolve_cli_remote_path_in(
     emit_resolution_note: bool,
     start_folder: Option<&str>,
 ) -> String {
-    let base = initial_path.trim();
+    // As given: a folder name may begin or end with a space.
+    let base = initial_path;
     // No meaningful initial_path: pass user_path through with minimal
     // rewriting:
     //   - empty user_path -> "" so the provider applies its canonical
@@ -33051,7 +33370,7 @@ async fn cmd_serve_http(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -33648,7 +33967,7 @@ async fn cmd_serve_webdav(
     };
     let (auth_token, generated_auth_token) = resolve_service_auth_token(auth_token, bind_addr);
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -33994,7 +34313,7 @@ mod serve_ftp_backend {
                 self.provider
                     .lock()
                     .await
-                    .download(&remote, &tmp_path, None)
+                    .download_checked(&remote, &tmp_path, None, None)
                     .await
                     .map_err(Self::provider_err_to_ftp)?;
             }
@@ -34105,7 +34424,7 @@ async fn cmd_serve_ftp(
         Err(code) => return code,
     };
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -34776,8 +35095,9 @@ mod serve_sftp {
                     if existing == Some(false) && flags & SSH_FXF_TRUNC == 0 {
                         let r = remote.clone();
                         let local = spool.to_string_lossy().into_owned();
-                        if let Err(e) =
-                            prov!(provider, rt, async |p| p.download(&r, &local, None).await)
+                        if let Err(e) = prov!(provider, rt, async |p| p
+                            .download_checked(&r, &local, None, None)
+                            .await)
                         {
                             return make_status(id, SSH_FX_FAILURE, &format!("open failed: {e}"));
                         }
@@ -35284,7 +35604,7 @@ async fn cmd_serve_sftp(
         Err(code) => return code,
     };
 
-    let base_path = match serve_effective_base_path(path, &url_path) {
+    let base_path = match serve_root(path, &url_path) {
         Ok(value) => value,
         Err(error) => {
             // `provider` is immutable here (moved into the serve state below) and
@@ -35370,6 +35690,8 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let elapsed = start.elapsed();
     let server_info = provider.server_info().await.ok();
     let pt = provider.provider_type();
+    let scp_fallback =
+        ftp_client_gui_lib::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut());
 
     if let Some(sp) = spinner {
         sp.finish_and_clear();
@@ -35380,7 +35702,11 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
             eprintln!("Connected to {} ({})", metadata.host, pt);
             eprintln!("  User:     {}", metadata.username);
             eprintln!("  Port:     {}", metadata.port);
-            eprintln!("  Protocol: {}", pt);
+            if scp_fallback {
+                eprintln!("  Protocol: SCP (the server has no SFTP)");
+            } else {
+                eprintln!("  Protocol: {}", pt);
+            }
             if let Some(ref info) = server_info {
                 if !info.is_empty() {
                     eprintln!("  Server:   {}", info);
@@ -35410,6 +35736,7 @@ async fn cmd_connect(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                 username: metadata.username,
                 server_info,
                 elapsed_ms: elapsed.as_millis() as u64,
+                scp_fallback,
             });
         }
     }
@@ -35697,7 +36024,7 @@ async fn cmd_get(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    if remote.trim().is_empty() {
+    if remote.is_empty() {
         print_error(format, "Missing remote path for get", 5);
         return 5;
     }
@@ -35748,6 +36075,13 @@ async fn cmd_get(
     } else {
         filename
     };
+    if let Err(reason) =
+        ftp_client_gui_lib::local_download_target::refuse_unwritable_name(local_path)
+    {
+        let _ = provider.disconnect().await;
+        print_error(format, &reason, 5);
+        return 5;
+    }
     // Audit-friendly overwrite warning. When the resolved destination
     // already exists locally, surface a clear stderr line so the agent
     // (or human) can decide rather than silently lose data. Suppressed
@@ -35762,11 +36096,21 @@ async fn cmd_get(
         && !matches!(format, OutputFormat::Json)
         && Path::new(local_path).exists()
     {
-        eprintln!(
-            "Warning: local '{}' already exists and will be overwritten. \
-             Pass --immutable to skip, or rename the destination.",
-            local_path
-        );
+        // `--partial` out of place keeps a file as long as the remote one
+        // (`download_with_resume`): "will be overwritten" was not true then.
+        if cli.partial && !cli.inplace && provider.supports_resume() {
+            eprintln!(
+                "Note: local '{}' already exists: --partial keeps it if it is as long \
+                 as the remote file, and downloads it again otherwise.",
+                local_path
+            );
+        } else {
+            eprintln!(
+                "Warning: local '{}' already exists and will be overwritten. \
+                 Pass --immutable to skip, or rename the destination.",
+                local_path
+            );
+        }
     }
     // --immutable: skip if local file already exists
     if cli.immutable && Path::new(local_path).exists() {
@@ -36001,7 +36345,11 @@ async fn cmd_get(
 
     match dl_result {
         Ok(()) => {
-            ftp_client_gui_lib::preserve_remote_mtime(local_path, remote_modified.as_deref());
+            let read_time = provider.take_download_time(false);
+            ftp_client_gui_lib::preserve_remote_mtime(
+                local_path,
+                read_time.as_deref().or(remote_modified.as_deref()),
+            );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
             session_transfer_add(file_size);
@@ -36174,6 +36522,7 @@ async fn pget_segmented_download(
             format,
             &cancelled,
             listed_time,
+            false,
         )
         .await;
     }
@@ -36283,6 +36632,7 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                false,
             )
             .await
         }
@@ -36521,10 +36871,76 @@ async fn pget_segmented_download(
                     format,
                     &cancelled,
                     listed_time,
+                    true,
                 )
                 .await;
             }
-            if let Err(e) = temp.publish(Path::new(local_path)).await {
+            // Asked last, on a session of its own like the reading above.
+            let expected = if ftp_client_gui_lib::providers::content_check::enabled() {
+                let reading = run_until_interrupted(&cancelled, async {
+                    let opened =
+                        ftp_client_gui_lib::providers::multi_thread::open_after_transfer(|| {
+                            create_and_connect(url, cli, format)
+                        })
+                        .await;
+                    let (mut reader, _) = match opened {
+                        Ok(connected) => connected,
+                        Err(error) => {
+                            // Every window is in: a session that will not open
+                            // costs the check, and says so, not the download.
+                            log::warn!("[content-check] {local_path}: not checked: {error}");
+                            return None;
+                        }
+                    };
+                    let expected = reader.content_digest(remote_path, Some(file_size)).await;
+                    let _ = reader.disconnect().await;
+                    expected
+                })
+                .await;
+                let Some(expected) = reading else {
+                    temp.discard();
+                    return interrupted_exit(None, format, "the download did not finish").await;
+                };
+                expected
+            } else {
+                None
+            };
+            let check = ftp_client_gui_lib::providers::content_check::ContentCheck::expecting(
+                expected, local_path,
+            );
+            let checked = run_until_interrupted(
+                &cancelled,
+                check.scope(temp.check_content(Path::new(local_path))),
+            )
+            .await;
+            let Some(checked) = checked else {
+                temp.discard();
+                return interrupted_exit(None, format, "the download did not finish").await;
+            };
+            let published = match checked {
+                Ok(()) => temp.publish(Path::new(local_path)).await,
+                Err(differs) => {
+                    temp.discard();
+                    Err(differs)
+                }
+            };
+            if let Err(e) = published {
+                if check.differs() {
+                    report_download_fallback(
+                        "pget: the assembled file does not match the hash the server publishes",
+                    );
+                    return pget_fallback_single(
+                        url,
+                        remote_path,
+                        local_path,
+                        cli,
+                        format,
+                        &cancelled,
+                        listed_time,
+                        true,
+                    )
+                    .await;
+                }
                 print_error(format, &format!("pget: finalize failed: {}", e), 4);
                 return 4;
             }
@@ -36576,6 +36992,7 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                false,
             )
             .await
         }
@@ -36629,13 +37046,15 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                true,
             )
             .await
         }
         Err(e) => {
             // The engine's RAII guard already removed the temp. Honest
             // single-stream fallback rather than overclaim parallelism.
-            report_download_fallback(if matches!(e, ProviderError::ParallelRefused(_)) {
+            let refused = matches!(e, ProviderError::ParallelRefused(_));
+            report_download_fallback(if refused {
                 "pget: a ranged response or its version check was refused"
             } else {
                 "pget: a segmented range transfer failed"
@@ -36648,6 +37067,7 @@ async fn pget_segmented_download(
                 format,
                 &cancelled,
                 listed_time,
+                refused,
             )
             .await
         }
@@ -36681,7 +37101,23 @@ async fn pget_read_again(
     }
 }
 
+/// The time for the file a `pget` fallback wrote. With no refusal the listing
+/// stands, the time a sync compares it with; the reading only fills in for it.
+fn pget_fallback_time<'a>(
+    source_refused: bool,
+    carried: Option<&'a str>,
+    read: Option<&'a str>,
+    listed: Option<&'a str>,
+) -> Option<&'a str> {
+    if source_refused {
+        carried.or(read).or(listed)
+    } else {
+        carried.or(listed).or(read)
+    }
+}
+
 /// Fallback to a normal single-stream download (used when pget degrades)
+#[allow(clippy::too_many_arguments)]
 async fn pget_fallback_single(
     url: &str,
     remote_path: &str,
@@ -36690,6 +37126,7 @@ async fn pget_fallback_single(
     format: OutputFormat,
     cancelled: &AtomicBool,
     listed_time: Option<&str>,
+    source_refused: bool,
 ) -> i32 {
     let quiet = cli.quiet || matches!(format, OutputFormat::Json);
     if !quiet {
@@ -36705,11 +37142,11 @@ async fn pget_fallback_single(
         };
 
     let filename = remote_path.rsplit('/').next().unwrap_or("download");
-    // The stream may read another object than the listing saw: this reading is
-    // the one its size and its time come from. If it fails the listing's time
+    // After a refusal the stream may read another object than the listing saw:
+    // this reading is the one its size and its time come from, until the response
+    // that carries the bytes reports its own. If it fails the listing's time
     // stands, and the size is asked on its own: no time would leave the local
-    // write time, which reads newer still. The exact time is the one of the
-    // response carrying the bytes (Requested 129).
+    // write time, which reads newer still.
     let probed = run_until_interrupted(cancelled, async {
         match provider.stat(remote_path).await {
             Ok(entry) => (
@@ -36744,6 +37181,9 @@ async fn pget_fallback_single(
         }) as Box<dyn Fn(u64, u64) + Send>
     });
 
+    if source_refused {
+        provider.expect_moved_source();
+    }
     let before = local_file_state(local_path);
     let result = run_until_interrupted(
         cancelled,
@@ -36776,9 +37216,15 @@ async fn pget_fallback_single(
     }
     match result {
         Ok(()) => {
+            let carried_time = provider.take_download_time(source_refused);
             ftp_client_gui_lib::preserve_remote_mtime(
                 local_path,
-                read_time.as_deref().or(listed_time),
+                pget_fallback_time(
+                    source_refused,
+                    carried_time.as_deref(),
+                    read_time.as_deref(),
+                    listed_time,
+                ),
             );
             let elapsed = start.elapsed();
             let file_size = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
@@ -36872,6 +37318,8 @@ struct CliGetScan {
     /// G108: folders the scan could not read or did not follow, and paths it
     /// could not map. Each is an error of the run.
     listing_errors: Vec<String>,
+    /// Files left out because this disk cannot hold their name, with the reason.
+    refused_names: Vec<String>,
 }
 
 /// What one listing adds to `get -r`.
@@ -36916,6 +37364,7 @@ impl CliGetScan {
             stopped: false,
             deferred: Vec::new(),
             listing_errors: Vec::new(),
+            refused_names: Vec::new(),
         }
     }
 
@@ -37052,6 +37501,12 @@ impl CliGetScan {
                 if verify_path_within_root(&local_path_buf, &self.local_base).is_err() {
                     continue;
                 }
+                if let Err(reason) =
+                    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(relative)
+                {
+                    self.refused_names.push(format!("{relative}: {reason}"));
+                    continue;
+                }
                 // --immutable: skip if local file already exists
                 if self.immutable && local_path_buf.exists() {
                     if !self.quiet {
@@ -37093,6 +37548,13 @@ impl CliGetScan {
                         .push(format!("unsafe local path for {}", subdir));
                     continue;
                 };
+                if let Err(refusal) =
+                    ftp_client_gui_lib::local_download_target::refuse_unwritable_name(relative)
+                {
+                    self.listing_errors
+                        .push(format!("not following {}: {}", subdir, refusal));
+                    continue;
+                }
                 let local_dir = self.local_base.join(relative);
                 if let Err(refusal) = verify_path_within_root(&local_dir, &self.local_base) {
                     self.listing_errors
@@ -37271,6 +37733,8 @@ async fn cmd_get_recursive(
     // partial whatever the transfers do: the subtree asked for was not all
     // downloaded.
     let unlisted_folders: usize;
+    // Files left out for a name this disk cannot hold: refused again on any retry.
+    let refused_names: usize;
     let scan_stopped: bool;
     let mut errors: Vec<String>;
     // DAG-P2-07 (block E): engine-level stats when this folder download ran on
@@ -37370,6 +37834,8 @@ async fn cmd_get_recursive(
         unlisted_folders = scan.listing_errors.len();
         scan_stopped = scan.stopped;
         errors = std::mem::take(&mut scan.listing_errors);
+        refused_names = scan.refused_names.len();
+        errors.append(&mut scan.refused_names);
         downloaded = outcome.downloaded;
         done_bytes = shared_batch_bytes(
             downloaded as usize == total_files,
@@ -37424,6 +37890,8 @@ async fn cmd_get_recursive(
         unlisted_folders = scan.listing_errors.len();
         scan_stopped = scan.stopped;
         errors = std::mem::take(&mut scan.listing_errors);
+        refused_names = scan.refused_names.len();
+        errors.append(&mut scan.refused_names);
 
         start = Instant::now();
         let aggregate = Arc::new(AtomicU64::new(0));
@@ -37588,7 +38056,11 @@ async fn cmd_get_recursive(
     }
 
     if downloaded == total_files as u32 && unlisted_folders == 0 && !scan_stopped {
-        0
+        if refused_names == 0 {
+            0
+        } else {
+            5
+        }
     } else if interrupted {
         130
     } else if session_transfer_exceeded(resolve_max_transfer(cli)) {
@@ -37697,9 +38169,20 @@ async fn cmd_get_glob(
     // download.
     let mut files: Vec<(String, String, u64)> = Vec::new();
     let mut remote_mtimes: HashMap<String, String> = HashMap::new();
+    // The names together: two of one spelling would land on one file.
+    let names: Vec<String> = matched.iter().map(|entry| entry.name.clone()).collect();
+    let name_problems = ftp_client_gui_lib::local_download_target::local_target_problems(
+        Path::new(local_base),
+        &names,
+        &names,
+    );
     for entry in &matched {
         if validate_relative_path(&entry.name).is_none() {
             errors.push(format!("{}: unsafe path (traversal rejected)", entry.name));
+            continue;
+        }
+        if let Some(problem) = name_problems.iter().find(|p| p.path == entry.name) {
+            errors.push(format!("{}: {}", entry.name, problem.reason));
             continue;
         }
         let local_path = format!("{}/{}", local_base, entry.name);
@@ -38012,7 +38495,7 @@ async fn cmd_put(
     format: OutputFormat,
     cancelled: Arc<AtomicBool>,
 ) -> i32 {
-    if local.trim().is_empty() {
+    if local.is_empty() {
         print_error(format, "Missing local path for put", 5);
         return 5;
     }
@@ -39138,6 +39621,150 @@ enum DryRunOutcome {
 /// Only the provider's typed absence permits force-delete to ignore a failure
 /// or a caller-named speed test to write. Error details can mention a missing
 /// service, credentials or metadata without saying this path is absent.
+/// Move what a vault extracted into `staging` to `dest`. Nothing moves when a
+/// file would replace one already there, unless `overwrite` says so.
+fn publish_extracted(
+    staging: &std::path::Path,
+    dest: &std::path::Path,
+    overwrite: bool,
+) -> Result<(), String> {
+    let mut files = Vec::new();
+    let mut folders = Vec::new();
+    for entry in walkdir::WalkDir::new(staging)
+        .min_depth(1)
+        .follow_links(false)
+    {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let relative = entry
+            .path()
+            .strip_prefix(staging)
+            .map_err(|e| e.to_string())?
+            .to_path_buf();
+        if entry.file_type().is_dir() {
+            folders.push(relative);
+        } else {
+            files.push(relative);
+        }
+    }
+    // A link in the way would carry the extract outside the destination. An empty
+    // folder has no children to find a link at its own path.
+    for folder in &folders {
+        let target = dest.join(folder);
+        if target
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            return Err(format!(
+                "{} is a link, and the vault holds the folder {} there. Nothing was written",
+                target.display(),
+                folder.display()
+            ));
+        }
+    }
+    for relative in folders.iter().chain(&files) {
+        let mut under = dest.to_path_buf();
+        let parents: Vec<_> = relative
+            .parent()
+            .into_iter()
+            .flat_map(|p| p.components())
+            .collect();
+        for part in parents {
+            under.push(part);
+            if under
+                .symlink_metadata()
+                .is_ok_and(|meta| meta.file_type().is_symlink())
+            {
+                return Err(format!(
+                    "{} is a link, so {} would be written outside {}. Nothing was written",
+                    under.display(),
+                    relative.display(),
+                    dest.display()
+                ));
+            }
+        }
+    }
+    if !overwrite {
+        // A dangling link is a file there too, which `exists` does not see.
+        let existing: Vec<_> = files
+            .iter()
+            .filter(|file| dest.join(file).symlink_metadata().is_ok())
+            .collect();
+        if let Some(first) = existing.first() {
+            return Err(format!(
+                "{} file(s) already exist in {}, such as {}. Nothing was replaced: use --overwrite to replace them",
+                existing.len(),
+                dest.display(),
+                first.display()
+            ));
+        }
+    }
+    // A rename cannot replace a folder, and would stop with files already moved.
+    if let Some(file) = files.iter().find(|file| {
+        dest.join(file)
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.is_dir())
+    }) {
+        return Err(format!(
+            "{} is a folder in {}, and the vault holds a file there. Nothing was replaced",
+            file.display(),
+            dest.display()
+        ));
+    }
+    for folder in &folders {
+        std::fs::create_dir_all(dest.join(folder)).map_err(|e| e.to_string())?;
+    }
+    for (moved, file) in files.iter().enumerate() {
+        let (from, to) = (staging.join(file), dest.join(file));
+        if overwrite {
+            std::fs::rename(&from, &to)
+        } else {
+            move_without_replacing(&from, &to)
+        }
+        .map_err(|e| {
+            format!(
+                "Failed to write {}: {e}. {moved} of {} files are already in {}",
+                file.display(),
+                files.len(),
+                dest.display()
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// Move a file only if nothing is at `to`, also if something appears there
+/// after a check. A rename would replace it; a hard link cannot. A filesystem
+/// without hard links gets an exclusive create.
+fn move_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::hard_link(from, to) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(e),
+        Err(_) => copy_without_replacing(from, to)?,
+    }
+    std::fs::remove_file(from)
+}
+
+/// An exclusive create with the mode of `from`: a v3 extract is 0600, and the
+/// default mode would open it to others.
+fn copy_without_replacing(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    let mut target = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
+    // Created here, so it is ours to remove: a partial file would read as an
+    // extract, and refuse the retry.
+    let copied = std::fs::File::open(from).and_then(|mut source| {
+        target.set_permissions(source.metadata()?.permissions())?;
+        std::io::copy(&mut source, &mut target)
+    });
+    if let Err(e) = copied {
+        drop(target);
+        let _ = std::fs::remove_file(to);
+        return Err(e);
+    }
+    Ok(())
+}
+
 fn is_not_found_error(e: &ProviderError) -> bool {
     matches!(e, ProviderError::NotFound(_))
 }
@@ -39499,7 +40126,10 @@ async fn run_rm_dry_run(
             // `--force` makes the real delete idempotent over a missing path;
             // the dry-run reports the same non-failure.
             if force && is_not_found_error(&e) {
-                let message = format!("Would delete: {} (not found, ignored with --force)", path);
+                let message = format!(
+                    "Nothing to delete: {} (not found, ignored with --force)",
+                    path
+                );
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
@@ -39616,7 +40246,10 @@ async fn run_filtered_rm(
         Err(e) => {
             // `--force` keeps the delete idempotent over a missing path.
             if force && is_not_found_error(&e) {
-                let message = format!("Deleted: {} (not found, ignored with --force)", path);
+                let message = format!(
+                    "Nothing to delete: {} (not found, ignored with --force)",
+                    path
+                );
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
@@ -39813,12 +40446,18 @@ async fn cmd_rm(
                 match format {
                     OutputFormat::Text => {
                         if !cli.quiet {
-                            eprintln!("Deleted: {} (not found, ignored with --force)", path);
+                            eprintln!(
+                                "Nothing to delete: {} (not found, ignored with --force)",
+                                path
+                            );
                         }
                     }
                     OutputFormat::Json => print_json(&CliOk {
                         status: "ok",
-                        message: format!("Deleted: {} (not found, ignored with --force)", path),
+                        message: format!(
+                            "Nothing to delete: {} (not found, ignored with --force)",
+                            path
+                        ),
                     }),
                 }
                 let _ = provider.disconnect().await;
@@ -40469,7 +41108,7 @@ fn print_versions(versions: &[FileVersion], path: &str, format: OutputFormat) {
 
 /// `versions list`: list previous versions of a remote file.
 async fn cmd_versions_list(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions list'", 5);
         return 5;
     }
@@ -40509,7 +41148,7 @@ async fn cmd_versions_get(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions get'", 5);
         return 5;
     }
@@ -40521,7 +41160,7 @@ async fn cmd_versions_get(
         );
         return 5;
     }
-    if local.trim().is_empty() {
+    if local.is_empty() {
         print_error(
             format,
             "Missing local destination path for 'versions get'",
@@ -40593,7 +41232,7 @@ async fn cmd_versions_restore(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions restore'", 5);
         return 5;
     }
@@ -40649,7 +41288,7 @@ async fn cmd_versions_purge(
     cli: &Cli,
     format: OutputFormat,
 ) -> i32 {
-    if path.trim().is_empty() {
+    if path.is_empty() {
         print_error(format, "Missing remote file path for 'versions purge'", 5);
         return 5;
     }
@@ -41026,8 +41665,24 @@ fn rcat_staging_file() -> Result<tempfile::NamedTempFile, String> {
     tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+thread_local! {
+    /// What `rcat` reads instead of stdin, put there by a test: a test reading
+    /// the real stdin would wait on the terminal it runs in.
+    static TEST_RCAT_STDIN: std::cell::RefCell<Option<Vec<u8>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// What `rcat` uploads: stdin.
+fn rcat_input() -> Box<dyn Read> {
+    #[cfg(test)]
+    if let Some(bytes) = TEST_RCAT_STDIN.with(|slot| slot.borrow_mut().take()) {
+        return Box::new(io::Cursor::new(bytes));
+    }
+    Box::new(io::stdin().lock())
+}
+
 async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i32 {
-    if remote.trim().is_empty() {
+    if remote.is_empty() {
         print_error(format, "Missing remote path for rcat", 5);
         return 5;
     }
@@ -41052,7 +41707,7 @@ async fn cmd_rcat(url: &str, remote: &str, cli: &Cli, format: OutputFormat) -> i
         }
     };
 
-    let bytes = match io::copy(&mut io::stdin().lock(), &mut temp) {
+    let bytes = match io::copy(&mut rcat_input(), &mut temp) {
         Ok(bytes) => bytes,
         Err(e) => {
             print_error(format, &format!("Cannot read stdin: {}", e), 2);
@@ -41230,6 +41885,7 @@ fn rclone_import_json(
             "jottaRefreshStored": summary.jotta_refresh_stored,
             "profilesAppended": summary.profiles_appended,
             "profilesRenamed": summary.profiles_renamed,
+            "oauthAppWarnings": summary.oauth_app_warnings,
         });
     }
     redacted
@@ -41361,6 +42017,8 @@ struct RcloneApplySummary {
     /// Profiles the write stored under another name, each with the name it
     /// got (`renamed_by_write`).
     profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
+    /// One line per profile whose OAuth app was not kept.
+    oauth_app_warnings: Vec<String>,
 }
 
 /// Map a saved-server protocol identifier to the `OAuthProvider` slug used
@@ -41450,6 +42108,7 @@ async fn apply_rclone_import_to_vault(
                 jotta_refresh_stored: 0,
                 profiles_appended: 0,
                 profiles_renamed: Vec::new(),
+                oauth_app_warnings: Vec::new(),
             };
             // Ids are minted per parse, so one is held only if the list took it since.
             // It then keeps its secrets, as a skipped `.aeroftp` profile does.
@@ -41525,10 +42184,37 @@ async fn apply_rclone_import_to_vault(
             })
         })
         .map_err(|e| format!("vault write failed: {e}"))?;
+    // The app a token refreshes with, as the GUI import keeps it: a fresh device
+    // has nothing else to refresh with. After the write, which holds the lock.
+    let mut oauth_app_warnings = Vec::new();
+    for (profile_id, secrets) in result.secrets_in_server_order() {
+        let slug = protocol_of(profile_id).and_then(|protocol| {
+            ftp_client_gui_lib::bridge_commands::rclone_oauth_client_cred_key(&protocol)
+        });
+        if let Some(slug) = slug {
+            match ftp_client_gui_lib::fill_oauth_app(
+                &store,
+                slug,
+                secrets.oauth_client_id.as_deref(),
+                secrets.oauth_client_secret.as_deref(),
+            ) {
+                Ok(false) => {}
+                Ok(true) => oauth_app_warnings.push(format!(
+                    "another OAuth app of this provider stays stored, so '{profile_id}' may need a new sign-in"
+                )),
+                Err(e) => oauth_app_warnings
+                    .push(format!("the OAuth app of '{profile_id}' was not stored: {e}")),
+            }
+        }
+    }
     // Read from the list stored: only the write knows which profile had a
     // name first (an older list may hold two of one name).
+    for warning in &oauth_app_warnings {
+        eprintln!("Warning: {}", sanitize_filename(warning));
+    }
     Ok(RcloneApplySummary {
         profiles_renamed: renamed_by_write(&profiles, &stored),
+        oauth_app_warnings,
         ..summary
     })
 }
@@ -43389,6 +44075,7 @@ async fn cmd_keystore_import(
             "user_partitions_unreadable": outcome.user_partitions_unreadable,
             "profile_partition_skipped": outcome.profile_partition_skipped,
             "profile_list_error": outcome.profile_decisions_error,
+            "sqlite_dbs_failed": outcome.sqlite_dbs_failed,
         });
         println!("{}", summary);
     } else {
@@ -43423,6 +44110,17 @@ async fn cmd_keystore_import(
         }
         if let Some(e) = &outcome.profile_decisions_error {
             eprintln!("Warning: the server list could not be merged: {e}");
+        }
+        if !outcome.sqlite_dbs_failed.is_empty() {
+            eprintln!(
+                "Warning: these databases could not be restored and keep what they held: {}",
+                outcome
+                    .sqlite_dbs_failed
+                    .iter()
+                    .map(|name| sanitize_filename(name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
         }
         if outcome.requires_restart {
             eprintln!(
@@ -46281,10 +46979,10 @@ async fn cmd_df(url: &str, scan: bool, full: bool, cli: &Cli, format: OutputForm
     };
 
     if scan {
-        let root = if full || resolved_path.trim().is_empty() {
+        let root = if full || resolved_path.own_path().trim().is_empty() {
             "/".to_string()
         } else {
-            resolved_path.to_string()
+            resolved_path.own_path().to_string()
         };
 
         // An API total still wins for the cap even in scan mode; the scan
@@ -48757,7 +49455,8 @@ async fn cmd_speed(
     // PATH-01: `--remote-path` is used verbatim for upload/download/delete (it is
     // not run through the resolver), so a `..`/null path would let the speed test
     // write and then delete an attacker-chosen location. Validate before any
-    // connection. The default UUID scratch path is always safe.
+    // connection. The default UUID scratch path is always safe; it is placed in
+    // the session's folder once connected (`speed_scratch_path`).
     if let Some(user_path) = remote_path {
         if let Err(e) = check_remote_path_safe(user_path) {
             print_error(format, &format!("invalid --remote-path: {}", e), 5);
@@ -48897,14 +49596,43 @@ async fn wait_until_upload_readable(
 /// of every provider but Proton Drive, whose session starts in My Files while
 /// its root lists the account's sections, where no file can go (Requested 79):
 /// there it goes under the start folder. A `--remote-path` is used as given.
-fn speed_scratch_path(base: &CliBase, generated: &str, caller_named: bool) -> String {
-    match base.start_folder() {
-        Some(start) if !caller_named => format!(
-            "{}/{}",
-            start.trim_end_matches('/'),
-            generated.trim_start_matches('/')
-        ),
-        _ => generated.to_string(),
+fn speed_scratch_path(
+    base: &CliBase,
+    generated: &str,
+    caller_named: bool,
+    session_dir: &str,
+) -> String {
+    if caller_named {
+        return generated.to_string();
+    }
+    // The generated file goes into the folder the command works in: the one
+    // the URL or the profile names, else the one the session starts in (the
+    // login folder; Proton Drive's start folder). It used to go into the
+    // server's root, which most accounts cannot write.
+    let folder = if base.path != "/" {
+        base.path.as_str()
+    } else {
+        base.start_folder().unwrap_or(session_dir)
+    };
+    if folder == "/" {
+        return generated.to_string();
+    }
+    format!(
+        "{}/{}",
+        folder.trim_end_matches('/'),
+        generated.trim_start_matches('/')
+    )
+}
+
+#[cfg(test)]
+mod scp_note_tests {
+    use super::scp_note_first_time;
+
+    #[test]
+    fn the_scp_note_is_printed_once_per_server() {
+        assert!(scp_note_first_time("note-test-a:22"));
+        assert!(!scp_note_first_time("note-test-a:22"));
+        assert!(scp_note_first_time("note-test-b:22"));
     }
 }
 
@@ -48915,18 +49643,45 @@ mod speed_scratch_tests {
     #[test]
     fn the_generated_speed_file_goes_under_the_proton_start_folder() {
         let proton = CliBase::with_start_folder("/", Some("/my-files".to_string()));
-        let other = CliBase::with_start_folder("/", None);
         let generated = "/.aeroftp-speedtest-x.dat";
         assert_eq!(
-            speed_scratch_path(&proton, generated, false),
+            speed_scratch_path(&proton, generated, false, "/my-files"),
             "/my-files/.aeroftp-speedtest-x.dat"
         );
         // Native mode starts at its root, My Files.
         let native = CliBase::with_start_folder("/", Some("/".to_string()));
-        assert_eq!(speed_scratch_path(&native, generated, false), generated);
-        // A path the caller named, and any other provider: as given.
-        assert_eq!(speed_scratch_path(&proton, "/x/y.dat", true), "/x/y.dat");
-        assert_eq!(speed_scratch_path(&other, generated, false), generated);
+        assert_eq!(
+            speed_scratch_path(&native, generated, false, "/"),
+            generated
+        );
+        // A path the caller named: as given.
+        assert_eq!(
+            speed_scratch_path(&proton, "/x/y.dat", true, "/my-files"),
+            "/x/y.dat"
+        );
+    }
+
+    #[test]
+    fn the_generated_speed_file_goes_where_the_session_works_not_in_the_root() {
+        let generated = "/.aeroftp-speedtest-x.dat";
+        // No folder named: the folder the session starts in, the login folder.
+        let plain = CliBase::with_start_folder("/", None);
+        assert_eq!(
+            speed_scratch_path(&plain, generated, false, "/home/u"),
+            "/home/u/.aeroftp-speedtest-x.dat"
+        );
+        // A folder the URL or the profile names wins over the login folder.
+        let named = CliBase::with_start_folder("/srv/data/", None);
+        assert_eq!(
+            speed_scratch_path(&named, generated, false, "/home/u"),
+            "/srv/data/.aeroftp-speedtest-x.dat"
+        );
+        // A session that starts in the root keeps the root.
+        assert_eq!(speed_scratch_path(&plain, generated, false, "/"), generated);
+        assert_eq!(
+            speed_scratch_path(&plain, "/x/y.dat", true, "/home/u"),
+            "/x/y.dat"
+        );
     }
 }
 
@@ -48968,7 +49723,9 @@ async fn run_single_speed_test(
             ))
         }
     };
-    let remote_test_path = &speed_scratch_path(&base, remote_test_path, path_is_caller_named);
+    let session_dir = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let remote_test_path =
+        &speed_scratch_path(&base, remote_test_path, path_is_caller_named, &session_dir);
 
     // Overwrite guard: the test uploads to remote_test_path and then deletes
     // it, so a path that already exists is a real user file about to be
@@ -50029,7 +50786,8 @@ async fn cmd_benchmark(
         cancel: Some(cancel_token.clone()),
     };
     let observer = CliBenchmarkObserver::new(show);
-    let outcome = community_benchmark::run(provider, &initial_path, options, &observer).await;
+    let outcome =
+        community_benchmark::run(provider, initial_path.own_path(), options, &observer).await;
     ctrl_c_watcher.abort();
     let outcome = match outcome {
         Ok(outcome) => outcome,
@@ -54765,6 +55523,32 @@ fn plan_sync_orphan_deletes<'a>(
 /// along unless the first is a real URL or the `_` placeholder. The AeroSync
 /// Plan tab builds its command line for this rule; see
 /// `aerosync_plan_cli_line_tests`.
+/// The URL and path of a deleting command (`rm`, `purge`, `rmdir`, `rmdirs`).
+/// With `--profile` the URL slot carries the path, so a value left in the
+/// path slot is one argument too many: `rm --profile P /a/b c -r --force`
+/// removed all of `/a/b` and dropped `c` without a word. It is refused.
+fn delete_positionals<'a>(
+    cli: &Cli,
+    url: &'a str,
+    path: &'a str,
+    format: OutputFormat,
+) -> Result<(&'a str, &'a str), i32> {
+    if !profile_shifts_positionals(cli.profile.is_some(), url) {
+        return Ok((url, path));
+    }
+    if !path.is_empty() {
+        print_error(
+            format,
+            &format!(
+                "unexpected argument '{path}': with --profile, give only the remote path ('{url}' here)"
+            ),
+            2,
+        );
+        return Err(2);
+    }
+    Ok(("_", url))
+}
+
 fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
     has_profile && !url.contains("://") && url != "_"
 }
@@ -55897,6 +56681,11 @@ async fn cmd_sync(
         |p| remote_map.get(*p).map(|(s, _)| *s).unwrap_or(0),
         |p| mtime_to_epoch(remote_map.get(*p).and_then(|(_, m)| *m)),
     );
+
+    // Refused here and in a dry run alike, before anything is written.
+    let refused_names =
+        refuse_download_names(Path::new(local), &mut to_download, &mut to_conflict_upload);
+    immutable_refusals.extend(refused_names.iter().cloned());
 
     if dry_run {
         match format {
@@ -57060,7 +57849,11 @@ async fn cmd_sync(
     }
 
     // Save bisync snapshot after successful sync (--direction both)
-    if direction == "both" && errors.is_empty() && !dry_run {
+    // A name the disk cannot hold is refused on every run: it must not stop the
+    // snapshot, or a later run would read a file deleted and made again as one to
+    // delete. Its path is not settled here, so its old entry stays.
+    let only_refused_names = errors.iter().all(|error| refused_names.contains(error));
+    if direction == "both" && only_refused_names && !dry_run {
         let outcome = BisyncOutcome {
             rebuilt: resync,
             ..bisync_outcome(
@@ -58873,11 +59666,12 @@ mod fuse_mount {
                     .unwrap_or_else(|_| std::env::temp_dir().join(format!("aeroftp_fuse_{}", ino)));
                 let download_result = self.rt.block_on(async {
                     let mut p = provider.lock().await;
-                    p.download(&path, &tmp.to_string_lossy(), None).await
+                    p.download_checked(&path, &tmp.to_string_lossy(), None, None)
+                        .await
                 });
-                if download_result.is_err() {
-                    // New file or download failed - start empty
-                    let _ = std::fs::write(&tmp, b"");
+                if !write_buffer_ready(download_result, &tmp) {
+                    reply.error(Errno::EIO);
+                    return;
                 }
                 self.write_buffers.lock().unwrap().insert(ino, tmp.clone());
                 // Now write to the buffer
@@ -59244,6 +60038,22 @@ mod fuse_mount {
                     255,
                     BLOCK_SIZE,
                 );
+            }
+        }
+    }
+
+    /// Whether a write to a file with no buffer can go on from what its download
+    /// left at `tmp`. Only a file that does not exist starts empty: the buffer is
+    /// uploaded on flush, so starting empty after a failed transfer or a refused
+    /// hash would replace the remote file with the bytes of this one write.
+    fn write_buffer_ready(downloaded: Result<(), ProviderError>, tmp: &std::path::Path) -> bool {
+        match downloaded {
+            Ok(()) => true,
+            Err(ProviderError::NotFound(_)) => std::fs::write(tmp, b"").is_ok(),
+            Err(error) => {
+                eprintln!("write error: the existing content could not be read: {error}");
+                let _ = std::fs::remove_file(tmp);
+                false
             }
         }
     }
@@ -59692,6 +60502,40 @@ mod fuse_mount {
                 fs.get_cached(ROOT_INODE).unwrap().attr.kind,
                 FileType::Directory
             );
+        }
+
+        #[test]
+        fn a_successful_download_keeps_its_bytes() {
+            let dir = tempfile::tempdir().unwrap();
+            let tmp = dir.path().join("buffer");
+            std::fs::write(&tmp, b"remote bytes").unwrap();
+
+            assert!(write_buffer_ready(Ok(()), &tmp));
+            assert_eq!(std::fs::read(&tmp).unwrap(), b"remote bytes");
+        }
+
+        #[test]
+        fn a_write_starts_empty_only_on_a_file_that_does_not_exist() {
+            let dir = tempfile::tempdir().unwrap();
+            let tmp = dir.path().join("buffer");
+
+            assert!(write_buffer_ready(Ok(()), &tmp), "downloaded: use it");
+            assert!(!tmp.exists(), "a download's file is left as it is");
+
+            assert!(write_buffer_ready(
+                Err(ProviderError::NotFound("gone".to_string())),
+                &tmp
+            ));
+            assert_eq!(std::fs::read(&tmp).unwrap(), b"");
+
+            for error in [
+                ProviderError::TransferFailed("the download was not kept".to_string()),
+                ProviderError::ConnectionLost("reset".to_string()),
+            ] {
+                std::fs::write(&tmp, b"partial").unwrap();
+                assert!(!write_buffer_ready(Err(error), &tmp));
+                assert!(!tmp.exists(), "nothing is left to upload on flush");
+            }
         }
     }
 }
@@ -67671,7 +68515,8 @@ mod hashsum_digest_tests {
     /// at the first version, 7 as 4 with the first HEAD after a refusal
     /// answered `404`, 8 as 4 with the entity tag the MD5 of the content, 9 as
     /// 8 with the unpinned ranges, untagged, coming from a replacement, 10 as 4
-    /// with the pinned range at byte 0 served and the later ones refused.
+    /// with the pinned range at byte 0 served and the later ones refused, 11 as
+    /// 8 with every range served, untagged, from a replacement.
     pub(super) async fn range_hash_fixture(
         size: usize,
         body_delta: isize,
@@ -67736,7 +68581,7 @@ mod hashsum_digest_tests {
                                     || (range_mode == 5 && refused.load(Ordering::SeqCst) > 0)
                                 {
                                     "\"changed-version\"".to_string()
-                                } else if matches!(range_mode, 8 | 9) {
+                                } else if matches!(range_mode, 8 | 9 | 11) {
                                     format!(
                                         "\"{:x}\"",
                                         <md5::Md5 as md5::Digest>::digest(served.as_slice())
@@ -67769,7 +68614,7 @@ mod hashsum_digest_tests {
                                 .body(Body::empty())
                                 .unwrap();
                         }
-                        if range_mode == 9 {
+                        if matches!(range_mode, 9 | 11) {
                             let (start, end) = range
                                 .to_str()
                                 .unwrap()
@@ -72974,6 +73819,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             };
             let script = generate_script(&profile, "test");
@@ -73247,6 +74093,7 @@ DISCONNECT\n";
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             });
             out.push(AerosyncScriptProfile {
@@ -73263,9 +74110,20 @@ DISCONNECT\n";
                 skip_matching: true,
                 resync: true,
                 watch: true,
+                modify_window: None,
                 backup_dir: None,
             });
         }
+        let updates: Vec<_> = out
+            .iter()
+            .filter(|script| script.profile.direction != CompareDirection::Bidirectional)
+            .cloned()
+            .map(|mut script| {
+                script.profile.update_only = true;
+                script
+            })
+            .collect();
+        out.extend(updates);
         out
     }
 
@@ -73290,6 +74148,7 @@ DISCONNECT\n";
                     skip_matching: want_skip,
                     resync: want_resync,
                     watch: want_watch,
+                    modify_window: _,
                     backup_dir: _,
                 } = exported.clone();
                 let SyncProfile {
@@ -73305,6 +74164,7 @@ DISCONNECT\n";
                     verify_policy: _,
                     exclude_patterns: want_exclude,
                     delete_orphans: want_delete,
+                    update_only: want_update,
                     // Not preset settings: the runner never applied them and the
                     // GUI is dropping the controls, so the script does not name them.
                     parallel_streams: _,
@@ -73331,6 +74191,7 @@ DISCONNECT\n";
                     direction,
                     dry_run,
                     delete,
+                    update,
                     exclude,
                     track_renames,
                     conflict_mode,
@@ -73352,6 +74213,7 @@ DISCONNECT\n";
                 };
                 assert_eq!(direction, want_direction, "{}", profile.id);
                 assert_eq!(delete, want_delete, "{}", profile.id);
+                assert_eq!(update, want_update, "{}", profile.id);
                 // An unattended --delete needs a cap or sync refuses it.
                 assert_eq!(
                     max_delete.as_deref(),
@@ -76502,6 +77364,9 @@ async fn main() {
     };
 
     let mut cli = Cli::parse_from(args.clone());
+    if cli.ignore_checksum {
+        ftp_client_gui_lib::providers::content_check::set_enabled(false);
+    }
 
     // Stash the alias-expanded arguments so the deep cutoff consumption
     // points can tell a flag value from an environment one (G5).
@@ -76828,14 +77693,10 @@ async fn main() {
             recursive,
             force,
             dry_run,
-        } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
-            cmd_rm(u, p, *recursive, *force, *dry_run, &cli, format).await
-        }
+        } => match delete_positionals(&cli, url, path, format) {
+            Ok((u, p)) => cmd_rm(u, p, *recursive, *force, *dry_run, &cli, format).await,
+            Err(code) => code,
+        },
         Commands::Mv { url, from, to } => {
             let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
                 ("_", url.as_str(), from.as_str())
@@ -77278,31 +78139,23 @@ async fn main() {
             force,
             dry_run,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
             // rclone `purge`: recursive delete of the path and everything
             // under it. Routes through cmd_rm so the root guard, the
             // confirmation prompt and the error/exit mapping stay shared.
-            cmd_rm(u, p, true, *force, *dry_run, &cli, format).await
+            match delete_positionals(&cli, url, path, format) {
+                Ok((u, p)) => cmd_rm(u, p, true, *force, *dry_run, &cli, format).await,
+                Err(code) => code,
+            }
         }
-        Commands::Rmdir { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
-            cmd_rmdir(u, p, &cli, format).await
-        }
+        Commands::Rmdir { url, path } => match delete_positionals(&cli, url, path, format) {
+            Ok((u, p)) => cmd_rmdir(u, p, &cli, format).await,
+            Err(code) => code,
+        },
         Commands::Rmdirs { url, path, force } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
-            cmd_rmdirs(u, p, *force, &cli, format).await
+            match delete_positionals(&cli, url, path, format) {
+                Ok((u, p)) => cmd_rmdirs(u, p, *force, &cli, format).await,
+                Err(code) => code,
+            }
         }
         Commands::Tree { url, path, depth } => {
             let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
@@ -78668,6 +79521,7 @@ async fn main() {
                     path,
                     password,
                     dest,
+                    overwrite,
                     vault_version,
                 } => {
                     let pw = resolve_pw(password);
@@ -78676,21 +79530,52 @@ async fn main() {
                     } else {
                         resolve_ver(vault_version)
                     };
-                    let res: Result<u64, String> = if ver == "v3" {
-                        aerovault_v3::vault_v3_extract_all_impl(
-                            path.clone(),
-                            pw,
-                            dest.clone(),
-                            None,
-                        )
-                        .await
-                    } else if ver == "v2" {
-                        aerovault_v2::vault_v2_extract_all(path.clone(), pw, dest.clone())
-                            .await
-                            .map(|v| v["extracted"].as_u64().unwrap_or(0))
+                    let dest_was_there = std::path::Path::new(dest.as_str()).exists();
+                    // Every format extracts into a staging folder first: v2 refused
+                    // an existing file halfway through, and v3 replaced it.
+                    let staging = if ver == "v3" || ver == "v2" {
+                        std::fs::create_dir_all(dest.as_str())
+                            .and_then(|()| {
+                                tempfile::Builder::new()
+                                    .prefix(".aerovault_extract_")
+                                    .tempdir_in(dest.as_str())
+                            })
+                            .map_err(|e| format!("Failed to prepare {dest}: {e}"))
                     } else {
                         Err("extract-all is only supported for v2/v3 vaults".to_string())
                     };
+                    let res: Result<u64, String> = match staging {
+                        Err(e) => Err(e),
+                        Ok(staging) => {
+                            let target = staging.path().to_string_lossy().into_owned();
+                            let extracted = if ver == "v3" {
+                                aerovault_v3::vault_v3_extract_all_impl(
+                                    path.clone(),
+                                    pw,
+                                    target,
+                                    None,
+                                )
+                                .await
+                            } else {
+                                aerovault_v2::vault_v2_extract_all(path.clone(), pw, target)
+                                    .await
+                                    .map(|v| v["extracted"].as_u64().unwrap_or(0))
+                            };
+                            extracted.and_then(|n| {
+                                publish_extracted(
+                                    staging.path(),
+                                    std::path::Path::new(dest.as_str()),
+                                    *overwrite,
+                                )?;
+                                Ok(n)
+                            })
+                        }
+                    };
+                    // A wrong password leaves no empty folder behind. Fails, as
+                    // it should, on a folder that holds something by now.
+                    if res.is_err() && !dest_was_there {
+                        let _ = std::fs::remove_dir(dest.as_str());
+                    }
                     match res {
                         Ok(n) => {
                             match format {
@@ -83556,6 +84441,7 @@ mod tests {
     /// below (D8) are tested against each kind of answer, a timeout included.
     struct StatAnswerProvider {
         answer: fn(&str) -> Result<RemoteEntry, ProviderError>,
+        listing: fn(&str) -> Result<Vec<RemoteEntry>, ProviderError>,
     }
 
     #[async_trait::async_trait]
@@ -83579,7 +84465,7 @@ mod tests {
             true
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-            Err(ProviderError::NotSupported(format!("list {path}")))
+            (self.listing)(path)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
             Ok("/".to_string())
@@ -83654,6 +84540,107 @@ mod tests {
         Err(ProviderError::NotFound(path.to_string()))
     }
 
+    fn no_listing(path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        Err(ProviderError::NotSupported(format!("list {path}")))
+    }
+
+    /// An object store's keys: a folder is a `name/` marker or the prefix of
+    /// other keys, and a listing never shows the marker it lists. `c/flat/`
+    /// is a marker that `stat` reports as a file, as flat Azure does; under
+    /// `c/slow` and `c/odd` a listing and a marker `stat` time out, and a
+    /// listing of `c/refused` is refused as FTP refuses a CWD into a missing
+    /// folder.
+    const STORE_KEYS: &[&str] = &[
+        "c/empty/",
+        "c/marked/a.txt",
+        "c/marked/",
+        "c/bare/a.txt",
+        "c/f.txt",
+        "c/flat/",
+    ];
+
+    fn store_stat(path: &str) -> Result<RemoteEntry, ProviderError> {
+        let key = path.trim_start_matches('/');
+        if key == "c/odd/" {
+            return Err(ProviderError::Timeout);
+        }
+        if key == "c/flat/" {
+            return Ok(RemoteEntry::file("flat".to_string(), path.to_string(), 0));
+        }
+        if !STORE_KEYS.contains(&key) {
+            return not_found(path);
+        }
+        let name = key.trim_end_matches('/').rsplit('/').next().unwrap_or(key);
+        Ok(if key.ends_with('/') {
+            RemoteEntry::directory(name.to_string(), path.to_string())
+        } else {
+            RemoteEntry::file(name.to_string(), path.to_string(), 10)
+        })
+    }
+
+    fn store_list(path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        match path.trim_matches('/') {
+            "c/slow" => return Err(ProviderError::Timeout),
+            "c/gone" => return Err(ProviderError::NotFound(path.to_string())),
+            "c/refused" => return Err(ProviderError::InvalidPath(path.to_string())),
+            _ => {}
+        }
+        let prefix = format!("{}/", path.trim_matches('/'));
+        Ok(STORE_KEYS
+            .iter()
+            .filter(|key| key.starts_with(&prefix) && **key != prefix)
+            .map(|key| RemoteEntry::file(key.to_string(), format!("/{key}"), 10))
+            .collect())
+    }
+
+    /// A URL that names a folder of an object store without the trailing
+    /// slash: an empty one is only its marker, which a `stat` of the bare
+    /// name misses, and a listing of it is empty. It must still be read as a
+    /// folder, or `serve` refuses it and a command given no path acts on it
+    /// as a name.
+    #[tokio::test]
+    async fn a_url_names_a_folder_an_object_store_shows_only_by_its_marker() {
+        let mut store = StatAnswerProvider {
+            answer: store_stat,
+            listing: store_list,
+        };
+        for (target, folder) in [
+            ("/c/empty", true),
+            ("/c/marked", true),
+            ("/c/bare", true),
+            ("/c/flat", true),
+            ("/c/f.txt", false),
+            ("/c/new", false),
+            ("/c/gone", false),
+            ("/c/refused", false),
+        ] {
+            assert_eq!(
+                url_target_is_folder(&mut store, target).await.ok(),
+                Some(folder),
+                "{target}"
+            );
+        }
+        // A listing or a marker that does not answer leaves the kind unknown:
+        // read as a name, a path given beside the URL would land beside it.
+        for target in ["/c/slow", "/c/odd"] {
+            assert!(
+                matches!(
+                    url_target_is_folder(&mut store, target).await,
+                    Err(ProviderError::Timeout)
+                ),
+                "{target}"
+            );
+        }
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
+        assert!(matches!(
+            url_target_is_folder(&mut silent, "/c/x").await,
+            Err(ProviderError::Timeout)
+        ));
+    }
+
     fn timed_out(_path: &str) -> Result<RemoteEntry, ProviderError> {
         Err(ProviderError::Timeout)
     }
@@ -83666,17 +84653,24 @@ mod tests {
     async fn only_a_not_found_reads_as_a_missing_target() {
         let mut there = StatAnswerProvider {
             answer: a_file_of_10_bytes,
+            listing: no_listing,
         };
         assert!(matches!(
             remote_target_exists(&mut there, "/f").await,
             Ok(true)
         ));
-        let mut missing = StatAnswerProvider { answer: not_found };
+        let mut missing = StatAnswerProvider {
+            answer: not_found,
+            listing: no_listing,
+        };
         assert!(matches!(
             remote_target_exists(&mut missing, "/f").await,
             Ok(false)
         ));
-        let mut silent = StatAnswerProvider { answer: timed_out };
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
         assert!(matches!(
             remote_target_exists(&mut silent, "/f").await,
             Err(ProviderError::Timeout)
@@ -83692,7 +84686,10 @@ mod tests {
         let mut cli = test_cli();
         cli.immutable = true;
 
-        let mut silent = StatAnswerProvider { answer: timed_out };
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
         let sweep = no_traverse_stat_sweep(&mut silent, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert!(sweep.survivors.is_empty(), "{:?}", sweep.survivors);
         assert_eq!(sweep.refusals.len(), 1, "{:?}", sweep.refusals);
@@ -83704,13 +84701,17 @@ mod tests {
 
         let mut other_size = StatAnswerProvider {
             answer: a_file_of_10_bytes,
+            listing: no_listing,
         };
         let sweep =
             no_traverse_stat_sweep(&mut other_size, &cli, "/r", vec!["a.txt"], |_| 99).await;
         assert!(sweep.survivors.is_empty(), "{:?}", sweep.survivors);
         assert_eq!(sweep.refusals.len(), 1, "{:?}", sweep.refusals);
 
-        let mut missing = StatAnswerProvider { answer: not_found };
+        let mut missing = StatAnswerProvider {
+            answer: not_found,
+            listing: no_listing,
+        };
         let sweep = no_traverse_stat_sweep(&mut missing, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert_eq!(sweep.survivors, vec!["a.txt"]);
         assert!(sweep.refusals.is_empty());
@@ -83723,12 +84724,16 @@ mod tests {
         let cli = test_cli();
         let mut same = StatAnswerProvider {
             answer: a_file_of_10_bytes,
+            listing: no_listing,
         };
         let sweep = no_traverse_stat_sweep(&mut same, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert!(sweep.survivors.is_empty());
         assert_eq!(sweep.skipped_by_stat, 1);
 
-        let mut silent = StatAnswerProvider { answer: timed_out };
+        let mut silent = StatAnswerProvider {
+            answer: timed_out,
+            listing: no_listing,
+        };
         let sweep = no_traverse_stat_sweep(&mut silent, &cli, "/r", vec!["a.txt"], |_| 10).await;
         assert_eq!(sweep.survivors, vec!["a.txt"]);
         assert!(sweep.refusals.is_empty());
@@ -83751,6 +84756,7 @@ mod tests {
             tls: None,
             insecure: false,
             trust_host_key: false,
+            no_scp_fallback: false,
             two_factor: None,
             no_crypt: false,
             profile: None,
@@ -83820,6 +84826,7 @@ mod tests {
             files_from: None,
             files_from_raw: None,
             immutable: false,
+            ignore_checksum: false,
             skip_restricted: false,
             no_check_dest: false,
             max_depth: None,
@@ -85317,6 +86324,30 @@ mod tests {
     /// file; a path that does not exist is a usage error, not a connection
     /// to an empty folder.
     #[test]
+    fn no_scp_fallback_reaches_the_config_of_a_url_and_of_a_profile() {
+        let mut cli = test_cli();
+        let (config, _) = url_to_provider_config("sftp://root@192.0.2.1/", &cli).unwrap();
+        assert!(!config.extra.contains_key("allow_scp_fallback"));
+        let mut extra = HashMap::new();
+        apply_cli_ssh_extras(&cli, &mut extra);
+        assert!(!extra.contains_key("allow_scp_fallback"));
+
+        cli.no_scp_fallback = true;
+        let (config, _) = url_to_provider_config("sftp://root@192.0.2.1/", &cli).unwrap();
+        assert_eq!(
+            config.extra.get("allow_scp_fallback").map(String::as_str),
+            Some("false")
+        );
+        // A saved profile takes its extras from the same function.
+        let mut extra = HashMap::new();
+        apply_cli_ssh_extras(&cli, &mut extra);
+        assert_eq!(
+            extra.get("allow_scp_fallback").map(String::as_str),
+            Some("false")
+        );
+    }
+
+    #[test]
     fn a_local_folder_resolves_to_a_local_remote() {
         let cli = test_cli();
         let dir = tempfile::tempdir().unwrap();
@@ -85473,6 +86504,26 @@ mod tests {
         assert_eq!(config.port, Some(2222));
         assert_eq!(config.username.as_deref(), Some("admin"));
         assert_eq!(path, "/home");
+    }
+
+    #[test]
+    fn a_url_path_is_read_back_as_the_name_it_encodes() {
+        let cli = test_cli();
+        // What the app's Copy URL writes for "/srv/a dir/what? #1 100%.txt".
+        let (config, path) = url_to_provider_config(
+            "scp://me%40corp@host/srv/a%20dir/what%3F%20%231%20100%25.txt",
+            &cli,
+        )
+        .unwrap();
+        assert_eq!(config.username.as_deref(), Some("me@corp"));
+        assert_eq!(path, "/srv/a dir");
+        assert_eq!(
+            config.extra.get("url_target").map(String::as_str),
+            Some("/srv/a dir/what? #1 100%.txt")
+        );
+        // A space typed in is encoded by the parse and decoded back.
+        let (_, path) = url_to_provider_config("sftp://u@host/home/my files/", &cli).unwrap();
+        assert_eq!(path, "/home/my files/");
     }
 
     #[test]
@@ -86870,6 +87921,21 @@ mod tests {
             resolve_cli_remote_path("/www.example.com", "front/includes"),
             "/www.example.com/front/includes"
         );
+    }
+
+    #[test]
+    fn test_resolve_cli_remote_path_keeps_the_spaces_of_the_base() {
+        // `/reports ` and `/reports` are two folders: the profile's base is
+        // joined as given.
+        assert_eq!(
+            resolve_cli_remote_path("/reports ", "a.txt"),
+            "/reports /a.txt"
+        );
+        assert_eq!(
+            resolve_cli_remote_path("/reports ", "/a.txt"),
+            "/reports /a.txt"
+        );
+        assert_eq!(resolve_cli_remote_path("/ reports", ""), "/ reports");
     }
 
     #[test]
@@ -89641,6 +90707,10 @@ mod tests {
         /// Opt-in: `stat` answers for a listed directory, and for a file as a
         /// listing names it, instead of not found.
         stat_listed: bool,
+        /// Opt-in: the folder the session stands in, which `pwd` answers. A
+        /// relative path is listed under it, as FTP, SFTP and the cloud
+        /// providers that keep a current folder resolve one.
+        cwd: Option<String>,
     }
 
     impl MemTreeProvider {
@@ -89708,16 +90778,22 @@ mod tests {
             true
         }
         async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            let path = match &self.cwd {
+                Some(cwd) if !path.starts_with('/') => {
+                    format!("{}/{}", cwd.trim_end_matches('/'), path)
+                }
+                _ => path.to_string(),
+            };
             let mut listing = self
                 .dirs
-                .get(path)
+                .get(&path)
                 .cloned()
-                .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+                .ok_or_else(|| ProviderError::NotFound(path.clone()))?;
             listing.retain(|entry| !self.hidden.contains(&entry.path));
             Ok(listing)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok("/".to_string())
+            Ok(self.cwd.clone().unwrap_or_else(|| "/".to_string()))
         }
         async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -89924,6 +91000,14 @@ mod tests {
         finish_download: bool,
         /// Refuses ranged hashing before the ordinary download stalls.
         refuse_hash_ranges: bool,
+        /// Keeps file versions: each version call answers, none are listed.
+        versions: bool,
+        /// Completes an upload instead of stalling.
+        finish_upload: bool,
+        /// The remote paths `stat`, an upload and the version calls were
+        /// asked for, and the local path a version was downloaded to, across
+        /// the clones.
+        asked: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     impl StallingProvider {
@@ -90065,10 +91149,48 @@ mod tests {
         async fn upload(
             &mut self,
             _local_path: &str,
-            _remote_path: &str,
+            remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(remote_path.to_string());
+            if self.finish_upload {
+                return Ok(());
+            }
             std::future::pending().await
+        }
+        fn supports_versions(&self) -> bool {
+            self.versions
+        }
+        async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(Vec::new())
+        }
+        async fn download_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+            local_path: &str,
+        ) -> Result<(), ProviderError> {
+            let mut asked = self.asked.lock().unwrap();
+            asked.push(path.to_string());
+            asked.push(local_path.to_string());
+            Ok(())
+        }
+        async fn restore_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(())
+        }
+        async fn delete_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
+            Ok(())
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -90089,6 +91211,7 @@ mod tests {
             Err(ProviderError::NotSupported("rename".to_string()))
         }
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.asked.lock().unwrap().push(path.to_string());
             if self.stat_stalls {
                 std::future::pending::<()>().await;
             }
@@ -90322,6 +91445,142 @@ mod tests {
         assert_eq!(code, 130, "-1 means the put was still running");
     }
 
+    /// A remote name of spaces only is a name: `versions` list, get, restore
+    /// and purge, `get` and `rcat` refused it as a missing argument (exit 5)
+    /// before connecting.
+    #[test]
+    fn a_remote_name_of_spaces_is_not_a_missing_path() {
+        // Each reaches the provider with the name as given: a trim after the
+        // argument check would keep these exit codes and lose the name.
+        let spaces = || "   ".to_string();
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_list("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
+            }),
+            (0, vec![spaces()])
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("f.bin").to_string_lossy().into_owned();
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_get(
+                    "memory://",
+                    "   ",
+                    "v1",
+                    &local,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec![spaces(), local.clone()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_restore("memory://", "   ", "v1", &quiet_cli(), OutputFormat::Json)
+                    .await
+            }),
+            (0, vec![spaces()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_purge(
+                    "memory://",
+                    "   ",
+                    "v1",
+                    true,
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec![spaces()])
+        );
+        assert_eq!(
+            asked_of(|_| async {
+                TEST_RCAT_STDIN.with(|slot| *slot.borrow_mut() = Some(b"x".to_vec()));
+                cmd_rcat("memory://", "   ", &quiet_cli(), OutputFormat::Json).await
+            }),
+            (0, vec![spaces()])
+        );
+
+        // The get of `   ` asks the provider for `   `, starts, and is stopped.
+        let cli = Cli {
+            quiet: true,
+            ..test_cli()
+        };
+        let (code, asked) = asked_of(|cancelled| async move {
+            cmd_get(
+                "memory://",
+                "   ",
+                Some(local.as_str()),
+                false,
+                1,
+                false,
+                &cli,
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 130, "the get of `   ` started and was stopped");
+        assert!(asked.contains(&spaces()), "{asked:?}");
+    }
+
+    /// So is a local name: `put` and `versions get` refused it the same way.
+    #[test]
+    fn a_local_name_of_spaces_is_not_a_missing_path() {
+        // A version is downloaded to `   ` as given.
+        assert_eq!(
+            asked_of(|_| async {
+                cmd_versions_get(
+                    "memory://",
+                    "/f.bin",
+                    "v1",
+                    "   ",
+                    &quiet_cli(),
+                    OutputFormat::Json,
+                )
+                .await
+            }),
+            (0, vec!["/f.bin".to_string(), "   ".to_string()])
+        );
+        // `put` looks `   ` up as a local file: none is there, so it stops at
+        // that (exit 2), past the check for a missing argument (exit 5).
+        let code = against_stalling(StallingProvider::default(), |cancelled| async move {
+            cmd_put(
+                "memory://",
+                "   ",
+                Some("/f.bin"),
+                false,
+                false,
+                false,
+                None,
+                &quiet_cli(),
+                OutputFormat::Json,
+                cancelled,
+            )
+            .await
+        });
+        assert_eq!(code, 2);
+    }
+
+    /// The exit code of `command` against a provider that keeps versions and
+    /// completes uploads, and the paths it was asked for.
+    fn asked_of<F: std::future::Future<Output = i32>>(
+        command: impl FnOnce(Arc<AtomicBool>) -> F + Send,
+    ) -> (i32, Vec<String>) {
+        let provider = StallingProvider {
+            versions: true,
+            finish_upload: true,
+            ..StallingProvider::default()
+        };
+        let asked = Arc::clone(&provider.asked);
+        let code = against_stalling(provider, command);
+        let asked = asked.lock().unwrap().clone();
+        (code, asked)
+    }
+
     /// `get` of `/f.bin` into a local file that already holds "keep me", with
     /// `--inplace`, against `provider`; the exit code and what the file holds
     /// afterwards.
@@ -90456,8 +91715,9 @@ mod tests {
         assert!(warnings.is_empty(), "{warnings:?}");
         assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
         assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 0);
-        // The reading before the segments, the diagnosis, the reading after.
-        assert_eq!(fixture.heads.load(Ordering::SeqCst), 3);
+        // The hash of the content check, the reading before the segments, the
+        // diagnosis, the reading after.
+        assert_eq!(fixture.heads.load(Ordering::SeqCst), 4);
         // A publish from the windows keeps the time it was listed with.
         assert_eq!(
             local_time(&out),
@@ -90516,6 +91776,36 @@ mod tests {
                 "mode {mode}: {warnings:?}"
             );
         }
+    }
+
+    /// Segments that do not hash to what the server publishes may come from an
+    /// object that moved: the single stream after them keeps the time of its own
+    /// reading, not the listing's.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn pget_takes_the_time_of_its_own_reading_after_a_hash_that_differs() {
+        let size = 8 * 1024 * 1024 + 31;
+        let fixture = super::hashsum_digest_tests::range_hash_fixture(size, 0, 11).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.bin");
+        let (code, warnings) = pget_against(
+            fixture.provider.clone(),
+            size as u64,
+            out.to_string_lossy().into_owned(),
+        )
+        .await;
+        assert_eq!(code, 0, "{warnings:?}");
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("the assembled file does not match the hash")),
+            "{warnings:?}"
+        );
+        assert_eq!(std::fs::read(&out).unwrap(), fixture.body);
+        assert_eq!(fixture.whole_gets.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            local_time(&out),
+            ftp_client_gui_lib::parse_remote_mtime("Wed, 21 Oct 2026 07:28:00 GMT").unwrap()
+        );
     }
 
     /// A 412 on an object that did change: no unpinned retry, the fallback
@@ -90946,6 +92236,17 @@ mod tests {
         assert_eq!(code, 130, "-1 means the put was still waiting on the check");
     }
 
+    #[test]
+    fn a_pget_fallback_changes_the_listed_time_only_after_a_refusal() {
+        let (carried, read, listed) = (Some("carried"), Some("read"), Some("listed"));
+        assert_eq!(pget_fallback_time(false, None, read, listed), listed);
+        assert_eq!(pget_fallback_time(false, carried, read, listed), carried);
+        assert_eq!(pget_fallback_time(false, None, read, None), read);
+        assert_eq!(pget_fallback_time(true, None, read, listed), read);
+        assert_eq!(pget_fallback_time(true, carried, read, listed), carried);
+        assert_eq!(pget_fallback_time(true, None, None, listed), listed);
+    }
+
     /// M2 (review of #951): the single stream `pget` falls back to read no
     /// flag either.
     #[test]
@@ -90962,6 +92263,7 @@ mod tests {
                 OutputFormat::Json,
                 &cancelled,
                 None,
+                false,
             )
             .await
         });
@@ -91103,6 +92405,7 @@ mod tests {
                     OutputFormat::Json,
                     &never,
                     None,
+                    false,
                 )
                 .await
             });
@@ -96305,6 +97608,7 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 skip_matching: false,
                 resync: false,
                 watch: false,
+                modify_window: None,
                 backup_dir: None,
             },
             "test",
@@ -97349,6 +98653,89 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(omitted.1, vec!["home.txt".to_string()]);
     }
 
+    /// A relative initial folder is where connect put the session, and the
+    /// provider resolves a relative path against it. The base was left
+    /// relative, so `ls` with the profile's `root` asked for `root`, which the
+    /// provider standing in `/root` listed as `/root/root`: the folder once,
+    /// not twice.
+    #[tokio::test]
+    async fn a_relative_initial_folder_is_applied_once() {
+        let cli = std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| Cli::try_parse_from(["aeroftp-cli", "ls", "_"]).expect("ls parses"))
+            .expect("parse thread")
+            .join()
+            .expect("parse thread finished");
+        let options = |path| CliListOptions {
+            path,
+            sort: "name",
+            reverse: false,
+            all: true,
+            limit: None,
+            files_only: false,
+            dirs_only: false,
+            emit_resolution_note: false,
+        };
+        let names = |list: Result<CliListEntries, CliListError>| match list {
+            Ok(list) => list.entries.into_iter().map(|e| e.name).collect::<Vec<_>>(),
+            Err(_) => panic!("listing failed"),
+        };
+        let mut provider = MemTreeProvider {
+            cwd: Some("/root".to_string()),
+            ..MemTreeProvider::tree(&[("a.txt", 1), ("sub/b.txt", 1)])
+        };
+        let base = CliBase::for_provider("root", &mut provider).await;
+        assert_eq!(base.path, "/root");
+        assert_eq!(
+            names(collect_cli_list_entries(&mut provider, &base, &options(""), &cli).await),
+            ["sub", "a.txt"]
+        );
+        assert_eq!(
+            names(collect_cli_list_entries(&mut provider, &base, &options("sub"), &cli).await),
+            ["b.txt"]
+        );
+        // The login home's folder on FTP and SFTP, and a base written with a
+        // trailing slash or a trailing space.
+        for (cwd, initial) in [
+            ("/home/u/root", "root/"),
+            ("/home/u/re ports ", "re ports "),
+        ] {
+            let mut home = MemTreeProvider {
+                cwd: Some(cwd.to_string()),
+                ..Default::default()
+            };
+            assert_eq!(CliBase::for_provider(initial, &mut home).await.path, cwd);
+        }
+    }
+
+    /// A provider that keeps the folder as a prefix of its own (S3's
+    /// `bucket/backups/`) stands at its root: the base stays as given. So does
+    /// a relative base the session does not stand in, and an absolute one.
+    #[tokio::test]
+    async fn a_base_the_session_does_not_stand_in_is_kept() {
+        let mut root = MemTreeProvider::default();
+        assert_eq!(
+            CliBase::for_provider("bucket/backups/", &mut root)
+                .await
+                .path,
+            "bucket/backups/"
+        );
+        let mut elsewhere = MemTreeProvider {
+            cwd: Some("/mydocs".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            CliBase::for_provider("docs", &mut elsewhere).await.path,
+            "docs"
+        );
+        assert_eq!(
+            CliBase::for_provider("/reports ", &mut elsewhere)
+                .await
+                .path,
+            "/reports "
+        );
+    }
+
     /// The TUI size of a folder counted what a looping listing sent it
     /// through again until its entry cap, and what a folder outside held. It
     /// counts each path under the folder once, and does not answer with a
@@ -97528,6 +98915,140 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
     /// looping listing, and searched the account root through a folder
     /// listed as `/`. It reports each path under the root once, and names
     /// each folder it did not search.
+    /// `--overwrite` cannot put a file where a folder stands: it says so before
+    /// the first file moves.
+    #[test]
+    fn extracted_files_refuse_a_folder_in_the_way_before_any_moves() {
+        let root = tempfile::tempdir().unwrap();
+        let (staging, dest) = (root.path().join("staging"), root.path().join("dest"));
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("first.txt"), "vault").unwrap();
+        std::fs::write(staging.join("taken"), "vault").unwrap();
+        std::fs::create_dir_all(dest.join("taken")).unwrap();
+        let refused = publish_extracted(&staging, &dest, true).unwrap_err();
+        assert!(refused.contains("is a folder"), "{refused}");
+        assert!(!dest.join("first.txt").exists());
+    }
+
+    /// With no hard links the copy keeps the staged mode: a v3 extract is 0600.
+    #[cfg(unix)]
+    #[test]
+    fn the_copy_fallback_keeps_the_mode_of_the_staged_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tempfile::tempdir().unwrap();
+        let (from, to) = (root.path().join("from"), root.path().join("to"));
+        std::fs::write(&from, "vault").unwrap();
+        std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o600)).unwrap();
+        copy_without_replacing(&from, &to).unwrap();
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
+        assert_eq!(
+            std::fs::metadata(&to).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert!(copy_without_replacing(&from, &to).is_err());
+        assert_eq!(std::fs::read_to_string(&to).unwrap(), "vault");
+    }
+
+    /// A sync takes out the names this disk cannot hold, with their conflict copies,
+    /// and says why. The rest goes on.
+    #[test]
+    fn a_sync_refuses_only_the_names_the_disk_cannot_hold() {
+        use ftp_client_gui_lib::local_download_target::LocalTargetProblem;
+        let dest = tempfile::tempdir().unwrap();
+        let mut plain = vec!["ok.txt", "sub/other.txt"];
+        let mut no_conflicts = Vec::new();
+        assert!(refuse_download_names(dest.path(), &mut plain, &mut no_conflicts).is_empty());
+        assert_eq!(plain, ["ok.txt", "sub/other.txt"]);
+
+        let mut downloads = vec!["ok.txt", "a:b.txt", "kept.txt"];
+        let mut conflicts = vec![
+            ("a:b.txt".to_string(), "a:b.conflict.txt".to_string()),
+            ("kept.txt".to_string(), "kept.conflict.txt".to_string()),
+        ];
+        let refused = take_refused_names(
+            vec![LocalTargetProblem {
+                path: "a:b.txt".to_string(),
+                reason: "no colon".to_string(),
+            }],
+            &mut downloads,
+            &mut conflicts,
+        );
+        assert_eq!(refused, ["download a:b.txt: no colon"]);
+        assert_eq!(downloads, ["ok.txt", "kept.txt"]);
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].0, "kept.txt");
+    }
+
+    #[test]
+    fn extracted_files_replace_nothing_without_overwrite() {
+        let root = tempfile::tempdir().unwrap();
+        let staging = root.path().join("staging");
+        let dest = root.path().join("dest");
+        std::fs::create_dir_all(staging.join("sub")).unwrap();
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(staging.join("new.txt"), "new").unwrap();
+        std::fs::write(staging.join("sub/kept.txt"), "vault").unwrap();
+        std::fs::create_dir_all(dest.join("sub")).unwrap();
+        std::fs::write(dest.join("sub/kept.txt"), "mine").unwrap();
+
+        let refused = publish_extracted(&staging, &dest, false).unwrap_err();
+        assert!(refused.contains("--overwrite"), "{refused}");
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/kept.txt")).unwrap(),
+            "mine"
+        );
+        assert!(
+            !dest.join("new.txt").exists(),
+            "nothing moves when it refuses"
+        );
+
+        // The move itself refuses a file already at the target, with no check of
+        // its own before it: a rename here would replace `late`.
+        std::fs::write(root.path().join("late"), "late").unwrap();
+        let moved = root.path().join("moved");
+        std::fs::write(&moved, "vault").unwrap();
+        let late = root.path().join("late");
+        assert!(move_without_replacing(&moved, &late).is_err());
+        assert_eq!(std::fs::read_to_string(&late).unwrap(), "late");
+
+        #[cfg(unix)]
+        {
+            // A link among the parents would carry the extract outside.
+            let outside = root.path().join("outside");
+            std::fs::create_dir_all(&outside).unwrap();
+            let linked = root.path().join("linked");
+            std::fs::create_dir_all(&linked).unwrap();
+            std::os::unix::fs::symlink(&outside, linked.join("sub")).unwrap();
+            let refused = publish_extracted(&staging, &linked, true).unwrap_err();
+            assert!(refused.contains("is a link"), "{refused}");
+            assert!(!outside.join("kept.txt").exists());
+
+            // An empty folder whose own path is a link has no parent to catch it.
+            let empty = root.path().join("empty");
+            std::fs::create_dir_all(empty.join("void")).unwrap();
+            std::os::unix::fs::symlink(&outside, linked.join("void")).unwrap();
+            let refused = publish_extracted(&empty, &linked, true).unwrap_err();
+            assert!(refused.contains("is a link"), "{refused}");
+
+            std::os::unix::fs::symlink(root.path().join("gone"), dest.join("new.txt")).unwrap();
+            assert!(
+                publish_extracted(&staging, &dest, false).is_err(),
+                "a dangling link is a file"
+            );
+            std::fs::remove_file(dest.join("new.txt")).unwrap();
+        }
+
+        publish_extracted(&staging, &dest, true).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dest.join("sub/kept.txt")).unwrap(),
+            "vault"
+        );
+        assert_eq!(
+            std::fs::read_to_string(dest.join("new.txt")).unwrap(),
+            "new"
+        );
+    }
+
     #[tokio::test]
     async fn find_by_listing_reports_each_path_under_the_root_once() {
         let everything = globset::Glob::new("*").unwrap().compile_matcher();
@@ -99206,6 +100727,53 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             "--update leaves the newer remote copy"
         );
         assert_ne!(run(None), 0, "without --update the upload is attempted");
+    }
+
+    #[test]
+    fn mirror_update_delete_preserves_newer_destination_through_dispatch() {
+        let fixture = FilesFromFixture::new();
+        fixture.local_file("keep.txt", 3);
+        let local = fixture.local();
+        let mut remote = MemTreeProvider::root_files(&[("keep.txt", 9), ("orphan.txt", 7)]);
+        remote.mutable = true;
+        for entry in remote.dirs.get_mut("/root").unwrap() {
+            entry.modified = Some("2030-01-01T00:00:00".to_string());
+        }
+        let deletes = Arc::clone(&remote.delete_attempts);
+        let code = run_against_remote(remote, move || async move {
+            let parsed = Cli::try_parse_from([
+                "aeroftp-cli",
+                "sync",
+                "memory://",
+                &local,
+                "/root",
+                "--direction",
+                "upload",
+                "--update",
+                "--delete",
+                "--max-delete",
+                "100%",
+            ])
+            .unwrap();
+            dispatch_sync(
+                &parsed.command,
+                &Cli {
+                    quiet: true,
+                    ..test_cli()
+                },
+                OutputFormat::Json,
+                Arc::new(AtomicBool::new(false)),
+            )
+            .await
+        });
+        assert_eq!(
+            code, 0,
+            "no upload of the newer destination should be attempted"
+        );
+        assert_eq!(
+            *deletes.lock().unwrap(),
+            vec!["/root/orphan.txt".to_string()]
+        );
     }
 
     /// M1 (review of #949): with no comparable time (FTP without MLSD,

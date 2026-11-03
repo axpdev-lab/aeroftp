@@ -9,10 +9,11 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 use super::checksum_matrix;
+use super::scp::provider::ScpProvider;
 use super::types::is_session_closed_error_message;
 use super::{
-    ChecksumCapability, ProviderError, ProviderTransferExecutorKind, ProviderType, RemoteEntry,
-    SftpConfig, StorageProvider,
+    ChecksumCapability, ProviderConfig, ProviderError, ProviderTransferExecutorKind, ProviderType,
+    RemoteEntry, SftpConfig, StorageProvider,
 };
 use crate::ssh_exec::ssh_exec_collect;
 use async_trait::async_trait;
@@ -296,7 +297,11 @@ struct SftpChannel {
 
 impl SftpChannel {
     /// The SFTP session over `stream`, watched ([`WatchedSftpStream`]).
-    async fn open<S>(stream: S) -> Result<Self, russh_sftp::client::error::Error>
+    ///
+    /// A stream that ends before the server's VERSION is [`NoSftp::Ended`]
+    /// at once: russh-sftp's INIT would wait out its 10 s request timeout
+    /// and report "Timeout".
+    async fn open<S>(stream: S) -> Result<Self, SftpOpenError>
     where
         S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
     {
@@ -305,9 +310,122 @@ impl SftpChannel {
             inner: stream,
             ended: ended.clone(),
         };
-        let session = SftpSession::new(stream).await?;
-        Ok(Self { session, ended })
+        tokio::select! {
+            biased;
+            session = SftpSession::new(stream) => match session {
+                Ok(session) => Ok(Self { session, ended }),
+                // INIT could not be sent or its answer never came because
+                // the channel closed: the same end, seen by the writer or
+                // the reader before the stream's own watch saw it.
+                Err(e) if ended.is_cancelled() || handshake_lost_its_channel(&e) => {
+                    Err(SftpOpenError::NoSftp(NoSftp::Ended))
+                }
+                Err(e) => Err(SftpOpenError::Sftp(e)),
+            },
+            () = ended.cancelled() => Err(SftpOpenError::NoSftp(NoSftp::Ended)),
+        }
     }
+}
+
+/// Whether russh-sftp failed its handshake because the channel under it
+/// closed: its writer's queue (`SendError`) or the reply it waited on
+/// (`RecvError`) went with the channel. Any other failure (a timeout, a
+/// status, a malformed VERSION) came from a server that did answer.
+fn handshake_lost_its_channel(e: &russh_sftp::client::error::Error) -> bool {
+    matches!(
+        e,
+        russh_sftp::client::error::Error::UnexpectedBehavior(m)
+            if m.starts_with("SendError: ") || m.starts_with("RecvError: ")
+    )
+}
+
+/// Why the server gave this connection no SFTP session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NoSftp {
+    /// The server refused the `sftp` subsystem request.
+    Refused,
+    /// The server accepted the request and ended the channel before the
+    /// SFTP handshake: there is no SFTP server program behind the subsystem.
+    /// OpenWrt's Dropbear runs `/usr/libexec/sftp-server`, which the stock
+    /// image lacks, and the channel ends with exit status 127.
+    Ended,
+}
+
+/// Why [`SftpChannel::open`] gave no session.
+#[derive(Debug)]
+enum SftpOpenError {
+    NoSftp(NoSftp),
+    Sftp(russh_sftp::client::error::Error),
+}
+
+impl std::fmt::Display for SftpOpenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoSftp(NoSftp::Refused) => f.write_str("the server refused the SFTP subsystem"),
+            Self::NoSftp(NoSftp::Ended) => {
+                f.write_str("the server ended the SFTP subsystem before answering")
+            }
+            Self::Sftp(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+/// Ask for the `sftp` subsystem on `channel` and wait for the server's
+/// answer. russh sends the request and returns without waiting, and the
+/// stream made from the channel drops a refusal, so a refused subsystem
+/// used to surface as russh-sftp's 10 s "Timeout". `Ok(Err(_))` is a server
+/// with no SFTP for this connection. A server that does not answer within
+/// `wait` is an error, never a server without SFTP: PuTTY, and so WinSCP,
+/// wait for the same answer before they go on.
+///
+/// On anything but `Ok(Ok(()))` the channel is closed here. A channel that
+/// never goes through `into_stream` sends no close when dropped, so it would
+/// stay open on the server for the rest of the connection, and a server
+/// with a session limit (`MaxSessions`, 10 by default on OpenSSH) would
+/// refuse the SCP or second SFTP channels beside it.
+async fn request_sftp_subsystem(
+    channel: &mut russh::Channel<client::Msg>,
+    wait: std::time::Duration,
+) -> Result<Result<(), NoSftp>, ProviderError> {
+    let answer = ask_for_sftp_subsystem(channel, wait).await;
+    if !matches!(answer, Ok(Ok(()))) {
+        let _ = channel.close().await;
+    }
+    answer
+}
+
+async fn ask_for_sftp_subsystem(
+    channel: &mut russh::Channel<client::Msg>,
+    wait: std::time::Duration,
+) -> Result<Result<(), NoSftp>, ProviderError> {
+    channel.request_subsystem(true, "sftp").await.map_err(|e| {
+        classify_russh_err(e, |s| {
+            ProviderError::ConnectionFailed(format!("Failed to request SFTP subsystem: {s}"))
+        })
+    })?;
+    tokio::time::timeout(wait, async {
+        loop {
+            match channel.wait().await {
+                Some(russh::ChannelMsg::Success) => return Ok(()),
+                Some(russh::ChannelMsg::Failure) => return Err(NoSftp::Refused),
+                Some(
+                    russh::ChannelMsg::Eof
+                    | russh::ChannelMsg::Close
+                    | russh::ChannelMsg::ExitStatus { .. }
+                    | russh::ChannelMsg::ExitSignal { .. },
+                )
+                | None => return Err(NoSftp::Ended),
+                Some(_) => {}
+            }
+        }
+    })
+    .await
+    .map_err(|_| {
+        ProviderError::ConnectionFailed(format!(
+            "the server did not answer the SFTP subsystem request within {} s",
+            wait.as_secs()
+        ))
+    })
 }
 
 impl std::ops::Deref for SftpChannel {
@@ -770,27 +888,6 @@ fn classify_sftp_status_err(e: russh_sftp::client::error::Error, context: &str) 
 /// (exec, direct-tcpip) without re-authenticating.
 pub type SharedSshHandle = Arc<TokioMutex<Handle<SshHandler>>>;
 
-/// POSIX single-quote a string for safe interpolation into a remote shell
-/// command. The whole value is wrapped in `'...'` (everything literal inside
-/// single quotes) and every embedded `'` is emitted as `'\''` (close quote,
-/// escaped literal quote, reopen quote). This neutralises `$()`, backticks,
-/// `;`, `&&`, newlines and spaces: there is no shell metacharacter that
-/// survives single-quoting. Used by [`SftpProvider::checksum`] before passing
-/// a listing-derived path to `sha256sum` over an exec channel.
-fn shell_single_quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('\'');
-    for ch in s.chars() {
-        if ch == '\'' {
-            out.push_str("'\\''");
-        } else {
-            out.push(ch);
-        }
-    }
-    out.push('\'');
-    out
-}
-
 /// SSH Client Handler for server key verification.
 ///
 /// Exposed as `pub` because [`SharedSshHandle`] (a public type alias in the same
@@ -1036,6 +1133,9 @@ pub struct SftpConnectionSpec {
     /// re-dials verify the new connection's key against this (defense in
     /// depth on top of `known_hosts`), same posture as the U-02 rsync pin.
     pub pinned_host_key_sha256: Option<String>,
+    /// The profile's SCP fallback choice: a worker whose server refuses the
+    /// subsystem goes on over SCP only if the primary was allowed to.
+    pub scp_fallback: bool,
 }
 
 impl SftpConnectionSpec {
@@ -1306,6 +1406,10 @@ pub struct SftpProvider {
     /// at/above `multi_thread_cutoff`. Set via `set_multi_thread_download`
     /// (CLI `--multi-thread-streams`).
     multi_thread_streams: usize,
+    /// What the last `download` read, see `DownloadTime`.
+    download_time: super::multi_thread::DownloadTime,
+    /// Whether the host is still asked for a hash on this session.
+    host_hash: HostHashMemory,
     /// File size at/above which intra-file parallelism engages.
     multi_thread_cutoff: u64,
     /// Per-provider read-ahead selection. The legacy environment is consulted
@@ -1342,6 +1446,13 @@ pub struct SftpProvider {
     /// explicit resume goes on from the destination, where a plain download
     /// starts from zero (see `ResumableFile::open`).
     resume_in_place: bool,
+    /// Whether a server with no SFTP is reached over SCP on the same
+    /// connection (WinSCP's default, "SFTP with SCP fallback"). On by
+    /// default; a profile turns it off with `allow_scp_fallback=false`.
+    scp_fallback: bool,
+    /// Set while this connection runs in SCP mode: every operation goes to
+    /// it, and every capability is its answer.
+    scp: Option<Box<ScpProvider>>,
 }
 
 impl SftpProvider {
@@ -1363,6 +1474,8 @@ impl SftpProvider {
             buffer_size: 256 * 1024,
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
             connection_spec: None,
+            download_time: Default::default(),
+            host_hash: HostHashMemory::default(),
             multi_thread_streams: 1,
             multi_thread_cutoff: SFTP_MULTI_THREAD_CUTOFF_DEFAULT,
             sftp_readahead: SftpReadaheadSetting::LegacyEnvironment,
@@ -1373,6 +1486,96 @@ impl SftpProvider {
             transfer_cancel: Arc::new(std::sync::Mutex::new(CancellationToken::new())),
             fail_readahead_write: Arc::new(AtomicBool::new(false)),
             resume_in_place: false,
+            scp_fallback: true,
+            scp: None,
+        }
+    }
+
+    /// Whether a server with no SFTP may be reached over SCP instead.
+    pub fn set_scp_fallback(&mut self, allowed: bool) {
+        self.scp_fallback = allowed;
+    }
+
+    /// True while this connection runs in SCP mode because its server has no
+    /// SFTP.
+    pub fn in_scp_mode(&self) -> bool {
+        self.scp.is_some()
+    }
+
+    /// Whether `provider` is an SFTP connection that went on over SCP,
+    /// looking through an AeroCrypt overlay: the overlay answers
+    /// `as_any_mut` for itself, so a direct downcast misses the SFTP below.
+    pub fn went_on_over_scp(provider: &mut dyn StorageProvider) -> bool {
+        crate::crypt_overlay_provider::concrete_provider_mut(provider)
+            .as_any_mut()
+            .downcast_mut::<SftpProvider>()
+            .is_some_and(|sftp| sftp.in_scp_mode())
+    }
+
+    /// The server gave no SFTP after a verified host key and an accepted
+    /// login: go on in SCP mode on the same connection, as WinSCP does by
+    /// default, unless the profile turned the fallback off. A timeout, a
+    /// transport error or a refused login never gets here.
+    async fn continue_in_scp_mode(
+        &mut self,
+        handle: SharedSshHandle,
+        no_sftp: NoSftp,
+    ) -> Result<(), ProviderError> {
+        let host = self.config.host.clone();
+        let why = match no_sftp {
+            NoSftp::Refused => "refused the SFTP subsystem",
+            NoSftp::Ended => "has no SFTP server program (the SFTP subsystem ended at once)",
+        };
+        let close = |handle: SharedSshHandle| async move {
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async move {
+                let guard = handle.lock().await;
+                let _ = guard
+                    .disconnect(russh::Disconnect::ByApplication, "", "en")
+                    .await;
+            })
+            .await;
+        };
+        if !self.scp_fallback {
+            close(handle).await;
+            // Not a connection failure: the server answered, it has no SFTP.
+            return Err(ProviderError::NotSupported(format!(
+                "{host} {why}. Install an SFTP server on it (on OpenWrt: \
+                 openssh-sftp-server), or allow the SCP fallback in the connection settings"
+            )));
+        }
+        // The SCP provider never dials: it gets the settings without secrets.
+        let config = SftpConfig {
+            password: None,
+            private_key_path: None,
+            key_passphrase: None,
+            ..self.config.clone()
+        };
+        match ScpProvider::on_connection(config, handle.clone()).await {
+            Ok(mut scp) => {
+                tracing::warn!("SFTP: {host} {why}; connected with SCP on the same connection");
+                self.home_dir = scp.home_dir().to_string();
+                self.current_dir = scp.current_dir().to_string();
+                // Limits and tuning set before connecting apply to SCP's
+                // transfers too.
+                scp.set_speed_limit(self.upload_limit_bps / 1024, self.download_limit_bps / 1024)
+                    .await?;
+                scp.set_multi_thread_download(self.multi_thread_streams, self.multi_thread_cutoff);
+                self.ssh_handle = Some(handle);
+                self.scp = Some(Box::new(scp));
+                Ok(())
+            }
+            Err(ProviderError::NotSupported(no_shell)) => {
+                close(handle).await;
+                Err(ProviderError::NotSupported(format!(
+                    "{host} {why}, and SCP cannot work there either: {no_shell}"
+                )))
+            }
+            Err(e) => {
+                close(handle).await;
+                Err(ProviderError::ConnectionFailed(format!(
+                    "{host} {why}, and SCP cannot work there either: {e}"
+                )))
+            }
         }
     }
 
@@ -1565,6 +1768,12 @@ impl SftpProvider {
             );
             return Ok(false);
         }
+        if let Err(differs) = temp.check_content(Path::new(local_path)).await {
+            temp.discard();
+            tracing::warn!("SFTP intra-file {}: {}", remote_path, differs);
+            report_download_fallback(super::content_check::ASSEMBLED_DIFFERS);
+            return Ok(false);
+        }
         match temp.publish(Path::new(local_path)).await {
             Ok(()) => {
                 tracing::info!("SFTP: intra-file download complete: {}", remote_path);
@@ -1748,6 +1957,9 @@ impl SftpProvider {
     ///   consumer transparently drops to classic SFTP (same shape the adapter
     ///   already accepts for non-SFTP providers).
     pub fn delta_transport(&self) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
+        if self.scp.is_some() {
+            return None;
+        }
         let handle = self.ssh_handle.clone()?;
         let known_hosts_path = dirs::home_dir().map(|h| h.join(".ssh").join("known_hosts"));
         let rsync_config = self.rsync_config_for_delta(known_hosts_path)?;
@@ -1906,27 +2118,7 @@ fn classic_binary_fallback(
 impl SftpProvider {
     /// Normalize path (ensure absolute)
     fn normalize_path(&self, path: &str) -> String {
-        if path.starts_with('/') {
-            path.to_string()
-        } else if path.is_empty() || path == "." {
-            self.current_dir.clone()
-        } else if path == ".." {
-            let parent = Path::new(&self.current_dir)
-                .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| "/".to_string());
-            if parent.is_empty() {
-                "/".to_string()
-            } else {
-                parent
-            }
-        } else if path == "~" {
-            self.home_dir.clone()
-        } else if let Some(stripped) = path.strip_prefix("~/") {
-            format!("{}/{}", self.home_dir.trim_end_matches('/'), stripped)
-        } else {
-            format!("{}/{}", self.current_dir.trim_end_matches('/'), path)
-        }
+        resolve_remote_path(&self.current_dir, &self.home_dir, path)
     }
 
     /// Get SFTP session or error if not connected
@@ -1954,13 +2146,14 @@ impl SftpProvider {
                     })
                 })?
             };
-            channel.request_subsystem(true, "sftp").await.map_err(|e| {
-                classify_russh_err(e, |s| {
-                    ProviderError::ServerError(format!(
-                        "Failed to request the SFTP subsystem for {POSIX_RENAME_EXTENSION}: {s}"
-                    ))
-                })
-            })?;
+            let mut channel = channel;
+            let wait = std::time::Duration::from_secs(self.config.timeout_secs.max(1));
+            if let Err(no_sftp) = request_sftp_subsystem(&mut channel, wait).await? {
+                return Err(ProviderError::ServerError(format!(
+                    "No second SFTP session for {POSIX_RENAME_EXTENSION}: {}",
+                    SftpOpenError::NoSftp(no_sftp)
+                )));
+            }
             let session = RawSftpSession::new(channel.into_stream());
             let version = session.init().await.map_err(|e| {
                 classify_russh_err(e, |s| {
@@ -2047,13 +2240,14 @@ impl SftpProvider {
                 })
             })?
         };
-        channel.request_subsystem(true, "sftp").await.map_err(|e| {
-            classify_russh_err(e, |s| {
-                ProviderError::ServerError(format!(
-                    "Failed to request the SFTP subsystem for the read-ahead: {s}"
-                ))
-            })
-        })?;
+        let mut channel = channel;
+        let wait = std::time::Duration::from_secs(self.config.timeout_secs.max(1));
+        if let Err(no_sftp) = request_sftp_subsystem(&mut channel, wait).await? {
+            return Err(ProviderError::ServerError(format!(
+                "No second SFTP session for the read-ahead: {}",
+                SftpOpenError::NoSftp(no_sftp)
+            )));
+        }
         ReadaheadSession::open(channel.into_stream())
             .await
             .map_err(|e| {
@@ -2111,79 +2305,6 @@ impl SftpProvider {
             mime_type: None,
             metadata: Default::default(),
         }
-    }
-
-    /// Authenticate using SSH private key
-    async fn authenticate_with_key(
-        &self,
-        handle: &mut Handle<SshHandler>,
-    ) -> Result<bool, ProviderError> {
-        let key_path = self.config.private_key_path.as_ref().ok_or_else(|| {
-            ProviderError::AuthenticationFailed("No private key path specified".to_string())
-        })?;
-
-        let expanded_path = Self::expand_home_path(key_path);
-
-        tracing::info!("SFTP: Loading private key from {}", expanded_path);
-
-        // Load and parse the key using russh's built-in key loading
-        use secrecy::ExposeSecret;
-        let passphrase_str = self
-            .config
-            .key_passphrase
-            .as_ref()
-            .map(|s| s.expose_secret().to_string());
-        let key_pair =
-            keys::load_secret_key(&expanded_path, passphrase_str.as_deref()).map_err(|e| {
-                ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e))
-            })?;
-
-        // A1 finding: RSA keys authenticated with `None` (= ssh-rsa /
-        // SHA-1) are rejected by OpenSSH 8.8+ because RSA-SHA1 is
-        // disabled by default. We have to negotiate rsa-sha2-512 or
-        // rsa-sha2-256 depending on the key type. For non-RSA keys
-        // (ed25519, ecdsa) the hash is baked into the algorithm name so
-        // `None` is correct and required.
-        //
-        // Strategy: try SHA-512 first (RFC 8332 preference), fall back
-        // to SHA-256 on auth failure, then fall back to no-hash (ssh-rsa
-        // SHA-1) for ancient servers that still accept it. Non-RSA
-        // keys take the `None` path directly.
-        let key_pair = Arc::new(key_pair);
-        let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
-
-        let attempts: Vec<Option<HashAlg>> = if is_rsa {
-            vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
-        } else {
-            vec![None]
-        };
-
-        let mut last_auth_error: Option<String> = None;
-        for hash in attempts {
-            let key_with_hash = PrivateKeyWithHashAlg::new(key_pair.clone(), hash);
-            match handle
-                .authenticate_publickey(&self.config.username, key_with_hash)
-                .await
-            {
-                Ok(AuthResult::Success) => return Ok(true),
-                Ok(AuthResult::Failure { .. }) => {
-                    // Next hash algorithm; OpenSSH returns this for
-                    // "publickey accepted but signature algo rejected".
-                    continue;
-                }
-                Err(e) => {
-                    last_auth_error = Some(e.to_string());
-                    continue;
-                }
-            }
-        }
-
-        if let Some(err) = last_auth_error {
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Key authentication failed after RSA SHA-512/256/1 negotiation attempts: {err}"
-            )));
-        }
-        Ok(false)
     }
 
     async fn verify_remote_upload_size(
@@ -2314,6 +2435,238 @@ pub(crate) fn plan_resume_upload(
 const S_IFMT: u32 = 0o170000;
 const S_IFLNK: u32 = 0o120000;
 
+/// Whether an SFTP profile lets a server with no SFTP be reached over SCP:
+/// yes unless its `allow_scp_fallback` option is `false`.
+pub fn scp_fallback_allowed(config: &ProviderConfig) -> bool {
+    config
+        .extra
+        .get("allow_scp_fallback")
+        .is_none_or(|v| v != "false")
+}
+
+/// Dial `config.host`, verify its host key, and log in.
+///
+/// Every SSH connection of an SFTP or SCP profile is made here, so the two
+/// protocols cannot drift apart on host-key trust or on the order of the
+/// authentication methods: SCP mode runs on the connection this returns,
+/// never on a second one (the SCP backend removed in #73 dialled again and
+/// tripped "host key changed"). The accepted key's SHA-256 fingerprint is
+/// left in `host_key_sha256_hex`.
+pub(crate) async fn ssh_login(
+    config: &SftpConfig,
+    compression: bool,
+    host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
+) -> Result<Handle<SshHandler>, ProviderError> {
+    // Create SSH config with keepalive to prevent server from closing connection
+    let preferred = if compression {
+        tracing::info!("SSH: compression enabled (zlib@openssh.com)");
+        Preferred {
+            compression: std::borrow::Cow::Borrowed(&[
+                compression::ZLIB_LEGACY,
+                compression::ZLIB,
+                compression::NONE,
+            ]),
+            ..Default::default()
+        }
+    } else {
+        Preferred::default()
+    };
+    let ssh_config = sftp_ssh_client_config(config.timeout_secs, preferred);
+
+    // Connect to SSH server
+    let addr = format!("{}:{}", config.host, config.port);
+    let host_key_refusal = Arc::new(std::sync::OnceLock::new());
+    let mut handle = client::connect(
+        Arc::new(ssh_config),
+        &addr,
+        SshHandler::with_trust_and_slot(
+            &config.host,
+            config.port,
+            config.trust_unknown_hosts,
+            host_key_sha256_hex,
+            host_key_refusal.clone(),
+        ),
+    )
+    .await
+    .map_err(|e| match host_key_refusal.get() {
+        Some(refusal) => refusal.clone().into_error(&config.host, config.port),
+        None => ProviderError::ConnectionFailed(format!("ssh: {e}")),
+    })?;
+
+    tracing::info!("SSH: connection established, authenticating...");
+
+    // Authenticate. The `none` method goes first, as OpenSSH, PuTTY and
+    // WinSCP send it (RFC 4252 section 5.2): a server that lets the
+    // account in with no credential accepts it, every other server
+    // refuses it and the configured credential follows. OpenWrt's
+    // Dropbear is the case that needs it: for a root with no password
+    // set it accepts only `none` and refuses the password method
+    // outright, so without this the device cannot be reached at all.
+    let none_result = handle
+        .authenticate_none(&config.username)
+        .await
+        .map_err(|e| ProviderError::AuthenticationFailed(format!("SSH auth failed: {}", e)))?;
+    let authenticated = if matches!(none_result, AuthResult::Success) {
+        tracing::info!("SSH: Server accepted the account with no credential");
+        true
+    } else if config.private_key_path.is_some() {
+        // Try key-based authentication
+        authenticate_with_key(config, &mut handle).await?
+    } else if let Some(password) = &config.password {
+        // Try password authentication first, then keyboard-interactive as fallback
+        use russh::client::KeyboardInteractiveAuthResponse;
+        use secrecy::ExposeSecret;
+        let pw = password.expose_secret().to_string();
+        let result = handle
+            .authenticate_password(&config.username, &pw)
+            .await
+            .map_err(|e| {
+                ProviderError::AuthenticationFailed(format!("Password auth failed: {}", e))
+            })?;
+        if matches!(result, AuthResult::Success) {
+            true
+        } else {
+            // Fallback: keyboard-interactive (many servers like SourceForge require this)
+            tracing::info!("SSH: Password auth not accepted, trying keyboard-interactive...");
+            let ki_result = handle
+                .authenticate_keyboard_interactive_start(&config.username, None::<String>)
+                .await
+                .map_err(|e| {
+                    ProviderError::AuthenticationFailed(format!(
+                        "Keyboard-interactive auth failed: {}",
+                        e
+                    ))
+                })?;
+            match ki_result {
+                KeyboardInteractiveAuthResponse::Success => true,
+                KeyboardInteractiveAuthResponse::Failure { .. } => false,
+                KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
+                    // Server asks for responses - send password for each prompt
+                    let responses: Vec<String> = prompts.iter().map(|_| pw.clone()).collect();
+                    let resp = handle
+                        .authenticate_keyboard_interactive_respond(responses)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::AuthenticationFailed(format!(
+                                "Keyboard-interactive respond failed: {}",
+                                e
+                            ))
+                        })?;
+                    matches!(resp, KeyboardInteractiveAuthResponse::Success)
+                }
+            }
+        }
+    } else {
+        return Err(ProviderError::AuthenticationFailed(
+            "The server requires a password or a private key, and neither is set".to_string(),
+        ));
+    };
+
+    if !authenticated {
+        return Err(ProviderError::AuthenticationFailed(
+            "Authentication rejected by server".to_string(),
+        ));
+    }
+
+    Ok(handle)
+}
+
+/// Authenticate using SSH private key
+async fn authenticate_with_key(
+    config: &SftpConfig,
+    handle: &mut Handle<SshHandler>,
+) -> Result<bool, ProviderError> {
+    let key_path = config.private_key_path.as_ref().ok_or_else(|| {
+        ProviderError::AuthenticationFailed("No private key path specified".to_string())
+    })?;
+
+    let expanded_path = SftpProvider::expand_home_path(key_path);
+
+    tracing::info!("SSH: Loading private key from {}", expanded_path);
+
+    // Load and parse the key using russh's built-in key loading
+    use secrecy::ExposeSecret;
+    let passphrase_str = config
+        .key_passphrase
+        .as_ref()
+        .map(|s| s.expose_secret().to_string());
+    let key_pair = keys::load_secret_key(&expanded_path, passphrase_str.as_deref())
+        .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e)))?;
+
+    // A1 finding: RSA keys authenticated with `None` (= ssh-rsa /
+    // SHA-1) are rejected by OpenSSH 8.8+ because RSA-SHA1 is
+    // disabled by default. We have to negotiate rsa-sha2-512 or
+    // rsa-sha2-256 depending on the key type. For non-RSA keys
+    // (ed25519, ecdsa) the hash is baked into the algorithm name so
+    // `None` is correct and required.
+    //
+    // Strategy: try SHA-512 first (RFC 8332 preference), fall back
+    // to SHA-256 on auth failure, then fall back to no-hash (ssh-rsa
+    // SHA-1) for ancient servers that still accept it. Non-RSA
+    // keys take the `None` path directly.
+    let key_pair = Arc::new(key_pair);
+    let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
+
+    let attempts: Vec<Option<HashAlg>> = if is_rsa {
+        vec![Some(HashAlg::Sha512), Some(HashAlg::Sha256), None]
+    } else {
+        vec![None]
+    };
+
+    let mut last_auth_error: Option<String> = None;
+    for hash in attempts {
+        let key_with_hash = PrivateKeyWithHashAlg::new(key_pair.clone(), hash);
+        match handle
+            .authenticate_publickey(&config.username, key_with_hash)
+            .await
+        {
+            Ok(AuthResult::Success) => return Ok(true),
+            Ok(AuthResult::Failure { .. }) => {
+                // Next hash algorithm; OpenSSH returns this for
+                // "publickey accepted but signature algo rejected".
+                continue;
+            }
+            Err(e) => {
+                last_auth_error = Some(e.to_string());
+                continue;
+            }
+        }
+    }
+
+    if let Some(err) = last_auth_error {
+        return Err(ProviderError::AuthenticationFailed(format!(
+            "Key authentication failed after RSA SHA-512/256/1 negotiation attempts: {err}"
+        )));
+    }
+    Ok(false)
+}
+/// `path` as an absolute remote path: absolute as given, relative to
+/// `current`, `~` and `~/...` under `home`, `.` and `..` from `current`.
+/// SFTP and SCP resolve paths the same way.
+pub(crate) fn resolve_remote_path(current: &str, home: &str, path: &str) -> String {
+    if path.starts_with('/') {
+        path.to_string()
+    } else if path.is_empty() || path == "." {
+        current.to_string()
+    } else if path == ".." {
+        let parent = Path::new(current)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "/".to_string());
+        if parent.is_empty() {
+            "/".to_string()
+        } else {
+            parent
+        }
+    } else if path == "~" {
+        home.to_string()
+    } else if let Some(stripped) = path.strip_prefix("~/") {
+        format!("{}/{}", home.trim_end_matches('/'), stripped)
+    } else {
+        format!("{}/{}", current.trim_end_matches('/'), path)
+    }
+}
+
 /// Test `S_IFLNK` on a raw SFTP mode word.
 ///
 /// `SSH_FXP_READDIR` replies carry each entry's own attributes with `lstat`
@@ -2334,7 +2687,7 @@ fn symlink_bit(mode: u32) -> Option<bool> {
 }
 
 /// Format Unix permissions as rwx string
-fn format_permissions(mode: u32, is_dir: bool) -> String {
+pub(crate) fn format_permissions(mode: u32, is_dir: bool) -> String {
     let user = format!(
         "{}{}{}",
         if mode & 0o400 != 0 { 'r' } else { '-' },
@@ -2360,6 +2713,22 @@ fn format_permissions(mode: u32, is_dir: bool) -> String {
         group,
         other
     )
+}
+
+/// In SCP mode the connection's SCP provider answers: every operation goes to
+/// it, and every capability is its answer, so nothing SFTP-only (ranges,
+/// resume, read-ahead, delta sync, re-dialled pools) is offered.
+macro_rules! in_scp_mode {
+    ($self:ident.$method:ident($($arg:expr),*).await) => {
+        if let Some(scp) = $self.scp.as_mut() {
+            return scp.$method($($arg),*).await;
+        }
+    };
+    ($self:ident.$method:ident($($arg:expr),*)) => {
+        if let Some(scp) = $self.scp.as_ref() {
+            return scp.$method($($arg),*);
+        }
+    };
 }
 
 #[async_trait]
@@ -2389,164 +2758,80 @@ impl StorageProvider for SftpProvider {
         // The posix-rename answer and its session belong to the connection
         // that was asked: after a dropped transport and a new dial it would be
         // a dead session, and every replace would fail on it. The same holds
-        // for the read-ahead's session.
+        // for the read-ahead's session, and for what the host answered on a hash.
         self.posix_rename = PosixRenameSupport::Unasked;
         *self.readahead_session.get_mut() = ReadaheadSupport::Unasked;
+        self.host_hash = HostHashMemory::default();
         // A reconnect over a connection still held (the GUI's silent
         // reconnect after a stalled session) closes it first instead of
         // overwriting the handle.
         self.sftp = None;
+        self.scp = None;
         self.retire_ssh_connection().await;
 
-        // Create SSH config with keepalive to prevent server from closing connection
-        let preferred = if self.compression_enabled {
-            tracing::info!("SFTP: SSH compression enabled (zlib@openssh.com)");
-            Preferred {
-                compression: std::borrow::Cow::Borrowed(&[
-                    compression::ZLIB_LEGACY,
-                    compression::ZLIB,
-                    compression::NONE,
-                ]),
-                ..Default::default()
-            }
-        } else {
-            Preferred::default()
-        };
-        let config = sftp_ssh_client_config(self.config.timeout_secs, preferred);
-
-        // Connect to SSH server
-        let addr = format!("{}:{}", self.config.host, self.config.port);
-        let host_key_refusal = Arc::new(std::sync::OnceLock::new());
-        let mut handle = client::connect(
-            Arc::new(config),
-            &addr,
-            SshHandler::with_trust_and_slot(
-                &self.config.host,
-                self.config.port,
-                self.config.trust_unknown_hosts,
-                self.host_key_sha256_hex.clone(),
-                host_key_refusal.clone(),
-            ),
+        let handle = ssh_login(
+            &self.config,
+            self.compression_enabled,
+            self.host_key_sha256_hex.clone(),
         )
-        .await
-        .map_err(|e| match host_key_refusal.get() {
-            Some(refusal) => refusal
-                .clone()
-                .into_error(&self.config.host, self.config.port),
-            None => ProviderError::ConnectionFailed(format!("ssh: {e}")),
-        })?;
-
-        tracing::info!("SFTP: SSH connection established, authenticating...");
-
-        // Authenticate. The `none` method goes first, as OpenSSH, PuTTY and
-        // WinSCP send it (RFC 4252 section 5.2): a server that lets the
-        // account in with no credential accepts it, every other server
-        // refuses it and the configured credential follows. OpenWrt's
-        // Dropbear is the case that needs it: for a root with no password
-        // set it accepts only `none` and refuses the password method
-        // outright, so without this the device cannot be reached at all.
-        let none_result = handle
-            .authenticate_none(&self.config.username)
-            .await
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("SSH auth failed: {}", e)))?;
-        let authenticated = if matches!(none_result, AuthResult::Success) {
-            tracing::info!("SFTP: Server accepted the account with no credential");
-            true
-        } else if self.config.private_key_path.is_some() {
-            // Try key-based authentication
-            self.authenticate_with_key(&mut handle).await?
-        } else if let Some(password) = &self.config.password {
-            // Try password authentication first, then keyboard-interactive as fallback
-            use russh::client::KeyboardInteractiveAuthResponse;
-            use secrecy::ExposeSecret;
-            let pw = password.expose_secret().to_string();
-            let result = handle
-                .authenticate_password(&self.config.username, &pw)
-                .await
-                .map_err(|e| {
-                    ProviderError::AuthenticationFailed(format!("Password auth failed: {}", e))
-                })?;
-            if matches!(result, AuthResult::Success) {
-                true
-            } else {
-                // Fallback: keyboard-interactive (many servers like SourceForge require this)
-                tracing::info!("SFTP: Password auth not accepted, trying keyboard-interactive...");
-                let ki_result = handle
-                    .authenticate_keyboard_interactive_start(&self.config.username, None::<String>)
-                    .await
-                    .map_err(|e| {
-                        ProviderError::AuthenticationFailed(format!(
-                            "Keyboard-interactive auth failed: {}",
-                            e
-                        ))
-                    })?;
-                match ki_result {
-                    KeyboardInteractiveAuthResponse::Success => true,
-                    KeyboardInteractiveAuthResponse::Failure { .. } => false,
-                    KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
-                        // Server asks for responses - send password for each prompt
-                        let responses: Vec<String> = prompts.iter().map(|_| pw.clone()).collect();
-                        let resp = handle
-                            .authenticate_keyboard_interactive_respond(responses)
-                            .await
-                            .map_err(|e| {
-                                ProviderError::AuthenticationFailed(format!(
-                                    "Keyboard-interactive respond failed: {}",
-                                    e
-                                ))
-                            })?;
-                        matches!(resp, KeyboardInteractiveAuthResponse::Success)
-                    }
-                }
-            }
-        } else {
-            return Err(ProviderError::AuthenticationFailed(
-                "The server requires a password or a private key, and neither is set".to_string(),
-            ));
-        };
-
-        if !authenticated {
-            return Err(ProviderError::AuthenticationFailed(
-                "Authentication rejected by server".to_string(),
-            ));
-        }
+        .await?;
 
         tracing::info!("SFTP: Authenticated successfully, opening SFTP channel...");
 
         // Open SFTP subsystem channel
-        let channel = handle.channel_open_session().await.map_err(|e| {
+        let mut channel = handle.channel_open_session().await.map_err(|e| {
             ProviderError::ConnectionFailed(format!("Failed to open session channel: {}", e))
         })?;
-
-        channel.request_subsystem(true, "sftp").await.map_err(|e| {
-            ProviderError::ConnectionFailed(format!("Failed to request SFTP subsystem: {}", e))
-        })?;
-
-        // Create SFTP session from channel
-        let sftp = SftpChannel::open(channel.into_stream())
-            .await
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("Failed to create SFTP session: {}", e))
-            })?;
-
-        // Get home directory (canonicalize ".")
-        let home = until_sftp_ends(&sftp.ended, sftp.canonicalize("."))
-            .await
-            .map_err(|e| {
-                ProviderError::ConnectionFailed(format!("Failed to get home directory: {}", e))
-            })?;
-
-        self.home_dir = home;
-
-        // Set initial directory
-        if let Some(initial) = &self.config.initial_path {
-            self.current_dir = self.normalize_path(initial);
-        } else {
-            self.current_dir = self.home_dir.clone();
+        let wait = std::time::Duration::from_secs(self.config.timeout_secs.max(1));
+        let opened = match request_sftp_subsystem(&mut channel, wait).await? {
+            Ok(()) => SftpChannel::open(channel.into_stream()).await,
+            // `request_sftp_subsystem` closed the channel, so a server with
+            // one session per connection (`MaxSessions 1`) accepts the SCP
+            // channel that follows.
+            Err(no_sftp) => Err(SftpOpenError::NoSftp(no_sftp)),
+        };
+        // A channel that ended because the whole connection did, while SFTP
+        // was asked for or before the server's VERSION, is a dropped
+        // connection, not a server without SFTP.
+        if matches!(opened, Err(SftpOpenError::NoSftp(NoSftp::Ended))) && handle.is_closed() {
+            return Err(ProviderError::ConnectionLost(
+                "the SSH connection ended while SFTP was being started".to_string(),
+            ));
         }
+        let handle = Arc::new(TokioMutex::new(handle));
+        match opened {
+            Ok(sftp) => {
+                // Get home directory (canonicalize ".")
+                let home = until_sftp_ends(&sftp.ended, sftp.canonicalize("."))
+                    .await
+                    .map_err(|e| {
+                        ProviderError::ConnectionFailed(format!(
+                            "Failed to get home directory: {}",
+                            e
+                        ))
+                    })?;
 
-        self.ssh_handle = Some(Arc::new(TokioMutex::new(handle)));
-        self.sftp = Some(sftp);
+                self.home_dir = home;
+
+                // Set initial directory
+                if let Some(initial) = &self.config.initial_path {
+                    self.current_dir = self.normalize_path(initial);
+                } else {
+                    self.current_dir = self.home_dir.clone();
+                }
+
+                self.ssh_handle = Some(handle);
+                self.sftp = Some(sftp);
+            }
+            Err(SftpOpenError::NoSftp(no_sftp)) => {
+                self.continue_in_scp_mode(handle, no_sftp).await?;
+            }
+            Err(e) => {
+                return Err(ProviderError::ConnectionFailed(format!(
+                    "Failed to create SFTP session: {e}"
+                )));
+            }
+        }
 
         // PD-SFTP-1: capture a secure connection spec now, while
         // `self.config` still holds the secrets (`provider_connect`
@@ -2567,6 +2852,7 @@ impl StorageProvider for SftpProvider {
             initial_path: self.config.initial_path.clone(),
             timeout_secs: self.config.timeout_secs,
             pinned_host_key_sha256: self.host_key_sha256_hex.get().cloned().or(prior_pin),
+            scp_fallback: self.scp_fallback,
         });
 
         tracing::info!(
@@ -2583,6 +2869,10 @@ impl StorageProvider for SftpProvider {
         // Close SFTP session
         if let Some(sftp) = self.sftp.take() {
             let _ = sftp.close().await;
+        }
+        // SCP mode runs on this provider's connection, closed below.
+        if let Some(mut scp) = self.scp.take() {
+            let _ = scp.disconnect().await;
         }
 
         // The posix-rename answer belongs to the connection that was asked,
@@ -2610,12 +2900,14 @@ impl StorageProvider for SftpProvider {
     }
 
     fn is_connected(&self) -> bool {
+        in_scp_mode!(self.is_connected());
         self.sftp
             .as_ref()
             .is_some_and(|sftp| !sftp.ended.is_cancelled())
     }
 
     async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        in_scp_mode!(self.list(path).await);
         // A list clone starts without a channel, like a transfer clone. Dial
         // through the pinned connection spec before the first READDIR instead
         // of manufacturing a transport failure for the walker's retry path.
@@ -2785,10 +3077,12 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
+        in_scp_mode!(self.pwd().await);
         Ok(self.current_dir.clone())
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+        in_scp_mode!(self.cd(path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
@@ -2824,7 +3118,55 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
+        in_scp_mode!(self.cd_up().await);
         self.cd("..").await
+    }
+
+    fn download_was_refused(&self) -> bool {
+        in_scp_mode!(self.download_was_refused());
+        self.download_time.is_refused()
+    }
+
+    fn take_download_time(&mut self, source_refused: bool) -> Option<String> {
+        if let Some(scp) = self.scp.as_mut() {
+            return scp.take_download_time(source_refused);
+        }
+        self.download_time.take(source_refused)
+    }
+
+    fn expect_moved_source(&mut self) {
+        if let Some(scp) = self.scp.as_mut() {
+            return scp.expect_moved_source();
+        }
+        self.download_time.expect_moved();
+    }
+
+    async fn content_digest(
+        &mut self,
+        remote_path: &str,
+        size_hint: Option<u64>,
+    ) -> Option<super::content_check::ContentDigest> {
+        use super::content_check::{reading_limit, worth_asking, ContentDigest};
+        if !self.host_hash.worth_asking() || !worth_asking(ProviderType::Sftp) {
+            return None;
+        }
+        // A transfer worker dials on its first file, and this comes before it.
+        self.ensure_connected().await.ok()?;
+        // The host reads the whole file, so its limit needs the size.
+        let size = match size_hint {
+            Some(size) => Some(size),
+            None => self.size(remote_path).await.ok(),
+        };
+        let answer = tokio::time::timeout(reading_limit(size), self.checksum(remote_path)).await;
+        let Ok(answer) = answer else {
+            self.host_hash.stalled();
+            return None;
+        };
+        let digest = answer
+            .ok()
+            .and_then(|digests| ContentDigest::strongest(&digests));
+        self.host_hash.answered(digest.is_some());
+        digest
     }
 
     async fn download(
@@ -2833,6 +3175,7 @@ impl StorageProvider for SftpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        in_scp_mode!(self.download(remote_path, local_path, on_progress).await);
         self.download_with_size_hint(remote_path, local_path, None, on_progress)
             .await
     }
@@ -2844,8 +3187,13 @@ impl StorageProvider for SftpProvider {
         size_hint: Option<u64>,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        in_scp_mode!(
+            self.download_with_size_hint(remote_path, local_path, size_hint, on_progress)
+                .await
+        );
         let resume_in_place = std::mem::take(&mut self.resume_in_place);
         self.ensure_connected().await?;
+        self.download_time.begin();
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
 
@@ -2884,6 +3232,10 @@ impl StorageProvider for SftpProvider {
                 );
             }
         };
+        // SFTP answers no time with the data: the reading of the open handle
+        // below is the closest to it, and this one stands in when it has none.
+        let mut read_time =
+            Self::metadata_to_entry(String::new(), String::new(), &metadata).modified;
         let mut total_size = metadata.size.unwrap_or(0);
         // The version a part resumed below must have been started from.
         let mut source = RangeSourceFingerprint::of(&Self::metadata_to_entry(
@@ -2944,12 +3296,17 @@ impl StorageProvider for SftpProvider {
         // pipelined paths below open several handles to the same path, a few
         // milliseconds apart, and a replacement inside that burst would put
         // the fallback back in the hole the refusal just avoided.
-        let mut source_is_moving = false;
+        let mut source_is_moving = self.download_time.is_refused();
+        if source_is_moving {
+            // The handle must come after the size read below, or its bytes can
+            // be of the old object and their bound of the new one.
+            close_preopened!();
+        }
         // R21: the provider gate method (shared planner: explicit cutoff +
         // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
         // the single-file path agrees with batch and pget.
         let planned_mt = self.planned_download_segments(total_size);
-        if planned_mt >= 2 && self.connection_spec.is_some() {
+        if planned_mt >= 2 && !source_is_moving && self.connection_spec.is_some() {
             close_preopened!();
             // Half of the callback goes with the attempt and half stays, so
             // the path a refusal falls back to keeps reporting.
@@ -2972,7 +3329,10 @@ impl StorageProvider for SftpProvider {
                 // exactly what the parallel path could not promise, so take
                 // the path below instead of failing a download that has a
                 // correct way to finish.
-                Ok(false) => source_is_moving = true,
+                Ok(false) => {
+                    source_is_moving = true;
+                    self.download_time.refused();
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -3023,7 +3383,10 @@ impl StorageProvider for SftpProvider {
                     )
                     .await
                     {
-                        Ok(()) => return Ok(()),
+                        Ok(()) => {
+                            self.download_time.read(read_time);
+                            return Ok(());
+                        }
                         Err(e @ ProviderError::ParallelRefused(_)) => {
                             // Read on several handles and the object moved
                             // between the opens, or it is not the object the
@@ -3034,6 +3397,7 @@ impl StorageProvider for SftpProvider {
                                 "SFTP: concurrent reads could not verify one source version",
                             );
                             source_is_moving = true;
+                            self.download_time.refused();
                         }
                         Err(e) => return Err(e),
                     }
@@ -3087,6 +3451,7 @@ impl StorageProvider for SftpProvider {
                             window,
                             total_size
                         );
+                        self.download_time.read(read_time);
                         return Ok(());
                     }
                     // Read on several handles and the object moved under
@@ -3098,6 +3463,7 @@ impl StorageProvider for SftpProvider {
                             "SFTP: concurrent reads could not verify one source version",
                         );
                         source_is_moving = true;
+                        self.download_time.refused();
                     }
                     Err(e) => return Err(e),
                 }
@@ -3136,6 +3502,40 @@ impl StorageProvider for SftpProvider {
                     })
                 })?,
         };
+
+        // The handle is the object the bytes come from, and the STAT above can
+        // be of the one before it: read to the STAT's size, a replacement
+        // between the two is published cut to a length that was never its own.
+        // A server that does not answer leaves the STAT's values, except for the
+        // time after a refusal: that reading is of the object that moved.
+        match until_sftp_ends(&sftp.ended, remote_file.metadata()).await {
+            Ok(attributes) => {
+                let handle = Self::metadata_to_entry(String::new(), full_path.clone(), &attributes);
+                // Another time and no size: another object, of a length not known.
+                // Size 0 reads it to its end and no part of the old one is kept.
+                let another_object = match attributes.size {
+                    Some(size) => size != total_size,
+                    None => handle.modified.is_some() && handle.modified != read_time,
+                };
+                if another_object {
+                    tracing::warn!(
+                        "SFTP: {} is {} bytes on its handle and was {}, the download uses the size of the handle",
+                        full_path,
+                        handle.size,
+                        total_size
+                    );
+                    total_size = handle.size;
+                }
+                if another_object || (attributes.size.is_some() && handle.modified.is_some()) {
+                    source = RangeSourceFingerprint::of(&handle);
+                }
+                if source_is_moving || handle.modified.is_some() {
+                    read_time = handle.modified;
+                }
+            }
+            Err(_) if source_is_moving => read_time = None,
+            Err(_) => {}
+        }
 
         // Everything that can fail once the handle is open runs inside this
         // block, so the handle is closed, awaited, on every exit and not only
@@ -3312,6 +3712,7 @@ impl StorageProvider for SftpProvider {
             Err(error) => return super::keep_failed_download(part, error).await,
         };
         part.commit().await.map_err(ProviderError::IoError)?;
+        self.download_time.read(read_time);
 
         if from_partial {
             tracing::info!(
@@ -3325,6 +3726,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        in_scp_mode!(self.download_to_bytes(remote_path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
         let limit = super::MAX_DOWNLOAD_TO_BYTES;
@@ -3361,6 +3763,7 @@ impl StorageProvider for SftpProvider {
         remote_path: &str,
         max_bytes: u64,
     ) -> Result<Vec<u8>, ProviderError> {
+        in_scp_mode!(self.download_to_bytes_capped(remote_path, max_bytes).await);
         use tokio::io::AsyncReadExt;
 
         let sftp = self.get_sftp()?;
@@ -3436,6 +3839,7 @@ impl StorageProvider for SftpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        in_scp_mode!(self.upload(local_path, remote_path, on_progress).await);
         self.ensure_connected().await?;
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(remote_path);
@@ -3550,6 +3954,7 @@ impl StorageProvider for SftpProvider {
     /// documented on it; the three answer related questions to different
     /// callers, and only this one was wrong.
     fn supports_resume(&self) -> bool {
+        in_scp_mode!(self.supports_resume());
         true
     }
 
@@ -3580,6 +3985,11 @@ impl StorageProvider for SftpProvider {
         _offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        in_scp_mode!(
+            self.resume_download(remote_path, local_path, _offset, on_progress)
+                .await
+        );
+        self.download_time.begin();
         self.resume_in_place = true;
         self.download(remote_path, local_path, on_progress).await
     }
@@ -3587,6 +3997,7 @@ impl StorageProvider for SftpProvider {
     /// SFTP can append the tail of an interrupted upload from a byte offset
     /// (the GUI "Resume" action), so the remote partial is not re-sent.
     fn supports_resume_upload_append(&self) -> bool {
+        in_scp_mode!(self.supports_resume_upload_append());
         true
     }
 
@@ -3602,6 +4013,10 @@ impl StorageProvider for SftpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        in_scp_mode!(
+            self.resume_upload(local_path, remote_path, offset, on_progress)
+                .await
+        );
         use russh_sftp::protocol::OpenFlags;
         use tokio::io::AsyncSeekExt;
 
@@ -3771,6 +4186,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        in_scp_mode!(self.mkdir(path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
@@ -3803,6 +4219,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        in_scp_mode!(self.delete(path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
@@ -3820,6 +4237,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        in_scp_mode!(self.rmdir(path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
@@ -3858,6 +4276,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        in_scp_mode!(self.rmdir_recursive(path).await);
         let full_path = self.normalize_path(path);
 
         tracing::info!("SFTP: Recursively removing directory: {}", full_path);
@@ -3885,6 +4304,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        in_scp_mode!(self.rename(from, to).await);
         let sftp = self.get_sftp()?;
         let from_path = self.normalize_path(from);
         let to_path = self.normalize_path(to);
@@ -3955,6 +4375,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn supports_atomic_replace(&mut self) -> Result<bool, ProviderError> {
+        in_scp_mode!(self.supports_atomic_replace().await);
         Ok(self.posix_rename_session().await?.is_some())
     }
 
@@ -3964,6 +4385,7 @@ impl StorageProvider for SftpProvider {
     ///
     /// [`supports_atomic_replace`]: StorageProvider::supports_atomic_replace
     fn atomic_replace_capability(&self) -> crate::transfer_dag::Capability {
+        in_scp_mode!(self.atomic_replace_capability());
         match self.posix_rename {
             PosixRenameSupport::Unasked => crate::transfer_dag::Capability::SupportedAfterProbe,
             PosixRenameSupport::Available(_) => crate::transfer_dag::Capability::Supported,
@@ -3972,6 +4394,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        in_scp_mode!(self.replace(from, to).await);
         use russh_sftp::protocol::{Packet, StatusCode};
 
         let from_path = self.normalize_path(from);
@@ -4021,6 +4444,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        in_scp_mode!(self.stat(path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
@@ -4064,6 +4488,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+        in_scp_mode!(self.size(path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
@@ -4080,6 +4505,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+        in_scp_mode!(self.exists(path).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
         // An ambiguous status is settled as `stat` settles it, by listing the
@@ -4100,6 +4526,7 @@ impl StorageProvider for SftpProvider {
     }
 
     fn supports_checksum(&self) -> bool {
+        in_scp_mode!(self.supports_checksum());
         // We can attempt a server-side hash whenever the SSH session is up.
         // `checksum()` degrades to an empty map (consumers then omit) if the
         // server has no `sha256sum`: honest, like rclone.
@@ -4110,6 +4537,7 @@ impl StorageProvider for SftpProvider {
     /// channel there is nobody to run `sha256sum`, so the surface should offer
     /// nothing rather than a button that cannot fire.
     fn checksum_capability(&self, _path: &str) -> ChecksumCapability {
+        in_scp_mode!(self.checksum_capability(_path));
         if self.ssh_handle.is_some() {
             checksum_matrix::capability(self.provider_type())
         } else {
@@ -4129,12 +4557,16 @@ impl StorageProvider for SftpProvider {
         &mut self,
         path: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        in_scp_mode!(self.checksum(path).await);
         let handle = self.ssh_handle.clone().ok_or(ProviderError::NotConnected)?;
         let full_path = self.normalize_path(path);
         // `--` ends option parsing; the path is fully single-quoted so no
         // shell metacharacter (`$()`, backtick, `;`, space, newline) in a
-        // listing-derived name can break out. See `shell_single_quote`.
-        let cmd = format!("sha256sum -- {}", shell_single_quote(&full_path));
+        // listing-derived name can break out. See `shell_quote`.
+        let cmd = format!(
+            "sha256sum -- {}",
+            crate::providers::shell_quote::shell_quote(&full_path)?
+        );
 
         let (stdout, _stderr, _exit) = match ssh_exec_collect(handle, &cmd, 4096).await {
             Ok(v) => v,
@@ -4162,6 +4594,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+        in_scp_mode!(self.keep_alive().await);
         // SFTP over SSH is a persistent connection
         // Just check if we're still connected
         if self.sftp.is_none() {
@@ -4187,6 +4620,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
+        in_scp_mode!(self.server_info().await);
         Ok(format!(
             "SFTP Server: {}:{} (user: {}, home: {})",
             self.config.host, self.config.port, self.config.username, self.home_dir
@@ -4194,10 +4628,12 @@ impl StorageProvider for SftpProvider {
     }
 
     fn supports_chmod(&self) -> bool {
+        in_scp_mode!(self.supports_chmod());
         true // SFTP supports chmod
     }
 
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+        in_scp_mode!(self.chmod(path, mode).await);
         let sftp = self.get_sftp()?;
         let full_path = self.normalize_path(path);
 
@@ -4220,19 +4656,22 @@ impl StorageProvider for SftpProvider {
     }
 
     fn supports_symlinks(&self) -> bool {
+        in_scp_mode!(self.supports_symlinks());
         true // SFTP supports symlinks
     }
 
     fn supports_find(&self) -> bool {
+        in_scp_mode!(self.supports_find());
         true
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+        in_scp_mode!(self.find(path, pattern).await);
         let sftp = self.get_sftp()?;
         let root = self.normalize_path(path);
         let mut results = Vec::new();
         let mut walk = crate::sync_core::FindWalk::new(&root);
-        let mut dirs_to_scan = vec![root];
+        let mut dirs_to_scan = vec![root.clone()];
 
         while let Some(dir) = dirs_to_scan.pop() {
             let entries = match until_sftp_ends(&sftp.ended, sftp.read_dir(&dir)).await {
@@ -4240,8 +4679,23 @@ impl StorageProvider for SftpProvider {
                 // A folder that cannot be read is skipped; a connection that
                 // ended is not a folder, and the rest of the walk could not
                 // be read either.
-                Err(e) => match classify_russh_err(e, ProviderError::ServerError) {
-                    lost @ ProviderError::ConnectionLost(_) => return Err(lost),
+                Err(e) => match classify_sftp_list_err(e) {
+                    SftpListFailure::Decided(
+                        lost @ (ProviderError::ConnectionLost(_)
+                        | ProviderError::NotConnected
+                        | ProviderError::Timeout),
+                    ) => return Err(lost),
+                    // The folder searched itself is not an empty result, and
+                    // it fails as `list` of that folder fails.
+                    SftpListFailure::Decided(error) if dir == root => return Err(error),
+                    SftpListFailure::Ambiguous(message) if dir == root => {
+                        return Err(resolve_ambiguous_list_failure(
+                            message,
+                            map_sftp_try_exists(
+                                until_sftp_ends(&sftp.ended, sftp.try_exists(&dir)).await,
+                            ),
+                        ))
+                    }
                     _ => continue,
                 },
             };
@@ -4287,6 +4741,7 @@ impl StorageProvider for SftpProvider {
     }
 
     async fn storage_info(&mut self) -> Result<super::StorageInfo, ProviderError> {
+        in_scp_mode!(self.storage_info().await);
         let sftp = self.get_sftp()?;
         let path = self.normalize_path(".");
 
@@ -4320,6 +4775,10 @@ impl StorageProvider for SftpProvider {
     ) -> Result<(), ProviderError> {
         self.upload_limit_bps = upload_kb * 1024;
         self.download_limit_bps = download_kb * 1024;
+        // SCP mode transfers on its own session; it paces them the same way.
+        if let Some(scp) = self.scp.as_mut() {
+            scp.set_speed_limit(upload_kb, download_kb).await?;
+        }
         tracing::info!(
             "SFTP: Speed limits set: download={}KB/s upload={}KB/s",
             download_kb,
@@ -4333,6 +4792,7 @@ impl StorageProvider for SftpProvider {
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
+        in_scp_mode!(self.transfer_optimization_hints());
         // Shaped-graph multipart trait (S3-T09): intentionally NotSupported
         // by design on SFTP.
         //
@@ -4386,6 +4846,7 @@ impl StorageProvider for SftpProvider {
     /// fails its next file loudly rather than silently, exactly as a fresh
     /// dial that failed would.
     fn supports_transfer_worker_reuse(&self) -> bool {
+        in_scp_mode!(self.supports_transfer_worker_reuse());
         true
     }
 
@@ -4396,6 +4857,7 @@ impl StorageProvider for SftpProvider {
     /// connection spec there is nothing to re-dial from, so the scan stays on
     /// the single locked session.
     fn list_executor_kind(&self) -> super::ProviderListExecutorKind {
+        in_scp_mode!(self.list_executor_kind());
         if self.connection_spec.is_some() {
             super::ProviderListExecutorKind::HttpClonePool
         } else {
@@ -4405,6 +4867,7 @@ impl StorageProvider for SftpProvider {
 
     /// Same ceiling as the transfer pool: each lease is a full SSH connection.
     fn list_executor_max_sessions(&self) -> u16 {
+        in_scp_mode!(self.list_executor_max_sessions());
         self.transfer_executor_max_sessions()
     }
 
@@ -4412,10 +4875,12 @@ impl StorageProvider for SftpProvider {
     /// own connection on first use and, being reusable, is kept warm by the
     /// scanner across directories instead of re-dialled per directory.
     fn clone_for_list(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        in_scp_mode!(self.clone_for_list());
         self.clone_for_transfer()
     }
 
     fn transfer_executor_kind(&self) -> ProviderTransferExecutorKind {
+        in_scp_mode!(self.transfer_executor_kind());
         if self.connection_spec.is_some() {
             ProviderTransferExecutorKind::SftpConnectionPool
         } else {
@@ -4433,6 +4898,7 @@ impl StorageProvider for SftpProvider {
     /// --sftp-concurrency; the effective count stays min(ceiling, --parallel),
     /// so the default of 4 connections is unchanged.
     fn transfer_executor_max_sessions(&self) -> u16 {
+        in_scp_mode!(self.transfer_executor_max_sessions());
         SFTP_POOL_MAX_SESSIONS
     }
 
@@ -4442,6 +4908,7 @@ impl StorageProvider for SftpProvider {
     /// (`ensure_connected`). No SSH handle or channel is shared, so N
     /// workers are N independent connections, exactly like the FTP pool.
     fn clone_for_transfer(&self) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        in_scp_mode!(self.clone_for_transfer());
         let spec = self.connection_spec.clone().ok_or_else(|| {
             ProviderError::NotSupported(
                 "SFTP clone_for_transfer requires a captured connection spec".to_string(),
@@ -4458,6 +4925,7 @@ impl StorageProvider for SftpProvider {
         worker.multi_thread_streams = self.multi_thread_streams;
         worker.multi_thread_cutoff = self.multi_thread_cutoff;
         worker.sftp_readahead = self.sftp_readahead;
+        worker.scp_fallback = self.scp_fallback;
         Ok(Box::new(worker))
     }
 
@@ -4482,13 +4950,18 @@ impl StorageProvider for SftpProvider {
     fn set_multi_thread_download(&mut self, streams: usize, cutoff_bytes: u64) {
         self.multi_thread_streams = streams.clamp(1, SFTP_MULTI_THREAD_MAX_STREAMS);
         self.multi_thread_cutoff = cutoff_bytes.max(SFTP_MULTI_THREAD_CUTOFF_FLOOR);
+        if let Some(scp) = self.scp.as_mut() {
+            scp.set_multi_thread_download(streams, cutoff_bytes);
+        }
     }
 
     fn multi_thread_cutoff_floor(&self) -> u64 {
+        in_scp_mode!(self.multi_thread_cutoff_floor());
         SFTP_MULTI_THREAD_CUTOFF_FLOOR
     }
 
     fn planned_download_segments(&self, file_size: u64) -> usize {
+        in_scp_mode!(self.planned_download_segments(file_size));
         crate::provider_transfer_executor::plan_segment_count(
             file_size,
             self.multi_thread_streams,
@@ -4503,6 +4976,7 @@ impl StorageProvider for SftpProvider {
     }
 
     fn supports_delta_sync(&self) -> bool {
+        in_scp_mode!(self.supports_delta_sync());
         true
     }
 
@@ -4512,6 +4986,7 @@ impl StorageProvider for SftpProvider {
         offset: u64,
         len: u64,
     ) -> Result<Vec<u8>, ProviderError> {
+        in_scp_mode!(self.read_range(path, offset, len).await);
         // PD-SFTP-1: clone-for-transfer workers start unconnected and
         // re-dial on first transfer. `download()` already does this; the
         // segmented engine (`run_provider_segmented_download`) calls
@@ -5637,6 +6112,12 @@ async fn sftp_readahead_download(
         }
     }
 
+    // The guard removes the staged file, and the old file keeps its name.
+    super::content_check::before_publish(&guard.path, Path::new(local_path))
+        .await
+        .map_err(|why| {
+            ProviderError::TransferFailed(format!("the download was not kept: {why}"))
+        })?;
     tokio::fs::rename(&guard.path, local_path)
         .await
         .map_err(|e| {
@@ -6029,6 +6510,7 @@ async fn sftp_download_one_range(
     worker.home_dir = home_dir;
     worker.buffer_size = buffer_size;
     worker.compression_enabled = compression_enabled;
+    worker.scp_fallback = spec.scp_fallback;
     worker.connection_spec = Some(spec);
     worker
         .ensure_connected()
@@ -6270,8 +6752,77 @@ async fn sftp_read_one_range(
     }
 }
 
+/// What this session learned about asking the host for a hash. `checksum` shows
+/// a restricted shell, a missing `sha256sum`, one unreadable file and a failed
+/// channel alike, as no digest: only several in a row say it is the host. A wait
+/// that ran out stops the asking at once, so it is paid once and not per file.
+#[derive(Debug, Default)]
+struct HostHashMemory {
+    misses_in_a_row: u8,
+    stalled: bool,
+}
+
+impl HostHashMemory {
+    const MISSES_THAT_MEAN_THE_HOST: u8 = 3;
+
+    fn worth_asking(&self) -> bool {
+        !self.stalled && self.misses_in_a_row < Self::MISSES_THAT_MEAN_THE_HOST
+    }
+
+    fn answered(&mut self, with_a_digest: bool) {
+        self.misses_in_a_row = if with_a_digest {
+            0
+        } else {
+            self.misses_in_a_row.saturating_add(1)
+        };
+    }
+
+    fn stalled(&mut self) {
+        self.stalled = true;
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn one_file_without_a_digest_does_not_end_the_check_for_the_session() {
+        let mut memory = super::HostHashMemory::default();
+        memory.answered(false);
+        memory.answered(false);
+        assert!(memory.worth_asking());
+        memory.answered(true);
+        memory.answered(false);
+        memory.answered(false);
+        assert!(memory.worth_asking(), "a digest starts the count over");
+        memory.answered(false);
+        assert!(!memory.worth_asking(), "three in a row: it is the host");
+    }
+
+    #[test]
+    fn a_wait_that_ran_out_is_paid_once() {
+        let mut memory = super::HostHashMemory::default();
+        memory.stalled();
+        assert!(!memory.worth_asking());
+    }
+
+    #[test]
+    fn a_handshake_whose_channel_closed_is_a_server_without_sftp() {
+        use russh_sftp::client::error::Error;
+        for closed in [
+            Error::UnexpectedBehavior("SendError: channel closed".into()),
+            Error::UnexpectedBehavior("RecvError: channel closed".into()),
+        ] {
+            assert!(super::handshake_lost_its_channel(&closed), "{closed}");
+        }
+        for answered in [
+            Error::Timeout,
+            Error::UnexpectedPacket,
+            Error::UnexpectedBehavior("Unsupported version 2".into()),
+        ] {
+            assert!(!super::handshake_lost_its_channel(&answered), "{answered}");
+        }
+    }
+
     use super::*;
     use tokio::io::AsyncWriteExt;
 
@@ -6600,31 +7151,6 @@ mod tests {
     }
 
     #[test]
-    fn shell_single_quote_neutralises_injection() {
-        // Plain path: just wrapped.
-        assert_eq!(shell_single_quote("/srv/file.txt"), "'/srv/file.txt'");
-        // Spaces stay literal.
-        assert_eq!(shell_single_quote("/a b/c"), "'/a b/c'");
-        // Embedded single quote: close, escaped quote, reopen.
-        assert_eq!(shell_single_quote("a'b"), "'a'\\''b'");
-        // Command substitution / backticks are inert inside single quotes.
-        assert_eq!(shell_single_quote("$(rm -rf /)"), "'$(rm -rf /)'");
-        assert_eq!(shell_single_quote("`id`"), "'`id`'");
-        // Separators and logical operators cannot break out.
-        assert_eq!(shell_single_quote("x; rm -rf /"), "'x; rm -rf /'");
-        assert_eq!(shell_single_quote("a && b"), "'a && b'");
-        // Newline injection stays inside the quotes.
-        assert_eq!(shell_single_quote("a\nrm -rf /"), "'a\nrm -rf /'");
-        // The classic break-out attempt: '; rm -rf / ; echo '
-        let evil = "'; rm -rf / ; echo '";
-        let q = shell_single_quote(evil);
-        assert!(q.starts_with('\'') && q.ends_with('\''));
-        // Every original `'` became the 4-char `'\''` sequence; there is no
-        // bare unescaped quote that could terminate the literal early.
-        assert_eq!(q, "''\\''; rm -rf / ; echo '\\'''");
-    }
-
-    #[test]
     fn sftp_scans_in_parallel_only_once_a_connection_spec_exists() {
         let config = SftpConfig {
             host: "example.com".to_string(),
@@ -6657,6 +7183,7 @@ mod tests {
             initial_path: None,
             timeout_secs: 30,
             pinned_host_key_sha256: None,
+            scp_fallback: true,
         });
         assert_eq!(
             provider.list_executor_kind(),
@@ -7522,6 +8049,95 @@ mod tests {
         provider
     }
 
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_download_keeps_the_time_it_read_for_a_caller_that_saw_a_refusal() {
+        let bytes = pattern(400);
+        let mut server = ReadCappingServer::new(&bytes, 100, false);
+        server.mtime = Some(1_700_000_000);
+        let mut provider = server.serve().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("target");
+        provider
+            .download("/down.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(provider.take_download_time(false), None, "a plain download");
+        assert_eq!(
+            provider.take_download_time(true).as_deref(),
+            Some("2023-11-14 22:13:20Z")
+        );
+    }
+
+    /// After a refusal the path may name another object by now: the time is the
+    /// open handle's, and that handle is opened after the size read, even when a
+    /// small hint had already opened one.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_download_after_a_refusal_takes_the_time_of_its_handle() {
+        let bytes = pattern(400);
+        for size_hint in [None, Some(400)] {
+            let mut server = ReadCappingServer::new(&bytes, 100, false);
+            server.mtime = Some(1_600_000_000);
+            server.handle_mtime = Some(1_700_000_000);
+            let mut provider = server.serve().await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("target");
+            provider.expect_moved_source();
+            provider
+                .download_with_size_hint("/down.bin", out.to_str().unwrap(), size_hint, None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), bytes);
+            assert_eq!(
+                provider.take_download_time(false).as_deref(),
+                Some("2023-11-14 22:13:20Z")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_replacement_between_the_stat_and_the_open_is_read_at_its_own_size() {
+        let bytes = pattern(400);
+        // Longer than the STAT found: cut to the old length without the handle's
+        // size. Shorter: read to its end, with the time of its handle.
+        for (stat_size, size_hint) in [(100, None), (100, Some(100)), (900, None), (900, Some(900))]
+        {
+            let mut server = ReadCappingServer::new(&bytes, 100, false);
+            server.stat_size = Some(stat_size);
+            server.mtime = Some(1_600_000_000);
+            server.handle_mtime = Some(1_700_000_000);
+            let mut provider = server.serve().await;
+            let dir = tempfile::tempdir().unwrap();
+            let out = dir.path().join("target");
+            provider
+                .download_with_size_hint("/down.bin", out.to_str().unwrap(), size_hint, None)
+                .await
+                .unwrap();
+            assert_eq!(std::fs::read(&out).unwrap(), bytes);
+            assert_eq!(
+                provider.take_download_time(true).as_deref(),
+                Some("2023-11-14 22:13:20Z")
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_handle_with_another_time_and_no_size_is_read_to_its_end() {
+        let bytes = pattern(400);
+        let mut server = ReadCappingServer::new(&bytes, 100, false);
+        server.stat_size = Some(100);
+        server.mtime = Some(1_600_000_000);
+        server.handle_mtime = Some(1_700_000_000);
+        server.handle_without_size = true;
+        let mut provider = server.serve().await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("target");
+        provider
+            .download("/down.bin", out.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&out).unwrap(), bytes);
+    }
+
     #[tokio::test]
     async fn a_refused_sftp_parallel_plan_reports_a_safe_terminal_notice() {
         let provider =
@@ -8346,6 +8962,21 @@ mod tests {
         }
     }
 
+    /// The folder searched fails as a listing of it fails. A folder under it
+    /// that is gone leaves the rest of the search.
+    #[tokio::test]
+    async fn a_find_fails_as_a_listing_of_its_own_folder() {
+        const LISTINGS: Listings = &[("/x", &["a.txt", "gone/"])];
+        let (mut provider, _) = provider_on_a_tree_server(LISTINGS).await;
+        let outcome = provider.find("/missing", "*.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
+        let found = provider.find("/x", "*.txt").await.unwrap();
+        assert_eq!(found.len(), 1, "{found:?}");
+    }
+
     /// A search follows only folders inside the one searched, once each.
     #[tokio::test]
     async fn a_find_never_leaves_its_folder() {
@@ -8448,8 +9079,14 @@ mod tests {
         data: Arc<Vec<u8>>,
         cap: usize,
         announce: bool,
+        /// The size STAT reports when it is of an object the handle is not.
+        stat_size: Option<u64>,
         /// The modification time STAT reports, when it reports one.
         mtime: Option<u32>,
+        /// The modification time FSTAT reports on an open handle.
+        handle_mtime: Option<u32>,
+        /// FSTAT reports no size.
+        handle_without_size: bool,
         first_cap: Option<usize>,
         /// Malformed DATA replies, including the first READ or a later chunk.
         oversize_from: Option<u64>,
@@ -8470,7 +9107,10 @@ mod tests {
                 data: Arc::new(data.to_vec()),
                 cap,
                 announce,
+                stat_size: None,
                 mtime: None,
+                handle_mtime: None,
+                handle_without_size: false,
                 first_cap: None,
                 oversize_from: None,
                 read_error_at: None,
@@ -8608,10 +9248,27 @@ mod tests {
             Ok(russh_sftp::protocol::Attrs {
                 id,
                 attrs: russh_sftp::protocol::FileAttributes {
-                    size: Some(self.data.len() as u64),
+                    size: Some(self.stat_size.unwrap_or(self.data.len() as u64)),
                     permissions: Some(0o100644),
                     atime: self.mtime,
                     mtime: self.mtime,
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn fstat(
+            &mut self,
+            id: u32,
+            _handle: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: (!self.handle_without_size).then_some(self.data.len() as u64),
+                    permissions: Some(0o100644),
+                    atime: self.handle_mtime,
+                    mtime: self.handle_mtime,
                     ..Default::default()
                 },
             })

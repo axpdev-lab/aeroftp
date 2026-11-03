@@ -288,7 +288,8 @@ impl ImageKitProvider {
     }
 
     fn resolve_path(&self, path: &str) -> String {
-        if path.trim().is_empty() {
+        // A name of spaces is a name, not the current folder.
+        if path.is_empty() {
             return self.current_path.clone();
         }
         if path.starts_with('/') {
@@ -404,6 +405,7 @@ impl ImageKitProvider {
         } else {
             basename(&target).to_string()
         };
+        refuse_rewritten_name(&file_name, NameUse::Upload)?;
         let folder = folder_path(&parent_path(&target));
         let meta = tokio::fs::metadata(local_path)
             .await
@@ -550,6 +552,11 @@ impl ImageKitProvider {
     async fn copy_file(&self, from: &str, to: &str) -> Result<(), ProviderError> {
         let source = normalize_path(from);
         let dest_parent = folder_path(&parent_path(&normalize_path(to)));
+        // The copy keeps the name and a rename follows: refuse the new name
+        // before the copy, not after it.
+        if basename(&source) != basename(&normalize_path(to)) {
+            refuse_rewritten_name(basename(&normalize_path(to)), NameUse::RenameFile)?;
+        }
         let resp = self
             .auth(self.client.post(format!("{}/files/copy", self.api_base())))
             .json(&CopyFileRequest {
@@ -576,6 +583,7 @@ impl ImageKitProvider {
     }
 
     async fn rename_file(&self, from: &str, new_name: &str) -> Result<(), ProviderError> {
+        refuse_rewritten_name(new_name, NameUse::RenameFile)?;
         let source = normalize_path(from);
         let resp = self
             .auth(self.client.put(format!("{}/files/rename", self.api_base())))
@@ -638,6 +646,11 @@ impl ImageKitProvider {
         let src_name = basename(&source);
         let dest_name = basename(&target);
         let moves = folder_path(&src_parent) != folder_path(&dest_parent);
+        // A move and a rename are two calls: refuse the new name before the
+        // first one.
+        if src_name != dest_name {
+            refuse_rewritten_name(dest_name, NameUse::RenameFile)?;
+        }
         if !moves {
             return if src_name == dest_name {
                 Ok(())
@@ -703,14 +716,27 @@ impl ImageKitProvider {
         }
         // The same folder move queued earlier and not seen to finish: wait for
         // that job. Its source may already be gone, and a second job would
-        // run after the first.
-        if let Some(outcome) = self
-            .resume_folder_job("moveFolder", &source, &parent_path(&target))
-            .await
-        {
-            return outcome;
+        // run after the first. A moveFolder job keeps the folder's name, so a
+        // move to another name in that folder is another move, not this one.
+        if basename(&source) == basename(&target) {
+            if let Some(outcome) = self
+                .resume_folder_job("moveFolder", &source, &parent_path(&target))
+                .await
+            {
+                return outcome;
+            }
         }
         let entry = self.stat(&source).await?;
+        // A new name ImageKit would store as another one is refused before
+        // anything is asked of the destination or changed.
+        if basename(&source) != basename(&target) {
+            let use_ = if entry.is_dir {
+                NameUse::RenameFolder
+            } else {
+                NameUse::RenameFile
+            };
+            refuse_rewritten_name(basename(&target), use_)?;
+        }
         // The listing can omit stored entries (including newly created
         // folders). find_entry therefore refuses an unverified destination
         // rather than treating an unlisted name as free. Positive matches
@@ -724,7 +750,6 @@ impl ImageKitProvider {
                 // Only same-folder rename has a documented collision409.
                 // Move APIs append versions/merge and have no such guard.
                 if entry.is_dir {
-                    refuse_rewritten_folder_name(basename(&target))?;
                     return self.rename_folder_job(&source, basename(&target)).await;
                 }
                 return self.rename_file(&source, basename(&target)).await;
@@ -751,7 +776,6 @@ impl ImageKitProvider {
                     .start_folder_job("moveFolder", &source, &parent_path(&target), false)
                     .await;
             }
-            refuse_rewritten_folder_name(dest_name)?;
             let src_parent = parent_path(&source);
             let dest_parent = parent_path(&target);
             if folder_path(&src_parent) == folder_path(&dest_parent) {
@@ -1013,6 +1037,21 @@ impl ImageKitProvider {
 
 #[async_trait]
 impl StorageProvider for ImageKitProvider {
+    fn sync_namespace_identity(&self) -> Option<String> {
+        use sha2::Digest;
+        let key = self.config.private_key.expose_secret();
+        if !self.connected || key.is_empty() {
+            return None;
+        }
+        // ImageKit's URL id is not verified by API authentication. Bind to the
+        // high-entropy API credential actually used instead; rotation revokes
+        // old sync authority. Neither raw key nor a user password is persisted.
+        let mut digest = sha2::Sha256::new();
+        digest.update(b"aeroftp/imagekit/sync-credential/v1\0");
+        digest.update(key.as_bytes());
+        Some(format!("{:x}", digest.finalize()))
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1283,6 +1322,7 @@ impl StorageProvider for ImageKitProvider {
         if name.is_empty() {
             return Ok(());
         }
+        refuse_rewritten_name(name, NameUse::CreateFolder)?;
         let parent = folder_path(&parent_path(&resolved));
 
         let resp = self
@@ -1613,28 +1653,72 @@ fn folder_copy_destination(source: &str, target: &str) -> Result<String, Provide
     Ok(parent_path(target))
 }
 
-/// `renameFolder` replaces every character of the new name that is not a
-/// letter, a digit or `-` with `_` (official SDK, `FolderRenameParams`). A
-/// name it would rewrite is refused before anything changes, rather than
-/// leaving the folder under a name nobody asked for.
-fn refuse_rewritten_folder_name(name: &str) -> Result<(), ProviderError> {
-    let rewritten: String = name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    if rewritten == name {
+/// What ImageKit does with a name it is given: it keeps the letters, marks
+/// and digits of the Basic Multilingual Plane, `-`, `_` and, in a file name,
+/// `.`, and stores every other character as `_`, one for each. Measured on the
+/// API on 2026-10-31, 68 characters one by one:
+///
+/// - kept: `é` (composed or with a combining accent), `ß`, `日`, `한`, `Ա`,
+///   `कि`, `ｱ`, `Ａ`, `ﬁ`, `ǅ`, `ʰ`, `ª`, `Ω` (U+2126), `١`, `²`, `½`, `①`,
+///   `Ⅷ`, `〇`, and the marks U+0345, U+20DD and U+0E31;
+/// - `_`: space, no-break space, `(`, `&`, `'`, `’`, `·`, the circled letters
+///   `Ⓐ` and `ⓐ` (symbols that Unicode counts as alphabetic), and every
+///   character above U+FFFF, letters and digits included (`𝔸`, `𐐀`, `𠀀`,
+///   `𝟎`, `𑁦`, an emoji): `a𝔸𝔸b` became `a__b`;
+/// - a folder named `a.b` was created as `a_b`.
+///
+/// The upload documentation lists only a-z, A-Z, 0-9, `.` and `-`, fewer than
+/// it keeps.
+fn imagekit_stored_name(name: &str, folder: bool) -> String {
+    name.chars()
+        .map(|c| if imagekit_keeps(c, folder) { c } else { '_' })
+        .collect()
+}
+
+/// Whether ImageKit keeps `c` in a name (see `imagekit_stored_name`). Of the
+/// characters of the Basic Multilingual Plane that Rust's `is_alphanumeric`
+/// accepts, the circled Latin letters U+24B6 to U+24E9 are the only ones that
+/// are not a letter, a mark or a digit.
+fn imagekit_keeps(c: char, folder: bool) -> bool {
+    let letter_mark_or_digit = u32::from(c) <= 0xFFFF
+        && !('\u{24B6}'..='\u{24E9}').contains(&c)
+        && (c.is_alphanumeric() || unicode_normalization::char::is_combining_mark(c));
+    letter_mark_or_digit || c == '-' || c == '_' || (c == '.' && !folder)
+}
+
+/// What a name is given to ImageKit for.
+#[derive(Clone, Copy)]
+enum NameUse {
+    Upload,
+    CreateFolder,
+    RenameFile,
+    RenameFolder,
+}
+
+/// A name ImageKit would store as another one is refused before anything is
+/// sent. Sent as it is, `a b.txt` was uploaded as `a_b.txt` and, the upload
+/// overwriting, replaced the file of that name; a folder or a file renamed
+/// to such a name was left under a name nobody asked for.
+fn refuse_rewritten_name(name: &str, use_: NameUse) -> Result<(), ProviderError> {
+    let folder = matches!(use_, NameUse::CreateFolder | NameUse::RenameFolder);
+    let stored = imagekit_stored_name(name, folder);
+    if stored == name {
         return Ok(());
     }
+    let (would, nothing) = match use_ {
+        NameUse::Upload => ("upload the file as", "Nothing was uploaded"),
+        NameUse::CreateFolder => ("create the folder as", "Nothing was created"),
+        NameUse::RenameFile => ("rename the file to", "Nothing was changed"),
+        NameUse::RenameFolder => ("rename the folder to", "Nothing was changed"),
+    };
+    let keeps = if folder {
+        "a folder name there keeps only letters, marks and digits up to U+FFFF, '-' and '_'"
+    } else {
+        "a file name there keeps only letters, marks and digits up to U+FFFF, '.', '-' and '_'"
+    };
     Err(ProviderError::NotSupported(format!(
-        "ImageKit would rename the folder to \"{rewritten}\", not \"{name}\": a folder name \
-         there keeps only letters, digits and '-', and every other character becomes '_'. \
-         Nothing was changed"
+        "ImageKit would {would} \"{stored}\", not \"{name}\": {keeps}, and every other \
+         character becomes '_'. {nothing}"
     )))
 }
 
@@ -1712,6 +1796,39 @@ fn validate_download_url(url: &str) -> Result<(), ProviderError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sync_namespace_identity_binds_the_authenticated_api_key_not_display_url() {
+        let mut provider = empty_provider();
+        assert!(provider.sync_namespace_identity().is_none());
+        provider.connected = true;
+        let initial = provider.sync_namespace_identity().unwrap();
+        assert_eq!(initial.len(), 64);
+        provider.config.imagekit_id = "other-display-url".into();
+        assert_eq!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.private_key =
+            SecretString::from("rotated-high-entropy-api-key".to_string());
+        assert_ne!(provider.sync_namespace_identity().unwrap(), initial);
+        provider.config.private_key = SecretString::from(String::new());
+        assert!(provider.sync_namespace_identity().is_none());
+    }
+
+    #[test]
+    fn a_name_keeps_its_leading_and_trailing_spaces() {
+        // A name with a leading or trailing space is a name of its own, and a
+        // name of spaces only is not the current folder.
+        assert_eq!(super::normalize_path("/ a"), "/ a");
+        assert_eq!(super::normalize_path("/a /b "), "/a /b ");
+        let mut p = super::ImageKitProvider::new(super::ImageKitConfig {
+            imagekit_id: "test".into(),
+            private_key: secrecy::SecretString::from("test".to_string()),
+            initial_path: None,
+        });
+        p.current_path = "/Cloud".to_string();
+        assert_eq!(p.resolve_path("   "), "/Cloud/   ");
+        assert_eq!(p.resolve_path(" a"), "/Cloud/ a");
+        assert_eq!(p.resolve_path("/a "), "/a ");
+    }
+
     #[tokio::test]
     async fn probe_contract_imagekit_create_only_upload_uses_the_native_guard() {
         use axum::response::IntoResponse;
@@ -2356,12 +2473,186 @@ mod tests {
             "{outcome:?}"
         );
         assert!(posts.lock().unwrap().is_empty());
-        assert!(refuse_rewritten_folder_name("my albums")
+        assert!(refuse_rewritten_name("my albums", NameUse::RenameFolder)
             .unwrap_err()
             .to_string()
             .contains("my_albums"));
-        assert!(refuse_rewritten_folder_name("albums_2026-10").is_ok());
-        assert!(refuse_rewritten_folder_name("fotografía").is_ok());
+        assert!(refuse_rewritten_name("albums_2026-10", NameUse::RenameFolder).is_ok());
+        assert!(refuse_rewritten_name("fotografía", NameUse::RenameFolder).is_ok());
+    }
+
+    /// What ImageKit keeps of a name, as measured on its API: letters, marks
+    /// and digits of the Basic Multilingual Plane, `-`, `_`, and `.` in a file
+    /// name only. Every character measured is here, so a rule that keeps one
+    /// ImageKit rewrote (every Unicode alphanumeric did: `Ⓐ`, `𝔸`) fails.
+    #[test]
+    fn imagekit_keeps_letters_marks_digits_and_three_signs() {
+        for kept in [
+            "a_b-c.txt",
+            "aéb.txt",
+            "ae\u{301}b.txt",
+            "aßb.txt",
+            "a日b.txt",
+            "a\u{661}b.txt",
+            "a²b.txt",
+            // Each letter case, modifier letters, compatibility forms, other
+            // scripts, the three kinds of number and the three kinds of mark.
+            "a\u{2167}\u{3007}\u{bd}\u{2460}\u{663}b.txt",
+            "a\u{2b0}\u{1c5}\u{1fbc}\u{aa}\u{fb01}\u{640}b.txt",
+            "a\u{531}\u{915}\u{93f}\u{ff71}\u{ff21}\u{d55c}\u{130}b.txt",
+            "a\u{2126}\u{212b}b.txt",
+            "a\u{345}\u{20dd}\u{e31}b.txt",
+        ] {
+            assert_eq!(imagekit_stored_name(kept, false), kept);
+        }
+        for (sent, stored) in [
+            ("a b.txt", "a_b.txt"),
+            (" lead.txt", "_lead.txt"),
+            ("   ", "___"),
+            ("a(1).txt", "a_1_.txt"),
+            ("a&b'c.txt", "a_b_c.txt"),
+            ("a\u{a0}b\u{2019}c\u{b7}d.txt", "a_b_c_d.txt"),
+            ("a\u{1F600}.txt", "a_.txt"),
+            // Symbols Unicode counts as alphabetic: the circled letters.
+            ("a\u{24b6}\u{24d0}\u{24e9}b.txt", "a___b.txt"),
+            ("a\u{1F130}b.txt", "a_b.txt"),
+            // Above U+FFFF, letters, digits and marks too, one `_` each.
+            ("a\u{1d538}\u{1d538}b.txt", "a__b.txt"),
+            ("\u{915}\u{1d538}.txt", "\u{915}_.txt"),
+            (
+                "a\u{20000}\u{1d7ce}\u{10400}\u{10330}\u{11066}\u{1d165}b.txt",
+                "a______b.txt",
+            ),
+        ] {
+            assert_eq!(imagekit_stored_name(sent, false), stored, "{sent:?}");
+        }
+        // The circled digit after the circled letters is a digit, as `①` is.
+        assert_eq!(imagekit_stored_name("\u{24ea}", true), "\u{24ea}");
+        assert_eq!(imagekit_stored_name("a.b", true), "a_b");
+        assert_eq!(imagekit_stored_name("a-b_c\u{e9}", true), "a-b_c\u{e9}");
+    }
+
+    /// Every write, as `METHOD path name`: the name is the upload's
+    /// `fileName`, the folder's `folderName`, or the rename's `newFileName`.
+    async fn provider_recording_writes() -> (
+        ImageKitProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        use std::sync::Arc;
+        let writes: Arc<std::sync::Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&writes);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    if method == "GET" {
+                        // The source file, and nothing else, in every listing.
+                        let listed = if query.contains("path=%2Fsrc&") {
+                            serde_json::json!([{
+                                "fileId": "A", "name": "a.txt", "filePath": "/src/a.txt",
+                                "type": "file", "size": 3,
+                            }])
+                        } else {
+                            serde_json::json!([])
+                        };
+                        return axum::Json(listed);
+                    }
+                    let text = String::from_utf8_lossy(&body).to_string();
+                    let name = serde_json::from_str::<serde_json::Value>(&text)
+                        .ok()
+                        .and_then(|v| {
+                            ["newFileName", "folderName", "newFolderName"]
+                                .iter()
+                                .find_map(|k| v[*k].as_str().map(str::to_string))
+                        })
+                        .or_else(|| {
+                            text.split("name=\"fileName\"\r\n\r\n")
+                                .nth(1)
+                                .and_then(|rest| rest.split("\r\n").next())
+                                .map(str::to_string)
+                        })
+                        .unwrap_or_default();
+                    seen.lock().unwrap().push(format!("{method} {path} {name}"));
+                    axum::Json(serde_json::json!({ "jobId": "J" }))
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = empty_provider();
+        provider.connected = true;
+        provider.api_base_override = Some(format!("http://{addr}"));
+        (provider, writes)
+    }
+
+    /// Sent as it was, `a b.txt` was uploaded as `a_b.txt` and replaced the
+    /// file of that name (measured on the API). A name ImageKit would store
+    /// as another one is refused before any request; a name it keeps goes.
+    #[tokio::test]
+    async fn a_name_imagekit_would_rewrite_is_refused_before_any_request() {
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"abc").unwrap();
+        let local = local.path().to_str().unwrap();
+        let (mut provider, writes) = provider_recording_writes().await;
+
+        let refused = [
+            ("upload", provider.upload(local, "/src/a b.txt", None).await),
+            (
+                "upload",
+                provider.upload(local, "/src/ lead.txt", None).await,
+            ),
+            // A letter above U+FFFF: ImageKit stores it as `_`.
+            (
+                "upload",
+                provider.upload(local, "/src/a\u{1d538}.txt", None).await,
+            ),
+            ("mkdir", provider.mkdir("/src/my albums").await),
+            ("mkdir", provider.mkdir("/src/a.b").await),
+            (
+                "rename",
+                provider.rename("/src/a.txt", "/src/a b.txt").await,
+            ),
+            ("move", provider.rename("/src/a.txt", "/dst/a b.txt").await),
+            (
+                "copy",
+                provider.server_copy("/src/a.txt", "/dst/a&b.txt").await,
+            ),
+        ];
+        for (what, outcome) in &refused {
+            let message = match outcome {
+                Err(ProviderError::NotSupported(message)) => message,
+                other => panic!("{what}: {other:?}"),
+            };
+            assert!(
+                message.contains("every other character becomes '_'"),
+                "{message}"
+            );
+        }
+        assert!(
+            writes.lock().unwrap().is_empty(),
+            "{:?}",
+            writes.lock().unwrap()
+        );
+        let upload = refused[0].1.as_ref().unwrap_err().to_string();
+        assert!(upload.contains("\"a_b.txt\", not \"a b.txt\""), "{upload}");
+        let astral = refused[2].1.as_ref().unwrap_err().to_string();
+        assert!(astral.contains("\"a_.txt\""), "{astral}");
+
+        provider
+            .upload(local, "/src/aéb-1_2.txt", None)
+            .await
+            .unwrap();
+        provider.mkdir("/src/fotografía-2026").await.unwrap();
+        assert_eq!(
+            *writes.lock().unwrap(),
+            ["POST /upload aéb-1_2.txt", "POST /folder/ fotografía-2026"]
+        );
     }
 
     #[tokio::test]
@@ -2640,6 +2931,37 @@ mod tests {
             .unwrap()
             .iter()
             .filter(|c| c.starts_with("POST /bulkJobs/moveFolder"))
+            .count();
+        assert_eq!(posts, 1, "{:?}", calls.lock().unwrap());
+    }
+
+    /// A moveFolder job keeps the folder's name. A move to another name in
+    /// the same folder found the job queued for the first move and answered
+    /// with its outcome: `/dst/other` was reported moved while the folder
+    /// went to `/dst/photos`.
+    #[tokio::test]
+    async fn a_queued_folder_move_answers_only_a_move_that_keeps_its_name() {
+        let (mut provider, calls) = provider_on_tree(&["/src", "/src/photos"], &[500, 200]).await;
+        let first = provider
+            .start_folder_job("moveFolder", "/src/photos", "/dst", false)
+            .await;
+        assert!(first.is_err(), "{first:?}");
+        let other = provider.rename("/src/photos", "/dst/other").await;
+        assert!(other.is_err(), "another name is another move: {other:?}");
+        assert_eq!(
+            provider.unfinished_folder_jobs.lock().unwrap().len(),
+            1,
+            "the first move is still waited for"
+        );
+        provider
+            .rename("/src/photos", "/dst/photos")
+            .await
+            .expect("the same move waits for its job");
+        let posts = calls
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|c| c.starts_with("POST /bulkJobs/"))
             .count();
         assert_eq!(posts, 1, "{:?}", calls.lock().unwrap());
     }

@@ -7,13 +7,13 @@
  */
 
 import { presetConnectionOptions, connectionProfileDefaults } from '../providers/connectionManifest';
-import React, { useState, useEffect, useRef, useMemo, useId } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useId, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
 import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Folder, X, Lock, Eye, EyeOff, ExternalLink, Shield, ShieldCheck, KeyRound, Loader2, Image, Info, Pencil, Link2, ArrowRightLeft, RefreshCw, Usb } from 'lucide-react';
-import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
+import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isSshProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { CryptSecretForm } from '../types';
 import { cryptSecretForms, hydratedSecretForms, secretFormsHalfRecorded } from '../utils/cryptSecretForm';
 import { CryptSecretFormChoice } from './CryptSecretFormChoice';
@@ -49,6 +49,7 @@ import { loadFourSharedCredentials } from '../utils/fourSharedCredentials';
 import { OAuthConnect } from './OAuthConnect';
 import { AlertDialog } from './Dialogs';
 import { IconPickerDialog } from './IconPickerDialog';
+import { optionsAcrossSshSwitch, presetFitsProtocol, storedPresetForSave, SWITCHABLE_PROTOCOLS } from '../utils/protocolSwitch';
 import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDefaultS3Region, parseS3EndpointParams, ProviderConfig } from '../providers';
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
@@ -67,13 +68,11 @@ import { isFilenDesktopBridge as isFilenDesktopBridgeProvider } from '../utils/f
 import { isProtonNative, useProtonNativeAvailable } from '../utils/protonNative';
 import { useProtonSignIn } from '../hooks/useProtonSignIn';
 
-// Protocols that can be switched between when editing a saved connection
-const SWITCHABLE_PROTOCOLS: ProviderType[] = ['ftp', 'ftps', 'sftp'];
-
 const PROTOCOL_COLORS: Record<string, string> = {
     ftp: 'from-blue-500 to-cyan-400',
     ftps: 'from-green-500 to-emerald-400',
     sftp: 'from-purple-500 to-violet-400',
+    scp: 'from-purple-500 to-violet-400',
     webdav: 'from-orange-500 to-amber-400',
     s3: 'from-amber-500 to-yellow-400',
     aerocloud: 'from-sky-400 to-blue-500',
@@ -193,10 +192,8 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         setIsAuthenticating(true);
         setError(null);
         try {
-            await Promise.all([
-                invoke('store_credential', { account: 'oauth_fourshared_client_id', password: consumerKey }),
-                invoke('store_credential', { account: 'oauth_fourshared_client_secret', password: consumerSecret }),
-            ]);
+            // One call: an import or another window must not see half of the pair.
+            await invoke('store_oauth_app', { provider: 'fourshared', clientId: consumerKey, clientSecret: consumerSecret });
             await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
             setHasExistingTokens(true);
             setWantsNewAccount(false);
@@ -314,7 +311,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const [connectionName, setConnectionName] = useState('');
     // Stable ref for onTabLabelChange to avoid re-render loops from unstable arrow functions
     const onTabLabelChangeRef = useRef(onTabLabelChange);
-    onTabLabelChangeRef.current = onTabLabelChange;
+    useLayoutEffect(() => { onTabLabelChangeRef.current = onTabLabelChange; }, [onTabLabelChange]);
     // Notify IntroHub when the user types a connection name (or clears it)
     useEffect(() => {
         onTabLabelChangeRef.current?.(connectionName.trim());
@@ -972,14 +969,28 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         return map;
     };
 
+    // The connection or the profile stands, but its secret will be asked for again.
+    const reportSecretNotSaved = (err: unknown) => {
+        logger.warn('A secret could not be saved', err);
+        window.dispatchEvent(new CustomEvent('aeroftp-toast', {
+            detail: { type: 'error', title: t('toast.saveFailed'), message: String(err), important: true },
+        }));
+    };
+
     // Write or clear the persisted per-mode snapshots for a profile depending on
     // the opt-in. Called from saveToServers for both the edit and new branches.
-    const syncPersistedModeCredentials = async (profileId: string): Promise<void> => {
+    const syncPersistedModeCredentials = async (profileId: string): Promise<boolean> => {
         if (persistModeCredentials && inModeGroup) {
-            await storeModeCredentials(profileId, buildModeCredentialMap());
+            try {
+                await storeModeCredentials(profileId, buildModeCredentialMap());
+            } catch (err) {
+                reportSecretNotSaved(err);
+                return false;
+            }
         } else {
             await deleteModeCredentials(profileId);
         }
+        return true;
     };
 
     // P3: the AeroCrypt overlay binding is offered only on backends where a
@@ -1444,7 +1455,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         providerId: protocol === 'swift'
                             ? (isBlompAuthUrl(connectionParams.server) ? 'blomp' : undefined)
                             : (selectedProviderId
-                                || s.providerId
+                                || storedPresetForSave(s.providerId, protocol, (id) => getProviderById(id)?.protocol)
                                 || (protocol === 'mtp' ? (connectionParams.providerId || 'mtp-portable')
                                     : protocol === 'mega' ? 'mega'
                                     : undefined)),
@@ -1478,7 +1489,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     `dedupKey=${dedupKey}`,
                 );
             }
-            await syncPersistedModeCredentials(editingProfileId);
+            // The caller keeps the editor open: a retry updates this same profile.
+            if (!(await syncPersistedModeCredentials(editingProfileId))) return false;
             setSavedServersUpdate(Date.now());
             const savedServer = storedServers.find((s) => s.id === editingProfileId);
             if (savedServer) {
@@ -1657,7 +1669,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         if (bridgeSaveBlocked) return;
         // Store PAT in vault for future connections (if GitHub PAT mode)
         if (connectionParams.options?.githubAuthMode === 'pat' && connectionParams.password) {
-            invoke('github_store_pat', { pat: connectionParams.password }).catch(() => {});
+            invoke('github_store_pat', { pat: connectionParams.password }).catch(reportSecretNotSaved);
         }
 
         if (editingProfileId) {
@@ -2125,12 +2137,20 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Replace in slot: remove original, insert new at the same index
         const newServers = [...existingServers];
         newServers.splice(originalIdx, 1, newServer);
+        // Migrate the persisted per-mode credential snapshots from the old id to the
+        // converted one (or clear them when the opt-in is off), so a later mode switch on
+        // the converted profile restores without asking. Before the profile changes: if
+        // it fails, the convert stops and the original still reaches its snapshots.
+        if (!(await syncPersistedModeCredentials(newId))) {
+            await deleteModeCredentials(newId);
+            await credentials.rollback().catch((e: unknown) => logger.warn('Saved profile credential restoration failed', e));
+            return;
+        }
         const storedServers = await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision);
-        if (!storedServers) return;
-        // Migrate the persisted per-mode credential snapshots from the old id
-        // to the converted one (or clear them when the opt-in is off), so a
-        // later mode switch on the converted profile restores without asking.
-        await syncPersistedModeCredentials(newId);
+        if (!storedServers) {
+            await deleteModeCredentials(newId);
+            return;
+        }
         if (newId !== originalServer.id) {
             await deleteModeCredentials(originalServer.id);
         }
@@ -2477,17 +2497,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     const handleProtocolChange = (newProtocol: ProviderType, providerId?: string) => {
-        // When editing a saved connection and switching between compatible protocols (FTP/FTPS/SFTP),
+        // When editing a saved connection and switching between compatible protocols (FTP/FTPS/SFTP/SCP),
         // keep edit mode and only update protocol + port.
         if (editingProfileId
             && SWITCHABLE_PROTOCOLS.includes(newProtocol)
             && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)
         ) {
+            // SFTP and SCP are the same SSH server: the port, the key, the
+            // timeout and an SFTP-only choice carry over.
+            const sameSshServer = isSshProtocol(newProtocol) && isSshProtocol(protocol);
+            // A preset of another protocol (SourceForge is SFTP) goes with the
+            // switch, or the saved profile reopens as the preset's protocol.
+            const presetId = selectedProviderId || connectionParams.providerId;
+            const presetFits = presetFitsProtocol(presetId ? getProviderById(presetId)?.protocol : undefined, newProtocol);
+            if (!presetFits) setSelectedProviderId(null);
             onConnectionParamsChange({
                 ...connectionParams,
+                ...(presetFits ? {} : { providerId: undefined }),
                 protocol: newProtocol,
-                port: getDefaultPort(newProtocol),
-                options: {},
+                port: sameSshServer ? connectionParams.port || getDefaultPort(newProtocol) : getDefaultPort(newProtocol),
+                options: sameSshServer ? optionsAcrossSshSwitch(connectionParams.options) : {},
             });
             return;
         }
@@ -3671,7 +3700,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     };
 
     // Card width: wider for 2-column protocols, narrower for single-column providers
-    const twoColProtocols = ['ftp', 'ftps', 'sftp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'twake', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
+    const twoColProtocols = ['ftp', 'ftps', 'sftp', 'scp', 's3', 'webdav', 'azure', 'filen', 'internxt', 'koofr', 'opendrive', 'kdrive', 'immich', 'twake', 'imagekit', 'uploadcare', 'cloudinary', 'filelu', 'drime', 'jottacloud', 'backblaze',
         // #215 harmonization: OAuth clouds are now two-column too, so they get the
         // same wide card (max-w-4xl) as the rest instead of the narrow single-column one.
         'googledrive', 'googlephotos', 'dropbox', 'onedrive', 'box', 'pcloud', 'zohoworkdrive', 'yandexdisk', 'fourshared', 'swift',
@@ -3816,7 +3845,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 </p>
                             </div>
                         )}
-                        {/* Protocol Selector: only while editing a switchable protocol (FTP/FTPS/SFTP) */}
+                        {/* Protocol Selector: only while editing a switchable protocol (FTP/FTPS/SFTP/SCP) */}
                         {(editingProfileId && SWITCHABLE_PROTOCOLS.includes(protocol as ProviderType)) && (
                         <ProtocolSelector
                             value={protocol}
@@ -6334,7 +6363,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             options={connectionParams.options || {}}
                                             onChange={(options) => onConnectionParamsChange({ ...connectionParams, options })}
                                             disabled={loading}
-                                            onBrowseKeyFile={protocol === 'sftp' ? handleBrowseSshKey : undefined}
+                                            onBrowseKeyFile={isSshProtocol(protocol) ? handleBrowseSshKey : undefined}
                                             selectedProviderId={selectedProviderId}
                                             isEditing={!!editingProfileId}
                                             presetUnlocked={presetUnlocked}
@@ -6503,7 +6532,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         // has a live connection: otherwise it returns null.
                         const proto = connectionParams.protocol || 'ftp';
                         const SERVER_PROTOCOLS = new Set(['ftp', 'ftps']);
-                        const PROVIDER_PROTOCOLS = new Set(['sftp', 's3', 'webdav']);
+                        const PROVIDER_PROTOCOLS = new Set(['sftp', 'scp', 's3', 'webdav']);
                         if (!SERVER_PROTOCOLS.has(proto) && !PROVIDER_PROTOCOLS.has(proto)) return null;
                         const command = PROVIDER_PROTOCOLS.has(proto) ? 'detect_provider_favicon' : 'detect_server_favicon';
                         const searchPaths: string[] = [];
