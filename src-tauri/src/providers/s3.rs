@@ -5640,68 +5640,81 @@ impl StorageProvider for S3Provider {
 
         // Streaming upload for files up to the multipart threshold. The body
         // reports the bytes as they go out; 100 percent waits for the
-        // server's answer (see `UploadProgress`).
+        // server's answer (see `UploadProgress`). The executor no longer
+        // restarts this upload. Each attempt opens the file and signs again.
+        // Only a connection refusal before send is retried.
         use tokio_util::io::ReaderStream;
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
         progress.start();
-        let file = tokio::fs::File::open(local_path)
+        let path = local_path.to_string();
+        // Invalidate once. A fresh hasher is stored for the attempt that
+        // actually completes, so a refused connection cannot append into it.
+        let baseline_store = self
+            .begin_baseline(key, total_size)
             .await
-            .map_err(ProviderError::IoError)?;
-        let pending = self.begin_baseline(key, total_size).await;
-        let (baseline_store, hasher) = match pending {
-            Some((store, hasher)) => (Some(store), Some(hasher)),
-            None => (None, None),
-        };
-        let hasher = Arc::new(std::sync::Mutex::new(hasher));
-        let stream_hasher = Arc::clone(&hasher);
-        let source = ReaderStream::new(file).map(move |chunk| {
-            if let Ok(bytes) = &chunk {
-                if let Some(hasher) = stream_hasher
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .as_mut()
-                {
-                    hasher.update(bytes);
-                }
-            }
-            chunk
-        });
-        let stream = crate::transfer_dag::throttle::throttle_stream(
-            source,
-            crate::transfer_dag::governor::TransferDirection::Upload,
-        );
-        let body = reqwest::Body::wrap_stream(progress.track(stream));
-
-        // Build the request manually with streaming body (cannot use s3_request helper for streaming)
+            .map(|(store, _hasher)| store);
+        let hash_baseline = baseline_store.is_some();
+        let hasher_slot: Arc<std::sync::Mutex<Option<BaselineHasher>>> =
+            Arc::new(std::sync::Mutex::new(None));
         let url = self.build_url(key);
         // For streaming, we use UNSIGNED-PAYLOAD since we cannot hash the stream upfront
         let payload_hash = "UNSIGNED-PAYLOAD";
-        let mut headers = HashMap::new();
-        // B2: Add storage class + SSE headers before signing
-        self.append_upload_headers(&mut headers);
-        if let Some(mtime) = Self::source_mtime_metadata(local_path) {
-            headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime);
-        }
-        let authorization = self.sign_request("PUT", &url, &mut headers, payload_hash)?;
-
         // UPLOAD-01: Detect MIME type from filename extension
-        let content_type = mime_guess::from_path(local_path)
+        let content_type = mime_guess::from_path(&path)
             .first_or_octet_stream()
             .to_string();
-
-        let mut request = self.client.put(&url);
-        for (k, v) in headers.iter() {
-            request = request.header(k, v);
-        }
-        request = request.header("Authorization", &authorization);
-        request = request.header("Content-Length", total_size.to_string());
-        request = request.header("Content-Type", &content_type);
-        request = request.body(body);
-
-        let response = request
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        let client = self.client.clone();
+        let response = super::send_rebuilt_on_connect_failure(
+            || {
+                let file = std::fs::File::open(&path).map_err(ProviderError::IoError)?;
+                *hasher_slot.lock().unwrap_or_else(|e| e.into_inner()) = if hash_baseline {
+                    BaselineHasher::new(total_size)
+                } else {
+                    None
+                };
+                let stream_hasher = Arc::clone(&hasher_slot);
+                let source = ReaderStream::new(tokio::fs::File::from_std(file)).map(move |chunk| {
+                    if let Ok(bytes) = &chunk {
+                        if let Some(hasher) = stream_hasher
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .as_mut()
+                        {
+                            hasher.update(bytes);
+                        }
+                    }
+                    chunk
+                });
+                let stream = crate::transfer_dag::throttle::throttle_stream(
+                    source,
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                );
+                let body = reqwest::Body::wrap_stream(progress.track(stream));
+                let mut headers = HashMap::new();
+                // B2: Add storage class + SSE headers before signing
+                self.append_upload_headers(&mut headers);
+                if let Some(mtime) = Self::source_mtime_metadata(&path) {
+                    headers.insert(Self::MTIME_METADATA_HEADER.to_string(), mtime);
+                }
+                let authorization = self.sign_request("PUT", &url, &mut headers, payload_hash)?;
+                let mut request = client.put(&url);
+                for (name, value) in headers.iter() {
+                    request = request.header(name, value);
+                }
+                Ok(request
+                    .header("Authorization", &authorization)
+                    .header("Content-Length", total_size.to_string())
+                    .header("Content-Type", &content_type)
+                    .body(body))
+            },
+            &super::HttpRetryConfig::default(),
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::NetworkError(error.to_string())
+                })
+            },
+        )
+        .await?;
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
@@ -5710,7 +5723,7 @@ impl StorageProvider for S3Provider {
                     .get(reqwest::header::ETAG)
                     .and_then(|value| value.to_str().ok())
                     .map(str::to_owned);
-                let finished = hasher.lock().unwrap_or_else(|e| e.into_inner()).take();
+                let finished = hasher_slot.lock().unwrap_or_else(|e| e.into_inner()).take();
                 self.save_baseline(key, baseline_store.zip(finished), etag)
                     .await;
                 progress.complete();

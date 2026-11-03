@@ -4752,40 +4752,50 @@ impl StorageProvider for WebDavProvider {
         // stopped reading.
         // Keep one watermark across the original PUT and its Digest replay.
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
-        let put_body = || async {
-            let file = tokio::fs::File::open(local_path)
-                .await
-                .map_err(ProviderError::IoError)?;
+        let put_body = || -> Result<reqwest::Body, ProviderError> {
+            let file = std::fs::File::open(local_path).map_err(ProviderError::IoError)?;
             let stream = crate::transfer_dag::throttle::throttle_stream(
-                tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024),
+                tokio_util::io::ReaderStream::with_capacity(
+                    tokio::fs::File::from_std(file),
+                    256 * 1024,
+                ),
                 crate::transfer_dag::governor::TransferDirection::Upload,
             );
-            Ok::<reqwest::Body, ProviderError>(reqwest::Body::wrap_stream(progress.track(stream)))
+            Ok(reqwest::Body::wrap_stream(progress.track(stream)))
         };
+        let retry = super::HttpRetryConfig::default();
 
         let nonce_used = self.digest_nonce_snapshot();
-        let mut response = self
-            .request(Method::PUT, remote_path)
-            .header("Content-Length", total_size)
-            .body(put_body().await?)
-            .send()
-            .await
-            .map_err(send_error)?;
+        let mut response = super::send_rebuilt_on_connect_failure(
+            || {
+                Ok(self
+                    .request(Method::PUT, remote_path)
+                    .header("Content-Length", total_size)
+                    .body(put_body()?))
+            },
+            &retry,
+            send_error,
+        )
+        .await?;
 
         // The single-PUT path used to map a 401 straight into
         // `upload_failure_error`'s catch-all, so a rotated nonce failed the
         // whole upload. Replay exactly once, on the same `stale=true` gate the
-        // other paths use.
+        // other paths use. Each send retries only a connection refusal.
         if response.status() == StatusCode::UNAUTHORIZED
             && self.should_replay_after_401(&response, &nonce_used)
         {
-            response = self
-                .request(Method::PUT, remote_path)
-                .header("Content-Length", total_size)
-                .body(put_body().await?)
-                .send()
-                .await
-                .map_err(send_error)?;
+            response = super::send_rebuilt_on_connect_failure(
+                || {
+                    Ok(self
+                        .request(Method::PUT, remote_path)
+                        .header("Content-Length", total_size)
+                        .body(put_body()?))
+                },
+                &retry,
+                send_error,
+            )
+            .await?;
         }
 
         match response.status() {

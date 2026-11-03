@@ -1820,30 +1820,41 @@ impl StorageProvider for JottacloudProvider {
 
         // Upload as multipart/form-data with "file" field (rclone-compatible).
         // The file part reports its bytes as they go out; 100 percent waits
-        // for Jottacloud's answer (see `UploadProgress`).
+        // for Jottacloud's answer (see `UploadProgress`). The payload is
+        // already in memory, so a refused connection rebuilds the form from
+        // the same bytes. An HTTP response is not replayed.
         let progress = super::upload_progress::UploadProgress::new(progress, total_size);
         progress.start();
-        let file_part = reqwest::multipart::Part::stream_with_length(
-            progress.bytes_body(bytes::Bytes::from(data)),
-            total_size,
+        let payload = bytes::Bytes::from(data);
+        let auth = self.auth_header();
+        let client = self.client.clone();
+        let resp = super::send_rebuilt_on_connect_failure(
+            || {
+                let file_part = reqwest::multipart::Part::stream_with_length(
+                    progress.bytes_body(payload.clone()),
+                    total_size,
+                )
+                .file_name(filename.clone())
+                .mime_str("application/octet-stream")
+                .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {e}")))?;
+                let form = reqwest::multipart::Form::new().part("file", file_part);
+                Ok(client
+                    .post(&upload_url)
+                    .header(AUTHORIZATION, auth.clone())
+                    .header("JMd5", &md5_hash)
+                    .header("JSize", total_size.to_string())
+                    .header("JCreated", &modified_time)
+                    .header("JModified", &modified_time)
+                    .multipart(form))
+            },
+            &HttpRetryConfig::default(),
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::TransferFailed(format!("Upload failed: {error}"))
+                })
+            },
         )
-        .file_name(filename)
-        .mime_str("application/octet-stream")
-        .map_err(|e| ProviderError::TransferFailed(format!("Multipart error: {}", e)))?;
-        let form = reqwest::multipart::Form::new().part("file", file_part);
-
-        let resp = self
-            .client
-            .post(&upload_url)
-            .header(AUTHORIZATION, self.auth_header())
-            .header("JMd5", &md5_hash)
-            .header("JSize", total_size.to_string())
-            .header("JCreated", &modified_time)
-            .header("JModified", &modified_time)
-            .multipart(form)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
+        .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();

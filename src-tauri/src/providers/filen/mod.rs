@@ -3457,17 +3457,27 @@ async fn upload_filen_chunk(
         chunk_hash,
     );
 
-    let resp = client
-        .post(&url)
-        .header(
-            "Authorization",
-            HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
-                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-        )
-        .body(encrypted)
-        .send()
-        .await
-        .map_http_err(|e| ProviderError::NetworkError(sanitize_filen_transport_error(&e)))?;
+    let payload = bytes::Bytes::from(encrypted);
+    let auth = HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
+        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?;
+    let http = client.clone();
+    // The chunk is already encrypted. A refused connection sends those same
+    // bytes again. An HTTP response, including 429, is not replayed.
+    let resp = super::send_rebuilt_on_connect_failure(
+        || {
+            Ok(http
+                .post(&url)
+                .header("Authorization", auth.clone())
+                .body(payload.clone()))
+        },
+        &HttpRetryConfig::default(),
+        |error| {
+            super::http_send_error(error, |error| {
+                ProviderError::NetworkError(sanitize_filen_transport_error(&error))
+            })
+        },
+    )
+    .await?;
 
     let status = resp.status();
     let retry_header = resp

@@ -967,18 +967,19 @@ impl TwakeProvider {
     /// back after a retry, the total only once the server's answer is
     /// checked) and hashing what was sent so the result can be checked
     /// against the server's md5sum.
-    async fn upload_body(
+    fn upload_body(
         local_path: &str,
         progress: &super::upload_progress::UploadProgress,
         hasher: std::sync::Arc<std::sync::Mutex<md5::Md5>>,
     ) -> Result<reqwest::Body, ProviderError> {
         use futures_util::StreamExt;
         use md5::Digest;
-        let file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let file = std::fs::File::open(local_path).map_err(ProviderError::IoError)?;
         let paced = crate::transfer_dag::throttle::throttle_stream(
-            tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024),
+            tokio_util::io::ReaderStream::with_capacity(
+                tokio::fs::File::from_std(file),
+                256 * 1024,
+            ),
             crate::transfer_dag::governor::TransferDirection::Upload,
         );
         let stream = progress.track(paced).inspect(move |chunk| {
@@ -1270,23 +1271,40 @@ impl StorageProvider for TwakeProvider {
                 }
             };
 
-            // The body is a stream, so every retry reopens the file.
+            // The body is a stream, so every attempt reopens the file. A
+            // refused connection retries here. 401 and 409 stay on the loop
+            // above, and an HTTP response is not replayed. The hasher starts
+            // over so a retried stream does not append to the first digest.
             let hasher = std::sync::Arc::new(std::sync::Mutex::new(md5::Md5::new()));
-            let body = Self::upload_body(local_path, &progress, hasher.clone()).await?;
-            let builder = if existing.is_some() {
-                self.client.put(&url)
-            } else {
-                self.client.post(&url)
-            };
-            let resp = builder
-                .header(AUTHORIZATION, self.bearer()?)
-                .header(ACCEPT, "application/vnd.api+json")
-                .header(CONTENT_TYPE, "application/octet-stream")
-                .header(CONTENT_LENGTH, total)
-                .body(body)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
+            let bearer = self.bearer()?;
+            let client = self.client.clone();
+            let replacing = existing.is_some();
+            let resp = super::send_rebuilt_on_connect_failure(
+                || {
+                    if let Ok(mut digest) = hasher.lock() {
+                        *digest = md5::Md5::new();
+                    }
+                    let body = Self::upload_body(local_path, &progress, hasher.clone())?;
+                    let builder = if replacing {
+                        client.put(&url)
+                    } else {
+                        client.post(&url)
+                    };
+                    Ok(builder
+                        .header(AUTHORIZATION, bearer.clone())
+                        .header(ACCEPT, "application/vnd.api+json")
+                        .header(CONTENT_TYPE, "application/octet-stream")
+                        .header(CONTENT_LENGTH, total)
+                        .body(body))
+                },
+                &HttpRetryConfig::default(),
+                |error| {
+                    super::http_send_error(error, |error| {
+                        ProviderError::TransferFailed(format!("Upload failed: {error}"))
+                    })
+                },
+            )
+            .await?;
             twake_log(&format!(
                 "{} upload {} -> {}",
                 if existing.is_some() { "PUT" } else { "POST" },

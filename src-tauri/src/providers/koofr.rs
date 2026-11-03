@@ -1081,21 +1081,29 @@ impl StorageProvider for KoofrProvider {
             }
         );
 
-        // Streaming upload via ReaderStream
-        let file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {}", e)))?;
-        let body = progress.file_body(file);
-
-        let resp = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header()?)
-            .header(CONTENT_TYPE, "application/octet-stream")
-            .body(body)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
+        // The executor no longer restarts this upload. Rebuild the stream and
+        // retry only a connection refusal before any byte is sent.
+        let auth = self.auth_header()?;
+        let path = std::path::PathBuf::from(local_path);
+        let client = self.client.clone();
+        let resp = super::send_rebuilt_on_connect_failure(
+            || {
+                let file = std::fs::File::open(&path)
+                    .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {e}")))?;
+                Ok(client
+                    .post(&url)
+                    .header(AUTHORIZATION, auth.clone())
+                    .header(CONTENT_TYPE, "application/octet-stream")
+                    .body(progress.file_body(tokio::fs::File::from_std(file))))
+            },
+            &HttpRetryConfig::default(),
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::TransferFailed(format!("Upload failed: {error}"))
+                })
+            },
+        )
+        .await?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);

@@ -297,6 +297,58 @@ where
     unreachable!("the final attempt returns its response or error")
 }
 
+/// Send an upload that is rebuilt on each attempt, retrying only a connection
+/// refusal that happens before any byte is sent.
+///
+/// `send_with_retry_replayable` also replays an HTTP 429. These streaming
+/// uploads must not: a 429 stays a bounded refusal handled by the caller that
+/// already retries it, and a 5xx, a timeout, or a reset after the request
+/// starts may already have stored the object. `build` recreates the complete
+/// body. An HTTP response is returned as it arrived. The batch executor does
+/// not start the upload again, so this is the recovery for a refusal during
+/// connection establishment.
+pub async fn send_rebuilt_on_connect_failure<F, E, C>(
+    mut build: F,
+    config: &HttpRetryConfig,
+    mut on_transport: C,
+) -> Result<Response, E>
+where
+    F: FnMut() -> Result<reqwest::RequestBuilder, E>,
+    C: FnMut(reqwest::Error) -> E,
+{
+    for attempt in 0..=config.max_retries {
+        // The same toll as the shared wrapper, including a definite refusal.
+        super::tpslimit::maybe_acquire().await;
+        let builder = build()?;
+        let (attempt_client, request) = builder.build_split();
+        let request = match request {
+            Ok(request) => request,
+            Err(error) => return Err(on_transport(error)),
+        };
+        let method = request.method().clone();
+        let attempt_start = std::time::Instant::now();
+        match attempt_client.execute(request).await {
+            Ok(response) => {
+                record_headers_received(attempt_start);
+                return Ok(response);
+            }
+            Err(error) => {
+                if attempt < config.max_retries && error.is_connect() && !error.is_timeout() {
+                    tracing::debug!(
+                        method = %method,
+                        retry = attempt + 1,
+                        "Retrying a connection refusal before the upload was sent"
+                    );
+                    tokio::time::sleep(calculate_delay(attempt, config)).await;
+                    continue;
+                }
+                return Err(on_transport(error));
+            }
+        }
+    }
+    unreachable!("the final attempt returns its response or error")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -672,6 +724,81 @@ mod tests {
         assert_eq!(attempts, 2);
         assert_eq!(*received.lock().unwrap(), [b"complete-create".to_vec()]);
         server.unwrap().abort();
+    }
+
+    /// The streaming-upload helper shares the connect-before-send recovery
+    /// and nothing else. A 500 and a 429 both come back from the first send.
+    #[tokio::test]
+    async fn a_rebuilt_upload_retries_only_a_refused_connection() {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved);
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let received: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>> = Default::default();
+        let mut server = None;
+        let response = send_rebuilt_on_connect_failure(
+            || {
+                attempts += 1;
+                if attempts == 2 {
+                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    listener.set_nonblocking(true).unwrap();
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let captured = received.clone();
+                    let app = axum::Router::new().fallback(axum::routing::post(
+                        move |body: axum::body::Bytes| {
+                            captured.lock().unwrap().push(body.to_vec());
+                            async { axum::http::StatusCode::OK }
+                        },
+                    ));
+                    server = Some(tokio::spawn(async move {
+                        axum::serve(listener, app).await.unwrap();
+                    }));
+                }
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"complete-upload"))
+                });
+                Ok::<_, reqwest::Error>(
+                    client
+                        .post(format!("http://{addr}/up"))
+                        .body(reqwest::Body::wrap_stream(stream)),
+                )
+            },
+            &fast_retries(),
+            |error| error,
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(attempts, 2);
+        assert_eq!(*received.lock().unwrap(), [b"complete-upload".to_vec()]);
+        server.unwrap().abort();
+
+        for status in [
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+            axum::http::StatusCode::TOO_MANY_REQUESTS,
+        ] {
+            let (url, seen) = refusal_once_server(status).await;
+            let mut attempts = 0;
+            let response = send_rebuilt_on_connect_failure(
+                || {
+                    attempts += 1;
+                    let stream = futures_util::stream::once(async {
+                        Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"not-replayed"))
+                    });
+                    Ok::<_, reqwest::Error>(
+                        client.post(&url).body(reqwest::Body::wrap_stream(stream)),
+                    )
+                },
+                &fast_retries(),
+                |error| error,
+            )
+            .await
+            .unwrap();
+            assert_eq!(response.status(), status);
+            assert_eq!(attempts, 1, "{status} must not rebuild the upload");
+            assert_eq!(*seen.lock().unwrap(), [12]);
+        }
     }
 
     #[tokio::test]
