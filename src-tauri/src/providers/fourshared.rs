@@ -1518,11 +1518,7 @@ impl StorageProvider for FourSharedProvider {
         let progress = super::upload_progress::UploadProgress::new(on_progress, file_size);
 
         let sign_url = format!("{}/files", self.upload_base());
-        let extra = [
-            ("folderId", folder_id.as_str()),
-            ("fileName", file_name.as_str()),
-        ];
-        let auth = oauth1::authorization_header("POST", &sign_url, &self.credentials(), &extra);
+        let creds = self.credentials();
 
         let url = format!(
             "{}/files?folderId={}&fileName={}",
@@ -1537,26 +1533,37 @@ impl StorageProvider for FourSharedProvider {
         // retried from a rewound clone of this open file. Reopening
         // `local_path` could send a different file after a replacement. Any
         // other response, a timeout, or a failure after the body starts is
-        // not replayed.
+        // not replayed. Each attempt signs a new nonce and timestamp. The
+        // URL, folder id and file name stay the same.
         let source = &file;
         let reporter = &progress;
         let client = &self.client;
         let target = &url;
-        let authorization = &auth;
+        let signed_url = &sign_url;
+        let folder = folder_id.as_str();
+        let name = file_name.as_str();
         let resp = Self::send_upload_after_connect_failure(
-            || async move {
-                use tokio::io::AsyncSeekExt;
-                let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
-                reader
-                    .seek(std::io::SeekFrom::Start(0))
-                    .await
-                    .map_err(ProviderError::IoError)?;
-                Ok(client
-                    .post(target)
-                    .header("Authorization", authorization)
-                    .header("Content-Type", "application/octet-stream")
-                    .header("Content-Length", file_size.to_string())
-                    .body(reporter.file_body(reader)))
+            || {
+                let authorization = oauth1::authorization_header(
+                    "POST",
+                    signed_url,
+                    &creds,
+                    &[("folderId", folder), ("fileName", name)],
+                );
+                async move {
+                    use tokio::io::AsyncSeekExt;
+                    let mut reader = source.try_clone().await.map_err(ProviderError::IoError)?;
+                    reader
+                        .seek(std::io::SeekFrom::Start(0))
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    Ok(client
+                        .post(target)
+                        .header("Authorization", authorization)
+                        .header("Content-Type", "application/octet-stream")
+                        .header("Content-Length", file_size.to_string())
+                        .body(reporter.file_body(reader)))
+                }
             },
             &HttpRetryConfig::default(),
         )
