@@ -647,6 +647,13 @@ impl FtpProvider {
         }
     }
 
+    /// LIST is a read and may retry a transport error whose control socket is
+    /// now closed. Keep this separate from the predicate also used by writes.
+    fn closed_listing_failure(err: &ProviderError, control: AfterSiteReply) -> bool {
+        matches!(control, AfterSiteReply::Closed)
+            && matches!(err, ProviderError::ConnectionFailed(_))
+    }
+
     async fn reconnect_after_data_error(
         &mut self,
         operation: &str,
@@ -870,7 +877,14 @@ impl FtpProvider {
                 Ok(None) => return Err(self.listing_timed_out(&base_path)),
                 Err(e) => {
                     return Err(Self::classify_missing_path("listing", &base_path, &e)
-                        .unwrap_or_else(|| ProviderError::ServerError(e.to_string())))
+                        .unwrap_or_else(|| match e {
+                            // Preserve the transport type for LIST's closed-socket
+                            // retry, instead of confusing a 421 verdict with I/O.
+                            FtpError::ConnectionError(_) => {
+                                ProviderError::ConnectionFailed(e.to_string())
+                            }
+                            _ => ProviderError::ServerError(e.to_string()),
+                        }));
                 }
             }
         };
@@ -1714,7 +1728,13 @@ impl StorageProvider for FtpProvider {
         self.redial_if_a_reply_is_pending().await?;
         match self.list_inner(path).await {
             Ok(entries) => Ok(entries),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            Err(err)
+                if Self::is_stale_data_connection_error(&err)
+                    || Self::closed_listing_failure(
+                        &err,
+                        self.after_final_reply(std::time::Duration::ZERO).await,
+                    ) =>
+            {
                 self.reconnect_after_data_error("LIST", path, &err).await?;
                 self.list_inner(path).await
             }
@@ -9949,6 +9969,34 @@ pub(crate) mod walk_scope_tests {
         );
         assert_eq!(provider.current_path, "/home");
         assert_eq!(log.lock().unwrap().len(), before + 1, "one redial only");
+    }
+
+    #[test]
+    fn closed_listing_retry_handles_windows_abort_without_widening_data_replay() {
+        let abort = ProviderError::ConnectionFailed("Connection error: An established connection was aborted by the software in your host machine. (os error 10053)".into());
+        assert!(FtpProvider::closed_listing_failure(
+            &abort,
+            AfterSiteReply::Closed
+        ));
+        assert!(!FtpProvider::closed_listing_failure(
+            &abort,
+            AfterSiteReply::Clean
+        ));
+        assert!(
+            !FtpProvider::is_stale_data_connection_error(&abort),
+            "do not widen the predicate used by writes"
+        );
+        for err in [
+            ProviderError::NotConnected,
+            ProviderError::ServerError("421 closing control connection".into()),
+            ProviderError::InvalidPath("550 refused".into()),
+            ProviderError::NotFound("absent".into()),
+        ] {
+            assert!(!FtpProvider::closed_listing_failure(
+                &err,
+                AfterSiteReply::Closed
+            ));
+        }
     }
 
     #[tokio::test]

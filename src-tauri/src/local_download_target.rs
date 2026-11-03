@@ -692,6 +692,22 @@ mod tests {
         assert!(std::fs::read_dir(outside.path()).unwrap().next().is_none());
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_destination_refuses_a_lone_name_with_a_link_reason() {
+        let dest = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let linked = dest.path().join("linked");
+        std::os::unix::fs::symlink(outside.path(), &linked).unwrap();
+        let before = NAME_PROBE_ATTEMPTS.with(|count| count.get());
+        let files = vec!["report.txt".to_string()];
+        let problems = local_target_problems(&linked, &files, &files);
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].reason.contains("is a link"));
+        assert_eq!(NAME_PROBE_ATTEMPTS.with(|count| count.get()), before);
+        assert!(std::fs::read_dir(outside.path()).unwrap().next().is_none());
+    }
+
     #[test]
     fn superscript_digits_are_reserved_on_windows_too() {
         for name in ["COM¹", "com².txt", "LPT³"] {
