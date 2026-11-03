@@ -968,17 +968,19 @@ impl TwakeProvider {
     /// checked) and hashing what was sent so the result can be checked
     /// against the server's md5sum.
     async fn upload_body(
-        local_path: &str,
+        cursor: &super::upload_cursor::SharedUploadCursor,
+        total: u64,
         progress: &super::upload_progress::UploadProgress,
         hasher: std::sync::Arc<std::sync::Mutex<md5::Md5>>,
     ) -> Result<reqwest::Body, ProviderError> {
         use futures_util::StreamExt;
         use md5::Digest;
-        let file = tokio::fs::File::open(local_path)
+        let source = cursor
+            .attempt_stream(total)
             .await
             .map_err(ProviderError::IoError)?;
         let paced = crate::transfer_dag::throttle::throttle_stream(
-            tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024),
+            source,
             crate::transfer_dag::governor::TransferDirection::Upload,
         );
         let stream = progress.track(paced).inspect(move |chunk| {
@@ -1198,10 +1200,11 @@ impl StorageProvider for TwakeProvider {
         if name.is_empty() {
             return Err(ProviderError::InvalidPath(abs));
         }
-        let total = tokio::fs::metadata(local_path)
+        let file = tokio::fs::File::open(local_path)
             .await
-            .map_err(ProviderError::IoError)?
-            .len();
+            .map_err(ProviderError::IoError)?;
+        let total = file.metadata().await.map_err(ProviderError::IoError)?.len();
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
         let mtime = local_mtime_rfc3339(local_path);
 
         // Overwrite in place when the file exists (keeps its id, shares and
@@ -1270,23 +1273,52 @@ impl StorageProvider for TwakeProvider {
                 }
             };
 
-            // The body is a stream, so every retry reopens the file.
-            let hasher = std::sync::Arc::new(std::sync::Mutex::new(md5::Md5::new()));
-            let body = Self::upload_body(local_path, &progress, hasher.clone()).await?;
-            let builder = if existing.is_some() {
-                self.client.put(&url)
-            } else {
-                self.client.post(&url)
-            };
-            let resp = builder
-                .header(AUTHORIZATION, self.bearer()?)
-                .header(ACCEPT, "application/vnd.api+json")
-                .header(CONTENT_TYPE, "application/octet-stream")
-                .header(CONTENT_LENGTH, total)
-                .body(body)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {e}")))?;
+            // Every attempt rewinds the same open file after its prior reader. A
+            // refused connection or an HTTP 429 is retried here. 401 and 409
+            // stay on the loop above. Any other HTTP response is not replayed.
+            // Each attempt owns a new digest. An earlier stream cannot update
+            // the one compared after the attempt that completed.
+            let sent_hasher: std::sync::Arc<
+                std::sync::Mutex<Option<std::sync::Arc<std::sync::Mutex<md5::Md5>>>>,
+            > = std::sync::Arc::new(std::sync::Mutex::new(None));
+            let bearer = self.bearer()?;
+            let client = self.client.clone();
+            let replacing = existing.is_some();
+            let cursor = &cursor;
+            let progress = &progress;
+            let resp = super::http_retry::send_rebuilt_async(
+                || {
+                    let hasher = std::sync::Arc::new(std::sync::Mutex::new(md5::Md5::new()));
+                    *sent_hasher
+                        .lock()
+                        .unwrap_or_else(|error| error.into_inner()) =
+                        Some(std::sync::Arc::clone(&hasher));
+                    let builder = if replacing {
+                        client.put(&url)
+                    } else {
+                        client.post(&url)
+                    }
+                    .header(AUTHORIZATION, bearer.clone())
+                    .header(ACCEPT, "application/vnd.api+json")
+                    .header(CONTENT_TYPE, "application/octet-stream")
+                    .header(CONTENT_LENGTH, total);
+                    async move {
+                        let body = Self::upload_body(cursor, total, progress, hasher).await?;
+                        Ok(builder.body(body))
+                    }
+                },
+                &HttpRetryConfig::default(),
+                |error| {
+                    super::http_send_error(error, |error| {
+                        ProviderError::TransferFailed(format!(
+                            "Upload failed: {}",
+                            error.without_url()
+                        ))
+                    })
+                },
+                true,
+            )
+            .await?;
             twake_log(&format!(
                 "{} upload {} -> {}",
                 if existing.is_some() { "PUT" } else { "POST" },
@@ -1309,9 +1341,16 @@ impl StorageProvider for TwakeProvider {
             if !resp.status().is_success() {
                 return Err(Self::error_from(resp, &abs).await);
             }
-            let sent_md5 = hasher
+            let sent_md5 = sent_hasher
                 .lock()
-                .map(|h| hex::encode(h.clone().finalize()))
+                .unwrap_or_else(|error| error.into_inner())
+                .as_ref()
+                .and_then(|hasher| {
+                    hasher
+                        .lock()
+                        .ok()
+                        .map(|digest| hex::encode(digest.clone().finalize()))
+                })
                 .unwrap_or_default();
             break (resp, sent_md5);
         };
@@ -2037,6 +2076,42 @@ mod tests {
             "the total once, last"
         );
         server.abort();
+    }
+
+    #[tokio::test]
+    async fn retry_keeps_the_open_file_after_its_path_is_replaced() {
+        use md5::Digest;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let original = b"original-bytes";
+        std::fs::write(&path, original).unwrap();
+        let hash = base64::engine::general_purpose::STANDARD.encode(md5::Md5::digest(original));
+        let body = format!(
+            r#"{{"data":{{"id":"F1","attributes":{{"type":"file","name":"f.bin","md5sum":"{hash}"}}}}}}"#
+        );
+        let (base, received, server) =
+            super::super::upload_cursor::replacement_fixture::serve(&path, body).await;
+        let mut provider = TwakeProvider::new(TwakeConfig {
+            credentials: TwakeCredentials {
+                instance: base,
+                client_id: "cid".into(),
+                client_secret: "s".into(),
+                registration_access_token: "r".into(),
+                refresh_token: "t".into(),
+            },
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.access_token = SecretString::from("fixture".to_string());
+        let outcome = provider
+            .upload(path.to_str().unwrap(), "/f.bin", None)
+            .await;
+        server.abort();
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![original.to_vec(), original.to_vec()]
+        );
+        outcome.expect("the checksum must match the original opened file");
     }
 
     #[test]

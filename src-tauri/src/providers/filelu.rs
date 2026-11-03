@@ -219,7 +219,10 @@ struct UploadServerResponse {
 #[derive(Debug, Deserialize)]
 struct StatusOnlyResponse {
     status: Option<u32>,
-    msg: Option<String>,
+    // Inspect the one known missing-file message without echoing response
+    // text. Other message shapes remain irrelevant to a status-only reply.
+    #[serde(default)]
+    msg: serde_json::Value,
 }
 
 /// Upload response entry returned by upload CGI endpoint
@@ -624,19 +627,35 @@ impl FileLuProvider {
     }
 
     async fn get_with_retry(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
+        self.get_with_policy(url, HttpRetryConfig::default()).await
+    }
+
+    /// These RPCs mutate even though FileLu exposes them as GET. A 5xx may
+    /// follow a committed create/clone: return it without sending it again.
+    async fn get_after_refusal(&self, url: &str) -> Result<reqwest::Response, ProviderError> {
+        let response = self
+            .get_with_policy(url, HttpRetryConfig::default().refused_only())
+            .await?;
+        if response.status().is_server_error() {
+            return Err(ProviderError::ServerError(format!(
+                "FileLu operation returned {}; it may have completed. Check the remote state before retrying.", response.status()
+            )));
+        }
+        Ok(response)
+    }
+
+    async fn get_with_policy(
+        &self,
+        url: &str,
+        config: HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError> {
         let request = self.client.get(url).build().map_err(|e| {
-            ProviderError::ConnectionFailed(format!(
-                "Build GET failed: {}",
-                redact_key(&e.to_string())
-            ))
+            ProviderError::ConnectionFailed(format!("Build GET failed: {}", e.without_url()))
         })?;
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+        send_with_retry(&self.client, request, &config)
             .await
             .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!(
-                    "GET failed: {}",
-                    redact_key(&e.to_string())
-                ))
+                ProviderError::ConnectionFailed(format!("GET failed: {}", e.without_url()))
             })
     }
 
@@ -693,7 +712,11 @@ impl FileLuProvider {
             _ => return false,
         };
         let lower = msg.to_ascii_lowercase();
-        lower.contains("http 500")
+        let sanitized_api_status = lower
+            .strip_prefix("filelu mutation returned api error ")
+            .and_then(|status| status.parse::<u16>().ok());
+        matches!(sanitized_api_status, Some(500 | 502 | 503 | 504))
+            || lower.contains("http 500")
             || lower.contains("http 502")
             || lower.contains("http 503")
             || lower.contains("http 504")
@@ -704,39 +727,47 @@ impl FileLuProvider {
             || lower.contains("gateway timeout")
     }
 
+    /// A mutation acknowledgement may echo its URL or submitted password.
+    /// Report status/parse location only; arbitrary response text is not safe
+    /// even after pattern-based redaction of known token formats.
     async fn ensure_api_ok(resp: reqwest::Response) -> Result<(), ProviderError> {
         let status = resp.status();
         let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
-                "Failed to read response: {}",
-                redact_key(&e.to_string())
+                "Failed to read mutation response: {}",
+                e.without_url()
             ))
         })?;
-
         if !status.is_success() {
             return Err(ProviderError::ServerError(format!(
-                "HTTP {}: {}",
-                status, text
+                "HTTP {status}: FileLu mutation refused"
             )));
         }
-
         let parsed: StatusOnlyResponse = serde_json::from_str(&text).map_err(|e| {
             ProviderError::ParseError(format!(
-                "json: {}. Body: {}",
-                e,
-                &text[..text.floor_char_boundary(200)]
+                "FileLu mutation returned invalid JSON at line {}, column {}",
+                e.line(),
+                e.column()
             ))
         })?;
-
-        if let Some(s) = parsed.status {
-            if s != 200 {
-                return Err(ProviderError::ServerError(
-                    parsed.msg.unwrap_or_else(|| format!("API error {}", s)),
-                ));
+        match parsed.status {
+            Some(200) => Ok(()),
+            Some(404)
+                if parsed.msg.as_str().map(str::trim)
+                    == Some("No file found in specified folder") =>
+            {
+                // Fixed text only: path-aware callers map it to NotFound.
+                Err(ProviderError::ServerError(
+                    "No file found in specified folder".into(),
+                ))
             }
+            Some(status) => Err(ProviderError::ServerError(format!(
+                "FileLu mutation returned API error {status}"
+            ))),
+            None => Err(ProviderError::ParseError(
+                "FileLu mutation response has no API status".into(),
+            )),
         }
-
-        Ok(())
     }
 
     fn build_clone_name(source_name: &str, n: usize) -> String {
@@ -1420,7 +1451,13 @@ impl FileLuProvider {
                 ],
             )
         };
-        let resp = self.get_with_retry(&url).await?;
+        // Fixed IDs select the same item on every attempt. A path can name
+        // another item after the first operation moved/renamed its occupant.
+        let resp = if entry.is_dir {
+            self.get_with_retry(&url).await?
+        } else {
+            self.get_after_refusal(&url).await?
+        };
         Self::ensure_api_ok(resp)
             .await
             .map_err(|e| name_missing_path(e, current_path))
@@ -1454,7 +1491,13 @@ impl FileLuProvider {
                 &[("file_path", current_path), ("name", new_name)],
             )
         };
-        let resp = self.get_with_retry(&url).await?;
+        // Fixed IDs select the same item on every attempt. A path can name
+        // another item after the first operation moved/renamed its occupant.
+        let resp = if entry.is_dir || !entry.file_code.is_empty() {
+            self.get_with_retry(&url).await?
+        } else {
+            self.get_after_refusal(&url).await?
+        };
         Self::ensure_api_ok(resp)
             .await
             .map_err(|e| name_missing_path(e, current_path))
@@ -1717,8 +1760,8 @@ impl FileLuProvider {
             "file/set_password",
             &[("file_code", &file_code), ("file_password", password)],
         );
-        self.get_with_retry(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Toggle file visibility. `only_me=true` → private, `false` → public.
@@ -1737,8 +1780,8 @@ impl FileLuProvider {
             "file/only_me",
             &[("file_code", &file_code), ("only_me", flag)],
         );
-        self.get_with_retry(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Clone (server-side copy) a file. Returns the URL of the cloned file.
@@ -1766,63 +1809,13 @@ impl FileLuProvider {
         let source_parent_fld_id = self.resolve_fld_id(&source_parent).await?;
 
         let url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
-        let resp = self.get_with_retry(&url).await?;
-        let status = resp.status();
-        let body = resp.text().await.map_http_err(|e| {
-            ProviderError::NetworkError(format!(
-                "clone_file read failed: {}",
-                redact_key(&e.to_string())
-            ))
-        })?;
-        if !status.is_success() {
-            return Err(ProviderError::ServerError(format!(
-                "HTTP {}: {}",
-                status, body
-            )));
-        }
-
-        let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
-            ProviderError::ParseError(format!(
-                "clone_file: {}. Body: {}",
-                e,
-                &body[..body.floor_char_boundary(200)]
-            ))
-        })?;
-
-        let status_code = value.get("status").and_then(|s| s.as_i64()).unwrap_or(200);
-        if status_code != 200 {
-            let msg = value
-                .get("msg")
-                .and_then(|m| m.as_str())
-                .unwrap_or("clone failed");
-            return Err(ProviderError::ServerError(msg.to_string()));
-        }
-
-        let result = value.get("result");
-        let mut new_code = result
-            .and_then(|r| r.get("filecode").or_else(|| r.get("file_code")))
-            .and_then(|c| c.as_str())
-            .unwrap_or_default()
-            .to_string();
-        let mut out_url = result
-            .and_then(|r| r.get("url"))
-            .and_then(|u| u.as_str())
-            .unwrap_or_default()
-            .to_string();
-
-        // Some API variants may return an array [{file_code: ...}] without wrapped result.
-        if new_code.is_empty() {
-            if let Some(arr) = value.as_array() {
-                if let Some(first) = arr.first() {
-                    if let Some(code) = first.get("file_code").and_then(|c| c.as_str()) {
-                        new_code = code.to_string();
-                    }
-                }
-            }
-        }
+        let resp = self.get_after_refusal(&url).await?;
+        let cloned = read_filelu_clone(resp).await?;
+        let new_code = cloned.code;
+        let mut out_url = cloned.url.unwrap_or_default();
 
         // FileLu clone defaults to root on some accounts: force same source folder.
-        if !new_code.is_empty() && source_parent_fld_id != 0 {
+        if source_parent_fld_id != 0 {
             let fld_id_str = source_parent_fld_id.to_string();
             let set_folder_url = self.api_url_with(
                 "file/set_folder",
@@ -1834,22 +1827,20 @@ impl FileLuProvider {
         }
 
         // Keep cloned file path-unique in AeroFTP model (FileLu may allow same-name duplicates).
-        if !new_code.is_empty() {
-            for n in 1..=20 {
-                let candidate_name = Self::build_clone_name(&source_name, n);
-                let rename_url = self.api_url_with(
-                    "file/rename",
-                    &[("file_code", &new_code), ("name", &candidate_name)],
-                );
-                let rename_resp = self.get_with_retry(&rename_url).await?;
-                if Self::ensure_api_ok(rename_resp).await.is_ok() {
-                    self.invalidate_cache_under(&source_parent);
-                    break;
-                }
+        for n in 1..=20 {
+            let candidate_name = Self::build_clone_name(&source_name, n);
+            let rename_url = self.api_url_with(
+                "file/rename",
+                &[("file_code", &new_code), ("name", &candidate_name)],
+            );
+            let rename_resp = self.get_with_retry(&rename_url).await?;
+            if Self::ensure_api_ok(rename_resp).await.is_ok() {
+                self.invalidate_cache_under(&source_parent);
+                break;
             }
         }
 
-        if out_url.is_empty() && !new_code.is_empty() {
+        if out_url.is_empty() {
             out_url = format!("https://filelu.com/{}", new_code);
         }
         Ok(out_url)
@@ -1881,8 +1872,8 @@ impl FileLuProvider {
             "folder/set_password",
             &[("fld_token", &token), ("fld_password", password)],
         );
-        self.get_with_retry(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Configure folder settings: filedrop (others can upload) and public visibility.
@@ -1907,8 +1898,8 @@ impl FileLuProvider {
                 ("fld_public", pub_),
             ],
         );
-        self.get_with_retry(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// List all deleted files (trash).
@@ -1947,8 +1938,8 @@ impl FileLuProvider {
             "file/restore",
             &[("file_code", file_code), ("restore", "1")],
         );
-        self.get_with_retry(&url).await?;
-        Ok(())
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await
     }
 
     /// Upload a file from a remote URL into the given destination folder.
@@ -1968,25 +1959,39 @@ impl FileLuProvider {
             "upload/url",
             &[("url", remote_url), ("fld_id", &fld_id.to_string())],
         );
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
+        if !resp.status().is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "HTTP {}: FileLu remote upload refused",
+                resp.status()
+            )));
+        }
         // Response is an array: [{"file_code":"..."}]
         let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
                 "remote_url_upload read failed: {}",
-                redact_key(&e.to_string())
+                e.without_url()
             ))
         })?;
         #[derive(Deserialize)]
         struct RemoteUploadEntry {
             file_code: Option<String>,
         }
-        let entries: Vec<RemoteUploadEntry> = serde_json::from_str(&text)
-            .map_err(|e| ProviderError::ParseError(format!("remote_url_upload: {e}")))?;
+        let entries: Vec<RemoteUploadEntry> = serde_json::from_str(&text).map_err(|e| {
+            ProviderError::ParseError(format!(
+                "remote_url_upload returned invalid JSON at line {}, column {}",
+                e.line(),
+                e.column()
+            ))
+        })?;
         let code = entries
             .into_iter()
             .next()
             .and_then(|e| e.file_code)
-            .unwrap_or_default();
+            .filter(|code| !code.trim().is_empty())
+            .ok_or_else(|| {
+                ProviderError::ServerError("FileLu remote upload returned no file code".into())
+            })?;
         self.invalidate_cache_under(&norm);
         Ok(code)
     }
@@ -1998,7 +2003,7 @@ impl FileLuProvider {
             return Err(ProviderError::NotConnected);
         }
         let url = self.api_url_with("file/permanent_delete", &[("file_code", file_code)]);
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await
     }
 }
@@ -2172,7 +2177,9 @@ impl StorageProvider for FileLuProvider {
                 ("version_code", version_id),
             ],
         );
-        let resp = self.get_with_retry(&url).await;
+        // version_restore changes the current file. A 503 can arrive after the
+        // commit, so a replay would report failure for a restore that finished.
+        let resp = self.get_after_refusal(&url).await;
         // The file's code changes on success; the cache would keep the old one.
         self.path_cache.remove(&norm);
         Self::ensure_api_ok(resp?).await
@@ -2184,7 +2191,9 @@ impl StorageProvider for FileLuProvider {
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         self.version_of(path, version_id).await?;
         let url = self.api_url_with("file/version_delete", &[("version_code", version_id)]);
-        let resp = self.get_with_retry(&url).await?;
+        // Same contract as restore: the GET deletes a version, so a 503 is
+        // returned once instead of being sent again.
+        let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await?;
         let accepted = |detail: String| {
             ProviderError::ServerError(format!(
@@ -2319,6 +2328,7 @@ impl StorageProvider for FileLuProvider {
         // FileLu response: { status, sess_id, result: "<upload_url>", msg }
         // sess_id is at root (NOT inside result), result is a plain URL string.
         let server_url = self.api_url_with("upload/server", &[("fld_id", &fld_id.to_string())]);
+        // This only obtains an upload endpoint; no stored file is created.
         let resp = self.get_with_retry(&server_url).await?;
         let text = resp.text().await.map_http_err(|e| {
             ProviderError::NetworkError(format!(
@@ -2367,7 +2377,7 @@ impl StorageProvider for FileLuProvider {
 
         // Step 3: Upload via multipart with a streaming body. The request is
         // built again for every attempt over a freshly opened file, so a
-        // retry (a 503 from the upload server) sends the whole file again,
+        // retry after an explicit 429 refusal sends the whole file again,
         // and the bar holds where the failed attempt stopped until the new
         // one passes it.
         let local = Path::new(local_path);
@@ -2488,7 +2498,7 @@ impl StorageProvider for FileLuProvider {
                 ("name", &folder_name),
             ],
         );
-        let resp = self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
         let result = Self::parse_api::<FolderCreateResult>(resp).await?;
         let new_fld_id = result
             .fld_id
@@ -2893,7 +2903,8 @@ impl StorageProvider for FileLuProvider {
             "file/only_me",
             &[("file_code", &file_code), ("only_me", "0")],
         );
-        self.get_with_retry(&url).await?;
+        let resp = self.get_after_refusal(&url).await?;
+        Self::ensure_api_ok(resp).await?;
         Ok(ShareLinkResult {
             url: format!("https://filelu.com/{}", file_code),
             password: None,
@@ -2955,43 +2966,32 @@ impl StorageProvider for FileLuProvider {
             }
         }
 
-        // Step 1: Clone the file (creates copy in same folder)
+        // Resolve both paths before cloning: a failed destination lookup must
+        // not leave a new copy next to the source.
         let file_code = self.resolve_file_code(&norm_from).await?;
+        let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
+        let fld_id_str = dest_fld_id.to_string();
+        // Step 1: Clone the file (creates copy in same folder)
         let clone_url = self.api_url_with("file/clone", &[("file_code", &file_code)]);
-        let resp = self.get_with_retry(&clone_url).await?;
-        let body: serde_json::Value = resp.json().await.map_http_err(|e| {
-            ProviderError::ParseError(format!("clone response: {}", redact_key(&e.to_string())))
-        })?;
+        let resp = self.get_after_refusal(&clone_url).await?;
+        // Object `result.filecode` or the first element of a result array.
+        // HTTP success with no code is not a copy.
+        let cloned = read_filelu_clone(resp).await?.code;
 
-        // Step 2: Move the clone to the destination folder if needed
+        let move_url = self.api_url_with(
+            "file/set_folder",
+            &[("file_code", &cloned), ("fld_id", &fld_id_str)],
+        );
+        let move_resp = self.get_with_retry(&move_url).await?;
+        Self::ensure_api_ok(move_resp).await?;
 
-        // Extract cloned file code from response (array format)
-        if let Some(arr) = body.get("result").and_then(|r| r.as_array()) {
-            if let Some(cloned) = arr
-                .first()
-                .and_then(|e| e.get("filecode").or_else(|| e.get("file_code")))
-                .and_then(|v| v.as_str())
-            {
-                // Move to destination folder
-                let dest_fld_id = self.resolve_fld_id(&dest_dir).await?;
-                let fld_id_str = dest_fld_id.to_string();
-                let move_url = self.api_url_with(
-                    "file/set_folder",
-                    &[("file_code", cloned), ("fld_id", &fld_id_str)],
-                );
-                let move_resp = self.get_with_retry(&move_url).await?;
-                Self::ensure_api_ok(move_resp).await?;
-
-                // Rename if destination filename differs from source
-                if !dest_name.is_empty() && dest_name != src_name {
-                    let rename_url = self.api_url_with(
-                        "file/rename",
-                        &[("file_code", cloned), ("name", &dest_name)],
-                    );
-                    let rename_resp = self.get_with_retry(&rename_url).await?;
-                    Self::ensure_api_ok(rename_resp).await?;
-                }
-            }
+        if !dest_name.is_empty() && dest_name != src_name {
+            let rename_url = self.api_url_with(
+                "file/rename",
+                &[("file_code", &cloned), ("name", &dest_name)],
+            );
+            let rename_resp = self.get_with_retry(&rename_url).await?;
+            Self::ensure_api_ok(rename_resp).await?;
         }
 
         self.invalidate_cache_under(&dest_dir);
@@ -3018,6 +3018,79 @@ impl StorageProvider for FileLuProvider {
             ..Default::default()
         }
     }
+}
+
+/// A FileLu `file/clone` body that named the copy it stored.
+struct FileLuClone {
+    code: String,
+    url: Option<String>,
+}
+
+fn clone_code_from_entry(entry: &serde_json::Value) -> Option<String> {
+    entry
+        .get("filecode")
+        .or_else(|| entry.get("file_code"))
+        .and_then(|value| value.as_str())
+        .filter(|code| !code.is_empty())
+        .map(str::to_owned)
+}
+
+/// HTTP success and API status 200, plus a code from a result object or from
+/// the first element of a result array. A bare array has no status, so it is
+/// not an acknowledgement. The error text does not include the body.
+fn filelu_clone_from_body(
+    http_success: bool,
+    body: &serde_json::Value,
+) -> Result<FileLuClone, ProviderError> {
+    if !http_success || body.get("status").and_then(|status| status.as_i64()) != Some(200) {
+        return Err(ProviderError::ServerError(
+            "FileLu clone was not acknowledged".into(),
+        ));
+    }
+    let result = body.get("result");
+    let code = result.and_then(|result| {
+        if result.is_object() {
+            clone_code_from_entry(result)
+        } else {
+            result
+                .as_array()
+                .and_then(|entries| entries.first())
+                .and_then(clone_code_from_entry)
+        }
+    });
+    let Some(code) = code else {
+        return Err(ProviderError::ServerError(
+            "FileLu clone response has no file code".into(),
+        ));
+    };
+    let url = result
+        .filter(|result| result.is_object())
+        .and_then(|result| result.get("url"))
+        .and_then(|url| url.as_str())
+        .filter(|url| !url.is_empty())
+        .map(str::to_owned);
+    Ok(FileLuClone { code, url })
+}
+
+async fn read_filelu_clone(resp: reqwest::Response) -> Result<FileLuClone, ProviderError> {
+    let http_success = resp.status().is_success();
+    let text = resp.text().await.map_http_err(|error| {
+        ProviderError::ParseError(format!(
+            "Failed to read clone response: {}",
+            error.without_url()
+        ))
+    })?;
+    if !http_success {
+        return filelu_clone_from_body(false, &serde_json::Value::Null);
+    }
+    let body: serde_json::Value = serde_json::from_str(&text).map_err(|error| {
+        ProviderError::ParseError(format!(
+            "FileLu clone returned invalid JSON at line {}, column {}",
+            error.line(),
+            error.column()
+        ))
+    })?;
+    filelu_clone_from_body(true, &body)
 }
 
 // ─── MIME helper ─────────────────────────────────────────────────────────
@@ -3058,6 +3131,165 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    /// Retry a fixed-ID update, but never reinterpret a path after an
+    /// ambiguous move/rename: it may then refer to a different occupant.
+    #[tokio::test]
+    async fn fixed_id_updates_recover_but_path_updates_are_not_repeated() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for mode in ["rename-id", "move-id", "rename-path", "move-path"] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().fallback(axum::routing::get(move || {
+                let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if ordinal == 0 {
+                        (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            r#"{"status":503}"#,
+                        )
+                    } else {
+                        (axum::http::StatusCode::OK, r#"{"status":200}"#)
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = FileLuProvider::new(FileLuConfig {
+                api_key: secrecy::SecretString::from("fixture-key".to_string()),
+                initial_path: None,
+            });
+            p.connected = true;
+            p.api_origin_override = Some(format!("http://{addr}"));
+            let entry = CacheEntry {
+                is_dir: mode == "move-id",
+                fld_id: 77,
+                fld_token: None,
+                file_code: if mode == "rename-id" {
+                    "ABC".into()
+                } else {
+                    String::new()
+                },
+                size: 0,
+                modified: None,
+                hash: None,
+            };
+            let result = if mode.starts_with("rename") {
+                p.rename_entry(&entry, "/old", "new").await
+            } else {
+                p.move_entry(&entry, "/old", "/").await
+            };
+            server.abort();
+            let fixed = mode.ends_with("-id");
+            assert_eq!(result.is_ok(), fixed, "{mode}: {result:?}");
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                if fixed { 2 } else { 1 },
+                "{mode}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn fixed_id_delete_recovers_from_sanitized_body_level_5xx() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for is_dir in [false, true] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let recorded = calls.clone();
+            let app = axum::Router::new().fallback(axum::routing::get(move || {
+                let ordinal = recorded.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if ordinal == 0 {
+                        r#"{"status":503,"msg":"untrusted-secret"}"#
+                    } else {
+                        r#"{"status":200}"#
+                    }
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = FileLuProvider::new(FileLuConfig {
+                api_key: secrecy::SecretString::from("fixture-key".to_string()),
+                initial_path: None,
+            });
+            p.connected = true;
+            p.api_origin_override = Some(format!("http://{addr}"));
+            let entry = CacheEntry {
+                is_dir,
+                fld_id: 77,
+                fld_token: None,
+                file_code: "fixed-code".into(),
+                size: 0,
+                modified: None,
+                hash: None,
+            };
+            p.remove_entry(&entry).await.unwrap();
+            assert_eq!(calls.load(Ordering::SeqCst), 2);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_folder_create_committed_before_503_is_sent_once() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let created = Arc::new(AtomicUsize::new(0));
+        let seen = created.clone();
+        let app = axum::Router::new().fallback(axum::routing::get(move |uri: axum::http::Uri| {
+            let seen = seen.clone();
+            async move {
+                if uri.path().ends_with("/folder/create") {
+                    let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                    if ordinal == 0 {
+                        return (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            axum::Json(serde_json::json!({"status":503})),
+                        );
+                    }
+                    return (
+                        axum::http::StatusCode::OK,
+                        axum::Json(serde_json::json!({"status":200,"result":{"fld_id":2}})),
+                    );
+                }
+                (
+                    axum::http::StatusCode::OK,
+                    axum::Json(
+                        serde_json::json!({"status":200,"result":{"files":[],"folders":[]}}),
+                    ),
+                )
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = FileLuProvider::new(FileLuConfig {
+            api_key: secrecy::SecretString::from("fixture-key".to_string()),
+            initial_path: None,
+        });
+        p.connected = true;
+        p.api_origin_override = Some(format!("http://{addr}"));
+        let outcome = p.mkdir("/new").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            created.load(Ordering::SeqCst),
+            1,
+            "the gateway error must not create a second folder"
+        );
+    }
+
     #[test]
     fn sync_account_identity_never_uses_the_random_resume_fallback() {
         let mut provider = FileLuProvider::new(FileLuConfig {
@@ -3462,6 +3694,85 @@ mod tests {
     }
 
     use super::*;
+
+    /// HTTP success is not an acknowledgement of a setting/share mutation.
+    #[tokio::test]
+    async fn setting_and_share_mutations_require_an_explicit_api_success() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for (status, body, success) in [
+            (200, r#"{"status":200,"msg":"OK"}"#, true),
+            (200, r#"{"status":403,"msg":"operation refused"}"#, false),
+            (403, r#"{"status":403,"msg":"operation refused"}"#, false),
+            (503, r#"{"status":503,"msg":"uncertain"}"#, false),
+            (200, "broken acknowledgement", false),
+            (200, "{}", false),
+            (400, "https://filelu.example/api/file/set_password?key=fixture-key&file_password=fixture-password", false),
+            (403, r#"{"status":403,"msg":"fixture-key fixture-password"}"#, false),
+            (200, r#"{"status":403,"msg":"fixture-key fixture-password"}"#, false),
+            (200, r#"{"status":"fixture-password","msg":"fixture-key"}"#, false),
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().fallback(axum::routing::get(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async move { (axum::http::StatusCode::from_u16(status).unwrap(), body) }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = FileLuProvider::new(FileLuConfig {
+                api_key: secrecy::SecretString::from("fixture-key".to_string()),
+                initial_path: None,
+            });
+            p.connected = true;
+            p.api_origin_override = Some(format!("http://{addr}"));
+            for (path, is_dir) in [("/f.txt", false), ("/dir", true)] {
+                p.path_cache.insert(
+                    path.into(),
+                    CacheEntry {
+                        is_dir,
+                        fld_id: 1,
+                        fld_token: Some("folder-token".into()),
+                        file_code: "FILE".into(),
+                        size: 4,
+                        modified: None,
+                        hash: None,
+                    },
+                );
+            }
+            let outcomes = [
+                p.set_file_password("/f.txt", "fixture-password").await,
+                p.set_file_privacy("/f.txt", true).await,
+                p.set_folder_password("/dir", "fixture-password").await,
+                p.set_folder_settings("/dir", false, false).await,
+                p.restore_deleted_file("FILE").await,
+                p.create_share_link("/f.txt", ShareLinkOptions::default())
+                    .await
+                    .map(|_| ()),
+            ];
+            for outcome in outcomes {
+                assert_eq!(
+                    outcome.is_ok(),
+                    success,
+                    "HTTP {status},body {body}: {outcome:?}"
+                );
+                if let Err(error) = outcome {
+                    let shown = error.to_string();
+                    assert!(!shown.contains("fixture-key"), "API key reflected in {shown}");
+                    assert!(!shown.contains("fixture-password"), "password reflected in {shown}");
+                }
+            }
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                6,
+                "no hidden lookup or replay of a refused/uncertain mutation"
+            );
+            server.abort();
+        }
+    }
 
     fn tree_fixture_listing(tree: &[(String, String)], parent: &str) -> serde_json::Value {
         let mut files = Vec::new();
@@ -3921,7 +4232,7 @@ mod tests {
             provider_for_folder_move(r#"{"status":403,"msg":"Folder not accessible"}"#).await;
         let outcome = provider.rename("/src", "/dst/src").await;
         assert!(
-            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m == "Folder not accessible"),
+            matches!(outcome, Err(ProviderError::ServerError(ref m)) if m == "FileLu mutation returned API error 403"),
             "{outcome:?}"
         );
     }
@@ -3942,6 +4253,18 @@ mod tests {
     async fn upload_against_fixture_logged(
         upload_body: &'static str,
         busy_first: bool,
+    ) -> (
+        Result<(), ProviderError>,
+        Vec<(u64, u64)>,
+        crate::providers::upload_progress::fixture::Received,
+    ) {
+        upload_against_fixture_mode(upload_body, busy_first, false).await
+    }
+
+    async fn upload_against_fixture_mode(
+        upload_body: &'static str,
+        busy_first: bool,
+        batch: bool,
     ) -> (
         Result<(), ProviderError>,
         Vec<(u64, u64)>,
@@ -3978,25 +4301,67 @@ mod tests {
         provider.api_origin_override = Some(origin);
         let file = temp_file(300 * 1024);
         let (callback, updates) = recorder();
-        let outcome = provider
-            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
-            .await;
+        let outcome = if batch {
+            use crate::provider_transfer_executor::{
+                ProviderExecutorSessionModel, ProviderUploadExecutor,
+            };
+            use crate::transfer_orchestrator::TransferExecutor;
+            let executor = ProviderUploadExecutor::new(
+                std::sync::Arc::new(crate::transfer_event_sink::NoopTransferSink),
+                std::sync::Arc::new(tokio::sync::Mutex::new(Some(Box::new(provider)))),
+                crate::transfer_settings::ResolvedTransferSettings {
+                    requested_max_concurrent: 1,
+                    max_concurrent: 1,
+                    retry_count: 2,
+                    timeout_seconds: 30,
+                    download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(
+                        1,
+                    ),
+                    sftp_download_preset: None,
+                },
+                None,
+                tokio_util::sync::CancellationToken::new(),
+                ProviderExecutorSessionModel::LockedSingle {
+                    provider_type: Some(ProviderType::FileLu),
+                },
+                crate::transfer_dag::TransferCapabilities::default(),
+            );
+            let result = executor
+                .execute(crate::transfer_domain::TransferEntry {
+                    id: "uncertain-filelu".into(),
+                    display_name: "f.bin".into(),
+                    remote_path: "/f.bin".into(),
+                    local_path: file.path().to_string_lossy().into_owned(),
+                    size: 300 * 1024,
+                    modified: None,
+                })
+                .await;
+            assert_eq!(executor.take_transfer_attempts("uncertain-filelu"), Some(1));
+            assert!(
+                matches!(result, crate::transfer_domain::TransferOutcome::Failed(_)),
+                "{result:?}"
+            );
+            Err(ProviderError::TransferFailed(
+                "uncertain batch fixture".into(),
+            ))
+        } else {
+            provider
+                .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+                .await
+        };
         server.abort();
         let updates = updates.lock().unwrap().clone();
         (outcome, updates, received)
     }
 
-    /// A 503 from the upload server is retried with the whole file: the
-    /// request is built again over a reopened file. The retry used to go out
-    /// with the multipart headers and no body. The bar never goes back while
-    /// the second attempt resends what the first had sent, and reaches 100
-    /// once, at the end.
+    /// A gateway can return 503 after consuming and committing the upload.
+    /// Do not create another file, and do not announce completion without ACK.
     #[tokio::test]
-    async fn a_busy_upload_server_gets_the_whole_file_again() {
+    async fn an_ambiguous_upload_is_sent_once_with_its_whole_body() {
         let (outcome, updates, received) =
             upload_against_fixture_logged(r#"[{"file_code":"abc","file_status":"OK"}]"#, true)
                 .await;
-        assert!(outcome.is_ok(), "{outcome:?}");
+        assert!(outcome.is_err(), "{outcome:?}");
         let uploads: Vec<usize> = received
             .lock()
             .unwrap()
@@ -4004,15 +4369,38 @@ mod tests {
             .filter(|(path, _)| *path == "/up")
             .map(|&(_, len)| len)
             .collect();
-        assert_eq!(uploads.len(), 2, "{uploads:?}");
-        assert!(uploads[0] > 300 * 1024, "{uploads:?}");
-        assert_eq!(uploads[0], uploads[1], "the retry carried a different body");
-        let total = 300 * 1024;
-        crate::providers::upload_progress::fixture::assert_real_progress(&updates, total, true);
-        assert_eq!(
-            updates.iter().filter(|&&(sent, _)| sent == total).count(),
-            1
+        assert_eq!(uploads.len(), 1, "{uploads:?}");
+        assert!(
+            uploads[0] > 300 * 1024,
+            "the first attempt must retain the multipart body: {uploads:?}"
         );
+        let total = 300 * 1024;
+        crate::providers::upload_progress::fixture::assert_real_progress(&updates, total, false);
+        assert!(
+            !updates.iter().any(|&(sent, _)| sent == total),
+            "no acknowledgement, no 100 percent"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_batch_does_not_recreate_an_ambiguous_filelu_upload() {
+        let (outcome, _, received) =
+            upload_against_fixture_mode(r#"[{"file_code":"abc","file_status":"OK"}]"#, true, true)
+                .await;
+        assert!(outcome.is_err());
+        let uploads: Vec<_> = received
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(path, _)| *path == "/up")
+            .map(|(_, len)| *len)
+            .collect();
+        assert_eq!(
+            uploads.len(),
+            1,
+            "the executor must respect the transport's replay policy"
+        );
+        assert!(uploads[0] > 300 * 1024);
     }
 
     /// The multipart upload streams the file: the bar follows the bytes going
@@ -4062,6 +4450,16 @@ mod tests {
 
     #[test]
     fn test_is_filelu_transient_5xx_matches_body_status() {
+        for status in [500, 502, 503, 504] {
+            assert!(FileLuProvider::is_filelu_transient_5xx(
+                &ProviderError::ServerError(format!("FileLu mutation returned API error {status}"))
+            ));
+        }
+        for status in [400, 403, 5000, 5030] {
+            assert!(!FileLuProvider::is_filelu_transient_5xx(
+                &ProviderError::ServerError(format!("FileLu mutation returned API error {status}"))
+            ));
+        }
         assert!(FileLuProvider::is_filelu_transient_5xx(
             &ProviderError::ServerError("API error 500".into())
         ));
@@ -4717,6 +5115,166 @@ mod tests {
         ));
     }
 
+    /// A remote upload succeeds only after an HTTP success with a real code.
+    /// Refused or malformed responses must not echo the submitted private URL.
+    #[tokio::test]
+    async fn remote_url_upload_requires_acknowledgement_without_exposing_url() {
+        const PRIVATE_URL: &str =
+            "https://fixture-user:fixture-password@example.invalid/private-token";
+        for (response, expected) in [
+            (r#"[{"file_code":"NEW"}]"#, "success"),
+            ("[]", "missing"),
+            ("[{}]", "missing"),
+            (r#"[{"file_code":""}]"#, "missing"),
+            (r#"[{"file_code":"   "}]"#, "missing"),
+            (r#"[{"file_code":null}]"#, "missing"),
+            (
+                r#"[{"file_code":{"url":"https://fixture-user:fixture-password@example.invalid/private-token"}}]"#,
+                "parse",
+            ),
+            (
+                r#"{"echo":"https://fixture-user:fixture-password@example.invalid/private-token"}"#,
+                "parse",
+            ),
+            (
+                r#"!403 [{"file_code":"NEW","url":"https://fixture-user:fixture-password@example.invalid/private-token"}]"#,
+                "refused",
+            ),
+            (
+                r#"!503 {"echo":"https://fixture-user:fixture-password@example.invalid/private-token"}"#,
+                "uncertain",
+            ),
+        ] {
+            let (mut provider, calls) = provider_against(move |_, path, query| {
+                assert_eq!(path, "/api/upload/url");
+                assert_eq!(query.get("url").map(String::as_str), Some(PRIVATE_URL));
+                assert_eq!(query.get("fld_id").map(String::as_str), Some("7"));
+                response.into()
+            })
+            .await;
+            provider.path_cache.insert(
+                "/d".into(),
+                CacheEntry {
+                    is_dir: true,
+                    fld_id: 7,
+                    fld_token: None,
+                    file_code: String::new(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let outcome = provider.remote_url_upload(PRIVATE_URL, "/d").await;
+            if expected == "success" {
+                assert_eq!(outcome.unwrap(), "NEW");
+                assert!(!provider.path_cache.contains_key("/d"));
+            } else {
+                let error = outcome.expect_err(expected);
+                match expected {
+                    "parse" => assert!(
+                        matches!(&error, ProviderError::ParseError(message) if message.contains("line") && message.contains("column")),
+                        "{error:?}"
+                    ),
+                    "missing" => assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message.contains("no file code")),
+                        "{error:?}"
+                    ),
+                    "refused" => assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message.contains("403")),
+                        "{error:?}"
+                    ),
+                    "uncertain" => assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message.contains("may have completed")),
+                        "{error:?}"
+                    ),
+                    _ => unreachable!(),
+                }
+                let message = error.to_string();
+                for secret in [
+                    PRIVATE_URL,
+                    "fixture-user",
+                    "fixture-password",
+                    "private-token",
+                ] {
+                    assert!(!message.contains(secret), "{expected}: {message}");
+                }
+                assert!(provider.path_cache.contains_key("/d"));
+            }
+            assert_eq!(
+                calls.lock().unwrap().len(),
+                1,
+                "no uncertain mutation replay"
+            );
+        }
+    }
+
+    /// A source may vanish after lookup but before the path mutation. Only
+    /// the known 404 message maps to NotFound; arbitrary server text stays hidden.
+    #[tokio::test]
+    async fn vanished_path_mutations_are_not_found_without_echoing_server_text() {
+        for (response, missing) in [
+            (
+                r#"{"status":404,"msg":"  No file found in specified folder  "}"#,
+                true,
+            ),
+            (r#"{"status":404,"msg":"private-response-secret"}"#, false),
+        ] {
+            let (mut provider, calls) = provider_against(move |_, _, _| response.to_string()).await;
+            let entry = CacheEntry {
+                is_dir: false,
+                fld_id: 7,
+                fld_token: None,
+                file_code: String::new(),
+                size: 1,
+                modified: None,
+                hash: None,
+            };
+            for outcome in [
+                provider.move_entry(&entry, "/d/missing.bin", "/dst").await,
+                provider
+                    .rename_entry(&entry, "/d/missing.bin", "new.bin")
+                    .await,
+            ] {
+                let error = outcome.expect_err("the mutation was refused");
+                if missing {
+                    assert!(
+                        matches!(&error, ProviderError::NotFound(path) if path == "/d/missing.bin"),
+                        "{error:?}"
+                    );
+                } else {
+                    assert!(
+                        matches!(&error, ProviderError::ServerError(message) if message == "FileLu mutation returned API error 404"),
+                        "{error:?}"
+                    );
+                }
+                assert!(!error.to_string().contains("private-response-secret"));
+            }
+            assert_eq!(
+                calls.lock().unwrap().len(),
+                2,
+                "path mutations must not retry the API 404"
+            );
+        }
+        // Adding message inspection must not reject a successful status
+        // merely because an unrelated message has a non-string shape.
+        let (mut provider, _) =
+            provider_against(|_, _, _| r#"{"status":200,"msg":{"unrelated":"value"}}"#.into())
+                .await;
+        let entry = CacheEntry {
+            is_dir: false,
+            fld_id: 7,
+            fld_token: None,
+            file_code: String::new(),
+            size: 1,
+            modified: None,
+            hash: None,
+        };
+        provider
+            .rename_entry(&entry, "/d/file.bin", "new.bin")
+            .await
+            .unwrap();
+    }
+
     /// A replace renames the file at the destination aside, under a name that
     /// embeds the destination's, before it moves the source in. A destination
     /// name FileLu's rename would change is refused before that first step.
@@ -4764,6 +5322,286 @@ mod tests {
                 "{:?}",
                 calls.lock().unwrap()
             );
+        }
+    }
+
+    /// A refused clone, and a 200 with no file code, are not a completed copy.
+    /// The error stays on the status. It does not carry the response text.
+    #[tokio::test]
+    async fn a_clone_without_an_acknowledgement_or_file_code_is_not_a_copy() {
+        let (mut provider, calls) = provider_with_cached_tree_refusing(
+            &[("/d", "7"), ("/d/a.txt", "AAA")],
+            "/api/file/clone",
+        )
+        .await;
+        let outcome = provider.server_side_copy("/d/a.txt", "/d/b.txt").await;
+        let message = match &outcome {
+            Err(ProviderError::ServerError(message)) => message.clone(),
+            other => panic!("refused clone must fail: {other:?}"),
+        };
+        assert!(message.contains("not acknowledged"), "{message}");
+        assert!(!message.contains("denied"), "{message}");
+        let seen = calls.lock().unwrap().clone();
+        assert!(
+            seen.iter().any(|call| call.contains("/api/file/clone")),
+            "{seen:?}"
+        );
+        assert!(
+            seen.iter()
+                .all(|call| !call.contains("set_folder") && !call.contains("/api/file/rename")),
+            "{seen:?}"
+        );
+
+        let (mut provider, calls) =
+            provider_with_cached_tree(&[("/d", "7"), ("/d/a.txt", "AAA")]).await;
+        let outcome = provider.server_side_copy("/d/a.txt", "/d/b.txt").await;
+        let message = match &outcome {
+            Err(ProviderError::ServerError(message)) => message.clone(),
+            other => panic!("a clone with no file code must fail: {other:?}"),
+        };
+        assert!(message.contains("no file code"), "{message}");
+        assert!(!message.contains("OK"), "{message}");
+        let seen = calls.lock().unwrap().clone();
+        assert!(
+            seen.iter()
+                .all(|call| !call.contains("set_folder") && !call.contains("/api/file/rename")),
+            "{seen:?}"
+        );
+    }
+
+    /// An invalid destination must not leave a new clone next to the source.
+    #[tokio::test]
+    async fn copy_preflight_rejects_destination_lookup_failures_before_clone() {
+        for case in ["missing", "listing-failed", "not-directory"] {
+            let (mut provider, calls) = provider_against(move |_, path, _| {
+                if path.ends_with("/file/clone") {
+                    return r#"{"status":200,"result":{"filecode":"STRAY"}}"#.into();
+                }
+                match case {
+                    "listing-failed" => r#"!403 {"status":403,"msg":"listing refused"}"#.into(),
+                    "not-directory" => r#"{"status":200,"result":{"files":[{"name":"dest","file_code":"OCCUPANT"}],"folders":[]}}"#.into(),
+                    _ => r#"{"status":200,"result":{"files":[],"folders":[]}}"#.into(),
+                }
+            }).await;
+            provider.path_cache.insert(
+                "/source.txt".into(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: 0,
+                    fld_token: None,
+                    file_code: "SRC".into(),
+                    size: 1,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let result = provider
+                .server_side_copy("/source.txt", "/dest/copy.txt")
+                .await;
+            match case {
+                "missing" => assert!(
+                    matches!(result, Err(ProviderError::NotFound(_))),
+                    "{result:?}"
+                ),
+                "listing-failed" => assert!(
+                    matches!(result, Err(ProviderError::ServerError(_))),
+                    "{result:?}"
+                ),
+                "not-directory" => assert!(
+                    matches!(result, Err(ProviderError::InvalidPath(_))),
+                    "{result:?}"
+                ),
+                _ => unreachable!(),
+            }
+            assert!(
+                calls.lock().unwrap().is_empty(),
+                "{case}: no clone/move/rename before destination verification: {:?}",
+                calls.lock().unwrap()
+            );
+        }
+    }
+
+    /// A capped destination listing cannot authorize the clone either.
+    #[tokio::test]
+    async fn copy_preflight_rejects_capped_destination_without_mutation() {
+        use std::sync::atomic::Ordering;
+        for hybrid in [false, true] {
+            let mut f = cap_fixture(hybrid).await;
+            f.provider.path_cache.insert(
+                "/source.txt".into(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: 0,
+                    fld_token: None,
+                    file_code: "SRC".into(),
+                    size: 1,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let result = f
+                .provider
+                .server_side_copy("/source.txt", "/big/not-in-prefix/copy.txt")
+                .await;
+            f.server.abort();
+            assert!(
+                f.lookaheads.load(Ordering::SeqCst) > 0,
+                "destination lookup must reach the cap"
+            );
+            assert!(
+                matches!(result, Err(ProviderError::ParseError(_))),
+                "{result:?}"
+            );
+            assert_eq!(
+                f.writes.load(Ordering::SeqCst),
+                0,
+                "no clone/move/rename after uncertain lookup"
+            );
+        }
+    }
+
+    /// A documented clone object, and a result array, both name the copy.
+    /// `set_folder` and `rename` then use that code.
+    #[tokio::test]
+    async fn a_documented_clone_is_moved_and_renamed_with_its_file_code() {
+        for (label, body) in [
+            ("object", r#"{"status":200,"result":{"filecode":"CLONE"}}"#),
+            (
+                "array",
+                r#"{"status":200,"result":[{"file_code":"CLONE"}]}"#,
+            ),
+        ] {
+            let (mut provider, calls) = provider_against(move |_, path, _| {
+                if path.ends_with("/file/clone") {
+                    body.to_string()
+                } else {
+                    r#"{"status":200,"msg":"OK"}"#.to_string()
+                }
+            })
+            .await;
+            provider.path_cache.insert(
+                "/d".to_string(),
+                CacheEntry {
+                    is_dir: true,
+                    fld_id: 7,
+                    fld_token: None,
+                    file_code: String::new(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            provider.path_cache.insert(
+                "/d/a.txt".to_string(),
+                CacheEntry {
+                    is_dir: false,
+                    fld_id: 0,
+                    fld_token: None,
+                    file_code: "AAA".to_string(),
+                    size: 0,
+                    modified: None,
+                    hash: None,
+                },
+            );
+            let outcome = provider.server_side_copy("/d/a.txt", "/d/b.txt").await;
+            assert!(outcome.is_ok(), "{label}: {outcome:?}");
+            let seen = calls.lock().unwrap().clone();
+            assert!(
+                seen.iter()
+                    .any(|call| { call.contains("/file/clone") && call.contains("file_code=AAA") }),
+                "{label}: {seen:?}"
+            );
+            assert!(
+                seen.iter().any(|call| {
+                    call.contains("set_folder")
+                        && call.contains("file_code=CLONE")
+                        && call.contains("fld_id=7")
+                }),
+                "{label}: {seen:?}"
+            );
+            assert!(
+                seen.iter().any(|call| {
+                    call.contains("/file/rename")
+                        && call.contains("file_code=CLONE")
+                        && call.contains("name=b.txt")
+                }),
+                "{label}: {seen:?}"
+            );
+        }
+    }
+
+    /// The documented object and the array element are the same code. A
+    /// missing status, a failed HTTP call, or an empty code is not a copy,
+    /// and the error does not repeat the fixture text.
+    #[test]
+    fn a_clone_code_comes_from_a_result_object_or_the_first_array_element() {
+        let object = serde_json::json!({
+            "status": 200,
+            "result": {"filecode": "ABC", "url": "https://filelu.com/ABC"}
+        });
+        let ack = filelu_clone_from_body(true, &object).unwrap();
+        assert_eq!(ack.code, "ABC");
+        assert_eq!(ack.url.as_deref(), Some("https://filelu.com/ABC"));
+
+        let array = serde_json::json!({
+            "status": 200,
+            "result": [{"file_code": "DEF"}]
+        });
+        let ack = filelu_clone_from_body(true, &array).unwrap();
+        assert_eq!(ack.code, "DEF");
+        assert!(ack.url.is_none());
+
+        let object_file_code = serde_json::json!({
+            "status": 200,
+            "result": {"file_code": "JKL"}
+        });
+        assert_eq!(
+            filelu_clone_from_body(true, &object_file_code)
+                .unwrap()
+                .code,
+            "JKL"
+        );
+
+        let cases = [
+            (
+                false,
+                serde_json::json!({"status":200,"result":{"filecode":"ABC"},"msg":"secret"}),
+                "not acknowledged",
+                "secret",
+            ),
+            (
+                true,
+                serde_json::json!([{"file_code":"GHI"}]),
+                "not acknowledged",
+                "GHI",
+            ),
+            (
+                true,
+                serde_json::json!({"result":{"filecode":"ABC"},"msg":"OK"}),
+                "not acknowledged",
+                "OK",
+            ),
+            (
+                true,
+                serde_json::json!({"status":200,"result":{"filecode":""},"msg":"OK"}),
+                "no file code",
+                "OK",
+            ),
+            (
+                true,
+                serde_json::json!({"status":200,"msg":"OK"}),
+                "no file code",
+                "OK",
+            ),
+        ];
+        for (http_success, body, needle, absent) in cases {
+            let message = match filelu_clone_from_body(http_success, &body) {
+                Err(ProviderError::ServerError(message)) => message,
+                Err(error) => panic!("clone must fail as a server error: {error}"),
+                Ok(_) => panic!("clone must fail"),
+            };
+            assert!(message.contains(needle), "{message}");
+            assert!(!message.contains(absent), "{message}");
         }
     }
 
@@ -4853,6 +5691,19 @@ mod tests {
         FileLuProvider,
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
     ) {
+        provider_with_versions_answer(after_delete, None).await
+    }
+
+    /// [`provider_with_versions`]. When `mutation_failure` is set,
+    /// `version_restore` and `version_delete` answer with that HTTP status
+    /// instead of OK.
+    async fn provider_with_versions_answer(
+        after_delete: AfterDelete,
+        mutation_failure: Option<u16>,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
         let versions = std::sync::Arc::new(std::sync::Mutex::new(vec!["V2", "V1"]));
         let deleted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         provider_against(move |origin, path, query| {
@@ -4908,13 +5759,24 @@ mod tests {
                 }
                 "/blob/CUR" => "!404 gone".to_string(),
                 "/blob/V2" => "!403 denied".to_string(),
-                "/api/file/version_delete" => {
-                    deleted.store(true, std::sync::atomic::Ordering::SeqCst);
-                    if after_delete != AfterDelete::KeepsIt {
-                        let code = query.get("version_code").cloned().unwrap_or_default();
-                        versions.lock().unwrap().retain(|v| *v != code);
+                "/api/file/version_restore" => {
+                    if let Some(status) = mutation_failure {
+                        format!("!{status} lost")
+                    } else {
+                        r#"{"status":200,"msg":"OK"}"#.to_string()
                     }
-                    r#"{"status":200,"msg":"OK"}"#.to_string()
+                }
+                "/api/file/version_delete" => {
+                    if let Some(status) = mutation_failure {
+                        format!("!{status} lost")
+                    } else {
+                        deleted.store(true, std::sync::atomic::Ordering::SeqCst);
+                        if after_delete != AfterDelete::KeepsIt {
+                            let code = query.get("version_code").cloned().unwrap_or_default();
+                            versions.lock().unwrap().retain(|v| *v != code);
+                        }
+                        r#"{"status":200,"msg":"OK"}"#.to_string()
+                    }
                 }
                 _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
             }
@@ -5154,6 +6016,47 @@ mod tests {
                 .all(|c| !c.contains("version_restore")),
             "{:?}",
             calls.lock().unwrap()
+        );
+    }
+
+    /// A restore or delete that already committed can still answer 503.
+    /// Sending it again would report failure for a change that finished.
+    #[tokio::test]
+    async fn a_version_change_that_returns_503_is_not_sent_again() {
+        let (mut provider, calls) =
+            provider_with_versions_answer(AfterDelete::Removes, Some(503)).await;
+        let outcome = provider.restore_version("/d/f.txt", "V1").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        {
+            let recorded = calls.lock().unwrap();
+            assert_eq!(
+                recorded
+                    .iter()
+                    .filter(|call| call.contains("version_restore"))
+                    .count(),
+                1,
+                "{recorded:?}"
+            );
+        }
+
+        let (mut provider, calls) =
+            provider_with_versions_answer(AfterDelete::Removes, Some(503)).await;
+        let outcome = provider.delete_version("/d/f.txt", "V1").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(ref message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        let recorded = calls.lock().unwrap();
+        assert_eq!(
+            recorded
+                .iter()
+                .filter(|call| call.contains("version_delete"))
+                .count(),
+            1,
+            "{recorded:?}"
         );
     }
 

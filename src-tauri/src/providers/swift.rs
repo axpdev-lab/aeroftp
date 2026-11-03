@@ -2152,10 +2152,10 @@ mod tests {
 
     /// #368: the object PUT, every file up to 5 GiB, reported only the total
     /// after Swift's answer. The bar now follows the bytes going out and
-    /// reaches 100 only on success. A retried attempt sends the whole file
-    /// again, as the buffered body did, and the bar does not go back.
+    /// reaches 100 only on success. A gateway error after consuming a PUT
+    /// is uncertain: replaying can create another object version.
     #[tokio::test]
-    async fn object_put_reports_real_progress_and_retries_the_whole_file() {
+    async fn object_put_reports_progress_but_does_not_replay_an_ambiguous_write() {
         use crate::providers::upload_progress::fixture::assert_real_progress;
         let (outcome, updates, puts) = object_put_against_fixture(201, false).await;
         assert!(outcome.is_ok(), "{outcome:?}");
@@ -2172,9 +2172,13 @@ mod tests {
         assert_real_progress(&updates, 300 * 1024, false);
 
         let (outcome, updates, puts) = object_put_against_fixture(201, true).await;
-        assert!(outcome.is_ok(), "{outcome:?}");
-        assert_eq!(puts, [300 * 1024, 300 * 1024], "the retry resends the file");
-        assert_real_progress(&updates, 300 * 1024, true);
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(
+            puts,
+            [300 * 1024],
+            "an uncertain PUT must not create another version"
+        );
+        assert_real_progress(&updates, 300 * 1024, false);
     }
 
     /// Every request the storage double received: method, raw path (as

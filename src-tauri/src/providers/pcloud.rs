@@ -543,16 +543,68 @@ impl PCloudProvider {
         url: &str,
         auth: &str,
     ) -> Result<reqwest::Response, ProviderError> {
+        self.get_with_policy(url, auth, HttpRetryConfig::default())
+            .await
+    }
+
+    /// Retry a failed connection, or an explicit HTTP 429, within the budget.
+    /// A 429 was refused, so the upload was not stored. Retry-After sets the
+    /// wait when present; otherwise the shared backoff applies. Any other
+    /// response, a timeout, or a failure after the body starts returns
+    /// immediately. Each attempt rebuilds the entire body.
+    async fn send_upload_after_connect_failure<F, Fut>(
+        build: F,
+        config: &HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, ProviderError>>,
+    {
+        super::http_retry::send_rebuilt_async(
+            build,
+            config,
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::NetworkError(sanitize_api_error(
+                        &error.without_url().to_string(),
+                    ))
+                })
+            },
+            true,
+        )
+        .await
+    }
+
+    /// pCloud's create/copy/upload-save commands are GET RPCs, not reads.
+    async fn get_after_refusal(
+        &self,
+        url: &str,
+        auth: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let response = self
+            .get_with_policy(url, auth, HttpRetryConfig::default().refused_only())
+            .await?;
+        Self::check_ambiguous_write(response)
+    }
+
+    async fn get_with_policy(
+        &self,
+        url: &str,
+        auth: &str,
+        config: HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError> {
         let request = self
             .client
             .get(url)
             .header("Authorization", auth)
             .build()
-            .map_err(|e| ProviderError::NetworkError(format!("Failed to build request: {}", e)))?;
+            .map_err(|e| {
+                ProviderError::NetworkError(format!("Failed to build request: {}", e.without_url()))
+            })?;
 
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+        send_with_retry(&self.client, request, &config)
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
     }
 
     /// Send GET with access_token as query param (no Authorization header).
@@ -560,6 +612,36 @@ impl PCloudProvider {
     async fn get_with_token_param(
         &self,
         base_url: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        self.get_with_token_policy(base_url, HttpRetryConfig::default())
+            .await
+    }
+
+    async fn get_after_refusal_with_token_param(
+        &self,
+        url: &str,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let response = self
+            .get_with_token_policy(url, HttpRetryConfig::default().refused_only())
+            .await?;
+        Self::check_ambiguous_write(response)
+    }
+
+    fn check_ambiguous_write(
+        response: reqwest::Response,
+    ) -> Result<reqwest::Response, ProviderError> {
+        if response.status().is_server_error() {
+            return Err(ProviderError::ServerError(format!(
+                "pCloud operation returned {}; it may have completed. Check the remote state before retrying.", response.status()
+            )));
+        }
+        Ok(response)
+    }
+
+    async fn get_with_token_policy(
+        &self,
+        base_url: &str,
+        config: HttpRetryConfig,
     ) -> Result<reqwest::Response, ProviderError> {
         use secrecy::ExposeSecret;
         #[cfg(test)]
@@ -590,14 +672,13 @@ impl PCloudProvider {
         };
         let sep = if base_url.contains('?') { "&" } else { "?" };
         let url = format!("{}{}access_token={}", base_url, sep, token_raw);
-        let request =
-            self.client.get(&url).build().map_err(|e| {
-                ProviderError::NetworkError(format!("Failed to build request: {}", e))
-            })?;
+        let request = self.client.get(&url).build().map_err(|e| {
+            ProviderError::NetworkError(format!("Failed to build request: {}", e.without_url()))
+        })?;
 
-        send_with_retry(&self.client, request, &HttpRetryConfig::default())
+        send_with_retry(&self.client, request, &config)
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_http_err(|e| ProviderError::NetworkError(e.without_url().to_string()))
     }
 
     /// Recursively collect entries matching a pattern
@@ -646,7 +727,7 @@ impl PCloudProvider {
         let auth = self.auth_header().await?;
         let delete_url = format!("{}/deletepublink?linkid={}", self.api_base(), link_id);
         let resp: PCloudResponse = self
-            .get_with_retry(&delete_url, &auth)
+            .get_after_refusal(&delete_url, &auth)
             .await?
             .json()
             .await
@@ -674,7 +755,7 @@ impl PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -701,7 +782,7 @@ impl PCloudProvider {
             urlencoding::encode(to)
         );
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -780,7 +861,7 @@ impl PCloudProvider {
         let url = format!("{}/upload_create", self.api_base());
         let auth = self.auth_header().await?;
         let resp: PCloudUploadCreateResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1195,17 +1276,6 @@ impl StorageProvider for PCloudProvider {
         // total, and 100 percent is reported below, once the acknowledgement
         // has been read (see `UploadProgress`).
         let progress = super::upload_progress::UploadProgress::new(progress, file_size);
-        let body = progress.file_body(file);
-
-        // stream_with_length sets Content-Length so pCloud doesn't hang on chunked encoding
-        let form = reqwest::multipart::Form::new()
-            .text("access_token", token)
-            .part(
-                "file",
-                reqwest::multipart::Part::stream_with_length(body, file_size)
-                    .file_name(file_name.to_string()),
-            );
-
         let url = format!(
             "{}/uploadfile?path={}&filename={}&nopartial=1{}",
             self.api_base(),
@@ -1216,15 +1286,40 @@ impl StorageProvider for PCloudProvider {
                 .unwrap_or_default()
         );
 
-        // Note: multipart uploads cannot use send_with_retry because the stream body
-        // is consumed on first attempt and cannot be cloned/replayed.
-        let resp = self
-            .client
-            .post(&url)
-            .multipart(form)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        // The handle stays the one opened here. A retry must not reopen
+        // local_path: a replacement could send a different file. try_clone
+        // shares the kernel offset, so a 429 retry would seek while the
+        // refused body can still be reading. The shared cursor waits for
+        // that read to leave, then rewinds. A refused connection never read
+        // the body. Any other response, a timeout, or a failure after the
+        // body starts returns at once.
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
+        let reporter = &progress;
+        let cursor = &cursor;
+        let client = &self.client;
+        let url = &url;
+        let token = &token;
+        let resp = Self::send_upload_after_connect_failure(
+            || {
+                let cursor = cursor.clone();
+                async move {
+                    let body = cursor
+                        .attempt_body(reporter, file_size)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    let form = reqwest::multipart::Form::new()
+                        .text("access_token", token.clone())
+                        .part(
+                            "file",
+                            reqwest::multipart::Part::stream_with_length(body, file_size)
+                                .file_name(file_name.to_string()),
+                        );
+                    Ok(client.post(url).multipart(form))
+                }
+            },
+            &HttpRetryConfig::default(),
+        )
+        .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -1265,7 +1360,7 @@ impl StorageProvider for PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1287,7 +1382,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1305,7 +1400,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1573,7 +1668,7 @@ impl StorageProvider for PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudPubLink = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1743,7 +1838,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1762,7 +1857,7 @@ impl StorageProvider for PCloudProvider {
         );
 
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -1993,7 +2088,7 @@ impl StorageProvider for PCloudProvider {
 
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&api_url, &auth)
+            .get_after_refusal(&api_url, &auth)
             .await?
             .json()
             .await
@@ -2063,9 +2158,11 @@ impl StorageProvider for PCloudProvider {
     //      body. Offsets are handle-derived. Parts out of order on one
     //      uploadid return result 2068, so the hints advertise one chunk
     //      slot and the executor remains LockedSingle.
-    //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises and atomically
-    //      moves the staged bytes into place. Idempotent: a repeated call
-    //      on the same uploadid returns the same fileid.
+    //   3. `upload_save?uploadid=N&folderid=Y&name=Z` finalises the staged
+    //      bytes at the destination. A stable fileid does not establish
+    //      replay safety: overwrites can retain that ID while adding revisions.
+    //      Without a documented replay guarantee, an ambiguous 5xx is returned
+    //      for reconciliation instead of repeating this write.
     //   4. `upload_delete?uploadid=N` best-effort cancel. pCloud GCs stale
     //      sessions after a few days, so the abort never re-raises.
     async fn begin_multipart_upload(
@@ -2262,7 +2359,7 @@ impl StorageProvider for PCloudProvider {
         );
         let auth = self.auth_header().await?;
         let resp: PCloudResponse = self
-            .get_with_retry(&url, &auth)
+            .get_after_refusal(&url, &auth)
             .await?
             .json()
             .await
@@ -2374,7 +2471,7 @@ impl PCloudProvider {
         let param = if is_folder { "folderid" } else { "fileid" };
         let url = format!("{}/trash_restore?{}={}", self.api_base(), param, id);
         let resp: PCloudSimpleResponse = self
-            .get_with_token_param(&url)
+            .get_after_refusal_with_token_param(&url)
             .await?
             .json()
             .await
@@ -2399,7 +2496,7 @@ impl PCloudProvider {
     pub async fn empty_trash(&self) -> Result<(), ProviderError> {
         let url = format!("{}/trash_clear", self.api_base());
         let resp: PCloudSimpleResponse = self
-            .get_with_token_param(&url)
+            .get_after_refusal_with_token_param(&url)
             .await?
             .json()
             .await
@@ -2428,7 +2525,7 @@ impl PCloudProvider {
         let param = if is_folder { "folderid" } else { "fileid" };
         let url = format!("{}/trash_clear?{}={}", self.api_base(), param, id);
         let resp: PCloudSimpleResponse = self
-            .get_with_token_param(&url)
+            .get_after_refusal_with_token_param(&url)
             .await?
             .json()
             .await
@@ -2478,6 +2575,48 @@ mod tests {
     }
 
     use super::*;
+
+    #[tokio::test]
+    async fn a_folder_create_committed_before_503_is_sent_once() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let created = Arc::new(AtomicUsize::new(0));
+        let seen = created.clone();
+        let app = axum::Router::new().route(
+            "/createfolder",
+            axum::routing::get(move || {
+                let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if ordinal == 0 {
+                        (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            r#"{"result":5000}"#,
+                        )
+                    } else {
+                        (axum::http::StatusCode::OK, r#"{"result":0}"#)
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+        let outcome = p.mkdir("/new").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        assert_eq!(
+            created.load(Ordering::SeqCst),
+            1,
+            "a GET RPC can commit a create too"
+        );
+    }
 
     fn test_provider() -> PCloudProvider {
         PCloudProvider::new(PCloudConfig::new("client-id", "client-secret", "eu"))
@@ -2905,6 +3044,118 @@ mod tests {
         p
     }
 
+    /// The access token is a query parameter. A refused connection, and a
+    /// request that cannot be built, must not repeat that URL.
+    #[tokio::test]
+    async fn a_token_query_stays_out_of_a_transport_or_build_error() {
+        let provider = fixture_connected();
+        let once = HttpRetryConfig {
+            max_retries: 0,
+            ..HttpRetryConfig::default()
+        };
+        // Bound and not listening, so Windows refuses at once. A closed
+        // port, including port 1, can sit until the client timeout.
+        let refused_socket = crate::providers::http_retry::refusal::BoundRefusal::bind();
+        let refused_addr = refused_socket.addr();
+        let refused = provider
+            .get_with_token_policy(&format!("http://{refused_addr}/pcloud"), once.clone())
+            .await
+            .expect_err("the bound port is not listening");
+        drop(refused_socket);
+        let text = match &refused {
+            ProviderError::NetworkError(message) => message.clone(),
+            other => panic!("a refused connection is a network error: {other:?}"),
+        };
+        assert!(!text.contains("fixture-token"), "{text}");
+        assert!(!text.contains("access_token"), "{text}");
+
+        let built = provider
+            .get_with_token_policy("http://[", once)
+            .await
+            .expect_err("the url cannot be built");
+        let text = match &built {
+            ProviderError::NetworkError(message) => message.clone(),
+            other => panic!("an unbuildable request is a network error: {other:?}"),
+        };
+        assert!(text.contains("Failed to build request"), "{text}");
+        assert!(!text.contains("fixture-token"), "{text}");
+        assert!(!text.contains("access_token"), "{text}");
+    }
+
+    /// Sharing passwords and imported source URLs are query parameters too.
+    /// Build failures, connection refusals and timeouts must not expose them.
+    #[tokio::test]
+    async fn header_authenticated_get_errors_do_not_expose_sensitive_query_urls() {
+        let provider = fixture_connected();
+        let once = HttpRetryConfig {
+            max_retries: 0,
+            ..HttpRetryConfig::default()
+        };
+        let query = "linkpassword=private-share-password&url=https%3A%2F%2Falice%3Aprivate-source-password%40example.invalid%2Fprivate-source";
+        let assert_redacted = |error: ProviderError| {
+            let text = error.to_string();
+            for secret in [
+                "linkpassword",
+                "private-share-password",
+                "private-source-password",
+                "example.invalid",
+                "private-source",
+            ] {
+                assert!(!text.contains(secret), "request URL leaked: {text}");
+            }
+        };
+
+        let refused = crate::providers::http_retry::refusal::BoundRefusal::bind();
+        let url = format!("http://{}/getfilepublink?{query}", refused.addr());
+        let error = provider
+            .get_with_policy(&url, "Bearer fixture", once.clone())
+            .await
+            .expect_err("bound socket is not listening");
+        assert!(
+            matches!(&error, ProviderError::NetworkError(_)),
+            "{error:?}"
+        );
+        assert_redacted(error);
+
+        let error = provider
+            .get_with_policy(&url, "invalid\nheader", once.clone())
+            .await
+            .expect_err("invalid header prevents request construction");
+        assert!(
+            matches!(&error, ProviderError::NetworkError(message) if message.contains("Failed to build request")),
+            "{error:?}"
+        );
+        assert_redacted(error);
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().route(
+            "/downloadfile",
+            axum::routing::get(|| async {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                "late"
+            }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = fixture_connected();
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .unwrap();
+        let error = provider
+            .get_with_policy(
+                &format!("http://{addr}/downloadfile?{query}"),
+                "Bearer fixture",
+                once,
+            )
+            .await
+            .expect_err("response headers never arrive before the timeout");
+        server.abort();
+        assert!(matches!(&error, ProviderError::Timeout), "{error:?}");
+        assert_redacted(error);
+    }
+
     /// A provider whose file and thumbnail links name a content host on the
     /// same local fixture, which answers the content with `status`.
     async fn provider_with_content(status: u16) -> PCloudProvider {
@@ -3269,6 +3520,350 @@ mod tests {
         let te = crate::transfer_dag::TransferError::from_provider(&err);
         assert_eq!(te.kind, crate::transfer_dag::TransferErrorKind::RateLimited);
         assert!(te.is_congestion());
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn an_upload_can_recover_after_a_connection_refused_before_sending() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved); // First build deliberately has no listening server.
+        let builds = Arc::new(AtomicUsize::new(0));
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let server = Arc::new(Mutex::new(None));
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                let attempt = builds.fetch_add(1, Ordering::SeqCst);
+                if attempt == 1 {
+                    let listener = std::net::TcpListener::bind(addr).unwrap();
+                    listener.set_nonblocking(true).unwrap();
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let received = seen.clone();
+                    let app = axum::Router::new().route(
+                        "/upload",
+                        axum::routing::post(move |body: bytes::Bytes| {
+                            received.lock().unwrap().push(body.to_vec());
+                            async { r#"{"result":0}"# }
+                        }),
+                    );
+                    *server.lock().unwrap() = Some(tokio::spawn(async move {
+                        axum::serve(listener, app).await.unwrap()
+                    }));
+                }
+                let request = client
+                    .post(format!("http://{addr}/upload"))
+                    .body("complete payload");
+                async move { Ok(request) }
+            },
+            &HttpRetryConfig {
+                max_retries: 2,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(builds.load(Ordering::SeqCst), 2);
+        assert_eq!(*seen.lock().unwrap(), vec![b"complete payload".to_vec()]);
+        server.lock().unwrap().take().unwrap().abort();
+    }
+
+    #[tokio::test]
+    async fn connection_only_upload_recovery_does_not_replay_responses_or_timeouts() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for (status, delay) in [(503, false), (200, false), (200, true)] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/upload",
+                axum::routing::post(move |_: bytes::Bytes| {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        if delay {
+                            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                        }
+                        (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            "malformed acknowledgement",
+                        )
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let client = reqwest::Client::builder().no_proxy().build().unwrap();
+            let mut builds = 0;
+            let response = PCloudProvider::send_upload_after_connect_failure(
+                || {
+                    builds += 1;
+                    let request = client
+                        .post(format!("http://{addr}/upload"))
+                        .timeout(std::time::Duration::from_millis(50))
+                        .body("payload");
+                    async move { Ok(request) }
+                },
+                &HttpRetryConfig {
+                    max_retries: 2,
+                    base_delay_ms: 1,
+                    max_delay_ms: 1,
+                    ..Default::default()
+                },
+            )
+            .await;
+            if delay {
+                assert!(matches!(response, Err(ProviderError::Timeout)));
+            } else {
+                let response = response.unwrap();
+                assert_eq!(response.status().as_u16(), status);
+                if status == 200 {
+                    assert!(response.json::<serde_json::Value>().await.is_err());
+                }
+            }
+            assert_eq!(builds, 1);
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn connection_only_upload_recovery_exhausts_its_budget() {
+        let reserved = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = reserved.local_addr().unwrap();
+        drop(reserved);
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let mut builds = 0;
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                builds += 1;
+                let request = client.post(format!("http://{addr}/upload")).body("payload");
+                async move { Ok(request) }
+            },
+            &HttpRetryConfig {
+                max_retries: 2,
+                base_delay_ms: 1,
+                max_delay_ms: 1,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert!(response.is_err());
+        assert_eq!(builds, 3);
+    }
+
+    /// HTTP 429 is a refusal, not an uncertain write. The executor no longer
+    /// repeats these uploads, so this loop keeps the bounded retry. A 5xx
+    /// stays on the single-attempt path covered above.
+    #[tokio::test]
+    async fn a_429_refusal_is_retried_and_then_the_budget_stops() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+
+        async fn serve(
+            always_refuse: bool,
+        ) -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/upload",
+                axum::routing::post(move || {
+                    let n = seen.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        let status = if always_refuse || n == 0 {
+                            axum::http::StatusCode::TOO_MANY_REQUESTS
+                        } else {
+                            axum::http::StatusCode::OK
+                        };
+                        (status, [("retry-after", "0")], "refused")
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (format!("http://{addr}/upload"), calls, server)
+        }
+
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        let fast = HttpRetryConfig {
+            max_retries: 2,
+            base_delay_ms: 1,
+            max_delay_ms: 1,
+            ..Default::default()
+        };
+
+        let (url, calls, server) = serve(false).await;
+        let mut builds = 0;
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                builds += 1;
+                let request = client.post(&url).body("payload");
+                async move { Ok(request) }
+            },
+            &fast,
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(builds, 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
+
+        let (url, calls, server) = serve(true).await;
+        let mut builds = 0;
+        let response = PCloudProvider::send_upload_after_connect_failure(
+            || {
+                builds += 1;
+                let request = client.post(&url).body("payload");
+                async move { Ok(request) }
+            },
+            &HttpRetryConfig {
+                max_retries: 1,
+                ..fast.clone()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 429);
+        assert_eq!(builds, 2);
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        server.abort();
+    }
+
+    /// A 429 retry sends the original file again from the start. The refused
+    /// body must not keep the kernel offset that the next attempt rewinds.
+    #[tokio::test]
+    async fn upload_sends_the_original_file_again_after_a_429() {
+        use std::sync::{Arc, Mutex};
+
+        use crate::providers::upload_progress::fixture::{assert_real_progress, recorder};
+
+        let size = 300 * 1024;
+        let payload = (0..size as u32)
+            .map(|i| (i % 251) as u8)
+            .collect::<Vec<_>>();
+        let file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(file.path(), &payload).unwrap();
+        let bodies = Arc::new(Mutex::new(Vec::new()));
+        let seen = bodies.clone();
+        let app = axum::Router::new().route(
+            "/uploadfile",
+            axum::routing::post(move |body: bytes::Bytes| {
+                seen.lock().unwrap().push(body.to_vec());
+                let n = seen.lock().unwrap().len();
+                async move {
+                    let status = if n == 1 {
+                        axum::http::StatusCode::TOO_MANY_REQUESTS
+                    } else {
+                        axum::http::StatusCode::OK
+                    };
+                    (status, [("retry-after", "0")], r#"{"result":0}"#)
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let (callback, updates) = recorder();
+        let outcome = provider
+            .upload(file.path().to_str().unwrap(), "/f.bin", Some(callback))
+            .await;
+        server.abort();
+        assert!(outcome.is_ok(), "{outcome:?}");
+        let bodies = bodies.lock().unwrap();
+        assert_eq!(
+            bodies.len(),
+            2,
+            "a 429 is one retry, then the stored upload"
+        );
+        for body in bodies.iter() {
+            let found = body.windows(16).position(|window| window == &payload[..16]);
+            let start = found.unwrap_or(usize::MAX);
+            assert_eq!(
+                body.get(start..start + payload.len()),
+                Some(payload.as_slice()),
+                "a retry sent a short or mixed body, len {}",
+                body.len()
+            );
+        }
+        assert_real_progress(&updates.lock().unwrap(), size as u64, true);
+    }
+
+    #[tokio::test]
+    async fn an_upload_save_committed_before_503_is_not_replayed() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let saves = Arc::new(AtomicUsize::new(0));
+        let seen = saves.clone();
+        let app = axum::Router::new().route(
+            "/upload_save",
+            axum::routing::get(move |uri: axum::http::Uri| {
+                let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    let url = reqwest::Url::parse(&format!("http://fixture{uri}")).unwrap();
+                    let query: std::collections::HashMap<_, _> = url.query_pairs().collect();
+                    assert_eq!(query.get("uploadid").unwrap(), "42");
+                    assert_eq!(query.get("folderid").unwrap(), "2");
+                    assert_eq!(query.get("name").unwrap(), "t.bin");
+                    // Model a save that commits, but its acknowledgement is lost
+                    // behind a gateway 503. Replaying would add another revision.
+                    if ordinal == 0 {
+                        (
+                            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                            r#"{"result":5000}"#,
+                        )
+                    } else {
+                        (axum::http::StatusCode::OK, r#"{"result":0}"#)
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+        let meta = PCloudMultipartMeta {
+            uploadid: 42,
+            folderid: 2,
+            name: "t.bin".into(),
+            total: 4,
+            part: 4,
+            mtime: None,
+        };
+        let outcome = p
+            .complete_multipart_upload(
+                MultipartHandle {
+                    upload_id: meta.encode(),
+                    remote_path: "/t.bin".into(),
+                },
+                vec![UploadedPart {
+                    part_number: 1,
+                    etag: String::new(),
+                }],
+            )
+            .await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::ServerError(message)) if message.contains("may have completed")),
+            "{outcome:?}"
+        );
+        assert_eq!(saves.load(Ordering::SeqCst), 1);
         server.abort();
     }
 

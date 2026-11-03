@@ -672,8 +672,8 @@ impl FilenProvider {
         Some(resp.data?.versioned_storage)
     }
 
-    /// Send a request with automatic retry on 429/5xx errors.
-    /// F-ERR-01/F-ERR-02: Integrates send_with_retry for automatic rate-limit and server error handling.
+    /// Shared refusal retries, plus server-error recovery for safe HTTP reads.
+    /// POST mutations must not be repeated after an ambiguous failure.
     async fn send_retry(
         &self,
         request: reqwest::Request,
@@ -681,6 +681,21 @@ impl FilenProvider {
         send_with_retry(&self.client, request, &self.retry_config)
             .await
             .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+    }
+
+    /// Filen exposes directory and revision queries as POST. These are
+    /// reads, so preserve server-error recovery without opting writes in.
+    async fn send_read_query(
+        &self,
+        request: reqwest::Request,
+    ) -> Result<reqwest::Response, ProviderError> {
+        send_with_retry(
+            &self.client,
+            request,
+            &self.retry_config.clone().for_safe_operation(),
+        )
+        .await
+        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
     }
 
     /// Derive password hash and master key for authentication.
@@ -1450,7 +1465,7 @@ impl FilenProvider {
             .json(&serde_json::json!({"uuid": folder_uuid}))
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-        let resp = self.send_retry(request).await?;
+        let resp = self.send_read_query(request).await?;
 
         let resp_text = resp
             .text()
@@ -1618,7 +1633,7 @@ impl FilenProvider {
                 .json(&serde_json::json!({"uuid": current_uuid}))
                 .build()
                 .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
-            let resp = self.send_retry(request).await?;
+            let resp = self.send_read_query(request).await?;
 
             let content: DirContentResponse = resp
                 .json()
@@ -1715,7 +1730,7 @@ impl FilenProvider {
             .build()
             .map_err(|e| ProviderError::NetworkError(e.to_string()))?;
         let resp: FileVersionsResponse = self
-            .send_retry(request)
+            .send_read_query(request)
             .await?
             .json()
             .await
@@ -2361,6 +2376,7 @@ impl StorageProvider for FilenProvider {
             .map_err(ProviderError::IoError)?;
 
         let mut in_flight: FuturesUnordered<_> = FuturesUnordered::new();
+        let chunk_retry = self.retry_config.clone();
         let mut next_index: u64 = 0;
         let mut transferred: u64 = 0;
         let mut eof = false;
@@ -2397,6 +2413,7 @@ impl StorageProvider for FilenProvider {
                 let parent_uuid = parent_uuid.clone();
                 let upload_key = upload_key.clone();
                 let file_key = file_key.clone();
+                let retry_config = chunk_retry.clone();
                 in_flight.push(async move {
                     upload_filen_chunk(
                         &client,
@@ -2408,6 +2425,7 @@ impl StorageProvider for FilenProvider {
                         &file_key,
                         index,
                         buf,
+                        &retry_config,
                     )
                     .await?;
                     Ok::<u64, ProviderError>(plaintext_len)
@@ -3248,6 +3266,7 @@ impl StorageProvider for FilenProvider {
             &meta.file_key,
             zero_index,
             data,
+            &self.retry_config,
         )
         .await?;
 
@@ -3424,6 +3443,7 @@ async fn upload_filen_chunk(
     file_key: &str,
     index: u64,
     plaintext: Vec<u8>,
+    retry_config: &HttpRetryConfig,
 ) -> Result<(), ProviderError> {
     let encrypted = FilenProvider::encrypt_file_content(&plaintext, file_key)?;
     drop(plaintext);
@@ -3442,17 +3462,27 @@ async fn upload_filen_chunk(
         chunk_hash,
     );
 
-    let resp = client
-        .post(&url)
-        .header(
-            "Authorization",
-            HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
-                .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?,
-        )
-        .body(encrypted)
-        .send()
-        .await
-        .map_http_err(|e| ProviderError::NetworkError(sanitize_filen_transport_error(&e)))?;
+    let payload = bytes::Bytes::from(encrypted);
+    let auth = HeaderValue::from_str(&format!("Bearer {}", api_key.expose_secret()))
+        .map_err(|e| ProviderError::Other(format!("Invalid auth header: {}", e)))?;
+    let http = client.clone();
+    // The chunk is already encrypted. A refused connection or an HTTP 429
+    // sends those same bytes again. Any other HTTP response is not replayed.
+    let resp = super::send_rebuilt_on_connect_failure(
+        || {
+            Ok(http
+                .post(&url)
+                .header("Authorization", auth.clone())
+                .body(payload.clone()))
+        },
+        retry_config,
+        |error| {
+            super::http_send_error(error, |error| {
+                ProviderError::NetworkError(sanitize_filen_transport_error(&error))
+            })
+        },
+    )
+    .await?;
 
     let status = resp.status();
     let retry_header = resp
@@ -3621,6 +3651,43 @@ impl ChunkError {
 
 #[cfg(test)]
 mod tests {
+
+    #[tokio::test]
+    async fn a_read_only_post_listing_still_recovers_from_503() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/v3/dir/content",
+            axum::routing::post(move || {
+                let ordinal = seen.fetch_add(1, Ordering::SeqCst);
+                async move {
+                    if ordinal == 0 {
+                        (axum::http::StatusCode::SERVICE_UNAVAILABLE, "busy")
+                    } else {
+                        (
+                            axum::http::StatusCode::OK,
+                            r#"{"status":true,"data":{"folders":[],"uploads":[]}}"#,
+                        )
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = FilenProvider::connected_for_test(demo_cfg());
+        provider.gateway_base_override = Some(format!("http://{addr}"));
+        provider.retry_config.base_delay_ms = 1;
+        provider.retry_config.max_delay_ms = 5;
+        let result = provider.read_listing(".").await;
+        server.abort();
+        assert!(result.is_ok());
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
 
     #[tokio::test]
     async fn share_link_creation_fails_closed_without_requests() {
@@ -5402,6 +5469,8 @@ mod tests {
         // would otherwise include uploadKey in the error string.
         let mut primary = FilenProvider::connected_for_test(demo_cfg());
         primary.ingest_base_override = Some("http://127.0.0.1:1".to_string());
+        primary.retry_config.base_delay_ms = 1;
+        primary.retry_config.max_delay_ms = 5;
         let api_key = primary.auth.api_key.expose_secret().to_string();
         let upload_key = "cafebabedeadbeefcafebabedeadbeefcafebabedeadbeefcafebabedeadbeef";
         let file_key = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

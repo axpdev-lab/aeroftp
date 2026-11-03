@@ -89,6 +89,7 @@ pub mod totp_helper;
 pub mod tpslimit;
 pub mod twake;
 pub mod types;
+pub mod upload_cursor;
 pub mod upload_progress;
 pub mod upload_source;
 pub mod uploadcare;
@@ -142,7 +143,9 @@ pub use gitlab::GitLabProvider;
 pub use google_drive::GoogleDriveProvider;
 pub use google_photos::GooglePhotosProvider;
 #[allow(unused_imports)]
-pub use http_retry::{send_with_retry, send_with_retry_replayable, HttpRetryConfig};
+pub use http_retry::{
+    send_rebuilt_on_connect_failure, send_with_retry, send_with_retry_replayable, HttpRetryConfig,
+};
 pub use imagekit::ImageKitProvider;
 pub use immich::ImmichProvider;
 pub use internxt::InternxtProvider;
@@ -1245,7 +1248,7 @@ pub trait StorageProvider: Send + Sync {
     /// Executors must not wrap it in whole-file retries: those multiply the
     /// budget and may duplicate versions after an ambiguous upload response.
     fn manages_upload_retries(&self) -> bool {
-        false
+        http_retry::manages_upload_retries_for(self.provider_type())
     }
 
     /// Get display name for this provider instance

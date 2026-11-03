@@ -411,6 +411,9 @@ pub struct InternxtProvider {
     current_folder_id: String,
     /// Base URL for /drive/* requests, the login included: the gateway (a local fixture in tests)
     api_base: String,
+    /// Only local fixtures can replace the network gateway.
+    #[cfg(test)]
+    network_base_override: Option<String>,
     /// Cache: path → DirInfo (uuid, name)
     /// M3: Capped at DIR_CACHE_MAX_ENTRIES to prevent unbounded memory growth
     dir_cache: HashMap<String, DirInfo>,
@@ -475,6 +478,8 @@ impl InternxtProvider {
             bucket: String::new(),
             basic_auth: String::new(),
             api_base: GATEWAY.to_string(),
+            #[cfg(test)]
+            network_base_override: None,
             root_folder_id: String::new(),
             current_path: "/".to_string(),
             current_folder_id: String::new(),
@@ -804,7 +809,11 @@ impl InternxtProvider {
     /// whatever `api_base` the /drive/* requests use.
     /// This is because the Bridge/Network API only accepts Basic auth via the gateway.
     fn network_request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
-        let url = format!("{}/network{}", GATEWAY, path);
+        #[cfg(not(test))]
+        let base = GATEWAY;
+        #[cfg(test)]
+        let base = self.network_base_override.as_deref().unwrap_or(GATEWAY);
+        let url = format!("{base}/network{path}");
         self.client
             .request(method, &url)
             .header("Authorization", &self.basic_auth)
@@ -2016,32 +2025,24 @@ impl StorageProvider for InternxtProvider {
             filename, plain_size, resolved
         ));
 
-        // Preemptive delete: if file already exists, remove it before uploading.
-        // This avoids 409 Conflict and gives the server time to process the delete
-        // during the upload/encryption phase. The file of this exact name,
-        // never one of another letter case.
-        if let Some((existing_uuid, _, _)) = self
+        // The published replace API conditions only on UUID/user, not the
+        // expected name or parent. A concurrent rename could make it replace
+        // a moved file. Refuse before allocation; no delete/create fallback.
+        if self
             .find_exact_file_in_folder(&parent_uuid, &filename)
             .await?
+            .is_some()
         {
-            internxt_log(&format!(
-                "[UPLOAD] File {} exists, deleting before overwrite...",
-                filename
+            return Err(ProviderError::AlreadyExists(
+                "Internxt cannot safely overwrite an existing name without conditional replacement; the original was kept".into(),
             ));
-            let _ = self
-                .send_with_reauth(|this| {
-                    this.drive_request(
-                        reqwest::Method::DELETE,
-                        &format!("/files/{}", existing_uuid),
-                    )
-                })
-                .await;
         }
 
         if plain_size == 0 {
             let (name, ext) = Self::split_name_ext(&filename);
             self.create_file_meta(None, &parent_uuid, &name, &ext, 0)
-                .await?;
+                .await
+                .map_err(Self::annotate_stored_create_meta)?;
             return Ok(());
         }
 
@@ -2070,7 +2071,6 @@ impl StorageProvider for InternxtProvider {
         // Single-shard upload supports files up to ~5GB on current Internxt plans.
         // For larger files, multi-shard upload with multiparts=N would be needed.
         // TODO: Multi-shard upload for files exceeding single-shard limit
-        // Retry with exponential backoff (gateway can return 500 timeout)
         let start_url = format!("/v2/buckets/{}/files/start?multiparts=1", self.bucket);
         let start_body = serde_json::json!({
             "uploads": [{ "index": 0, "size": plain_size }]
@@ -2082,100 +2082,15 @@ impl StorageProvider for InternxtProvider {
             full_start_url, plain_size
         ));
 
-        let mut start_data: Option<StartUploadResp> = None;
-        let mut last_error = String::new();
-        // Whether the last attempt got no answer: then the upload failed on a
-        // timeout, whatever the earlier attempts said.
-        let mut last_timed_out = false;
-        for attempt in 0..3 {
-            last_timed_out = false;
-            if attempt > 0 {
-                let delay = std::time::Duration::from_millis(1000 * (1 << attempt));
-                internxt_log(&format!(
-                    "[UPLOAD] Retry attempt {} after {:?}...",
-                    attempt + 1,
-                    delay
-                ));
-                tokio::time::sleep(delay).await;
-            }
-
-            let resp = self
-                .send_with_reauth(|this| {
-                    this.network_request(reqwest::Method::POST, &start_url)
-                        .header(CONTENT_TYPE, "application/json; charset=utf-8")
-                        .json(&start_body)
-                })
-                .await;
-
-            let resp = match resp {
-                Ok(r) => r,
-                Err(e) => {
-                    last_timed_out = matches!(e, ProviderError::Timeout);
-                    last_error = format!("Request failed: {}", e);
-                    internxt_log(&format!(
-                        "[UPLOAD] Attempt {} failed: {}",
-                        attempt + 1,
-                        last_error
-                    ));
-                    continue;
-                }
-            };
-
-            let status = resp.status();
-            internxt_log(&format!(
-                "[UPLOAD] Attempt {} status: {}",
-                attempt + 1,
-                status
-            ));
-
-            if status.as_u16() == 500 || status.as_u16() == 502 || status.as_u16() == 503 {
-                let body = resp.text().await.unwrap_or_default();
-                last_error = format!(
-                    "Server error ({}): {}",
-                    status,
-                    &body[..body.floor_char_boundary(200)]
-                );
-                internxt_log(&format!(
-                    "[UPLOAD] Attempt {} server error, retrying: {}",
-                    attempt + 1,
-                    last_error
-                ));
-                continue;
-            }
-
-            if !status.is_success() {
-                let body = resp.text().await.unwrap_or_default();
-                return Err(ProviderError::ServerError(format!(
-                    "Start upload failed ({}): {}",
-                    status,
-                    super::sanitize_api_error(&body)
-                )));
-            }
-
-            let raw = resp.text().await.map_http_err(|e| {
-                ProviderError::ServerError(format!("Failed to read start upload response: {}", e))
-            })?;
-            tracing::debug!(target: "internxt", "[UPLOAD] Start response ({} bytes): {}", raw.len(), &raw[..raw.floor_char_boundary(200)]);
-
-            match serde_json::from_str::<StartUploadResp>(&raw) {
-                Ok(data) => {
-                    start_data = Some(data);
-                    break;
-                }
-                Err(e) => {
-                    last_error = format!(
-                        "Parse error: {} | Response: {}",
-                        e,
-                        &raw[..raw.floor_char_boundary(200)]
-                    );
-                    internxt_log(&format!("[UPLOAD] {}", last_error));
-                    continue;
-                }
-            }
-        }
-
-        let start_data =
-            start_data.ok_or_else(|| start_upload_failure(last_timed_out, &last_error))?;
+        // A failed response can follow a committed session allocation. Only
+        // explicit refusals may be retried by the transport/auth layers.
+        let start_data = self
+            .start_upload_session(|this| {
+                this.network_request(reqwest::Method::POST, &start_url)
+                    .header(CONTENT_TYPE, "application/json; charset=utf-8")
+                    .json(&start_body)
+            })
+            .await?;
 
         if start_data.uploads.is_empty() {
             return Err(ProviderError::ServerError(
@@ -2257,21 +2172,15 @@ impl StorageProvider for InternxtProvider {
             ProviderError::ServerError(format!("Failed to parse finish upload: {}", e))
         })?;
 
-        // Create file metadata in Drive
+        if finish_data.id.trim().is_empty() {
+            return Err(ProviderError::ParseError(
+                "Internxt upload finish returned no content ID; original kept".into(),
+            ));
+        }
         let (name, ext) = Self::split_name_ext(&filename);
         self.create_file_meta(Some(&finish_data.id), &parent_uuid, &name, &ext, plain_size)
             .await
-            .map_err(|e| {
-                // If still 409 despite preemptive delete, provide clear error
-                if format!("{}", e).contains("409") {
-                    ProviderError::ServerError(format!(
-                        "File {} already exists: try again in a few seconds",
-                        filename
-                    ))
-                } else {
-                    e
-                }
-            })?;
+            .map_err(Self::annotate_stored_create_meta)?;
 
         progress.complete();
         internxt_log(&format!("Uploaded {} OK", filename));
@@ -2732,6 +2641,38 @@ impl InternxtProvider {
         }
     }
 
+    /// The content is already stored. A 5xx, a timeout, or a success body
+    /// that cannot be read, does not prove the name is absent. A 4xx stays
+    /// unchanged.
+    fn annotate_stored_create_meta(error: ProviderError) -> ProviderError {
+        if matches!(error, ProviderError::Timeout) {
+            return ProviderError::ServerError(
+                "It may have completed. Check remote state before retrying.".into(),
+            );
+        }
+        let ProviderError::ServerError(message) = error else {
+            return error;
+        };
+        let uncertain = message.starts_with("Failed to parse create file meta response:")
+            || Self::create_meta_status_is_server_error(&message);
+        if !uncertain {
+            return ProviderError::ServerError(message);
+        }
+        ProviderError::ServerError(format!(
+            "{message}. It may have completed. Check remote state before retrying."
+        ))
+    }
+
+    fn create_meta_status_is_server_error(message: &str) -> bool {
+        let Some(rest) = message.strip_prefix("Create file meta failed (") else {
+            return false;
+        };
+        let Some(code) = rest.split(|c: char| !c.is_ascii_digit()).next() else {
+            return false;
+        };
+        matches!(code.parse::<u16>(), Ok(status) if (500..600).contains(&status))
+    }
+
     /// Create file metadata in Drive after network upload
     async fn create_file_meta(
         &mut self,
@@ -2761,13 +2702,21 @@ impl InternxtProvider {
         }
 
         let resp = self
-            .send_with_reauth(|this| {
+            .send_create_meta(|this| {
                 this.drive_request(reqwest::Method::POST, "/files")
                     .header(CONTENT_TYPE, "application/json; charset=utf-8")
                     .json(&body)
             })
             .await?;
 
+        if resp.status() == reqwest::StatusCode::CONFLICT {
+            let filename = if file_type.is_empty() {
+                plain_name.to_string()
+            } else {
+                format!("{plain_name}.{file_type}")
+            };
+            return Err(ProviderError::AlreadyExists(filename));
+        }
         if !resp.status().is_success() {
             let status = resp.status();
             let resp_body = resp.text().await.unwrap_or_default();
@@ -2790,10 +2739,18 @@ impl InternxtProvider {
         &self,
         rb: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, ProviderError> {
+        self.send_with_policy(rb, &self.retry_config).await
+    }
+
+    async fn send_with_policy(
+        &self,
+        rb: reqwest::RequestBuilder,
+        config: &HttpRetryConfig,
+    ) -> Result<reqwest::Response, ProviderError> {
         let request = rb
             .build()
             .map_err(|e| ProviderError::ConnectionFailed(format!("Build request failed: {}", e)))?;
-        send_with_retry(&self.client, request, &self.retry_config)
+        send_with_retry(&self.client, request, config)
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(format!("Request failed: {}", e)))
     }
@@ -2845,9 +2802,82 @@ impl InternxtProvider {
         .await
     }
 
+    /// Create-meta is the publication. `is_connect` is a failure before the
+    /// request is sent. Any other transport failure can follow bytes that
+    /// already left, so it carries the uncertain-publish warning. Timeouts
+    /// stay `ProviderError::Timeout` and are annotated by the caller.
+    async fn send_create_meta<F>(
+        &mut self,
+        mut build: F,
+    ) -> Result<reqwest::Response, ProviderError>
+    where
+        F: FnMut(&Self) -> reqwest::RequestBuilder,
+    {
+        self.with_reauth(|this| {
+            let rb = build(this);
+            Box::pin(async move {
+                let request = rb.build().map_err(|e| {
+                    ProviderError::ConnectionFailed(format!("Build request failed: {e}"))
+                })?;
+                let resp = send_with_retry(&this.client, request, &this.retry_config)
+                    .await
+                    .map_http_err(Self::map_create_meta_transport)?;
+                if resp.status().as_u16() == 401 {
+                    let body = resp.text().await.unwrap_or_default();
+                    return Err(internxt_auth_failure(
+                        "Internxt token expired or invalid",
+                        &super::sanitize_api_error(&body),
+                    ));
+                }
+                Ok(resp)
+            })
+        })
+        .await
+    }
+
+    fn map_create_meta_transport(error: reqwest::Error) -> ProviderError {
+        if error.is_connect() {
+            return ProviderError::ConnectionFailed(format!("Request failed: {error}"));
+        }
+        ProviderError::ConnectionFailed(format!(
+            "Request failed: {error}. It may have completed. Check remote state before retrying."
+        ))
+    }
+
+    /// Allocate at most one session after an ambiguous response. A 5xx,
+    /// truncated response or malformed JSON does not prove allocation failed.
+    async fn start_upload_session<F>(&mut self, build: F) -> Result<StartUploadResp, ProviderError>
+    where
+        F: FnMut(&Self) -> reqwest::RequestBuilder,
+    {
+        let resp = self.send_with_reauth(build).await?;
+        let status = resp.status();
+        if !status.is_success() {
+            if !status.is_server_error() {
+                let body = resp.text().await.unwrap_or_default();
+                return Err(ProviderError::ServerError(format!(
+                    "Start upload failed ({status}): {}",
+                    super::sanitize_api_error(&body)
+                )));
+            }
+            return Err(ProviderError::ServerError(format!(
+                "Start upload returned {status}; it may have completed. Check remote state before retrying."
+            )));
+        }
+        resp.json::<StartUploadResp>().await.map_http_err(|_| {
+            ProviderError::ServerError(
+                "Could not read the allocated upload session; it may have completed. Check remote state before retrying.".into()
+            )
+        })
+    }
+
     async fn refresh_token_once(&mut self) -> Result<(), ProviderError> {
         let resp = self
-            .send_retryable(self.drive_request(reqwest::Method::GET, "/users/refresh"))
+            // This GET rotates credentials, so it is not a read-only query.
+            .send_with_policy(
+                self.drive_request(reqwest::Method::GET, "/users/refresh"),
+                &self.retry_config.clone().refused_only(),
+            )
             .await?;
 
         if !resp.status().is_success() {
@@ -3068,21 +3098,6 @@ fn rename_refused(what: &str, status: reqwest::StatusCode, body: &str, to: &str)
     ))
 }
 
-/// The error of an upload whose start request failed every attempt. A last
-/// attempt that got no answer is a timeout (the exit code and the transfer
-/// engine's retry read it as one); anything else is the server's failure,
-/// with the last reason.
-fn start_upload_failure(last_timed_out: bool, last_error: &str) -> ProviderError {
-    if last_timed_out {
-        ProviderError::Timeout
-    } else {
-        ProviderError::ServerError(format!(
-            "Start upload failed after 3 attempts: {}",
-            last_error
-        ))
-    }
-}
-
 /// Private staging for decrypted bytes: a directory only the owner can enter
 /// (`0o700` on Unix; `tempfile` would otherwise follow the umask), removed with
 /// its contents when dropped, on success and on every error path.
@@ -3154,18 +3169,553 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn a_start_upload_whose_last_attempt_timed_out_is_a_timeout() {
-        assert!(matches!(
-            start_upload_failure(true, "Request failed: Timeout"),
-            ProviderError::Timeout
-        ));
-        match start_upload_failure(false, "HTTP 500") {
-            ProviderError::ServerError(message) => {
-                assert_eq!(message, "Start upload failed after 3 attempts: HTTP 500")
-            }
-            other => panic!("expected ServerError, got {other:?}"),
+    #[tokio::test]
+    async fn an_upload_start_is_not_repeated_after_503_or_a_broken_success() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for status in [
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            axum::http::StatusCode::OK,
+        ] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/start",
+                axum::routing::post(move || {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    async move { (status, "broken response") }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/start", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            let outcome = p
+                .start_upload_session(|this| {
+                    this.client
+                        .post(&url)
+                        .json(&serde_json::json!({"uploads":[{"index":0,"size":4}]}))
+                })
+                .await;
+            server.abort();
+            assert!(
+                outcome.is_err(),
+                "an uncertain create cannot be reported as success"
+            );
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
         }
+    }
+
+    #[tokio::test]
+    async fn a_refused_upload_start_reports_the_sanitized_reason() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        for status in [400, 402, 403, 429] {
+            let calls = Arc::new(AtomicUsize::new(0));
+            let seen = calls.clone();
+            let app = axum::Router::new().route(
+                "/start",
+                axum::routing::post(move || {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                    async move {
+                        (
+                            axum::http::StatusCode::from_u16(status).unwrap(),
+                            "quota refused sk-ant-1234567890abcdefghij\nsecret second line",
+                        )
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}/start", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            p.retry_config.max_retries = 0;
+            let error = p
+                .start_upload_session(|this| this.client.post(&url))
+                .await
+                .expect_err("refusal");
+            let message = error.to_string();
+            assert!(message.contains(&status.to_string()), "{message}");
+            assert!(message.contains("quota refused"), "{message}");
+            assert!(!message.contains("may have completed"), "{message}");
+            assert!(
+                !message.contains("sk-ant-1234567890abcdefghij"),
+                "{message}"
+            );
+            assert!(!message.contains("secret second line"), "{message}");
+            assert_eq!(calls.load(Ordering::SeqCst), 1);
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_upload_session_is_not_allocated_again() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/start",
+            axum::routing::post(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async {
+                    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                    "{}"
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/start", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        let outcome = p
+            .start_upload_session(|this| {
+                this.client
+                    .post(&url)
+                    .timeout(std::time::Duration::from_millis(50))
+            })
+            .await;
+        server.abort();
+        assert!(
+            matches!(outcome, Err(ProviderError::Timeout)),
+            "{outcome:?}"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    /// A refused connect never sent the create. A peer that accepts the
+    /// request and then drops it may already have stored the name.
+    ///
+    /// A controlled resolution failure exercises reqwest's connect phase
+    /// before any socket/request exists, independently of Windows SYN timing.
+    /// The second phase uses a real peer that reads the request then closes.
+    #[tokio::test]
+    async fn create_meta_warns_only_after_the_request_is_sent() {
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.retry_config.max_retries = 0;
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct BeforeConnectFailure(Arc<AtomicUsize>);
+        impl reqwest::dns::Resolve for BeforeConnectFailure {
+            fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Box::pin(async {
+                    Err(std::io::Error::new(
+                        std::io::ErrorKind::ConnectionRefused,
+                        "fixture refused resolution before a connection",
+                    )
+                    .into())
+                })
+            }
+        }
+        let resolutions = Arc::new(AtomicUsize::new(0));
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .dns_resolver(Arc::new(BeforeConnectFailure(Arc::clone(&resolutions))))
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+        provider.api_base = "http://not-sent.invalid".into();
+        let error = provider
+            .create_file_meta(None, "R", "empty", "", 0)
+            .await
+            .expect_err("a failed connect is not a published file");
+        assert!(
+            matches!(&error, ProviderError::ConnectionFailed(_)),
+            "{error:?}"
+        );
+        assert!(
+            resolutions.load(Ordering::SeqCst) > 0,
+            "connect resolver was exercised"
+        );
+        let message = error.to_string();
+        assert!(message.contains("Request failed"), "{message}");
+        assert!(!message.contains("may have completed"), "{message}");
+
+        // Restore the ordinary connector for the real accepted-request case.
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 8192];
+            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await;
+            drop(socket);
+        });
+        provider.api_base = format!("http://{addr}");
+        let message = provider
+            .create_file_meta(None, "R", "empty", "", 0)
+            .await
+            .expect_err("a dropped create may already be stored")
+            .to_string();
+        assert!(message.contains("Request failed"), "{message}");
+        assert!(message.contains("may have completed"), "{message}");
+        assert!(
+            message.contains("Check remote state before retrying"),
+            "{message}"
+        );
+    }
+
+    /// The default budget must not send the metadata POST again after the
+    /// peer has accepted it and then dropped the socket. The zero-budget
+    /// case above cannot see that replay.
+    #[tokio::test]
+    async fn create_meta_reset_is_not_replayed_on_the_default_budget() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let mut provider = test_provider();
+        provider.connected = true;
+        assert_eq!(
+            provider.retry_config.max_retries,
+            HttpRetryConfig::default().max_retries
+        );
+        assert!(provider.retry_config.max_retries > 0);
+        provider.client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(2))
+            .build()
+            .unwrap();
+
+        let posts = Arc::new(AtomicUsize::new(0));
+        let seen = posts.clone();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut socket, _) = match listener.accept().await {
+                    Ok(accepted) => accepted,
+                    Err(_) => break,
+                };
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 8192];
+                while buf.len() < 16 * 1024 {
+                    match tokio::time::timeout(
+                        std::time::Duration::from_millis(500),
+                        tokio::io::AsyncReadExt::read(&mut socket, &mut chunk),
+                    )
+                    .await
+                    {
+                        Ok(Ok(0)) | Err(_) | Ok(Err(_)) => break,
+                        Ok(Ok(n)) => buf.extend_from_slice(&chunk[..n]),
+                    }
+                    if buf.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                if buf.starts_with(b"POST /drive/files ") {
+                    seen.fetch_add(1, Ordering::SeqCst);
+                }
+                drop(socket);
+            }
+        });
+        provider.api_base = format!("http://{addr}");
+        let message = provider
+            .create_file_meta(None, "R", "empty", "", 0)
+            .await
+            .expect_err("a dropped create may already be stored")
+            .to_string();
+        server.abort();
+        assert!(message.contains("Request failed"), "{message}");
+        assert!(message.contains("may have completed"), "{message}");
+        assert!(
+            message.contains("Check remote state before retrying"),
+            "{message}"
+        );
+        assert_eq!(posts.load(Ordering::SeqCst), 1, "{message}");
+    }
+
+    /// A new name is published once after stored content; uncertain outcomes
+    /// neither replay metadata creation nor touch an unrelated existing file.
+    #[tokio::test]
+    async fn new_upload_publishes_once_after_stored_contents_without_replaying_uncertainty() {
+        use axum::{
+            http::{Method, StatusCode},
+            response::IntoResponse,
+        };
+        use std::sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Mutex,
+        };
+        for failure in [
+            "start503",
+            "startbroken",
+            "starttimeout",
+            "shard503",
+            "finish503",
+            "finishbroken",
+            "emptyfinish",
+            "create403",
+            "create503",
+            "createcommit503",
+            "createtimeout",
+            "createbroken",
+            "success",
+        ] {
+            let pointer = Arc::new(Mutex::new("NONE".to_string()));
+            let finished = Arc::new(AtomicBool::new(false));
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let (stored, complete, observed, origin) = (
+                pointer.clone(),
+                finished.clone(),
+                calls.clone(),
+                base.clone(),
+            );
+            let app = axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (stored, complete, observed, origin) = (stored.clone(), complete.clone(), observed.clone(), origin.clone());
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let bytes = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    observed.lock().unwrap().push(format!("{method} {path}"));
+                    if method == Method::GET && path.ends_with("/files") {
+                        return axum::Json(serde_json::json!({"files":[{"uuid":"EXISTING","plainName":"other","type":"txt","fileId":"OLD","bucket":"BUCKET"}]})).into_response();
+                    }
+                    if path.ends_with("/files/start") {
+                        if failure == "starttimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
+                        if failure == "start503" { return (StatusCode::SERVICE_UNAVAILABLE, "start uncertain").into_response(); }
+                        if failure == "startbroken" { return (StatusCode::OK, "broken allocation").into_response(); }
+                        return axum::Json(serde_json::json!({"uploads":[{"index":0,"uuid":"PART","url":format!("{origin}/shard")}]})).into_response();
+                    }
+                    if method == Method::PUT && path == "/shard" {
+                        assert_eq!(bytes.len(), 8);
+                        if failure == "shard503" { return (StatusCode::SERVICE_UNAVAILABLE, "shard uncertain").into_response(); }
+                        return StatusCode::OK.into_response();
+                    }
+                    if path.ends_with("/files/finish") {
+                        if failure == "finish503" { return (StatusCode::SERVICE_UNAVAILABLE, "finish uncertain").into_response(); }
+                        if failure == "finishbroken" { return (StatusCode::OK, "broken finish").into_response(); }
+                        complete.store(true, Ordering::SeqCst);
+                        let id = if failure == "emptyfinish" { "" } else { "NEW" };
+                        return axum::Json(serde_json::json!({"id":id})).into_response();
+                    }
+                    if method == Method::POST && path == "/drive/files" {
+                        assert!(complete.load(Ordering::SeqCst), "name published before stored content");
+                        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                        assert_eq!(body["fileId"], "NEW");
+                        assert_eq!(body["size"], 8);
+                        if failure == "create403" { return (StatusCode::FORBIDDEN, "create refused").into_response(); }
+                        if failure == "create503" { return (StatusCode::SERVICE_UNAVAILABLE, "create uncertain").into_response(); }
+                        *stored.lock().unwrap() = "NEW".into();
+                        if failure == "createbroken" { return (StatusCode::OK, "broken create").into_response(); }
+                        if failure == "createcommit503" { return (StatusCode::SERVICE_UNAVAILABLE, "lost acknowledgement").into_response(); }
+                        if failure == "createtimeout" { tokio::time::sleep(std::time::Duration::from_millis(400)).await; }
+                        return axum::Json(serde_json::json!({"uuid":"NEW_FILE"})).into_response();
+                    }
+                    (StatusCode::NOT_FOUND, "unexpected operation").into_response()
+                }
+            }));
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            p.connected = true;
+            p.root_folder_id = "R".into();
+            p.bucket = "BUCKET".into();
+            p.api_base = base.clone();
+            p.network_base_override = Some(base);
+            p.client = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(std::time::Duration::from_millis(150))
+                .build()
+                .unwrap();
+            let local = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(local.path(), b"newbytes").unwrap();
+            let progress = Arc::new(Mutex::new(Vec::new()));
+            let report = progress.clone();
+            let outcome = p
+                .upload(
+                    local.path().to_str().unwrap(),
+                    "/new.txt",
+                    Some(Box::new(move |a, b| report.lock().unwrap().push((a, b)))),
+                )
+                .await;
+            assert_eq!(
+                outcome.is_ok(),
+                failure == "success",
+                "{failure}: {outcome:?}"
+            );
+            if let Err(error) = &outcome {
+                let message = error.to_string();
+                if failure == "create503"
+                    || failure == "createcommit503"
+                    || failure == "createtimeout"
+                    || failure == "createbroken"
+                {
+                    assert!(
+                        message.contains("may have completed"),
+                        "{failure}: {message}"
+                    );
+                    assert!(
+                        message.contains("Check remote state before retrying"),
+                        "{failure}: {message}"
+                    );
+                }
+                if failure == "create403" {
+                    assert!(
+                        !message.contains("may have completed"),
+                        "{failure}: {message}"
+                    );
+                }
+            }
+            let expected = if [
+                "success",
+                "createcommit503",
+                "createtimeout",
+                "createbroken",
+            ]
+            .contains(&failure)
+            {
+                "NEW"
+            } else {
+                "NONE"
+            };
+            assert_eq!(*pointer.lock().unwrap(), expected, "{failure}");
+            let calls = calls.lock().unwrap().clone();
+            assert!(
+                !calls
+                    .iter()
+                    .any(|c| c.starts_with("DELETE ") || c.starts_with("PUT /drive/")),
+                "{failure}: {calls:?}"
+            );
+            assert!(
+                calls.iter().filter(|c| *c == "POST /drive/files").count() <= 1,
+                "{failure}: {calls:?}"
+            );
+            assert!(
+                calls.iter().filter(|c| c.ends_with("/files/start")).count() <= 1,
+                "{failure}: {calls:?}"
+            );
+            assert_eq!(
+                progress.lock().unwrap().contains(&(8, 8)),
+                failure == "success",
+                "{failure}"
+            );
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn empty_overwrite_refuses_before_mutation_and_keeps_the_original() {
+        let (mut p, store, changes) = provider_on_drive(&[("EXISTING", "keep.txt", "S")]).await;
+        let local = tempfile::NamedTempFile::new().unwrap();
+        let outcome = p
+            .upload(local.path().to_str().unwrap(), "/src/keep.txt", None)
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::AlreadyExists(ref message)) if message.contains("the original was kept")),
+            "{outcome:?}"
+        );
+        assert_eq!(store.lock().unwrap()[0].0, "EXISTING");
+        assert!(changes.lock().unwrap().is_empty());
+    }
+
+    /// The listing is a snapshot: the server may move the UUID as it returns
+    /// that snapshot. No allocation or UUID write may follow even then.
+    #[tokio::test]
+    async fn existing_name_refusal_cannot_write_a_target_moved_after_lookup() {
+        use axum::{http::Method, response::IntoResponse};
+        use std::sync::{Arc, Mutex};
+        for contents in [b"".as_slice(), b"newbytes".as_slice()] {
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let observed = calls.clone();
+            let moved = Arc::new(Mutex::new(false));
+            let relocated = moved.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (observed, relocated) = (observed.clone(), relocated.clone());
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    observed.lock().unwrap().push(format!("{method} {path}"));
+                    if method == Method::GET && path.ends_with("/files") {
+                        // The old name was present at lookup; immediately
+                        // afterwards the same UUID lives under another name.
+                        *relocated.lock().unwrap() = true;
+                        return axum::Json(serde_json::json!({"files":[{"uuid":"EXISTING","plainName":"keep","type":"txt","fileId":"OLD","bucket":"BUCKET"}]})).into_response();
+                    }
+                    (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "unexpected mutation").into_response()
+                }
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut p = test_provider();
+            p.connected = true;
+            p.root_folder_id = "R".into();
+            p.api_base = base.clone();
+            p.network_base_override = Some(base);
+            let local = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(local.path(), contents).unwrap();
+            let outcome = p
+                .upload(local.path().to_str().unwrap(), "/keep.txt", None)
+                .await;
+            assert!(
+                matches!(outcome, Err(ProviderError::AlreadyExists(ref message)) if message.contains("the original was kept")),
+                "{outcome:?}"
+            );
+            assert!(
+                *moved.lock().unwrap(),
+                "the fixture moved the UUID after lookup"
+            );
+            assert!(
+                calls
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .all(|call| call.starts_with("GET ")),
+                "{:?}",
+                calls.lock().unwrap()
+            );
+            server.abort();
+        }
+    }
+
+    #[tokio::test]
+    async fn a_concurrent_create_is_already_exists_without_delete_or_replay() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/drive/files",
+            axum::routing::post(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async {
+                    (
+                        axum::http::StatusCode::CONFLICT,
+                        "name occupied concurrently",
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        p.api_base = base;
+        assert!(matches!(
+            p.create_file_meta(Some("NEW"), "R", "keep", "txt", 8).await,
+            Err(ProviderError::AlreadyExists(_))
+        ));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        server.abort();
     }
 
     /// Internxt refuses a taken name and has no overwrite on rename or move, so
@@ -3709,8 +4259,8 @@ mod tests {
         );
     }
 
-    /// An upload deletes the file it replaces first, and found it ignoring
-    /// the case: an upload of `a.txt` beside only `A.txt` deleted `A.txt`.
+    /// An upload used to delete its target first and match ignoring case:
+    /// an upload of `a.txt` beside only `A.txt` deleted `A.txt`.
     /// `rm /src/A.TXT` deleted it too. Both take the exact name only.
     #[tokio::test]
     async fn an_upload_or_delete_does_not_take_a_file_of_another_case() {

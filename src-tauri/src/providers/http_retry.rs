@@ -1,7 +1,7 @@
 //! GAP-A01: Shared HTTP retry wrapper with 429/5xx handling and Retry-After support.
 //!
 //! Provides `send_with_retry()` as a drop-in replacement for `request.send()` that adds:
-//! - Exponential backoff with jitter on 429 (Too Many Requests) and 5xx errors
+//! - Exponential backoff on 429, and on 5xx only when replay is safe
 //! - Retry-After header parsing (both seconds and HTTP-date formats)
 //! - Configurable max retries and delay bounds
 //! - Transparent passthrough for non-retryable status codes (4xx except 429)
@@ -11,6 +11,48 @@
 
 use reqwest::{Client, Request, Response};
 use std::time::Duration;
+
+/// A replayable body is not proof that repeating the operation is safe: a
+/// gateway may return 5xx after the service committed a create. RPC-style
+/// APIs can mutate through GET, while a POST can also be a read-only query.
+#[derive(Debug, Clone, Copy, Default)]
+pub enum ServerErrorRetries {
+    /// Conservative default for ordinary HTTP APIs. Writes need an explicit
+    /// operation-level decision, even PUT (which can create another revision).
+    #[default]
+    SafeMethods,
+    /// The caller has established that repeating this operation is safe.
+    SafeOperation,
+    /// Only a refusal (429) may be retried, regardless of the HTTP method.
+    Never,
+}
+
+/// The audited shared-HTTP providers own request replay decisions. A batch
+/// executor must not start the entire upload again after an uncertain write,
+/// including a timeout or a malformed acknowledgement. Overlays forward this
+/// policy to the underlying provider. Protocol-specific recovery stays there.
+pub(super) fn manages_upload_retries_for(provider: super::ProviderType) -> bool {
+    use super::ProviderType;
+    matches!(
+        provider,
+        ProviderType::S3
+            | ProviderType::Azure
+            | ProviderType::Swift
+            | ProviderType::Backblaze
+            | ProviderType::FileLu
+            | ProviderType::PCloud
+            | ProviderType::FourShared
+            | ProviderType::Jottacloud
+            | ProviderType::KDrive
+            | ProviderType::Koofr
+            | ProviderType::Internxt
+            | ProviderType::Twake
+            | ProviderType::GitLab
+            | ProviderType::Filen
+            | ProviderType::ZohoWorkdrive
+            | ProviderType::WebDav
+    )
+}
 
 /// Configuration for HTTP retry behavior
 #[derive(Debug, Clone)]
@@ -23,6 +65,9 @@ pub struct HttpRetryConfig {
     pub max_delay_ms: u64,
     /// Backoff multiplier (default: 2.0)
     pub backoff_multiplier: f64,
+    /// Whether a server error permits repeating the operation. This never
+    /// overrides the requirement that the request body can actually be replayed.
+    pub server_error_retries: ServerErrorRetries,
 }
 
 impl Default for HttpRetryConfig {
@@ -32,13 +77,48 @@ impl Default for HttpRetryConfig {
             base_delay_ms: 1000,
             max_delay_ms: 30_000,
             backoff_multiplier: 2.0,
+            server_error_retries: ServerErrorRetries::SafeMethods,
         }
+    }
+}
+
+impl HttpRetryConfig {
+    /// Opt in only for a read-only or otherwise proven safe operation, not
+    /// merely because its request body can be rebuilt.
+    pub fn for_safe_operation(mut self) -> Self {
+        self.server_error_retries = ServerErrorRetries::SafeOperation;
+        self
+    }
+
+    /// Use for state-changing RPCs sent as GET and other ambiguous writes.
+    pub fn refused_only(mut self) -> Self {
+        self.server_error_retries = ServerErrorRetries::Never;
+        self
     }
 }
 
 /// Determine if a status code is retryable
 fn is_retryable_status(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 504)
+}
+
+fn can_retry_response(status: u16, method: &reqwest::Method, config: &HttpRetryConfig) -> bool {
+    if !is_retryable_status(status) {
+        return false;
+    }
+    if status == 429 {
+        return true;
+    }
+    match config.server_error_retries {
+        ServerErrorRetries::SafeMethods => {
+            matches!(
+                *method,
+                reqwest::Method::GET | reqwest::Method::HEAD | reqwest::Method::OPTIONS
+            )
+        }
+        ServerErrorRetries::SafeOperation => true,
+        ServerErrorRetries::Never => false,
+    }
 }
 
 /// Parse Retry-After header value (supports both seconds and HTTP-date)
@@ -85,7 +165,9 @@ fn record_headers_received(start: std::time::Instant) {
     crate::transfer_dag::ttfb::record_sample(nanos);
 }
 
-/// Send an HTTP request with automatic retry on 429/5xx.
+/// Send a replayable request with retries on refusals and safe server errors.
+/// A 5xx on a write is returned unchanged by default: it may have committed.
+/// The caller can reconcile it, but the transport must not blindly repeat it.
 ///
 /// This clones the request for each retry attempt. The original request builder
 /// pattern is preserved: callers build a `Request` via `client.get(url)...build()`.
@@ -170,61 +252,413 @@ where
     F: FnMut() -> reqwest::RequestBuilder,
 {
     let _ = client;
-    // KE-A3: proactive tpslimit gate. No-op when the CLI did not install
-    // a limiter (GUI path, default). Sits BEFORE the first execute so
-    // retries also pay the rate-limit toll: an HTTP 429 followed by an
-    // immediate retry would otherwise leak past the cap.
-    super::tpslimit::maybe_acquire().await;
-
-    // The TTFB timer starts at the actual send, after the rate-limit toll:
-    // a proactive throttle wait is not part of the server's first-byte time.
-    let attempt_start = std::time::Instant::now();
-    let mut last_response = match build().send().await {
-        Ok(response) => {
-            record_headers_received(attempt_start);
-            response
-        }
-        Err(error) => return Err(error),
-    };
-
-    for attempt in 0..config.max_retries {
-        if !is_retryable_status(last_response.status().as_u16()) {
-            return Ok(last_response);
-        }
-
-        // Determine delay: prefer Retry-After, fall back to exponential backoff
-        let delay =
-            parse_retry_after(&last_response).unwrap_or_else(|| calculate_delay(attempt, config));
-
-        tracing::debug!(
-            "HTTP {} returned {}. Retry {}/{} after {:?}",
-            last_response.url(),
-            last_response.status(),
-            attempt + 1,
-            config.max_retries,
-            delay
-        );
-
-        tokio::time::sleep(delay).await;
-
-        // KE-A3: each retry pays the same tpslimit toll as the original
-        // request. Without this, a 429 would let a retry bypass the
-        // proactive cap and saturate the backend the very instant the
-        // cooldown ended.
+    for attempt in 0..=config.max_retries {
+        // Retries, including definite connect refusals, pay the same limiter
+        // toll. The attempt timer starts only after this proactive wait.
         super::tpslimit::maybe_acquire().await;
-        // Each retried attempt that reaches headers is its own honest
-        // first-byte sample; retries never double-count a single attempt.
+        let (attempt_client, request) = build().build_split();
+        let request = request?;
+        let method = request.method().clone();
         let attempt_start = std::time::Instant::now();
-        last_response = match build().send().await {
+        let delay = match attempt_client.execute(request).await {
             Ok(response) => {
                 record_headers_received(attempt_start);
-                response
+                if attempt == config.max_retries
+                    || !can_retry_response(response.status().as_u16(), &method, config)
+                {
+                    if is_retryable_status(response.status().as_u16()) {
+                        tracing::debug!(method = %method, status = %response.status(),
+                            "Returning response without replay; retry budget exhausted or operation may have completed");
+                    }
+                    return Ok(response);
+                }
+                let delay = parse_retry_after(&response)
+                    .unwrap_or_else(|| calculate_delay(attempt, config));
+                tracing::debug!(method = %method, status = %response.status(),
+                    retry = attempt + 1, "Retrying a refused or safe HTTP operation");
+                delay
             }
-            Err(error) => return Err(error),
+            Err(error) => {
+                // is_connect identifies connection establishment, before a
+                // request is sent. A reset after sending, a timeout or an
+                // unreadable acknowledgement is uncertain and never replayed.
+                // Built streams already force max_retries=0; factories must
+                // rebuild their complete body, exactly as for a 429 retry.
+                if attempt == config.max_retries || !error.is_connect() || error.is_timeout() {
+                    return Err(error);
+                }
+                tracing::debug!(method = %method, retry = attempt + 1,
+                    "Retrying HTTP connection establishment failure before send");
+                calculate_delay(attempt, config)
+            }
         };
+        tokio::time::sleep(delay).await;
+    }
+    unreachable!("the final attempt returns its response or error")
+}
+
+/// Send an upload that is rebuilt on each attempt.
+///
+/// The batch executor does not start these uploads again, so this loop is
+/// their bounded recovery. It retries a connection refusal that happens
+/// before any byte is sent, and an HTTP 429. A 429 is an explicit refusal:
+/// the wait is `Retry-After` when the header parses, otherwise the shared
+/// backoff, and `build` recreates the complete body. A 5xx, a timeout, or a
+/// reset after the request starts may already have stored the object, so
+/// those responses are returned as they arrived. S3 `SlowDown` is a 503 with
+/// its own body check and stays at the S3 call site.
+pub async fn send_rebuilt_on_connect_failure<F, E, C>(
+    mut build: F,
+    config: &HttpRetryConfig,
+    on_transport: C,
+) -> Result<Response, E>
+where
+    F: FnMut() -> Result<reqwest::RequestBuilder, E>,
+    C: FnMut(reqwest::Error) -> E,
+{
+    send_rebuilt_async(
+        move || std::future::ready(build()),
+        config,
+        on_transport,
+        true,
+    )
+    .await
+}
+
+/// [`send_rebuilt_on_connect_failure`] when the next attempt has to be built
+/// asynchronously. `retry_http_429` keeps the shared refusal backoff. A
+/// caller that waits on its own clock passes `false` and handles the 429
+/// after this returns it. A connection refusal is still retried here.
+pub(crate) async fn send_rebuilt_async<F, Fut, E, C>(
+    build: F,
+    config: &HttpRetryConfig,
+    on_transport: C,
+    retry_http_429: bool,
+) -> Result<Response, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, E>>,
+    C: FnMut(reqwest::Error) -> E,
+{
+    let mut remaining_retries = config.max_retries;
+    send_rebuilt_async_with_budget(
+        build,
+        config,
+        on_transport,
+        retry_http_429,
+        &mut remaining_retries,
+    )
+    .await
+}
+
+/// Rebuild requests without replenishing retries spent by an outer refusal loop.
+/// Initialize `remaining_retries` once to `config.max_retries` per upload. This
+/// helper and the caller each consume one retry only when they will send again;
+/// when none remain the final response/error is returned without another send.
+pub(crate) async fn send_rebuilt_async_with_budget<F, Fut, E, C>(
+    mut build: F,
+    config: &HttpRetryConfig,
+    mut on_transport: C,
+    retry_http_429: bool,
+    remaining_retries: &mut u32,
+) -> Result<Response, E>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<reqwest::RequestBuilder, E>>,
+    C: FnMut(reqwest::Error) -> E,
+{
+    loop {
+        let attempt = config.max_retries.saturating_sub(*remaining_retries);
+        // The same toll as the shared wrapper, including a definite refusal.
+        super::tpslimit::maybe_acquire().await;
+        let builder = build().await?;
+        let (attempt_client, request) = builder.build_split();
+        let request = match request {
+            Ok(request) => request,
+            Err(error) => return Err(on_transport(error)),
+        };
+        let method = request.method().clone();
+        let attempt_start = std::time::Instant::now();
+        match attempt_client.execute(request).await {
+            Ok(response) => {
+                record_headers_received(attempt_start);
+                if retry_http_429 && *remaining_retries > 0 && response.status().as_u16() == 429 {
+                    *remaining_retries -= 1;
+                    let delay = parse_retry_after(&response)
+                        .unwrap_or_else(|| calculate_delay(attempt, config));
+                    tracing::debug!(
+                        method = %method,
+                        retry = attempt + 1,
+                        "Retrying an upload after HTTP 429"
+                    );
+                    drop(response);
+                    tokio::time::sleep(delay).await;
+                    continue;
+                }
+                return Ok(response);
+            }
+            Err(error) => {
+                if *remaining_retries > 0 && error.is_connect() && !error.is_timeout() {
+                    *remaining_retries -= 1;
+                    tracing::debug!(
+                        method = %method,
+                        retry = attempt + 1,
+                        "Retrying a connection refusal before the upload was sent"
+                    );
+                    tokio::time::sleep(calculate_delay(attempt, config)).await;
+                    continue;
+                }
+                return Err(on_transport(error));
+            }
+        }
+    }
+}
+
+/// A 127.0.0.1 port that stays bound without listening.
+///
+/// `connect` is refused at once, and another test cannot bind the same
+/// address. Closing a listener and connecting to the released port is not
+/// that refusal on Windows: the connect can outlast a short client timeout,
+/// or another test can take the port, and the failure is then a timeout.
+#[cfg(test)]
+pub(crate) mod refusal {
+    #[cfg(unix)]
+    type RawSock = libc::c_int;
+    #[cfg(windows)]
+    type RawSock = usize;
+
+    #[cfg(windows)]
+    #[link(name = "ws2_32")]
+    extern "system" {
+        fn closesocket(s: usize) -> i32;
+        fn WSAStartup(version: u16, data: *mut std::ffi::c_void) -> i32;
+        fn WSAGetLastError() -> i32;
     }
 
-    Ok(last_response)
+    pub(crate) struct BoundRefusal {
+        fd: RawSock,
+        owned: bool,
+    }
+
+    impl BoundRefusal {
+        pub(crate) fn bind() -> Self {
+            #[cfg(windows)]
+            {
+                // SAFETY: a large aligned buffer is enough for WSADATA. Winsock
+                // stays started for the process; this test does not clean it up.
+                unsafe {
+                    #[repr(align(8))]
+                    struct Buf([u8; 512]);
+                    let mut data = Buf([0; 512]);
+                    let rc = WSAStartup(0x0202, data.0.as_mut_ptr().cast());
+                    if rc != 0 {
+                        panic!("WSAStartup {rc}");
+                    }
+                }
+            }
+            let fd = open_socket();
+            if let Err(error) = bind_loopback(fd) {
+                close_socket(fd);
+                panic!("bind loopback: {error}");
+            }
+            Self { fd, owned: true }
+        }
+
+        pub(crate) fn listen(mut self) -> std::net::TcpListener {
+            #[cfg(unix)]
+            let rc = unsafe { libc::listen(self.fd, 128) };
+            #[cfg(windows)]
+            let rc = unsafe { libc::listen(self.fd, 128) };
+            if rc != 0 {
+                panic!("listen: {}", socket_last_error());
+            }
+            let fd = self.fd;
+            self.owned = false;
+            #[cfg(unix)]
+            {
+                use std::os::unix::io::FromRawFd;
+                // SAFETY: fd is an owned listening TCP socket. The listener closes it.
+                unsafe { std::net::TcpListener::from_raw_fd(fd) }
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::FromRawSocket;
+                // SAFETY: fd is an owned listening TCP socket. The listener closes it.
+                #[cfg(target_pointer_width = "64")]
+                unsafe {
+                    std::net::TcpListener::from_raw_socket(fd as u64)
+                }
+                #[cfg(target_pointer_width = "32")]
+                unsafe {
+                    std::net::TcpListener::from_raw_socket(fd as u32)
+                }
+            }
+        }
+
+        pub(crate) fn addr(&self) -> std::net::SocketAddr {
+            #[cfg(unix)]
+            {
+                let mut storage: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+                let mut len = std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t;
+                // SAFETY: storage is a writable sockaddr_in and len is its size.
+                let rc = unsafe {
+                    libc::getsockname(
+                        self.fd,
+                        &mut storage as *mut libc::sockaddr_in as *mut libc::sockaddr,
+                        &mut len,
+                    )
+                };
+                if rc != 0 {
+                    panic!("getsockname: {}", std::io::Error::last_os_error());
+                }
+                let port = u16::from_be(storage.sin_port);
+                let ip = std::net::Ipv4Addr::from(u32::from_be(storage.sin_addr.s_addr));
+                std::net::SocketAddr::from((ip, port))
+            }
+            #[cfg(windows)]
+            {
+                let mut storage: libc::sockaddr = unsafe { std::mem::zeroed() };
+                let mut len = std::mem::size_of::<libc::sockaddr>() as libc::c_int;
+                // SAFETY: storage is a writable sockaddr and len is its size.
+                let rc = unsafe { libc::getsockname(self.fd, &mut storage, &mut len) };
+                if rc != 0 {
+                    panic!("getsockname: {}", windows_socket_error());
+                }
+                // sockaddr_in is family, then port in network order, then IPv4.
+                let bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        &storage as *const libc::sockaddr as *const u8,
+                        std::mem::size_of::<libc::sockaddr>(),
+                    )
+                };
+                let port = u16::from_be_bytes([bytes[2], bytes[3]]);
+                let ip = std::net::Ipv4Addr::new(bytes[4], bytes[5], bytes[6], bytes[7]);
+                std::net::SocketAddr::from((ip, port))
+            }
+        }
+    }
+
+    impl Drop for BoundRefusal {
+        fn drop(&mut self) {
+            if self.owned {
+                close_socket(self.fd);
+                self.owned = false;
+            }
+        }
+    }
+
+    fn socket_last_error() -> std::io::Error {
+        #[cfg(unix)]
+        {
+            std::io::Error::last_os_error()
+        }
+        #[cfg(windows)]
+        {
+            windows_socket_error()
+        }
+    }
+
+    fn open_socket() -> RawSock {
+        #[cfg(unix)]
+        {
+            // SAFETY: AF_INET/SOCK_STREAM creates one TCP socket. We own the fd.
+            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_STREAM, 0) };
+            if fd < 0 {
+                panic!("socket: {}", std::io::Error::last_os_error());
+            }
+            fd
+        }
+        #[cfg(windows)]
+        {
+            const AF_INET: libc::c_int = 2;
+            const SOCK_STREAM: libc::c_int = 1;
+            // SAFETY: Winsock is started. INVALID_SOCKET is all-bits-one.
+            let fd = unsafe { libc::socket(AF_INET, SOCK_STREAM, 0) };
+            if fd == usize::MAX {
+                panic!("socket: {}", windows_socket_error());
+            }
+            fd
+        }
+    }
+
+    fn bind_loopback(fd: RawSock) -> Result<(), std::io::Error> {
+        #[cfg(unix)]
+        {
+            let mut addr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+            #[cfg(any(
+                target_os = "macos",
+                target_os = "ios",
+                target_os = "freebsd",
+                target_os = "openbsd",
+                target_os = "netbsd",
+                target_os = "dragonfly"
+            ))]
+            {
+                addr.sin_len = std::mem::size_of::<libc::sockaddr_in>() as u8;
+            }
+            addr.sin_family = libc::AF_INET as libc::sa_family_t;
+            addr.sin_port = 0;
+            addr.sin_addr.s_addr = libc::htonl(libc::INADDR_LOOPBACK);
+            // SAFETY: addr is a full sockaddr_in for 127.0.0.1:0. No listen yet.
+            let rc = unsafe {
+                libc::bind(
+                    fd,
+                    &addr as *const libc::sockaddr_in as *const libc::sockaddr,
+                    std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                )
+            };
+            if rc != 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        }
+        #[cfg(windows)]
+        {
+            let mut bytes = [0u8; 16];
+            bytes[..2].copy_from_slice(&2u16.to_ne_bytes());
+            // 127.0.0.1. 127.0.0.0 is not a bindable loopback on Windows.
+            bytes[4] = 127;
+            bytes[7] = 1;
+            let mut addr: libc::sockaddr = unsafe { std::mem::zeroed() };
+            // SAFETY: sockaddr is 16 bytes. The copy writes family, port 0, 127.0.0.1.
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    &mut addr as *mut libc::sockaddr as *mut u8,
+                    bytes.len(),
+                );
+            }
+            let rc = unsafe {
+                libc::bind(
+                    fd,
+                    &addr,
+                    std::mem::size_of::<libc::sockaddr>() as libc::c_int,
+                )
+            };
+            if rc != 0 {
+                return Err(windows_socket_error());
+            }
+            Ok(())
+        }
+    }
+
+    fn close_socket(fd: RawSock) {
+        #[cfg(unix)]
+        unsafe {
+            libc::close(fd);
+        }
+        #[cfg(windows)]
+        unsafe {
+            closesocket(fd);
+        }
+    }
+
+    #[cfg(windows)]
+    fn windows_socket_error() -> std::io::Error {
+        // SAFETY: WSAGetLastError reads the thread's last Winsock code.
+        let code = unsafe { WSAGetLastError() };
+        std::io::Error::from_raw_os_error(code)
+    }
 }
 
 #[cfg(test)]
@@ -348,6 +782,7 @@ mod tests {
             base_delay_ms: 1,
             max_delay_ms: 5,
             backoff_multiplier: 1.0,
+            ..Default::default()
         };
         let client = Client::new();
         let request = client
@@ -400,12 +835,18 @@ mod tests {
     /// first request and 200 to the others, and records the body length of
     /// each request it received.
     async fn busy_once_server() -> (String, std::sync::Arc<std::sync::Mutex<Vec<usize>>>) {
+        refusal_once_server(axum::http::StatusCode::SERVICE_UNAVAILABLE).await
+    }
+
+    async fn refusal_once_server(
+        first_status: axum::http::StatusCode,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<usize>>>) {
         use futures_util::StreamExt;
         let seen: std::sync::Arc<std::sync::Mutex<Vec<usize>>> = Default::default();
         let recorded = std::sync::Arc::clone(&seen);
         let app = axum::Router::new().route(
             "/up",
-            axum::routing::post(move |body: axum::body::Body| {
+            axum::routing::any(move |body: axum::body::Body| {
                 let recorded = std::sync::Arc::clone(&recorded);
                 async move {
                     let mut stream = body.into_data_stream();
@@ -416,7 +857,7 @@ mod tests {
                     let mut seen = recorded.lock().unwrap();
                     seen.push(len);
                     if seen.len() == 1 {
-                        axum::http::StatusCode::SERVICE_UNAVAILABLE
+                        first_status
                     } else {
                         axum::http::StatusCode::OK
                     }
@@ -435,6 +876,7 @@ mod tests {
             base_delay_ms: 1,
             max_delay_ms: 5,
             backoff_multiplier: 1.0,
+            ..Default::default()
         }
     }
 
@@ -466,9 +908,10 @@ mod tests {
         assert_eq!(response.status(), 503);
     }
 
-    /// Positive control: a body held as bytes is still retried, whole.
+    /// A replayable body does not authorize creating another item after a
+    /// server error: the first response may follow a committed write.
     #[tokio::test]
-    async fn a_bytes_body_is_retried_with_its_payload() {
+    async fn a_bytes_create_is_not_retried_after_a_server_error() {
         let (url, seen) = busy_once_server().await;
         let client = Client::new();
         let request = client.post(&url).body("payload").build().unwrap();
@@ -477,9 +920,467 @@ mod tests {
             .unwrap();
         assert_eq!(
             *seen.lock().unwrap(),
-            [7, 7],
+            [7],
             "requests and their body lengths"
         );
+        assert_eq!(response.status(), 503);
+    }
+
+    #[tokio::test]
+    async fn an_explicitly_safe_post_keeps_its_payload_when_retried() {
+        let (url, seen) = busy_once_server().await;
+        let client = Client::new();
+        let request = client.post(&url).body("query").build().unwrap();
+        let response = send_with_retry(&client, request, &fast_retries().for_safe_operation())
+            .await
+            .unwrap();
         assert_eq!(response.status(), 200);
+        assert_eq!(*seen.lock().unwrap(), [5, 5]);
+    }
+
+    #[tokio::test]
+    async fn a_rebuilt_create_is_not_retried_after_it_may_have_committed() {
+        let (url, seen) = busy_once_server().await;
+        let client = Client::new();
+        let response = send_with_retry_replayable(
+            &client,
+            || client.post(&url).body("create"),
+            &fast_retries(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 503);
+        assert_eq!(*seen.lock().unwrap(), [6]);
+    }
+
+    #[tokio::test]
+    async fn a_refused_create_can_retry_but_a_get_rpc_cannot_replay_a_server_error() {
+        let client = Client::new();
+        let (url, seen) = refusal_once_server(axum::http::StatusCode::TOO_MANY_REQUESTS).await;
+        let request = client.post(&url).body("create").build().unwrap();
+        let response = send_with_retry(&client, request, &fast_retries().refused_only())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(*seen.lock().unwrap(), [6, 6]);
+
+        let (url, seen) = busy_once_server().await;
+        let request = client.get(&url).build().unwrap();
+        let response = send_with_retry(&client, request, &fast_retries().refused_only())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 503);
+        assert_eq!(*seen.lock().unwrap(), [0]);
+    }
+
+    #[tokio::test]
+    async fn a_rebuilt_stream_is_whole_on_each_explicit_refusal_attempt() {
+        let client = Client::new();
+        let (url, seen) = refusal_once_server(axum::http::StatusCode::TOO_MANY_REQUESTS).await;
+        let response = send_with_retry_replayable(
+            &client,
+            || {
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"entire-payload"))
+                });
+                client.post(&url).body(reqwest::Body::wrap_stream(stream))
+            },
+            &fast_retries().refused_only(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(*seen.lock().unwrap(), [14, 14]);
+    }
+
+    #[tokio::test]
+    async fn connect_refusal_rebuilds_the_whole_create_before_any_send() {
+        let mut reserved = Some(refusal::BoundRefusal::bind());
+        let addr = reserved.as_ref().unwrap().addr();
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let received: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>> = Default::default();
+        let mut server = None;
+        let response = send_with_retry_replayable(
+            &client,
+            || {
+                attempts += 1;
+                if attempts == 2 {
+                    let listener = reserved.take().unwrap().listen();
+                    listener.set_nonblocking(true).unwrap();
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let captured = received.clone();
+                    let app = axum::Router::new().fallback(axum::routing::post(
+                        move |body: axum::body::Bytes| {
+                            captured.lock().unwrap().push(body.to_vec());
+                            async { axum::http::StatusCode::OK }
+                        },
+                    ));
+                    server = Some(tokio::spawn(async move {
+                        axum::serve(listener, app).await.unwrap();
+                    }));
+                }
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"complete-create"))
+                });
+                client
+                    .post(format!("http://{addr}/up"))
+                    .body(reqwest::Body::wrap_stream(stream))
+            },
+            &fast_retries().refused_only(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(attempts, 2);
+        assert_eq!(*received.lock().unwrap(), [b"complete-create".to_vec()]);
+        server.unwrap().abort();
+    }
+
+    /// The streaming-upload helper retries a connect refusal and an HTTP 429.
+    /// A 500 comes back from the first send. The 429 budget stops.
+    #[tokio::test]
+    async fn a_rebuilt_upload_retries_a_refusal_and_not_a_server_error() {
+        let mut reserved = Some(refusal::BoundRefusal::bind());
+        let addr = reserved.as_ref().unwrap().addr();
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let received: std::sync::Arc<std::sync::Mutex<Vec<Vec<u8>>>> = Default::default();
+        let mut server = None;
+        let response = send_rebuilt_on_connect_failure(
+            || {
+                attempts += 1;
+                if attempts == 2 {
+                    let listener = reserved.take().unwrap().listen();
+                    listener.set_nonblocking(true).unwrap();
+                    let listener = tokio::net::TcpListener::from_std(listener).unwrap();
+                    let captured = received.clone();
+                    let app = axum::Router::new().fallback(axum::routing::post(
+                        move |body: axum::body::Bytes| {
+                            captured.lock().unwrap().push(body.to_vec());
+                            async { axum::http::StatusCode::OK }
+                        },
+                    ));
+                    server = Some(tokio::spawn(async move {
+                        axum::serve(listener, app).await.unwrap();
+                    }));
+                }
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"complete-upload"))
+                });
+                Ok::<_, reqwest::Error>(
+                    client
+                        .post(format!("http://{addr}/up"))
+                        .body(reqwest::Body::wrap_stream(stream)),
+                )
+            },
+            &fast_retries(),
+            |error| error,
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), 200);
+        assert_eq!(attempts, 2);
+        assert_eq!(*received.lock().unwrap(), [b"complete-upload".to_vec()]);
+        server.unwrap().abort();
+
+        let (url, seen) = refusal_once_server(axum::http::StatusCode::INTERNAL_SERVER_ERROR).await;
+        let mut attempts = 0;
+        let response = send_rebuilt_on_connect_failure(
+            || {
+                attempts += 1;
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"not-replayed"))
+                });
+                Ok::<_, reqwest::Error>(client.post(&url).body(reqwest::Body::wrap_stream(stream)))
+            },
+            &fast_retries(),
+            |error| error,
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            response.status(),
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(attempts, 1, "a 500 must not rebuild the upload");
+        assert_eq!(*seen.lock().unwrap(), [12]);
+
+        // The backoff is an hour. Retry-After: 0 is the only way the second
+        // send can arrive inside the timeout.
+        let (url, seen) = refusal_then_ok_with_retry_after().await;
+        let mut attempts = 0;
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            send_rebuilt_on_connect_failure(
+                || {
+                    attempts += 1;
+                    let stream = futures_util::stream::once(async {
+                        Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"retried-upload"))
+                    });
+                    Ok::<_, reqwest::Error>(
+                        client.post(&url).body(reqwest::Body::wrap_stream(stream)),
+                    )
+                },
+                &HttpRetryConfig {
+                    max_retries: 1,
+                    base_delay_ms: 3_600_000,
+                    max_delay_ms: 3_600_000,
+                    ..fast_retries()
+                },
+                |error| error,
+            ),
+        )
+        .await
+        .expect("Retry-After: 0 must not wait out the backoff")
+        .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::OK);
+        assert_eq!(attempts, 2);
+        assert_eq!(*seen.lock().unwrap(), [14, 14]);
+
+        let (url, seen) = always_refusal_server().await;
+        let mut attempts = 0;
+        let response = send_rebuilt_on_connect_failure(
+            || {
+                attempts += 1;
+                let stream = futures_util::stream::once(async {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"bounded-refusal"))
+                });
+                Ok::<_, reqwest::Error>(client.post(&url).body(reqwest::Body::wrap_stream(stream)))
+            },
+            &fast_retries(),
+            |error| error,
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(attempts, 3, "max_retries 2 is three sends, then the 429");
+        assert_eq!(*seen.lock().unwrap(), [15, 15, 15]);
+    }
+
+    /// The caller can keep the 429. The shared backoff must not run, even
+    /// when the budget and the delay would otherwise retry for an hour.
+    #[tokio::test]
+    async fn a_rebuilt_upload_can_leave_a_refusal_to_the_caller() {
+        let (url, seen) = always_refusal_server().await;
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let response = tokio::time::timeout(
+            Duration::from_secs(5),
+            send_rebuilt_async(
+                || {
+                    attempts += 1;
+                    let stream = futures_util::stream::once(async {
+                        Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"caller-waits"))
+                    });
+                    std::future::ready(Ok::<_, reqwest::Error>(
+                        client.post(&url).body(reqwest::Body::wrap_stream(stream)),
+                    ))
+                },
+                &HttpRetryConfig {
+                    max_retries: 2,
+                    base_delay_ms: 3_600_000,
+                    max_delay_ms: 3_600_000,
+                    ..fast_retries()
+                },
+                |error| error,
+                false,
+            ),
+        )
+        .await
+        .expect("a caller-owned 429 must not take the shared backoff")
+        .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(attempts, 1);
+        assert_eq!(*seen.lock().unwrap(), [12]);
+    }
+
+    /// First response is 429 with `Retry-After: 0`. Later responses are 200.
+    async fn refusal_then_ok_with_retry_after(
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<usize>>>) {
+        use futures_util::StreamExt;
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<usize>>> = Default::default();
+        let recorded = std::sync::Arc::clone(&seen);
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::any(move |body: axum::body::Body| {
+                let recorded = std::sync::Arc::clone(&recorded);
+                async move {
+                    let mut stream = body.into_data_stream();
+                    let mut len = 0;
+                    while let Some(Ok(chunk)) = stream.next().await {
+                        len += chunk.len();
+                    }
+                    let mut seen = recorded.lock().unwrap();
+                    seen.push(len);
+                    let first = seen.len() == 1;
+                    drop(seen);
+                    if first {
+                        (
+                            axum::http::StatusCode::TOO_MANY_REQUESTS,
+                            [("retry-after", "0")],
+                        )
+                    } else {
+                        (axum::http::StatusCode::OK, [("retry-after", "0")])
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        (format!("http://{addr}/up"), seen)
+    }
+
+    async fn always_refusal_server() -> (String, std::sync::Arc<std::sync::Mutex<Vec<usize>>>) {
+        use futures_util::StreamExt;
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<usize>>> = Default::default();
+        let recorded = std::sync::Arc::clone(&seen);
+        let app = axum::Router::new().route(
+            "/up",
+            axum::routing::any(move |body: axum::body::Body| {
+                let recorded = std::sync::Arc::clone(&recorded);
+                async move {
+                    let mut stream = body.into_data_stream();
+                    let mut len = 0;
+                    while let Some(Ok(chunk)) = stream.next().await {
+                        len += chunk.len();
+                    }
+                    recorded.lock().unwrap().push(len);
+                    (
+                        axum::http::StatusCode::TOO_MANY_REQUESTS,
+                        [("retry-after", "0")],
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        (format!("http://{addr}/up"), seen)
+    }
+
+    #[tokio::test]
+    async fn connect_refusal_uses_one_bounded_budget_and_consumed_streams_are_not_rebuilt() {
+        let reserved = refusal::BoundRefusal::bind();
+        let addr = reserved.addr();
+        let client = Client::builder().no_proxy().build().unwrap();
+        let mut attempts = 0;
+        let result = send_with_retry_replayable(
+            &client,
+            || {
+                attempts += 1;
+                client.post(format!("http://{addr}/up")).body("create")
+            },
+            &fast_retries(),
+        )
+        .await;
+        assert!(result.unwrap_err().is_connect());
+        assert_eq!(attempts, 3);
+
+        let stream = futures_util::stream::once(async {
+            Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"not-replayable"))
+        });
+        let request = client
+            .post(format!("http://{addr}/up"))
+            .body(reqwest::Body::wrap_stream(stream))
+            .build()
+            .unwrap();
+        // u32::MAX would never finish if a consumed body were retried.
+        // One Windows connect refusal can outlast 2 seconds, so the guard
+        // covers that single attempt and still fails if the body re-enters
+        // the loop.
+        let result = tokio::time::timeout(
+            Duration::from_secs(30),
+            send_with_retry(
+                &client,
+                request,
+                &HttpRetryConfig {
+                    max_retries: u32::MAX,
+                    ..fast_retries()
+                },
+            ),
+        )
+        .await
+        .unwrap();
+        assert!(result.unwrap_err().is_connect());
+    }
+
+    #[tokio::test]
+    async fn a_timeout_or_lost_acknowledgement_never_rebuilds_a_create() {
+        for timeout in [false, true] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                use tokio::io::AsyncReadExt;
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut bytes = [0; 4096];
+                let read = socket.read(&mut bytes).await.unwrap();
+                assert!(read > 0);
+                if timeout {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                // Close without an HTTP acknowledgement, after request bytes.
+            });
+            let client = Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_millis(100))
+                .build()
+                .unwrap();
+            let mut attempts = 0;
+            let error = send_with_retry_replayable(
+                &client,
+                || {
+                    attempts += 1;
+                    client.post(format!("http://{addr}/up")).body("create")
+                },
+                &fast_retries(),
+            )
+            .await
+            .unwrap_err();
+            assert!(!error.is_connect() || error.is_timeout());
+            assert_eq!(
+                attempts, 1,
+                "uncertain acknowledgement is not a connect refusal"
+            );
+            if timeout {
+                assert!(error.is_timeout());
+            }
+            server.abort();
+        }
+    }
+
+    #[test]
+    fn replay_decision_is_about_the_operation_and_the_response() {
+        use reqwest::Method;
+        let defaults = fast_retries();
+        for status in [500, 502, 503, 504] {
+            for method in [Method::POST, Method::PUT, Method::PATCH, Method::DELETE] {
+                assert!(!can_retry_response(status, &method, &defaults));
+                assert!(can_retry_response(
+                    status,
+                    &method,
+                    &defaults.clone().for_safe_operation()
+                ));
+            }
+            assert!(can_retry_response(status, &Method::GET, &defaults));
+            assert!(!can_retry_response(
+                status,
+                &Method::GET,
+                &defaults.clone().refused_only()
+            ));
+        }
+        assert!(can_retry_response(
+            429,
+            &Method::POST,
+            &defaults.clone().refused_only()
+        ));
+        for status in [200, 400, 401, 403, 404, 409] {
+            assert!(!can_retry_response(
+                status,
+                &Method::POST,
+                &defaults.clone().for_safe_operation()
+            ));
+        }
     }
 }

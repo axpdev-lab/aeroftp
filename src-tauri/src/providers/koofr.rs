@@ -1081,21 +1081,45 @@ impl StorageProvider for KoofrProvider {
             }
         );
 
-        // Streaming upload via ReaderStream
+        // The executor no longer restarts this upload. The file is opened
+        // once and each attempt streams that cursor. A connection refusal
+        // before any byte is sent, and an HTTP 429, are retried.
+        let auth = self.auth_header()?;
         let file = tokio::fs::File::open(local_path)
             .await
-            .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {}", e)))?;
-        let body = progress.file_body(file);
-
-        let resp = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header()?)
-            .header(CONTENT_TYPE, "application/octet-stream")
-            .body(body)
-            .send()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(format!("Upload failed: {}", e)))?;
+            .map_err(|e| ProviderError::TransferFailed(format!("Open file failed: {e}")))?;
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
+        let client = self.client.clone();
+        let reporter = &progress;
+        let resp = super::http_retry::send_rebuilt_async(
+            || {
+                let cursor = cursor.clone();
+                let auth = auth.clone();
+                let client = client.clone();
+                let url = url.clone();
+                async move {
+                    let body = cursor
+                        .attempt_body(reporter, file_size)
+                        .await
+                        .map_err(|e| {
+                            ProviderError::TransferFailed(format!("Open file failed: {e}"))
+                        })?;
+                    Ok(client
+                        .post(&url)
+                        .header(AUTHORIZATION, auth)
+                        .header(CONTENT_TYPE, "application/octet-stream")
+                        .body(body))
+                }
+            },
+            &HttpRetryConfig::default(),
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::TransferFailed(format!("Upload failed: {error}"))
+                })
+            },
+            true,
+        )
+        .await?;
 
         if !resp.status().is_success() {
             return Err(Self::parse_error(resp).await);

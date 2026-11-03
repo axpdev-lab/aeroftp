@@ -4732,60 +4732,42 @@ impl StorageProvider for WebDavProvider {
 
         self.refuse_another_path_in_single_file_mode(remote_path)?;
 
-        let total_size = tokio::fs::metadata(local_path)
+        let file = tokio::fs::File::open(local_path)
             .await
-            .map_err(ProviderError::IoError)?
-            .len();
-
-        // Stream file with Content-Length header (required by some HTTP/1.1 servers).
-        // 256 KiB capacity matches our SFTP default and avoids the 4 KiB read
-        // chunks ReaderStream uses by default, which churn syscalls and bottleneck
-        // local-network throughput.
-        //
-        // Built per attempt rather than once: the body is a stream over an open
-        // file and `send` consumes it, so a Digest replay has to rebuild it. It
-        // rebuilds from `local_path`, which costs one file descriptor, instead
-        // of buffering `total_size` bytes to hold a copy for a retry that
-        // usually never happens: that would defeat the streaming this path
-        // exists for, on files of arbitrary size. Reopening also guarantees the
-        // replay starts at offset zero instead of wherever the first attempt
-        // stopped reading.
-        // Keep one watermark across the original PUT and its Digest replay.
+            .map_err(ProviderError::IoError)?;
+        let total_size = file.metadata().await.map_err(ProviderError::IoError)?.len();
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
+        // A refusal or Digest replay waits out the prior reader and rewinds
+        // this handle. A renamed/replaced source path cannot change its bytes.
         let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
-        let put_body = || async {
-            let file = tokio::fs::File::open(local_path)
-                .await
-                .map_err(ProviderError::IoError)?;
-            let stream = crate::transfer_dag::throttle::throttle_stream(
-                tokio_util::io::ReaderStream::with_capacity(file, 256 * 1024),
-                crate::transfer_dag::governor::TransferDirection::Upload,
-            );
-            Ok::<reqwest::Body, ProviderError>(reqwest::Body::wrap_stream(progress.track(stream)))
-        };
+        let retry = super::HttpRetryConfig::default();
 
         let nonce_used = self.digest_nonce_snapshot();
-        let mut response = self
-            .request(Method::PUT, remote_path)
-            .header("Content-Length", total_size)
-            .body(put_body().await?)
-            .send()
-            .await
-            .map_err(send_error)?;
+        let provider = &*self;
+        let send = || {
+            super::http_retry::send_rebuilt_async(
+                || async {
+                    let body = cursor
+                        .attempt_body(&progress, total_size)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    Ok(provider
+                        .request(Method::PUT, remote_path)
+                        .header("Content-Length", total_size)
+                        .body(body))
+                },
+                &retry,
+                send_error,
+                true,
+            )
+        };
+        let mut response = send().await?;
 
-        // The single-PUT path used to map a 401 straight into
-        // `upload_failure_error`'s catch-all, so a rotated nonce failed the
-        // whole upload. Replay exactly once, on the same `stale=true` gate the
-        // other paths use.
+        // Retain exactly one stale-nonce replay, over the same open cursor.
         if response.status() == StatusCode::UNAUTHORIZED
             && self.should_replay_after_401(&response, &nonce_used)
         {
-            response = self
-                .request(Method::PUT, remote_path)
-                .header("Content-Length", total_size)
-                .body(put_body().await?)
-                .send()
-                .await
-                .map_err(send_error)?;
+            response = send().await?;
         }
 
         match response.status() {
@@ -6655,6 +6637,27 @@ mod tests {
             verify_cert: true,
             anonymous: false,
         }
+    }
+
+    #[tokio::test]
+    async fn upload_retry_keeps_the_open_file_after_path_replacement() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.bin");
+        let original = b"original-bytes";
+        std::fs::write(&path, original).unwrap();
+        let (base, received, server) =
+            super::super::upload_cursor::replacement_fixture::serve(&path, String::new()).await;
+        let mut provider = WebDavProvider::new(test_config(&base)).unwrap();
+        provider.connected = true;
+        let outcome = provider
+            .upload(path.to_str().unwrap(), "/f.bin", None)
+            .await;
+        server.abort();
+        assert_eq!(
+            *received.lock().unwrap(),
+            vec![original.to_vec(), original.to_vec()]
+        );
+        outcome.expect("retry must send the original open file");
     }
 
     #[tokio::test]

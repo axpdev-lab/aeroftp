@@ -1238,23 +1238,43 @@ impl StorageProvider for KDriveProvider {
             file_size, last_modified
         );
 
-        // KD-001: Use ReaderStream for streaming upload body
+        // The executor no longer restarts this upload. The file is opened
+        // once and each attempt streams that cursor. A connection refusal
+        // before any byte is sent, and an HTTP 429, are retried.
+        let auth = self.auth_header()?;
         let file = tokio::fs::File::open(local_path)
             .await
             .map_err(ProviderError::IoError)?;
-        let body = progress.file_body(file);
-
-        let resp: reqwest::Response = self
-            .client
-            .post(&url)
-            .header(AUTHORIZATION, self.auth_header()?)
-            .header(CONTENT_TYPE, "application/octet-stream")
-            .body(body)
-            .send()
-            .await
-            .map_http_err(|e| {
-                ProviderError::ConnectionFailed(format!("Upload request failed: {}", e))
-            })?;
+        let cursor = super::upload_cursor::SharedUploadCursor::from_tokio(file).await;
+        let client = self.client.clone();
+        let reporter = &progress;
+        let resp: reqwest::Response = super::http_retry::send_rebuilt_async(
+            || {
+                let cursor = cursor.clone();
+                let auth = auth.clone();
+                let client = client.clone();
+                let url = url.clone();
+                async move {
+                    let body = cursor
+                        .attempt_body(reporter, file_size)
+                        .await
+                        .map_err(ProviderError::IoError)?;
+                    Ok(client
+                        .post(&url)
+                        .header(AUTHORIZATION, auth)
+                        .header(CONTENT_TYPE, "application/octet-stream")
+                        .body(body))
+                }
+            },
+            &HttpRetryConfig::default(),
+            |error| {
+                super::http_send_error(error, |error| {
+                    ProviderError::ConnectionFailed(format!("Upload request failed: {error}"))
+                })
+            },
+            true,
+        )
+        .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();

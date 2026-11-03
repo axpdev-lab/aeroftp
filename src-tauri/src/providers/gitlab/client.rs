@@ -165,7 +165,8 @@ impl GitLabHttpClient {
         }
     }
 
-    /// Execute with single retry for 5xx errors.
+    /// Extra recovery for read-only GETs after the shared retry budget.
+    /// Mutating methods must use execute directly to avoid duplicate commits.
     async fn execute_with_retry(
         &mut self,
         builder: RequestBuilder,
@@ -247,7 +248,7 @@ impl GitLabHttpClient {
     ) -> Result<T, ProviderError> {
         let url = self.resolve_url(path);
         let builder = self.request(Method::POST, &url).json(body);
-        let resp = self.execute_with_retry(builder).await?;
+        let resp = self.execute(builder).await?;
         resp.json::<T>()
             .await
             .map_http_err(|e| ProviderError::Other(format!("GitLab JSON parse error: {}", e)))
@@ -283,7 +284,7 @@ impl GitLabHttpClient {
     }
 
     /// PUT raw bytes (for Generic Packages upload).
-    /// No retry: body bytes cannot be cloned by reqwest, so retry would fail silently.
+    /// No server-error replay: a completed write may create another package version.
     pub async fn put_bytes(
         &mut self,
         path: &str,
@@ -302,7 +303,7 @@ impl GitLabHttpClient {
     pub async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
         let url = self.resolve_url(path);
         let builder = self.request(Method::DELETE, &url);
-        self.execute_with_retry(builder).await?;
+        self.execute(builder).await?;
         Ok(())
     }
 
@@ -359,6 +360,40 @@ mod tests {
             GitLabHttpClient::classify_gitlab_error(400, r#"{"message":"branch is missing"}"#),
             ProviderError::Other(_)
         ));
+    }
+
+    #[tokio::test]
+    async fn a_commit_post_is_not_replayed_by_the_outer_retry() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        let calls = Arc::new(AtomicUsize::new(0));
+        let seen = calls.clone();
+        let app = axum::Router::new().route(
+            "/commit",
+            axum::routing::post(move || {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async {
+                    (
+                        axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                        "gateway failed after commit",
+                    )
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut client =
+            GitLabHttpClient::new(SecretString::from("fixture-token".to_string()), url, false)
+                .unwrap();
+        let result = client
+            .post_json::<serde_json::Value>("/commit", &serde_json::json!({"actions":[]}))
+            .await;
+        server.abort();
+        assert!(result.is_err());
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     // Row 4 (#347): the GitLab `execute` status match, now a pure classifier.
