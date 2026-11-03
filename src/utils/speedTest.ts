@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { ServerProfile } from '../types';
 import { resolveProfileS3Location } from '../providers/registry';
+import { scpFallbackConnectParam } from './scpFallback';
 import {
     SPEEDTEST_SUPPORTED_PROTOCOLS,
     SpeedTestProviderConnectionParams,
@@ -116,6 +117,7 @@ export async function buildSpeedTestConnection(server: ServerProfile): Promise<S
         private_key_path: options.private_key_path || null,
         key_passphrase: options.key_passphrase || null,
         timeout: options.timeout || 30,
+        ...scpFallbackConnectParam(protocol, options),
         tls_mode: options.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : null),
         verify_cert: options.verifyCert !== undefined ? options.verifyCert : true,
     };

@@ -671,6 +671,16 @@ pub async fn check_delta_eligibility(
         });
     }
 
+    if sftp.in_scp_mode() {
+        return Some(DeltaEligibilityStatus {
+            eligible: false,
+            reason: Some(
+                "This server has no SFTP, and the session runs in SCP mode, which has no delta sync."
+                    .to_string(),
+            ),
+        });
+    }
+
     let transport = match sftp.delta_transport() {
         Some(transport) => transport,
         None => {

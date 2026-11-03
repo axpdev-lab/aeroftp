@@ -535,8 +535,9 @@ const BADGE_CATEGORY_RANK: Partial<Record<CatalogCategoryId, number>> = {
  * set, and it is what the company *is* rather than a wire protocol it also
  * happens to speak. `PROTOCOL_BADGE_ORDER` is exported so the Quick Connect
  * mode tabs sort by the same sequence instead of keeping a second opinion.
+ * SCP sits next to SFTP: the same SSH server, reached without SFTP.
  */
-export const PROTOCOL_BADGE_ORDER: readonly string[] = ['webdav', 'sftp', 'ftps', 'ftp', 's3'];
+export const PROTOCOL_BADGE_ORDER: readonly string[] = ['webdav', 'sftp', 'scp', 'ftps', 'ftp', 's3'];
 
 /** Rank of a wire protocol in `PROTOCOL_BADGE_ORDER`; native APIs sort first. */
 export function protocolBadgeRank(protocol: string): number {

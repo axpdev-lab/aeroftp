@@ -84,6 +84,7 @@ export type ConnectionMethod =
     | 'FTP'
     | 'FTPS'
     | 'SFTP'
+    | 'SCP'
     | 'E2E'
     | 'Crypt'
     | 'Swift'
@@ -100,6 +101,9 @@ export const CONNECTION_METHOD_GLYPH: Record<ConnectionMethod, LucideIcon> = {
     FTP: Server,
     FTPS: Server,
     SFTP: KeyRound,
+    // SCP runs on the same SSH connection and signs in with the same key, so
+    // it shares SFTP's shape, as FTPS shares FTP's.
+    SCP: KeyRound,
     E2E: Shield,
     Crypt: Shield,
     Swift: Boxes,

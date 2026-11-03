@@ -916,6 +916,7 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         ProviderType::Ftp
         | ProviderType::Ftps
         | ProviderType::Sftp
+        | ProviderType::Scp
         | ProviderType::WebDav
         | ProviderType::Swift
         | ProviderType::GitLab
@@ -1138,6 +1139,8 @@ pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Dur
         ProviderType::Ftp | ProviderType::Ftps => None,
         // `attrs.mtime`, Unix seconds.
         ProviderType::Sftp => SECOND,
+        // `ls --full-time`, read to the second; `scp -p` stamps seconds.
+        ProviderType::Scp => SECOND,
         // `getlastmodified`, RFC 1123.
         ProviderType::WebDav => SECOND,
         // `LastModified` carries milliseconds, but the ListObjects value is
@@ -3761,7 +3764,13 @@ impl ProviderFactory {
             }
             ProviderType::Sftp => {
                 let sftp_config = SftpConfig::from_provider_config(config)?;
-                Ok(Box::new(SftpProvider::new(sftp_config)))
+                let mut provider = SftpProvider::new(sftp_config);
+                provider.set_scp_fallback(sftp::scp_fallback_allowed(config));
+                Ok(Box::new(provider))
+            }
+            ProviderType::Scp => {
+                let scp_config = SftpConfig::from_provider_config(config)?;
+                Ok(Box::new(scp::provider::ScpProvider::new(scp_config)))
             }
             ProviderType::AeroCloud => {
                 // AeroCloud uses FTP internally but is configured via CloudPanel
@@ -3924,6 +3933,7 @@ impl ProviderFactory {
             ProviderType::Ftp,
             ProviderType::Ftps,
             ProviderType::Sftp,
+            ProviderType::Scp,
             ProviderType::WebDav,
             ProviderType::S3,
             ProviderType::AeroCloud,
@@ -4677,6 +4687,10 @@ mod tests {
     fn test_provider_factory_supported_types() {
         let types = ProviderFactory::supported_types();
         assert!(types.contains(&ProviderType::Ftp));
+        assert!(types.contains(&ProviderType::Scp));
+        assert!(types
+            .windows(2)
+            .any(|pair| pair == [ProviderType::Sftp, ProviderType::Scp]));
         assert!(types.contains(&ProviderType::WebDav));
         assert!(types.contains(&ProviderType::S3));
     }

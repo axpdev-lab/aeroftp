@@ -159,6 +159,7 @@ const BASE_THEMES = {
         timestamp: 'text-gray-400',
         status: {
             pending: 'text-gray-500',
+            cancelled: 'text-gray-500',
             running: 'text-blue-600',
             success: 'text-green-600',
             error: 'text-red-600',
@@ -218,6 +219,7 @@ const BASE_THEMES = {
         timestamp: 'text-gray-500',
         status: {
             pending: 'text-gray-500',
+            cancelled: 'text-gray-500',
             running: 'text-blue-400',
             success: 'text-green-400',
             error: 'text-red-400',
@@ -277,6 +279,7 @@ const BASE_THEMES = {
         timestamp: 'text-[#565f89]',
         status: {
             pending: 'text-[#565f89]',
+            cancelled: 'text-[#565f89]',
             running: 'text-[#7aa2f7]',
             success: 'text-[#9ece6a]',
             error: 'text-[#f7768e]',
@@ -336,6 +339,7 @@ const BASE_THEMES = {
         timestamp: 'text-emerald-600/60',
         status: {
             pending: 'text-gray-400',
+            cancelled: 'text-gray-400',
             running: 'text-cyan-400',
             success: 'text-emerald-400',
             error: 'text-red-500',

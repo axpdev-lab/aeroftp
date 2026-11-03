@@ -154,6 +154,9 @@ fn saved_option_key(key: &str, protocol: &str) -> String {
         "account_id" => "accountId".into(),
         "private_key_path" => "privateKeyPath".into(),
         "allow_cleartext_endpoint" => "allowCleartextEndpoint".into(),
+        // The app reads only `allowScpFallback`: saved as `allow_scp_fallback`,
+        // an SFTP-only profile would fall back to SCP from the app.
+        "allow_scp_fallback" => "allowScpFallback".into(),
         "allow_cleartext_storage_endpoint" => "allowCleartextStorage".into(),
         "container" if protocol == "azure" => "bucket".into(),
         "cloud_name" if protocol == "cloudinary" => "bucket".into(),
@@ -268,6 +271,16 @@ pub fn resolve_profile(
         if merged.get(key).is_some_and(|value| !value.is_boolean()) {
             return Err(format!("Connection option '{key}' must be a boolean"));
         }
+    }
+    // The SCP fallback switch, under whichever spelling it was saved: the
+    // connect side reads only a literal `false`, so a `"False"` or a `0` would
+    // leave the fallback on without a word.
+    if let Some(key) = merged.iter().find_map(|(key, value)| {
+        (crate::profile_loader::canonicalize_profile_option_key(key) == "allow_scp_fallback"
+            && !value.is_boolean())
+        .then_some(key)
+    }) {
+        return Err(format!("Connection option '{key}' must be a boolean"));
     }
     let port = port
         .or_else(|| {
@@ -409,6 +422,37 @@ mod tests {
             &json!({"tlsMode":"auto"}),
         )
         .is_err());
+    }
+
+    #[test]
+    fn the_scp_fallback_switch_must_be_a_boolean_under_either_spelling() {
+        let add = |options: serde_json::Value| {
+            super::resolve_profile(
+                "sftp",
+                None,
+                Some("synthetic.test"),
+                None,
+                Some("root"),
+                None,
+                &options,
+            )
+        };
+        for key in ["allowScpFallback", "allow_scp_fallback"] {
+            for bad in [json!("False"), json!("0"), json!(0)] {
+                let err = add(json!({ key: bad })).unwrap_err();
+                assert!(err.contains("must be a boolean"), "{key}={bad}: {err}");
+            }
+            let saved = add(json!({ key: false })).expect(key);
+            assert_eq!(
+                saved["options"]["allowScpFallback"],
+                json!(false),
+                "{key}: {saved}"
+            );
+            assert!(
+                saved["options"].get("allow_scp_fallback").is_none(),
+                "{key}"
+            );
+        }
     }
 
     #[test]

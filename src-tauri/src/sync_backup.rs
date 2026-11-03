@@ -240,6 +240,7 @@ pub fn remote_move_support(provider: ProviderType) -> RemoteMove {
     match provider {
         P::Ftp | P::Ftps => Native,       // RNFR/RNTO with full paths
         P::Sftp => Native,                // SSH_FXP_RENAME
+        P::Scp => Native,                 // mv -n, refusing an existing target
         P::WebDav => Native,              // MOVE, Overwrite: F
         P::GoogleDrive => Native,         // PATCH addParents/removeParents
         P::Dropbox => Native,             // files/move_v2

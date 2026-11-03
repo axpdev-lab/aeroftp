@@ -146,6 +146,7 @@ fn resolved_target_identity(
         ProviderType::Ftp
         | ProviderType::Ftps
         | ProviderType::Sftp
+        | ProviderType::Scp
         | ProviderType::WebDav
         | ProviderType::S3
         | ProviderType::Azure
@@ -237,6 +238,7 @@ pub(crate) async fn create_cloud_connection(
         "ftp" => create_via_factory(config, ProviderType::Ftp).await,
         "ftps" => create_via_factory(config, ProviderType::Ftps).await,
         "sftp" => create_via_factory(config, ProviderType::Sftp).await,
+        "scp" => create_via_factory(config, ProviderType::Scp).await,
         "webdav" => create_via_factory(config, ProviderType::WebDav).await,
         "s3" => create_via_factory(config, ProviderType::S3).await,
         "azure" => create_via_factory(config, ProviderType::Azure).await,
