@@ -1,7 +1,7 @@
 import { TID } from '../../utils/testIds';
 import * as React from 'react';
 import { Edit2, Trash2, Copy, Loader2, Star, Heart, Clock, ShieldCheck, Lock, Check, X, ArrowUpRight, ArrowDownLeft, AlertTriangle, Users, RefreshCw, Wifi, Smartphone } from 'lucide-react';
-import { ServerProfile, ProviderType, getProtocolClass, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
+import { ServerProfile, ProviderType, getProtocolClass, isSshProtocol, getE2EBits, profileHasQuota, resolveEffectiveQuota, effectiveManualCap, getServerCryptOverlay } from '../../types';
 import { bucketEncryptionBadge } from '../../utils/bucketEncryptionBadge';
 import type { PeerDriveState } from '../../hooks/usePeerDriveStates';
 import { shortAfid } from '../../utils/aeroShare';
@@ -221,9 +221,10 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
     // FTP with any TLS mode (except 'none') is effectively FTPS
     const displayProto = proto === 'ftp' && tlsMode && tlsMode !== 'none' ? 'ftps' : proto;
     const isFtps = displayProto === 'ftps';
-    const isSftp = proto === 'sftp';
-    const isPlainFtp = displayProto === 'ftp' && !isSftp;
-    const hasTlsConnection = isFtps || proto === 'ftps' || isSftp;
+    // SFTP or SCP: an SSH connection, badged like one.
+    const isSsh = isSshProtocol(proto);
+    const isPlainFtp = displayProto === 'ftp' && !isSsh;
+    const hasTlsConnection = isFtps || proto === 'ftps' || isSsh;
     const certUnverified = (isFtps || proto === 'ftps') && server.options?.verifyCert === false;
     const certVerified = hasTlsConnection && !certUnverified;
     const gitHubBadge = proto === 'github' ? getGitHubConnectionBadge(server.options) : null;
@@ -242,8 +243,8 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
     const bucketEncTitle = bucketEncBadge.titleKey
         ? t(bucketEncBadge.titleKey, { mode: server.lastBucketEncryption?.mode || '' })
         : undefined;
-    // Skip class badge when it duplicates the brand badge (FTP/FTPS/SFTP show protocol uppercase already)
-    const showClassBadge = !['FTP', 'FTPS', 'SFTP'].includes(protocolClass);
+    // Skip class badge when it duplicates the brand badge (FTP/FTPS/SFTP/SCP show protocol uppercase already)
+    const showClassBadge = !['FTP', 'FTPS', 'SFTP', 'SCP'].includes(protocolClass);
     const classBadgeColor: Record<string, string> = {
         OAuth: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300',
         API: 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300',
@@ -255,13 +256,13 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
         MTP: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300',
     };
 
-    // Only render the protocol badge when it carries dedicated color (FTP/FTPS/SFTP);
+    // Only render the protocol badge when it carries dedicated color (FTP/FTPS/SFTP/SCP);
     // for everything else the colored class badge + provider icon already convey it,
     // so the gray fallback is just visual noise.
-    const showProtoBadge = isFtps || isSftp || isPlainFtp;
+    const showProtoBadge = isFtps || isSsh || isPlainFtp;
     const badgeClass = isFtps
         ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-        : isSftp
+        : isSsh
             ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300'
             : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300';
 
@@ -368,7 +369,7 @@ export function ServerBadges({ server, cryptDetailed = false, peerState }: { ser
             )}
             {certVerified && (
                 <span className="text-[10px] px-1 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400"
-                      title={t('statusBar.secureConnectionTitle', { protocol: isSftp ? 'SSH' : 'TLS' })}>
+                      title={t('statusBar.secureConnectionTitle', { protocol: isSsh ? 'SSH' : 'TLS' })}>
                     <ShieldCheck size={10} />
                 </span>
             )}

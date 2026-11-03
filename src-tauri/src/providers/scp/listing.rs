@@ -263,21 +263,84 @@ fn claim<'a>(owners: &mut HashMap<&'a [u8], Option<usize>>, name: &'a [u8], i: u
 }
 
 /// One shell command that runs `ls -land --full-time` on each of `names`
-/// in `dir` and ends every output with a NUL, which no `ls` output holds, so
+/// in `dir` (`ls -lanLd` with `follow`, which reads what a symlink points
+/// to) and ends every output with a NUL, which no `ls` output holds, so
 /// [`parse_resolved`] can tell the outputs apart whatever the names contain.
-pub fn resolve_script(dir: &[u8], names: &[Vec<u8>]) -> Result<Vec<u8>, ProviderError> {
+///
+/// A name that is not there (gone in between) gives an empty output. Any
+/// other `ls` failure ends the command with status 3 and its message on
+/// stderr: a name the server could not read is an error, never a name that
+/// silently went away. GNU and BusyBox both end the message for a missing
+/// name with ": No such file or directory" under `LC_ALL=C`, and no other
+/// failure does.
+///
+/// With `follow` every failure gives an empty output instead: the link
+/// itself is already listed, and a target that is gone, loops or sits where
+/// the user cannot look only means the link keeps its own metadata, as SFTP
+/// lists such a link.
+pub fn resolve_script(
+    dir: &[u8],
+    names: &[Vec<u8>],
+    follow: bool,
+) -> Result<Vec<u8>, ProviderError> {
     let mut script = b"for f in".to_vec();
     for name in names {
-        let mut path = dir.to_vec();
-        if !path.ends_with(b"/") {
-            path.push(b'/');
-        }
-        path.extend_from_slice(name);
         script.push(b' ');
-        script.extend_from_slice(&shell_quote_bytes(&path)?);
+        script.extend_from_slice(&shell_quote_bytes(&joined(dir, name))?);
     }
-    script.extend_from_slice(b"; do LC_ALL=C ls -land --full-time -- \"$f\"; printf '\\0'; done");
+    if follow {
+        script.extend_from_slice(
+            b"; do LC_ALL=C ls -lanLd --full-time -- \"$f\" 2>/dev/null; printf '\\0'; done",
+        );
+    } else {
+        script.extend_from_slice(
+            b"; do if e=$(LC_ALL=C ls -land --full-time -- \"$f\" 2>&1 >&3); then :; \
+              else case $e in *': No such file or directory') ;; \
+              *) printf '%s\\n' \"$e\" >&2; exit 3;; esac; fi; \
+              printf '\\0'; done 3>&1",
+        );
+    }
     Ok(script)
+}
+
+/// The bytes one [`resolve_script`] command may give its names: well under
+/// the 128 KiB Linux lets a single argument take (the shell gets the whole
+/// script as one), with room for the loop around them.
+pub const RESOLVE_BUDGET: usize = 64 * 1024;
+
+/// `dir` joined with `name`, as [`resolve_script`] names it.
+fn joined(dir: &[u8], name: &[u8]) -> Vec<u8> {
+    let mut path = dir.to_vec();
+    if !path.ends_with(b"/") {
+        path.push(b'/');
+    }
+    path.extend_from_slice(name);
+    path
+}
+
+/// `names` in `dir` cut into runs whose paths, quoted as [`resolve_script`]
+/// writes them, take at most `budget` bytes. A quote in a name takes four
+/// bytes there, so the raw length is not the measure. Every run takes at
+/// least one name, so a single long name still goes.
+pub fn resolve_batches(
+    dir: &[u8],
+    names: &[Vec<u8>],
+    budget: usize,
+) -> Result<Vec<std::ops::Range<usize>>, ProviderError> {
+    let mut runs = Vec::new();
+    let (mut start, mut bytes) = (0, 0);
+    for (i, name) in names.iter().enumerate() {
+        let cost = shell_quote_bytes(&joined(dir, name))?.len() + 1;
+        if i > start && bytes + cost > budget {
+            runs.push(start..i);
+            (start, bytes) = (i, 0);
+        }
+        bytes += cost;
+    }
+    if start < names.len() {
+        runs.push(start..names.len());
+    }
+    Ok(runs)
 }
 
 /// The entries from the output of [`resolve_script`] for the same `names`,
@@ -553,16 +616,42 @@ mod tests {
 
     #[test]
     fn the_resolve_script_quotes_every_path() {
-        let script = resolve_script(DIR, &[b"it's".to_vec(), b"new\nline".to_vec()]).unwrap();
-        assert_eq!(
-            script,
-            b"for f in '/tmp/scpfx/it'\\''s' '/tmp/scpfx/new\nline'; do LC_ALL=C ls -land --full-time -- \"$f\"; printf '\\0'; done"
-                .to_vec()
-        );
-        assert!(resolve_script(b"/", &[b"a\0b".to_vec()]).is_err());
-        assert!(resolve_script(b"/", &[b"a".to_vec()])
+        let script =
+            resolve_script(DIR, &[b"it's".to_vec(), b"new\nline".to_vec()], false).unwrap();
+        assert!(script.starts_with(
+            b"for f in '/tmp/scpfx/it'\\''s' '/tmp/scpfx/new\nline'; do if e=$(LC_ALL=C ls -land "
+        ));
+        assert!(resolve_script(b"/", &[b"a\0b".to_vec()], false).is_err());
+        assert!(resolve_script(b"/", &[b"a".to_vec()], false)
             .unwrap()
             .starts_with(b"for f in '/a';"));
+        let followed = resolve_script(b"/", &[b"a".to_vec()], true).unwrap();
+        assert!(followed.windows(13).any(|w| w == b"ls -lanLd --f"));
+    }
+
+    #[test]
+    fn resolve_batches_measure_the_quoted_paths() {
+        // 100 names of 200 quotes: 200 bytes raw, 800 quoted.
+        let names: Vec<Vec<u8>> = (0..100).map(|_| vec![b'\''; 200]).collect();
+        let budget = 16 * 1024;
+        let runs = resolve_batches(DIR, &names, budget).unwrap();
+        assert!(runs.len() > 1, "one batch of {} quoted bytes", 100 * 800);
+        let mut next = 0;
+        for run in &runs {
+            assert_eq!(run.start, next, "names skipped or repeated");
+            next = run.end;
+            let script = resolve_script(DIR, &names[run.clone()], false).unwrap();
+            let loop_part = resolve_script(DIR, &[], false).unwrap().len();
+            assert!(script.len() - loop_part <= budget, "{} bytes", script.len());
+        }
+        assert_eq!(next, names.len());
+        // A name longer than the budget still goes, alone.
+        let long = vec![vec![b'a'; 100], vec![b'b'; budget * 2], vec![b'c'; 100]];
+        assert_eq!(
+            resolve_batches(DIR, &long, budget).unwrap(),
+            [0..1, 1..2, 2..3]
+        );
+        assert!(resolve_batches(DIR, &[], budget).unwrap().is_empty());
     }
 
     /// The two listing commands and the resolve script on this machine's own
@@ -614,7 +703,7 @@ mod tests {
         find_cmd.extend_from_slice(b" -mindepth 1 -maxdepth 1 -print0");
         let find = sh(&find_cmd);
         let mut merged = merge(&find.stdout, &ls.stdout);
-        let script = resolve_script(&dir_b, &merged.unresolved).unwrap();
+        let script = resolve_script(&dir_b, &merged.unresolved, false).unwrap();
         let resolved = sh(&script);
         merged
             .entries

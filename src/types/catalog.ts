@@ -59,11 +59,11 @@ const isMediaService = (protocol: string): boolean =>
 
 export const FILTER_CHIPS: FilterChip[] = [
     { id: 'all', labelKey: 'introHub.filter.all', matchFn: () => true },
-    { id: 'ftp', labelKey: 'introHub.filter.ftpSftp', matchFn: (p, pid) => ['ftp', 'ftps', 'sftp'].includes(p) && !isDevService(p, pid) },
+    { id: 'ftp', labelKey: 'introHub.filter.ftpSftp', matchFn: (p, pid) => ['ftp', 'ftps', 'sftp', 'scp'].includes(p) && !isDevService(p, pid) },
     { id: 's3', labelKey: 'introHub.filter.s3', matchFn: (p) => p === 's3' || p === 'azure' },
     { id: 'webdav', labelKey: 'introHub.filter.webdav', matchFn: (p) => p === 'webdav' },
     // mtp is its own protocol chip (not Cloud "API"). Exclude from cloud bucket.
-    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p, pid) => !['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', 'peer', 'mtp', ...DEV_PROTOCOLS, ...MEDIA_PROTOCOLS].includes(p) && !isDevService(p, pid) && !isMediaService(p) },
+    { id: 'cloud', labelKey: 'introHub.filter.cloud', matchFn: (p, pid) => !['ftp', 'ftps', 'sftp', 'scp', 'webdav', 's3', 'azure', 'peer', 'mtp', ...DEV_PROTOCOLS, ...MEDIA_PROTOCOLS].includes(p) && !isDevService(p, pid) && !isMediaService(p) },
     { id: 'media', labelKey: 'introHub.filter.media', matchFn: (p) => isMediaService(p) },
     { id: 'dev', labelKey: 'introHub.filter.dev', matchFn: (p, pid) => isDevService(p, pid) },
     { id: 'local-bridge', labelKey: 'introHub.filter.localBridge', matchFn: (_p, pid) => isLocalBridgeProvider(pid) },

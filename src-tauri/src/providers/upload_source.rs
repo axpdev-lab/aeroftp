@@ -149,7 +149,12 @@ mod tests {
         std::fs::write(&path, b"12345").unwrap();
         let source = UploadSource::observe(path.to_str().unwrap()).await.unwrap();
         assert!(source.ensure_size(5, "test").is_ok());
-        assert!(source.ensure_size(4, "test").is_err());
+        let refused = source.ensure_size(4, "test").unwrap_err();
+        assert!(
+            matches!(&refused, ProviderError::TransferFailed(_)),
+            "{refused:?}"
+        );
+        assert!(refused.to_string().contains("size 4 became 5"), "{refused}");
     }
 
     #[tokio::test]

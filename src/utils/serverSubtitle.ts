@@ -5,7 +5,7 @@ import { ServerProfile, ProviderType, isOAuthProvider, isFourSharedProvider } fr
 import { maskCredential } from './maskCredential';
 import { shortAfid } from './aeroShare';
 
-const HOSTNAME_PROTOCOLS: ReadonlyArray<ProviderType> = ['ftp', 'ftps', 'sftp', 'webdav'];
+const HOSTNAME_PROTOCOLS: ReadonlyArray<ProviderType> = ['ftp', 'ftps', 'sftp', 'scp', 'webdav'];
 
 const OPAQUE_TOKEN_PROTOCOLS: ReadonlyArray<ProviderType> = [
     'jottacloud', 'kdrive', 'drime', 'filelu', 'internxt', 'koofr', 'opendrive', 'yandexdisk',
@@ -37,7 +37,7 @@ export interface ServerSubtitleOptions {
  * concatenation that leaked OAuth tokens / opaque API identifiers into the UI.
  *
  * Rules (with `showUsername === true`):
- *  - hostname-based protocols (FTP/FTPS/SFTP/WebDAV custom): `user · host[:port]` or `host[:port]`
+ *  - hostname-based protocols (FTP/FTPS/SFTP/SCP/WebDAV custom): `user · host[:port]` or `host[:port]`
  *  - OAuth / OAuth1 / known opaque-token API providers: email when present, else empty
  *  - Other API providers (S3, Mega, Filen, github custom, ...): username, else host
  *

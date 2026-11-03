@@ -14,6 +14,8 @@ import { mergeAppSettingsDraft } from './appSettingsDraft';
 import { ConnectScope } from '../gui/connectScope';
 import { normalizeGuiPresentation } from '../gui/presentation';
 import { connectionProfileDefaults } from '../providers/connectionManifest';
+import { getProviderById } from '../providers';
+import { storedPresetForSave } from './protocolSwitch';
 import type { ServerProfile } from '../types';
 
 // Run the production closures, with their captured IPC and React state cells
@@ -61,7 +63,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         aeroCryptOverlayFields: vi.fn(async () => ({})), migrateCryptCredentials: vi.fn(),
         normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, connectionProfileDefaults,
         findDuplicateProfile: () => undefined,
-        getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false,
+        getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false, storedPresetForSave, getProviderById,
         syncPersistedModeCredentials: vi.fn(async () => true), carryFavoriteServer: vi.fn(), carryServerGroups: vi.fn(),
         deleteModeCredentials: vi.fn(), warnIfSavedByOtherAccount: vi.fn(),
         setSavedServersUpdate: vi.fn(), logActivity: vi.fn(), setGitHubAlert: vi.fn(),
@@ -328,6 +330,22 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.context.onFormSaved).toHaveBeenCalledTimes(1);
         expect(f.context.syncPersistedModeCredentials).toHaveBeenCalledWith('old');
     });
+
+    it.each([['scp', undefined], ['ftp', undefined], ['sftp', 'sourceforge']] as const)(
+        'an SFTP preset edited to %s saves providerId %s, so it reopens as the protocol saved',
+        async (protocol, providerId) => {
+            // The switch dropped the preset from the form; the save must not
+            // take it back from the stored profile.
+            const f = fixture('none');
+            Object.assign(f.servers[0], { protocol: 'sftp', providerId: 'sourceforge' });
+            f.context.protocol = protocol;
+            const fn = await execute(connection, ['saveToServers', 'handleConnectAndSave'], f.context);
+            await fn.handleConnectAndSave();
+            const saved = (f.store.mock.calls[0][0] as ServerProfile[]).find(s => s.id === 'old');
+            expect(saved).toMatchObject({ protocol });
+            expect(saved?.providerId).toBe(providerId);
+        },
+    );
 
     it.each(['handleSaveAsNew', 'handleConvertMode'] as const)('%s honors custom icon removal when switching modes', async name => {
         const f = fixture('none');

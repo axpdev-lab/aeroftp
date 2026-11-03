@@ -596,12 +596,14 @@ fn unescape_xml_entities(s: &str) -> String {
 }
 
 /// The start of an error response's body, for a message. At most `max`
-/// bytes are read, so a large or endless error page costs nothing more.
+/// bytes and five seconds are spent, including a body that stalls or trickles.
+/// Preserve bytes already read if the total deadline expires.
 pub(crate) async fn error_body_excerpt(mut resp: reqwest::Response, max: usize) -> String {
     let mut body = Vec::new();
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
     while body.len() < max {
-        match resp.chunk().await {
-            Ok(Some(chunk)) => {
+        match tokio::time::timeout_at(deadline, resp.chunk()).await {
+            Ok(Ok(Some(chunk))) => {
                 let take = chunk.len().min(max - body.len());
                 body.extend_from_slice(&chunk[..take]);
             }
@@ -615,6 +617,7 @@ pub(crate) async fn error_body_excerpt(mut resp: reqwest::Response, max: usize) 
 #[cfg(test)]
 mod error_body_excerpt_tests {
     use super::*;
+    use futures_util::StreamExt;
 
     /// An error page that never ends still yields its first bytes, at once.
     #[tokio::test]
@@ -640,6 +643,63 @@ mod error_body_excerpt_tests {
         .expect("the excerpt stops at its limit");
         assert_eq!(excerpt.len(), 200, "{excerpt:?}");
         assert!(excerpt.starts_with("error page error page"), "{excerpt:?}");
+    }
+
+    #[tokio::test]
+    async fn a_stalled_error_body_returns_its_prefix_within_the_total_deadline() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let stream = futures_util::stream::once(async {
+                Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"error page"))
+            })
+            .chain(futures_util::stream::pending());
+            (
+                axum::http::StatusCode::BAD_GATEWAY,
+                axum::body::Body::from_stream(stream),
+            )
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        // No short client read timeout: the excerpt's own total bound must win.
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let excerpt = tokio::time::timeout(
+            std::time::Duration::from_secs(6),
+            error_body_excerpt(resp, 200),
+        )
+        .await
+        .expect("a stalled error must not delay its known status indefinitely");
+        assert_eq!(excerpt, "error page");
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn a_trickling_error_does_not_restart_the_total_deadline_for_each_chunk() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let app = axum::Router::new().fallback(|| async {
+            let stream = futures_util::stream::unfold((), |()| async {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                Some((Ok::<_, std::io::Error>(bytes::Bytes::from_static(b"x")), ()))
+            });
+            (
+                axum::http::StatusCode::BAD_GATEWAY,
+                axum::body::Body::from_stream(stream),
+            )
+        });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let resp = reqwest::get(format!("http://{addr}/")).await.unwrap();
+        let excerpt = tokio::time::timeout(
+            std::time::Duration::from_secs(6),
+            error_body_excerpt(resp, 200),
+        )
+        .await
+        .expect("fresh chunks must not restart the five-second deadline");
+        assert!(!excerpt.is_empty());
+        assert!(
+            excerpt.len() < 200,
+            "the time limit must win before the byte limit"
+        );
+        server.abort();
     }
 }
 
@@ -859,6 +919,7 @@ pub fn documented_file_limits(provider: ProviderType) -> DocumentedFileLimits {
         ProviderType::Ftp
         | ProviderType::Ftps
         | ProviderType::Sftp
+        | ProviderType::Scp
         | ProviderType::WebDav
         | ProviderType::Swift
         | ProviderType::GitLab
@@ -1081,6 +1142,8 @@ pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Dur
         ProviderType::Ftp | ProviderType::Ftps => None,
         // `attrs.mtime`, Unix seconds.
         ProviderType::Sftp => SECOND,
+        // `ls --full-time`, read to the second; `scp -p` stamps seconds.
+        ProviderType::Scp => SECOND,
         // `getlastmodified`, RFC 1123.
         ProviderType::WebDav => SECOND,
         // `LastModified` carries milliseconds, but the ListObjects value is
@@ -3704,7 +3767,13 @@ impl ProviderFactory {
             }
             ProviderType::Sftp => {
                 let sftp_config = SftpConfig::from_provider_config(config)?;
-                Ok(Box::new(SftpProvider::new(sftp_config)))
+                let mut provider = SftpProvider::new(sftp_config);
+                provider.set_scp_fallback(sftp::scp_fallback_allowed(config));
+                Ok(Box::new(provider))
+            }
+            ProviderType::Scp => {
+                let scp_config = SftpConfig::from_provider_config(config)?;
+                Ok(Box::new(scp::provider::ScpProvider::new(scp_config)))
             }
             ProviderType::AeroCloud => {
                 // AeroCloud uses FTP internally but is configured via CloudPanel
@@ -3867,6 +3936,7 @@ impl ProviderFactory {
             ProviderType::Ftp,
             ProviderType::Ftps,
             ProviderType::Sftp,
+            ProviderType::Scp,
             ProviderType::WebDav,
             ProviderType::S3,
             ProviderType::AeroCloud,
@@ -4620,6 +4690,10 @@ mod tests {
     fn test_provider_factory_supported_types() {
         let types = ProviderFactory::supported_types();
         assert!(types.contains(&ProviderType::Ftp));
+        assert!(types.contains(&ProviderType::Scp));
+        assert!(types
+            .windows(2)
+            .any(|pair| pair == [ProviderType::Sftp, ProviderType::Scp]));
         assert!(types.contains(&ProviderType::WebDav));
         assert!(types.contains(&ProviderType::S3));
     }

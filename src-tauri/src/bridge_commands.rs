@@ -250,9 +250,9 @@ fn store_rclone_provider_secrets(
         Some(s) => s,
         None => {
             return result
-                .provider_secrets
-                .keys()
-                .map(|id| {
+                .secrets_in_server_order()
+                .into_iter()
+                .map(|(id, _)| {
                     (
                         id.clone(),
                         "the vault is locked, so its sign-in was not stored".to_string(),
@@ -271,7 +271,7 @@ fn store_rclone_provider_secrets(
             )
         })
         .collect();
-    for (profile_id, secrets) in &result.provider_secrets {
+    for (profile_id, secrets) in result.secrets_in_server_order() {
         let protocol = match protocol_by_id.get(profile_id.as_str()) {
             Some(p) => p,
             None => continue,

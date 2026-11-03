@@ -203,7 +203,7 @@ const isS3Preset = (providerId: string | undefined): boolean =>
 
 const defaultPort = (proto: ProviderType): number => {
     if (proto === 'ftp' || proto === 'ftps') return 21;
-    if (proto === 'sftp') return 22;
+    if (proto === 'sftp' || proto === 'scp') return 22;
     if (proto === 'webdav') return 443;
     return 0;
 };
@@ -263,10 +263,12 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
         return `api:proton:${userOrId}`;
     }
 
-    if (proto === 'ftp' || proto === 'ftps' || proto === 'sftp') {
+    if (proto === 'ftp' || proto === 'ftps' || proto === 'sftp' || proto === 'scp') {
         const host = normalizeHost(server.host);
         const port = server.port || defaultPort(proto);
-        return `host:${proto}:${host}:${port}:${userOrId}`;
+        // SFTP and SCP reach the same SSH server: one storage, one key.
+        const family = proto === 'scp' ? 'sftp' : proto;
+        return `host:${family}:${host}:${port}:${userOrId}`;
     }
 
     return `id:${server.id}`;
@@ -308,9 +310,12 @@ export const aggregateByDedupKey = (servers: ServerProfile[]): DedupAggregate =>
     for (const server of servers) {
         const key = getStorageDedupKey(server);
         // Profile-aware: crypt-overlay profiles group under the shared "Crypt"
-        // family in the breakdown (the quota dedup key is unaffected — it still
+        // family in the breakdown (the quota dedup key is unaffected: it still
         // keys off the underlying backend host/bucket).
-        const cls = getProfileProtocolClass(server);
+        // SCP counts with SFTP, as `classify` does in the Rust twin: the same
+        // SSH server whichever of the two reaches it.
+        const profileClass = getProfileProtocolClass(server);
+        const cls: ProtocolClass = profileClass === 'SCP' ? 'SFTP' : profileClass;
         classProfileCount.set(cls, (classProfileCount.get(cls) || 0) + 1);
         const ks = classBucketKeys.get(cls) || new Set<string>();
         ks.add(key);

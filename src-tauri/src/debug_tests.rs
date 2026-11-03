@@ -340,7 +340,7 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         Replacement::Text("***JWT-REDACTED***"),
     ),
     (
-        r"(?i)\b((?:ftps?|sftp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
+        r"(?i)\b((?:ftps?|sftp|scp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
         Replacement::Text("$1***REDACTED***$2"),
     ),
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".

@@ -1954,6 +1954,7 @@ pub(crate) async fn create_temp_provider(
         "ftp" => ProviderType::Ftp,
         "ftps" => ProviderType::Ftps,
         "sftp" => ProviderType::Sftp,
+        "scp" => ProviderType::Scp,
         "webdav" => ProviderType::WebDav,
         "s3" => ProviderType::S3,
         "mega" => ProviderType::Mega,

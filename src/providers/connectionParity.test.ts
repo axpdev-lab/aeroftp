@@ -28,4 +28,12 @@ describe('connection metadata used by saved profiles', () => {
         expect(getProtocolInfo('ftps')?.type).toBe('ftps');
         expect(getDefaultPort('ftps')).toBe(990);
     });
+
+    it('SCP is a profile protocol of its own on the SSH port, drawn like SFTP', () => {
+        expect(connectionManifest.protocols.find(p => p.token === 'scp')).toMatchObject({ frontend: true, creation: 'profile' });
+        expect(getProtocolInfo('scp')).toMatchObject({ type: 'scp', name: 'SCP', badge: 'SSH' });
+        expect(getProtocolInfo('scp')?.icon).toEqual(getProtocolInfo('sftp')?.icon);
+        expect(getDefaultPort('scp')).toBe(22);
+        expect(connectionProfileDefaults('scp')).toMatchObject({ port: 22, server: '', options: {} });
+    });
 });
