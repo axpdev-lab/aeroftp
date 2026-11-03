@@ -2678,7 +2678,9 @@ mod tests {
         {
             let mut bytes = [0u8; 16];
             bytes[..2].copy_from_slice(&2u16.to_ne_bytes());
+            // 127.0.0.1. 127.0.0.0 is not a bindable loopback on Windows.
             bytes[4] = 127;
+            bytes[7] = 1;
             let mut addr: libc::sockaddr = unsafe { std::mem::zeroed() };
             // SAFETY: sockaddr is 16 bytes. The copy writes family, port 0, 127.0.0.1.
             unsafe {
