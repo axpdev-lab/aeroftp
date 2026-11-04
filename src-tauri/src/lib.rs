@@ -11665,6 +11665,26 @@ mod startup_splash_tests {
             "autostart must not disable the app_ready watchdog"
         );
         assert!(watchdog.contains("finish_startup(app_handle, false, \"safety timeout\").await"));
+        assert!(!watchdog.contains("Startup safety timeout reached"));
+    }
+
+    #[test]
+    fn safety_timeout_warning_is_emitted_only_after_the_startup_claim() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+        let start = src
+            .find("async fn finish_startup(")
+            .expect("finish_startup is defined");
+        let finish = &src[start..];
+        let claim = finish
+            .find("STARTUP_FINISH_CLAIMED.swap(true")
+            .expect("finish_startup claims startup before logging");
+        let warning = finish
+            .find("warn!(\"Startup safety timeout reached")
+            .expect("the timeout warning remains in finish_startup");
+        assert!(
+            claim < warning,
+            "an app_ready already finishing startup must not produce a timeout warning"
+        );
     }
 }
 
@@ -11797,6 +11817,10 @@ async fn finish_startup(app: AppHandle, start_minimized: bool, by: &'static str)
     if STARTUP_FINISH_CLAIMED.swap(true, Ordering::SeqCst) {
         info!("Startup already finished or finishing; {by} has nothing to do");
         return;
+    }
+    // Only the winner may report a timeout: app_ready may already be finishing.
+    if by == "safety timeout" {
+        warn!("Startup safety timeout reached, finishing without app_ready");
     }
     // Gate G3 (scripts/snap-gui-check.sh) takes "Finishing startup (app_ready)"
     // as the proof that the frontend booted; pinned by
@@ -21074,7 +21098,6 @@ pub fn run() {
                 if APP_READY_DONE.load(Ordering::SeqCst) {
                     return;
                 }
-                warn!("Startup safety timeout reached, finishing without app_ready");
                 finish_startup(app_handle, false, "safety timeout").await;
             });
             // ============ System Tray Icon =====            // Create tray menu.
