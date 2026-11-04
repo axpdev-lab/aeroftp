@@ -15,11 +15,10 @@
 // the badge reads it on every render and the difference between "no anchor" and
 // "the anchor is the whole remote" is not observable from the rendered tree.
 
-export const normCryptScope = (s?: string | null): string => {
-  const t = (s || '').trim();
-  if (!t || t === '/') return ''; // empty / root => whole remote is the scope
-  return '/' + t.replace(/^\/+|\/+$/g, '');
-};
+import { normalizeRemotePath } from './overlayScope';
+
+// Match the backend anchor exactly, including literal leading/trailing spaces.
+export const normCryptScope = (s?: string | null): string => normalizeRemotePath(s || '');
 
 /**
  * The Remote Path a connect lands on, as given: `/docs ` is its own folder.

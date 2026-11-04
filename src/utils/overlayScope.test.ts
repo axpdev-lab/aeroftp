@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { normalizeRemotePath, isValidOverlayScope, resolveOverlayScope } from './overlayScope';
 
 describe('normalizeRemotePath', () => {
-    it('normalizes root variants to empty', () => {
+    it('recognizes the root without stripping literal whitespace names', () => {
         expect(normalizeRemotePath('')).toBe('');
         expect(normalizeRemotePath('/')).toBe('');
-        expect(normalizeRemotePath('  /  ')).toBe('');
+        expect(normalizeRemotePath('  /  ')).toBe('/  /  ');
     });
 
     it('strips trailing slash and collapses duplicates', () => {
@@ -22,9 +22,9 @@ describe('normalizeRemotePath', () => {
 });
 
 describe('isValidOverlayScope', () => {
-    it('accepts a blank field always (means same as Remote Path)', () => {
+    it('accepts an empty field, but not a different whitespace-named folder', () => {
         expect(isValidOverlayScope('', '/data')).toBe(true);
-        expect(isValidOverlayScope('   ', '/data')).toBe(true);
+        expect(isValidOverlayScope('   ', '/data')).toBe(false);
         expect(isValidOverlayScope('', '')).toBe(true);
     });
 
@@ -79,7 +79,7 @@ describe('isValidOverlayScope', () => {
 describe('resolveOverlayScope (#369 relative UX)', () => {
     it('blank or "/" resolves to the Remote Path itself', () => {
         expect(resolveOverlayScope('', '/data')).toBe('/data');
-        expect(resolveOverlayScope('   ', '/data')).toBe('/data');
+        expect(resolveOverlayScope('   ', '/data')).toBe('/data/   ');
         expect(resolveOverlayScope('/', '/data')).toBe('/data');
         expect(resolveOverlayScope('/', '/data/')).toBe('/data');
     });
@@ -148,4 +148,11 @@ describe('editing the Remote Path under a pinned anchor', () => {
         expect(reaches('/Private/vault', '//Private//')).toBe(true);
         expect(reaches('/Private/vault', '/Private/sub/..')).toBe(true);
     });
+});
+
+it('retains whitespace names through profile save and scope matching', () => {
+  expect(resolveOverlayScope('', '/reports ')).toBe('/reports ');
+  expect(resolveOverlayScope(' vault ', '/reports ')).toBe('/reports / vault ');
+  expect(isValidOverlayScope('/reports / vault ', '/reports ')).toBe(true);
+  expect(isValidOverlayScope('/reports', '/reports ')).toBe(false);
 });

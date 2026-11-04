@@ -261,7 +261,7 @@ impl ProviderState {
             // Whole-remote anchor: nothing is outside it.
             return false;
         }
-        if !path.trim_start().starts_with('/') {
+        if !path.starts_with('/') {
             // Relative: resolves against the raw cwd, which may be inside.
             return false;
         }
@@ -16036,6 +16036,31 @@ mod tests {
         // Relative paths resolve against the raw cwd, which may sit inside.
         assert!(!out("/Vault", "file.txt"));
         assert!(!out("/Vault", "sub/dir"));
+        assert!(!out("/Vault", " /other/file"));
+    }
+
+    #[test]
+    fn literal_space_anchor_blocks_raw_writes_in_the_actual_vault() {
+        let state = ProviderState::new();
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        state.overlay_wrapped.store(false, Ordering::SeqCst);
+        state.store_overlay_key_cache(
+            crate::crypt_overlay_provider::OverlayKeys::Rclone(rclone_compare_keys(true)),
+            "/reports ".to_string(),
+            "rclone-crypt".to_string(),
+        );
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Upload", &["/reports /secret.txt"])
+            .is_err());
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Delete", &["/reports "])
+            .is_err());
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Upload", &["/reports/plain.txt"])
+            .is_ok());
+        assert!(state
+            .guard_no_raw_crypt_write_outside("Upload", &["/other/plain.txt"])
+            .is_ok());
     }
 
     #[test]

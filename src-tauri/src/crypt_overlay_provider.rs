@@ -319,7 +319,7 @@ impl OverlayKeys {
 /// two different normalizations there would reopen the traversal hole B-F1
 /// closes here.
 pub(crate) fn norm_anchor(scope: &str) -> String {
-    let s = scope.trim();
+    let s = scope;
     if s.is_empty() || s == "/" {
         return String::new();
     }
@@ -2590,9 +2590,7 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
         .get("initialPath")
         .and_then(|v| v.as_str())
         .unwrap_or("")
-        .replace("{username}", &username)
-        .trim()
-        .to_string();
+        .replace("{username}", &username);
     if let Some(binding) = profile
         .get_mut("aeroCryptOverlay")
         .and_then(|v| v.as_object_mut())
@@ -2600,7 +2598,6 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
         let unscoped = binding
             .get("remoteScope")
             .and_then(|v| v.as_str())
-            .map(str::trim)
             .unwrap_or("")
             .is_empty();
         if unscoped && !start.is_empty() && start != "/" {
@@ -5583,6 +5580,34 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn end_to_end_aerocrypt_scoped() {
         roundtrip_through_decorator(aerocrypt_keys(), "/Vault").await;
+    }
+
+    #[tokio::test]
+    async fn literal_space_anchor_keeps_encrypted_roundtrip_in_its_real_folder() {
+        roundtrip_through_decorator(aerocrypt_keys(), "/Vault ").await;
+        roundtrip_through_decorator(
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            "/ Vault",
+        )
+        .await;
+    }
+
+    #[test]
+    fn literal_space_anchor_is_not_rewritten_by_aerocloud() {
+        for folder in ["/reports ", "/ reports", "   "] {
+            let profile = serde_json::json!({
+                "initialPath": folder,
+                "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "" }
+            });
+            assert_eq!(
+                aerocloud_overlay_profile(&profile)["aeroCryptOverlay"]["remoteScope"],
+                folder
+            );
+            assert_eq!(
+                norm_anchor(folder),
+                format!("/{}", folder.trim_start_matches('/'))
+            );
+        }
     }
 
     #[tokio::test]

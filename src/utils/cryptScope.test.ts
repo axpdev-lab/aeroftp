@@ -8,14 +8,14 @@ describe('normCryptScope', () => {
     expect(normCryptScope(undefined)).toBe('');
     expect(normCryptScope(null)).toBe('');
     expect(normCryptScope('')).toBe('');
-    expect(normCryptScope('   ')).toBe('');
+    expect(normCryptScope('   ')).toBe('/   ');
     expect(normCryptScope('/')).toBe('');
   });
 
   it('makes the anchor absolute and strips the trailing slashes', () => {
     expect(normCryptScope('vault')).toBe('/vault');
     expect(normCryptScope('/vault/')).toBe('/vault');
-    expect(normCryptScope('//vault//sub//')).toBe('/vault//sub');
+    expect(normCryptScope('//vault//sub//')).toBe('/vault/sub');
   });
 });
 
@@ -46,11 +46,11 @@ describe('connectLandsOutsideOverlay', () => {
   // The landing is the folder navigation opens (normLandingPath), spaces
   // included: read with the anchor's trim, `/Crypt ` was inside `/Crypt` and
   // the overlay unlocked on a folder outside it.
-  it('opens outside the island when the Remote Path is another folder by its spaces', () => {
+  it('distinguishes whitespace names while recognizing an exactly matching anchor', () => {
     expect(connectLandsOutsideOverlay('/Crypt ', '/Crypt')).toBe(true);
     expect(connectLandsOutsideOverlay(' /Crypt', '/Crypt')).toBe(true);
     expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt')).toBe(true);
-    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt ')).toBe(true);
+    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt ')).toBe(false);
   });
 
   it('treats an empty Overlays Path as the Remote Path itself', () => {
@@ -132,4 +132,11 @@ describe('resolveBoundCryptScope', () => {
     expect(resolveBoundCryptScope({ cryptOverlay: null, cryptOverlayScope: 'vault/' })).toBe('/vault');
     expect(resolveBoundCryptScope({ cryptOverlay: null, cryptOverlayScope: '/' })).toBe('');
   });
+});
+
+// Requested 133: the displayed and protected folder must be the one opened.
+it.each(['/reports ', '/ reports', '/   ', '/reports /inner '])('preserves literal anchor %j', scope => {
+  expect(normCryptScope(scope)).toBe(scope);
+  expect(isWithinCryptScope(scope, scope + '/a.txt')).toBe(true);
+  expect(connectLandsOutsideOverlay(scope, scope)).toBe(false);
 });

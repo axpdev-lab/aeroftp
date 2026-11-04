@@ -6169,7 +6169,7 @@ const App: React.FC = () => {
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
       if (!profile || !binding?.enabled) return null;
-      const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';
+      const scope = binding.remoteScope || profile.initialPath || '';
       return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
     } catch {
       return null;
@@ -6201,7 +6201,7 @@ const App: React.FC = () => {
         ? profileInitialPath
         : resolveUsernameTemplate(landingPath, profile.username);
       const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const scope = remoteScope?.trim() || profileInitialPath?.trim() || '';
+      const scope = remoteScope || profileInitialPath || '';
       return {
         kind: binding.kind,
         anchor: scope && scope !== '/' ? scope : null,
@@ -6254,7 +6254,7 @@ const App: React.FC = () => {
           ...profileOverlayApplyParams({
             binding,
             savedServerId,
-            overlayScope: binding.remoteScope?.trim() || profile.initialPath?.trim() || '',
+            overlayScope: binding.remoteScope || profile.initialPath || '',
             password: typed.password,
             salt: typed.salt || storedSalt,
             keyfilePath: typed.keyfilePath || storedKeyfile,
@@ -6353,7 +6353,7 @@ const App: React.FC = () => {
       // plaintext anchor.
       const initialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
       const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const overlayScope = remoteScope?.trim() || initialPath?.trim() || '';
+      const overlayScope = remoteScope || initialPath || '';
 
       try {
         await invoke('provider_arm_crypt_capability', ownership ? { expectedGeneration: ownership.generation } : undefined);
