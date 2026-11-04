@@ -110,10 +110,15 @@ const PERMANENT_ERROR_MARKERS = [
     'Invalid path: ',
     'Operation not supported: ',
     'Restricted character ',
+    // Stable legacy local-name refusals, including journals saved before
+    // these errors acquired the typed Invalid path prefix.
+    'Unsafe remote download name',
+    'Windows cannot hold a name ',
+    'Windows reserves the name ',
 ];
 
 /** The wrappers the transfer layer puts in front of a provider error. */
-const TRANSFER_ERROR_WRAPPER = /^(?:(?:Upload|Download|Transfer) failed: )*/;
+const TRANSFER_ERROR_WRAPPER = /^(?:(?:Upload|Download|Transfer) failed: |Error: )*/;
 
 export function isPermanentTransferError(error: string | undefined | null): boolean {
     if (!error) return false;

@@ -36073,7 +36073,11 @@ async fn cmd_get(
             dest
         }
     } else {
-        filename
+        // A basename has an empty parent on Windows. Providers create that
+        // parent before opening the local file, so make the implicit cwd
+        // explicit instead of asking create_dir_all("") and failing with 3.
+        local_path_owned = format!("./{filename}");
+        &local_path_owned
     };
     if let Err(reason) =
         ftp_client_gui_lib::local_download_target::refuse_unwritable_name(local_path)

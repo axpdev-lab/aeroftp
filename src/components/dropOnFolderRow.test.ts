@@ -3,6 +3,25 @@
 
 import { describe, expect, it } from 'vitest';
 import { INBOX, LOCAL, PANEL2, REMOTE, SUB, fixture, folder, local, remote } from './appTransfers.testkit';
+import { isRestorableJournalEntry } from '../utils/transferQueueJournal';
+
+it('does not write a differently cased Windows destination when overwrite policy is skip', async () => {
+  const destination = 'C:/Downloads';
+  const f = fixture({ folders: { [REMOTE]: [remote('foo.txt')], [destination]: [local('Foo.txt', destination)] }, policy: 'skip' });
+  await f.drop([remote('foo.txt')], true, destination);
+  expect(f.checkOverwrite).toHaveBeenCalled();
+  expect(f.written()).toEqual([]);
+  expect(f.invoke.mock.calls.some(([command]) => command === 'provider_download_file')).toBe(false);
+});
+
+it('keeps a locally refused download out of startup Resume', async () => {
+  const f = fixture({ folders: { [REMOTE]: [remote('refused.')] }, fail: command => command === 'provider_download_file'
+    ? 'Windows cannot hold a name ending in a dot or a space: refused.' : undefined });
+  await f.drop([remote('refused.')], true, 'C:/Downloads');
+  const row = f.row('q0');
+  expect(row).toMatchObject({ status: 'error' });
+  expect(isRestorableJournalEntry({ status: 'failed', last_error: row!.error })).toBe(false);
+});
 
 /**
  * A drop on the other panel writes into the folder it was dropped on.

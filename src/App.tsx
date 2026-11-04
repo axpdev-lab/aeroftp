@@ -10490,7 +10490,7 @@ const App: React.FC = () => {
         const downloadPath = destinationPath || await pickFile({ directory: true, multiple: false, defaultPath: await downloadDir() });
         if (downloadPath) {
           if (!isSafeRemoteDownloadName(fileName, downloadPath)) {
-            throw new Error('Unsafe remote download name');
+            throw new Error('Invalid path: Unsafe remote download name');
           }
           let targetName = fileName;
           const remoteFileInfo = remoteFiles.find(f => f.name === fileName && !f.is_dir);
@@ -12925,7 +12925,7 @@ const App: React.FC = () => {
     let destinationFiles: LocalFile[] | RemoteFile[];
     try {
       if (isDownload && items.some(item => !isSafeRemoteDownloadName(item.name, targetDir))) {
-        throw new Error('Unsafe remote download name in batch');
+        throw new Error('Invalid path: Unsafe remote download name in batch');
       }
       destinationFiles = [...await getOverwriteDestination(direction, targetDir)];
     } catch (error) {

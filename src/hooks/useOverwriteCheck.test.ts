@@ -71,3 +71,33 @@ it('apply-to-all retains real destination existence for subsequent routing', asy
   await pending!;
   await expect(api.checkOverwrite('b.bin', 100, undefined, false, 0, [])).resolves.toEqual({ action: 'overwrite', destinationExists: false });
 });
+
+it('asks before a Windows download replaces a differently cased destination', async () => {
+  const existing = { ...file('Foo.txt'), path: 'C:/Downloads/Foo.txt' };
+  await mount({ localFiles: [existing] });
+  let pending: ReturnType<API['checkOverwrite']>;
+  await act(async () => { pending = api.checkOverwrite('foo.txt', 100, undefined, true); });
+  expect(api.overwriteDialog.isOpen).toBe(true);
+  expect(api.overwriteDialog.destination?.name).toBe('Foo.txt');
+  await act(async () => api.overwriteDialog.resolve!({ action: 'cancel', applyToAll: false }));
+  await expect(pending!).resolves.toMatchObject({ action: 'cancel', destinationExists: true });
+});
+
+it('Windows rename avoids differently cased names, including directories', async () => {
+  await mount({ fileExistsAction: 'rename' });
+  const destination = [
+    { ...file('Foo.txt'), path: 'C:/Downloads/Foo.txt' },
+    { ...file('FOO (1).TXT'), path: 'C:/Downloads/FOO (1).TXT', is_dir: true },
+  ];
+  await expect(api.checkOverwrite('foo.txt', 100, undefined, true, 0, destination)).resolves.toEqual({
+    action: 'rename', newName: 'foo (2).txt', destinationExists: true,
+  });
+});
+
+it.each([true, false])('keeps exact Unix and remote names apart (download=%s)', async sourceIsRemote => {
+  await mount({ localFiles: [file('Foo.txt')], remoteFiles: [file('Foo.txt')] });
+  await expect(api.checkOverwrite('foo.txt', 100, undefined, sourceIsRemote)).resolves.toMatchObject({
+    action: 'overwrite', destinationExists: false,
+  });
+  expect(api.overwriteDialog.isOpen).toBe(false);
+});

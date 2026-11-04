@@ -204,6 +204,10 @@ describe('isRestorableJournalEntry', () => {
             'Invalid path: name ends with a dot',
             'Operation not supported: download',
             'Restricted character : is not allowed by OneDrive',
+            'Download failed: Windows cannot hold a name ending in a dot or a space: bad.',
+            'Windows reserves the name CON: CON',
+            'Error: Invalid path: Unsafe remote download name',
+            'Download failed: Unsafe remote download name',
         ]) {
             expect(isRestorableJournalEntry({ status: 'failed', last_error: e })).toBe(false);
         }

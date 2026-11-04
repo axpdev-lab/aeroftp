@@ -10,7 +10,7 @@ import { loadOverwriteDestination } from '../utils/overwriteDestination';
 import { FolderTransferFailedError, fileBatchCommand, folderTransferFailure, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from '../utils/fileBatchRouting';
 import type { FolderTransferOutcome } from '../utils/fileBatchRouting';
 import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from '../utils/localSelection';
-import { isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
+import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErrorClassifier';
 import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import { withTransferRun } from '../utils/transferRun';
@@ -148,8 +148,8 @@ export function fixture(options: Options = {}) {
     local: { id: 'local', files: localFiles, sortedFiles: localFiles, currentPath: LOCAL, selection: new Set<string>(), setSelection: vi.fn() },
     local2: { id: 'local2', files: localFiles2, sortedFiles: localFiles2, currentPath: PANEL2, selection: new Set<string>(), setSelection: vi.fn() },
   };
-  const checkOverwrite = vi.fn(new Function('useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
-    `${overwriteCode}; return checkOverwrite;`)((fn: unknown) => fn, localFiles, remoteFiles, options.policy ?? 'skip',
+  const checkOverwrite = vi.fn(new Function('isWindowsLocalPath', 'useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
+    `${overwriteCode}; return checkOverwrite;`)(isWindowsLocalPath, (fn: unknown) => fn, localFiles, remoteFiles, options.policy ?? 'skip',
       { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
   // The queue keeps its rows as the app does: a settled row changes only
   // through retryItem (updateTransferStatus).

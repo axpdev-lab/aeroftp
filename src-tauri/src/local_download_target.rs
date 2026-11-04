@@ -143,7 +143,7 @@ pub fn refuse_unwritable_name(local_path: &str) -> Result<(), String> {
     for component in Path::new(local_path).components() {
         if let std::path::Component::Normal(name) = component {
             if let Some(reason) = unwritable_on(&name.to_string_lossy(), cfg!(windows)) {
-                return Err(reason);
+                return Err(format!("Invalid path: {reason}"));
             }
         }
     }

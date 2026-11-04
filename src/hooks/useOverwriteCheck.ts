@@ -18,6 +18,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { LocalFile, RemoteFile } from '../types';
+import { isWindowsLocalPath } from '../utils/localPath';
 import { OverwriteAction, FileCompareInfo } from '../components/OverwriteDialog';
 
 interface OverwriteDialogState {
@@ -61,7 +62,12 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
     // An explicit empty snapshot is authoritative: the panel can show a
     // different directory, and its contents must not create or hide a conflict.
     const destination = destinationFiles ?? (sourceIsRemote ? localFiles : remoteFiles);
-    const destFile = destination.find(f => f.name === sourceName && !f.is_dir);
+    // Windows destination spellings can name the same file. This is a
+    // conservative conflict check, never a rewrite of the submitted name.
+    // Uploads still use the remote provider's exact names.
+    const foldCase = sourceIsRemote && destination.some(f => isWindowsLocalPath(f.path));
+    const nameKey = (name: string) => foldCase ? name.toLowerCase() : name;
+    const destFile = destination.find(f => nameKey(f.name) === nameKey(sourceName) && !f.is_dir);
     // #591: callers that batch files keep an existing SFTP destination on the
     // single-file path, which is the one that can send an rsync delta.
     const destinationExists = !!destFile;
@@ -93,8 +99,8 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
         const baseName = ext ? sourceName.slice(0, -ext.length) : sourceName;
         let counter = 1;
         let newName = `${baseName} (${counter})${ext}`;
-        const existingNames = destination.map(f => f.name);
-        while (existingNames.includes(newName)) {
+        const existingNames = new Set(destination.map(f => nameKey(f.name)));
+        while (existingNames.has(nameKey(newName))) {
           counter++;
           newName = `${baseName} (${counter})${ext}`;
         }
