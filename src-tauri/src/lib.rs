@@ -11636,6 +11636,38 @@ fn is_autostart_launch() -> bool {
     std::env::args().any(|a| a == "--autostart")
 }
 
+fn should_show_splash(autostart_launch: bool) -> bool {
+    !autostart_launch
+}
+
+#[cfg(test)]
+mod startup_splash_tests {
+    #[test]
+    fn autostart_never_creates_a_splash_window() {
+        assert!(!super::should_show_splash(true));
+        assert!(super::should_show_splash(false));
+    }
+
+    #[test]
+    fn startup_watchdog_survives_autostart_and_recovers_a_visible_window() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+        let start = src
+            .rfind("// Safety timeout: if the frontend does not signal app_ready")
+            .expect("startup watchdog comment");
+        let end = src[start..]
+            .rfind("// ============ System Tray Icon")
+            .map(|offset| start + offset)
+            .expect("watchdog section ends before tray setup");
+        let watchdog = &src[start..end];
+        assert!(watchdog.contains("tauri::async_runtime::spawn"));
+        assert!(
+            !watchdog.contains("if show_splash"),
+            "autostart must not disable the app_ready watchdog"
+        );
+        assert!(watchdog.contains("finish_startup(app_handle, false, \"safety timeout\").await"));
+    }
+}
+
 /// Called by the frontend when React has finished initializing.
 /// Emits detailed main-window state to the logs right after a `show()` attempt.
 ///
@@ -20933,68 +20965,74 @@ pub fn run() {
             // Create splash BEFORE setting the global app menu so it never inherits it.
             // The main window was built earlier with `visible(false)` and stays
             // hidden until the frontend signals readiness via the `app_ready`
-            // command.
-            let splash_url = {
-                // In dev the splash follows the configured `devUrl`, joined the
-                // way Tauri resolves `WebviewUrl::App` for the main window. A dev
-                // instance started with a `--config` devUrl override on another
-                // port otherwise loaded its splash from whatever Vite answered on
-                // 5173 (another session's), or a blank page if none did. The
-                // literal is only the fallback for a config without `devUrl`;
-                // `tests/portal-chooser/recon-session.sh` greps a binary for it
-                // to recognise a dev build, so it must stay in this branch.
-                #[cfg(dev)]
-                {
-                    let dev_splash = app
-                        .config()
-                        .build
-                        .dev_url
-                        .as_ref()
-                        .and_then(|base| base.join("splash.html").ok())
-                        .unwrap_or_else(|| {
-                            url::Url::parse("http://127.0.0.1:5173/splash.html")
-                                .expect("valid localhost URL")
-                        });
-                    WebviewUrl::External(dev_splash)
-                }
-                #[cfg(all(not(dev), target_os = "linux"))]
-                {
-                    WebviewUrl::External(
-                        url::Url::parse(&format!("http://127.0.0.1:{}/splash.html", port)).unwrap(),
-                    )
-                }
-                #[cfg(all(not(dev), not(target_os = "linux")))]
-                {
-                    WebviewUrl::App("splash.html".into())
-                }
-            };
+            // command. An OS autostart launch must not present any window.
+            let show_splash = should_show_splash(is_autostart_launch());
+            if show_splash {
+                let splash_url = {
+                    // In dev the splash follows the configured `devUrl`, joined the
+                    // way Tauri resolves `WebviewUrl::App` for the main window. A dev
+                    // instance started with a `--config` devUrl override on another
+                    // port otherwise loaded its splash from whatever Vite answered on
+                    // 5173 (another session's), or a blank page if none did. The
+                    // literal is only the fallback for a config without `devUrl`;
+                    // `tests/portal-chooser/recon-session.sh` greps a binary for it
+                    // to recognise a dev build, so it must stay in this branch.
+                    #[cfg(dev)]
+                    {
+                        let dev_splash = app
+                            .config()
+                            .build
+                            .dev_url
+                            .as_ref()
+                            .and_then(|base| base.join("splash.html").ok())
+                            .unwrap_or_else(|| {
+                                url::Url::parse("http://127.0.0.1:5173/splash.html")
+                                    .expect("valid localhost URL")
+                            });
+                        WebviewUrl::External(dev_splash)
+                    }
+                    #[cfg(all(not(dev), target_os = "linux"))]
+                    {
+                        WebviewUrl::External(
+                            url::Url::parse(&format!("http://127.0.0.1:{}/splash.html", port))
+                                .unwrap(),
+                        )
+                    }
+                    #[cfg(all(not(dev), not(target_os = "linux")))]
+                    {
+                        WebviewUrl::App("splash.html".into())
+                    }
+                };
 
-            // Splash shares the same WebView data directory as main in portable
-            // mode so storage events emitted on first load don't fight a second
-            // identifier-scoped folder.
-            let splash_builder = WebviewWindowBuilder::new(app, "splashscreen", splash_url)
-                .title("AeroFTP")
-                .inner_size(420.0, 340.0)
-                .resizable(false)
-                .decorations(false)
-                // Inject the real app version (single source of truth: the crate
-                // version, bumped on every release) so the splash never drifts
-                // from the published version again (#367). Runs before the page's
-                // own scripts; splash.html reads it with a hardcoded fallback.
-                .initialization_script(concat!(
-                    "window.__AEROFTP_VERSION__ = \"",
-                    env!("CARGO_PKG_VERSION"),
-                    "\";"
-                ))
-                .center();
-            let splash_builder = match portable::webview_data_dir() {
-                Some(dir) => splash_builder.data_directory(dir),
-                None => splash_builder,
-            };
-            let _splash = splash_builder.build()?;
+                // Splash shares the same WebView data directory as main in portable
+                // mode so storage events emitted on first load don't fight a second
+                // identifier-scoped folder.
+                let splash_builder = WebviewWindowBuilder::new(app, "splashscreen", splash_url)
+                    .title("AeroFTP")
+                    .inner_size(420.0, 340.0)
+                    .resizable(false)
+                    .decorations(false)
+                    // Inject the real app version (single source of truth: the crate
+                    // version, bumped on every release) so the splash never drifts
+                    // from the published version again (#367). Runs before the page's
+                    // own scripts; splash.html reads it with a hardcoded fallback.
+                    .initialization_script(concat!(
+                        "window.__AEROFTP_VERSION__ = \"",
+                        env!("CARGO_PKG_VERSION"),
+                        "\";"
+                    ))
+                    .center();
+                let splash_builder = match portable::webview_data_dir() {
+                    Some(dir) => splash_builder.data_directory(dir),
+                    None => splash_builder,
+                };
+                let _splash = splash_builder.build()?;
 
-            SPLASH_CREATED_AT.get_or_init(std::time::Instant::now);
-            info!("Splash screen created");
+                SPLASH_CREATED_AT.get_or_init(std::time::Instant::now);
+                info!("Splash screen created");
+            } else {
+                info!("Splash screen skipped for OS autostart launch");
+            }
 
             // Build menu but do NOT set it globally yet: GTK applies global menus
             // to ALL windows instantly, causing a menu flash on the splash screen.
@@ -21026,14 +21064,17 @@ pub fn run() {
             // Safety timeout: if the frontend does not signal app_ready within 10
             // seconds, finish the startup anyway through the same sequence as
             // app_ready (splash torn down first, then the menu, then the window).
-            // Skipped when app_ready already ran or is running.
+            // Skipped when app_ready already ran or is running. This watchdog is
+            // independent of splash creation. If the frontend is unavailable its
+            // minimized preference is also unavailable, so recovery deliberately
+            // shows the main window rather than leaving startup incomplete.
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
                 if APP_READY_DONE.load(Ordering::SeqCst) {
                     return;
                 }
-                warn!("Splash screen safety timeout reached, force-closing");
+                warn!("Startup safety timeout reached, finishing without app_ready");
                 finish_startup(app_handle, false, "safety timeout").await;
             });
             // ============ System Tray Icon =====            // Create tray menu.
@@ -21043,12 +21084,6 @@ pub fn run() {
             // start disabled. A later enable or disable updates the live items
             // on the GTK main thread, the same marshal as the tray badge.
             let cloud_enabled = cloud_config::load_cloud_config().enabled;
-            // Linux draws this menu through ayatana / dbusmenu. The items stay
-            // plain MenuItems so the label is a real GtkLabel. The hook then
-            // swaps each tray row for a GtkImageMenuItem whose image is a
-            // theme icon name. A pixbuf (`icon-data`) makes GNOME Shell fail
-            // the image load and paint the row blank. macOS and Windows keep
-            // IconMenuItem.
             #[cfg(target_os = "linux")]
             let (
                 tray_sync_now,
@@ -21057,40 +21092,32 @@ pub fn run() {
                 tray_check_update,
                 tray_show,
                 tray_quit,
-            ) = {
-                (
-                    MenuItem::with_id(
-                        app,
-                        "tray_sync_now",
-                        "Sync Now",
-                        cloud_enabled,
-                        None::<&str>,
-                    )?,
-                    MenuItem::with_id(
-                        app,
-                        "tray_pause",
-                        "Pause Sync",
-                        cloud_enabled,
-                        None::<&str>,
-                    )?,
-                    MenuItem::with_id(
-                        app,
-                        "tray_open_folder",
-                        "Open Cloud Folder",
-                        cloud_enabled,
-                        None::<&str>,
-                    )?,
-                    MenuItem::with_id(
-                        app,
-                        "tray_check_update",
-                        "Check for Updates",
-                        true,
-                        None::<&str>,
-                    )?,
-                    MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?,
-                    MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?,
-                )
-            };
+            ) = (
+                MenuItem::with_id(
+                    app,
+                    "tray_sync_now",
+                    "Sync Now",
+                    cloud_enabled,
+                    None::<&str>,
+                )?,
+                MenuItem::with_id(app, "tray_pause", "Pause Sync", cloud_enabled, None::<&str>)?,
+                MenuItem::with_id(
+                    app,
+                    "tray_open_folder",
+                    "Open Cloud Folder",
+                    cloud_enabled,
+                    None::<&str>,
+                )?,
+                MenuItem::with_id(
+                    app,
+                    "tray_check_update",
+                    "Check for Updates",
+                    true,
+                    None::<&str>,
+                )?,
+                MenuItem::with_id(app, "tray_show", "Show AeroFTP", true, None::<&str>)?,
+                MenuItem::with_id(app, "tray_quit", "Quit", true, None::<&str>)?,
+            );
             #[cfg(not(target_os = "linux"))]
             let (
                 tray_sync_now,
@@ -21099,62 +21126,60 @@ pub fn run() {
                 tray_check_update,
                 tray_show,
                 tray_quit,
-            ) = {
-                (
-                    IconMenuItem::with_id(
-                        app,
-                        "tray_sync_now",
-                        "Sync Now",
-                        cloud_enabled,
-                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Sync)),
-                        None::<&str>,
-                    )?,
-                    IconMenuItem::with_id(
-                        app,
-                        "tray_pause",
-                        "Pause Sync",
-                        cloud_enabled,
-                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Pause)),
-                        None::<&str>,
-                    )?,
-                    IconMenuItem::with_id(
-                        app,
-                        "tray_open_folder",
-                        "Open Cloud Folder",
-                        cloud_enabled,
-                        Some(tray_badge::tray_menu_icon(
-                            tray_badge::TrayMenuGlyph::Folder,
-                        )),
-                        None::<&str>,
-                    )?,
-                    IconMenuItem::with_id(
-                        app,
-                        "tray_check_update",
-                        "Check for Updates",
-                        true,
-                        Some(tray_badge::tray_menu_icon(
-                            tray_badge::TrayMenuGlyph::Update,
-                        )),
-                        None::<&str>,
-                    )?,
-                    IconMenuItem::with_id(
-                        app,
-                        "tray_show",
-                        "Show AeroFTP",
-                        true,
-                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Show)),
-                        None::<&str>,
-                    )?,
-                    IconMenuItem::with_id(
-                        app,
-                        "tray_quit",
-                        "Quit",
-                        true,
-                        Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Quit)),
-                        None::<&str>,
-                    )?,
-                )
-            };
+            ) = (
+                IconMenuItem::with_id(
+                    app,
+                    "tray_sync_now",
+                    "Sync Now",
+                    cloud_enabled,
+                    Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Sync)),
+                    None::<&str>,
+                )?,
+                IconMenuItem::with_id(
+                    app,
+                    "tray_pause",
+                    "Pause Sync",
+                    cloud_enabled,
+                    Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Pause)),
+                    None::<&str>,
+                )?,
+                IconMenuItem::with_id(
+                    app,
+                    "tray_open_folder",
+                    "Open Cloud Folder",
+                    cloud_enabled,
+                    Some(tray_badge::tray_menu_icon(
+                        tray_badge::TrayMenuGlyph::Folder,
+                    )),
+                    None::<&str>,
+                )?,
+                IconMenuItem::with_id(
+                    app,
+                    "tray_check_update",
+                    "Check for Updates",
+                    true,
+                    Some(tray_badge::tray_menu_icon(
+                        tray_badge::TrayMenuGlyph::Update,
+                    )),
+                    None::<&str>,
+                )?,
+                IconMenuItem::with_id(
+                    app,
+                    "tray_show",
+                    "Show AeroFTP",
+                    true,
+                    Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Show)),
+                    None::<&str>,
+                )?,
+                IconMenuItem::with_id(
+                    app,
+                    "tray_quit",
+                    "Quit",
+                    true,
+                    Some(tray_badge::tray_menu_icon(tray_badge::TrayMenuGlyph::Quit)),
+                    None::<&str>,
+                )?,
+            );
             tray_badge::remember_tray_cloud_items(
                 tray_sync_now.clone(),
                 tray_pause.clone(),
