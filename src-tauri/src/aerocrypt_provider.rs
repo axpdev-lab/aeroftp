@@ -711,8 +711,7 @@ async fn resolve_overlay_cwd(
 /// other folder; only an absent or blank path means "where the provider is".
 fn explicit_overlay_cwd(base_path: Option<&str>) -> Option<String> {
     base_path
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.trim().is_empty())
         .map(str::to_string)
 }
 
@@ -1710,7 +1709,7 @@ mod tests {
         assert_eq!(explicit_overlay_cwd(Some("/")).as_deref(), Some("/"));
         assert_eq!(
             explicit_overlay_cwd(Some(" /home/u/Vault ")).as_deref(),
-            Some("/home/u/Vault")
+            Some(" /home/u/Vault ")
         );
         assert_eq!(explicit_overlay_cwd(None), None);
         assert_eq!(explicit_overlay_cwd(Some("")), None);

@@ -1,3 +1,4 @@
+import type { ServerProfile } from '../types';
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
@@ -88,3 +89,18 @@ export const isWithinCryptScope = (
 export const resolveBoundCryptScope = (
   session: { cryptOverlay?: { remoteScope?: string } | null; cryptOverlayScope?: string | null } | null | undefined,
 ): string => normCryptScope(session?.cryptOverlay?.remoteScope ?? session?.cryptOverlayScope ?? '');
+
+/** A restored path outside the encrypted island is ordinary plaintext. Unknown
+ * relative paths fail closed; the persisted absolute remote path retains the
+ * plaintext anchor even when its encrypted tail is opaque.
+ */
+export const restoredTransferRequiresOverlay = (
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+  remotePath: string | null | undefined,
+): boolean => {
+  if (!profile.aeroCryptOverlay?.enabled) return false;
+  if (!remotePath?.startsWith('/')) return true;
+  const scope = resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
+    || resolveUsernameTemplate(profile.initialPath, profile.username) || '';
+  return isWithinCryptScope(scope, remotePath);
+};

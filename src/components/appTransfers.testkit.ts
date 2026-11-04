@@ -86,7 +86,7 @@ export type Options = {
   unlistable?: string[];
   /** Folders whose listing fails from that call on (1 = the first). */
   listingFailsFrom?: Record<string, number>;
-  policy?: 'skip' | 'overwrite' | 'rename';
+  policy?: 'skip' | 'overwrite' | 'rename' | 'ask' | 'resume';
   /** What the folder question answers. */
   folderAction?: 'merge_overwrite' | 'skip';
   /** '' is a session without a protocol: the legacy folder commands. */

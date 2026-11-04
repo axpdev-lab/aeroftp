@@ -36059,7 +36059,22 @@ async fn cmd_get(
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
     let filename = remote.rsplit('/').next().unwrap_or("download");
-    if filename.is_empty() || matches!(filename, "." | "..") {
+    // A nonempty S3 object key may end in '/'. It has no usable basename,
+    // but an explicit local FILE target is sufficient if stat proves a file.
+    // Directory destinations still need a basename; zero-byte S3 markers and
+    // failed/unknown metadata must never turn into a cwd write.
+    let explicit_file =
+        local.filter(|dest| !dest.is_empty() && !dest.ends_with('/') && !Path::new(dest).is_dir());
+    let slash_key_is_file = if filename.is_empty() && explicit_file.is_some() {
+        match run_until_interrupted(&cancelled, provider.stat(remote)).await {
+            Some(Ok(entry)) => Some(!entry.is_dir),
+            Some(Err(_)) => Some(false),
+            None => return interrupted_exit(Some(&mut *provider), format, NOT_STARTED).await,
+        }
+    } else {
+        None
+    };
+    if !cli_get_target_has_file_name(filename, explicit_file.is_some(), slash_key_is_file) {
         let _ = provider.disconnect().await;
         print_error(
             format,
@@ -106338,5 +106353,35 @@ mod aerosync_plan_cli_line_tests {
         };
         assert_eq!(error_correction.as_deref(), Some("medium"));
         assert_eq!(remote, "15");
+    }
+}
+
+/// Empty remote basenames are usable only for a stat-confirmed object and an
+/// explicit local file, never an implicit cwd or a destination directory.
+fn cli_get_target_has_file_name(
+    name: &str,
+    explicit_file: bool,
+    slash_key_is_file: Option<bool>,
+) -> bool {
+    if matches!(name, "." | "..") {
+        return false;
+    }
+    !name.is_empty() || (explicit_file && slash_key_is_file == Some(true))
+}
+
+#[cfg(test)]
+mod get_slash_key_tests {
+    use super::*;
+    #[test]
+    fn nonempty_slash_object_needs_explicit_file_and_positive_stat() {
+        assert!(cli_get_target_has_file_name("", true, Some(true)));
+        for metadata in [None, Some(false)] {
+            assert!(!cli_get_target_has_file_name("", true, metadata));
+        }
+        assert!(!cli_get_target_has_file_name("", false, Some(true)));
+        for name in [".", ".."] {
+            assert!(!cli_get_target_has_file_name(name, true, Some(true)));
+        }
+        assert!(cli_get_target_has_file_name("normal.txt", false, None));
     }
 }

@@ -7,6 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
+import { restoredTransferRequiresOverlay } from './cryptScope';
 import { useResumeProfileGuard } from '../hooks/useResumeProfileGuard';
 import type { FtpSession } from '../types';
 
@@ -41,8 +42,8 @@ async function fixture() {
     const switchSession = vi.fn(async () => undefined);
     const notify = { info: vi.fn(), error: vi.fn() };
     const context = {
-        sessions: current.sessions, isLiveOnProfile: readFromOriginalRender, waitForLiveProfile: guard.waitForLiveProfile, connectToFtp, switchSession,
-        setShowConnectionScreen: vi.fn(), setShowRemotePanel: vi.fn(), setShowLocalPreview: vi.fn(), setIsConnected: vi.fn(),
+        restoredTransferRequiresOverlay, sessions: current.sessions, isLiveOnProfile: readFromOriginalRender, waitForLiveProfile: guard.waitForLiveProfile, connectToFtp, switchSession,
+        setQuickConnectDirs: vi.fn(), setShowConnectionScreen: vi.fn(), setShowRemotePanel: vi.fn(), setShowLocalPreview: vi.fn(), setIsConnected: vi.fn(),
         notify, t: (s: string) => s, isOAuthProvider: () => false, isFourSharedProvider: () => false,
         getCredentialWithRetry: async () => 'fixture', logger: { error: vi.fn() }, isConnectCancelledError: () => false,
     };
@@ -92,12 +93,12 @@ it('refuses pending resumes when the owning app unmounts', async () => {
 });
 
 it('keeps restored flags and callbacks untouched when the connect did not establish ownership', async () => {
-    const source = block('      const ok = await connectSavedProfileForResume(profile);', '\n    }\n  };\n\n  // Two-level cancel');
+    const source = block('      const ok = await connectSavedProfileForResume(profile, false);', '\n    }\n  };\n\n  // Two-level cancel');
     const code = (await transformWithOxc(`for (const profileId of ['profile-B']) { ${source} }`, 'resume-dispatch.ts')).code;
     const clearRestoredFlags = vi.fn();
     const fireRetryCallbacks = vi.fn();
     const ctx = { profile: { id: 'profile-B' }, groupIds: ['restored'], connectSavedProfileForResume: async () => true,
-        isLiveOnProfile: () => false, transferQueue: { clearRestoredFlags }, fireRetryCallbacks };
+        isLiveOnProfile: () => false, resumeOwnedEntries: vi.fn(), transferQueue: { clearRestoredFlags }, fireRetryCallbacks };
     await new Function(...Object.keys(ctx), `return (async () => { ${code} })();`)(...Object.values(ctx));
     expect(clearRestoredFlags).not.toHaveBeenCalled();
     expect(fireRetryCallbacks).not.toHaveBeenCalled();
@@ -157,7 +158,7 @@ it('captures a backend generation only while the intended profile stays ready', 
     const completeTransfer = vi.fn();
     let live = true;
     const ctx = { useLatestCallback: (fn: unknown) => fn, transferQueue: { startTransfer: vi.fn(), failTransfer, completeTransfer },
-        loadSavedServerProfiles: async () => [{ id: 'profile-A' }], isLiveOnProfile: () => live,
+        restoredTransferRequiresOverlay, loadSavedServerProfiles: async () => [{ id: 'profile-A' }], isLiveOnProfile: () => live,
         invoke: vi.fn(async () => { live = false; return 7; }), downloadFile, uploadFile: vi.fn(),
         parentDir: () => '/local', batchCancelledRef: { current: false }, notify: { error: vi.fn() }, t: (s: string) => s,
         isCancelledTransferError: () => false };
@@ -166,4 +167,49 @@ it('captures a backend generation only while the intended profile stays ready', 
     expect(downloadFile).not.toHaveBeenCalled();
     expect(completeTransfer).not.toHaveBeenCalled();
     expect(failTransfer).toHaveBeenCalledWith('entry', expect.stringContaining('CONNECTION_CHANGED'));
+});
+
+it('connects a plaintext resume on an encrypted profile without waiting for a vault', async () => {
+    const f = await fixture();
+    f.connectToFtp.mockImplementation(async () => {
+        await f.render({ isConnected: true, activeSessionId: 'B', sessions: [{ id: 'B', savedServerId: 'profile-B', status: 'connected' }] });
+    });
+    await expect(f.connect({ id: 'profile-B', name: 'B', host: 'b.invalid', username: 'u', protocol: 'ftp',
+        initialPath: '/public', aeroCryptOverlay: { enabled: true, remoteScope: '/vault' } }, false)).resolves.toBe(true);
+});
+
+it('resumes plaintext siblings immediately while encrypted entries wait for their own overlay', async () => {
+    const source = block('      const resumeOwnedEntries =', '      if (isLiveOnProfile(profileId))');
+    const code = (await transformWithOxc(source, 'resume-owned-entries.ts')).code;
+    let unlock!: (ready: boolean) => void;
+    const encrypted = new Promise<boolean>(resolve => { unlock = resolve; });
+    const fireRetryCallbacks = vi.fn();
+    const clearRestoredFlags = vi.fn();
+    const ctx = { groupIds: ['crypt', 'plain'], profileId: 'A', profile: { name: 'A', username: 'u', aeroCryptOverlay: { enabled: true, remoteScope: '/vault' } },
+        journalDescriptorsRef: { current: new Map([['crypt', { remote_path: '/vault/opaque' }], ['plain', { remote_path: '/public/f.txt' }]]) },
+        restoredTransferRequiresOverlay, waitForLiveProfile: (_id: string, crypt: boolean) => crypt ? encrypted : Promise.resolve(true),
+        transferQueue: { clearRestoredFlags }, logResume: vi.fn(), fireRetryCallbacks };
+    const resume = new Function(...Object.keys(ctx), `${code}; return resumeOwnedEntries;`)(...Object.values(ctx));
+    const pending = resume();
+    await Promise.resolve();
+    expect(fireRetryCallbacks.mock.calls).toEqual([[['plain'], 'A', false]]);
+    expect(clearRestoredFlags).toHaveBeenCalledWith(['plain']);
+    unlock(true);
+    await pending;
+    expect(fireRetryCallbacks).toHaveBeenLastCalledWith(['crypt'], 'A', true);
+});
+
+it('retries an out-of-scope entry with backend profile identity but without requiring crypt', async () => {
+    const code = (await transformWithOxc(block('  const retryRestoredEntry =', '  // Queues the restorable entries'), 'retry-plaintext.ts')).code;
+    const downloadFile = vi.fn(async () => true);
+    const ctx = { useLatestCallback: (fn: unknown) => fn, transferQueue: { startTransfer: vi.fn(), failTransfer: vi.fn(), completeTransfer: vi.fn() },
+        loadSavedServerProfiles: async () => [{ id: 'A', username: 'u', aeroCryptOverlay: { enabled: true, remoteScope: '/vault' } }],
+        restoredTransferRequiresOverlay, isLiveOnProfile: (_id: string, requireOverlay: boolean) => !requireOverlay,
+        invoke: vi.fn(async () => 17), downloadFile, uploadFile: vi.fn(), parentDir: () => '/local',
+        batchCancelledRef: { current: false }, notify: { error: vi.fn() }, t: (s: string) => s, isCancelledTransferError: () => false };
+    const retry = new Function(...Object.keys(ctx), `${code}; return retryRestoredEntry;`)(...Object.values(ctx));
+    await retry('entry', { direction: 'download', profile_id: 'A', filename: 'f', remote_path: '/public/f', local_path: '/local/f' });
+    expect(downloadFile).toHaveBeenCalledWith('/public/f', 'f', '/local', false, undefined, false, 'throw', { profileId: 'A', generation: 17, requireOverlay: false });
+    expect(ctx.transferQueue.completeTransfer).toHaveBeenCalledWith('entry');
+    expect(ctx.transferQueue.failTransfer).not.toHaveBeenCalled();
 });

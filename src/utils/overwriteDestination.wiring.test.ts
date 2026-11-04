@@ -320,12 +320,12 @@ it.each(['download', 'upload'] as const)('refuses a restored %s when the profile
 it('passes the captured generation to the backend after preflight', async () => {
   const f = fixture({ direction: 'download', destination: [], ownsProfile: () => true });
   await f.runtime.downloadFile('/remote/a.bin', 'a.bin', '/actual', false, 100, false, 'throw', { profileId: 'profile-A', generation: 7 });
-  expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7 });
+  expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7, expectedProfileId: 'profile-A' });
 });
 
 
 it('requires the backend overlay as well as the frontend profile before an encrypted retry', async () => {
   const f = fixture({ direction: 'download', destination: [], ownsProfile: () => true });
   await f.runtime.downloadFile('/remote/a.bin', 'a.bin', '/actual', false, 100, false, 'throw', { profileId: 'profile-A', generation: 7, requireOverlay: true });
-  expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7, requireCryptOverlay: true });
+  expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7, expectedProfileId: 'profile-A', requireCryptOverlay: true });
 });

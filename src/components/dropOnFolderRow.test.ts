@@ -237,3 +237,25 @@ it('downloads a non-colliding file into a nonempty Windows folder under skip', a
   await f.drop([remote('foo.txt')], true, destination);
   expect(f.written()).toEqual([`${destination}/foo.txt`]);
 });
+
+
+it.each(['ask', 'overwrite', 'resume'] as const)('settles a directory refusal and still downloads the later folder under %s', async policy => {
+  const first = remote('blocked.txt');
+  const second = folder(remote('later'));
+  const f = fixture({ policy, folders: { [REMOTE]: [first, second], [LOCAL]: [folder(local('blocked.txt'))] } });
+  await expect(f.drop([first, second], true, LOCAL, 'remote')).resolves.toBeUndefined();
+  expect(f.row('q0')).toMatchObject({ status: 'error', error: expect.stringContaining('directory') });
+  expect(f.row('q1')).toMatchObject({ status: 'completed' });
+  expect(f.written()).toEqual([`${LOCAL}/later`]);
+  expect(f.notify.error).toHaveBeenCalledOnce();
+});
+
+it('plans remaining batch files after a directory refusal without leaving pending rows', async () => {
+  const files = [remote('blocked.txt'), remote('good.txt')];
+  const f = fixture({ policy: 'ask', folders: { [REMOTE]: files, [LOCAL]: [folder(local('blocked.txt'))] } });
+  await expect(f.drop(files, true, LOCAL, 'remote')).resolves.toBeUndefined();
+  expect(f.written()).toEqual([`${LOCAL}/good.txt`]);
+  expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  expect(f.row('q1')).toBeUndefined();
+  expect(f.notify.error).toHaveBeenCalledOnce();
+});

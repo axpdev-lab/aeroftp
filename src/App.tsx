@@ -214,7 +214,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { normCryptScope, normLandingPath, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -10457,7 +10457,7 @@ const App: React.FC = () => {
           let folderResult: FolderTransferOutcome;
           if (isProvider) {
             folderResult = await invoke<FolderTransferOutcome>('provider_download_folder', {
-              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               remotePath: remoteFilePath,
               localPath: folderPath,
               fileExistsAction: folderAction || undefined,
@@ -10538,7 +10538,7 @@ const App: React.FC = () => {
           } else if (isProvider) {
             // Use provider command for file download
             await invoke('provider_download_file', {
-              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               remotePath: remoteFilePath,
               localPath: localFilePath,
               modified: remoteModified,
@@ -10634,7 +10634,7 @@ const App: React.FC = () => {
           try {
             const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
             providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
-              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               localPath: localFilePath,
               remotePath: remoteRootForFolder,
               fileExistsAction: folderAction2 || null,
@@ -10647,7 +10647,7 @@ const App: React.FC = () => {
             if (protocol === 'opendrive') {
               assertOwnership();
             await invoke('opendrive_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
                 path: remoteRootForFolder,
                 isPublic: false,
                 isDir: true,
@@ -10656,7 +10656,7 @@ const App: React.FC = () => {
             if (protocol === 'fourshared') {
               assertOwnership();
             await invoke('fourshared_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
                 path: remoteRootForFolder,
                 isPublic: false,
                 isDir: true,
@@ -10766,12 +10766,12 @@ const App: React.FC = () => {
             remotePlainName: targetName,
           });
         } else if (isProvider) {
-          const uploadOutcome = await invoke<string>('provider_upload_file', { ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}), localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
+          const uploadOutcome = await invoke<string>('provider_upload_file', { ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}), localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
           if (uploadOutcome?.startsWith('Skipped:')) return false;
           if (protocol === 'opendrive') {
             assertOwnership();
             await invoke('opendrive_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               path: remotePath,
               isPublic: false,
               isDir: false,
@@ -10780,7 +10780,7 @@ const App: React.FC = () => {
           if (protocol === 'fourshared') {
             assertOwnership();
             await invoke('fourshared_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               path: remotePath,
               isPublic: false,
               isDir: false,
@@ -10827,7 +10827,7 @@ const App: React.FC = () => {
       if (entry.profile_id) {
         const profiles = await loadSavedServerProfiles();
         const profile = profiles.find(p => p.id === entry.profile_id);
-        const requireOverlay = !!profile?.aeroCryptOverlay?.enabled;
+        const requireOverlay = !!profile && restoredTransferRequiresOverlay(profile, entry.remote_path);
         if (!profile || !isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
         }
@@ -10956,7 +10956,7 @@ const App: React.FC = () => {
 
   const { isLiveOnProfile, waitForLiveProfile } = useResumeProfileGuard(isConnected, sessions, activeSessionId);
 
-  const connectSavedProfileForResume = async (profile: ServerProfile): Promise<boolean> => {
+  const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay = restoredTransferRequiresOverlay(profile, profile.initialPath || '/')): Promise<boolean> => {
     const protocol = (profile.protocol || 'ftp') as ProviderType;
 
     // Reuse an open session tab when one already exists for this profile.
@@ -10969,7 +10969,7 @@ const App: React.FC = () => {
       setShowLocalPreview(false);
       setIsConnected(true);
       await switchSession(existing.id);
-      return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
+      return waitForLiveProfile(profile.id, requireOverlay);
     }
 
     notify.info(
@@ -11057,7 +11057,7 @@ const App: React.FC = () => {
           providerId: profile.providerId,
           savedServerId: profile.id,
         });
-        return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
+        return waitForLiveProfile(profile.id, requireOverlay);
       }
 
       if (isFourSharedProvider(protocol)) {
@@ -11100,7 +11100,7 @@ const App: React.FC = () => {
           providerId: profile.providerId,
           savedServerId: profile.id,
         });
-        return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
+        return waitForLiveProfile(profile.id, requireOverlay);
       }
 
       // Credential-based providers (FTP/SFTP/S3/WebDAV/API keys…).
@@ -11147,7 +11147,7 @@ const App: React.FC = () => {
         providerId: profile.providerId,
         savedServerId: profile.id,
       });
-      return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
+      return waitForLiveProfile(profile.id, requireOverlay);
     } catch (e) {
       if (isConnectCancelledError(e)) return false;
       logger.error('[TQ-7c] connect for resume failed', e);
@@ -11206,12 +11206,22 @@ const App: React.FC = () => {
         continue;
       }
 
+      // Plaintext entries do not wait behind an encrypted sibling. Each
+      // callback retains its own requirement through the queued microtask and
+      // the backend ownership check, even after the user navigates elsewhere.
+      const resumeOwnedEntries = async () => {
+        await Promise.all(groupIds.map(async id => {
+          const entry = journalDescriptorsRef.current.get(id);
+          if (!entry) return;
+          const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path);
+          if (!await waitForLiveProfile(profileId, requireOverlay)) return;
+          transferQueue.clearRestoredFlags([id]);
+          logResume(1, profile.name);
+          fireRetryCallbacks([id], profileId, requireOverlay);
+        }));
+      };
       if (isLiveOnProfile(profileId)) {
-        if (!await waitForLiveProfile(profileId, !!profile.aeroCryptOverlay?.enabled)) continue;
-        transferQueue.clearRestoredFlags(groupIds);
-        const live = sessions.find((s) => s.id === activeSessionId);
-        logResume(groupIds.length, live?.serverName);
-        fireRetryCallbacks(groupIds, profileId, !!profile.aeroCryptOverlay?.enabled);
+        await resumeOwnedEntries();
         continue;
       }
 
@@ -11236,12 +11246,9 @@ const App: React.FC = () => {
       });
       if (!confirmed) continue;
 
-      const ok = await connectSavedProfileForResume(profile);
+      const ok = await connectSavedProfileForResume(profile, false);
       if (!ok || !isLiveOnProfile(profileId)) continue;
-
-      // The connect already logged "Connecting to X to resume transfers".
-      transferQueue.clearRestoredFlags(groupIds);
-      fireRetryCallbacks(groupIds, profileId, !!profile.aeroCryptOverlay?.enabled);
+      await resumeOwnedEntries();
     }
   };
 
@@ -12983,14 +12990,17 @@ const App: React.FC = () => {
     }
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      const overwriteResult = await checkOverwrite(
-        item.name,
-        item.size,
-        item.modified ? new Date(item.modified) : undefined,
-        isDownload,
-        items.length - i - 1,
-        destinationFiles,
-      );
+      let overwriteResult: Awaited<ReturnType<typeof checkOverwrite>>;
+      try {
+        overwriteResult = await checkOverwrite(
+          item.name, item.size, item.modified ? new Date(item.modified) : undefined,
+          isDownload, items.length - i - 1, destinationFiles,
+        );
+      } catch (error) {
+        result.failed++;
+        notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
+        continue;
+      }
       if (overwriteResult.action === 'cancel') {
         resetOverwriteSettings();
         result.aborted = true;
@@ -13960,51 +13970,58 @@ const App: React.FC = () => {
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
-        if (item.file.is_dir) {
-          // Folder: show FolderOverwriteDialog in 'ask' mode
-          const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue, destinationFiles);
-          if (folderResult.action === 'cancel') {
-            transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
-            for (let j = i + 1; j < queueItems.length; j++) {
-              transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+        try {
+          if (item.file.is_dir) {
+            // Folder: show FolderOverwriteDialog in 'ask' mode
+            const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue, destinationFiles);
+            if (folderResult.action === 'cancel') {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              for (let j = i + 1; j < queueItems.length; j++) {
+                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+              }
+              break;
             }
-            break;
-          }
-          if (folderResult.action === 'skip') {
-            transferQueue.completeTransfer(item.id);
-            skippedCount++;
-            continue;
-          }
-        } else {
-          // File: use standard overwrite check
-          const overwriteResult = await checkOverwrite(
-            item.file.name,
-            item.file.size || 0,
-            item.file.modified ? new Date(item.file.modified) : undefined,
-            true, // sourceIsRemote
-            remainingInQueue,
-            destinationFiles,
-          );
-
-          if (overwriteResult.action === 'cancel') {
-            transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
-            for (let j = i + 1; j < queueItems.length; j++) {
-              transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+            if (folderResult.action === 'skip') {
+              transferQueue.completeTransfer(item.id);
+              skippedCount++;
+              continue;
             }
-            break;
+          } else {
+            // File: use standard overwrite check
+            const overwriteResult = await checkOverwrite(
+              item.file.name,
+              item.file.size || 0,
+              item.file.modified ? new Date(item.file.modified) : undefined,
+              true, // sourceIsRemote
+              remainingInQueue,
+              destinationFiles,
+            );
+
+            if (overwriteResult.action === 'cancel') {
+              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              for (let j = i + 1; j < queueItems.length; j++) {
+                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+              }
+              break;
+            }
+
+            if (overwriteResult.action === 'skip') {
+              transferQueue.completeTransfer(item.id);
+              humanLog.logRaw('activity.download_skipped', 'DOWNLOAD', { filename: item.file.name }, 'success');
+              skippedCount++;
+              continue;
+            }
+
+            // Use renamed target if rename was chosen
+            if (overwriteResult.newName) {
+              item.file = { ...item.file, name: overwriteResult.newName };
+            }
           }
 
-          if (overwriteResult.action === 'skip') {
-            transferQueue.completeTransfer(item.id);
-            humanLog.logRaw('activity.download_skipped', 'DOWNLOAD', { filename: item.file.name }, 'success');
-            skippedCount++;
-            continue;
-          }
-
-          // Use renamed target if rename was chosen
-          if (overwriteResult.newName) {
-            item.file = { ...item.file, name: overwriteResult.newName };
-          }
+        } catch (error) {
+          transferQueue.failTransfer(item.id, String(error));
+          notify.error(t('toast.downloadFailed'), String(error));
+          continue;
         }
 
         // Skip if batch was cancelled

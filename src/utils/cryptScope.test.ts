@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { normCryptScope, normLandingPath, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -150,4 +150,20 @@ it('keeps the plaintext sibling of a literal anchor outside it', () => {
 it.each(['/vault//sub', '/vault/./sub', '/vault/else/../sub'])('recognizes an equivalent configured landing %s', path => {
   expect(connectLandsOutsideOverlay(path, '/vault/sub')).toBe(false);
   expect(isWithinCryptScope('/vault/sub', path + '/child')).toBe(true);
+});
+
+describe('restored entry overlay requirement', () => {
+  const profile = { username: 'alice', initialPath: '/public', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' as const, remoteScope: '/vault' } };
+  it('requires the actual vault only for its own paths, retaining boundary and space semantics', () => {
+    for (const path of ['/vault', '/vault/file', '/vault/encrypted-tail']) expect(restoredTransferRequiresOverlay(profile, path)).toBe(true);
+    for (const path of ['/public/file', '/vaultish/file', '/vault /file']) expect(restoredTransferRequiresOverlay(profile, path)).toBe(false);
+    for (const path of [undefined, '', 'relative']) expect(restoredTransferRequiresOverlay(profile, path)).toBe(true);
+    expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, enabled: false } }, '/vault/file')).toBe(false);
+  });
+  it('matches the connect fallback anchor, literal whitespace and username template', () => {
+    expect(restoredTransferRequiresOverlay({ ...profile, initialPath: '/vault', aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '' } }, '/public/file')).toBe(false);
+    expect(restoredTransferRequiresOverlay({ ...profile, initialPath: '/', aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '' } }, '/any/file')).toBe(true);
+    expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '/{username}/vault ' } }, '/alice/vault /f')).toBe(true);
+    expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '/{username}/vault ' } }, '/alice/vault/f')).toBe(false);
+  });
 });
