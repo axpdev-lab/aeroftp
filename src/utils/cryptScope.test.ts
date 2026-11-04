@@ -1,21 +1,21 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, normLandingPath, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
     expect(normCryptScope(undefined)).toBe('');
     expect(normCryptScope(null)).toBe('');
     expect(normCryptScope('')).toBe('');
-    expect(normCryptScope('   ')).toBe('');
+    expect(normCryptScope('   ')).toBe('/   ');
     expect(normCryptScope('/')).toBe('');
   });
 
   it('makes the anchor absolute and strips the trailing slashes', () => {
     expect(normCryptScope('vault')).toBe('/vault');
     expect(normCryptScope('/vault/')).toBe('/vault');
-    expect(normCryptScope('//vault//sub//')).toBe('/vault//sub');
+    expect(normCryptScope('//vault//sub//')).toBe('/vault/sub');
   });
 });
 
@@ -46,11 +46,11 @@ describe('connectLandsOutsideOverlay', () => {
   // The landing is the folder navigation opens (normLandingPath), spaces
   // included: read with the anchor's trim, `/Crypt ` was inside `/Crypt` and
   // the overlay unlocked on a folder outside it.
-  it('opens outside the island when the Remote Path is another folder by its spaces', () => {
+  it('distinguishes whitespace names while recognizing an exactly matching anchor', () => {
     expect(connectLandsOutsideOverlay('/Crypt ', '/Crypt')).toBe(true);
     expect(connectLandsOutsideOverlay(' /Crypt', '/Crypt')).toBe(true);
     expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt')).toBe(true);
-    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt ')).toBe(true);
+    expect(connectLandsOutsideOverlay('/Crypt /sub', '/Crypt ')).toBe(false);
   });
 
   it('treats an empty Overlays Path as the Remote Path itself', () => {
@@ -132,4 +132,45 @@ describe('resolveBoundCryptScope', () => {
     expect(resolveBoundCryptScope({ cryptOverlay: null, cryptOverlayScope: 'vault/' })).toBe('/vault');
     expect(resolveBoundCryptScope({ cryptOverlay: null, cryptOverlayScope: '/' })).toBe('');
   });
+});
+
+// Requested 133: the displayed and protected folder must be the one opened.
+it.each(['/reports ', '/ reports', '/   ', '/reports /inner '])('preserves literal anchor %j', scope => {
+  expect(normCryptScope(scope)).toBe(scope);
+  expect(isWithinCryptScope(scope, scope + '/a.txt')).toBe(true);
+  expect(connectLandsOutsideOverlay(scope, scope)).toBe(false);
+});
+
+
+it('keeps the plaintext sibling of a literal anchor outside it', () => {
+  expect(isWithinCryptScope('/reports ', '/reports')).toBe(false);
+  expect(isWithinCryptScope('/reports ', '/reports/sub')).toBe(false);
+});
+
+it.each(['/vault//sub', '/vault/./sub', '/vault/else/../sub'])('recognizes an equivalent configured landing %s', path => {
+  expect(connectLandsOutsideOverlay(path, '/vault/sub')).toBe(false);
+  expect(isWithinCryptScope('/vault/sub', path + '/child')).toBe(true);
+});
+
+describe('restored entry overlay requirement', () => {
+  const profile = { username: 'alice', initialPath: '/public', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' as const, remoteScope: '/vault' } };
+  it('requires the actual vault only for its own paths, retaining boundary and space semantics', () => {
+    for (const path of ['/vault', '/vault/file', '/vault/encrypted-tail']) expect(restoredTransferRequiresOverlay(profile, path)).toBe(true);
+    for (const path of ['/public/file', '/vaultish/file', '/vault /file']) expect(restoredTransferRequiresOverlay(profile, path)).toBe(false);
+    for (const path of [undefined, '', 'relative']) expect(restoredTransferRequiresOverlay(profile, path)).toBe(true);
+    expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, enabled: false } }, '/vault/file')).toBe(false);
+  });
+  it('matches the connect fallback anchor, literal whitespace and username template', () => {
+    expect(restoredTransferRequiresOverlay({ ...profile, initialPath: '/vault', aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '' } }, '/public/file')).toBe(false);
+    expect(restoredTransferRequiresOverlay({ ...profile, initialPath: '/', aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '' } }, '/any/file')).toBe(true);
+    expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '/{username}/vault ' } }, '/alice/vault /f')).toBe(true);
+    expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '/{username}/vault ' } }, '/alice/vault/f')).toBe(false);
+  });
+});
+
+it('serializes the expected binding without collapsing absent, root or literal whitespace scopes', () => {
+  expect(restoredTransferCryptScope({ username: '' })).toBeUndefined();
+  expect(restoredTransferCryptScope({ username: '', initialPath: '/', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' } })).toBe('');
+  expect(restoredTransferCryptScope({ username: '', initialPath: '/ fallback ', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: '' } })).toBe('/ fallback ');
+  expect(restoredTransferCryptScope({ username: 'alice', aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt', remoteScope: '/{username}/vault ' } })).toBe('/alice/vault ');
 });

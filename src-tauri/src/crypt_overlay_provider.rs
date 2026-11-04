@@ -319,7 +319,7 @@ impl OverlayKeys {
 /// two different normalizations there would reopen the traversal hole B-F1
 /// closes here.
 pub(crate) fn norm_anchor(scope: &str) -> String {
-    let s = scope.trim();
+    let s = scope;
     if s.is_empty() || s == "/" {
         return String::new();
     }
@@ -598,8 +598,7 @@ impl CryptOverlayProvider {
     }
 
     /// Map a caller plaintext path to the on-wire encrypted path.
-    /// Write mode: fail-closed on out-of-scope (mutating ops).
-    /// Read mode: pass-through raw for out-of-scope (non-mutating ops: list etc).
+    /// Mixed mode preserves absolute targets outside the anchor for reads and writes.
     fn map(
         &self,
         plain: &str,
@@ -1907,6 +1906,19 @@ pub(crate) fn overlay_breadcrumb_labels(
 /// Note the overlay's `as_any_mut()` deliberately returns the decorator itself
 /// (an honest downcast target), so a raw `downcast_mut::<ConcreteProvider>()` on
 /// a wrapped box yields `None`; callers must peel first via this helper.
+/// Map the plaintext target before a provider-specific raw operation peels the
+/// decorator. Mixed-mode paths outside the anchor remain literal.
+pub(crate) fn physical_write_path(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    is_dir: bool,
+) -> Result<String, ProviderError> {
+    match provider.as_any_mut().downcast_mut::<CryptOverlayProvider>() {
+        Some(overlay) => overlay.map(path, is_dir, AccessKind::Write),
+        None => Ok(path.to_string()),
+    }
+}
+
 pub fn concrete_provider_mut(provider: &mut dyn StorageProvider) -> &mut dyn StorageProvider {
     if provider.as_any_mut().is::<CryptOverlayProvider>() {
         provider
@@ -2301,7 +2313,8 @@ pub async fn reopen_default_salt_vault(
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
 ) -> Result<(OverlayConfig, [u8; KEY_SIZE], String), DefaultSaltReopenError> {
-    let scope = scope.trim_end_matches('/');
+    let absolute_scope = norm_anchor(scope);
+    let scope = absolute_scope.as_str();
     let list_dir = if scope.is_empty() { "/" } else { scope };
     let entries = match list_scope_for_write(provider, list_dir).await {
         Ok(Some(entries)) => entries,
@@ -2590,9 +2603,7 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
         .get("initialPath")
         .and_then(|v| v.as_str())
         .unwrap_or("")
-        .replace("{username}", &username)
-        .trim()
-        .to_string();
+        .replace("{username}", &username);
     if let Some(binding) = profile
         .get_mut("aeroCryptOverlay")
         .and_then(|v| v.as_object_mut())
@@ -2600,7 +2611,6 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
         let unscoped = binding
             .get("remoteScope")
             .and_then(|v| v.as_str())
-            .map(str::trim)
             .unwrap_or("")
             .is_empty();
         if unscoped && !start.is_empty() && start != "/" {
@@ -3088,7 +3098,8 @@ async fn unlock_overlay_keys_encrypting_in_scope(
             })
         }
         "aerocrypt" => {
-            let scope = params.remote_scope.trim_end_matches('/');
+            let absolute_scope = norm_anchor(&params.remote_scope);
+            let scope = absolute_scope.as_str();
             let new_name = AEROCRYPT_CONFIG_NAME;
             let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
             let new_path = format!("{}/{}", scope, new_name);
@@ -4214,6 +4225,69 @@ pub(crate) mod tests {
     /// provably OUT OF SCOPE passes through RAW (identical to the Read arm),
     /// enabling plaintext edits OUTSIDE the anchor. It must NOT fail closed and
     /// must NOT encrypt the tail.
+    #[tokio::test]
+    async fn provider_specific_privacy_maps_before_peeling_without_touching_plaintext_namesake() {
+        for (label, keys) in both_kinds() {
+            for scope in ["", "/Vault "] {
+                for is_dir in [false, true] {
+                    let path = format!("{scope}/nested/item");
+                    let mut overlay = CryptOverlayProvider::new(
+                        Box::new(MemProvider::new()),
+                        keys.clone(),
+                        scope,
+                    );
+                    let wire = physical_write_path(&mut overlay, &path, is_dir).unwrap();
+                    assert_ne!(wire, path, "{label}: names must be encrypted");
+                    assert_eq!(decode_scoped(&keys, scope, &wire, is_dir), path);
+                    let raw = concrete_provider_mut(&mut overlay)
+                        .as_any_mut()
+                        .downcast_mut::<MemProvider>()
+                        .unwrap();
+                    raw.seed_raw_file(&path, b"plaintext namesake");
+                    raw.seed_raw_file(&wire, b"encrypted target");
+                    raw.delete(&wire).await.unwrap();
+                    assert_eq!(
+                        raw.raw_bytes(&path).as_deref(),
+                        Some(b"plaintext namesake".as_slice())
+                    );
+                    assert!(raw.raw_bytes(&wire).is_none());
+                    if !scope.is_empty() {
+                        assert_eq!(
+                            physical_write_path(&mut overlay, "/public/item", is_dir).unwrap(),
+                            "/public/item"
+                        );
+                    }
+                }
+            }
+        }
+        let mut raw = MemProvider::new();
+        assert_eq!(
+            physical_write_path(&mut raw, "/literal/item", false).unwrap(),
+            "/literal/item"
+        );
+        // Both real command implementations must map before the raw downcast,
+        // including the sibling three-level OpenDrive operation.
+        let commands = include_str!("provider_commands.rs");
+        for name in [
+            "opendrive_set_path_privacy",
+            "opendrive_set_path_access",
+            "fourshared_set_path_privacy",
+        ] {
+            let body = commands
+                .split(&format!("pub async fn {name}("))
+                .nth(1)
+                .unwrap()
+                .split("\n}\n")
+                .next()
+                .unwrap();
+            assert!(
+                body.find("physical_write_path").unwrap()
+                    < body.find("concrete_provider_mut").unwrap()
+            );
+            assert!(body.contains("(&wire_path,"));
+        }
+    }
+
     #[test]
     fn encode_plain_target_outside_anchor_write_passes_through_raw() {
         for (label, keys) in both_kinds() {
@@ -5586,6 +5660,34 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn literal_space_anchor_keeps_encrypted_roundtrip_in_its_real_folder() {
+        roundtrip_through_decorator(aerocrypt_keys(), "/Vault ").await;
+        roundtrip_through_decorator(
+            rclone_keys(FilenameEncryption::Standard, true, ".bin"),
+            "/ Vault",
+        )
+        .await;
+    }
+
+    #[test]
+    fn literal_space_anchor_is_not_rewritten_by_aerocloud() {
+        for folder in ["/reports ", "/ reports", "   "] {
+            let profile = serde_json::json!({
+                "initialPath": folder,
+                "aeroCryptOverlay": { "enabled": true, "kind": "aerocrypt", "remoteScope": "" }
+            });
+            assert_eq!(
+                aerocloud_overlay_profile(&profile)["aeroCryptOverlay"]["remoteScope"],
+                folder
+            );
+            assert_eq!(
+                norm_anchor(folder),
+                format!("/{}", folder.trim_start_matches('/'))
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn wrap_aerocrypt_uses_local_headerless_config_when_marker_absent() {
         use base64::Engine as _;
 
@@ -5966,6 +6068,49 @@ pub(crate) mod tests {
             res.is_err(),
             "a wrong password on an existing aerocrypt config must fail closed"
         );
+    }
+
+    #[tokio::test]
+    async fn factory_relative_literal_scope_probes_the_same_absolute_vault() {
+        let mut binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/   ".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+            with_header: true,
+            use_default_salt: false,
+            password_form: None,
+            salt_form: None,
+        };
+        let mut mem = MemProvider::new();
+        unlock_overlay_keys_encrypting(
+            &mut mem,
+            &binding,
+            "fixture-password",
+            "",
+            None,
+            true,
+            true,
+        )
+        .await
+        .expect("create absolute literal vault");
+        mem.cd("/elsewhere").await.unwrap();
+        binding.remote_scope = "   ".to_string();
+        let mut wrapped = wrap_provider_with_overlay_if_bound(
+            Box::new(mem),
+            Some(&binding),
+            "fixture-password",
+            "",
+            None,
+        )
+        .await
+        .expect("marker probe must ignore the unrelated cwd");
+        assert!(wrapped.as_any_mut().is::<CryptOverlayProvider>());
+        assert!(wrapped.list("/   ").await.is_ok());
     }
 
     #[tokio::test]

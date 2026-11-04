@@ -8,7 +8,7 @@ describe('overlayAnchor', () => {
     expect(overlayAnchor(undefined)).toBe('/');
     expect(overlayAnchor(null)).toBe('/');
     expect(overlayAnchor('')).toBe('/');
-    expect(overlayAnchor('  ')).toBe('/');
+    expect(overlayAnchor('  ')).toBe('/  ');
     expect(overlayAnchor('/')).toBe('/');
   });
 

@@ -559,13 +559,10 @@ pub struct AeroCryptCreatedVault {
 /// subpath is always relative to `base`, its slashes trimmed, so `/x` typed in
 /// the field does not escape to the remote root.
 ///
-/// The folder is taken as given (`/reports ` is not `/reports`), but the
-/// overlay anchor trims the ends of its folder (`norm_anchor`, and
-/// `normCryptScope` in the app): a vault at `/reports ` would sit outside its
-/// own anchor `/reports`, and the raw write guard
-/// (`path_is_outside_crypt_scope`) would take `/reports /a.txt` for a folder
-/// outside the vault and let it be written in clear. Such a root is refused; a
-/// folder below it (`/reports /New`) is anchored as created.
+/// Creation retains its existing restriction on leading/trailing whitespace
+/// in the selected root. Existing or imported vault bindings preserve those
+/// characters literally through `norm_anchor` and the raw-write guard; this
+/// creation restriction does not rewrite an existing binding's anchor.
 pub(crate) fn overlay_create_root(base: &str, subpath: Option<&str>) -> Result<String, String> {
     let base = if base.is_empty() { "/" } else { base };
     let root = match subpath
@@ -714,8 +711,7 @@ async fn resolve_overlay_cwd(
 /// other folder; only an absent or blank path means "where the provider is".
 fn explicit_overlay_cwd(base_path: Option<&str>) -> Option<String> {
     base_path
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.trim().is_empty())
         .map(str::to_string)
 }
 
@@ -1713,7 +1709,7 @@ mod tests {
         assert_eq!(explicit_overlay_cwd(Some("/")).as_deref(), Some("/"));
         assert_eq!(
             explicit_overlay_cwd(Some(" /home/u/Vault ")).as_deref(),
-            Some("/home/u/Vault")
+            Some(" /home/u/Vault ")
         );
         assert_eq!(explicit_overlay_cwd(None), None);
         assert_eq!(explicit_overlay_cwd(Some("")), None);

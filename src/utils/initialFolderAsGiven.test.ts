@@ -13,11 +13,7 @@ import { describe, expect, it } from 'vitest';
  * folder (`initialPath`, `localInitialPath`, `serverInitialPath`,
  * `initialSourcePath`, ...), written on one line or across several.
  *
- * Outside its reach on purpose: the AeroCrypt overlay anchor
- * (`remoteScope?.trim() || initialPath?.trim()`). Its normalization trims on
- * both sides, `normCryptScope` here and `norm_anchor` in the backend, and the
- * write guard decides inside or outside the vault with it, so it changes on
- * both sides together or not at all.
+ * Overlay anchors use the same literal-folder contract in both app and backend.
  */
 const SOURCES = import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.{ts,tsx}'], {
     query: '?raw',
@@ -35,7 +31,6 @@ const PATTERNS = [
     // initialPath: form.path.trim(), initial_path: value.trim()
     new RegExp(String.raw`\b(?:${NAME}|initial_path)\s*:\s*[\w.?]+\s*\??\.\s*${TRIM}`, 'g'),
 ];
-const ANCHOR = /Scope\s*\??\.\s*trim\(\)\s*\|\|\s*$/;
 
 function trimsOfTheInitialFolder(source: string): string[] {
     // One line per statement is not how this code is written: read it as one.
@@ -43,8 +38,6 @@ function trimsOfTheInitialFolder(source: string): string[] {
     const found: string[] = [];
     for (const pattern of PATTERNS) {
         for (const match of text.matchAll(pattern)) {
-            const before = text.slice(Math.max(0, match.index - 80), match.index);
-            if (ANCHOR.test(before.replace(/[\w.?]*$/, ''))) continue;
             found.push(text.slice(Math.max(0, match.index - 40), match.index + match[0].length));
         }
     }
@@ -61,6 +54,8 @@ describe('the initial folder is used as given', () => {
 
     it.each([
         "const wantedRemote = profile?.initialPath?.trim();",
+        "const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';",
+        "const overlayScope = remoteScope?.trim() || initialPath?.trim() || '';",
         "if (prof.initialPath?.trim()) {",
         "{profile.initialPath.trim()}",
         "const base = (initialPath ?? '').trim();",
@@ -77,8 +72,6 @@ describe('the initial folder is used as given', () => {
         "const base = initialPath.replace(/\\/+$/, '');",
         "const label = initialLabel.trim();",
         "const name = form.name.trim();",
-        "const scope = binding.remoteScope?.trim() || profile.initialPath?.trim() || '';",
-        "const overlayScope = remoteScope?.trim() || initialPath?.trim() || '';",
     ])('leaves alone what is not one: %s', (sample) => {
         expect(trimsOfTheInitialFolder(sample)).toEqual([]);
     });

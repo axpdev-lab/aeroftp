@@ -1,3 +1,4 @@
+import type { ServerProfile } from '../types';
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
@@ -15,11 +16,10 @@
 // the badge reads it on every render and the difference between "no anchor" and
 // "the anchor is the whole remote" is not observable from the rendered tree.
 
-export const normCryptScope = (s?: string | null): string => {
-  const t = (s || '').trim();
-  if (!t || t === '/') return ''; // empty / root => whole remote is the scope
-  return '/' + t.replace(/^\/+|\/+$/g, '');
-};
+import { normalizeRemotePath } from './overlayScope';
+
+// Match the backend anchor exactly, including literal leading/trailing spaces.
+export const normCryptScope = (s?: string | null): string => normalizeRemotePath(s || '');
 
 /**
  * The Remote Path a connect lands on, as given: `/docs ` is its own folder.
@@ -27,10 +27,7 @@ export const normCryptScope = (s?: string | null): string => {
  * anchor's trim would land on another folder. Empty or `/` is the on-wire
  * root ('').
  */
-export const normLandingPath = (s?: string | null): string => {
-  const t = (s || '').replace(/^\/+|\/+$/g, '');
-  return t ? '/' + t : '';
-};
+export const normLandingPath = (s?: string | null): string => normCryptScope(s);
 
 export const resolveUsernameTemplate = (
   path: string | null | undefined,
@@ -75,7 +72,7 @@ export const isWithinCryptScope = (
   const s = normCryptScope(scope);
   if (s === '') return true; // whole-remote scope (== legacy anchored session)
   if (displayPath == null) return true; // unknown path => fail closed
-  const p = '/' + String(displayPath).replace(/^\/+|\/+$/g, '');
+  const p = normLandingPath(displayPath);
   return p === s || p.startsWith(s + '/');
 };
 
@@ -92,3 +89,24 @@ export const isWithinCryptScope = (
 export const resolveBoundCryptScope = (
   session: { cryptOverlay?: { remoteScope?: string } | null; cryptOverlayScope?: string | null } | null | undefined,
 ): string => normCryptScope(session?.cryptOverlay?.remoteScope ?? session?.cryptOverlayScope ?? '');
+
+/** A restored path outside the encrypted island is ordinary plaintext. Unknown
+ * relative paths fail closed; the persisted absolute remote path retains the
+ * plaintext anchor even when its encrypted tail is opaque.
+ */
+export const restoredTransferCryptScope = (
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+): string | undefined => profile.aeroCryptOverlay?.enabled
+  ? normCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
+    || resolveUsernameTemplate(profile.initialPath, profile.username) || '')
+  : undefined;
+
+export const restoredTransferRequiresOverlay = (
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+  remotePath: string | null | undefined,
+): boolean => {
+  if (!profile.aeroCryptOverlay?.enabled) return false;
+  if (!remotePath?.startsWith('/')) return true;
+  const scope = restoredTransferCryptScope(profile);
+  return isWithinCryptScope(scope, remotePath);
+};

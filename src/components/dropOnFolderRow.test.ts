@@ -3,6 +3,25 @@
 
 import { describe, expect, it } from 'vitest';
 import { INBOX, LOCAL, PANEL2, REMOTE, SUB, fixture, folder, local, remote } from './appTransfers.testkit';
+import { isRestorableJournalEntry } from '../utils/transferQueueJournal';
+
+it('does not write a differently cased Windows destination when overwrite policy is skip', async () => {
+  const destination = 'C:/Downloads';
+  const f = fixture({ folders: { [REMOTE]: [remote('foo.txt')], [destination]: [local('Foo.txt', destination)] }, policy: 'skip' });
+  await f.drop([remote('foo.txt')], true, destination);
+  expect(f.checkOverwrite).toHaveBeenCalled();
+  expect(f.written()).toEqual([]);
+  expect(f.invoke.mock.calls.some(([command]) => command === 'provider_download_file')).toBe(false);
+});
+
+it('keeps a locally refused download out of startup Resume', async () => {
+  const f = fixture({ folders: { [REMOTE]: [remote('refused.')] }, fail: command => command === 'provider_download_file'
+    ? 'Windows cannot hold a name ending in a dot or a space: refused.' : undefined });
+  await f.drop([remote('refused.')], true, 'C:/Downloads');
+  const row = f.row('q0');
+  expect(row).toMatchObject({ status: 'error' });
+  expect(isRestorableJournalEntry({ status: 'failed', last_error: row!.error })).toBe(false);
+});
 
 /**
  * A drop on the other panel writes into the folder it was dropped on.
@@ -209,4 +228,34 @@ describe('a drop on the other panel writes into the folder it was dropped on', (
     const upload = f.invoke.mock.calls.find(([command]) => command === 'provider_upload_file')!;
     expect(upload[1]!.localPath).toBe(nested.path);
   });
+});
+
+
+it('downloads a non-colliding file into a nonempty Windows folder under skip', async () => {
+  const destination = 'C:/Downloads';
+  const f = fixture({ folders: { [REMOTE]: [remote('foo.txt')], [destination]: [local('other.txt', destination)] }, policy: 'skip' });
+  await f.drop([remote('foo.txt')], true, destination);
+  expect(f.written()).toEqual([`${destination}/foo.txt`]);
+});
+
+
+it.each(['ask', 'overwrite', 'resume'] as const)('settles a directory refusal and still downloads the later folder under %s', async policy => {
+  const first = remote('blocked.txt');
+  const second = folder(remote('later'));
+  const f = fixture({ policy, folders: { [REMOTE]: [first, second], [LOCAL]: [folder(local('blocked.txt'))] } });
+  await expect(f.drop([first, second], true, LOCAL, 'remote')).resolves.toBeUndefined();
+  expect(f.row('q0')).toMatchObject({ status: 'error', error: expect.stringContaining('directory') });
+  expect(f.row('q1')).toMatchObject({ status: 'completed' });
+  expect(f.written()).toEqual([`${LOCAL}/later`]);
+  expect(f.notify.error).toHaveBeenCalledOnce();
+});
+
+it('plans remaining batch files after a directory refusal without leaving pending rows', async () => {
+  const files = [remote('blocked.txt'), remote('good.txt')];
+  const f = fixture({ policy: 'ask', folders: { [REMOTE]: files, [LOCAL]: [folder(local('blocked.txt'))] } });
+  await expect(f.drop(files, true, LOCAL, 'remote')).resolves.toBeUndefined();
+  expect(f.written()).toEqual([`${LOCAL}/good.txt`]);
+  expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  expect(f.row('q1')).toBeUndefined();
+  expect(f.notify.error).toHaveBeenCalledOnce();
 });

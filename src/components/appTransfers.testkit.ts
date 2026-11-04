@@ -10,7 +10,7 @@ import { loadOverwriteDestination } from '../utils/overwriteDestination';
 import { FolderTransferFailedError, fileBatchCommand, folderTransferFailure, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from '../utils/fileBatchRouting';
 import type { FolderTransferOutcome } from '../utils/fileBatchRouting';
 import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from '../utils/localSelection';
-import { isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
+import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErrorClassifier';
 import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import { withTransferRun } from '../utils/transferRun';
@@ -47,7 +47,7 @@ const { code } = await transformWithOxc(
   + closure('downloadMultipleFiles', '\n  // Wire cross-panel drag & drop callback')
   + app.slice(dropStart, dropEnd)
   + closure('retryAllFailedItems', '\n  // ======== File Clipboard')
-  + '\nreturn { retryAllFailedItems };',
+  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile };',
   'drop-on-folder-row.ts',
 );
 const { code: overwriteCode } = await transformWithOxc(
@@ -86,11 +86,11 @@ export type Options = {
   unlistable?: string[];
   /** Folders whose listing fails from that call on (1 = the first). */
   listingFailsFrom?: Record<string, number>;
-  policy?: 'skip' | 'overwrite' | 'rename';
+  policy?: 'skip' | 'overwrite' | 'rename' | 'ask' | 'resume';
   /** What the folder question answers. */
   folderAction?: 'merge_overwrite' | 'skip';
   /** '' is a session without a protocol: the legacy folder commands. */
-  protocol?: 'webdav' | 'github' | '';
+  protocol?: 'webdav' | 'github' | 'opendrive' | 'fourshared' | '';
   /** The error a single-file or folder write answers with, by command and
    *  call number (1 for the first); none means it lands. */
   fail?: (command: string, call: number) => string | undefined;
@@ -136,6 +136,7 @@ export function fixture(options: Options = {}) {
     }
     if (command === 'github_check_local_sync') return { is_local_repo: false };
     if (command === 'github_batch_upload') return { commit_sha: 'abcdef1234', files_count: args!.files.length };
+    if (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy') return undefined;
     throw new Error(`Unexpected IPC: ${command}`);
   });
 
@@ -148,8 +149,8 @@ export function fixture(options: Options = {}) {
     local: { id: 'local', files: localFiles, sortedFiles: localFiles, currentPath: LOCAL, selection: new Set<string>(), setSelection: vi.fn() },
     local2: { id: 'local2', files: localFiles2, sortedFiles: localFiles2, currentPath: PANEL2, selection: new Set<string>(), setSelection: vi.fn() },
   };
-  const checkOverwrite = vi.fn(new Function('useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
-    `${overwriteCode}; return checkOverwrite;`)((fn: unknown) => fn, localFiles, remoteFiles, options.policy ?? 'skip',
+  const checkOverwrite = vi.fn(new Function('isWindowsLocalPath', 'useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
+    `${overwriteCode}; return checkOverwrite;`)(isWindowsLocalPath, (fn: unknown) => fn, localFiles, remoteFiles, options.policy ?? 'skip',
       { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
   // The queue keeps its rows as the app does: a settled row changes only
   // through retryItem (updateTransferStatus).
@@ -197,9 +198,10 @@ export function fixture(options: Options = {}) {
   const context = {
     // Outside a render a latest-value callback is the function itself.
     useLatestCallback: <T,>(fn: T) => fn,
+    isLiveOnProfile: () => true,
     invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
     resetOverwriteSettings: vi.fn(), checkFolderOverwrite,
-    isSafeRemoteDownloadName, remoteDownloadTarget, splitForFileBatch, selectedLocalTrees, asLocalFileEntry,
+    isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget, splitForFileBatch, selectedLocalTrees, asLocalFileEntry,
     refuseLocalNameClashes: (rows: Pick<LocalFile, 'name' | 'path'>[]) => localRowNameClashes(rows).length > 0,
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
@@ -227,7 +229,7 @@ export function fixture(options: Options = {}) {
     refreshLocalPanelForPath, loadRemoteFiles, loadLocalFiles, crossPanelDropRef, setScanningState: vi.fn(), INITIAL_SCANNING_STATE,
     requestGitHubBatchCommitMessage, setGitHubSyncWarning: vi.fn(),
   };
-  const { retryAllFailedItems } = new Function(...Object.keys(context), code)(...Object.values(context)) as { retryAllFailedItems: () => Promise<void> };
+  const { retryAllFailedItems, downloadFile, uploadFile } = new Function(...Object.keys(context), code)(...Object.values(context)) as { retryAllFailedItems: () => Promise<void>; downloadFile: (...args: any[]) => Promise<boolean>; uploadFile: (...args: any[]) => Promise<boolean> };
 
   /** Where each write lands: the backend path of every single and batch write. */
   const written = () => invoke.mock.calls.flatMap(([command, args]) => {
@@ -240,5 +242,5 @@ export function fixture(options: Options = {}) {
   });
   const drop = (...args: Parameters<NonNullable<typeof crossPanelDropRef.current>>) => crossPanelDropRef.current!(...args);
   const commits = () => invoke.mock.calls.filter(([command]) => command === 'github_batch_upload').map(([, args]) => args!.files.map((f: any) => f.remotePath));
-  return { drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

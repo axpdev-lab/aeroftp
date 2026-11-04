@@ -21,6 +21,7 @@ on:
       - 'src-tauri/build.rs'
       - 'docs/COMMAND-INVENTORY.json'
       - '.github/scripts/profile-auth-parity.py'
+      - '.github/scripts/cli-get-cwd.py'
       - 'src-tauri/Cargo.toml'
       - '.github/workflows/cli-smoke.yml'
   pull_request:
@@ -43,6 +44,7 @@ on:
       - 'src-tauri/build.rs'
       - 'docs/COMMAND-INVENTORY.json'
       - '.github/scripts/profile-auth-parity.py'
+      - '.github/scripts/cli-get-cwd.py'
       - 'src-tauri/Cargo.toml'
       - '.github/workflows/cli-smoke.yml'
   workflow_dispatch:
@@ -200,6 +202,13 @@ jobs:
         env:
           CLI_BIN: ${{ matrix.cli_bin }}
         run: python3 ../.github/scripts/profile-auth-parity.py "$CLI_BIN"
+
+      - name: Download into implicit current directory (native OS)
+        working-directory: src-tauri
+        env:
+          CLI_BIN: ${{ matrix.cli_bin }}
+        run: python3 ../.github/scripts/cli-get-cwd.py "$CLI_BIN"
+        shell: bash
 
       - name: Version and help smoke
         working-directory: src-tauri

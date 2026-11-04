@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it, vi } from 'vitest';
+import { parseSync } from 'rolldown/experimental';
 import app from '../App.tsx?raw';
 import { DEFAULT_CONFIG, useCircuitBreaker } from '../hooks/useCircuitBreaker';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, folder, local, remote, type Options } from './appTransfers.testkit';
@@ -318,28 +319,76 @@ describe('a folder whose files failed fails its queue row', () => {
 describe('every transfer that completes a queue row passes its error on', () => {
   /** The calls in App that complete a row after they return. */
   function rowCalls(source: string) {
+    type Node = { type: string; start: number; end: number; [key: string]: unknown };
+    const { program, errors } = parseSync('row-calls.tsx', source);
+    expect(errors).toEqual([]);
     const found: { call: string; throws: boolean }[] = [];
-    for (const match of source.matchAll(/await (?:fns\.)?(?:uploadFile|downloadFile)\(/g)) {
-      let depth = 0;
-      let end = match.index + match[0].length - 1;
-      for (; end < source.length; end++) {
-        if (source[end] === '(') depth++;
-        if (source[end] === ')' && --depth === 0) break;
+    const isNode = (value: unknown): value is Node => !!value && typeof value === 'object' && 'type' in value;
+    const isFunction = (node: Node) => /Function/.test(node.type) || node.type === 'ArrowFunctionExpression';
+    const children = (node: Node) => Object.values(node).flatMap(value =>
+      Array.isArray(value) ? value.filter(isNode) : isNode(value) ? [value] : []);
+    const hasCompletionAfter = (block: Node, end: number): boolean => {
+      const scan = (node: Node): boolean => {
+        if (node !== block && (node.type === 'TryStatement' || isFunction(node))) return false;
+        if (node.start >= end && node.type === 'CallExpression' && isNode(node.callee)) {
+          const c = node.callee;
+          if (c.type === 'MemberExpression' && isNode(c.object) && c.object.type === 'Identifier'
+            && c.object.name === 'transferQueue' && isNode(c.property) && c.property.name === 'completeTransfer') return true;
+        }
+        return children(node).some(scan);
+      };
+      return scan(block);
+    };
+    const visit = (node: Node, parents: Node[] = []) => {
+      if (node.type === 'AwaitExpression' && isNode(node.argument) && node.argument.type === 'CallExpression') {
+        const call = node.argument;
+        const callee = call.callee as Node;
+        const name = callee.type === 'Identifier' ? callee.name
+          : callee.type === 'MemberExpression' && isNode(callee.property) ? callee.property.name : null;
+        if (name === 'downloadFile' || name === 'uploadFile') {
+          let block: Node | undefined;
+          for (const parent of [...parents].reverse()) {
+            if (isFunction(parent)) break;
+            if (parent.type === 'TryStatement') {
+              if (isNode(parent.block) && parent.block.start <= node.start && node.end <= parent.block.end) block = parent.block;
+              break;
+            }
+          }
+          if (block && hasCompletionAfter(block, node.end)) {
+            const argument = (call.arguments as Node[])[name === 'downloadFile' ? 6 : 7];
+            found.push({ call: source.slice(node.start, node.end).replace(/\s+/g, ' '),
+              throws: !!argument && ['Literal', 'StringLiteral'].includes(argument.type) && argument.value === 'throw' });
+          }
+        }
       }
-      const after = source.slice(end, source.indexOf('catch (', end));
-      if (!/transferQueue\.completeTransfer\(/.test(after)) continue;
-      const args = source.slice(match.index + match[0].length, end).replace(/\s+/g, ' ').replace(/,\s*$/, '').trim();
-      found.push({ call: source.slice(match.index, end + 1).replace(/\s+/g, ' '), throws: args.endsWith("'throw'") });
-    }
+      children(node).forEach(child => visit(child, [...parents, node]));
+    };
+    visit(program as unknown as Node);
     return found;
   }
 
-  it('reads a call over several lines, and one that does not pass the error on', () => {
-    expect(rowCalls(`try { await fns.uploadFile(\n a,\n b,\n 'throw',\n ); transferQueue.completeTransfer(id); } catch (e) {}`))
-      .toEqual([{ call: "await fns.uploadFile( a, b, 'throw', )", throws: true }]);
-    expect(rowCalls('try { await downloadFile(a, b); transferQueue.completeTransfer(id); } catch (e) {}'))
-      .toEqual([{ call: 'await downloadFile(a, b)', throws: false }]);
+  it('reads the actual error slot with optional ownership, nested commas and trailing arguments', () => {
+    const source = `try { await fns.uploadFile(a, nested(b, c), false, 2, false, undefined, '/dir', 'throw', { profileId: 'A' }, ); transferQueue.completeTransfer(id); } catch (e) {}`;
+    expect(rowCalls(source)).toEqual([{ call: source.slice(6, source.indexOf(';')).replace(/\s+/g, ' '), throws: true }]);
+    expect(rowCalls(`try { await downloadFile(a, b, c, false, undefined, false, 'throw', owner); transferQueue.completeTransfer(id); } catch (e) {}`)[0].throws).toBe(true);
+    for (const call of ["downloadFile(a, b)", "downloadFile(a, b, c, false, 2, false, 'notify', 'throw')", "uploadFile(a, b, false, 2, false, undefined, 'throw', 'notify')"]) {
+      expect(rowCalls(`try { await ${call}; transferQueue.completeTransfer(id); } catch (e) {}`)[0].throws).toBe(false);
+    }
     expect(rowCalls('if (await uploadFile(a)) ok += 1; try { x(); } catch (e) {}')).toEqual([]);
+  });
+
+  it('bounds completion to its own try block across optional catches, finally and nested functions', () => {
+    const transfer = "await downloadFile(a,b,c,false,2,false,'throw')";
+    for (const tail of ['catch {}', 'finally {}', 'catch (e) {} finally {}']) {
+      expect(rowCalls(`try { ${transfer}; transferQueue.completeTransfer(id); } ${tail}`)).toHaveLength(1);
+      expect(rowCalls(`try { ${transfer}; } ${tail} try { transferQueue.completeTransfer(other); } catch {}`)).toEqual([]);
+    }
+    expect(rowCalls(`try { ${transfer}; try { other(); } catch {} transferQueue.completeTransfer(id); } catch {}`)).toHaveLength(1);
+    expect(rowCalls(`try { ${transfer}; try { transferQueue.completeTransfer(other); } catch {} } catch {}`)).toEqual([]);
+    expect(rowCalls(`try { ${transfer}; const later = () => transferQueue.completeTransfer(other); } catch {}`)).toEqual([]);
+    expect(rowCalls(`try { const later = async () => { ${transfer}; }; transferQueue.completeTransfer(other); } catch {}`)).toEqual([]);
+    expect(rowCalls(`${transfer}; transferQueue.completeTransfer(id);`)).toEqual([]);
+    expect(rowCalls(`try { x(); } catch { ${transfer}; } finally { transferQueue.completeTransfer(other); }`)).toEqual([]);
   });
 
   it('the three loops, the four Retry callbacks and the folders after a batch', () => {

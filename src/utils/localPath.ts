@@ -38,7 +38,7 @@ export function isSafeRemoteDownloadName(name: string, destinationDir: string): 
 
 export function remoteDownloadTarget(destinationDir: string, name: string): string {
     if (!isSafeRemoteDownloadName(name, destinationDir)) {
-        throw new Error('Unsafe remote download name');
+        throw new Error('Invalid path: Unsafe remote download name');
     }
     return `${destinationDir}/${name}`;
 }

@@ -237,6 +237,45 @@ impl Drop for Server {
     }
 }
 
+#[test]
+fn get_full_remote_path_without_local_destination_uses_current_directory() {
+    let server = Server::start(Proto::Ftp);
+    let destination = tempfile::tempdir().unwrap();
+    let output = isolated_cli::command(cli(), server.config.path())
+        .current_dir(destination.path())
+        .args(["get", &server.url("/"), "/c/d/f.txt", "--quiet"])
+        .env("AEROFTP_PASSWORD", &server.password)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    ok(&output, "get a full remote path into the implicit cwd");
+    assert_eq!(
+        std::fs::read(destination.path().join("f.txt")).unwrap(),
+        b"f"
+    );
+    assert_eq!(std::fs::read_dir(destination.path()).unwrap().count(), 1);
+}
+
+#[test]
+fn get_directory_without_destination_does_not_claim_the_cwd_is_an_existing_file() {
+    let server = Server::start(Proto::Ftp);
+    let destination = tempfile::tempdir().unwrap();
+    let output = isolated_cli::command(cli(), server.config.path())
+        .current_dir(destination.path())
+        .args(["--immutable", "get", &server.url("/"), "/c/d/", "--quiet"])
+        .env("AEROFTP_PASSWORD", &server.password)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(
+        output.status.code(),
+        Some(5),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(std::fs::read_dir(destination.path()).unwrap().count(), 0);
+}
+
 fn ok(output: &Output, what: &str) {
     assert!(
         output.status.success(),

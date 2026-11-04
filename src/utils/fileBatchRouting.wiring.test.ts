@@ -206,7 +206,8 @@ describe('runFileBatch keeps one writer per destination', () => {
     expect(end).toBeGreaterThan(start);
     const body = APP.slice(start, end);
     expect(body).toContain('const destination = isDownload ? entry.local_path : entry.remote_path;');
-    expect(body).toMatch(/keepsSingleFilePath\(\{[^}]*destinationClaimed: claimedDestinations\.has\(destination\),[^}]*\}\);\s*claimedDestinations\.add\(destination\);/);
+    expect(body).toContain('const claimKey = isDownload && isWindowsLocalPath(destination) ? destination.toLowerCase() : destination;');
+    expect(body).toMatch(/keepsSingleFilePath\(\{[^}]*destinationClaimed: claimedDestinations\.has\(claimKey\),[^}]*\}\);\s*claimedDestinations\.add\(claimKey\);/);
   });
 });
 
