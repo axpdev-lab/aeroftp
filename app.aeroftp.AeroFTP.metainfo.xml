@@ -13,10 +13,10 @@
 
   <description>
     <p>
-      AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, WebDAV,
+      AeroFTP is a cross-platform desktop client for FTP, FTPS, SFTP, SCP, WebDAV,
       S3-compatible storage, and cloud providers including Google Drive, Dropbox,
       OneDrive, MEGA, Box, pCloud, Azure Blob Storage, 4shared, Filen, Zoho WorkDrive,
-      Internxt Drive, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive. 7 transport protocols, 26 native providers, 47 presets, one app.
+      Internxt Drive, kDrive, Koofr, FileLu, Yandex Disk, and OpenDrive. 8 transport protocols, 26 native providers, 47 presets, one app.
     </p>
     <p>Security and Encryption:</p>
     <ul>
@@ -146,6 +146,19 @@
   </languages>
 
   <releases>
+    <release version="4.2.6" date="2026-11-04">
+      <description>
+        <p>SCP support and reliability consolidation across transfers, synchronization, credentials and desktop behavior.</p>
+        <ul>
+          <li>Connect over SCP or continue from SFTP when an SSH server has no SFTP subsystem, including stock OpenWrt devices.</li>
+          <li>One-way Update can propagate deletions while retaining newer destinations; AeroSync tools have named tabs and profile imports can skip, overwrite or duplicate.</li>
+          <li>Cloud writes avoid replaying uncertain outcomes, changing upload sources are refused, and downloads verify usable published content hashes.</li>
+          <li>Literal names, remote roots, local panel actions, folder sizes, FileLu versions and Zoho WorkDrive pagination are repaired.</li>
+          <li>Recursive sensitive-path policies, credential transactions, restored transfer scope and Windows destinations receive additional protection.</li>
+          <li>Snap partition access and second-launch behavior improve; all 47 languages include SCP and consistent forms of address.</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.2.5" date="2026-10-28">
       <description>
         <p>Safer synchronization, faster Proton Drive transfers, and desktop reliability improvements.</p>

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "generated_by": "scripts/gen-provider-inventory.ts",
   "counts": {
-    "transport_protocols": 7,
+    "transport_protocols": 8,
     "native_integrations": 26,
     "presets": 47,
     "presets_over_transport": 43,
@@ -17,6 +17,7 @@
     "ftp",
     "ftps",
     "sftp",
+    "scp",
     "webdav",
     "s3",
     "azure",

@@ -5,13 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.2.6] - Unreleased
+## [4.2.6] - 2026-11-04
 
-### Fixed
+### SCP Support and Reliability Consolidation
 
-- **Windows-only Rust code is linted in CI.** Native MSVC Clippy now denies warnings across all targets in both the shipping and classic-only configurations, closing a gap left by Linux-only linting.
-- **AeroAgent archive creation enforces sensitive-path rules recursively.** ZIP, 7z and TAR inputs are checked before directory listing and file reads. A refused or unreadable source aborts the operation and preserves an existing destination instead of publishing a partial archive.
-- **MCP recursive sync preserves protected paths.** Local and projected remote descendants inherit the MCP path policy before scans, checksums, transfers and orphan deletes. Refused prefixes protect both counterparts and appear in scan reports, while allowed siblings continue to sync.
+AeroFTP now connects to SSH servers without an SFTP subsystem through SCP, including stock OpenWrt devices. This release consolidates transfers, synchronization, credentials and desktop behavior, with stricter handling of uncertain upload outcomes, exact filenames and incomplete comparisons.
+
+The complete change record and remaining follow-ups are in the [4.2.6 release tracker](https://github.com/axpdev-lab/aeroftp/discussions/1424).
+
+#### Added
+
+- **SCP connections and automatic SFTP fallback.** Select SCP in Add Services or Quick Connect, or let an SFTP connection continue over SCP when the server has no SFTP subsystem. Both share SSH authentication and host-key verification; SFTP-only profiles can disable fallback. Interrupted SCP uploads restart rather than append, and SCP remains visibly identified in saved profiles (@GWan1234, #1452, #1454, #1456, #1483).
+- **One-way Update with destination deletes.** AeroSync, the CLI and AeroCloud retain newer destination files while propagating deletions; transfer receipts protect untracked or changed AeroCloud files (@EhudKirsh, #347, #1442).
+- **Profile import choices.** Skip, overwrite or duplicate existing profiles in the GUI and with CLI `--on-existing`. Profile lists and secrets commit together under a lock and revision, and failed imports roll back (@EhudKirsh, #347, #1440).
+- **AeroSync tools in named tabs.** Templates, Multi-Path, Rollback snapshots, Sync journals and Scheduler stay in the AeroSync window beside Compare and Plan (@EhudKirsh, #347, #1437).
+- **FileLu version operations.** List, download, restore and permanently delete earlier versions with identifiers bound to the selected file (#1488).
+- **Global CLI HTTP timeout.** `--timeout SECS` shortens HTTP waits, including `site` and `audit`; silent WebDAV listings and metadata requests end after two minutes, and OAuth sign-in requests after 30 seconds (#1439).
+- **AeroSync GUI intents.** Sync actions can be requested through the supported GUI controller, with field-specific refusals for invalid input (#1464).
+
+#### Fixed
+
+- **Uncertain cloud writes are not automatically replayed.** A timeout or server error after a create or upload no longer blindly repeats a potentially committed operation. Safe bounded retries retain the opened source file, FileLu acknowledgements are validated, and Internxt replacements preserve the existing file. GUI upload loops leave another whole-file attempt to explicit Retry (#1486).
+- **Changed upload sources are refused before publication.** Azure, Box, Dropbox, Drime, Google Drive, OneDrive, B2 and shared multipart paths abort an upload whose local source changed while being read (#1438, #1463).
+- **Downloads verify published content hashes.** GUI, CLI and sync downloads check usable plaintext SHA-256, SHA-1 or MD5 hashes before reporting success. Segmented mismatches fall back to one stream; settings and CLI flags control the bounded verification (#1467).
+- **HTTP download failures retain their meaning.** An HTTP 412 distinguishes a gateway rejecting `If-Match` from an object that changed. pCloud downloads, version downloads and thumbnails reject HTTP error pages instead of saving them as files (#1445, #1489).
+- **Failed transfers fail their queue rows.** Retry, pause, reconnect and cancellation observe actual failures, including folders containing failed files. The Progress window keeps its top bar and graph stable throughout a sync (#1446, #1473).
+- **Upload timestamps converge with Compare.** pCloud, Google Drive, OneDrive and Dropbox preserve the source timestamp; other paths remember the destination stamp produced by their own upload, using metadata from the file that supplied the bytes (#1460, #1466).
+- **Proton Drive preserves literal names.** Leading and trailing spaces remain part of filenames, and one rejected upload does not discard valid siblings (#1428, #1429).
+- **FileLu uploads preserve folder and version identity.** Files upload straight into the intended folder, names the service would change are refused, nested folder rename works, trash purge uses file codes, and MD5 checksums require no download (#1481).
+- **Zoho WorkDrive completes large listings.** Pagination observes rate limits, upload names such as `a+b.txt` remain exact, and imported workspace or My Folders root IDs open correctly (#1484, #1487).
+- **Remote roots and exact names remain reachable.** Yandex Disk, WebDAV, S3 and Swift resolve root navigation correctly. Provider paths retain leading and trailing spaces; S3 version pages must advance and bucket names containing XML entities stay whole (@EhudKirsh, #1457, #1449, #1475, #1434, #1469).
+- **Searches and syncs preserve destination boundaries.** Remote searches stay under their requested folder. Sync and CLI downloads refuse names the local disk cannot represent distinctly, including case, Unicode and Windows aliases, before writing (#1458, #1462, #1490).
+- **AeroSync retains usable comparisons.** Applying templates that only narrow exclusions reuses the comparison; settings requiring another scan say why. A comparison built from flat panel listings always requires a full scan before execution, including when backup validation is pending or fails. OneDrive Personal Vault no longer makes Compare appear empty, refused scans retain their reasons, and recursive download and size walks skip linked directories (@EhudKirsh, #347, #1450, #1448).
+- **Calculate Size is available through Properties.** Local folders show progressive parallel size totals from every local menu, with partial-count reasons and a shared engine for the GUI, CLI, TUI and AeroAgent (@EhudKirsh, #1441, #1444).
+- **Local panels act on the selected paths.** Flattened search actions retain each nested file's identity, ambiguous selections are refused, extraction asks before replacing existing files, and both local panels watch their visible folders. Dropping on a folder writes into that folder and retains the target for overwrite decisions and Retry (@EhudKirsh, #347, #1447, #1470, #1471).
+- **File-panel columns remain manageable.** The last resize grip and Manage columns control stay reachable when the panel scrolls sideways (@EhudKirsh, #347, #1435).
+- **UI callbacks observe current state.** Ref updates occur after rendering, stale callbacks and effects read the current state, notifications retain their identity, and DevTools opens on the first try (#1472, #1474).
+- **Snap partitions and second launch work through their services.** UDisks2 lists, mounts and ejects partitions, missing plugs show the required connection command, and another launch hands off to the running window (#1451, #1482).
+- **CLI paths match the requested target.** URL paths are decoded and used as the operation target; destructive commands reject arguments a profile would otherwise discard. Vault extraction requires explicit overwrite permission, and benchmark prefixes retain their literal spaces (#1480, #1458, #1476).
+- **Release mirrors can resume safely.** SourceForge publication skips complete existing assets and supports retention independently through `--prune-only` (#1433).
+
+#### Security
+
+- **SSH authentication starts with `none`.** Passwordless accounts permitted by the SSH server, including OpenWrt, can connect; a refusal continues with the configured password or key on the same connection (@GWan1234, #1452, #1454, #1453).
+- **Recursive operations enforce sensitive-path policy.** MCP sync protects refused descendants and their counterparts from orphan deletion; AeroAgent archive creation checks every source before reading and preserves an existing destination when any source is refused (#1430, #1431).
+- **Saved credentials and restored queues retain their scope.** Secrets reach their active account readers or the save fails. Account moves preserve secrets whose copy failed; restored transfers remain bound to their profile and crypt scope, vault anchors preserve literal spaces, and Windows download destinations retain safe conflict handling (#1459, #1503).
+- **Security dependencies are refreshed.** Updated russh 0.65.1, pageant and libz-sys address SSH and build-script advisories; async-executor moves off its yanked release (#1436, #1479, #1502).
+
+#### Changed
+
+- **Translations use one form of address per language.** Portuguese is consistently Brazilian, the Khmer review is complete, and SCP strings are translated throughout all 47 languages (#1427, #1465, #1485).
+- **Windows-only Rust paths receive native Clippy coverage.** CI denies warnings in both shipping and classic-only configurations; command inventory checks include Compare and run when command definitions change (#1432, #1468).
+- **Compatible dependency updates are consolidated.** Rust globset, similar, notify and libunftp, plus npm autoprefixer, postcss, react-virtuoso and react-window, use the reviewed versions (#1496, #1501).
+
+#### Contributors
+
+Thanks to the people who shaped this release:
+
+[<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh)
+[<img src="https://github.com/GWan1234.png?size=48" width="48" height="48" alt="@GWan1234" />](https://github.com/GWan1234)
 
 ## [4.2.5] - 2026-10-28
 
@@ -1691,7 +1743,7 @@ This patch release pairs a new S3 connection mode with a round of security harde
 
 v4.0.0 lands two architectural shifts in the same release.
 
-The first is the promotion of the ready-frontier **DAG transfer engine** introduced in v3.8.4 into selected production paths. The three early rollout flags are gone and the hand-rolled `JoinSet` batch orchestrator has been deleted. The shaped single-file runner is the most complete path; batch and non-dry-run sync use DAG wrappers with conservative adapters, the default range scheduler remains `JoinSet`, normal copy commands use the shared native-copy/fallback helper, and cross-profile transfer remains a temp-file bridge. The release also adds the provider capability and multipart trait surface, while the current call path—not a builder or capability declaration alone—determines which shape and wire behavior are active. The CLI exposes 25+ transfer-related knobs, whose effect remains command- and provider-specific.
+The first is the promotion of the ready-frontier **DAG transfer engine** introduced in v3.8.4 into selected production paths. The three early rollout flags are gone and the hand-rolled `JoinSet` batch orchestrator has been deleted. The shaped single-file runner is the most complete path; batch and non-dry-run sync use DAG wrappers with conservative adapters, the default range scheduler remains `JoinSet`, normal copy commands use the shared native-copy/fallback helper, and cross-profile transfer remains a temp-file bridge. The release also adds the provider capability and multipart trait surface, while the current call path, rather than a builder or capability declaration alone, determines which shape and wire behavior are active. The CLI exposes 25+ transfer-related knobs, whose effect remains command- and provider-specific.
 
 The second is the **Multi-User Account Partition**: the vault splits into per-user partitions while remaining fully backward-compatible with single-user installs. A boot-time Account Lock Screen presents the configured users, the vault is partition-aware end-to-end (server profiles, AeroSync settings, CLI `--user` flag), and an admin role with a self-or-admin gate plus an admin reset-passphrase backend rounds out the surface. Migration from a v3.8.x single-user keystore is automatic and idempotent, the admin role is opt-in with a last-admin guard, and the unlock prompts use honest crypto-stack labels (Argon2id key derivation, AES partition encryption). Sixteen commits cover the partition foundation, the boot picker, the CLI `--user` flag across profile and transfer commands, the cross-user dedup probe with HMAC keying, the migration of every existing keystore consumer (ConnectionScreen, SettingsPanel, IntroHub, ExportImport, KeystoreWizard, Cloud, SavedServers, App.tsx), the admin role, and the UX polish (logout, perceptible unlock spinner, refined L2 picker).
 
