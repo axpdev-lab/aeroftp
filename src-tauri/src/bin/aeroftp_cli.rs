@@ -36059,6 +36059,15 @@ async fn cmd_get(
 
     let remote = &resolve_cli_remote_path(&initial_path, remote);
     let filename = remote.rsplit('/').next().unwrap_or("download");
+    if filename.is_empty() || matches!(filename, "." | "..") {
+        let _ = provider.disconnect().await;
+        print_error(
+            format,
+            "Non-recursive get requires a remote file name; use --recursive for a directory",
+            5,
+        );
+        return 5;
+    }
     let local_path_owned: String;
     let local_path = if let Some(dest) = local {
         if dest.ends_with('/') || std::path::Path::new(dest).is_dir() {

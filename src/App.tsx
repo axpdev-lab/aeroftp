@@ -402,7 +402,7 @@ const Github = ({ size = 24, className = '' }: { size?: number; className?: stri
   </svg>
 );
 import PanelSwitcher from './components/PanelSwitcher';
-import { normalizeLocalPath, localPathBasename, localDropTarget, isSafeRemoteDownloadName, remoteDownloadTarget } from './utils/localPath';
+import { normalizeLocalPath, localPathBasename, localDropTarget, isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from './utils/localPath';
 import { BreadcrumbBar } from './components/BreadcrumbBar';
 import { LargeIconsGrid } from './components/LargeIconsGrid';
 import { LocalFilePanel } from './components/LocalFilePanel';
@@ -10423,7 +10423,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify'): Promise<boolean> => {
+  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; requireOverlay?: boolean }): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -10436,7 +10436,14 @@ const App: React.FC = () => {
     // the source on this answer, so a skip, a cancel or an error must say no.
     let completed = false;
 
+    const assertOwnership = () => {
+      if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
+        throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
+      }
+    };
     try {
+      assertOwnership();
+      if (ownership && (!isProvider || isAeroVaultOverlay)) throw new Error('Operation not supported: restored profile transport');
       if (isDir) {
         if (isAeroVaultOverlay) {
           throw new Error('AeroVault overlay: folder download not yet supported in main browser');
@@ -10446,9 +10453,11 @@ const App: React.FC = () => {
           const folderPath = remoteDownloadTarget(downloadPath, fileName);
           // For folders, 'ask' defaults to 'overwrite' (FolderOverwriteDialog handles the ask mode at batch level)
           const folderAction = fileExistsAction === 'ask' ? '' : fileExistsAction;
+          assertOwnership();
           let folderResult: FolderTransferOutcome;
           if (isProvider) {
             folderResult = await invoke<FolderTransferOutcome>('provider_download_folder', {
+              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               remotePath: remoteFilePath,
               localPath: folderPath,
               fileExistsAction: folderAction || undefined,
@@ -10517,6 +10526,7 @@ const App: React.FC = () => {
             }
           }
 
+          assertOwnership();
           const localFilePath = remoteDownloadTarget(downloadPath, targetName);
           const remoteModified = remoteFileInfo?.modified || undefined;
           if (isAeroVaultOverlay) {
@@ -10528,6 +10538,7 @@ const App: React.FC = () => {
           } else if (isProvider) {
             // Use provider command for file download
             await invoke('provider_download_file', {
+              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               remotePath: remoteFilePath,
               localPath: localFilePath,
               modified: remoteModified,
@@ -10589,15 +10600,23 @@ const App: React.FC = () => {
     commitMessage?: string,
     explicitRemoteDir?: string,
     onError: TransferErrorMode = 'notify',
+    ownership?: { profileId: string; generation: number; requireOverlay?: boolean },
   ): Promise<boolean> => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
     let completed = false;
+    const assertOwnership = () => {
+      if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
+        throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
+      }
+    };
     try {
+      assertOwnership();
       // Check if we're using a Provider (protocol of the live connection)
       const protocol = liveConnectionParams.protocol;
       const isProvider = usesProviderApi(protocol);
       const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+      if (ownership && (!isProvider || isAeroVaultOverlay)) throw new Error('Operation not supported: restored profile transport');
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
       // Path construction base: restore path overrides the live panel cwd.
       const remoteBase = explicitRemoteDir ?? currentRemotePath;
@@ -10615,6 +10634,7 @@ const App: React.FC = () => {
           try {
             const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
             providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
+              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               localPath: localFilePath,
               remotePath: remoteRootForFolder,
               fileExistsAction: folderAction2 || null,
@@ -10625,14 +10645,18 @@ const App: React.FC = () => {
             });
             completed = folderTransferIsComplete(providerFolderResult);
             if (protocol === 'opendrive') {
-              await invoke('opendrive_set_path_privacy', {
+              assertOwnership();
+            await invoke('opendrive_set_path_privacy', {
+              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
                 path: remoteRootForFolder,
                 isPublic: false,
                 isDir: true,
               });
             }
             if (protocol === 'fourshared') {
-              await invoke('fourshared_set_path_privacy', {
+              assertOwnership();
+            await invoke('fourshared_set_path_privacy', {
+              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
                 path: remoteRootForFolder,
                 isPublic: false,
                 isDir: true,
@@ -10713,6 +10737,7 @@ const App: React.FC = () => {
           }
         }
 
+        assertOwnership();
         const remotePath = joinRemotePath(remoteBase, targetName);
 
         if (isGitHubRepoMode && !commitMessage && gitHubRepoInfo && gitHubRepoInfo.writeModeKind !== 'unknown') {
@@ -10724,7 +10749,7 @@ const App: React.FC = () => {
             workingBranch: gitHubRepoInfo.workingBranch || undefined,
             onCommit: (message: string) => {
               setGitHubCommitDialog(null);
-              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir);
+              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership);
             },
           });
           // Deferred to the commit dialog: not uploaded yet.
@@ -10741,17 +10766,21 @@ const App: React.FC = () => {
             remotePlainName: targetName,
           });
         } else if (isProvider) {
-          const uploadOutcome = await invoke<string>('provider_upload_file', { localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
+          const uploadOutcome = await invoke<string>('provider_upload_file', { ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}), localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
           if (uploadOutcome?.startsWith('Skipped:')) return false;
           if (protocol === 'opendrive') {
+            assertOwnership();
             await invoke('opendrive_set_path_privacy', {
+              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               path: remotePath,
               isPublic: false,
               isDir: false,
             });
           }
           if (protocol === 'fourshared') {
+            assertOwnership();
             await invoke('fourshared_set_path_privacy', {
+              ...(ownership ? { expectedGeneration: ownership.generation, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               path: remotePath,
               isPublic: false,
               isDir: false,
@@ -10794,6 +10823,20 @@ const App: React.FC = () => {
     const direction = entry.direction === 'upload' ? 'upload' : 'download';
     transferQueue.startTransfer(id);
     try {
+      let ownership: { profileId: string; generation: number; requireOverlay: boolean } | undefined;
+      if (entry.profile_id) {
+        const profiles = await loadSavedServerProfiles();
+        const profile = profiles.find(p => p.id === entry.profile_id);
+        const requireOverlay = !!profile?.aeroCryptOverlay?.enabled;
+        if (!profile || !isLiveOnProfile(entry.profile_id, requireOverlay)) {
+          throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
+        }
+        const generation = await invoke<number>('provider_connection_generation');
+        if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
+          throw new Error('CONNECTION_CHANGED: the restored transfer profile changed');
+        }
+        ownership = { profileId: entry.profile_id, generation, requireOverlay };
+      }
       if (direction === 'download') {
         await downloadFile(
           entry.remote_path,
@@ -10803,6 +10846,7 @@ const App: React.FC = () => {
           Number(entry.size) || undefined,
           false,
           'throw',
+          ownership,
         );
       } else {
         // Option (a): explicit remote dir from the journal.
@@ -10815,6 +10859,7 @@ const App: React.FC = () => {
           undefined,
           parentDir(entry.remote_path, 'remote') || undefined,
           'throw',
+          ownership,
         );
       }
       transferQueue.completeTransfer(id);
@@ -10891,7 +10936,7 @@ const App: React.FC = () => {
   // TQ-7c smart resume: ensure the journal profile is live (auto-connect with
   // confirm when needed), then fire the stored retry callbacks. Never starts a
   // transfer while disconnected — that was the silent fail on Retry.
-  const fireRetryCallbacks = (ids: string[], profileId?: string) => {
+  const fireRetryCallbacks = (ids: string[], profileId?: string, requireOverlay = false) => {
     for (const id of ids) {
       const cb = retryCallbacksRef.current.get(id);
       if (!cb) continue;
@@ -10900,7 +10945,7 @@ const App: React.FC = () => {
       void Promise.resolve()
         .then(() => {
           // A queued microtask must not outlive ownership of this profile.
-          if (profileId && !isLiveOnProfile(profileId)) return;
+          if (profileId && !isLiveOnProfile(profileId, requireOverlay)) return;
           return cb();
         })
         .catch((e) => {
@@ -10924,7 +10969,7 @@ const App: React.FC = () => {
       setShowLocalPreview(false);
       setIsConnected(true);
       await switchSession(existing.id);
-      return waitForLiveProfile(profile.id);
+      return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
     }
 
     notify.info(
@@ -11012,7 +11057,7 @@ const App: React.FC = () => {
           providerId: profile.providerId,
           savedServerId: profile.id,
         });
-        return waitForLiveProfile(profile.id);
+        return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
       }
 
       if (isFourSharedProvider(protocol)) {
@@ -11055,7 +11100,7 @@ const App: React.FC = () => {
           providerId: profile.providerId,
           savedServerId: profile.id,
         });
-        return waitForLiveProfile(profile.id);
+        return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
       }
 
       // Credential-based providers (FTP/SFTP/S3/WebDAV/API keys…).
@@ -11102,7 +11147,7 @@ const App: React.FC = () => {
         providerId: profile.providerId,
         savedServerId: profile.id,
       });
-      return waitForLiveProfile(profile.id);
+      return waitForLiveProfile(profile.id, !!profile.aeroCryptOverlay?.enabled);
     } catch (e) {
       if (isConnectCancelledError(e)) return false;
       logger.error('[TQ-7c] connect for resume failed', e);
@@ -11146,14 +11191,6 @@ const App: React.FC = () => {
         continue;
       }
 
-      if (isLiveOnProfile(profileId)) {
-        transferQueue.clearRestoredFlags(groupIds);
-        const live = sessions.find((s) => s.id === activeSessionId);
-        logResume(groupIds.length, live?.serverName);
-        fireRetryCallbacks(groupIds, profileId ?? undefined);
-        continue;
-      }
-
       let profiles: ServerProfile[] = [];
       try {
         profiles = (await loadSavedServerProfiles()) || [];
@@ -11166,6 +11203,15 @@ const App: React.FC = () => {
           t('transfer.restoredQueueTitle'),
           t('transfer.resumeProfileMissing'),
         );
+        continue;
+      }
+
+      if (isLiveOnProfile(profileId)) {
+        if (!await waitForLiveProfile(profileId, !!profile.aeroCryptOverlay?.enabled)) continue;
+        transferQueue.clearRestoredFlags(groupIds);
+        const live = sessions.find((s) => s.id === activeSessionId);
+        logResume(groupIds.length, live?.serverName);
+        fireRetryCallbacks(groupIds, profileId, !!profile.aeroCryptOverlay?.enabled);
         continue;
       }
 
@@ -11195,7 +11241,7 @@ const App: React.FC = () => {
 
       // The connect already logged "Connecting to X to resume transfers".
       transferQueue.clearRestoredFlags(groupIds);
-      fireRetryCallbacks(groupIds, profileId ?? undefined);
+      fireRetryCallbacks(groupIds, profileId, !!profile.aeroCryptOverlay?.enabled);
     }
   };
 
@@ -12970,6 +13016,7 @@ const App: React.FC = () => {
         modified: isDownload ? item.modified : null,
       };
       const destination = isDownload ? entry.local_path : entry.remote_path;
+      const claimKey = isDownload && isWindowsLocalPath(destination) ? destination.toLowerCase() : destination;
       const single = keepsSingleFilePath({
         direction,
         isProviderSession: isProvider,
@@ -12977,9 +13024,9 @@ const App: React.FC = () => {
         action: overwriteResult.action,
         destinationExists: overwriteResult.destinationExists,
         renamed: !!overwriteResult.newName,
-        destinationClaimed: claimedDestinations.has(destination),
+        destinationClaimed: claimedDestinations.has(claimKey),
       });
-      claimedDestinations.add(destination);
+      claimedDestinations.add(claimKey);
       // Rename must preserve every source, including a name that was free
       // before this batch. Let the next check see the targets already chosen.
       if (fileExistsAction === 'rename' || overwriteResult.action === 'rename') {

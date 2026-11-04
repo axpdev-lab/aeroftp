@@ -40,13 +40,14 @@ const { code: overwriteCode } = await transformWithOxc(
 type Direction = 'upload' | 'download';
 type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
+function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
   const panel = options.panel ?? [];
   const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
     if (['get_local_files', 'provider_list_files'].includes(command)) {
+      await options.beforeListing?.();
       if (options.failListing) throw new Error('Destination listing refused');
       return command === 'get_local_files' ? destination : { files: destination, current_path: '/panel' };
     }
@@ -77,7 +78,8 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
   const resetOverwriteSettings = vi.fn();
   const context = {
     invoke, checkOverwrite, loadOverwriteDestination: resolveDestination, resetOverwriteSettings,
-    isSafeRemoteDownloadName, remoteDownloadTarget,
+    isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget,
+    isLiveOnProfile: options.ownsProfile ?? (() => true),
     sessions: [{ id: 'A', connectionParams: { protocol } }], activeSessionId: 'A', connectionParams: { protocol },
     liveConnectionParams: { protocol },
     usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
@@ -281,4 +283,49 @@ describe('App remote download leaf safety', () => {
     expect(result).toMatchObject({ failed: 1, aborted: true, sent: 0 });
     expect(batchFixture.writers()).toHaveLength(0);
   });
+});
+
+
+it('serializes differently cased Windows download claims in selection order', async () => {
+  const f = fixture({ direction: 'download', destination: [], policy: 'overwrite' });
+  await f.runtime.runFileBatch('download', [
+    { ...items[0], name: 'foo.txt', sourcePath: '/one/foo.txt' },
+    { ...items[0], name: 'FOO.txt', sourcePath: '/two/FOO.txt' },
+  ], 'C:/Downloads');
+  expect(f.writers().map(([name]) => name)).toEqual(['provider_download_files_batch', 'provider_download_file']);
+  expect(f.writers()[0][1]!.params.entries).toHaveLength(1);
+  expect(f.writers()[1][1]!.remotePath).toBe('/two/FOO.txt');
+});
+
+it.each(['download', 'upload'] as const)('refuses a restored %s when the profile changes during destination listing', async direction => {
+  let release!: () => void;
+  let entered!: () => void;
+  let owns = true;
+  const listing = new Promise<void>(resolve => { release = resolve; });
+  const reached = new Promise<void>(resolve => { entered = resolve; });
+  const f = fixture({ direction, destination: [], policy: 'overwrite', ownsProfile: () => owns,
+    beforeListing: async () => { entered(); await listing; } });
+  const owner = { profileId: 'profile-A', generation: 7 };
+  const pending = direction === 'download'
+    ? f.runtime.downloadFile('/remote/a.bin', 'a.bin', '/actual', false, 100, false, 'throw', owner)
+    : f.runtime.uploadFile('/local/a.bin', 'a.bin', false, 100, false, undefined, '/actual', 'throw', owner);
+  const refused = expect(pending).rejects.toThrow('CONNECTION_CHANGED');
+  await reached;
+  owns = false;
+  release();
+  await refused;
+  expect(f.writers()).toHaveLength(0);
+});
+
+it('passes the captured generation to the backend after preflight', async () => {
+  const f = fixture({ direction: 'download', destination: [], ownsProfile: () => true });
+  await f.runtime.downloadFile('/remote/a.bin', 'a.bin', '/actual', false, 100, false, 'throw', { profileId: 'profile-A', generation: 7 });
+  expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7 });
+});
+
+
+it('requires the backend overlay as well as the frontend profile before an encrypted retry', async () => {
+  const f = fixture({ direction: 'download', destination: [], ownsProfile: () => true });
+  await f.runtime.downloadFile('/remote/a.bin', 'a.bin', '/actual', false, 100, false, 'throw', { profileId: 'profile-A', generation: 7, requireOverlay: true });
+  expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7, requireCryptOverlay: true });
 });

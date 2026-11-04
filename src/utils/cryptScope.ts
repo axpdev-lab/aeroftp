@@ -26,10 +26,7 @@ export const normCryptScope = (s?: string | null): string => normalizeRemotePath
  * anchor's trim would land on another folder. Empty or `/` is the on-wire
  * root ('').
  */
-export const normLandingPath = (s?: string | null): string => {
-  const t = (s || '').replace(/^\/+|\/+$/g, '');
-  return t ? '/' + t : '';
-};
+export const normLandingPath = (s?: string | null): string => normCryptScope(s);
 
 export const resolveUsernameTemplate = (
   path: string | null | undefined,
@@ -74,7 +71,7 @@ export const isWithinCryptScope = (
   const s = normCryptScope(scope);
   if (s === '') return true; // whole-remote scope (== legacy anchored session)
   if (displayPath == null) return true; // unknown path => fail closed
-  const p = '/' + String(displayPath).replace(/^\/+|\/+$/g, '');
+  const p = normLandingPath(displayPath);
   return p === s || p.startsWith(s + '/');
 };
 

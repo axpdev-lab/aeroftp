@@ -67,10 +67,30 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
     // Uploads still use the remote provider's exact names.
     const foldCase = sourceIsRemote && destination.some(f => isWindowsLocalPath(f.path));
     const nameKey = (name: string) => foldCase ? name.toLowerCase() : name;
-    const destFile = destination.find(f => nameKey(f.name) === nameKey(sourceName) && !f.is_dir);
+    const destFile = destination.find(f => nameKey(f.name) === nameKey(sourceName) && (sourceIsRemote || !f.is_dir));
     // #591: callers that batch files keep an existing SFTP destination on the
     // single-file path, which is the one that can send an rsync delta.
     const destinationExists = !!destFile;
+    const renameDestination = (): { action: 'rename'; newName: string; destinationExists: boolean } => {
+      const ext = sourceName.includes('.') ? '.' + sourceName.split('.').pop() : '';
+      const baseName = ext ? sourceName.slice(0, -ext.length) : sourceName;
+      let counter = 1;
+      let newName = `${baseName} (${counter})${ext}`;
+      const existingNames = new Set(destination.map(f => nameKey(f.name)));
+      while (existingNames.has(nameKey(newName))) {
+        counter++;
+        newName = `${baseName} (${counter})${ext}`;
+      }
+      return { action: 'rename', newName, destinationExists };
+    };
+    // A file cannot replace a directory. Skip and rename resolve the conflict;
+    // otherwise report it before any file prompt or transfer invocation.
+    if (sourceIsRemote && destFile?.is_dir) {
+      const action = overwriteApplyToAllRef.current.enabled ? overwriteApplyToAllRef.current.action : fileExistsAction;
+      if (action === 'skip') return { action: 'skip', destinationExists };
+      if (action === 'rename') return renameDestination();
+      throw new Error(`Invalid path: Download target is a directory: ${sourceName}`);
+    }
 
     // Read from ref to get the latest value within async loops (state is stale in closures)
     if (overwriteApplyToAllRef.current.enabled) {
@@ -95,16 +115,7 @@ export const useOverwriteCheck = ({ localFiles, remoteFiles, fileExistsAction = 
         return { action: 'skip', destinationExists };
       }
       if (fileExistsAction === 'rename') {
-        const ext = sourceName.includes('.') ? '.' + sourceName.split('.').pop() : '';
-        const baseName = ext ? sourceName.slice(0, -ext.length) : sourceName;
-        let counter = 1;
-        let newName = `${baseName} (${counter})${ext}`;
-        const existingNames = new Set(destination.map(f => nameKey(f.name)));
-        while (existingNames.has(nameKey(newName))) {
-          counter++;
-          newName = `${baseName} (${counter})${ext}`;
-        }
-        return { action: 'rename', newName, destinationExists };
+        return renameDestination();
       }
 
       // === SMART SYNC OPTIONS ===

@@ -140,3 +140,14 @@ it.each(['/reports ', '/ reports', '/   ', '/reports /inner '])('preserves liter
   expect(isWithinCryptScope(scope, scope + '/a.txt')).toBe(true);
   expect(connectLandsOutsideOverlay(scope, scope)).toBe(false);
 });
+
+
+it('keeps the plaintext sibling of a literal anchor outside it', () => {
+  expect(isWithinCryptScope('/reports ', '/reports')).toBe(false);
+  expect(isWithinCryptScope('/reports ', '/reports/sub')).toBe(false);
+});
+
+it.each(['/vault//sub', '/vault/./sub', '/vault/else/../sub'])('recognizes an equivalent configured landing %s', path => {
+  expect(connectLandsOutsideOverlay(path, '/vault/sub')).toBe(false);
+  expect(isWithinCryptScope('/vault/sub', path + '/child')).toBe(true);
+});

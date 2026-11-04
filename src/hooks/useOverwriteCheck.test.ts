@@ -101,3 +101,30 @@ it.each([true, false])('keeps exact Unix and remote names apart (download=%s)', 
   });
   expect(api.overwriteDialog.isOpen).toBe(false);
 });
+
+
+it.each(['C:/Downloads/Foo.txt', '/target/foo.txt'])('skips a directory colliding with a download at %s', async path => {
+  await mount({ localFiles: [{ ...file(path.includes(':') ? 'Foo.txt' : 'foo.txt'), path, is_dir: true }], fileExistsAction: 'skip' });
+  await expect(api.checkOverwrite('foo.txt', 100, undefined, true)).resolves.toEqual({ action: 'skip', destinationExists: true });
+});
+
+it.each(['ask', 'overwrite', 'resume'] as const)('reports a directory mismatch before a download under %s', async fileExistsAction => {
+  await mount({ localFiles: [{ ...file('Foo.txt'), path: 'C:/Downloads/Foo.txt', is_dir: true }], fileExistsAction });
+  await expect(api.checkOverwrite('foo.txt', 100, undefined, true)).rejects.toThrow('Invalid path: Download target is a directory');
+});
+
+it('renames a download away from a colliding directory', async () => {
+  await mount({ localFiles: [{ ...file('Foo.txt'), path: 'C:/Downloads/Foo.txt', is_dir: true }], fileExistsAction: 'rename' });
+  await expect(api.checkOverwrite('foo.txt', 100, undefined, true)).resolves.toMatchObject({ action: 'rename', newName: 'foo (1).txt', destinationExists: true });
+});
+
+
+it('allocates a fresh directory-conflict rename even after apply-to-all', async () => {
+  await mount({ localFiles: [{ ...file('first.txt'), path: 'C:/Downloads/first.txt' },
+    { ...file('Foo.txt'), path: 'C:/Downloads/Foo.txt', is_dir: true }] });
+  let first: ReturnType<API['checkOverwrite']>;
+  await act(async () => { first = api.checkOverwrite('first.txt', 100, undefined, true); });
+  await act(async () => api.overwriteDialog.resolve!({ action: 'rename', newName: 'first (1).txt', applyToAll: true }));
+  await first!;
+  await expect(api.checkOverwrite('foo.txt', 100, undefined, true)).resolves.toMatchObject({ action: 'rename', newName: 'foo (1).txt', destinationExists: true });
+});

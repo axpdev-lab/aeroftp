@@ -18,7 +18,7 @@ function block(start: string, end: string) {
 }
 
 const connectCode = (await transformWithOxc(block('  const connectSavedProfileForResume =', '  // A resume on a session'), 'resume-connect.ts')).code;
-type Session = Pick<FtpSession, 'id' | 'savedServerId' | 'status'>;
+type Session = Pick<FtpSession, 'id' | 'savedServerId' | 'status' | 'cryptOverlay'>;
 const host = document.createElement('div');
 const root = createRoot(host);
 afterEach(async () => { await act(async () => root.render(null)); });
@@ -114,4 +114,56 @@ it('does not dispatch a queued retry after ownership changes before its microtas
     live = false;
     await Promise.resolve();
     expect(retry).not.toHaveBeenCalled();
+});
+
+
+it('waits for the overlay commit before resuming an enabled crypt profile', async () => {
+    const f = await fixture();
+    let connected!: () => void;
+    const reached = new Promise<void>(resolve => { connected = resolve; });
+    const session = { id: 'B', savedServerId: 'profile-B', status: 'connected' as const };
+    f.connectToFtp.mockImplementation(async () => {
+        await f.render({ isConnected: true, activeSessionId: 'B', sessions: [session] });
+        connected();
+    });
+    let settled = false;
+    const pending = f.connect({ id: 'profile-B', name: 'B', host: 'b.invalid', username: 'fixture', protocol: 'ftp',
+        aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' } }).then((ready: boolean) => { settled = true; return ready; });
+    await reached;
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await f.render({ isConnected: true, activeSessionId: 'B', sessions: [{ ...session,
+        cryptOverlay: { vaultId: 'vault-B', kind: 'aerocrypt', remoteScope: '/vault' } }] });
+    await expect(pending).resolves.toBe(true);
+});
+
+it('keeps an enabled overlay pending if activation never succeeds', async () => {
+    const f = await fixture();
+    await f.render({ isConnected: true, activeSessionId: 'B', sessions: [{ id: 'B', savedServerId: 'profile-B', status: 'connected' }] });
+    vi.useFakeTimers();
+    try {
+        const pending = f.waitForLiveProfile('profile-B', true);
+        await vi.advanceTimersByTimeAsync(30_000);
+        await expect(pending).resolves.toBe(false);
+        expect(f.readFromOriginalRender('profile-B', true)).toBe(false);
+    } finally { vi.useRealTimers(); }
+});
+
+it('captures a backend generation only while the intended profile stays ready', async () => {
+    const source = block('  const retryRestoredEntry =', '  // Queues the restorable entries');
+    const code = (await transformWithOxc(source, 'restored-entry.ts')).code;
+    const downloadFile = vi.fn(async () => true);
+    const failTransfer = vi.fn();
+    const completeTransfer = vi.fn();
+    let live = true;
+    const ctx = { useLatestCallback: (fn: unknown) => fn, transferQueue: { startTransfer: vi.fn(), failTransfer, completeTransfer },
+        loadSavedServerProfiles: async () => [{ id: 'profile-A' }], isLiveOnProfile: () => live,
+        invoke: vi.fn(async () => { live = false; return 7; }), downloadFile, uploadFile: vi.fn(),
+        parentDir: () => '/local', batchCancelledRef: { current: false }, notify: { error: vi.fn() }, t: (s: string) => s,
+        isCancelledTransferError: () => false };
+    const retry = new Function(...Object.keys(ctx), `${code}; return retryRestoredEntry;`)(...Object.values(ctx));
+    await retry('entry', { direction: 'download', profile_id: 'profile-A', filename: 'f.txt', remote_path: '/f.txt', local_path: '/local/f.txt' });
+    expect(downloadFile).not.toHaveBeenCalled();
+    expect(completeTransfer).not.toHaveBeenCalled();
+    expect(failTransfer).toHaveBeenCalledWith('entry', expect.stringContaining('CONNECTION_CHANGED'));
 });

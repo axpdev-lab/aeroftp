@@ -199,7 +199,7 @@ export function fixture(options: Options = {}) {
     useLatestCallback: <T,>(fn: T) => fn,
     invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
     resetOverwriteSettings: vi.fn(), checkFolderOverwrite,
-    isSafeRemoteDownloadName, remoteDownloadTarget, splitForFileBatch, selectedLocalTrees, asLocalFileEntry,
+    isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget, splitForFileBatch, selectedLocalTrees, asLocalFileEntry,
     refuseLocalNameClashes: (rows: Pick<LocalFile, 'name' | 'path'>[]) => localRowNameClashes(rows).length > 0,
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',

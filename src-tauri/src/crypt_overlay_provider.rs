@@ -2301,7 +2301,8 @@ pub async fn reopen_default_salt_vault(
     password: &str,
     keyfile_digest: Option<&[u8; 32]>,
 ) -> Result<(OverlayConfig, [u8; KEY_SIZE], String), DefaultSaltReopenError> {
-    let scope = scope.trim_end_matches('/');
+    let absolute_scope = norm_anchor(scope);
+    let scope = absolute_scope.as_str();
     let list_dir = if scope.is_empty() { "/" } else { scope };
     let entries = match list_scope_for_write(provider, list_dir).await {
         Ok(Some(entries)) => entries,
@@ -3085,7 +3086,8 @@ async fn unlock_overlay_keys_encrypting_in_scope(
             })
         }
         "aerocrypt" => {
-            let scope = params.remote_scope.trim_end_matches('/');
+            let absolute_scope = norm_anchor(&params.remote_scope);
+            let scope = absolute_scope.as_str();
             let new_name = AEROCRYPT_CONFIG_NAME;
             let legacy_name = overlay::CRYPT_CONFIG_LEGACY_NAME;
             let new_path = format!("{}/{}", scope, new_name);
@@ -5991,6 +5993,49 @@ pub(crate) mod tests {
             res.is_err(),
             "a wrong password on an existing aerocrypt config must fail closed"
         );
+    }
+
+    #[tokio::test]
+    async fn factory_relative_literal_scope_probes_the_same_absolute_vault() {
+        let mut binding = OverlayUnlockParams {
+            kind: "aerocrypt".to_string(),
+            remote_scope: "/   ".to_string(),
+            filename_encryption: String::new(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+            with_header: true,
+            use_default_salt: false,
+            password_form: None,
+            salt_form: None,
+        };
+        let mut mem = MemProvider::new();
+        unlock_overlay_keys_encrypting(
+            &mut mem,
+            &binding,
+            "fixture-password",
+            "",
+            None,
+            true,
+            true,
+        )
+        .await
+        .expect("create absolute literal vault");
+        mem.cd("/elsewhere").await.unwrap();
+        binding.remote_scope = "   ".to_string();
+        let mut wrapped = wrap_provider_with_overlay_if_bound(
+            Box::new(mem),
+            Some(&binding),
+            "fixture-password",
+            "",
+            None,
+        )
+        .await
+        .expect("marker probe must ignore the unrelated cwd");
+        assert!(wrapped.as_any_mut().is::<CryptOverlayProvider>());
+        assert!(wrapped.list("/   ").await.is_ok());
     }
 
     #[tokio::test]

@@ -229,3 +229,11 @@ describe('a drop on the other panel writes into the folder it was dropped on', (
     expect(upload[1]!.localPath).toBe(nested.path);
   });
 });
+
+
+it('downloads a non-colliding file into a nonempty Windows folder under skip', async () => {
+  const destination = 'C:/Downloads';
+  const f = fixture({ folders: { [REMOTE]: [remote('foo.txt')], [destination]: [local('other.txt', destination)] }, policy: 'skip' });
+  await f.drop([remote('foo.txt')], true, destination);
+  expect(f.written()).toEqual([`${destination}/foo.txt`]);
+});

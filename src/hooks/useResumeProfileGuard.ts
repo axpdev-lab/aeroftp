@@ -4,9 +4,9 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
 import type { FtpSession } from '../types';
 
-type Session = Pick<FtpSession, 'id' | 'status' | 'savedServerId'>
+type Session = Pick<FtpSession, 'id' | 'status' | 'savedServerId' | 'cryptOverlay'>
     & { connectionParams?: Pick<FtpSession['connectionParams'], 'savedServerId'> };
-type Waiter = { profileId: string; finish: (live: boolean) => void };
+type Waiter = { profileId: string; requireOverlay: boolean; finish: (live: boolean) => void };
 
 /** Resume may write only through the committed active session of its profile.
  * A successful async connect can finish just before React commits its new tab.
@@ -16,18 +16,19 @@ export function useResumeProfileGuard(connected: boolean, sessions: readonly Ses
     const state = useRef({ connected, sessions, activeId });
     const mounted = useRef(false);
     const pending = useRef(new Set<Waiter>());
-    const isLiveOnProfile = useCallback((profileId: string): boolean => {
+    const isLiveOnProfile = useCallback((profileId: string, requireOverlay = false): boolean => {
         const current = state.current;
         const active = current.sessions.find(session => session.id === current.activeId);
         return mounted.current && current.connected && active?.status === 'connected'
-            && (active.savedServerId === profileId || active.connectionParams?.savedServerId === profileId);
+            && (active.savedServerId === profileId || active.connectionParams?.savedServerId === profileId)
+            && (!requireOverlay || !!active.cryptOverlay?.vaultId);
     }, []);
 
     useLayoutEffect(() => {
         mounted.current = true;
         state.current = { connected, sessions, activeId };
         for (const waiter of pending.current) {
-            if (isLiveOnProfile(waiter.profileId)) waiter.finish(true);
+            if (isLiveOnProfile(waiter.profileId, waiter.requireOverlay)) waiter.finish(true);
         }
     });
     useLayoutEffect(() => () => {
@@ -35,16 +36,16 @@ export function useResumeProfileGuard(connected: boolean, sessions: readonly Ses
         for (const waiter of pending.current) waiter.finish(false);
     }, []);
 
-    const waitForLiveProfile = useCallback((profileId: string): Promise<boolean> => {
-        if (isLiveOnProfile(profileId)) return Promise.resolve(true);
+    const waitForLiveProfile = useCallback((profileId: string, requireOverlay = false): Promise<boolean> => {
+        if (isLiveOnProfile(profileId, requireOverlay)) return Promise.resolve(true);
         if (!mounted.current) return Promise.resolve(false);
         return new Promise(resolve => {
-            const waiter: Waiter = { profileId, finish: live => {
+            const waiter: Waiter = { profileId, requireOverlay, finish: live => {
                 clearTimeout(timer);
                 pending.current.delete(waiter);
                 resolve(live);
             } };
-            const timer = setTimeout(() => waiter.finish(false), 1000);
+            const timer = setTimeout(() => waiter.finish(false), requireOverlay ? 30_000 : 1000);
             pending.current.add(waiter);
         });
     }, [isLiveOnProfile]);
