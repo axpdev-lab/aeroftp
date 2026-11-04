@@ -11666,13 +11666,17 @@ mod startup_splash_tests {
         );
         assert!(watchdog.contains("finish_startup(app_handle, false, \"safety timeout\").await"));
         assert!(!watchdog.contains("Startup safety timeout reached"));
+        assert!(
+            !watchdog.contains("should_show_splash("),
+            "the app_ready watchdog must not depend on splash creation"
+        );
     }
 
     #[test]
     fn safety_timeout_warning_is_emitted_only_after_the_startup_claim() {
         let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
         let start = src
-            .find("async fn finish_startup(")
+            .find(concat!("async fn ", "finish_startup("))
             .expect("finish_startup is defined");
         let finish = &src[start..];
         let claim = finish
