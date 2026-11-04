@@ -9,7 +9,7 @@ import { usesProviderApi, type RemoteFile } from '../types';
 import { loadOverwriteDestination } from './overwriteDestination';
 import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './fileBatchRouting';
 import { createFileBatchDispatcher, rearmedOnUserAction } from '../components/transferQueueActions';
-import { isSafeRemoteDownloadName, remoteDownloadTarget } from './localPath';
+import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from './localPath';
 
 // Run the actual App transfer closures with a mocked IPC boundary. This catches
 // a caller that forgets to pass the snapshot, lists inside the loop, or writes
@@ -60,8 +60,8 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
   });
   // Execute the real hook policy as well as the real App batch planner. This
   // makes duplicate-name regressions exercise suffix selection, not a stub.
-  const checkOverwrite = vi.fn(new Function('useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
-    `${overwriteCode}; return checkOverwrite;`)((fn: unknown) => fn, panel, panel, options.policy || 'skip',
+  const checkOverwrite = vi.fn(new Function('isWindowsLocalPath', 'useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
+    `${overwriteCode}; return checkOverwrite;`)(isWindowsLocalPath, (fn: unknown) => fn, panel, panel, options.policy || 'skip',
       { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
   const resolveDestination = vi.fn(loadOverwriteDestination);
   const queueItemsRef = { current: [] as { id: string; status: string }[] };
