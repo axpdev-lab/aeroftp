@@ -133,6 +133,17 @@ class SnapGuiCheckTests(unittest.TestCase):
             log, "::error::the frontend never signalled app_ready: the app logged 'Finishing startup (safety timeout)'",
             wait_seconds=2)
 
+    def test_a_safety_timeout_warning_fails(self):
+        for warning in (
+            'Splash screen safety timeout reached, force-closing',
+            'Startup safety timeout reached, finishing without app_ready',
+        ):
+            with self.subTest(warning=warning):
+                self.assert_red(
+                    REAL_LOG + warning + '\n',
+                    '::error::the frontend never signalled app_ready',
+                    wait_seconds=2)
+
     def test_a_window_that_never_became_visible_fails(self):
         log = REAL_LOG.replace('is_visible=true', 'is_visible=false')
         self.assert_red(log, '::error::the snap GUI did not reach a visible app_ready state', wait_seconds=2)
@@ -167,7 +178,7 @@ class SnapGuiCheckTests(unittest.TestCase):
             'info!("Finishing startup ({by})");',
             'info!("[diag #290] {ctx}: is_visible={v}")',
             '"app_ready +300ms"',
-            'warn!("Splash screen safety timeout reached',
+            'warn!("Startup safety timeout reached',
         ):
             self.assertIn(line, lib, 'scripts/snap-gui-check.sh reads this line; change both together')
 

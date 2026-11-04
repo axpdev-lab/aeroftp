@@ -20965,7 +20965,7 @@ pub fn run() {
             // Create splash BEFORE setting the global app menu so it never inherits it.
             // The main window was built earlier with `visible(false)` and stays
             // hidden until the frontend signals readiness via the `app_ready`
-            // command. An OS autostart launch must not present any window.
+            // command. An OS autostart launch must not present the splash window.
             let show_splash = should_show_splash(is_autostart_launch());
             if show_splash {
                 let splash_url = {
