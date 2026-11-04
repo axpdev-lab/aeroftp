@@ -146,7 +146,7 @@
   </languages>
 
   <releases>
-    <release version="4.2.6" date="2026-11-04">
+    <release version="4.2.6" date="2026-11-05">
       <description>
         <p>SCP support and reliability consolidation across transfers, synchronization, credentials and desktop behavior.</p>
         <ul>

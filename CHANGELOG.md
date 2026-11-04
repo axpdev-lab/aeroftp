@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [4.2.6] - 2026-11-04
+## [4.2.6] - 2026-11-05
 
 ### SCP Support and Reliability Consolidation
 
@@ -41,11 +41,14 @@ The complete change record and remaining follow-ups are in the [4.2.6 release tr
 - **Local panels act on the selected paths.** Flattened search actions retain each nested file's identity, ambiguous selections are refused, extraction asks before replacing existing files, and both local panels watch their visible folders. Dropping on a folder writes into that folder and retains the target for overwrite decisions and Retry (@EhudKirsh, #347, #1447, #1470, #1471).
 - **File-panel columns remain manageable.** The last resize grip and Manage columns control stay reachable when the panel scrolls sideways (@EhudKirsh, #347, #1435).
 - **UI callbacks observe current state.** Ref updates occur after rendering, stale callbacks and effects read the current state, notifications retain their identity, and DevTools opens on the first try (#1472, #1474).
+- **OS autostart skips the splash screen.** The startup watchdog remains active and reports a timeout only if it wins the startup recovery claim (#1504).
 - **Snap partitions and second launch work through their services.** UDisks2 lists, mounts and ejects partitions, missing plugs show the required connection command, and another launch hands off to the running window (#1451, #1482).
 - **CLI paths match the requested target.** URL paths are decoded and used as the operation target; destructive commands reject arguments a profile would otherwise discard. Vault extraction requires explicit overwrite permission, and benchmark prefixes retain their literal spaces (#1480, #1458, #1476).
 - **Release mirrors can resume safely.** SourceForge publication skips complete existing assets and supports retention independently through `--prune-only` (#1433).
 
 #### Security
+
+- **Pre-tag commit audit: PASS.** Independent review covered the release-cycle commits and their touched paths. Fixed automatic GUI replay of uncertain provider uploads and execution of flat fallback comparisons before complete scanning; counter-review and the full local release gate passed.
 
 - **SSH authentication starts with `none`.** Passwordless accounts permitted by the SSH server, including OpenWrt, can connect; a refusal continues with the configured password or key on the same connection (@GWan1234, #1452, #1454, #1453).
 - **Recursive operations enforce sensitive-path policy.** MCP sync protects refused descendants and their counterparts from orphan deletion; AeroAgent archive creation checks every source before reading and preserves an existing destination when any source is refused (#1430, #1431).
