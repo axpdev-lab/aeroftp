@@ -383,7 +383,10 @@ export const PlanTabContent: React.FC<PlanTabContentProps> = ({
     // the plan, and movable into on every side the plan writes.
     const validBackupDir = backupCheck?.status === 'valid' ? backupCheck.dir : null;
     const backupStale = validBackupDir !== null && validBackupDir !== compareBackupDir;
-    const compareStale = excludesStale || backupStale;
+    // A flat fallback never applied the scan's exclusions or backup folder.
+    // Its refusal must not depend on the asynchronous backup-name validation:
+    // that check may still be pending, or fail while backup is switched off.
+    const compareStale = compareBackupDir === undefined || excludesStale || backupStale;
     const nextBackupDir = validBackupDir ?? compareBackupDir ?? AEROSYNC_DEFAULT_BACKUP_DIR;
     const narrows = compareStale
         && narrowsComparison(compareExcludes, compareBackupDir, userExcludes, nextBackupDir);
