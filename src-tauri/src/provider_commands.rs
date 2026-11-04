@@ -178,9 +178,14 @@ impl ProviderState {
         expected_generation: Option<u64>,
         expected_profile_id: Option<&str>,
         require_crypt_overlay: bool,
+        expected_crypt_scope: Option<&str>,
+        remote_path: &str,
     ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
         let Some(expected) = expected_generation else {
-            if require_crypt_overlay || expected_profile_id.is_some() {
+            if require_crypt_overlay
+                || expected_profile_id.is_some()
+                || expected_crypt_scope.is_some()
+            {
                 return Err(format!(
                     "{CONNECTION_CHANGED_MARKER}: encrypted resume requires a connection owner"
                 ));
@@ -196,7 +201,7 @@ impl ProviderState {
                 )
                 })?;
         let pin = self.transfer_owner_gate.read().await;
-        let _provider = self.provider.lock().await;
+        let mut provider = self.provider.lock().await;
         let profile_matches = self
             .connected_profile_id
             .lock()
@@ -206,10 +211,35 @@ impl ProviderState {
         if !profile_matches || self.connection_generation.load(Ordering::SeqCst) != expected {
             return Err(format!("{CONNECTION_CHANGED_MARKER}: the restored transfer connection changed; nothing was transferred"));
         }
-        if require_crypt_overlay && !self.overlay_wrapped.load(Ordering::SeqCst) {
-            return Err(format!(
-                "{CONNECTION_CHANGED_MARKER}: the restored profile encrypted overlay is not active"
-            ));
+        // Verify the actual decorator, not the sticky capability flag. Arming a
+        // different scope on the same connection does not change generation.
+        let live_overlay = provider.as_mut().and_then(|p| {
+            p.as_any_mut()
+                .downcast_mut::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+        });
+        let expected_scope = expected_crypt_scope.map(crate::crypt_overlay_provider::norm_anchor);
+        let ambiguous = !remote_path.starts_with('/')
+            || remote_path.split('/').any(|p| p == "..")
+            || remote_path.contains('\0');
+        if (expected_scope.is_some() || live_overlay.is_some()) && ambiguous {
+            return Err(format!("{CONNECTION_CHANGED_MARKER}: restored crypt target is not absolute and unambiguous"));
+        }
+        let within = |scope: &str| {
+            scope.is_empty()
+                || remote_path == scope
+                || remote_path
+                    .strip_prefix(scope)
+                    .is_some_and(|tail| tail.starts_with('/'))
+        };
+        let expected_encrypted = expected_scope.as_deref().is_some_and(within);
+        let live_encrypted = live_overlay.as_ref().is_some_and(|p| within(p.scope()));
+        if expected_encrypted != require_crypt_overlay
+            || live_encrypted != expected_encrypted
+            || live_overlay
+                .as_ref()
+                .is_some_and(|p| expected_scope.as_deref() != Some(p.scope()))
+        {
+            return Err(format!("{CONNECTION_CHANGED_MARKER}: the restored profile crypt scope does not match the active overlay"));
         }
         Ok(Some(pin))
     }
@@ -223,6 +253,73 @@ impl ProviderState {
     ) -> Result<tokio::sync::RwLockWriteGuard<'_, ()>, String> {
         tokio::time::timeout(wait, self.transfer_owner_gate.write()).await
             .map_err(|_| "Transfer still in progress; connection or overlay was not changed. Stop the transfer and try again".to_string())
+    }
+
+    pub(crate) async fn install_mtp_provider(
+        &self,
+        provider: Box<dyn StorageProvider>,
+        config: ProviderConfig,
+    ) -> Result<(), String> {
+        install_connected_provider_with_config(
+            self,
+            provider,
+            None,
+            Some(config),
+            Duration::from_secs(30),
+        )
+        .await
+    }
+
+    /// Only the currently matching MTP device may be removed. Keep the gate
+    /// through the config update so a network replacement cannot lose its state.
+    pub(crate) async fn clear_mtp_provider(
+        &self,
+        want_device_id: Option<&str>,
+    ) -> Result<(), String> {
+        let _change = self.transfer_owner_write(Duration::from_secs(30)).await?;
+        self.cancel_storage_reads();
+        drain_in_flight_transfers(self, Duration::from_secs(30)).await;
+        let mut slot = self.provider.lock().await;
+        let mut config = self.config.lock().await;
+        if !slot
+            .as_ref()
+            .is_some_and(|p| p.provider_type() == ProviderType::Mtp)
+        {
+            if config
+                .as_ref()
+                .is_some_and(|c| c.provider_type == ProviderType::Mtp)
+            {
+                *config = None;
+            }
+            return Ok(());
+        }
+        if let Some(want) = want_device_id.filter(|s| !s.is_empty()) {
+            if let Some(open) = config
+                .as_ref()
+                .filter(|c| c.provider_type == ProviderType::Mtp)
+            {
+                if open.host != want {
+                    return Err(format!("open MTP session is {} not {want}", open.host));
+                }
+            }
+        }
+        // Leave the slot/identity intact if teardown fails.
+        if let Some(provider) = slot.as_mut() {
+            provider
+                .disconnect()
+                .await
+                .map_err(|e| format!("Disconnect failed: {e}"))?;
+        }
+        *slot = None;
+        *config = None;
+        *self
+            .connected_profile_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        self.active_crypt_overlay.store(false, Ordering::SeqCst);
+        self.overlay_wrapped.store(false, Ordering::SeqCst);
+        self.invalidate_overlay_key_cache();
+        Ok(())
     }
 
     pub async fn reset_cancel_state(&self) -> CancellationToken {
@@ -1872,11 +1969,28 @@ async fn provider_connect_inner(
 /// so a stalled scan or quota read cannot keep the slot from being taken.
 async fn install_connected_provider(
     state: &ProviderState,
-    mut provider: Box<dyn StorageProvider>,
+    provider: Box<dyn StorageProvider>,
     profile_id: Option<String>,
 ) -> Result<(), String> {
+    install_connected_provider_with_config(
+        state,
+        provider,
+        profile_id,
+        None,
+        Duration::from_secs(30),
+    )
+    .await
+}
+
+async fn install_connected_provider_with_config(
+    state: &ProviderState,
+    mut provider: Box<dyn StorageProvider>,
+    profile_id: Option<String>,
+    config: Option<ProviderConfig>,
+    wait: Duration,
+) -> Result<(), String> {
     state.cancel_storage_reads();
-    let _connection_change = match state.transfer_owner_write(Duration::from_secs(30)).await {
+    let _connection_change = match state.transfer_owner_write(wait).await {
         Ok(guard) => guard,
         Err(error) => {
             let _ = tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await;
@@ -1904,6 +2018,9 @@ async fn install_connected_provider(
     // overlay keys must never re-arm onto it. Bump generation + zeroize while
     // still holding the provider lock, so a concurrent re-arm is serialized out.
     state.invalidate_overlay_key_cache();
+    if let Some(config) = config {
+        *state.config.lock().await = Some(config);
+    }
     Ok(())
 }
 
@@ -2433,7 +2550,7 @@ pub async fn provider_clear_crypt_overlay(
 ) -> Result<bool, String> {
     match (expected_generation, activation_id) {
         (Some(generation), Some(id)) => {
-            Ok(discard_crypt_activation_inner(&state, generation, &id).await)
+            discard_crypt_activation_inner(&state, generation, &id).await
         }
         (None, None) => clear_crypt_overlay_inner(&state, full.unwrap_or(false)).await,
         _ => Err(
@@ -2449,10 +2566,23 @@ async fn discard_crypt_activation_inner(
     state: &ProviderState,
     expected_generation: u64,
     activation_id: &str,
-) -> bool {
-    let Ok(_overlay_change) = state.transfer_owner_write(Duration::from_secs(30)).await else {
-        return false;
-    };
+) -> Result<bool, String> {
+    discard_crypt_activation_with_wait(
+        state,
+        expected_generation,
+        activation_id,
+        Duration::from_secs(30),
+    )
+    .await
+}
+
+async fn discard_crypt_activation_with_wait(
+    state: &ProviderState,
+    expected_generation: u64,
+    activation_id: &str,
+    wait: Duration,
+) -> Result<bool, String> {
+    let _overlay_change = state.transfer_owner_write(wait).await?;
     let mut guard = state.provider.lock().await;
     let owner_matches = state
         .overlay_activation_id
@@ -2461,12 +2591,12 @@ async fn discard_crypt_activation_inner(
         .as_deref()
         == Some(activation_id);
     if state.connection_generation.load(Ordering::SeqCst) != expected_generation || !owner_matches {
-        return false;
+        return Ok(false);
     }
     let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     state.clear_overlay_key_cache();
-    removed
+    Ok(removed)
 }
 
 /// Body of [`provider_clear_crypt_overlay`]. It runs first on the GUI's
@@ -3525,12 +3655,15 @@ pub async fn provider_download_file(
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
 ) -> Result<String, String> {
     let _transfer_owner = state
         .pin_transfer_owner(
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
+            expected_crypt_scope.as_deref(),
+            &remote_path,
         )
         .await?;
     crate::local_download_target::refuse_unwritable_name(&local_path)?;
@@ -4104,12 +4237,15 @@ pub async fn provider_download_folder(
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
 ) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let _transfer_owner = state
         .pin_transfer_owner(
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
+            expected_crypt_scope.as_deref(),
+            &remote_path,
         )
         .await?;
     let transfer_settings = TransferSettingsInput {
@@ -4168,12 +4304,15 @@ pub async fn provider_upload_folder(
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
 ) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let _transfer_owner = state
         .pin_transfer_owner(
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
+            expected_crypt_scope.as_deref(),
+            &remote_path,
         )
         .await?;
     // Fail-closed: never write plaintext into a crypt store whose overlay is
@@ -6088,12 +6227,15 @@ pub async fn provider_upload_file(
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
 ) -> Result<String, String> {
     let _transfer_owner = state
         .pin_transfer_owner(
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
+            expected_crypt_scope.as_deref(),
+            &remote_path,
         )
         .await?;
     // Fail-closed: never write plaintext into a crypt store whose overlay is
@@ -10084,6 +10226,10 @@ pub async fn opendrive_empty_trash(state: State<'_, ProviderState>) -> Result<()
 
 /// Set OpenDrive privacy for a file or folder.
 /// is_public=false => private, is_public=true => public.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Preserve the existing Tauri IPC fields while adding the optional restored crypt binding"
+)]
 #[tauri::command]
 pub async fn opendrive_set_path_privacy(
     state: State<'_, ProviderState>,
@@ -10093,14 +10239,18 @@ pub async fn opendrive_set_path_privacy(
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
 ) -> Result<(), String> {
     let _transfer_owner = state
         .pin_transfer_owner(
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
+            expected_crypt_scope.as_deref(),
+            &path,
         )
         .await?;
+    state.guard_no_raw_crypt_write_outside("Set access", &[&path])?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -10110,6 +10260,10 @@ pub async fn opendrive_set_path_privacy(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
+    let wire_path =
+        crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .map_err(|e| e.to_string())?;
+
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
@@ -10117,12 +10271,12 @@ pub async fn opendrive_set_path_privacy(
 
     if is_dir {
         opendrive
-            .set_folder_privacy(&path, is_public)
+            .set_folder_privacy(&wire_path, is_public)
             .await
             .map_err(|e| format!("Set folder privacy failed for {}: {}", path, e))
     } else {
         opendrive
-            .set_file_privacy(&path, is_public)
+            .set_file_privacy(&wire_path, is_public)
             .await
             .map_err(|e| format!("Set file privacy failed for {}: {}", path, e))
     }
@@ -10145,6 +10299,7 @@ pub async fn opendrive_set_path_access(
             )
         })?;
 
+    state.guard_no_raw_crypt_write_outside("Set access", &[&path])?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -10154,6 +10309,10 @@ pub async fn opendrive_set_path_access(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
+    let wire_path =
+        crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .map_err(|e| e.to_string())?;
+
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
@@ -10161,12 +10320,12 @@ pub async fn opendrive_set_path_access(
 
     if is_dir {
         opendrive
-            .set_folder_access(&path, level)
+            .set_folder_access(&wire_path, level)
             .await
             .map_err(|e| format!("Set folder access failed for {}: {}", path, e))
     } else {
         opendrive
-            .set_file_access(&path, level)
+            .set_file_access(&wire_path, level)
             .await
             .map_err(|e| format!("Set file access failed for {}: {}", path, e))
     }
@@ -10174,6 +10333,10 @@ pub async fn opendrive_set_path_access(
 
 /// Set FourShared privacy for a file or folder.
 /// is_public=false => private, is_public=true => public.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Preserve the existing Tauri IPC fields while adding the optional restored crypt binding"
+)]
 #[tauri::command]
 pub async fn fourshared_set_path_privacy(
     state: State<'_, ProviderState>,
@@ -10183,14 +10346,18 @@ pub async fn fourshared_set_path_privacy(
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
 ) -> Result<(), String> {
     let _transfer_owner = state
         .pin_transfer_owner(
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
+            expected_crypt_scope.as_deref(),
+            &path,
         )
         .await?;
+    state.guard_no_raw_crypt_write_outside("Set access", &[&path])?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -10200,6 +10367,10 @@ pub async fn fourshared_set_path_privacy(
         return Err("This operation is only available for FourShared".to_string());
     }
 
+    let wire_path =
+        crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .map_err(|e| e.to_string())?;
+
     let fourshared = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
         .as_any_mut()
         .downcast_mut::<crate::providers::fourshared::FourSharedProvider>()
@@ -10207,12 +10378,12 @@ pub async fn fourshared_set_path_privacy(
 
     if is_dir {
         fourshared
-            .set_folder_privacy(&path, is_public)
+            .set_folder_privacy(&wire_path, is_public)
             .await
             .map_err(|e| format!("Set folder privacy failed for {}: {}", path, e))
     } else {
         fourshared
-            .set_file_privacy(&path, is_public)
+            .set_file_privacy(&wire_path, is_public)
             .await
             .map_err(|e| format!("Set file privacy failed for {}: {}", path, e))
     }
@@ -20170,9 +20341,37 @@ mod overlay_activation_discard_tests {
     }
 
     #[tokio::test]
+    async fn busy_scoped_discard_reports_error_and_keeps_activation_and_keys() {
+        let state = installed("owned").await;
+        let pin = state.transfer_owner_gate.read().await;
+        let token = state.current_cancel_token().await;
+        let error =
+            discard_crypt_activation_with_wait(&state, 0, "owned", Duration::from_millis(10))
+                .await
+                .unwrap_err();
+        assert!(error.contains("not changed"));
+        assert!(!token.is_cancelled());
+        assert!(state.overlay_wrapped.load(Ordering::SeqCst));
+        assert!(state.cached_overlay_for_rearm().is_some());
+        assert_eq!(
+            state.overlay_activation_id.lock().unwrap().as_deref(),
+            Some("owned")
+        );
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 0);
+        drop(pin);
+        assert!(
+            discard_crypt_activation_with_wait(&state, 0, "owned", Duration::from_millis(10))
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
     async fn matching_discard_removes_real_wrapper_and_cached_keys_but_keeps_write_guard() {
         let state = installed("old").await;
-        assert!(discard_crypt_activation_inner(&state, 0, "old").await);
+        assert!(discard_crypt_activation_inner(&state, 0, "old")
+            .await
+            .unwrap());
         assert!(!crate::crypt_overlay_provider::is_crypt_overlay_provider(
             state.provider.lock().await.as_mut().unwrap().as_mut()
         ));
@@ -20185,7 +20384,9 @@ mod overlay_activation_discard_tests {
     async fn matching_discard_preserves_the_live_connection_generation() {
         let state = installed("old").await;
         let captured = state.connection_generation.load(Ordering::SeqCst);
-        assert!(discard_crypt_activation_inner(&state, captured, "old").await);
+        assert!(discard_crypt_activation_inner(&state, captured, "old")
+            .await
+            .unwrap());
         assert_eq!(state.connection_generation.load(Ordering::SeqCst), captured);
     }
 
@@ -20193,7 +20394,9 @@ mod overlay_activation_discard_tests {
     async fn pending_activation_can_arm_after_older_activation_discards_itself() {
         let state = installed("old").await;
         let captured = state.connection_generation.load(Ordering::SeqCst);
-        assert!(discard_crypt_activation_inner(&state, captured, "old").await);
+        assert!(discard_crypt_activation_inner(&state, captured, "old")
+            .await
+            .unwrap());
         provider_arm_crypt_capability_inner(&state, Some(captured))
             .await
             .expect("same-connection retry must retain its captured generation");
@@ -20203,7 +20406,9 @@ mod overlay_activation_discard_tests {
     #[tokio::test]
     async fn stale_connection_discard_keeps_replacement_wrapper_and_cache() {
         let state = installed("old").await;
-        assert!(!discard_crypt_activation_inner(&state, 1, "old").await);
+        assert!(!discard_crypt_activation_inner(&state, 1, "old")
+            .await
+            .unwrap());
         assert!(state.overlay_wrapped.load(Ordering::SeqCst));
         assert!(state.cached_overlay_for_rearm().is_some());
     }
@@ -20211,7 +20416,9 @@ mod overlay_activation_discard_tests {
     #[tokio::test]
     async fn old_identity_cannot_remove_a_newer_activation_on_the_same_connection() {
         let state = installed("new").await;
-        assert!(!discard_crypt_activation_inner(&state, 0, "old").await);
+        assert!(!discard_crypt_activation_inner(&state, 0, "old")
+            .await
+            .unwrap());
         assert!(state.overlay_wrapped.load(Ordering::SeqCst));
         assert!(state.cached_overlay_for_rearm().is_some());
     }
@@ -20227,7 +20434,7 @@ mod overlay_activation_discard_tests {
         tokio::task::yield_now().await;
         state.set_overlay_activation_id(Some("new".to_string()));
         drop(guard);
-        assert!(!pending.await.unwrap());
+        assert!(!pending.await.unwrap().unwrap());
         assert!(state.overlay_wrapped.load(Ordering::SeqCst));
     }
 }
@@ -20243,6 +20450,166 @@ mod restored_transfer_owner_tests {
         state
     }
 
+    async fn arm_scope(state: &ProviderState, scope: &str) {
+        use crate::crypt_overlay_provider::{CryptOverlayProvider, OverlayKeys};
+        let keys = OverlayKeys::AeroCrypt {
+            master_key: [7; 32],
+            config: crate::aerocrypt::overlay::OverlayConfig::v3_bootstrap([9; 32]),
+        };
+        *state.provider.lock().await = Some(Box::new(CryptOverlayProvider::new(
+            Box::new(EditFake::new(true, false)),
+            keys,
+            scope,
+        )));
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+    }
+
+    #[tokio::test]
+    async fn restored_scope_is_checked_against_the_actual_decorator_and_target() {
+        let state = state_with_profile();
+        // A sticky flag cannot impersonate an overlay.
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/vault"), "/vault/file")
+            .await
+            .is_err());
+        arm_scope(&state, "/other").await;
+        // Same generation/profile; the wrong scope would pass the old bool check.
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/vault"), "/vault/file")
+            .await
+            .is_err());
+        // A plaintext target must not become encrypted by another armed scope.
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), false, Some("/vault"), "/other/file")
+            .await
+            .is_err());
+        arm_scope(&state, "/vault ").await;
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/vault"), "/vault/file")
+            .await
+            .is_err());
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/vault "), "/vault /file")
+            .await
+            .is_ok());
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), false, Some("/vault "), "/vault/file")
+            .await
+            .is_ok());
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/vault "), "file")
+            .await
+            .is_err());
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/vault "), "/vault /../file")
+            .await
+            .is_err());
+        arm_scope(&state, "").await;
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), true, Some(""), "/file")
+            .await
+            .is_ok());
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), false, None, "/file")
+            .await
+            .is_err());
+        assert!(
+            state.transfer_owner_gate.try_write().is_ok(),
+            "refusal/success leaked a pin"
+        );
+    }
+
+    fn mtp_config() -> ProviderConfig {
+        ProviderConfig {
+            name: "Phone".into(),
+            provider_type: ProviderType::Mtp,
+            host: "fake-phone".into(),
+            port: None,
+            username: None,
+            password: None,
+            initial_path: Some("/".into()),
+            extra: Default::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn mtp_install_waits_for_pin_then_invalidates_previous_profile_identity() {
+        use crate::providers::mtp::{backend::FakeMtpBackend, provider::MtpProvider};
+        let state = Arc::new(state_with_profile());
+        let pin = state
+            .pin_transfer_owner(Some(0), Some("A"), false, None, "/plain")
+            .await
+            .unwrap();
+        let mut mtp = MtpProvider::new(Box::new(FakeMtpBackend::with_demo_tree()));
+        mtp.open_device("fake-phone").await.unwrap();
+        let other = state.clone();
+        let mut install = tokio::spawn(async move {
+            other
+                .install_mtp_provider(Box::new(mtp), mtp_config())
+                .await
+        });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), &mut install)
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            state.connected_profile_id.lock().unwrap().as_deref(),
+            Some("A")
+        );
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 0);
+        drop(pin);
+        install.await.unwrap().unwrap();
+        assert_eq!(*state.connected_profile_id.lock().unwrap(), None);
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 1);
+        assert!(state
+            .pin_transfer_owner(Some(0), Some("A"), false, None, "/plain")
+            .await
+            .is_err());
+        assert!(state
+            .clear_mtp_provider(Some("another-phone"))
+            .await
+            .is_err());
+        assert!(state.provider.lock().await.is_some());
+        state.clear_mtp_provider(Some("fake-phone")).await.unwrap();
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 2);
+        assert!(state.provider.lock().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn mtp_install_refusal_keeps_previous_profile_and_clear_ignores_network_replacement() {
+        let state = state_with_profile();
+        *state.provider.lock().await = Some(Box::new(EditFake::new(true, false)));
+        let pin = state
+            .pin_transfer_owner(Some(0), Some("A"), false, None, "/plain")
+            .await
+            .unwrap();
+        let error = install_connected_provider_with_config(
+            &state,
+            Box::new(EditFake::new(true, false)),
+            None,
+            Some(mtp_config()),
+            Duration::from_millis(10),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.contains("not changed"));
+        assert_eq!(
+            state.connected_profile_id.lock().unwrap().as_deref(),
+            Some("A")
+        );
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 0);
+        assert!(state.config.lock().await.is_none());
+        drop(pin);
+        state.clear_mtp_provider(None).await.unwrap();
+        assert!(state.provider.lock().await.is_some());
+        assert_eq!(
+            state.connected_profile_id.lock().unwrap().as_deref(),
+            Some("A")
+        );
+    }
+
     #[tokio::test]
     async fn stale_restored_generation_is_refused_without_retaining_a_pin() {
         let state = state_with_profile();
@@ -20254,7 +20621,7 @@ mod restored_transfer_owner_tests {
         .await
         .unwrap();
         let error = state
-            .pin_transfer_owner(Some(0), Some("A"), false)
+            .pin_transfer_owner(Some(0), Some("A"), false, None, "/plain/file")
             .await
             .expect_err("old owner must fail");
         assert!(error.starts_with(CONNECTION_CHANGED_MARKER));
@@ -20268,7 +20635,7 @@ mod restored_transfer_owner_tests {
     async fn restored_owner_prevents_a_real_swap_until_all_transfer_phases_end() {
         let state = Arc::new(state_with_profile());
         let pin = state
-            .pin_transfer_owner(Some(0), Some("A"), false)
+            .pin_transfer_owner(Some(0), Some("A"), false, None, "/plain/file")
             .await
             .unwrap();
         let other = state.clone();
@@ -20295,11 +20662,11 @@ mod restored_transfer_owner_tests {
             .unwrap();
         assert_eq!(state.connection_generation.load(Ordering::SeqCst), 1);
         assert!(state
-            .pin_transfer_owner(Some(0), Some("A"), false)
+            .pin_transfer_owner(Some(0), Some("A"), false, None, "/plain/file")
             .await
             .is_err());
         assert!(state
-            .pin_transfer_owner(Some(1), Some("A"), false)
+            .pin_transfer_owner(Some(1), Some("A"), false, None, "/plain/file")
             .await
             .is_ok());
     }
@@ -20311,7 +20678,7 @@ mod restored_transfer_owner_tests {
         let (ready, reached) = tokio::sync::oneshot::channel();
         let transfer = tokio::spawn(async move {
             let _pin = other
-                .pin_transfer_owner(Some(0), Some("A"), false)
+                .pin_transfer_owner(Some(0), Some("A"), false, None, "/plain/file")
                 .await
                 .unwrap();
             ready.send(()).unwrap();
@@ -20338,17 +20705,17 @@ mod restored_transfer_owner_tests {
     async fn restored_encrypted_transfer_requires_an_actual_backend_overlay() {
         let state = state_with_profile();
         assert!(state
-            .pin_transfer_owner(Some(0), Some("A"), true)
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/Crypt"), "/Crypt/file")
             .await
             .is_err());
         assert!(state.transfer_owner_gate.try_write().is_ok());
         assert!(state
-            .pin_transfer_owner(None, Some("A"), true)
+            .pin_transfer_owner(None, Some("A"), true, Some("/Crypt"), "/Crypt/file")
             .await
             .is_err());
-        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        arm_scope(&state, "/Crypt").await;
         assert!(state
-            .pin_transfer_owner(Some(0), Some("A"), true)
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/Crypt"), "/Crypt/file")
             .await
             .is_ok());
     }
@@ -20356,9 +20723,9 @@ mod restored_transfer_owner_tests {
     #[tokio::test]
     async fn restored_owner_pins_overlay_interpretation_until_the_transfer_ends() {
         let state = Arc::new(state_with_profile());
-        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        arm_scope(&state, "/Crypt").await;
         let pin = state
-            .pin_transfer_owner(Some(0), Some("A"), true)
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/Crypt"), "/Crypt/file")
             .await
             .unwrap();
         let other = state.clone();
@@ -20375,7 +20742,7 @@ mod restored_transfer_owner_tests {
             .unwrap();
         assert!(!state.overlay_wrapped.load(Ordering::SeqCst));
         assert!(state
-            .pin_transfer_owner(Some(0), Some("A"), true)
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/Crypt"), "/Crypt/file")
             .await
             .is_err());
     }
@@ -20391,15 +20758,15 @@ mod restored_transfer_owner_tests {
         .unwrap();
         let generation = state.connection_generation.load(Ordering::SeqCst);
         assert!(state
-            .pin_transfer_owner(Some(generation), Some("A"), false)
+            .pin_transfer_owner(Some(generation), Some("A"), false, None, "/plain/file")
             .await
             .is_err());
         assert!(state
-            .pin_transfer_owner(Some(generation), None, false)
+            .pin_transfer_owner(Some(generation), None, false, None, "/plain/file")
             .await
             .is_err());
         assert!(state
-            .pin_transfer_owner(Some(generation), Some("B"), false)
+            .pin_transfer_owner(Some(generation), Some("B"), false, None, "/plain/file")
             .await
             .is_ok());
         assert!(state.transfer_owner_gate.try_write().is_ok());
@@ -20408,9 +20775,9 @@ mod restored_transfer_owner_tests {
     #[tokio::test]
     async fn pinned_writer_wait_is_bounded_without_cancelling_or_mutating_the_owner() {
         let state = state_with_profile();
-        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        arm_scope(&state, "/Crypt").await;
         let pin = state
-            .pin_transfer_owner(Some(0), Some("A"), true)
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/Crypt"), "/Crypt/file")
             .await
             .unwrap();
         let token = state.current_cancel_token().await;
@@ -20431,9 +20798,9 @@ mod restored_transfer_owner_tests {
     #[tokio::test]
     async fn busy_overlay_clear_returns_error_without_claiming_the_overlay_is_absent() {
         let state = state_with_profile();
-        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        arm_scope(&state, "/Crypt").await;
         let pin = state
-            .pin_transfer_owner(Some(0), Some("A"), true)
+            .pin_transfer_owner(Some(0), Some("A"), true, Some("/Crypt"), "/Crypt/file")
             .await
             .unwrap();
         let error = clear_crypt_overlay_with_wait(&state, true, Duration::from_millis(10))

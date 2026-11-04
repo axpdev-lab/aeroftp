@@ -94,13 +94,19 @@ export const resolveBoundCryptScope = (
  * relative paths fail closed; the persisted absolute remote path retains the
  * plaintext anchor even when its encrypted tail is opaque.
  */
+export const restoredTransferCryptScope = (
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+): string | undefined => profile.aeroCryptOverlay?.enabled
+  ? normCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
+    || resolveUsernameTemplate(profile.initialPath, profile.username) || '')
+  : undefined;
+
 export const restoredTransferRequiresOverlay = (
   profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
   remotePath: string | null | undefined,
 ): boolean => {
   if (!profile.aeroCryptOverlay?.enabled) return false;
   if (!remotePath?.startsWith('/')) return true;
-  const scope = resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
-    || resolveUsernameTemplate(profile.initialPath, profile.username) || '';
+  const scope = restoredTransferCryptScope(profile);
   return isWithinCryptScope(scope, remotePath);
 };

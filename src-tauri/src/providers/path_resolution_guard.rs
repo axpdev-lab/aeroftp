@@ -829,11 +829,11 @@ fn comments_are_left_out_and_literals_read_whole() {
 /// export, the Zoho folder id, the benchmark's scratch folder and the AI
 /// worker's S3 root read it trimmed too.
 ///
-/// Three statements read a trimmed value on purpose, each named here with the
+/// Two statements read a trimmed value on purpose, each named here with the
 /// text that finds it: an import reads another application's file by that
-/// file's rules, and the AeroCrypt anchor trims on both sides (`norm_anchor`
-/// here, `normCryptScope` in the app), so it changes on both sides together.
-const TRIMS_ON_PURPOSE: [(&str, &str); 3] = [
+/// file's rules. Literal crypt anchors are not an exception: their spaces
+/// are preserved by both the frontend and the provider.
+const TRIMS_ON_PURPOSE: [(&str, &str); 2] = [
     // Dreamweaver's `remoteroot` attribute, read from its site file.
     ("dreamweaver_import.rs", "remoteroot"),
     // rclone's own `remote = base:subpath`, read from its config: the name
@@ -841,11 +841,6 @@ const TRIMS_ON_PURPOSE: [(&str, &str); 3] = [
     (
         "rclone_import.rs",
         "(base.trim().to_string(), initial_path)",
-    ),
-    // The AeroCrypt anchor a binding without a folder takes from the profile.
-    (
-        "crypt_overlay_provider.rs",
-        ".replace(\"{username}\", &username)",
     ),
 ];
 

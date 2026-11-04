@@ -598,8 +598,7 @@ impl CryptOverlayProvider {
     }
 
     /// Map a caller plaintext path to the on-wire encrypted path.
-    /// Write mode: fail-closed on out-of-scope (mutating ops).
-    /// Read mode: pass-through raw for out-of-scope (non-mutating ops: list etc).
+    /// Mixed mode preserves absolute targets outside the anchor for reads and writes.
     fn map(
         &self,
         plain: &str,
@@ -1907,6 +1906,19 @@ pub(crate) fn overlay_breadcrumb_labels(
 /// Note the overlay's `as_any_mut()` deliberately returns the decorator itself
 /// (an honest downcast target), so a raw `downcast_mut::<ConcreteProvider>()` on
 /// a wrapped box yields `None`; callers must peel first via this helper.
+/// Map the plaintext target before a provider-specific raw operation peels the
+/// decorator. Mixed-mode paths outside the anchor remain literal.
+pub(crate) fn physical_write_path(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    is_dir: bool,
+) -> Result<String, ProviderError> {
+    match provider.as_any_mut().downcast_mut::<CryptOverlayProvider>() {
+        Some(overlay) => overlay.map(path, is_dir, AccessKind::Write),
+        None => Ok(path.to_string()),
+    }
+}
+
 pub fn concrete_provider_mut(provider: &mut dyn StorageProvider) -> &mut dyn StorageProvider {
     if provider.as_any_mut().is::<CryptOverlayProvider>() {
         provider
@@ -4213,6 +4225,69 @@ pub(crate) mod tests {
     /// provably OUT OF SCOPE passes through RAW (identical to the Read arm),
     /// enabling plaintext edits OUTSIDE the anchor. It must NOT fail closed and
     /// must NOT encrypt the tail.
+    #[tokio::test]
+    async fn provider_specific_privacy_maps_before_peeling_without_touching_plaintext_namesake() {
+        for (label, keys) in both_kinds() {
+            for scope in ["", "/Vault "] {
+                for is_dir in [false, true] {
+                    let path = format!("{scope}/nested/item");
+                    let mut overlay = CryptOverlayProvider::new(
+                        Box::new(MemProvider::new()),
+                        keys.clone(),
+                        scope,
+                    );
+                    let wire = physical_write_path(&mut overlay, &path, is_dir).unwrap();
+                    assert_ne!(wire, path, "{label}: names must be encrypted");
+                    assert_eq!(decode_scoped(&keys, scope, &wire, is_dir), path);
+                    let raw = concrete_provider_mut(&mut overlay)
+                        .as_any_mut()
+                        .downcast_mut::<MemProvider>()
+                        .unwrap();
+                    raw.seed_raw_file(&path, b"plaintext namesake");
+                    raw.seed_raw_file(&wire, b"encrypted target");
+                    raw.delete(&wire).await.unwrap();
+                    assert_eq!(
+                        raw.raw_bytes(&path).as_deref(),
+                        Some(b"plaintext namesake".as_slice())
+                    );
+                    assert!(raw.raw_bytes(&wire).is_none());
+                    if !scope.is_empty() {
+                        assert_eq!(
+                            physical_write_path(&mut overlay, "/public/item", is_dir).unwrap(),
+                            "/public/item"
+                        );
+                    }
+                }
+            }
+        }
+        let mut raw = MemProvider::new();
+        assert_eq!(
+            physical_write_path(&mut raw, "/literal/item", false).unwrap(),
+            "/literal/item"
+        );
+        // Both real command implementations must map before the raw downcast,
+        // including the sibling three-level OpenDrive operation.
+        let commands = include_str!("provider_commands.rs");
+        for name in [
+            "opendrive_set_path_privacy",
+            "opendrive_set_path_access",
+            "fourshared_set_path_privacy",
+        ] {
+            let body = commands
+                .split(&format!("pub async fn {name}("))
+                .nth(1)
+                .unwrap()
+                .split("\n}\n")
+                .next()
+                .unwrap();
+            assert!(
+                body.find("physical_write_path").unwrap()
+                    < body.find("concrete_provider_mut").unwrap()
+            );
+            assert!(body.contains("(&wire_path,"));
+        }
+    }
+
     #[test]
     fn encode_plain_target_outside_anchor_write_passes_through_raw() {
         for (label, keys) in both_kinds() {

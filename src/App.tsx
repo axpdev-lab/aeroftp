@@ -214,7 +214,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, normLandingPath, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -6150,7 +6150,9 @@ const App: React.FC = () => {
         await invoke('provider_clear_crypt_overlay', {
           expectedGeneration: ownership.generation,
           activationId: ownership.activationId,
-        }).catch(() => undefined);
+        }).catch((cleanupError) => {
+          notify.error(t('common.error'), String(cleanupError));
+        });
       }
       throw error;
     }
@@ -8616,37 +8618,32 @@ const App: React.FC = () => {
   const closeAeroSyncForTornDownSession = () => setAeroSync(null);
 
   const disconnectFromFtp = async (reason?: 'button' | 'tab-close' | 'close-all') => {
-    quotaVersionRef.current++;
-    quotaConnectionRef.current++;
-    setStorageQuota(null);
     const logId = humanLog.logStart('DISCONNECT', { server: liveConnectionParams.server });
-    // The SITE transcript and history live in memory for the session only, and
-    // a disconnect closes every tab (Close All included), so all of them go.
-    sessions.forEach(session => forgetSiteSession(session.id));
-    if (activeSessionId) forgetSiteSession(activeSessionId);
-    // The AeroSync dialog holds a Compare scan of THIS remote, so it stops
-    // meaning anything the moment the session goes away: its entries point at
-    // paths on a connection that no longer exists, and Execute would run them
-    // against whatever connects next. Nothing used to close it here, so opening
-    // Compare and disconnecting left it up over a dead session.
-    closeAeroSyncForTornDownSession();
     try {
-      const overlaySessionId = aeroVaultOverlaySession?.sessionId;
-      if (overlaySessionId) {
-        try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
+      // Provider teardown owns overlay/cache cleanup and may refuse while a
+      // restored transfer is pinned. Do not discard UI/session state on refusal.
+      await invoke('provider_disconnect');
+      // Legacy FTP has a separate backend. ProviderState disconnect is
+      // idempotent when this is the only live transport.
+      await invoke('disconnect_ftp');
+      // Lock every independent vault only after provider teardown succeeded.
+      // A vault cleanup error is reported; it must not resurrect an already
+      // disconnected provider in the UI.
+      const vaultSessions = new Set([
+        aeroVaultOverlaySession?.sessionId,
+        ...sessions.map(session => session.aeroVaultOverlaySession?.sessionId),
+      ].filter((id): id is string => !!id));
+      for (const sessionId of vaultSessions) {
+        await invoke('aerovault_overlay_lock', { sessionId }).catch(error => {
+          notify.error(t('common.error'), String(error));
+        });
       }
-      // #386: tear down any active transparent crypt overlay (AeroCrypt /
-      // rclone-crypt) on the red Disconnect too. Unlike closeSession and
-      // switchSession, this path never did, so the stale frontend vault id and the
-      // reload/in-flight refs survived the disconnect. On the next connect the
-      // phase-1/phase-2 auto-unlock guards (see the effects at ~4602 and ~4665)
-      // short-circuited on the old vault id: the decrypted reload never ran, so
-      // "decrypting" stayed on forever and the overlay button was stuck. Unwrap
-      // the provider and wipe the connection's cached overlay keys (the `full`
-      // clear), and reset the frontend overlay state and refs so a reconnect
-      // starts clean. The vault ids here are `provider-overlay:` sentinels, keys
-      // in no backend map, so the clear is the only lock there is.
-      await invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined);
+      quotaVersionRef.current++;
+      quotaConnectionRef.current++;
+      setStorageQuota(null);
+      sessions.forEach(session => forgetSiteSession(session.id));
+      if (activeSessionId) forgetSiteSession(activeSessionId);
+      closeAeroSyncForTornDownSession();
       setAeroCryptVaultId(null);
       setRcloneCryptVaultId(null);
       setCryptOverlayOwner(null);
@@ -8655,11 +8652,6 @@ const App: React.FC = () => {
       setOverlayDecrypting(false);
       overlayReloadedVaultRef.current = null;
       overlayUnlockInFlightRef.current = false;
-      // Providers (including MTP) live in ProviderState; FTP uses AppState.
-      // Always attempt both so a single Disconnect clears whichever is live.
-      try { await invoke('provider_disconnect'); } catch { /* not a provider session */ }
-      try { await invoke('disconnect_ftp'); } catch { /* not an FTP session */ }
-      try { await invoke('mtp_close_device', { deviceId: null }); } catch { /* no MTP */ }
       setActivePortableDeviceId(null);
       setIsConnected(false);
       setActivePanel('local');
@@ -9255,6 +9247,12 @@ const App: React.FC = () => {
   const closeSession = useLatestCallback(async (sessionId: string) => {
     const session = sessions.find(s => s.id === sessionId);
     if (!session) return;
+    // The final tab delegates all cleanup to the authoritative disconnect.
+    // On busy refusal that handler deliberately retains the tab and vault.
+    if (sessionId === activeSessionId && sessions.length === 1) {
+      await disconnectFromFtp('tab-close');
+      return;
+    }
     forgetSiteSession(sessionId);
 
     const overlaySessionId = session.aeroVaultOverlaySession?.sessionId;
@@ -9289,14 +9287,8 @@ const App: React.FC = () => {
   }, [sessions]);
 
   const closeAllSessions = async () => {
-    for (const s of sessions) {
-      const overlaySessionId = s.aeroVaultOverlaySession?.sessionId;
-      if (!overlaySessionId) continue;
-      try { await invoke('aerovault_overlay_lock', { sessionId: overlaySessionId }); } catch { }
-    }
+    // Disconnect owns both successful cleanup and the busy refusal path.
     await disconnectFromFtp('close-all');
-    setSessions([]);
-    setAeroVaultOverlaySession(null);
   };
 
   const handleNewTabFromSavedServer = () => {
@@ -10423,7 +10415,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; requireOverlay?: boolean }): Promise<boolean> => {
+  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -10457,7 +10449,7 @@ const App: React.FC = () => {
           let folderResult: FolderTransferOutcome;
           if (isProvider) {
             folderResult = await invoke<FolderTransferOutcome>('provider_download_folder', {
-              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               remotePath: remoteFilePath,
               localPath: folderPath,
               fileExistsAction: folderAction || undefined,
@@ -10538,7 +10530,7 @@ const App: React.FC = () => {
           } else if (isProvider) {
             // Use provider command for file download
             await invoke('provider_download_file', {
-              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               remotePath: remoteFilePath,
               localPath: localFilePath,
               modified: remoteModified,
@@ -10600,7 +10592,7 @@ const App: React.FC = () => {
     commitMessage?: string,
     explicitRemoteDir?: string,
     onError: TransferErrorMode = 'notify',
-    ownership?: { profileId: string; generation: number; requireOverlay?: boolean },
+    ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean },
   ): Promise<boolean> => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
@@ -10634,7 +10626,7 @@ const App: React.FC = () => {
           try {
             const folderAction2 = fileExistsAction === 'ask' ? '' : fileExistsAction;
             providerFolderResult = await invoke<FolderTransferOutcome>('provider_upload_folder', {
-              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               localPath: localFilePath,
               remotePath: remoteRootForFolder,
               fileExistsAction: folderAction2 || null,
@@ -10647,7 +10639,7 @@ const App: React.FC = () => {
             if (protocol === 'opendrive') {
               assertOwnership();
             await invoke('opendrive_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
                 path: remoteRootForFolder,
                 isPublic: false,
                 isDir: true,
@@ -10656,7 +10648,7 @@ const App: React.FC = () => {
             if (protocol === 'fourshared') {
               assertOwnership();
             await invoke('fourshared_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
                 path: remoteRootForFolder,
                 isPublic: false,
                 isDir: true,
@@ -10766,12 +10758,12 @@ const App: React.FC = () => {
             remotePlainName: targetName,
           });
         } else if (isProvider) {
-          const uploadOutcome = await invoke<string>('provider_upload_file', { ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}), localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
+          const uploadOutcome = await invoke<string>('provider_upload_file', { ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}), localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
           if (uploadOutcome?.startsWith('Skipped:')) return false;
           if (protocol === 'opendrive') {
             assertOwnership();
             await invoke('opendrive_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               path: remotePath,
               isPublic: false,
               isDir: false,
@@ -10780,7 +10772,7 @@ const App: React.FC = () => {
           if (protocol === 'fourshared') {
             assertOwnership();
             await invoke('fourshared_set_path_privacy', {
-              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
+              ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}),
               path: remotePath,
               isPublic: false,
               isDir: false,
@@ -10823,7 +10815,7 @@ const App: React.FC = () => {
     const direction = entry.direction === 'upload' ? 'upload' : 'download';
     transferQueue.startTransfer(id);
     try {
-      let ownership: { profileId: string; generation: number; requireOverlay: boolean } | undefined;
+      let ownership: { profileId: string; generation: number; cryptScope?: string; requireOverlay: boolean } | undefined;
       if (entry.profile_id) {
         const profiles = await loadSavedServerProfiles();
         const profile = profiles.find(p => p.id === entry.profile_id);
@@ -10835,7 +10827,7 @@ const App: React.FC = () => {
         if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile changed');
         }
-        ownership = { profileId: entry.profile_id, generation, requireOverlay };
+        ownership = { profileId: entry.profile_id, generation, requireOverlay, cryptScope: restoredTransferCryptScope(profile) };
       }
       if (direction === 'download') {
         await downloadFile(

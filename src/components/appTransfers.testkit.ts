@@ -47,7 +47,7 @@ const { code } = await transformWithOxc(
   + closure('downloadMultipleFiles', '\n  // Wire cross-panel drag & drop callback')
   + app.slice(dropStart, dropEnd)
   + closure('retryAllFailedItems', '\n  // ======== File Clipboard')
-  + '\nreturn { retryAllFailedItems };',
+  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile };',
   'drop-on-folder-row.ts',
 );
 const { code: overwriteCode } = await transformWithOxc(
@@ -90,7 +90,7 @@ export type Options = {
   /** What the folder question answers. */
   folderAction?: 'merge_overwrite' | 'skip';
   /** '' is a session without a protocol: the legacy folder commands. */
-  protocol?: 'webdav' | 'github' | '';
+  protocol?: 'webdav' | 'github' | 'opendrive' | 'fourshared' | '';
   /** The error a single-file or folder write answers with, by command and
    *  call number (1 for the first); none means it lands. */
   fail?: (command: string, call: number) => string | undefined;
@@ -136,6 +136,7 @@ export function fixture(options: Options = {}) {
     }
     if (command === 'github_check_local_sync') return { is_local_repo: false };
     if (command === 'github_batch_upload') return { commit_sha: 'abcdef1234', files_count: args!.files.length };
+    if (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy') return undefined;
     throw new Error(`Unexpected IPC: ${command}`);
   });
 
@@ -197,6 +198,7 @@ export function fixture(options: Options = {}) {
   const context = {
     // Outside a render a latest-value callback is the function itself.
     useLatestCallback: <T,>(fn: T) => fn,
+    isLiveOnProfile: () => true,
     invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
     resetOverwriteSettings: vi.fn(), checkFolderOverwrite,
     isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget, splitForFileBatch, selectedLocalTrees, asLocalFileEntry,
@@ -227,7 +229,7 @@ export function fixture(options: Options = {}) {
     refreshLocalPanelForPath, loadRemoteFiles, loadLocalFiles, crossPanelDropRef, setScanningState: vi.fn(), INITIAL_SCANNING_STATE,
     requestGitHubBatchCommitMessage, setGitHubSyncWarning: vi.fn(),
   };
-  const { retryAllFailedItems } = new Function(...Object.keys(context), code)(...Object.values(context)) as { retryAllFailedItems: () => Promise<void> };
+  const { retryAllFailedItems, downloadFile, uploadFile } = new Function(...Object.keys(context), code)(...Object.values(context)) as { retryAllFailedItems: () => Promise<void>; downloadFile: (...args: any[]) => Promise<boolean>; uploadFile: (...args: any[]) => Promise<boolean> };
 
   /** Where each write lands: the backend path of every single and batch write. */
   const written = () => invoke.mock.calls.flatMap(([command, args]) => {
@@ -240,5 +242,5 @@ export function fixture(options: Options = {}) {
   });
   const drop = (...args: Parameters<NonNullable<typeof crossPanelDropRef.current>>) => crossPanelDropRef.current!(...args);
   const commits = () => invoke.mock.calls.filter(([command]) => command === 'github_batch_upload').map(([, args]) => args!.files.map((f: any) => f.remotePath));
-  return { drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

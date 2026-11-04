@@ -29,6 +29,7 @@ async function handlers(error: unknown, owned: boolean, staleAfterNavigation = f
   });
   const bindSessionCryptOverlay = vi.fn();
   const context = {
+    notify: { error: vi.fn() }, t: (s: string) => s,
     invoke, normCryptScope, normLandingPath, assertOverlayActivationCurrent,
     positionWrappedProviderAtScope: vi.fn().mockResolvedValue(undefined),
     applyProviderCryptOverlay: vi.fn().mockResolvedValue(''),
@@ -37,7 +38,7 @@ async function handlers(error: unknown, owned: boolean, staleAfterNavigation = f
   };
   const { code } = await transformWithOxc(source, 'overlay-root-navigation.ts');
   const production = new Function(...Object.keys(context), `${code}\nreturn {smartReanchorOverlay, activateProviderCryptOverlay};`)(...Object.values(context));
-  return { ...production, invoke, ownership, bindSessionCryptOverlay };
+  return { ...production, invoke, ownership, bindSessionCryptOverlay, notify: context.notify };
 }
 
 for (const branch of ['initial landing', 'whole-remote re-anchor'] as const) {
@@ -82,5 +83,6 @@ it('rolls back only the owned activation after a root-generation refusal', async
 it('preserves the activation error if awaited scoped cleanup IPC rejects', async () => {
   const op = await handlers(generationError, true, false, true);
   await expect(op.activateProviderCryptOverlay({ sessionId: 's1' }, { kind: 'rclone-crypt' }, undefined, op.ownership)).rejects.toBe(generationError);
+  expect(op.notify.error).toHaveBeenCalledWith('common.error', 'Error: synthetic IPC failure');
   expect(op.invoke).toHaveBeenCalledWith('provider_clear_crypt_overlay', { expectedGeneration: 42, activationId: 'test-activation' });
 });

@@ -7,14 +7,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use std::sync::atomic::Ordering;
-use std::time::Duration;
-
 use serde::Serialize;
 use tauri::State;
-use tracing::warn;
 
-use crate::provider_commands::{drain_in_flight_transfers, ProviderState};
+use crate::provider_commands::ProviderState;
 use crate::providers::directory::DirectoryProvider;
 use crate::providers::mtp::backend::{
     list_mtp_devices as list_mtp_devices_coalesced, MtpDeviceInfo, MtpStorage,
@@ -129,85 +125,15 @@ async fn install_provider(
     state: &ProviderState,
     provider: Box<dyn crate::providers::StorageProvider>,
     config: ProviderConfig,
-) {
-    drain_in_flight_transfers(state, Duration::from_secs(30)).await;
-    {
-        let mut prov_lock = state.provider.lock().await;
-        if let Some(mut previous) = prov_lock.take() {
-            if let Err(err) = previous.disconnect().await {
-                warn!(
-                    "mtp_open_device: previous provider disconnect failed: {}",
-                    err
-                );
-            }
-        }
-        *prov_lock = Some(provider);
-    }
-    state.active_crypt_overlay.store(false, Ordering::SeqCst);
-    state.overlay_wrapped.store(false, Ordering::SeqCst);
-    {
-        let mut config_lock = state.config.lock().await;
-        *config_lock = Some(config);
-    }
+) -> Result<(), String> {
+    state.install_mtp_provider(provider, config).await
 }
 
-/// Clear ProviderState when the live slot is an MTP session (or when forced).
 async fn clear_mtp_provider_slot(
     state: &ProviderState,
     want_device_id: Option<&str>,
 ) -> Result<(), String> {
-    drain_in_flight_transfers(state, Duration::from_secs(30)).await;
-
-    let mut prov_lock = state.provider.lock().await;
-    let is_mtp = prov_lock
-        .as_ref()
-        .map(|p| p.provider_type() == ProviderType::Mtp)
-        .unwrap_or(false);
-
-    if !is_mtp {
-        // No MTP provider installed: still clear a stale MTP config if present.
-        drop(prov_lock);
-        let mut config_lock = state.config.lock().await;
-        if config_lock
-            .as_ref()
-            .map(|c| c.provider_type == ProviderType::Mtp)
-            .unwrap_or(false)
-        {
-            *config_lock = None;
-        }
-        return Ok(());
-    }
-
-    if let Some(want) = want_device_id {
-        if !want.is_empty() {
-            let open_id = {
-                let config_lock = state.config.lock().await;
-                config_lock
-                    .as_ref()
-                    .filter(|c| c.provider_type == ProviderType::Mtp)
-                    .map(|c| c.host.clone())
-            };
-            if let Some(open_id) = open_id {
-                if open_id != want {
-                    return Err(format!("open MTP session is {open_id} not {want}"));
-                }
-            }
-        }
-    }
-
-    if let Some(mut provider) = prov_lock.take() {
-        if let Err(err) = provider.disconnect().await {
-            warn!("mtp_close_device: disconnect failed: {}", err);
-            return Err(format!("Disconnect failed: {err}"));
-        }
-    }
-    drop(prov_lock);
-
-    let mut config_lock = state.config.lock().await;
-    *config_lock = None;
-    state.active_crypt_overlay.store(false, Ordering::SeqCst);
-    state.overlay_wrapped.store(false, Ordering::SeqCst);
-    Ok(())
+    state.clear_mtp_provider(want_device_id).await
 }
 
 /// Open an MTP device session and install it into ProviderState.
@@ -248,7 +174,7 @@ pub async fn mtp_open_device_inner(
         extra: Default::default(),
     };
 
-    install_provider(state, Box::new(mtp), config).await;
+    install_provider(state, Box::new(mtp), config).await?;
 
     Ok(MtpSessionInfoDto {
         device_id,
@@ -353,7 +279,7 @@ pub async fn mtp_open_gvfs_mount_inner(
         extra,
     };
 
-    install_provider(state, Box::new(provider), config).await;
+    install_provider(state, Box::new(provider), config).await?;
 
     Ok(MtpSessionInfoDto {
         device_id,
@@ -616,7 +542,9 @@ mod tests {
             initial_path: Some("/".into()),
             extra: Default::default(),
         };
-        install_provider(&state, Box::new(mtp), config).await;
+        install_provider(&state, Box::new(mtp), config)
+            .await
+            .unwrap();
         {
             let mut lock = state.provider.lock().await;
             let p = lock.as_mut().unwrap();
@@ -643,7 +571,9 @@ mod tests {
             initial_path: Some("/".into()),
             extra: Default::default(),
         };
-        install_provider(&state, Box::new(mtp), config).await;
+        install_provider(&state, Box::new(mtp), config)
+            .await
+            .unwrap();
         let err = mtp_close_device_inner(&state, Some("dev-b".into()))
             .await
             .unwrap_err();

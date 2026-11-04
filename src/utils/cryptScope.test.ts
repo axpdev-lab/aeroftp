@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, normLandingPath, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -166,4 +166,11 @@ describe('restored entry overlay requirement', () => {
     expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '/{username}/vault ' } }, '/alice/vault /f')).toBe(true);
     expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '/{username}/vault ' } }, '/alice/vault/f')).toBe(false);
   });
+});
+
+it('serializes the expected binding without collapsing absent, root or literal whitespace scopes', () => {
+  expect(restoredTransferCryptScope({ username: '' })).toBeUndefined();
+  expect(restoredTransferCryptScope({ username: '', initialPath: '/', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' } })).toBe('');
+  expect(restoredTransferCryptScope({ username: '', initialPath: '/ fallback ', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: '' } })).toBe('/ fallback ');
+  expect(restoredTransferCryptScope({ username: 'alice', aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt', remoteScope: '/{username}/vault ' } })).toBe('/alice/vault ');
 });

@@ -36063,8 +36063,9 @@ async fn cmd_get(
     // but an explicit local FILE target is sufficient if stat proves a file.
     // Directory destinations still need a basename; zero-byte S3 markers and
     // failed/unknown metadata must never turn into a cwd write.
-    let explicit_file =
-        local.filter(|dest| !dest.is_empty() && !dest.ends_with('/') && !Path::new(dest).is_dir());
+    let explicit_file = local.filter(|dest| {
+        !dest.is_empty() && !dest.ends_with(std::path::is_separator) && !Path::new(dest).is_dir()
+    });
     let slash_key_is_file = if filename.is_empty() && explicit_file.is_some() {
         match run_until_interrupted(&cancelled, provider.stat(remote)).await {
             Some(Ok(entry)) => Some(!entry.is_dir),
@@ -84767,7 +84768,7 @@ mod tests {
         assert!(sweep.refusals.is_empty());
     }
 
-    fn test_cli() -> Cli {
+    pub(super) fn test_cli() -> Cli {
         Cli {
             format: OutputFormat::Text,
             json: false,
@@ -106372,6 +106373,176 @@ fn cli_get_target_has_file_name(
 #[cfg(test)]
 mod get_slash_key_tests {
     use super::*;
+    /// Real command + real S3 stat/download, with HTTP on loopback only.
+    /// Dedicated current-thread runtime keeps the existing TLS provider seam local.
+    #[test]
+    fn cmd_get_real_s3_nonempty_slash_object_and_refusals() {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(async {
+                        use axum::{
+                            body::Body,
+                            http::{Request, Response, StatusCode},
+                            Router,
+                        };
+                        use ftp_client_gui_lib::providers::{s3::S3Provider, S3Config};
+                        let requests = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+                        let observed = requests.clone();
+                        let app = Router::new().fallback(move |req: Request<Body>| {
+                            let observed = observed.clone();
+                            async move {
+                                observed.lock().unwrap().push(format!(
+                                    "{} {}",
+                                    req.method(),
+                                    req.uri().path()
+                                ));
+                                let path = req.uri().path();
+                                if path.contains("denied") {
+                                    return Response::builder()
+                                        .status(StatusCode::FORBIDDEN)
+                                        .body(Body::empty())
+                                        .unwrap();
+                                }
+                                let data = if path.contains("marker") {
+                                    ""
+                                } else {
+                                    "slash-object-bytes"
+                                };
+                                Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("content-length", data.len().to_string())
+                                    .body(if req.method() == axum::http::Method::HEAD {
+                                        Body::empty()
+                                    } else {
+                                        Body::from(data)
+                                    })
+                                    .unwrap()
+                            }
+                        });
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+                        let server = tokio::spawn(async move {
+                            axum::serve(listener, app).await.unwrap();
+                        });
+                        let dir = tempfile::tempdir().unwrap();
+                        let mut cli = tests::test_cli();
+                        cli.quiet = true;
+                        struct ClearProvider;
+                        impl Drop for ClearProvider {
+                            fn drop(&mut self) {
+                                TEST_CONNECTED_PROVIDER.with(|s| *s.borrow_mut() = None);
+                            }
+                        }
+                        let _cleanup = ClearProvider;
+                        for (remote, destination, success) in [
+                            ("/nonempty/", Some(dir.path().join("saved.bin")), true),
+                            (
+                                "/nonempty/",
+                                Some(dir.path().join("native-trailing\\")),
+                                !cfg!(windows),
+                            ),
+                            ("/marker/", Some(dir.path().join("marker.bin")), false),
+                            ("/denied/", Some(dir.path().join("denied.bin")), false),
+                            ("/nonempty/", None, false),
+                            ("/nonempty/", Some(dir.path().to_path_buf()), false),
+                        ] {
+                            requests.lock().unwrap().clear();
+                            let mut provider = S3Provider::new(S3Config {
+                                endpoint: Some(endpoint.clone()),
+                                region: "us-east-1".into(),
+                                access_key_id: "synthetic".into(),
+                                secret_access_key: secrecy::SecretString::from(
+                                    "synthetic".to_string(),
+                                ),
+                                session_token: None,
+                                role_arn: None,
+                                role_external_id: None,
+                                role_session_name: None,
+                                role_duration_seconds: None,
+                                role_mfa_serial: None,
+                                role_mfa_token_code: None,
+                                bucket: "bucket".into(),
+                                prefix: None,
+                                path_style: true,
+                                storage_class: None,
+                                sse_mode: None,
+                                sse_kms_key_id: None,
+                                verify_cert: true,
+                                allow_cleartext_endpoint: false,
+                                skip_dir_markers: false,
+                                filen_desktop_bridge: false,
+                            })
+                            .unwrap();
+                            provider.set_no_check_bucket(true);
+                            provider.connect().await.unwrap();
+                            TEST_CONNECTED_PROVIDER
+                                .with(|s| *s.borrow_mut() = Some(Box::new(provider)));
+                            let local = destination.as_ref().map(|p| p.to_str().unwrap());
+                            let code = cmd_get(
+                                "s3://unused/bucket",
+                                remote,
+                                local,
+                                false,
+                                1,
+                                false,
+                                &cli,
+                                OutputFormat::Json,
+                                Arc::new(AtomicBool::new(false)),
+                            )
+                            .await;
+                            let calls = requests.lock().unwrap().clone();
+                            if success {
+                                assert_eq!(code, 0, "{calls:?}");
+                                assert_eq!(
+                                    std::fs::read(destination.unwrap()).unwrap(),
+                                    b"slash-object-bytes"
+                                );
+                                assert!(
+                                    calls.iter().any(|s| s == "HEAD /bucket/nonempty/"),
+                                    "{calls:?}"
+                                );
+                                assert!(
+                                    calls.iter().any(|s| s == "GET /bucket/nonempty/"),
+                                    "{calls:?}"
+                                );
+                            } else {
+                                assert_eq!(code, 5, "{remote} {calls:?}");
+                                assert!(
+                                    !calls.iter().any(|s| s.starts_with("GET ")),
+                                    "refusal downloaded: {calls:?}"
+                                );
+                                if let Some(dest) = destination {
+                                    if !dest.is_dir() {
+                                        assert!(!dest.exists());
+                                    }
+                                }
+                            }
+                        }
+                        server.abort();
+                        let _ = server.await;
+                    });
+            })
+            .unwrap()
+            .join()
+            .unwrap();
+    }
+
+    #[test]
+    fn explicit_destination_rejects_native_trailing_separators_only() {
+        // Exercise the same native predicate used by cmd_get. Windows also
+        // treats backslash as a separator; Unix keeps it as a literal filename.
+        assert!("missing/".ends_with(std::path::is_separator));
+        assert_eq!(
+            "missing\\".ends_with(std::path::is_separator),
+            cfg!(windows)
+        );
+    }
+
     #[test]
     fn nonempty_slash_object_needs_explicit_file_and_positive_stat() {
         assert!(cli_get_target_has_file_name("", true, Some(true)));
