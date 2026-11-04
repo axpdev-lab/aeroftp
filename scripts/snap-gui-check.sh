@@ -160,7 +160,7 @@ if grep -qE "EGL_BAD_(PARAMETER|DISPLAY)|Could not create default EGL display|li
   echo "::error::WebKit could not initialize EGL inside the snap" >&2
   exit 1
 fi
-if grep -q "Splash screen safety timeout reached" "$LOG"; then
+if grep -qE "(Splash screen|Startup) safety timeout reached" "$LOG"; then
   echo "::error::the frontend never signalled app_ready" >&2
   exit 1
 fi
