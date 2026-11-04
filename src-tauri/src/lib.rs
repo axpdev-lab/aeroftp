@@ -11670,6 +11670,10 @@ mod startup_splash_tests {
             !watchdog.contains("should_show_splash("),
             "the app_ready watchdog must not depend on splash creation"
         );
+        assert!(
+            !watchdog.contains("is_autostart_launch("),
+            "the app_ready watchdog must not skip autostart launches"
+        );
     }
 
     #[test]
