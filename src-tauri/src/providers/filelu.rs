@@ -338,6 +338,26 @@ fn filelu_time_to_utc(raw: &str) -> String {
         .to_string()
 }
 
+/// The instant AeroFTP 4.2.6 and earlier read for a FileLu time naming
+/// `instant`: FileLu's Eastern wall-clock string taken as UTC, 4 or 5 hours
+/// early. AeroCloud transfer receipts written by those versions hold this
+/// reading as the remote file's time, and AeroCloud uses it to recognize such
+/// a receipt instead of taking every older FileLu file for one changed on
+/// the server. None for an instant [`filelu_time_to_utc`] never produces (the
+/// standard-time occurrence of the repeated November hour).
+pub(crate) fn pre_utc_fix_reading(
+    instant: chrono::DateTime<chrono::Utc>,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    // Daylight first: an instant in the hour after the March switch has a
+    // second, standard-time preimage in the skipped hour, which FileLu never
+    // writes.
+    [4, 5].into_iter().find_map(|offset_hours| {
+        let wall = (instant - chrono::Duration::hours(offset_hours)).naive_utc();
+        let daylight = us_eastern_daylight_time(wall);
+        (daylight == (offset_hours == 4)).then(|| wall.and_utc())
+    })
+}
+
 /// Whether the US Eastern wall-clock time `wall` is daylight time (EDT,
 /// UTC-4) under the US rule in force since 2007: from 02:00 local on the
 /// second Sunday of March to 02:00 local on the first Sunday of November.
@@ -4707,6 +4727,28 @@ mod tests {
                 "{eastern}"
             );
         }
+    }
+
+    #[test]
+    fn the_pre_fix_reading_is_the_eastern_string_taken_as_utc() {
+        for (eastern, _) in EASTERN_TO_UTC {
+            if *eastern == "2026-03-08 02:30:00" {
+                // The skipped March hour, which FileLu never writes: its
+                // instant reads back as the real daylight time 03:30.
+                continue;
+            }
+            let instant = crate::parse_remote_datetime(&filelu_time_to_utc(eastern)).unwrap();
+            let old = crate::parse_remote_datetime(eastern).unwrap();
+            assert_eq!(pre_utc_fix_reading(instant), Some(old), "{eastern}");
+        }
+        let skipped = crate::parse_remote_datetime("2026-03-08T07:30:00Z").unwrap();
+        assert_eq!(
+            pre_utc_fix_reading(skipped),
+            crate::parse_remote_datetime("2026-03-08 03:30:00")
+        );
+        // The standard-time 01:30 of 1 November is never produced.
+        let repeated = crate::parse_remote_datetime("2026-11-01T06:30:00Z").unwrap();
+        assert_eq!(pre_utc_fix_reading(repeated), None);
     }
 
     #[test]
