@@ -1515,7 +1515,9 @@ impl CredentialStore {
         };
         let mut key_written = false;
         let written = VaultWriteGuard::acquire(dir).and_then(|guard| {
-            if dir.join(VAULTKEY_FILENAME).exists() {
+            // A vault.key file, not just any path: a folder there is no vault,
+            // and the write below fails on it.
+            if dir.join(VAULTKEY_FILENAME).is_file() {
                 return Ok(false);
             }
             VaultKeyFile { mode: key_mode }.write(&guard)?;
