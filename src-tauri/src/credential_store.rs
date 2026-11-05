@@ -32,6 +32,46 @@ use zeroize::{Zeroize, Zeroizing};
 // swap (default on macOS, optional on Linux with LUKS), this risk is mitigated.
 // TODO: Consider wrapping in a custom MlockedBox<[u8; 32]> if threat model requires it.
 static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
+
+thread_local! {
+    /// VAULT_CACHE locks this thread holds, for the lock order check.
+    static VAULT_CACHE_HELD: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// [`VAULT_CACHE`] locked through [`lock_vault_cache`], counted per thread so
+/// [`VaultWriteGuard::acquire`] can assert that no path waits for the vault
+/// lock while it holds the cache (lock order).
+struct VaultCacheLock(std::sync::MutexGuard<'static, Option<(PathBuf, [u8; 32])>>);
+
+impl std::ops::Deref for VaultCacheLock {
+    type Target = Option<(PathBuf, [u8; 32])>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for VaultCacheLock {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Drop for VaultCacheLock {
+    fn drop(&mut self) {
+        VAULT_CACHE_HELD.with(|held| held.set(held.get().saturating_sub(1)));
+    }
+}
+
+/// The only way to lock [`VAULT_CACHE`]; `Err` when the mutex is poisoned.
+fn lock_vault_cache() -> Result<VaultCacheLock, ()> {
+    let cache = VAULT_CACHE.lock().map_err(|_| ())?;
+    VAULT_CACHE_HELD.with(|held| held.set(held.get() + 1));
+    Ok(VaultCacheLock(cache))
+}
+
+fn vault_cache_held() -> bool {
+    VAULT_CACHE_HELD.with(|held| held.get() > 0)
+}
 static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 // Serializes vault writes between the threads of one process. Writes between
@@ -48,13 +88,15 @@ static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 //   5. a source folder's vault.db.lock, file only (`VaultFolderLock`), taken
 //      by the portable copy after the destination's guard
 //   6. VAULT_CACHE: the GUI config update reads it under its guard; no path
-//      waits for a guard while holding it
+//      waits for a guard while holding it (`VaultWriteGuard::acquire` asserts
+//      it in debug builds, through `lock_vault_cache`)
 // 3 and 4 are only ever taken together, by `VaultWriteGuard::acquire`, within
 // one deadline. While a guard is held nothing reads or writes the keyring
 // (claim, release, passphrase load), derives a master-password key, or calls
 // `open_and_cache` or `clear_cache`: those run before the guard is taken or
 // after it is dropped, and a path that prepared outside the guard reads
-// vault.key again under it. The claim lock asserts this in debug builds.
+// vault.key again under it. The claim lock asserts the keyring part in debug
+// builds; VAULT_CACHE is only ever locked through `lock_vault_cache`.
 static VAULT_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 pub(crate) const VAULT_FILENAME: &str = "vault.db";
@@ -620,6 +662,10 @@ impl VaultWriteGuard {
     /// [`off_async_worker`], so no writer, whichever path it comes from, holds
     /// a tokio worker while another process holds the vault.
     fn acquire_waiting(dir: &Path, wait: std::time::Duration) -> Result<Self, CredentialError> {
+        debug_assert!(
+            !vault_cache_held(),
+            "vault lock waited for while VAULT_CACHE is held (lock order)"
+        );
         match Self::acquire_within(dir, std::time::Duration::ZERO) {
             Err(CredentialError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 off_async_worker(|| Self::acquire_within(dir, wait))
@@ -1697,7 +1743,7 @@ impl CredentialStore {
         Self::verify_vault_key(&vault_path, &vault_key)?;
 
         // Cache in static
-        if let Ok(mut cache) = VAULT_CACHE.lock() {
+        if let Ok(mut cache) = lock_vault_cache() {
             *cache = Some((vault_path, vault_key));
             VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
@@ -1710,7 +1756,7 @@ impl CredentialStore {
 
     /// Get a store instance from cache (vault must be open)
     pub fn from_cache() -> Option<Self> {
-        let cache = VAULT_CACHE.lock().ok()?;
+        let cache = lock_vault_cache().ok()?;
         let (path, key) = cache.as_ref()?;
         Some(Self {
             vault_path: path.clone(),
@@ -1738,14 +1784,14 @@ impl CredentialStore {
         // from_cache of this process for up to VAULT_LOCK_WAIT. The cache is
         // then held from the generation check through the write.
         let dir = {
-            let cache = VAULT_CACHE.lock().map_err(|_| "locked")?;
+            let cache = lock_vault_cache().map_err(|_| "locked")?;
             let (path, _) = cache.as_ref().ok_or("locked")?;
             Self::lock_dir(path)
                 .map(Path::to_path_buf)
                 .map_err(|_| "action_failed")?
         };
         let guard = VaultWriteGuard::acquire(&dir).map_err(|_| "action_failed")?;
-        let cache = VAULT_CACHE.lock().map_err(|_| "locked")?;
+        let cache = lock_vault_cache().map_err(|_| "locked")?;
         let (path, key) = cache.as_ref().ok_or("locked")?;
         if Self::cache_generation() != generation || guard.covers(path).is_err() {
             return Err("gui_scope_changed".into());
@@ -1809,7 +1855,7 @@ impl CredentialStore {
 
     /// Clear the vault cache (on lock)
     pub fn clear_cache() {
-        if let Ok(mut cache) = VAULT_CACHE.lock() {
+        if let Ok(mut cache) = lock_vault_cache() {
             if let Some((_, ref mut key)) = *cache {
                 // GAP-E01: Zeroize vault key via Zeroize trait (constant-time)
                 key.zeroize();
@@ -1886,7 +1932,7 @@ impl CredentialStore {
     /// A2-08: Cache previously verified vault key material.
     /// Called after TOTP verification succeeds.
     pub(crate) fn cache_vault(vault_path: PathBuf, mut vault_key: [u8; 32]) {
-        if let Ok(mut cache) = VAULT_CACHE.lock() {
+        if let Ok(mut cache) = lock_vault_cache() {
             *cache = Some((vault_path, vault_key));
             VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
