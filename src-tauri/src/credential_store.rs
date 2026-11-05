@@ -604,6 +604,23 @@ fn vault_temporary(path: &Path) -> PathBuf {
     path.with_file_name(format!("{name}.{}.{unique}.tmp", std::process::id()))
 }
 
+/// Run a vault write from async code without holding up a tokio worker while
+/// it waits for another process's `vault.db.lock`: on a multi-threaded runtime
+/// the worker hands its other tasks to the pool for the duration
+/// ([`tokio::task::block_in_place`]). The write itself is not moved or
+/// detached, so a short-lived CLI never exits before a rotated token is
+/// saved. Off a runtime or on a current-thread runtime it runs inline.
+/// Token refreshes inside providers write through this: several processes
+/// refreshing at once is where the lock is contended.
+pub(crate) fn off_async_worker<T>(write: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(write)
+        }
+        _ => write(),
+    }
+}
+
 /// The lock file or a writer's temporary: files no copy or import carries.
 pub(crate) fn is_vault_lock_or_temporary(name: &str) -> bool {
     name == VAULT_LOCK_FILENAME || is_vault_temporary(name)
@@ -3029,6 +3046,90 @@ mod vault_lock_tests {
         store.store("kept", "value").unwrap();
         CredentialStore::create_empty_vault_if_absent(&path, &KEY).unwrap();
         assert_eq!(store.get("kept").unwrap(), "value");
+    }
+
+    /// The token refreshes inside providers write the vault through
+    /// `off_async_worker`; a refresh that calls the synchronous write directly
+    /// again fails here.
+    #[test]
+    fn provider_token_refreshes_write_off_the_async_worker() {
+        fn body<'a>(source: &'a str, signature: &str) -> &'a str {
+            let start = source
+                .find(signature)
+                .unwrap_or_else(|| panic!("{signature} not found"));
+            let rest = &source[start..];
+            &rest[..rest.find("\n    }\n").unwrap()]
+        }
+        let oauth = include_str!("providers/oauth2.rs");
+        let refresh = body(oauth, "pub async fn refresh_tokens(");
+        assert!(
+            refresh.contains("off_async_worker("),
+            "oauth2 refresh_tokens"
+        );
+        assert!(
+            !refresh.contains("\n        self.store_tokens("),
+            "oauth2 refresh_tokens"
+        );
+        for (source, signature, inner) in [
+            (
+                include_str!("providers/jottacloud.rs"),
+                "fn persist_refresh_token(&self) {",
+                "persist_refresh_token_now()",
+            ),
+            (
+                include_str!("providers/mega_native.rs"),
+                "fn persist_session(&self) -> Result<(), ProviderError> {",
+                "persist_session_now()",
+            ),
+        ] {
+            let wrapper = body(source, signature);
+            assert!(wrapper.contains("off_async_worker("), "{signature}");
+            assert!(wrapper.contains(inner), "{signature}");
+            assert_eq!(
+                source.matches(inner).count(),
+                1,
+                "{inner} is called only by its wrapper"
+            );
+        }
+        let proton = include_str!("providers/proton_native/vault.rs");
+        assert!(
+            body(proton, "fn save(&self, tokens: &SessionTokens) {").contains("off_async_worker(")
+        );
+    }
+
+    #[test]
+    fn off_async_worker_runs_inline_without_a_multi_thread_runtime() {
+        assert_eq!(off_async_worker(|| 7), 7);
+        let current = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        assert_eq!(current.block_on(async { off_async_worker(|| 8) }), 8);
+    }
+
+    #[test]
+    fn off_async_worker_hands_a_multi_thread_worker_back() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            // With one worker, a write that blocked it in place would starve
+            // this task; block_in_place hands the other task to a new worker.
+            let ticker = tokio::spawn(async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                true
+            });
+            let ran = tokio::spawn(async {
+                off_async_worker(|| std::thread::sleep(Duration::from_millis(200)));
+                true
+            });
+            assert!(tokio::time::timeout(Duration::from_millis(150), ticker)
+                .await
+                .expect("the other task ran while the write waited")
+                .unwrap());
+            assert!(ran.await.unwrap());
+        });
     }
 
     /// No vault writer may bypass the unique temporaries again.

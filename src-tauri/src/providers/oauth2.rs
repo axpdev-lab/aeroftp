@@ -803,8 +803,11 @@ impl OAuth2Manager {
             scopes: config.scopes.clone(),
         };
 
-        // Update keyring under the profile-bound key.
-        self.store_tokens(config.provider, &config.profile_id, &tokens)?;
+        // Update keyring under the profile-bound key, off the async worker:
+        // another process may be writing the vault at the same moment.
+        crate::credential_store::off_async_worker(|| {
+            self.store_tokens(config.provider, &config.profile_id, &tokens)
+        })?;
 
         info!("OAuth2 tokens refreshed for {:?}", config.provider);
 

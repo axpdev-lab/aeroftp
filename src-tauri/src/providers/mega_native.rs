@@ -717,7 +717,13 @@ impl MegaNativeProvider {
         Ok(())
     }
 
+    /// Persist the session, off the async worker (see
+    /// [`crate::credential_store::off_async_worker`]).
     fn persist_session(&self) -> Result<(), ProviderError> {
+        crate::credential_store::off_async_worker(|| self.persist_session_now())
+    }
+
+    fn persist_session_now(&self) -> Result<(), ProviderError> {
         if !self.config.save_session {
             return Ok(());
         }
