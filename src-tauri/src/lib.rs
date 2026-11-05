@@ -17987,8 +17987,14 @@ async fn store_credential(
     // are the four per-profile overlay secret prefixes. OAuth
     // and GitHub tokens stay vault-only on this generic path: they are mirrored
     // by their own type-explicit call-sites (MUV-4/5).
-    user_partitions::store_active_credential_dual(&store, &account, &password)
-        .map_err(|e| format!("Failed to store credential: {}", e))
+    // The vault write may wait for another process's lock: keep it off the
+    // async workers.
+    tauri::async_runtime::spawn_blocking(move || {
+        user_partitions::store_active_credential_dual(&store, &account, &password)
+    })
+    .await
+    .map_err(|e| format!("Failed to store credential: {}", e))?
+    .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
 #[tauri::command]
@@ -18021,8 +18027,12 @@ async fn delete_credential(webview: tauri::Webview, account: String) -> Result<(
     // Dual-delete. Removes from the vault and, for the prefix-classified keys
     // (`server_*`, `ai_apikey_*`), best-effort from the active user's partition.
     // Not a mass purge (that is MUV-6).
-    user_partitions::delete_active_credential_dual(&store, &account)
-        .map_err(|e| format!("Failed to delete credential: {}", e))
+    tauri::async_runtime::spawn_blocking(move || {
+        user_partitions::delete_active_credential_dual(&store, &account)
+    })
+    .await
+    .map_err(|e| format!("Failed to delete credential: {}", e))?
+    .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
 /// Remove EVERY vault secret scoped to a saved profile id, so deleting a profile

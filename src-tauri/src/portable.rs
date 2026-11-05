@@ -143,6 +143,11 @@ fn never_copied(src: &Path) -> bool {
     {
         return true;
     }
+    // The vault writers' lock and their unfinished temporaries belong to the
+    // host's own processes, never to the copy.
+    if crate::credential_store::is_vault_lock_or_temporary(name) {
+        return true;
+    }
     // The tree we import here is a config tree the user consented to copy, but a
     // symlink inside it can point anywhere: outside the consented tree (dragging
     // in foreign secrets like ~/.ssh) or at an ancestor, forming a cycle that
@@ -245,6 +250,15 @@ fn copy_missing_root(src: &Path, dst: &Path, copied: &mut usize) -> std::io::Res
 /// Copy the vault files of `src` into `dst` together, or none of them.
 fn copy_vault_unit(src: &Path, dst: &Path, copied: &mut usize) -> std::io::Result<()> {
     // A dangling link counts as present, as it does for the no-clobber rename.
+    if VAULT_FILES
+        .iter()
+        .any(|name| dst.join(name).symlink_metadata().is_ok())
+    {
+        return Ok(());
+    }
+    // No process of this install writes the vault while it is copied in.
+    let _guard = crate::credential_store::VaultWriteGuard::acquire(dst)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
     if VAULT_FILES
         .iter()
         .any(|name| dst.join(name).symlink_metadata().is_ok())
