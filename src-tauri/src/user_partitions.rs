@@ -3842,11 +3842,28 @@ pub fn store_active_credential_dual(
     credential_id: &str,
     secret: &str,
 ) -> Result<(), String> {
+    store_credential_dual_as(store, active_user_id_for_write()?, credential_id, secret)
+}
+
+/// The account a GUI save mirrors into, read when the request arrives, before
+/// it is handed to a blocking thread ([`store_credential_dual_as`]).
+pub fn active_user_for_save() -> Result<Option<i64>, String> {
+    active_user_id_for_write()
+}
+
+/// [`store_active_credential_dual`] for `user_id`, the account active when the
+/// request arrived.
+pub fn store_credential_dual_as(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
     store_credential_dual_with(
         store,
         credential_id,
         secret,
-        active_user_id_for_write,
+        || Ok(user_id),
         |user_id| mirror_credential_for_user(store, user_id, credential_id, secret),
     )
 }
@@ -4050,9 +4067,31 @@ pub fn delete_active_credential_dual(
     store: &CredentialStore,
     credential_id: &str,
 ) -> Result<(), String> {
-    delete_credential_dual_with(store, credential_id, active_user_id_quiet, |user_id| {
-        unmirror_credential_for_user_best_effort(user_id, credential_id)
-    })
+    delete_credential_dual_as(store, active_user_for_delete(credential_id), credential_id)
+}
+
+/// The account a GUI delete removes the mirror from, read when the request
+/// arrives; `None` for keys that are never mirrored.
+pub fn active_user_for_delete(credential_id: &str) -> Option<i64> {
+    muv3_credential_type(credential_id)
+        .is_some()
+        .then(active_user_id_quiet)
+        .flatten()
+}
+
+/// [`delete_active_credential_dual`] for `user_id`, the account active when
+/// the request arrived.
+pub fn delete_credential_dual_as(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    credential_id: &str,
+) -> Result<(), String> {
+    delete_credential_dual_with(
+        store,
+        credential_id,
+        || user_id,
+        |user_id| unmirror_credential_for_user_best_effort(user_id, credential_id),
+    )
 }
 
 /// [`delete_active_credential_dual`] with the account lookup and the unmirror
@@ -7173,11 +7212,7 @@ mod tests {
 
     fn throwaway_vault(dir: &std::path::Path) -> CredentialStore {
         let path = dir.join("vault.db");
-        std::fs::write(
-            &path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
-        )
-        .unwrap();
+        crate::credential_store::CredentialStore::write_test_vault(&path, &[0x24; 32]);
         CredentialStore::from_verified_key(&path, &[0x24; 32])
     }
 
