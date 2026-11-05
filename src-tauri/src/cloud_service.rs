@@ -1031,8 +1031,25 @@ impl CloudService {
             && receipt.destination.modified.is_some()
             && receipt.destination.modified != Some(UNSETTLED_BASELINE)
             && receipt.destination.size == size
-            && (receipt.destination.modified == modified
-                || Self::pre_utc_fix_filelu_receipt(config, receipt, modified))
+            && if Self::is_pre_utc_fix_filelu_receipt(config, receipt) {
+                // Its time is the old reading, never a real instant: an exact
+                // match would accept a same-size file uploaded 4 or 5 hours
+                // before the one AeroCloud wrote (moved in, or restored from a
+                // version or the trash, keeps its upload time).
+                Self::pre_utc_fix_filelu_receipt(config, receipt, modified)
+            } else {
+                receipt.destination.modified == modified
+            }
+    }
+
+    /// Whether `receipt` is a FileLu upload receipt saved before FileLu times
+    /// were read as US Eastern: unmarked, on the remote side, for a FileLu
+    /// pair. Its time is the old reading of FileLu's clock, so it is compared
+    /// only through [`Self::pre_utc_fix_filelu_receipt`].
+    fn is_pre_utc_fix_filelu_receipt(config: &CloudConfig, receipt: &CloudTransferReceipt) -> bool {
+        config.protocol_type == "filelu"
+            && !receipt.utc_remote_time
+            && receipt.destination_side == CompareDirection::LocalToRemote
     }
 
     /// Only for FileLu upload receipts written before FileLu times were read
@@ -1052,9 +1069,7 @@ impl CloudService {
         receipt: &CloudTransferReceipt,
         modified: Option<DateTime<Utc>>,
     ) -> bool {
-        config.protocol_type == "filelu"
-            && !receipt.utc_remote_time
-            && receipt.destination_side == CompareDirection::LocalToRemote
+        Self::is_pre_utc_fix_filelu_receipt(config, receipt)
             && modified
                 .and_then(crate::providers::filelu::pre_utc_fix_reading)
                 .is_some_and(|old| receipt.destination.modified == Some(old))
@@ -4066,7 +4081,13 @@ mod baseline_tests {
         };
         let filelu = config_for("filelu", CompareDirection::LocalToRemote);
         assert_eq!(reason(&filelu, old, now), None);
-        assert_eq!(reason(&filelu, now, now), None);
+        // Its time is the old reading, never a real instant, so the listed
+        // time is never compared to it as one: a same-size file whose real
+        // upload time equals the stored wall-clock value (uploaded 4 hours
+        // before the original, then moved in or restored) is a change, and so
+        // is a listing that happens to equal the stored value.
+        assert!(reason(&filelu, old, old).is_some());
+        assert!(reason(&filelu, now, now).is_some());
         // A receipt minted or migrated since the fix holds the real time: a
         // same-size file replaced on the server exactly 4 hours later (the
         // old reading of its time is the receipt's) is a change, never the
@@ -4082,6 +4103,7 @@ mod baseline_tests {
         // Only FileLu times moved, and only a remote destination holds them.
         let sftp = config_for("sftp", CompareDirection::LocalToRemote);
         assert!(reason(&sftp, old, now).is_some());
+        assert_eq!(reason(&sftp, now, now), None);
         let download = config_for("filelu", CompareDirection::RemoteToLocal);
         assert!(reason(&download, old, now).is_some());
     }
