@@ -325,7 +325,7 @@ AeroFTP defines eight user-facing file formats. Each has a single purpose and a 
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (8 transport protocols + 26 native providers, media services included, sync, share)
+├── AeroCloud    - Personal cloud (supported server and cloud profiles, sync, share)
 ├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
 ├── AeroShare    - Peer-to-peer user-to-user transfer (end-to-end encrypted, no server in the middle) [Beta]
 ├── AeroMount    - Persistent FUSE / WebDAV mounts with cross-platform autostart (the Mount Manager)
@@ -344,7 +344,7 @@ AeroFTP
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
-Turn **any server** into a private personal cloud. Connect through 8 transport protocols and 26 native provider integrations with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
+Turn a supported server or cloud account into a private personal cloud. Choose from the profiles offered in AeroCloud setup for bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. SCP connections are available in AeroFTP but are not yet offered by AeroCloud setup. Background tray sync includes native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
 ---
 

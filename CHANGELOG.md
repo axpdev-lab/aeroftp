@@ -25,7 +25,7 @@ The complete change record and remaining follow-ups are in the [4.2.6 release tr
 
 #### Fixed
 
-- **Uncertain cloud writes are not automatically replayed.** A timeout or server error after a create or upload no longer blindly repeats a potentially committed operation. Safe bounded retries retain the opened source file, FileLu acknowledgements are validated, and Internxt replacements preserve the existing file. GUI upload loops leave another whole-file attempt to explicit Retry (#1486).
+- **Uncertain cloud writes are not automatically replayed.** A timeout or server error after a create or upload no longer blindly repeats a potentially committed operation. Safe bounded retries retain the opened source file, FileLu acknowledgements are validated, and Internxt replacements preserve the existing file. GUI and backend upload loops leave another whole-file attempt to explicit Retry while retaining safe retries within provider operations (#1486).
 - **Changed upload sources are refused before publication.** Azure, Box, Dropbox, Drime, Google Drive, OneDrive, B2 and shared multipart paths abort an upload whose local source changed while being read (#1438, #1463).
 - **Downloads verify published content hashes.** GUI, CLI and sync downloads check usable plaintext SHA-256, SHA-1 or MD5 hashes before reporting success. Segmented mismatches fall back to one stream; settings and CLI flags control the bounded verification (#1467).
 - **HTTP download failures retain their meaning.** An HTTP 412 distinguishes a gateway rejecting `If-Match` from an object that changed. pCloud downloads, version downloads and thumbnails reject HTTP error pages instead of saving them as files (#1445, #1489).
@@ -48,7 +48,7 @@ The complete change record and remaining follow-ups are in the [4.2.6 release tr
 
 #### Security
 
-- **Pre-tag commit audit: PASS.** Independent review covered the release-cycle commits and their touched paths. Fixed automatic GUI replay of uncertain provider uploads and execution of flat fallback comparisons before complete scanning; counter-review and the full local release gate passed.
+- **Pre-tag commit audit: PASS.** Independent review covered the release-cycle commits and their touched paths. Fixed automatic GUI and backend replay of uncertain provider uploads and execution of flat fallback comparisons before complete scanning; provider-owned session preparation remains intact. Counter-review and the full local release gate passed.
 
 - **SSH authentication starts with `none`.** Passwordless accounts permitted by the SSH server, including OpenWrt, can connect; a refusal continues with the configured password or key on the same connection (@GWan1234, #1452, #1454, #1453).
 - **Recursive operations enforce sensitive-path policy.** MCP sync protects refused descendants and their counterparts from orphan deletion; AeroAgent archive creation checks every source before reading and preserves an existing destination when any source is refused (#1430, #1431).

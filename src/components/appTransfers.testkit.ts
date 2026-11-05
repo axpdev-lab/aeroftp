@@ -120,7 +120,7 @@ export function fixture(options: Options = {}) {
       const entries = args!.params.entries;
       return { completed: entries.length, failed: 0, cancelled: false, succeeded: entries.map((_: unknown, i: number) => i) };
     }
-    if (command === 'provider_upload_file' || command === 'provider_download_file') {
+    if (command === 'provider_upload_file' || command === 'provider_download_file' || command === 'upload_file') {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);
       // The backend answers a failed command with its message, a string.

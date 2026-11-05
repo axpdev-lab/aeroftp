@@ -73,6 +73,17 @@ async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<t
 }
 
 describe('a failed file is seen by its queue row, the retry and the circuit breaker', () => {
+  it('an upload in a session without a protocol retries a transient failure', async () => {
+    const f = await upload({
+      protocol: '',
+      fail: (_command, call) => call === 1 ? 'Operation timed out' : undefined,
+    });
+    expect(attempts(f, 'upload_file')).toBe(2);
+    expect(f.transferQueue.completeTransfer).toHaveBeenCalledTimes(1);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    expect(f.notify.error).not.toHaveBeenCalled();
+  });
+
   it.each(['Operation timed out', 'Upload HTTP 503 Service Unavailable'])(
     'a provider upload answered with %s is not automatically replayed',
     async error => {
@@ -514,4 +525,3 @@ describe('every transfer that completes a queue row passes its error on', () => 
     expect(uncounted).toEqual([]);
   });
 });
-
