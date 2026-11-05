@@ -709,6 +709,17 @@
       "firstRegion": null
     },
     {
+      "id": "tigris",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": false,
+        "region": "auto",
+        "endpoint": "https://t3.storage.dev"
+      },
+      "firstRegion": null
+    },
+    {
       "id": "idrive-e2",
       "protocol": "s3",
       "generic": false,

@@ -171,6 +171,19 @@ describe('storageDedup', () => {
         expect(summary.dedupedQuotaCount).toBe(1);
     });
 
+    it('case 4b2: Tigris keys by preset id, so the current and the legacy host of one key are one account', () => {
+        const current = make({
+            id: 'tg1', protocol: 's3', providerId: 'tigris',
+            host: 't3.storage.dev', port: 443, username: 'tid_example_key',
+        });
+        const legacy = make({
+            id: 'tg2', protocol: 's3', providerId: 'tigris',
+            host: 'fly.storage.tigris.dev', port: 443, username: 'tid_example_key',
+        });
+        expect(getStorageDedupKey(current)).toMatch(/^s3:tigris:/);
+        expect(getStorageDedupKey(legacy)).toBe(getStorageDedupKey(current));
+    });
+
     it('case 4c: Mail.ru Cloud keys by preset id, matching the Rust dedup_key', () => {
         // Regression: the frontend mirror missed 'mailru-cloud', so the GUI
         // logged webdav-host:... while Rust computed webdav:mailru-cloud:....

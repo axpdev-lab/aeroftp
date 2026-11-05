@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Folosiți SCP doar pentru servere fără SFTP, de exemplu routere OpenWrt.",
             "allowScpFallback": "Permite revenirea la SCP",
             "allowScpFallbackHint": "Dacă serverul nu are SFTP, conexiunea continuă prin SCP, așa cum face WinSCP.",
-            "discoverScp": "Copiere de fișiere prin SSH pentru servere fără SFTP"
+            "discoverScp": "Copiere de fișiere prin SSH pentru servere fără SFTP",
+            "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

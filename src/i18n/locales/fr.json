@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "N'utilisez SCP que pour les serveurs sans SFTP, par exemple les routeurs OpenWrt.",
             "allowScpFallback": "Autoriser le repli sur SCP",
             "allowScpFallbackHint": "Si le serveur n'a pas de SFTP, la connexion continue en SCP, comme le fait WinSCP.",
-            "discoverScp": "Copie de fichiers via SSH pour les serveurs sans SFTP"
+            "discoverScp": "Copie de fichiers via SSH pour les serveurs sans SFTP",
+            "discoverTigris": "Tigris : stockage compatible S3 distribué à l'échelle mondiale, sans frais de sortie de données (5 GB gratuits)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

@@ -2902,6 +2902,11 @@ pub fn export_rclone(
                     // Filebase has no native rclone S3 provider token; the
                     // generic "Other" signature path works with its endpoint.
                     "filebase" => "Other",
+                    // Tigris has no rclone provider token either (checked
+                    // 2026-11-05); "Other" plus an explicit region and
+                    // addressing style, written below, keeps rclone on the
+                    // virtual-host path Tigris documents.
+                    "tigris" => "Other",
                     _ => "Other",
                 };
                 body.push_str(&format!("provider = {}\n", rclone_provider));
@@ -2918,10 +2923,17 @@ pub fn export_rclone(
                 let mut pinned_bucket: Option<String> = None;
                 let mut endpoint_from_opts: Option<String> = None;
                 let mut verify_cert_off = false;
+                let mut region_written = false;
+                let mut path_style_option: Option<bool> = None;
                 if let Some(opts) = options {
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         body.push_str(&format!("region = {}\n", region));
+                        region_written = true;
                     }
+                    path_style_option = opts
+                        .get("pathStyle")
+                        .or_else(|| opts.get("path_style"))
+                        .and_then(|v| v.as_bool());
                     if let Some(endpoint) = opts
                         .get("endpoint")
                         .and_then(|v| v.as_str())
@@ -2995,6 +3007,25 @@ pub fn export_rclone(
                     if verify_cert_off || endpoint_stays_on_this_machine(&endpoint) {
                         body.push_str("no_check_certificate = true\n");
                     }
+                }
+
+                // `Other` carries no vendor defaults, and rclone's own default
+                // for `force_path_style` is true. Tigris documents virtual-host
+                // addressing with region `auto`, so say both explicitly; a
+                // profile that stored an addressing choice keeps it.
+                if provider_id == "tigris" {
+                    if !region_written {
+                        body.push_str("region = auto\n");
+                    }
+                    // rclone cannot reach a bucket with dots in its name over
+                    // virtual-host addressing (the wildcard certificate covers
+                    // one label), so a pinned dotted bucket defaults to
+                    // path-style when no choice was stored.
+                    let dotted_bucket = pinned_bucket.as_deref().is_some_and(|b| b.contains('.'));
+                    body.push_str(&format!(
+                        "force_path_style = {}\n",
+                        path_style_option.unwrap_or(dotted_bucket)
+                    ));
                 }
 
                 // Bucket reconciliation. The s3 backend has no `bucket` config
@@ -4603,6 +4634,16 @@ provider = Other
 access_key_id = AK
 secret_access_key = SK
 endpoint = https://s3.example-unknown.com
+
+[tigris]
+type = s3
+provider = Other
+access_key_id = AK
+secret_access_key = SK
+endpoint = https://t3.storage.dev
+region = auto
+force_path_style = false
+bucket = aero-tigris
 "#;
         let tmp = std::env::temp_dir().join("aeroftp-test-rclone-s3-refine.conf");
         {
@@ -4622,6 +4663,20 @@ endpoint = https://s3.example-unknown.com
         assert_eq!(
             opts.get("bucket").and_then(|v| v.as_str()),
             Some("aero-base")
+        );
+
+        let tg = result
+            .servers
+            .iter()
+            .find(|s| s.name == "tigris")
+            .expect("tigris remote");
+        assert_eq!(tg.provider_id.as_deref(), Some("tigris"));
+        assert_eq!(
+            tg.options
+                .as_ref()
+                .and_then(|o| o.get("pathStyle"))
+                .and_then(|v| v.as_bool()),
+            Some(false)
         );
 
         // Unknown endpoints must stay generic.
@@ -8123,6 +8178,60 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             assert!(config.contains("directory_markers = true\n"));
             assert!(config.contains("s3.eu-central-003.backblazeb2.com"));
         }
+    }
+
+    #[test]
+    fn test_export_tigris_s3_is_other_with_explicit_region_and_addressing() {
+        let export = |options: serde_json::Value, host: &str| {
+            let servers = vec![RcloneExportServer {
+                id: "tigris".into(),
+                name: "tigris".into(),
+                host: host.into(),
+                port: 443,
+                username: "tid_test".into(),
+                protocol: Some("s3".into()),
+                options: Some(options),
+                provider_id: Some("tigris".into()),
+            }];
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("rclone.conf");
+            export_rclone(&servers, &HashMap::new(), &path).unwrap();
+            std::fs::read_to_string(path).unwrap()
+        };
+
+        // Preset defaults only: the endpoint comes from the manifest, region
+        // and addressing are written explicitly.
+        let conf = export(serde_json::json!({ "bucket": "photos" }), "");
+        assert!(conf.contains("provider = Other\n"), "{conf}");
+        assert!(
+            conf.contains("endpoint = https://t3.storage.dev\n"),
+            "{conf}"
+        );
+        assert!(conf.contains("region = auto\n"), "{conf}");
+        assert!(conf.contains("force_path_style = false\n"), "{conf}");
+        assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
+
+        // A stored region is not duplicated and a stored addressing choice wins.
+        let conf = export(
+            serde_json::json!({ "bucket": "photos", "region": "auto", "pathStyle": true }),
+            "fly.storage.tigris.dev",
+        );
+        assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
+        assert!(
+            conf.contains("endpoint = https://fly.storage.tigris.dev\n"),
+            "{conf}"
+        );
+        assert!(conf.contains("force_path_style = true\n"), "{conf}");
+
+        // A pinned bucket with dots defaults to path-style; an explicit
+        // choice still wins.
+        let conf = export(serde_json::json!({ "bucket": "photos.example" }), "");
+        assert!(conf.contains("force_path_style = true\n"), "{conf}");
+        let conf = export(
+            serde_json::json!({ "bucket": "photos.example", "pathStyle": false }),
+            "",
+        );
+        assert!(conf.contains("force_path_style = false\n"), "{conf}");
     }
 
     #[test]

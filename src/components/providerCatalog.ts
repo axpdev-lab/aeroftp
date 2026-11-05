@@ -256,6 +256,11 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       healthCheckUrl: 'https://s3.filebase.io',
       searchAliases: ['filebase', 's3.filebase.io'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'filebase', category: 'object-storage' }] },
+    // Signup asks no card (owner signup, 2026-11-05): free bucket, S3 method not paid.
+    { company: 'Tigris Data', logoId: 'tigris', countryCode: 'US', freeStorageGb: 5,
+      healthCheckUrl: 'https://t3.storage.dev',
+      searchAliases: ['tigris', 'tigris data', 'fly storage', 'fly.io', 't3.storage.dev'],
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'tigris', category: 'object-storage' }] },
     { company: 'IBM Cloud Object Storage', parentCompany: 'IBM', logoId: 'ibm-cos', countryCode: 'US', freeStorageGb: null,
       freeNote: '12-month trial',
       healthCheckUrl: 'https://s3.eu-de.cloud-object-storage.appdomain.cloud',
@@ -438,6 +443,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'storj', icon: 'storj.png', docsPath: 'providers/storj' },
     { logoId: 'idrive-e2', icon: 'idrive_e2.png', docsPath: 'providers/idrive-e2' },
     { logoId: 'filebase', icon: 'filebase.png', docsPath: 'providers/filebase' },
+    { logoId: 'tigris', icon: 'tigris.png', docsPath: 'providers/tigris' },
     { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
@@ -683,6 +689,7 @@ const REGIONS_BY_LOGO: Record<string, string[]> = {
     // S3Drive rides Storj's decentralized network (automatic global placement).
     's3drive': ['global'],
     'filebase': ['global'],
+    'tigris': ['global'],
     'yandex-storage': ['RU'],
 };
 

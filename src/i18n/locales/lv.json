@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Izmantojiet SCP tikai serveriem bez SFTP, piemēram, OpenWrt maršrutētājiem.",
             "allowScpFallback": "Atļaut SCP rezerves režīmu",
             "allowScpFallbackHint": "Ja serverim nav SFTP, savienojums turpinās ar SCP, kā to dara WinSCP.",
-            "discoverScp": "Failu kopēšana caur SSH serveriem bez SFTP"
+            "discoverScp": "Failu kopēšana caur SSH serveriem bez SFTP",
+            "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

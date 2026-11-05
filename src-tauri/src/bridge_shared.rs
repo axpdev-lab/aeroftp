@@ -135,6 +135,13 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
         if host == "s3.filebase.io" || host.ends_with(".s3.filebase.io") {
             return "filebase";
         }
+        // Tigris: current `t3.storage.dev` and the legacy `fly.storage.tigris.dev`,
+        // exact host or bucket subdomain, never a substring.
+        for domain in ["t3.storage.dev", "fly.storage.tigris.dev"] {
+            if host == domain || host.ends_with(&format!(".{domain}")) {
+                return "tigris";
+            }
+        }
     }
     if h.contains("ionos") {
         return "ionos-s3";
@@ -1251,6 +1258,40 @@ mod tests {
             map_s3_provider_from_endpoint("https://play.min.io"),
             "minio"
         );
+    }
+
+    #[test]
+    fn s3_provider_from_endpoint_tigris_uses_a_domain_boundary() {
+        for endpoint in [
+            "https://t3.storage.dev",
+            "t3.storage.dev",
+            "https://t3.storage.dev:443/bucket",
+            "https://my-bucket.t3.storage.dev",
+            "https://fly.storage.tigris.dev",
+            "https://my-bucket.fly.storage.tigris.dev/key",
+        ] {
+            assert_eq!(
+                map_s3_provider_from_endpoint(endpoint),
+                "tigris",
+                "{endpoint}"
+            );
+        }
+        // Lookalikes must not classify as tigris.
+        for endpoint in [
+            "https://t3.storage.dev.example",
+            "https://not-t3.storage.dev",
+            "https://t3.storage.dev.evil.com/bucket",
+            "https://fly.storage.tigris.dev.example",
+            "https://myfly.storage.tigris.dev",
+            "https://tigris.dev",
+            "https://storage.dev",
+        ] {
+            assert_ne!(
+                map_s3_provider_from_endpoint(endpoint),
+                "tigris",
+                "{endpoint}"
+            );
+        }
     }
 
     #[test]

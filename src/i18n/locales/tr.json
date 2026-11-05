@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "SCP'yi yalnızca SFTP'si olmayan sunucular için kullanın, örneğin OpenWrt yönlendiriciler.",
             "allowScpFallback": "SCP'ye geri dönüşe izin ver",
             "allowScpFallbackHint": "Sunucuda SFTP yoksa, WinSCP'nin yaptığı gibi aynı bağlantıda SCP ile devam edilir.",
-            "discoverScp": "SFTP'si olmayan sunucular için SSH üzerinden dosya kopyalama"
+            "discoverScp": "SFTP'si olmayan sunucular için SSH üzerinden dosya kopyalama",
+            "discoverTigris": "Tigris: küresel olarak dağıtık, S3 uyumlu depolama, çıkış ücreti yok (5 GB ücretsiz)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

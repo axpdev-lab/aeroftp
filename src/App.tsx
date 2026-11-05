@@ -34,7 +34,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -3473,7 +3473,7 @@ const App: React.FC = () => {
       return;
     }
 
-    if (protocol && connectionSupportsStorageQuota(protocol as ProviderType, opts)) {
+    if (protocol && (connectionSupportsStorageQuota(protocol as ProviderType, opts) || s3PresetReportsUsage(protocol, pid))) {
       try {
         const info = await invoke<{ used: number; total: number; free: number; versioningBytes?: number }>('provider_storage_info');
         // Resolve the target profile against the LIVE connection (never

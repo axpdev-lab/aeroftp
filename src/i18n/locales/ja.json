@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "SCPはSFTPのないサーバー（OpenWrtルーターなど）にのみ使用してください。",
             "allowScpFallback": "SCPへのフォールバックを許可",
             "allowScpFallbackHint": "サーバーにSFTPがない場合、WinSCPと同様に同じ接続のままSCPで続行します。",
-            "discoverScp": "SFTPのないサーバー向けのSSH経由ファイルコピー"
+            "discoverScp": "SFTPのないサーバー向けのSSH経由ファイルコピー",
+            "discoverTigris": "Tigris: グローバル分散型の S3 互換ストレージ、エグレス料金なし（5 GB 無料）"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

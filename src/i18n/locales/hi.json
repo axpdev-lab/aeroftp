@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "SCP का उपयोग केवल बिना SFTP वाले सर्वरों के लिए करें, जैसे OpenWrt राउटर।",
             "allowScpFallback": "SCP फ़ॉलबैक की अनुमति दें",
             "allowScpFallbackHint": "यदि सर्वर में SFTP नहीं है, तो WinSCP की तरह उसी कनेक्शन पर SCP से जारी रखें।",
-            "discoverScp": "बिना SFTP वाले सर्वरों के लिए SSH के माध्यम से फ़ाइल कॉपी"
+            "discoverScp": "बिना SFTP वाले सर्वरों के लिए SSH के माध्यम से फ़ाइल कॉपी",
+            "discoverTigris": "Tigris: विश्व स्तर पर वितरित S3-संगत स्टोरेज, डेटा एग्रेस शुल्क नहीं (5 GB निःशुल्क)"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

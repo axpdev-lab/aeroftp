@@ -5,6 +5,7 @@ import {
     getE2EBits,
     NATIVE_PROVIDER_PROTOCOLS,
     connectionSupportsStorageQuota,
+    s3PresetReportsUsage,
     providerServesQuota,
     effectiveManualCap,
 } from './types';
@@ -46,5 +47,19 @@ describe('Proton Drive protocol class and mode badge', () => {
 
     it('back-fills the provider id of a saved Proton profile', () => {
         expect(NATIVE_PROVIDER_PROTOCOLS.has('proton')).toBe(true);
+    });
+});
+
+describe('S3 presets that report usage on request', () => {
+    it('is Tigris only, and never a bare S3 profile', () => {
+        expect(s3PresetReportsUsage('s3', 'tigris')).toBe(true);
+        expect(s3PresetReportsUsage('s3', 'filebase')).toBe(false);
+        expect(s3PresetReportsUsage('s3', 'custom-s3')).toBe(false);
+        expect(s3PresetReportsUsage('s3', undefined)).toBe(false);
+        expect(s3PresetReportsUsage('webdav', 'tigris')).toBe(false);
+    });
+
+    it('stays out of the after-transfer refresh gate, which would bill a request per upload', () => {
+        expect(connectionSupportsStorageQuota('s3', {})).toBe(false);
     });
 });

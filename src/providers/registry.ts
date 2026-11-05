@@ -756,6 +756,28 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://console.filebase.com/signup',
     },
     {
+        id: 'tigris',
+        name: 'Tigris',
+        description: 'Globally distributed S3 storage, zero egress (5 GB free)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#03FEA3',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, label: 'Access key ID', placeholder: 'tid_...', helpText: 'Console → Access Keys → Access key ID (starts with tid_)' },
+            { ...COMMON_FIELDS.secretAccessKey, label: 'Secret access key', placeholder: 'tsec_...', helpText: 'Shown once at creation (starts with tsec_)' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-tigris-bucket', helpText: 'Console → Buckets → Bucket name. Avoid dots in the name: the virtual-host TLS name cannot cover them. Do not open a Cloud Disk bucket (beta): changing its objects corrupts the disk. Listing counts as a write-class request on the free plan, so AeroCloud scans a pair at most every 30 minutes.' },
+        ],
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        healthCheckUrl: 'https://t3.storage.dev',
+        helpUrl: 'https://www.tigrisdata.com/docs/',
+        signupUrl: 'https://console.storage.dev',
+    },
+    {
         id: 'idrive-e2',
         name: 'IDrive e2',
         description: 'S3-compatible hot storage (10 GB free)',

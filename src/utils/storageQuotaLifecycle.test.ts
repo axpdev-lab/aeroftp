@@ -97,6 +97,7 @@ function fixture(mode: Mode, options: {
     connectionParams: params, liveConnectionParams: params, invoke, loadSavedServerProfiles: profiles,
     resolveLiveProfile: () => profile, persistQuotaToProfile: persist,
     connectionSupportsStorageQuota: () => mode !== 'no quota API',
+    s3PresetReportsUsage: () => false,
     effectiveManualCap: () => undefined,
     resolveEffectiveQuota: (used: number, total: number) => ({ used, total }),
     isMegaCmdQuotaProfile: () => false, setStorageQuota: display,
