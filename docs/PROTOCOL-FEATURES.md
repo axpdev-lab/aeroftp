@@ -143,6 +143,7 @@ WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallbac
 | **Yandex Disk** | HTTPS | OAuth2 Token | Universal Vault | TLS Certificate |
 | **OpenDrive** | HTTPS | Session (Username/Password) | Universal Vault | TLS Certificate |
 | **Jottacloud** | HTTPS | Bearer Token (auto-refresh 60s pre-expiry) | Universal Vault | TLS Certificate |
+| **OpenStack Swift** | HTTPS. The Blomp preset stores objects at plain HTTP (`http://swiftproxy.acs.ai.net:8080`). The account token and the file bytes cross that network unencrypted | Username + Password (Keystone) | Universal Vault | TLS on the auth host only when that host uses `https://`. A plain `http://` auth host receives the password unencrypted |
 | **GitHub** | HTTPS | PAT / Device Flow (PEM keys vaulted, AES-256-GCM) | Universal Vault | TLS Certificate |
 | **Immich** | HTTPS | API Key (`x-api-key` header) | Universal Vault | TLS Certificate |
 
@@ -509,6 +510,7 @@ FileLu exposes privacy and management features beyond generic file operations:
 | **Restore File** | `/file/restore` | `filelu_restore_file` | Restore by `file_code` |
 | **Permanent Delete** | `/file/remove` | `filelu_permanent_delete` | Bypass trash, irrecoverable |
 | **Remote URL Upload** | `/upload/url` | `filelu_remote_url_upload` | FileLu fetches file from URL server-side |
+| **Earlier file version** | `/file/versions`, `/file/version_restore`, `/file/version_delete` | `StorageProvider` version methods | List, download, restore, or delete one earlier version. Deleting a version is not the trash purge |
 
 ## Media Providers (ImageKit, Uploadcare, Cloudinary)
 
@@ -659,11 +661,11 @@ Create and browse Cryptomator vaults via context menu:
 ### FTPS TLS Encryption (v1.4.0)
 - **Explicit TLS (AUTH TLS)**: Upgrades plain connection on port 21 via `into_secure()`
 - **Implicit TLS**: Direct TLS connection on port 990
-- **Explicit if available**: Attempts AUTH TLS, falls back to plain FTP if unsupported
+- **Explicit if available**: Tries AUTH TLS. If the server rejects it, the connection stops. Credentials are not sent over plaintext. Choose None when you intend to connect without TLS.
 - **Certificate verification**: Configurable per-connection. When verification is enabled, invalid, self-signed, or hostname-mismatched certificates are rejected. Disabling verification explicitly accepts those certificates and weakens MITM protection.
-- **Backend**: suppaftp v8 with `tokio-async-native-tls` feature
+- **Backend**: suppaftp 12.2.1, with the `tokio` and `tokio-rustls-aws-lc-rs` features
 
-**Default changed in v1.5.0**: FTP now defaults to 'explicit_if_available' (TLS opportunistic) instead of plain FTP
+The connection form defaults FTP to Explicit TLS and FTPS to Implicit TLS. Explicit TLS if available is a separate mode. In both explicit modes a failed `AUTH TLS` stops the connection. Plain FTP is only None.
 
 ---
 

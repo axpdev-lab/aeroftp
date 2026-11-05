@@ -77,7 +77,7 @@
 
 ## FTP-First Design
 
-AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit AUTH TLS, Implicit TLS, opportunistic TLS), certificate verification control, MLSD/MLST machine-readable listings (RFC 3659), and resume transfers (REST/APPE). It then extends this foundation into a broad multi-protocol file management platform through seven integrated product modules - the **Aero Family**.
+AeroFTP is an FTP client first. Full encryption support with configurable TLS modes (Explicit TLS, Explicit TLS if available, and Implicit TLS). A failed explicit upgrade stops the connection. Certificate verification is configurable. Listings use MLSD/MLST when the server offers them (RFC 3659), and transfers can resume with REST/APPE. It then extends this foundation into a broad multi-protocol file management platform through seven integrated product modules - the **Aero Family**.
 
 ---
 
@@ -600,7 +600,7 @@ npm run security:report        # generate HTML report
 npm run security:report -- --json    # machine-readable output
 ```
 
-Output is published in [`docs/security/security-report-latest.html`](docs/security/security-report-latest.html). The script and suppression list ([`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml)) are part of the repository and run identically on any developer machine and in CI.
+Output is published in [`docs/security/security-report-latest.html`](docs/security/security-report-latest.html). The script and suppression list ([`src-tauri/.cargo/audit.toml`](src-tauri/.cargo/audit.toml)) are in the repository. `npm run security:report` regenerates that HTML report on a developer machine. It is not a GitHub Actions step. The Checks workflow runs `cargo audit --deny warnings`. On a pull request that whole step is non-blocking. A push to `main` and the Monday run fail the job.
 
 | Month | Version | Open | Suppressed (justified) | Notes |
 |---|---|---|---|---|
@@ -619,7 +619,7 @@ The rows above are dated historical runs, not a fresh v4.2.5 vulnerability verdi
 | **Aikido Security** | Past audits archived - **Top 5% benchmark**, 0 open issues during trial period (Feb-May 2026) |
 | **Socket.dev** | Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection |
 | **Snyk** | Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs |
-| **CodeRabbit** | AI-driven pull-request review on every PR - inline code suggestions, secret/PII checks, complement to the SAST/SCA stack |
+| **CodeRabbit and Greptile** | Pull-request review. They are not a vulnerability scan and not a substitute for `cargo audit` |
 | **Dependabot** | GitHub-native dependency alerts and auto-PRs cross-referenced against the self-hosted audit list |
 | **Dependency Scanning** | npm/Cargo dependency graphs monitored through the configured CI and advisory workflows; counts depend on the locked revision |
 | **Supply Chain** | All GitHub Actions pinned to SHA hashes, Dependabot enabled, [Sigstore](https://sigstore.dev) signing with client-side verification |

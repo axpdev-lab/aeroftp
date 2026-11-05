@@ -14,7 +14,7 @@ that tool's own config format can express it.
 ## At a glance
 
 - The five broadly shared bridge protocols are **FTP, FTPS, SFTP, WebDAV and S3**.
-  AeroFTP itself has seven transport protocols and 26 native provider integrations;
+  AeroFTP itself has eight transport protocols and 26 native provider integrations;
   Azure Blob and OpenStack Swift have rclone bridges in the table below. See the
   generated [provider inventory](PROVIDER-INVENTORY.json) for product counts.
 - **15 external tools** have an import/export bridge.
