@@ -43,12 +43,13 @@ static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 //   1. the first-run init lock file (`acquire_init_lock`)
 //   2. the keyring claim lock (`claim_slot_in`, `release_slot_in`, and the
 //      adoption in `load_passphrase_in`)
-//   3. VAULT_CACHE
-//   4. VAULT_WRITE_LOCK
-//   5. vault.db.lock
-//   6. a source folder's vault.db.lock, file only (`VaultFolderLock`), taken
+//   3. VAULT_WRITE_LOCK
+//   4. vault.db.lock
+//   5. a source folder's vault.db.lock, file only (`VaultFolderLock`), taken
 //      by the portable copy after the destination's guard
-// 4 and 5 are only ever taken together, by `VaultWriteGuard::acquire`, within
+//   6. VAULT_CACHE: the GUI config update reads it under its guard; no path
+//      waits for a guard while holding it
+// 3 and 4 are only ever taken together, by `VaultWriteGuard::acquire`, within
 // one deadline. While a guard is held nothing reads or writes the keyring
 // (claim, release, passphrase load), derives a master-password key, or calls
 // `open_and_cache` or `clear_cache`: those run before the guard is taken or
@@ -556,7 +557,7 @@ pub(crate) struct VaultWriteGuard {
 
 /// The cross-process lock of another config folder, without this process's
 /// write mutex: a portable copy holds it on the source folder, after taking
-/// the destination's [`VaultWriteGuard`] (lock order 6), so another process
+/// the destination's [`VaultWriteGuard`] (lock order 5), so another process
 /// cannot reset or re-initialise the source vault halfway through the copy.
 /// A second guard would wait on the mutex the first one holds.
 pub(crate) struct VaultFolderLock {
@@ -1732,12 +1733,24 @@ impl CredentialStore {
         if !matches!(account, "config_app_settings" | "config_ai_settings") {
             return Err("invalid_args".into());
         }
+        // The guard first, then VAULT_CACHE (lock order): waiting for another
+        // process's vault.db.lock with the cache held would stall every
+        // from_cache of this process for up to VAULT_LOCK_WAIT. The cache is
+        // then held from the generation check through the write.
+        let dir = {
+            let cache = VAULT_CACHE.lock().map_err(|_| "locked")?;
+            let (path, _) = cache.as_ref().ok_or("locked")?;
+            Self::lock_dir(path)
+                .map(Path::to_path_buf)
+                .map_err(|_| "action_failed")?
+        };
+        let guard = VaultWriteGuard::acquire(&dir).map_err(|_| "action_failed")?;
         let cache = VAULT_CACHE.lock().map_err(|_| "locked")?;
         let (path, key) = cache.as_ref().ok_or("locked")?;
-        if Self::cache_generation() != generation {
+        if Self::cache_generation() != generation || guard.covers(path).is_err() {
             return Err("gui_scope_changed".into());
         }
-        Self::update_gui_config_with_key(path, key, account, check, mutate)
+        Self::update_gui_config_under(path, key, &guard, account, check, mutate)
     }
 
     fn update_gui_config_with_key(
@@ -1750,6 +1763,17 @@ impl CredentialStore {
         let guard = Self::lock_dir(path)
             .and_then(VaultWriteGuard::acquire)
             .map_err(|_| "action_failed")?;
+        Self::update_gui_config_under(path, key, &guard, account, check, mutate)
+    }
+
+    fn update_gui_config_under(
+        path: &Path,
+        key: &[u8; 32],
+        guard: &VaultWriteGuard,
+        account: &str,
+        check: impl Fn() -> Result<(), String>,
+        mutate: impl FnOnce(Option<serde_json::Value>) -> Result<serde_json::Value, String>,
+    ) -> Result<serde_json::Value, String> {
         check()?;
         let mut vault = Self::read_vault(path).map_err(|_| "action_failed")?;
         Self::ensure_vault_opens_with(&vault, key).map_err(|_| "action_failed")?;
@@ -1772,7 +1796,7 @@ impl CredentialStore {
             .entries
             .insert(account.to_owned(), VaultEntry { nonce, data });
         check()?;
-        Self::write_vault(path, &vault, &guard).map_err(|_| "action_failed")?;
+        Self::write_vault(path, &vault, guard).map_err(|_| "action_failed")?;
         Ok(updated)
     }
 
@@ -3835,7 +3859,9 @@ mod vault_lock_tests {
         );
         assert_eq!(std::fs::read(&path).unwrap(), before);
         drop(holder);
-        assert!(VaultWriteGuard::acquire_waiting(dir.path(), Duration::ZERO).is_ok());
+        // Not ZERO: the in-process mutex shares the deadline, and parallel
+        // tests hold it for a moment.
+        assert!(VaultWriteGuard::acquire_waiting(dir.path(), Duration::from_secs(2)).is_ok());
     }
 
     #[test]
