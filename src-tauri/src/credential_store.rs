@@ -46,9 +46,9 @@ static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 //   4. VAULT_WRITE_LOCK
 //   5. vault.db.lock
 // 4 and 5 are only ever taken together, by `VaultWriteGuard::acquire`. While a
-// guard is held nothing calls `claim_slot_in`, `release_slot_in` (or their
-// keyring wrappers), `open_and_cache` or `clear_cache`: those run after the
-// guard is dropped.
+// guard is held nothing calls `claim_slot_in`, `release_slot_in` (or
+// `release_keyring_slot`), `open_and_cache` or `clear_cache`: those run after
+// the guard is dropped.
 static VAULT_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 pub(crate) const VAULT_FILENAME: &str = "vault.db";
@@ -858,6 +858,11 @@ fn load_passphrase_in(
 /// account instead and records it in vault.key. The whole claim runs under
 /// the keyring lock; without it the claim fails and the caller keeps the key
 /// on disk, as for a missing keyring.
+///
+/// Against the OS keyring `default_account` is always `keyring_account()`,
+/// THIS scope's account: a Flatpak/Snap must never write the native slot,
+/// which is what corrupted a native vault when a sandboxed install
+/// initialised a fresh vault over the shared slot.
 fn claim_slot_in(
     slots: &dyn PassphraseSlots,
     default_account: &str,
@@ -957,20 +962,22 @@ fn load_passphrase_from_keyring(
     )
 }
 
-/// [`claim_slot_in`] against the OS keyring, for this install.
-fn claim_keyring_slot(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<KeyringSlot, CredentialError> {
-    // Always within THIS scope's accounts. A Flatpak/Snap must never write the
-    // native slot, which is what corrupted a native vault when a sandboxed
-    // install initialised a fresh vault over the shared slot.
-    claim_slot_in(&OsKeyring, keyring_account(), passphrase)
-}
-
 /// [`release_slot_in`] against the OS keyring, for the account `slot` names.
 fn release_keyring_slot(slot: &KeyringSlot, passphrase: &[u8; PASSPHRASE_LEN]) {
     release_slot_in(&OsKeyring, slot.account(), passphrase)
 }
 
 // ============ Credential Store ============
+
+/// What [`CredentialStore::migrate_legacy_key_in`] did with a LegacyAuto vault.key.
+enum LegacyKeyMigration {
+    /// vault.key now names a keyring account.
+    Migrated,
+    /// vault.key stays on disk (no keyring, vault busy, write failed).
+    Kept,
+    /// vault.key was changed by another process meanwhile; nothing written.
+    Changed,
+}
 
 pub struct CredentialStore {
     vault_path: PathBuf,
@@ -1131,20 +1138,17 @@ impl CredentialStore {
                 // unavailable; in that case we must NOT fail closed (issue #334
                 // follow-up) but keep the on-disk LegacyAuto key so the vault
                 // still re-opens on every launch.
-                match claim_keyring_slot(passphrase) {
-                    Ok(slot) => {
-                        info!("Migrated on-disk vault.key passphrase to system keyring");
-                        let guard = VaultWriteGuard::acquire(&config_dir()?)?;
-                        VaultKeyFile {
-                            mode: VaultKeyMode::AutoKeyring { slot },
-                        }
-                        .write(&guard)?;
-                    }
-                    Err(e) => {
-                        warn!(
-                            "OS keyring unavailable ({e}); keeping on-disk vault.key (portable/no-keyring mode)"
-                        );
-                    }
+                let migration = Self::migrate_legacy_key_in(
+                    &OsKeyring,
+                    keyring_account(),
+                    &config_dir()?,
+                    &key_file,
+                    passphrase,
+                )?;
+                if matches!(migration, LegacyKeyMigration::Changed) {
+                    // Another process replaced vault.key (a master password
+                    // enabled, say) while this one waited: open what is there now.
+                    return Self::init();
                 }
 
                 let passphrase = Zeroizing::new(*passphrase);
@@ -1242,6 +1246,69 @@ impl CredentialStore {
         }
 
         Self::open_and_cache(vault_path, vault_key)
+    }
+
+    /// Move a LegacyAuto vault.key into a keyring account, best effort. The
+    /// account is claimed before the vault lock (lock order), so vault.key is
+    /// read again under the lock: if another process changed it meanwhile,
+    /// nothing is written and the claim is undone. A lock or write that fails
+    /// keeps the on-disk key, which still opens the vault, and gives the
+    /// account back.
+    fn migrate_legacy_key_in(
+        slots: &dyn PassphraseSlots,
+        default_account: &str,
+        dir: &Path,
+        key_file: &VaultKeyFile,
+        passphrase: &[u8; PASSPHRASE_LEN],
+    ) -> Result<LegacyKeyMigration, CredentialError> {
+        let slot = match claim_slot_in(slots, default_account, passphrase) {
+            Ok(slot) => slot,
+            Err(e) => {
+                warn!(
+                    "OS keyring unavailable ({e}); keeping on-disk vault.key (portable/no-keyring mode)"
+                );
+                return Ok(LegacyKeyMigration::Kept);
+            }
+        };
+        // Runs after the guard is dropped: the release takes the claim lock.
+        let undo = || release_slot_in(slots, slot.account_or(default_account), passphrase);
+        let guard = match VaultWriteGuard::acquire(dir) {
+            Ok(guard) => guard,
+            Err(e) => {
+                undo();
+                warn!("Vault busy ({e}); keeping on-disk vault.key until the next start");
+                return Ok(LegacyKeyMigration::Kept);
+            }
+        };
+        match VaultKeyFile::read_in(dir) {
+            Ok(now) if now.to_bytes() == key_file.to_bytes() => {}
+            Ok(_) => {
+                drop(guard);
+                undo();
+                return Ok(LegacyKeyMigration::Changed);
+            }
+            Err(error) => {
+                drop(guard);
+                undo();
+                return Err(error);
+            }
+        }
+        let written = VaultKeyFile {
+            mode: VaultKeyMode::AutoKeyring { slot: slot.clone() },
+        }
+        .write(&guard);
+        drop(guard);
+        match written {
+            Ok(()) => {
+                info!("Migrated on-disk vault.key passphrase to system keyring");
+                Ok(LegacyKeyMigration::Migrated)
+            }
+            Err(e) => {
+                undo();
+                warn!("Could not write vault.key ({e}); keeping on-disk vault.key");
+                Ok(LegacyKeyMigration::Kept)
+            }
+        }
     }
 
     /// First run: generate random passphrase, store it in keyring, create vault.key + vault.db.
@@ -3228,6 +3295,98 @@ mod vault_lock_tests {
             ACCOUNT,
             dir.path(),
             PASSWORD
+        )
+        .is_err());
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+    }
+
+    fn write_legacy_key(dir: &Path, passphrase: &[u8; PASSPHRASE_LEN]) -> VaultKeyFile {
+        let file = VaultKeyFile {
+            mode: VaultKeyMode::LegacyAuto {
+                passphrase: *passphrase,
+            },
+        };
+        file.write(&VaultWriteGuard::acquire(dir).unwrap()).unwrap();
+        file
+    }
+
+    #[test]
+    fn the_legacy_key_moves_into_the_claimed_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let passphrase = [10u8; PASSPHRASE_LEN];
+        let read = write_legacy_key(dir.path(), &passphrase);
+        let keyring = FakeKeyring::default();
+        let migration = CredentialStore::migrate_legacy_key_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            &read,
+            &passphrase,
+        )
+        .unwrap();
+        assert!(matches!(migration, LegacyKeyMigration::Migrated));
+        assert_eq!(
+            keyring.holds(ACCOUNT).as_deref(),
+            Some(BASE64.encode(passphrase).as_str())
+        );
+        assert!(matches!(
+            VaultKeyFile::read_in(dir.path()).unwrap().mode,
+            VaultKeyMode::AutoKeyring {
+                slot: KeyringSlot::Default
+            }
+        ));
+    }
+
+    /// A master password enabled by another process while this one waited for
+    /// the lock stays: the migration writes nothing and gives the account back.
+    #[test]
+    fn the_legacy_migration_leaves_a_master_password_set_meanwhile() {
+        let dir = tempfile::tempdir().unwrap();
+        let passphrase = [10u8; PASSPHRASE_LEN];
+        let read = write_legacy_key(dir.path(), &passphrase);
+        let other_dir = dir.path().to_path_buf();
+        let master = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let master_bytes = master.clone();
+        let keyring = FakeKeyring {
+            on_write: Some(Box::new(move || {
+                *master_bytes.borrow_mut() = write_master_key(&other_dir, &passphrase);
+            })),
+            ..FakeKeyring::default()
+        };
+        let migration = CredentialStore::migrate_legacy_key_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            &read,
+            &passphrase,
+        )
+        .unwrap();
+        assert!(matches!(migration, LegacyKeyMigration::Changed));
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+        assert_eq!(
+            std::fs::read(dir.path().join(VAULTKEY_FILENAME)).unwrap(),
+            *master.borrow()
+        );
+    }
+
+    #[test]
+    fn the_legacy_migration_gives_the_account_back_when_vault_key_is_unreadable() {
+        let dir = tempfile::tempdir().unwrap();
+        let passphrase = [10u8; PASSPHRASE_LEN];
+        let read = write_legacy_key(dir.path(), &passphrase);
+        let key_path = dir.path().join(VAULTKEY_FILENAME);
+        let keyring = FakeKeyring {
+            on_write: Some(Box::new(move || occupy_with_a_folder(&key_path))),
+            ..FakeKeyring::default()
+        };
+        assert!(CredentialStore::migrate_legacy_key_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            &read,
+            &passphrase,
         )
         .is_err());
         assert_eq!(keyring.writes.get(), 1, "the account was claimed");
