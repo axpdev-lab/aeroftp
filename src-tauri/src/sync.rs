@@ -3289,6 +3289,13 @@ pub struct CloudTransferReceipt {
     pub remote_key: String,
     pub destination_side: CompareDirection,
     pub destination: SyncIndexEntry,
+    /// The destination time was read as a UTC instant for every provider:
+    /// true for every receipt minted since FileLu times are read as US
+    /// Eastern, false (the default) for one saved before. Only a false FileLu
+    /// upload receipt may hold the old reading of FileLu's time, so only such
+    /// a receipt may match through that reading.
+    #[serde(default)]
+    pub utc_remote_time: bool,
 }
 
 /// Verified LIST-to-STAT clock conversion, never evidence of a transfer.

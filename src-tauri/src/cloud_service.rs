@@ -1022,6 +1022,7 @@ impl CloudService {
 
     /// Compare metadata with the destination actually left by the last stabilized transfer.
     fn receipt_matches(
+        config: &CloudConfig,
         receipt: &CloudTransferReceipt,
         size: u64,
         modified: Option<DateTime<Utc>>,
@@ -1030,7 +1031,94 @@ impl CloudService {
             && receipt.destination.modified.is_some()
             && receipt.destination.modified != Some(UNSETTLED_BASELINE)
             && receipt.destination.size == size
-            && receipt.destination.modified == modified
+            && if Self::is_pre_utc_fix_filelu_receipt(config, receipt) {
+                // Its time is the old reading, never a real instant: an exact
+                // match would accept a same-size file uploaded 4 or 5 hours
+                // before the one AeroCloud wrote (moved in, or restored from a
+                // version or the trash, keeps its upload time).
+                Self::pre_utc_fix_filelu_receipt(config, receipt, modified)
+            } else {
+                receipt.destination.modified == modified
+            }
+    }
+
+    /// Whether `receipt` is a FileLu upload receipt saved before FileLu times
+    /// were read as US Eastern: unmarked, on the remote side, for a FileLu
+    /// pair. Its time is the old reading of FileLu's clock, so it is compared
+    /// only through [`Self::pre_utc_fix_filelu_receipt`].
+    fn is_pre_utc_fix_filelu_receipt(config: &CloudConfig, receipt: &CloudTransferReceipt) -> bool {
+        config.protocol_type == "filelu"
+            && !receipt.utc_remote_time
+            && receipt.destination_side == CompareDirection::LocalToRemote
+    }
+
+    /// Only for FileLu upload receipts written before FileLu times were read
+    /// as US Eastern (4.2.6 and earlier): such a receipt holds the old reading,
+    /// 4 or 5 hours early, of the very time FileLu still lists. Without this
+    /// every such file would read as changed on the server, and a local
+    /// deletion would never reach it. The first saved cycle rewrites those
+    /// receipts with the real time ([`Self::refresh_pre_utc_fix_filelu_receipts`]),
+    /// so this branch only serves receipts that cycle has not seen yet.
+    ///
+    /// A receipt marked `utc_remote_time` (minted or migrated since the fix)
+    /// never matches this way: its time is already the real one, and reading
+    /// the listed time back 4 or 5 hours would let a same-size replacement
+    /// uploaded exactly that much later pass as the file AeroCloud wrote.
+    fn pre_utc_fix_filelu_receipt(
+        config: &CloudConfig,
+        receipt: &CloudTransferReceipt,
+        modified: Option<DateTime<Utc>>,
+    ) -> bool {
+        Self::is_pre_utc_fix_filelu_receipt(config, receipt)
+            && modified
+                .and_then(crate::providers::filelu::pre_utc_fix_reading)
+                .is_some_and(|old| receipt.destination.modified == Some(old))
+    }
+
+    /// Rewrite, with the real time, every FileLu upload receipt written before
+    /// FileLu times were read as US Eastern whose file this cycle listed on the
+    /// server with the same size, so the old reading does not outlive the
+    /// first saved cycle, within the active receipt scope only. Only the time
+    /// changes, and the receipt is marked
+    /// `utc_remote_time` so the old reading is never tried on it again: a
+    /// receipt is never minted, moved or extended here.
+    fn refresh_pre_utc_fix_filelu_receipts(
+        receipts: &mut HashMap<String, CloudTransferReceipt>,
+        rows: &[FileComparison],
+        config: &CloudConfig,
+        scope: Option<&str>,
+    ) {
+        // Only receipts of the connection this cycle listed: a cycle under
+        // another account or root must not touch them.
+        let Some(scope) = scope else {
+            return;
+        };
+        for row in rows.iter().filter(|row| !row.is_dir) {
+            let Some(listed) = row.remote_info.as_ref().filter(|info| !info.is_dir) else {
+                continue;
+            };
+            let local = row
+                .local_relative_path
+                .as_deref()
+                .unwrap_or(&row.relative_path);
+            let remote = row
+                .remote_relative_path
+                .as_deref()
+                .unwrap_or(&row.relative_path);
+            let Some(receipt) = receipts
+                .get_mut(local)
+                .filter(|receipt| receipt.remote_key == remote && receipt.scope == scope)
+            else {
+                continue;
+            };
+            if !receipt.destination.is_dir
+                && receipt.destination.size == listed.size
+                && Self::pre_utc_fix_filelu_receipt(config, receipt, listed.modified)
+            {
+                receipt.destination.modified = listed.modified;
+                receipt.utc_remote_time = true;
+            }
+        }
     }
 
     /// Changed or unverifiable destination-only files require an explicit foreground decision.
@@ -1048,7 +1136,7 @@ impl CloudService {
             _ => return None,
         }?;
         let receipt = self.cloud_receipt_for(config, row)?;
-        (!Self::receipt_matches(&receipt, destination.size, destination.modified)).then(||
+        (!Self::receipt_matches(config, &receipt, destination.size, destination.modified)).then(||
             "Destination changed or cannot be verified against the last AeroCloud transfer; kept. Review both sides in AeroSync before deciding on deletion.".to_string())
     }
 
@@ -1089,6 +1177,12 @@ impl CloudService {
                 receipts.remove(key);
             }
         }
+        Self::refresh_pre_utc_fix_filelu_receipts(
+            &mut receipts,
+            rows,
+            config,
+            self.effective_receipt_scope(config).as_deref(),
+        );
         // A root swapped after the last successful transfer cannot inherit that
         // transfer's proof. Keep old scopes and persisted revocations, but never
         // mint or rebind a receipt to the replacement directory.
@@ -1164,6 +1258,7 @@ impl CloudService {
                         .to_string(),
                     destination_side,
                     destination,
+                    utc_remote_time: true,
                 },
             );
         }
@@ -3062,6 +3157,7 @@ impl CloudService {
         let matches = current.as_ref().is_some_and(|entry| {
             !entry.is_dir
                 && Self::receipt_matches(
+                    config,
                     &receipt,
                     entry.size,
                     entry
@@ -3539,6 +3635,7 @@ impl CloudService {
                     if !current.is_file()
                         || !receipt.as_ref().is_some_and(|receipt| {
                             Self::receipt_matches(
+                                config,
                                 receipt,
                                 current.len(),
                                 current.modified().ok().map(DateTime::<Utc>::from),
@@ -3914,6 +4011,7 @@ mod baseline_tests {
                 scope: svc.effective_receipt_scope(&config).unwrap(),
                 remote_key: "f.txt".into(),
                 destination_side: CompareDirection::LocalToRemote,
+                utc_remote_time: true,
                 destination: SyncIndexEntry {
                     size: 7,
                     modified: fi(7, 1000).modified,
@@ -3927,6 +4025,188 @@ mod baseline_tests {
         assert!(svc.cloud_receipt_for(&config, &row).is_none());
         svc.connection_identity = Some(None);
         assert!(svc.cloud_receipt_for(&config, &row).is_none());
+    }
+
+    /// A FileLu upload receipt saved before the fix still proves the unchanged
+    /// remote file; a marked receipt, another gap, another provider or a local
+    /// destination does not.
+    #[test]
+    fn a_filelu_upload_receipt_from_before_the_utc_fix_still_proves_the_remote_file() {
+        // FileLu lists the file as "2026-04-17 16:29:19" (US Eastern). The old
+        // receipt holds that string read as UTC; the listing now reads it as
+        // the real instant, 20:29:19Z. Same file, same receipt.
+        let old = crate::parse_remote_datetime("2026-04-17 16:29:19").unwrap();
+        let now = crate::parse_remote_datetime("2026-04-17T20:29:19Z").unwrap();
+        let root = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let config_for = |protocol: &str, direction: CompareDirection| CloudConfig {
+            local_folder: root.path().into(),
+            update_only: true,
+            preserve_remote_deletes: false,
+            sync_direction: direction,
+            protocol_type: protocol.to_string(),
+            ..Default::default()
+        };
+        let reason_with = |config: &CloudConfig,
+                           utc_remote_time: bool,
+                           receipt_time,
+                           listed_time: DateTime<Utc>| {
+            let svc = CloudService::new();
+            let receipt = CloudTransferReceipt {
+                scope: svc.effective_receipt_scope(config).unwrap(),
+                remote_key: "f.txt".into(),
+                destination_side: config.sync_direction,
+                utc_remote_time,
+                destination: SyncIndexEntry {
+                    size: 7,
+                    modified: Some(receipt_time),
+                    is_dir: false,
+                    uploaded_at: None,
+                },
+            };
+            svc.cloud_receipts
+                .lock()
+                .unwrap()
+                .insert("f.txt".into(), receipt);
+            let listed = fi(7, listed_time.timestamp());
+            let row = if config.sync_direction == CompareDirection::LocalToRemote {
+                cmp(SyncStatus::RemoteOnly, None, Some(listed), true, false)
+            } else {
+                cmp(SyncStatus::LocalOnly, Some(listed), None, true, false)
+            };
+            svc.changed_destination_reason(config, &row)
+        };
+        // A receipt saved before the fix.
+        let reason = |config: &CloudConfig, receipt_time, listed_time| {
+            reason_with(config, false, receipt_time, listed_time)
+        };
+        let filelu = config_for("filelu", CompareDirection::LocalToRemote);
+        assert_eq!(reason(&filelu, old, now), None);
+        // Its time is the old reading, never a real instant, so the listed
+        // time is never compared to it as one: a same-size file whose real
+        // upload time equals the stored wall-clock value (uploaded 4 hours
+        // before the original, then moved in or restored) is a change, and so
+        // is a listing that happens to equal the stored value.
+        assert!(reason(&filelu, old, old).is_some());
+        assert!(reason(&filelu, now, now).is_some());
+        // A receipt minted or migrated since the fix holds the real time: a
+        // same-size file replaced on the server exactly 4 hours later (the
+        // old reading of its time is the receipt's) is a change, never the
+        // file AeroCloud wrote.
+        let later = now + chrono::Duration::hours(4);
+        assert!(reason_with(&filelu, true, now, later).is_some());
+        assert_eq!(reason_with(&filelu, true, now, now), None);
+        assert!(reason_with(&filelu, true, old, now).is_some());
+        // Any other gap is still a change on the server.
+        let hour = chrono::Duration::hours(1);
+        assert!(reason(&filelu, old + hour, now).is_some());
+        assert!(reason(&filelu, old, now + hour).is_some());
+        // Only FileLu times moved, and only a remote destination holds them.
+        let sftp = config_for("sftp", CompareDirection::LocalToRemote);
+        assert!(reason(&sftp, old, now).is_some());
+        assert_eq!(reason(&sftp, now, now), None);
+        let download = config_for("filelu", CompareDirection::RemoteToLocal);
+        assert!(reason(&download, old, now).is_some());
+    }
+
+    /// The first saved cycle rewrites an unmarked FileLu receipt of its own
+    /// scope with the real time and marks it; every other receipt is left as it
+    /// was.
+    #[test]
+    fn the_first_saved_cycle_rewrites_a_pre_utc_fix_filelu_receipt_with_the_real_time() {
+        let old = crate::parse_remote_datetime("2026-04-17 16:29:19").unwrap();
+        let now = crate::parse_remote_datetime("2026-04-17T20:29:19Z").unwrap();
+        let root = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let config_for = |protocol: &str| CloudConfig {
+            local_folder: root.path().into(),
+            update_only: true,
+            preserve_remote_deletes: false,
+            sync_direction: CompareDirection::LocalToRemote,
+            protocol_type: protocol.to_string(),
+            ..Default::default()
+        };
+        let entry = |modified| SyncIndexEntry {
+            size: 7,
+            modified: Some(modified),
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let saved_in = |config: &CloudConfig,
+                        foreign_scope: bool,
+                        utc_remote_time: bool,
+                        receipt_time,
+                        listed: FileInfo| {
+            let svc = CloudService::new();
+            let receipt = CloudTransferReceipt {
+                scope: if foreign_scope {
+                    "another-connection".into()
+                } else {
+                    svc.effective_receipt_scope(config).unwrap()
+                },
+                remote_key: "f.txt".into(),
+                destination_side: CompareDirection::LocalToRemote,
+                utc_remote_time,
+                destination: entry(receipt_time),
+            };
+            let files: HashMap<String, SyncIndexEntry> = [("f.txt".into(), entry(old))].into();
+            let prior = SyncIndex {
+                profile_id: None,
+                version: SYNC_INDEX_VERSION,
+                last_sync: Utc::now(),
+                local_path: String::new(),
+                remote_path: String::new(),
+                files: files.clone(),
+                remote_spellings: Default::default(),
+                cloud_receipts: [("f.txt".into(), receipt)].into(),
+                cloud_remote_metadata: Default::default(),
+                unverified_keys: Default::default(),
+            };
+            let row = cmp(
+                SyncStatus::Identical,
+                Some(fi(7, 1)),
+                Some(listed),
+                true,
+                false,
+            );
+            let saved = svc.receipts_after(&[row], config, Some(&prior), &files, None);
+            let receipt = &saved["f.txt"];
+            (receipt.destination.modified, receipt.utc_remote_time)
+        };
+        let saved_with = |config: &CloudConfig, utc_remote_time: bool, receipt_time, listed| {
+            saved_in(config, false, utc_remote_time, receipt_time, listed)
+        };
+        // A receipt saved before the fix; the time alone.
+        let saved_time = |config: &CloudConfig, receipt_time, listed: FileInfo| {
+            saved_with(config, false, receipt_time, listed).0
+        };
+        let filelu = config_for("filelu");
+        let listed = fi(7, now.timestamp());
+        assert_eq!(
+            saved_with(&filelu, false, old, listed.clone()),
+            (Some(now), true)
+        );
+        // Unmigrated stays unmarked, so the next cycle can still migrate it.
+        assert_eq!(
+            saved_with(&filelu, false, old, fi(8, now.timestamp())),
+            (Some(old), false)
+        );
+        // A marked receipt is never moved through the old reading, even when
+        // the listed file is a same-size replacement 4 hours later.
+        let later = fi(7, (now + chrono::Duration::hours(4)).timestamp());
+        assert_eq!(saved_with(&filelu, true, now, later), (Some(now), true));
+        // A receipt of another connection is never touched by this cycle.
+        assert_eq!(
+            saved_in(&filelu, true, false, old, listed.clone()),
+            (Some(old), false)
+        );
+        // Already right, another gap, another size, another provider: untouched.
+        assert_eq!(saved_time(&filelu, now, listed.clone()), Some(now));
+        let hour = chrono::Duration::hours(1);
+        assert_eq!(
+            saved_time(&filelu, old + hour, listed.clone()),
+            Some(old + hour)
+        );
+        assert_eq!(saved_time(&filelu, old, fi(8, now.timestamp())), Some(old));
+        assert_eq!(saved_time(&config_for("sftp"), old, listed), Some(old));
     }
 
     #[test]
@@ -3946,6 +4226,7 @@ mod baseline_tests {
             scope: scope.clone(),
             remote_key: remote.into(),
             destination_side: CompareDirection::LocalToRemote,
+            utc_remote_time: true,
             destination: SyncIndexEntry {
                 size: 7,
                 modified: fi(7, 1000).modified,
@@ -4161,6 +4442,7 @@ mod baseline_tests {
                         scope: CloudService::receipt_scope(&config),
                         remote_key: orphan.relative_path.clone(),
                         destination_side: direction,
+                        utc_remote_time: true,
                         destination: SyncIndexEntry {
                             size: destination.size,
                             modified: destination.modified,
@@ -7455,6 +7737,7 @@ mod baseline_tests {
                         scope: scope.clone(),
                         remote_key: key,
                         destination_side: CompareDirection::LocalToRemote,
+                        utc_remote_time: true,
                         destination: state,
                     },
                 );

@@ -13,6 +13,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
     test: {
         environment: 'node',
+        // Child processes, never worker threads: a test that sets
+        // `process.env.TZ` at run time only changes the clock of its own
+        // process, and a worker thread keeps the zone it started with.
+        pool: 'forks',
         globals: false,
         include: ['src/**/*.test.{ts,tsx}'],
         exclude: [

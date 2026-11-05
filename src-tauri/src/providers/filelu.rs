@@ -136,8 +136,34 @@ struct FolderEntry {
 pub struct DeletedFileEntry {
     pub file_code: Option<String>,
     pub name: Option<String>,
+    /// When the file went to the trash, as a UTC instant (see
+    /// [`filelu_time_to_utc`]).
+    #[serde(default, deserialize_with = "deserialize_filelu_time")]
     pub deleted: Option<String>,
+    /// Seconds since the file went to the trash. The trash used to send this
+    /// field; on 2026-11-01 it sent `deleted_ago_hours` instead, which
+    /// [`FileLuProvider::list_deleted_files`] carries over in seconds, so the
+    /// frontend reads one field whichever the server sent.
+    #[serde(default, deserialize_with = "deserialize_opt_u64")]
     pub deleted_ago_sec: Option<u64>,
+    /// `deleted_ago_hours` (a number or a string, possibly with a fraction)
+    /// in seconds. Read only, never sent on to the frontend.
+    #[serde(
+        default,
+        rename(deserialize = "deleted_ago_hours"),
+        deserialize_with = "deserialize_opt_hours_as_secs",
+        skip_serializing
+    )]
+    deleted_ago_hours_as_secs: Option<u64>,
+}
+
+/// What [`FileLuProvider::empty_trash`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrashEmptied {
+    /// Files permanently deleted.
+    pub deleted: usize,
+    /// Trash rows left in place because they carry no usable file code.
+    pub left_without_code: usize,
 }
 
 /// A file entry returned by /folder/list
@@ -148,6 +174,8 @@ struct FileEntry {
     name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_size")]
     size: u64,
+    /// A UTC instant (see [`filelu_time_to_utc`]).
+    #[serde(default, deserialize_with = "deserialize_filelu_time")]
     uploaded: Option<String>,
     /// Content hash returned by FileLu API: used for sync comparison
     /// since FileLu does not preserve original file mtime on upload.
@@ -257,7 +285,8 @@ struct VersionEntry {
     #[serde(default, deserialize_with = "deserialize_size")]
     size: u64,
     /// When this content was uploaded (`replaced` is when a newer one took
-    /// its place).
+    /// its place), as a UTC instant (see [`filelu_time_to_utc`]).
+    #[serde(default, deserialize_with = "deserialize_filelu_time")]
     uploaded: Option<String>,
 }
 
@@ -281,6 +310,121 @@ fn deserialize_size<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u64, D::Er
             .map_err(|_| serde::de::Error::invalid_value(Unexpected::Str(&s), &"a numeric string")),
         _ => Ok(0),
     }
+}
+
+/// A FileLu time (`uploaded`, `deleted`) as the UTC instant it names.
+///
+/// FileLu writes its times as `YYYY-MM-DD HH:MM:SS` with no zone, on the
+/// clock of US Eastern (America/New_York), not UTC: a file uploaded at
+/// 10:31 UTC on 2026-11-01 was listed as `05:31` (EST, UTC-5), and two files
+/// uploaded at about 20:29 and 09:00 UTC in April 2026 were listed at 16:29
+/// and 05:00 (EDT, UTC-4). The single parser reads a zoneless time as UTC,
+/// so without this the times showed 4 or 5 hours early. The result is RFC
+/// 3339 with `Z`, which the parser and the frontend read as UTC. Any other
+/// shape is returned unchanged: only the exact form FileLu writes is
+/// converted, so a time that already carries a zone is never shifted twice.
+fn filelu_time_to_utc(raw: &str) -> String {
+    let text = raw.trim();
+    let bytes = text.as_bytes();
+    let exact_shape = bytes.len() == 19
+        && bytes.iter().enumerate().all(|(i, b)| match i {
+            4 | 7 => *b == b'-',
+            10 => *b == b' ',
+            13 | 16 => *b == b':',
+            _ => b.is_ascii_digit(),
+        });
+    if !exact_shape {
+        return raw.to_string();
+    }
+    // The parser reads the zoneless wall-clock time as if it were UTC; the
+    // Eastern offset of that wall-clock time then gives the real instant.
+    let Some(wall) = crate::parse_remote_datetime(text).map(|dt| dt.naive_utc()) else {
+        return raw.to_string();
+    };
+    (wall + chrono::Duration::hours(us_eastern_offset_hours(wall)))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string()
+}
+
+/// The instant AeroFTP 4.2.6 and earlier read for a FileLu time naming
+/// `instant`: FileLu's Eastern wall-clock string taken as UTC, 4 or 5 hours
+/// early. AeroCloud transfer receipts written by those versions hold this
+/// reading as the remote file's time, and AeroCloud uses it to recognize such
+/// a receipt instead of taking every older FileLu file for one changed on
+/// the server. None for an instant [`filelu_time_to_utc`] never produces (the
+/// standard-time occurrence of the repeated November hour).
+pub(crate) fn pre_utc_fix_reading(
+    instant: chrono::DateTime<chrono::Utc>,
+) -> Option<chrono::DateTime<chrono::Utc>> {
+    // Daylight first: an instant in the hour after the March switch has a
+    // second, standard-time preimage in the skipped hour, which FileLu never
+    // writes.
+    [EDT_HOURS_BEHIND_UTC, EST_HOURS_BEHIND_UTC]
+        .into_iter()
+        .find_map(|offset_hours| {
+            let wall = (instant - chrono::Duration::hours(offset_hours)).naive_utc();
+            (us_eastern_offset_hours(wall) == offset_hours).then(|| wall.and_utc())
+        })
+}
+
+/// Hours US Eastern daylight time (EDT) is behind UTC.
+const EDT_HOURS_BEHIND_UTC: i64 = 4;
+/// Hours US Eastern standard time (EST) is behind UTC.
+const EST_HOURS_BEHIND_UTC: i64 = 5;
+
+/// Hours the US Eastern wall-clock time `wall` is behind UTC: see
+/// [`us_eastern_daylight_time`].
+fn us_eastern_offset_hours(wall: chrono::NaiveDateTime) -> i64 {
+    if us_eastern_daylight_time(wall) {
+        EDT_HOURS_BEHIND_UTC
+    } else {
+        EST_HOURS_BEHIND_UTC
+    }
+}
+
+/// Whether the US Eastern wall-clock time `wall` is daylight time (EDT,
+/// UTC-4) under the US rule in force since 2007: from 02:00 local on the
+/// second Sunday of March to 02:00 local on the first Sunday of November.
+///
+/// Two wall-clock hours have no single answer. The March hour 02:00-02:59
+/// never shows on an Eastern clock, so FileLu cannot write it: it reads as
+/// standard time, an arbitrary choice kept only so that every input has an
+/// answer. The November hour 01:00-01:59 shows twice, first in daylight and
+/// then in standard time, and the string alone cannot tell the two apart: it
+/// reads as daylight time, the earlier of the two instants.
+fn us_eastern_daylight_time(wall: chrono::NaiveDateTime) -> bool {
+    use chrono::{Datelike, NaiveDate, Weekday};
+    let year = wall.year();
+    let start = NaiveDate::from_weekday_of_month_opt(year, 3, Weekday::Sun, 2)
+        .and_then(|day| day.and_hms_opt(3, 0, 0));
+    let end = NaiveDate::from_weekday_of_month_opt(year, 11, Weekday::Sun, 1)
+        .and_then(|day| day.and_hms_opt(2, 0, 0));
+    match (start, end) {
+        (Some(start), Some(end)) => wall >= start && wall < end,
+        _ => false,
+    }
+}
+
+/// Deserializer for a FileLu time field: see [`filelu_time_to_utc`].
+fn deserialize_filelu_time<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<String>, D::Error> {
+    Ok(Option::<String>::deserialize(d)?.map(|raw| filelu_time_to_utc(&raw)))
+}
+
+/// Deserializer for an age in hours (number or string, possibly with a
+/// fraction) as whole seconds.
+fn deserialize_opt_hours_as_secs<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<u64>, D::Error> {
+    let hours = match serde_json::Value::deserialize(d)? {
+        serde_json::Value::Number(n) => n.as_f64(),
+        serde_json::Value::String(s) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    };
+    Ok(hours
+        .filter(|h| h.is_finite() && *h >= 0.0)
+        .map(|h| (h * 3600.0).round() as u64))
 }
 
 /// Deserializer for optional numeric fields that may arrive as number, string or null.
@@ -1919,13 +2063,18 @@ impl FileLuProvider {
         Ok(true)
     }
 
+    /// The files in the FileLu trash (`files/deleted`), with their deletion time
+    /// as a UTC instant and their age in seconds whichever field FileLu sent it in.
     pub async fn list_deleted_files(&mut self) -> Result<Vec<DeletedFileEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
         let url = self.api_url("files/deleted");
         let resp = self.get_with_retry(&url).await?;
-        let entries = Self::parse_api::<Vec<DeletedFileEntry>>(resp).await?;
+        let mut entries = Self::parse_api::<Vec<DeletedFileEntry>>(resp).await?;
+        for entry in &mut entries {
+            entry.deleted_ago_sec = entry.deleted_ago_sec.or(entry.deleted_ago_hours_as_secs);
+        }
         Ok(entries)
     }
 
@@ -2005,6 +2154,31 @@ impl FileLuProvider {
         let url = self.api_url_with("file/permanent_delete", &[("file_code", file_code)]);
         let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await
+    }
+
+    /// Permanently delete every file in the trash, one by one: FileLu has no
+    /// call that empties it at once. Returns how many files went and how many
+    /// rows were left because they carry no file code (or a blank one), which
+    /// cannot be deleted and is never sent as an empty `file_code`. The first
+    /// failure stops it and comes back with how many went before it, so a
+    /// caller can say how far it got.
+    pub async fn empty_trash(&mut self) -> Result<TrashEmptied, (usize, ProviderError)> {
+        let entries = self.list_deleted_files().await.map_err(|e| (0, e))?;
+        let total = entries.len();
+        let codes: Vec<String> = entries
+            .into_iter()
+            .filter_map(|entry| entry.file_code)
+            .filter(|code| !code.trim().is_empty())
+            .collect();
+        for (emptied, code) in codes.iter().enumerate() {
+            self.permanent_delete_file(code)
+                .await
+                .map_err(|e| (emptied, e))?;
+        }
+        Ok(TrashEmptied {
+            deleted: codes.len(),
+            left_without_code: total - codes.len(),
+        })
     }
 }
 
@@ -4565,6 +4739,343 @@ mod tests {
         assert_eq!(entry.is_public, Some(false));
     }
 
+    /// `(FileLu wall-clock time, the UTC instant it names)`.
+    const EASTERN_TO_UTC: &[(&str, &str)] = &[
+        // Measured: uploaded at about 20:29:02Z and 08:59:09Z in April 2026
+        // (EDT), and at 10:31Z on 2026-11-01 after the switch (EST).
+        ("2026-04-17 16:29:19", "2026-04-17T20:29:19Z"),
+        ("2026-04-18 05:00:28", "2026-04-18T09:00:28Z"),
+        ("2026-11-01 05:31:00", "2026-11-01T10:31:00Z"),
+        // 2026 starts daylight time on Sunday 8 March: the last standard
+        // second, the skipped hour (read as standard), the first daylight one.
+        ("2026-03-08 01:59:59", "2026-03-08T06:59:59Z"),
+        ("2026-03-08 02:30:00", "2026-03-08T07:30:00Z"),
+        ("2026-03-08 03:00:00", "2026-03-08T07:00:00Z"),
+        // 2026 ends it on Sunday 1 November: the last unambiguous daylight
+        // second, the repeated hour (read as daylight), standard time again.
+        ("2026-11-01 00:59:59", "2026-11-01T04:59:59Z"),
+        ("2026-11-01 01:30:00", "2026-11-01T05:30:00Z"),
+        ("2026-11-01 02:00:00", "2026-11-01T07:00:00Z"),
+        // 2027: Sunday 14 March and Sunday 7 November, so the rule is the
+        // weekday, not a fixed date.
+        ("2027-03-13 12:00:00", "2027-03-13T17:00:00Z"),
+        ("2027-03-14 03:00:00", "2027-03-14T07:00:00Z"),
+        ("2027-11-06 12:00:00", "2027-11-06T16:00:00Z"),
+        ("2027-11-07 02:00:00", "2027-11-07T07:00:00Z"),
+        // Deep winter and deep summer.
+        ("2026-01-15 12:00:00", "2026-01-15T17:00:00Z"),
+        ("2026-07-15 12:00:00", "2026-07-15T16:00:00Z"),
+    ];
+
+    /// Every sample and boundary of [`EASTERN_TO_UTC`] converts to its instant,
+    /// and the single parser reads it back as the same one.
+    #[test]
+    fn filelu_eastern_times_become_utc_instants() {
+        for (eastern, utc) in EASTERN_TO_UTC {
+            assert_eq!(filelu_time_to_utc(eastern), *utc, "{eastern}");
+            // The single parser reads the result as the same instant.
+            assert_eq!(
+                crate::parse_remote_mtime(&filelu_time_to_utc(eastern)),
+                crate::parse_remote_mtime(utc),
+                "{eastern}"
+            );
+        }
+    }
+
+    /// `pre_utc_fix_reading` inverts the conversion for every instant it
+    /// produces, and has no answer for the one it never produces.
+    #[test]
+    fn the_pre_fix_reading_is_the_eastern_string_taken_as_utc() {
+        for (eastern, _) in EASTERN_TO_UTC {
+            if *eastern == "2026-03-08 02:30:00" {
+                // The skipped March hour, which FileLu never writes: its
+                // instant reads back as the real daylight time 03:30.
+                continue;
+            }
+            let instant = crate::parse_remote_datetime(&filelu_time_to_utc(eastern)).unwrap();
+            let old = crate::parse_remote_datetime(eastern).unwrap();
+            assert_eq!(pre_utc_fix_reading(instant), Some(old), "{eastern}");
+        }
+        let skipped = crate::parse_remote_datetime("2026-03-08T07:30:00Z").unwrap();
+        assert_eq!(
+            pre_utc_fix_reading(skipped),
+            crate::parse_remote_datetime("2026-03-08 03:30:00")
+        );
+        // The standard-time 01:30 of 1 November is never produced.
+        let repeated = crate::parse_remote_datetime("2026-11-01T06:30:00Z").unwrap();
+        assert_eq!(pre_utc_fix_reading(repeated), None);
+    }
+
+    /// FileLu keeps no comparable modification-time precision.
+    #[test]
+    fn filelu_times_stay_out_of_sync_comparisons() {
+        // Baselines and indexes written before the UTC fix hold FileLu times
+        // 4 or 5 hours early; a comparable precision would make every such
+        // file look changed on the server at the first sync after the update.
+        assert_eq!(
+            crate::providers::declared_mtime_precision(ProviderType::FileLu),
+            None
+        );
+    }
+
+    /// A local copy stamped with the old reading is downloaded once more, and
+    /// skipped once it carries the real time.
+    #[test]
+    fn a_file_downloaded_before_the_utc_fix_is_fetched_once_more_then_skipped() {
+        // A download before the fix stamped the local copy with the old
+        // reading, 4 hours early here. A folder download with
+        // "overwrite if newer" or "skip if identical" then sees FileLu's file
+        // as newer and fetches it once; the new copy carries the real time and
+        // every later run skips it.
+        let old = crate::parse_remote_datetime("2026-04-17 16:29:19").unwrap();
+        let now = crate::parse_remote_datetime("2026-04-17T20:29:19Z").unwrap();
+        let dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR")).unwrap();
+        let path = dir.path().join("f.txt");
+        std::fs::write(&path, b"1234567").unwrap();
+        for action in ["overwrite_if_newer", "skip_if_identical"] {
+            crate::preserve_remote_mtime_dt(&path, Some(old));
+            let meta = std::fs::metadata(&path).unwrap();
+            assert!(
+                !crate::should_skip_file_download(action, Some(now), 7, &meta),
+                "{action}"
+            );
+            crate::preserve_remote_mtime_dt(&path, Some(now));
+            let meta = std::fs::metadata(&path).unwrap();
+            assert!(
+                crate::should_skip_file_download(action, Some(now), 7, &meta),
+                "{action}"
+            );
+        }
+    }
+
+    /// Times in any other shape pass through unchanged.
+    #[test]
+    fn only_the_exact_filelu_shape_is_shifted() {
+        for raw in [
+            "2026-11-01T10:31:00Z",
+            "2026-11-01T05:31:00",
+            "2026-11-01 05:31:00+00:00",
+            "2026-11-01 05:31",
+            "2026-11-01",
+            "2026-13-01 05:31:00",
+            "yesterday",
+            "",
+        ] {
+            assert_eq!(filelu_time_to_utc(raw), raw, "{raw}");
+        }
+        // Surrounding blanks are not part of the shape.
+        assert_eq!(
+            filelu_time_to_utc(" 2026-11-01 05:31:00 "),
+            "2026-11-01T10:31:00Z"
+        );
+    }
+
+    /// Listing and version entries carry `uploaded` as a UTC instant, and an
+    /// absent or null time stays None.
+    #[test]
+    fn listing_and_version_times_deserialize_as_utc() {
+        let file: FileEntry =
+            serde_json::from_str(r#"{"name":"a","size":1,"uploaded":"2026-04-17 16:29:19"}"#)
+                .unwrap();
+        assert_eq!(file.uploaded.as_deref(), Some("2026-04-17T20:29:19Z"));
+        let file: FileEntry = serde_json::from_str(r#"{"name":"a","size":1}"#).unwrap();
+        assert_eq!(file.uploaded, None);
+        let file: FileEntry =
+            serde_json::from_str(r#"{"name":"a","size":1,"uploaded":null}"#).unwrap();
+        assert_eq!(file.uploaded, None);
+        let version: VersionEntry =
+            serde_json::from_str(r#"{"code":"V1","size":1,"uploaded":"2026-11-01 05:31:00"}"#)
+                .unwrap();
+        assert_eq!(version.uploaded.as_deref(), Some("2026-11-01T10:31:00Z"));
+    }
+
+    /// `list` and `stat` report the converted instant for a file FileLu lists
+    /// on the Eastern clock.
+    #[tokio::test]
+    async fn list_and_stat_report_the_utc_instant() {
+        let (mut provider, _) = provider_against(|_, path, query| {
+            let root = query.get("folder_path").map(String::as_str) == Some("/");
+            let page_one = query.get("page").is_none_or(|p| p == "1");
+            match path {
+                "/apiv2/folder/list" if !page_one => {
+                    r#"{"status":200,"result":{"files":[],"folders":[]}}"#.to_string()
+                }
+                "/apiv2/folder/list" if root => {
+                    r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
+                        .to_string()
+                }
+                "/apiv2/folder/list" => r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9,"uploaded":"2026-04-17 16:29:19"}],"folders":[]}}"#
+                    .to_string(),
+                _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+            }
+        })
+        .await;
+        let listed = provider.list("/d").await.unwrap();
+        let file = listed.iter().find(|e| e.name == "f.txt").unwrap();
+        assert_eq!(file.modified.as_deref(), Some("2026-04-17T20:29:19Z"));
+        let stat = provider.stat("/d/f.txt").await.unwrap();
+        assert_eq!(stat.modified.as_deref(), Some("2026-04-17T20:29:19Z"));
+    }
+
+    /// `deleted_ago_hours` reads in seconds from a string, a number or a
+    /// fraction, invalid values read as None, and the field never reaches the
+    /// frontend.
+    #[test]
+    fn trash_age_in_hours_is_read_as_seconds() {
+        let read = |json: &str| -> DeletedFileEntry { serde_json::from_str(json).unwrap() };
+        assert_eq!(
+            read(r#"{"file_code":"A","deleted_ago_hours":"2"}"#).deleted_ago_hours_as_secs,
+            Some(7200)
+        );
+        assert_eq!(
+            read(r#"{"file_code":"A","deleted_ago_hours":1.5}"#).deleted_ago_hours_as_secs,
+            Some(5400)
+        );
+        assert_eq!(
+            read(r#"{"file_code":"A","deleted_ago_hours":"0.25"}"#).deleted_ago_hours_as_secs,
+            Some(900)
+        );
+        for bad in [r#""-1""#, r#""soon""#, r#""""#, "null", "-3"] {
+            let entry = read(&format!(r#"{{"file_code":"A","deleted_ago_hours":{bad}}}"#));
+            assert_eq!(entry.deleted_ago_hours_as_secs, None, "{bad}");
+        }
+        assert_eq!(
+            read(r#"{"file_code":"A","deleted_ago_sec":"90"}"#).deleted_ago_sec,
+            Some(90)
+        );
+        let entry = read(r#"{"file_code":"A","deleted":"2026-11-01 05:31:00"}"#);
+        assert_eq!(entry.deleted.as_deref(), Some("2026-11-01T10:31:00Z"));
+        // The hours field never reaches the frontend under any name.
+        let sent =
+            serde_json::to_value(read(r#"{"file_code":"A","deleted_ago_hours":"2"}"#)).unwrap();
+        assert!(sent.get("deleted_ago_hours").is_none(), "{sent}");
+        assert!(sent.get("deleted_ago_hours_as_secs").is_none(), "{sent}");
+    }
+
+    /// The trash listing fills `deleted_ago_sec` from the hours when the
+    /// seconds are missing, and keeps the seconds when FileLu sent them.
+    #[tokio::test]
+    async fn the_trash_listing_fills_seconds_from_hours() {
+        let (mut provider, _) = provider_against(|_, path, _| match path {
+            "/api/files/deleted" => serde_json::json!({
+                "status": 200,
+                "result": [
+                    {"file_code": "H", "name": "h.txt", "deleted_ago_hours": "3"},
+                    {"file_code": "S", "name": "s.txt", "deleted_ago_sec": 40, "deleted_ago_hours": "3"},
+                    {"file_code": "N", "name": "n.txt"}
+                ]
+            })
+            .to_string(),
+            _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+        })
+        .await;
+        let trash = provider.list_deleted_files().await.unwrap();
+        let ages: Vec<(Option<&str>, Option<u64>)> = trash
+            .iter()
+            .map(|e| (e.file_code.as_deref(), e.deleted_ago_sec))
+            .collect();
+        assert_eq!(
+            ages,
+            [
+                (Some("H"), Some(10_800)),
+                (Some("S"), Some(40)),
+                (Some("N"), None)
+            ]
+        );
+    }
+
+    /// A provider whose trash holds `A`, `B` and `C` (and rows with no file
+    /// code and a blank one), where `file/permanent_delete` refuses `refused` and every other
+    /// call succeeds. Returns it and the calls that are not listings.
+    async fn provider_with_three_trashed(
+        refused: Option<&'static str>,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_against(move |_, path, query| match path {
+            "/api/files/deleted" => serde_json::json!({
+                "status": 200,
+                "result": [
+                    {"file_code": "A", "name": "a.txt", "deleted_ago_hours": "1"},
+                    {"name": "no-code.txt"},
+                    {"file_code": " ", "name": "blank-code.txt"},
+                    {"file_code": "B", "name": "b.txt", "deleted_ago_hours": "1"},
+                    {"file_code": "C", "name": "c.txt", "deleted_ago_hours": "1"}
+                ]
+            })
+            .to_string(),
+            "/api/file/permanent_delete"
+                if refused.is_some() && query.get("file_code").map(String::as_str) == refused =>
+            {
+                r#"{"status":403,"msg":"denied"}"#.to_string()
+            }
+            _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+        })
+        .await
+    }
+
+    /// Emptying deletes every trashed file by its code and counts the rows it
+    /// left because they have no usable code.
+    #[tokio::test]
+    async fn emptying_the_trash_deletes_each_file_by_its_code() {
+        let (mut provider, calls) = provider_with_three_trashed(None).await;
+        assert_eq!(
+            provider.empty_trash().await.unwrap(),
+            TrashEmptied {
+                deleted: 3,
+                left_without_code: 2
+            }
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(
+            calls,
+            [
+                "/api/files/deleted?",
+                "/api/file/permanent_delete?file_code=A",
+                "/api/file/permanent_delete?file_code=B",
+                "/api/file/permanent_delete?file_code=C",
+            ]
+        );
+    }
+
+    /// A refused delete stops the emptying, reports how many files went before
+    /// it, and nothing after it is tried.
+    #[tokio::test]
+    async fn emptying_the_trash_stops_at_the_first_refusal_and_says_how_far_it_got() {
+        let (mut provider, calls) = provider_with_three_trashed(Some("B")).await;
+        let (emptied, error) = provider.empty_trash().await.unwrap_err();
+        assert_eq!(emptied, 1, "{error}");
+        let calls = calls.lock().unwrap().clone();
+        assert!(
+            calls.contains(&"/api/file/permanent_delete?file_code=B".to_string()),
+            "the refused item was tried: {calls:?}"
+        );
+        assert!(
+            !calls.iter().any(|c| c.ends_with("file_code=C")),
+            "nothing after the refusal: {calls:?}"
+        );
+    }
+
+    /// Restore and permanent delete call FileLu with the file code they were
+    /// given, and a refusal is an error.
+    #[tokio::test]
+    async fn restore_and_delete_from_the_trash_name_the_file_code() {
+        let (mut provider, calls) = provider_with_three_trashed(None).await;
+        provider.restore_deleted_file("A").await.unwrap();
+        provider.permanent_delete_file("B").await.unwrap();
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(
+            calls,
+            [
+                "/api/file/restore?file_code=A&restore=1",
+                "/api/file/permanent_delete?file_code=B",
+            ]
+        );
+        let (mut provider, _) = provider_with_three_trashed(Some("B")).await;
+        assert!(provider.permanent_delete_file("B").await.is_err());
+    }
+
     #[test]
     fn test_mime_from_ext() {
         assert_eq!(mime_from_ext("pdf"), "application/pdf");
@@ -5784,6 +6295,8 @@ mod tests {
         .await
     }
 
+    /// Versions are listed newest first, each by its own code, with its upload
+    /// time as a UTC instant.
     #[tokio::test]
     async fn versions_are_listed_newest_first_by_their_own_codes() {
         let (mut provider, _) = provider_with_versions(AfterDelete::Removes).await;
@@ -5796,8 +6309,8 @@ mod tests {
         assert_eq!(
             listed,
             [
-                ("V2", Some("2026-11-01 11:31:52"), 9),
-                ("V1", Some("2026-11-01 11:31:51"), 9)
+                ("V2", Some("2026-11-01T16:31:52Z"), 9),
+                ("V1", Some("2026-11-01T16:31:51Z"), 9)
             ]
         );
     }

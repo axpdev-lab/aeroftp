@@ -600,6 +600,20 @@ aeroftp-cli purge --profile "My S3" /tmp/old-namespace --force
 
 Removes a path and everything under it. It routes through the same engine as `rm -r`, so it inherits the root guard (refuses to purge `/`), the confirmation prompt, and the shared error / exit-code mapping.
 
+### trash - Server-Side Trash
+
+```bash
+# What is in the trash (id, deletion time, original name)
+aeroftp-cli trash list --profile "My FileLu"
+# Put one item back, or delete it for good, by the id from `trash list`
+aeroftp-cli trash restore --profile "My FileLu" 2a7b9xq1k0zz
+aeroftp-cli trash delete --profile "My FileLu" 2a7b9xq1k0zz
+# Permanently delete every item: irreversible, so --force is required
+aeroftp-cli trash empty --profile "My Nextcloud" --force
+```
+
+On a provider with a recycle bin, `rm` moves the file to the server's trash, where it can still be restored; whether a trashed file still counts against the storage quota depends on the provider. These commands list, restore or permanently delete what is there, the same as the GUI trash managers. Supported today: Nextcloud WebDAV and FileLu (where the id is the file code). FileLu has no call that empties the trash at once, so `trash empty` deletes the items one by one; if one fails it stops, exits with code 5 and says how many it had already deleted. A FileLu row without a file code cannot be deleted: it is left in place, and `trash empty` exits with code 5 and says how many such rows remain. Every other backend exits with code 4.
+
 ### mv - Rename / Move
 
 ```bash
