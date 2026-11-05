@@ -1250,10 +1250,27 @@ impl CredentialStore {
         // before open_and_cache (lock order).
         let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
         let vault_path = dir.join(VAULT_FILENAME);
-        {
-            let guard = VaultWriteGuard::acquire(&dir)?;
+        let claimed_slot = match &key_mode {
+            VaultKeyMode::AutoKeyring { slot } => Some(slot.clone()),
+            _ => None,
+        };
+        let mut key_written = false;
+        let written = VaultWriteGuard::acquire(&dir).and_then(|guard| {
             VaultKeyFile { mode: key_mode }.write(&guard)?;
-            Self::create_empty_vault(&vault_path, &vault_key, &guard)?;
+            key_written = true;
+            Self::create_empty_vault(&vault_path, &vault_key, &guard)
+        });
+        if let Err(error) = written {
+            // Without vault.key nothing opens with this passphrase: give its
+            // keyring account back (after the guard is gone: the release takes
+            // the claim lock). Once vault.key names the account, the account
+            // keeps the passphrase: the next start reads it and creates the
+            // missing vault.db (verify_auto_keyring).
+            if let (Some(slot), false) = (claimed_slot, key_written) {
+                release_keyring_slot(&slot, &passphrase);
+            }
+            passphrase.zeroize();
+            return Err(error);
         }
 
         // A2-03: Zeroize passphrase after use
@@ -1682,25 +1699,36 @@ impl CredentialStore {
         // is read again under the lock: if another process changed it
         // meanwhile, the claim is undone and nothing is written.
         let claimed = claim_keyring_slot(&passphrase);
-        let guard = VaultWriteGuard::acquire(&config_dir()?)?;
-        if VaultKeyFile::read()?.to_bytes() != key_file.to_bytes() {
-            drop(guard);
-            if let Ok(slot) = &claimed {
+        // Undo the claim on every way out that leaves vault.key as it was. It
+        // runs after the guard is dropped: the release takes the claim lock.
+        let undo = |claimed: &Result<KeyringSlot, CredentialError>| {
+            if let Ok(slot) = claimed {
                 release_keyring_slot(slot, &passphrase);
             }
-            return Err(CredentialError::Encryption(
-                "vault.key changed while the master password was being disabled; try again"
-                    .to_string(),
-            ));
-        }
-        match claimed {
-            Ok(slot) => {
-                VaultKeyFile {
-                    mode: VaultKeyMode::AutoKeyring { slot },
-                }
-                .write(&guard)?;
-                info!("Master password disabled: vault key moved back to system keyring");
+        };
+        let guard = match config_dir().and_then(|dir| VaultWriteGuard::acquire(&dir)) {
+            Ok(guard) => guard,
+            Err(error) => {
+                undo(&claimed);
+                return Err(error);
             }
+        };
+        let unchanged = VaultKeyFile::read().map(|now| now.to_bytes() == key_file.to_bytes());
+        if !matches!(unchanged, Ok(true)) {
+            drop(guard);
+            undo(&claimed);
+            return Err(unchanged.err().unwrap_or_else(|| {
+                CredentialError::Encryption(
+                    "vault.key changed while the master password was being disabled; try again"
+                        .to_string(),
+                )
+            }));
+        }
+        let written = match &claimed {
+            Ok(slot) => VaultKeyFile {
+                mode: VaultKeyMode::AutoKeyring { slot: slot.clone() },
+            }
+            .write(&guard),
             Err(e) => {
                 warn!(
                     "Master password disable: OS keyring unavailable ({e}); writing on-disk vault.key fallback"
@@ -1710,11 +1738,18 @@ impl CredentialStore {
                         passphrase: *passphrase,
                     },
                 }
-                .write(&guard)?;
-                info!(
-                    "Master password disabled: vault key written to on-disk fallback (no keyring)"
-                );
+                .write(&guard)
             }
+        };
+        drop(guard);
+        if let Err(error) = written {
+            undo(&claimed);
+            return Err(error);
+        }
+        if claimed.is_ok() {
+            info!("Master password disabled: vault key moved back to system keyring");
+        } else {
+            info!("Master password disabled: vault key written to on-disk fallback (no keyring)");
         }
         Ok(())
     }
