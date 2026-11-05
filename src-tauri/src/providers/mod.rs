@@ -1182,7 +1182,11 @@ pub fn declared_mtime_precision(provider: ProviderType) -> Option<std::time::Dur
         ProviderType::Jottacloud => SECOND,
         // `updated_at`, parsed to seconds.
         ProviderType::DrimeCloud => SECOND,
-        // `uploaded` is `YYYY-MM-DD HH:MM:SS` with no zone.
+        // `uploaded` is US Eastern `YYYY-MM-DD HH:MM:SS`, now read as UTC
+        // (`filelu::filelu_time_to_utc`), but it is the upload's time, never
+        // the file's, and baselines written before that fix hold it 4 or 5
+        // hours early: a comparable time would read every such file as
+        // changed on the server. FileLu stays size-only.
         ProviderType::FileLu => None,
         // `modified` in milliseconds, cut to seconds.
         ProviderType::Koofr => SECOND,

@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { fileLuDeletedAtLabel, formatDeletedAgo } from './fileLuDeletedLabel';
+import { formatDate } from '../../utils/formatters';
 
 describe('formatDeletedAgo / fileLuDeletedAtLabel', () => {
   it('returns null for a missing relative age so the table can show "-"', () => {
@@ -14,6 +15,18 @@ describe('formatDeletedAgo / fileLuDeletedAtLabel', () => {
 
   it('prefers the absolute date when present', () => {
     expect(fileLuDeletedAtLabel('2026-07-01', 90)).toBe('2026-07-01');
+  });
+
+  it('shows a UTC deletion instant on the local clock, not as raw text', () => {
+    // The backend turns FileLu's US Eastern time into `...Z`; printed raw, the
+    // row would read "2026-11-01T10:31:00Z" in every timezone.
+    const utc = '2026-11-01T10:31:00Z';
+    const label = fileLuDeletedAtLabel(utc, 90);
+    expect(label).toBe(formatDate(utc));
+    expect(label).not.toBe(utc);
+    const local = new Date(Date.UTC(2026, 10, 1, 10, 31, 0));
+    expect(label).toContain(String(local.getHours()).padStart(2, '0'));
+    expect(label).toContain(String(local.getMinutes()).padStart(2, '0'));
   });
 
   it('falls back to a relative label when only seconds are known', () => {
