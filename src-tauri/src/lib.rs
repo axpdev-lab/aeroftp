@@ -3290,6 +3290,17 @@ fn stage_privileged_update_package(
     })
 }
 
+async fn stage_privileged_update_package_async(
+    source: String,
+) -> Result<PrivilegedUpdatePackage, String> {
+    tokio::task::spawn_blocking(move || {
+        let expected_sha256 = ensure_update_artifact_verified(&source)?;
+        stage_privileged_update_package(Path::new(&source), &expected_sha256)
+    })
+    .await
+    .map_err(|error| format!("Privileged update staging task failed: {error}"))?
+}
+
 /// Install a .deb package via pkexec with branded Polkit dialog and restart the app.
 /// Uses /usr/lib/aeroftp/aeroftp-update-helper (installed by .deb) for branded auth dialog.
 #[tauri::command]
@@ -3312,8 +3323,7 @@ async fn install_deb_update(
     // install bytes this process downloaded and Sigstore-verified, and pass the
     // verified digest to pkexec (not a fresh self-computed hash that proves
     // nothing about authenticity).
-    let package_hash = ensure_update_artifact_verified(&downloaded_path)?;
-    let package = stage_privileged_update_package(Path::new(&downloaded_path), &package_hash)?;
+    let package = stage_privileged_update_package_async(downloaded_path).await?;
     let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)
@@ -3361,8 +3371,7 @@ async fn install_rpm_update(
     // install bytes this process downloaded and Sigstore-verified, and pass the
     // verified digest to pkexec (not a fresh self-computed hash that proves
     // nothing about authenticity).
-    let package_hash = ensure_update_artifact_verified(&downloaded_path)?;
-    let package = stage_privileged_update_package(Path::new(&downloaded_path), &package_hash)?;
+    let package = stage_privileged_update_package_async(downloaded_path).await?;
     let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)
