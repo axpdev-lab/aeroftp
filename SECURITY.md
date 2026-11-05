@@ -97,7 +97,7 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 - **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates. As of v4.1.0 (sigstore 0.14) the in-app check parses GitHub's current v0.3 signing bundles and returns a real verified result. A bundle that does not verify is `VerificationFailed`: the updater deletes the artifact and the bundle and does not install
 - **Linux hardening**: The privileged update helper re-verifies SHA-256 before executing `dpkg`/`rpm`
 - **Plugin registry**: Remote installation disabled until cryptographic registry authentication is implemented (fail-closed)
-- **Build gates**: the Checks workflow runs `cargo audit --deny warnings` on pull requests and pushes to `main`. A clean audit and complete CI on the exact release source are separate pre-tag requirements. The tag publication workflow gates signing and publication on its validation/build jobs; it does not depend on the separate Checks audit job
+- **Build gates**: the Checks workflow runs `cargo audit --deny warnings` on pull requests, on pushes to `main`, and on the Monday schedule. On a pull request the whole step is non-blocking. A push to `main` and the Monday run fail the job. A clean audit and complete CI on the exact release source are separate pre-tag requirements. The tag publication workflow gates signing and publication on its validation/build jobs; it does not depend on the separate Checks audit job
 
 ### Continuous Monitoring
 
@@ -125,7 +125,7 @@ Findings not yet addressed are surfaced as **open**. Findings accepted with writ
 
 - **[Socket.dev](https://socket.dev)**: Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection
 - **[Snyk](https://snyk.io)**: Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs
-- **[CodeRabbit](https://www.coderabbit.ai)**: AI-driven pull-request review on every PR - inline code suggestions and secret/PII checks complementing the SAST/SCA stack
+- **[CodeRabbit](https://www.coderabbit.ai)** and **Greptile**: pull-request review. They are not a vulnerability scan and not a substitute for `cargo audit`
 - **GitHub Dependabot**: Native alerts and auto-PRs cross-referenced against the self-hosted audit suppression list
 - **[Aikido Security](https://aikido.dev)**: Past audits (February-May 2026) archived - Top 5% benchmark, 0 open issues during the trial period
 
@@ -183,7 +183,7 @@ These are verified compliance checks, not formal certifications.
 | [CVE-2025-54804](https://github.com/axpdev-lab/aeroftp/security/dependabot/3) | Medium | **Resolved** | russh SFTP, fixed by upgrade to v0.57 |
 | [GHSA-wwx6-x28x-8259](https://github.com/advisories/GHSA-wwx6-x28x-8259) | High | **Resolved** | russh, resolved by upgrade to 0.61.2 (v4.0.5) |
 | [GHSA-hpv4-5h6f-wqr3](https://github.com/advisories/GHSA-hpv4-5h6f-wqr3) | Medium | **Resolved** | russh, resolved by upgrade to 0.61.2 (v4.0.5) |
-| [GHSA-g9hv-x236-4qp3](https://github.com/advisories/GHSA-g9hv-x236-4qp3) | Medium | **Resolved** | The July resolution is recorded in [public evidence](docs/security-evidence/RUSSH-DEPENDABOT-ADVISORIES-2026-07.md#resolution-2026-07-28); the v4.2.5 preparation snapshot pins russh 0.64.1 |
+| [GHSA-g9hv-x236-4qp3](https://github.com/advisories/GHSA-g9hv-x236-4qp3) | Medium | **Resolved** | The July resolution is recorded in [public evidence](docs/security-evidence/RUSSH-DEPENDABOT-ADVISORIES-2026-07.md#resolution-2026-07-28). The v4.2.5 preparation snapshot pinned russh 0.64.1. This revision pins russh 0.65.1 |
 | [GHSA-5xvq-cp9x-6p6r](https://github.com/advisories/GHSA-5xvq-cp9x-6p6r) | Medium | **Resolved** | Covered by the same russh upgrade and recorded July resolution |
 | [GHSA-cqjc-rmpq-xprq](https://github.com/advisories/GHSA-cqjc-rmpq-xprq) | Medium | **Resolved** | Covered by the same russh upgrade. The historical client-only reachability statement predates the optional `serve sftp` command |
 

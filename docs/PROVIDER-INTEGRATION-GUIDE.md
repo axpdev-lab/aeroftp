@@ -1799,7 +1799,7 @@ AeroFTP implements S3 signing manually (SigV4) instead of using `aws-sdk-s3` bec
 
 15. **Never store tokens in localStorage**: Desktop app - use encrypted vault (AES-256-GCM + Argon2id). Only model names and base URLs go in localStorage.
 
-16. **TLS downgrade detection**: When FTP `ExplicitIfAvailable` falls back to plaintext, set a `tls_downgraded` flag and show a security warning to the user.
+16. **FTP explicit TLS**: `Explicit` and `ExplicitIfAvailable` both try `AUTH TLS`. If the upgrade fails, the connection stops. Neither mode continues over plaintext, and neither sets `tls_downgraded` on that failure. Plain FTP is only `None`.
 
 ### Provider-Specific Quirks
 

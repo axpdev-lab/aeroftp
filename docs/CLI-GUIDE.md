@@ -17,6 +17,7 @@ AeroFTP CLI is a production command-line client for multi-protocol file transfer
 | FTP | `ftp://` | Password |
 | FTPS | `ftps://` | Password + TLS |
 | SFTP | `sftp://` | Password / SSH Key |
+| SCP | `scp://` | Password / SSH Key |
 | WebDAV | `webdav://` / `webdavs://` | Password |
 | S3 | `s3://` | Access Key + Secret |
 | MEGA.nz | `mega://` | Password (E2E) |
@@ -1747,7 +1748,7 @@ aeroftp-cli import winscp /path/to/WinSCP.ini
 aeroftp-cli import winscp --json
 ```
 
-Imports saved sessions from WinSCP. Supports SFTP, SCP, FTP, FTPS (implicit and explicit TLS), WebDAV (HTTP/HTTPS), and S3. Passwords are decoded from WinSCP's XOR obfuscation. See the [WinSCP Bridge guide](https://docs.aeroftp.app/features/winscp).
+Scans saved WinSCP sessions and prints what can be imported, including SCP. It does not write them into the vault. Finish the import in the GUI under Settings, Export/Import, Import from WinSCP. The scan covers SFTP, SCP, FTP, FTPS (implicit and explicit TLS), WebDAV (HTTP/HTTPS), and S3. Passwords are decoded from WinSCP's XOR obfuscation. See the [WinSCP Bridge guide](https://docs.aeroftp.app/features/winscp).
 
 #### import filezilla
 
