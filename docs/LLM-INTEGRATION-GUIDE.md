@@ -375,7 +375,7 @@ aeroftp-cli agent-info --json 2>/dev/null
 
 Returns:
 - `capabilities.main_command_groups` gives the complete top-level command count (99 in this release); the `commands` object is a smaller curated guide grouped as `safe` / `modify` / `destructive` / `advanced`, not the full list. Use `aeroftp-cli inventory` for the complete command catalog, including `vault` and `correct`.
-- Supported protocols and provider integrations (8 transport protocols and 26 native provider integrations)
+- `protocols` array: protocol IDs this command lists. It does not include `scp`. The generated counts, 8 transport protocols and 26 native integrations, are in [`docs/PROVIDER-INVENTORY.json`](PROVIDER-INVENTORY.json)
 - Per-protocol `protocol_features` map (token vocabulary: `resume`, `find`, `server_copy`, `checksum`, `chmod`, `symlinks`, `permissions`, `share_links`, `versions`, `change_tracking`, `thumbnails`)
 - `agent_connect_supported_protocols` array for the live-connect allowlist
 - Exit code definitions

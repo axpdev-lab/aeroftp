@@ -143,7 +143,7 @@ WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallbac
 | **Yandex Disk** | HTTPS | OAuth2 Token | Universal Vault | TLS Certificate |
 | **OpenDrive** | HTTPS | Session (Username/Password) | Universal Vault | TLS Certificate |
 | **Jottacloud** | HTTPS | Bearer Token (auto-refresh 60s pre-expiry) | Universal Vault | TLS Certificate |
-| **OpenStack Swift** | HTTPS. The Blomp preset stores objects at plain HTTP (`http://swiftproxy.acs.ai.net:8080`). The account token and the file bytes cross that network unencrypted | Username + Password (Keystone) | Universal Vault | TLS on the auth host |
+| **OpenStack Swift** | HTTPS. The Blomp preset stores objects at plain HTTP (`http://swiftproxy.acs.ai.net:8080`). The account token and the file bytes cross that network unencrypted | Username + Password (Keystone) | Universal Vault | TLS on the auth host only when that host uses `https://`. A plain `http://` auth host receives the password unencrypted |
 | **GitHub** | HTTPS | PAT / Device Flow (PEM keys vaulted, AES-256-GCM) | Universal Vault | TLS Certificate |
 | **Immich** | HTTPS | API Key (`x-api-key` header) | Universal Vault | TLS Certificate |
 

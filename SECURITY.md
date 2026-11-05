@@ -103,7 +103,7 @@ All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC ke
 
 #### Self-Hosted Vulnerability Audit (primary)
 
-AeroFTP ships a self-hosted audit pipeline that runs locally and in CI without depending on any vendor SaaS. It aggregates three independent advisory databases and cross-references findings against a documented suppression list:
+AeroFTP ships a self-hosted audit pipeline that runs locally without depending on any vendor SaaS. It aggregates three independent advisory databases and cross-references findings against a documented suppression list. CI runs `cargo audit` only, as described under Build gates:
 
 ```bash
 npm run security:report        # generate HTML report
