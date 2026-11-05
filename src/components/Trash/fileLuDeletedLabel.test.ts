@@ -28,12 +28,17 @@ describe('formatDeletedAgo / fileLuDeletedAtLabel', () => {
 
   it('puts the deletion instant on the local clock of a fixed timezone', () => {
     // Pinned zones, so a formatter that printed the UTC clock (10:31) fails:
-    // 10:31Z is 05:31 in New York (EST) and 16:01 in Kolkata (UTC+5:30).
+    // 10:31Z is 05:31 in New York (EST) and 16:01 in Kolkata (UTC+5:30). The
+    // formatter always prints a 24-hour clock (`hour12: false`). Setting TZ at
+    // run time needs a process of its own, hence `pool: 'forks'` in
+    // vitest.config.ts; the first check fails plainly if the zone did not move.
+    const instant = '2026-11-01T10:31:00Z';
     const previous = process.env.TZ;
     try {
       for (const [zone, clock] of [['America/New_York', '05:31'], ['Asia/Kolkata', '16:01']]) {
         process.env.TZ = zone;
-        const label = fileLuDeletedAtLabel('2026-11-01T10:31:00Z', 90);
+        expect(new Date(instant).getHours(), `${zone} not applied`).toBe(Number(clock.slice(0, 2)));
+        const label = fileLuDeletedAtLabel(instant, 90);
         expect(label, zone).toContain(clock);
         expect(label, zone).not.toContain('10:31');
       }
