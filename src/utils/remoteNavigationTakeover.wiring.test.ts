@@ -23,6 +23,7 @@ function context() {
     const ctx = {
         remoteNavCounter: { current: 7 }, remoteNavInFlightRef: { current: 7 },
         remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false as false | string },
+        connectStartSessionsRef: { current: null as unknown }, sessions: [] as { id: string }[],
         setOverlayDecrypting: vi.fn((value: boolean) => { state.decrypting = value; }),
         setRemoteListLoading: vi.fn((value: boolean) => { state.loading = value; }),
         setRemoteListReason: vi.fn((value: string | null) => { state.reason = value; }),

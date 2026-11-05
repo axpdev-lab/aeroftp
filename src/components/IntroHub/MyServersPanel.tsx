@@ -243,6 +243,9 @@ interface MyServersPanelProps {
     onDisconnectProfile?: (profileId: string) => void | Promise<void>;
     /** APPENDIX-DEVICE-PROFILES Phase 3: open attached MTP device for a saved profile. */
     onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile, scope?: ConnectScope) => void | Promise<void>;
+    /** Puts the live session tab aside; called right before an OAuth or
+     *  4shared connect replaces the backend it runs on. */
+    onParkActiveSession?: () => void;
 }
 
 const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: React.ReactNode; iconColor: string }[] = [
@@ -272,6 +275,7 @@ export function MyServersPanel({
     connectingProfileId,
     onDisconnectProfile,
     onOpenMtpDeviceProfile,
+    onParkActiveSession,
 }: MyServersPanelProps) {
     const t = useTranslation();
     const { log: logActivity } = useActivityLog();
@@ -1173,6 +1177,8 @@ export function MyServersPanel({
                         throw connectErr;
                     }
                 };
+                // The live tab is put aside before its backend goes.
+                onParkActiveSession?.();
                 const result = scopedCancellable
                     ? await connectScope.step(() => scopedCancellable(doOAuthConnect))
                     : await connectScope.step(() => doOAuthConnect());
@@ -1248,6 +1254,8 @@ export function MyServersPanel({
                         return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params }));
                     }
                 };
+                // The live tab is put aside before its backend goes.
+                onParkActiveSession?.();
                 const result = scopedCancellable
                     ? await connectScope.step(() => scopedCancellable(doFourSharedConnect))
                     : await connectScope.step(() => doFourSharedConnect());
@@ -1361,6 +1369,7 @@ export function MyServersPanel({
         activeProfileIds,
         onActivateSession,
         onOpenMtpDeviceProfile,
+        onParkActiveSession,
         refreshMtpDevices,
     ]);
 

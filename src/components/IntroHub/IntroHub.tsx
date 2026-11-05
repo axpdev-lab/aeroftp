@@ -88,6 +88,8 @@ export interface IntroHubProps {
     /** APPENDIX-DEVICE-PROFILES Phase 3: open an attached MTP device for a
      *  saved device profile (fingerprint match already done in MyServersPanel). */
     onOpenMtpDeviceProfile?: (device: MtpDeviceInfo, profile: ServerProfile, scope?: ConnectScope) => void | Promise<void>;
+    /** Puts the live session tab aside before a connect replaces its backend. */
+    onParkActiveSession?: () => void;
 }
 
 function generateTabId(): string {
@@ -122,6 +124,7 @@ export function IntroHub(props: IntroHubProps) {
         connectingProfileId,
         onDisconnectProfile,
         onOpenMtpDeviceProfile,
+        onParkActiveSession,
     } = props;
 
     const t = useTranslation();
@@ -466,6 +469,7 @@ export function IntroHub(props: IntroHubProps) {
                         connectingProfileId={connectingProfileId}
                         onDisconnectProfile={onDisconnectProfile}
                         onOpenMtpDeviceProfile={onOpenMtpDeviceProfile}
+                        onParkActiveSession={onParkActiveSession}
                     />
                 </div>
 
