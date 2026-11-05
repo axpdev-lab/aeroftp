@@ -2129,6 +2129,27 @@ impl FileLuProvider {
         let resp = self.get_after_refusal(&url).await?;
         Self::ensure_api_ok(resp).await
     }
+
+    /// Permanently delete every file in the trash, one by one: FileLu has no
+    /// call that empties it at once. Returns how many files went. The first
+    /// failure stops it and comes back with how many went before it, so a
+    /// caller can say how far it got; a row without a file code cannot be
+    /// deleted and is left alone.
+    pub async fn empty_trash(&mut self) -> Result<usize, (usize, ProviderError)> {
+        let codes: Vec<String> = self
+            .list_deleted_files()
+            .await
+            .map_err(|e| (0, e))?
+            .into_iter()
+            .filter_map(|entry| entry.file_code)
+            .collect();
+        for (emptied, code) in codes.iter().enumerate() {
+            self.permanent_delete_file(code)
+                .await
+                .map_err(|e| (emptied, e))?;
+        }
+        Ok(codes.len())
+    }
 }
 
 // ─── StorageProvider Trait ───────────────────────────────────────────────
@@ -4914,6 +4935,81 @@ mod tests {
                 (Some("N"), None)
             ]
         );
+    }
+
+    /// A provider whose trash holds `A`, `B` and `C` (and a row with no file
+    /// code), where `file/permanent_delete` refuses `refused` and every other
+    /// call succeeds. Returns it and the calls that are not listings.
+    async fn provider_with_three_trashed(
+        refused: Option<&'static str>,
+    ) -> (
+        FileLuProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    ) {
+        provider_against(move |_, path, query| match path {
+            "/api/files/deleted" => serde_json::json!({
+                "status": 200,
+                "result": [
+                    {"file_code": "A", "name": "a.txt", "deleted_ago_hours": "1"},
+                    {"name": "no-code.txt"},
+                    {"file_code": "B", "name": "b.txt", "deleted_ago_hours": "1"},
+                    {"file_code": "C", "name": "c.txt", "deleted_ago_hours": "1"}
+                ]
+            })
+            .to_string(),
+            "/api/file/permanent_delete"
+                if refused.is_some() && query.get("file_code").map(String::as_str) == refused =>
+            {
+                r#"{"status":403,"msg":"denied"}"#.to_string()
+            }
+            _ => r#"{"status":200,"msg":"OK"}"#.to_string(),
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn emptying_the_trash_deletes_each_file_by_its_code() {
+        let (mut provider, calls) = provider_with_three_trashed(None).await;
+        assert_eq!(provider.empty_trash().await.unwrap(), 3);
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(
+            calls,
+            [
+                "/api/files/deleted?",
+                "/api/file/permanent_delete?file_code=A",
+                "/api/file/permanent_delete?file_code=B",
+                "/api/file/permanent_delete?file_code=C",
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn emptying_the_trash_stops_at_the_first_refusal_and_says_how_far_it_got() {
+        let (mut provider, calls) = provider_with_three_trashed(Some("B")).await;
+        let (emptied, error) = provider.empty_trash().await.unwrap_err();
+        assert_eq!(emptied, 1, "{error}");
+        let calls = calls.lock().unwrap().clone();
+        assert!(
+            !calls.iter().any(|c| c.ends_with("file_code=C")),
+            "nothing after the refusal: {calls:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn restore_and_delete_from_the_trash_name_the_file_code() {
+        let (mut provider, calls) = provider_with_three_trashed(None).await;
+        provider.restore_deleted_file("A").await.unwrap();
+        provider.permanent_delete_file("B").await.unwrap();
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(
+            calls,
+            [
+                "/api/file/restore?file_code=A&restore=1",
+                "/api/file/permanent_delete?file_code=B",
+            ]
+        );
+        let (mut provider, _) = provider_with_three_trashed(Some("B")).await;
+        assert!(provider.permanent_delete_file("B").await.is_err());
     }
 
     #[test]

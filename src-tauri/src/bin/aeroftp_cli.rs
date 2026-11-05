@@ -2647,8 +2647,8 @@ enum Commands {
     },
     /// Server-side trash / recycle bin: list, restore, or permanently delete.
     ///
-    /// A `rm` against a provider with a recycle bin (Nextcloud, and the other
-    /// trash-capable backends) does NOT free space: the server moves the file
+    /// A `rm` against a provider with a recycle bin (Nextcloud, FileLu, and the
+    /// other trash-capable backends) does NOT free space: the server moves the file
     /// to its trash. This is the counterpart that actually reclaims it, and the
     /// CLI equivalent of the GUI trash managers.
     Trash {
@@ -52709,8 +52709,8 @@ fn print_benchmark_publish_block(serialized: &str) {
 
 /// Resolve the connected provider down to a `WebDavProvider`, unwrapping a
 /// crypt overlay if one is layered on top. Returns `None` for every other
-/// backend, which is what makes the trash commands a Nextcloud-only surface
-/// today rather than a silent no-op on, say, FTP.
+/// backend: with [`as_filelu`], what keeps the trash commands to the backends
+/// that have one rather than a silent no-op on, say, FTP.
 fn as_webdav(
     provider: &mut Box<dyn StorageProvider>,
 ) -> Option<&mut ftp_client_gui_lib::providers::webdav::WebDavProvider> {
@@ -52719,8 +52719,97 @@ fn as_webdav(
         .downcast_mut::<ftp_client_gui_lib::providers::webdav::WebDavProvider>()
 }
 
+/// [`as_webdav`] for FileLu, whose trash (`files/deleted`) the GUI's FileLu
+/// trash manager reads too.
+fn as_filelu(
+    provider: &mut Box<dyn StorageProvider>,
+) -> Option<&mut ftp_client_gui_lib::providers::filelu::FileLuProvider> {
+    ftp_client_gui_lib::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+        .as_any_mut()
+        .downcast_mut::<ftp_client_gui_lib::providers::filelu::FileLuProvider>()
+}
+
+/// A FileLu trash row's deletion time: the UTC instant when FileLu gave one,
+/// else its age.
+fn filelu_deleted_label(entry: &ftp_client_gui_lib::providers::filelu::DeletedFileEntry) -> String {
+    if let Some(deleted) = entry.deleted.as_deref().filter(|d| !d.is_empty()) {
+        return deleted.to_string();
+    }
+    match entry.deleted_ago_sec {
+        Some(secs) if secs < 3600 => format!("{}m ago", secs / 60),
+        Some(secs) if secs < 86_400 => format!("{}h ago", secs / 3600),
+        Some(secs) => format!("{}d ago", secs / 86_400),
+        None => "-".to_string(),
+    }
+}
+
+async fn cmd_trash_list_filelu(
+    fl: &mut ftp_client_gui_lib::providers::filelu::FileLuProvider,
+    format: OutputFormat,
+) -> i32 {
+    match fl.list_deleted_files().await {
+        Ok(items) => {
+            if matches!(format, OutputFormat::Json) {
+                // FileLu reports no size in its trash, so there is no total.
+                println!(
+                    "{}",
+                    serde_json::json!({ "items": items, "count": items.len() })
+                );
+            } else if items.is_empty() {
+                println!("Trash is empty");
+            } else {
+                for i in &items {
+                    println!(
+                        "{:<16}  {:<22}  {}",
+                        i.file_code.as_deref().unwrap_or("-"),
+                        filelu_deleted_label(i),
+                        i.name.as_deref().unwrap_or("")
+                    );
+                }
+                println!("\n{} item(s)", items.len());
+            }
+            0
+        }
+        Err(e) => {
+            print_error(format, &format!("trash list failed: {}", e), 5);
+            5
+        }
+    }
+}
+
+/// Empty the FileLu trash ([`FileLuProvider::empty_trash`]): a stop part way
+/// fails with how many items already went.
+///
+/// [`FileLuProvider::empty_trash`]: ftp_client_gui_lib::providers::filelu::FileLuProvider::empty_trash
+async fn cmd_trash_empty_filelu(
+    fl: &mut ftp_client_gui_lib::providers::filelu::FileLuProvider,
+    format: OutputFormat,
+) -> i32 {
+    match fl.empty_trash().await {
+        Ok(emptied) => {
+            if matches!(format, OutputFormat::Json) {
+                println!(
+                    "{}",
+                    serde_json::json!({ "emptied": true, "items": emptied })
+                );
+            } else {
+                println!("Trash emptied: {} item(s)", emptied);
+            }
+            0
+        }
+        Err((emptied, e)) => {
+            print_error(
+                format,
+                &format!("empty trash stopped after {emptied} item(s): {e}"),
+                5,
+            );
+            5
+        }
+    }
+}
+
 const TRASH_UNSUPPORTED: &str =
-    "this backend has no server-side trash reachable from the CLI (Nextcloud WebDAV only today)";
+    "this backend has no server-side trash reachable from the CLI (Nextcloud WebDAV and FileLu only today)";
 
 /// These two are deliberately synchronous and touch no network: the checkpoint
 /// store is a local directory, and the whole point of the escape is that it
@@ -52814,6 +52903,9 @@ async fn cmd_trash_list(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
         Ok(v) => v,
         Err(code) => return code,
     };
+    if let Some(fl) = as_filelu(&mut provider) {
+        return cmd_trash_list_filelu(fl, format).await;
+    }
     let Some(dav) = as_webdav(&mut provider) else {
         print_error(format, TRASH_UNSUPPORTED, 4);
         return 4;
@@ -52865,6 +52957,9 @@ async fn cmd_trash_empty(url: &str, force: bool, cli: &Cli, format: OutputFormat
         Ok(v) => v,
         Err(code) => return code,
     };
+    if let Some(fl) = as_filelu(&mut provider) {
+        return cmd_trash_empty_filelu(fl, format).await;
+    }
     let Some(dav) = as_webdav(&mut provider) else {
         print_error(format, TRASH_UNSUPPORTED, 4);
         return 4;
@@ -52902,11 +52997,17 @@ async fn cmd_trash_restore(id: &str, url: &str, cli: &Cli, format: OutputFormat)
         Ok(v) => v,
         Err(code) => return code,
     };
-    let Some(dav) = as_webdav(&mut provider) else {
+    let restored = if let Some(fl) = as_filelu(&mut provider) {
+        fl.restore_deleted_file(id).await.map_err(|e| e.to_string())
+    } else if let Some(dav) = as_webdav(&mut provider) {
+        dav.nextcloud_restore_trash(id)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
         print_error(format, TRASH_UNSUPPORTED, 4);
         return 4;
     };
-    match dav.nextcloud_restore_trash(id).await {
+    match restored {
         Ok(()) => {
             if matches!(format, OutputFormat::Json) {
                 println!("{}", serde_json::json!({ "restored": id }));
@@ -52927,11 +53028,19 @@ async fn cmd_trash_delete(id: &str, url: &str, cli: &Cli, format: OutputFormat) 
         Ok(v) => v,
         Err(code) => return code,
     };
-    let Some(dav) = as_webdav(&mut provider) else {
+    let deleted = if let Some(fl) = as_filelu(&mut provider) {
+        fl.permanent_delete_file(id)
+            .await
+            .map_err(|e| e.to_string())
+    } else if let Some(dav) = as_webdav(&mut provider) {
+        dav.nextcloud_delete_trash_item(id)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
         print_error(format, TRASH_UNSUPPORTED, 4);
         return 4;
     };
-    match dav.nextcloud_delete_trash_item(id).await {
+    match deleted {
         Ok(()) => {
             if matches!(format, OutputFormat::Json) {
                 println!("{}", serde_json::json!({ "deleted": id }));
