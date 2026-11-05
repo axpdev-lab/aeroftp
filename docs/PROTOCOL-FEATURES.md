@@ -506,7 +506,7 @@ FileLu exposes privacy and management features beyond generic file operations:
 | **Server Clone** | `/file/clone` | `filelu_clone_file` | Duplicate file server-side; returns share URL |
 | **Folder Password** | `/folder/set_password` | `filelu_set_folder_password` | Requires `fld_token` from folder listing |
 | **Folder Settings** | `/folder/setting` | `filelu_set_folder_settings` | FileDrop (anonymous uploads) + Public Folder |
-| **List Trash** | `/files/deleted` | `filelu_list_deleted` | Returns deleted files with their age (`deleted_ago_hours`); also `aeroftp-cli trash list` |
+| **List Trash** | `/files/deleted` | `filelu_list_deleted` | Returns deleted files with their age in seconds (`deleted_ago_sec`, read from FileLu's `deleted_ago_hours`); also `aeroftp-cli trash list` |
 | **Restore File** | `/file/restore` | `filelu_restore_file` | Restore by `file_code`; also `aeroftp-cli trash restore` |
 | **Permanent Delete** | `/file/permanent_delete` | `filelu_permanent_delete` | Irrecoverable; also `aeroftp-cli trash delete`, and `trash empty` item by item |
 | **Remote URL Upload** | `/upload/url` | `filelu_remote_url_upload` | FileLu fetches file from URL server-side |

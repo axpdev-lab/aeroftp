@@ -400,6 +400,7 @@ fn synced(index: &mut SyncIndex, remote: &MemRemote, root: &Path, key: &str, byt
             scope: CloudService::receipt_scope(&pair(root)),
             remote_key: key.to_string(),
             destination_side: CompareDirection::LocalToRemote,
+            utc_remote_time: true,
             destination: index.files[key].clone(),
         },
     );
@@ -1194,6 +1195,7 @@ fn remember_transferred_fixture(svc: &CloudService, config: &CloudConfig, row: &
                 .unwrap_or(&row.relative_path)
                 .to_string(),
             destination_side: config.sync_direction,
+            utc_remote_time: true,
             destination: SyncIndexEntry {
                 size: destination.size,
                 modified: destination.modified,

@@ -26,6 +26,23 @@ describe('formatDeletedAgo / fileLuDeletedAtLabel', () => {
     expect(label).not.toBe(utc);
   });
 
+  it('puts the deletion instant on the local clock of a fixed timezone', () => {
+    // Pinned zones, so a formatter that printed the UTC clock (10:31) fails:
+    // 10:31Z is 05:31 in New York (EST) and 16:01 in Kolkata (UTC+5:30).
+    const previous = process.env.TZ;
+    try {
+      for (const [zone, clock] of [['America/New_York', '05:31'], ['Asia/Kolkata', '16:01']]) {
+        process.env.TZ = zone;
+        const label = fileLuDeletedAtLabel('2026-11-01T10:31:00Z', 90);
+        expect(label, zone).toContain(clock);
+        expect(label, zone).not.toContain('10:31');
+      }
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
+  });
+
   it('falls back to a relative label when only seconds are known', () => {
     expect(fileLuDeletedAtLabel(null, 45)).toBe('45s ago');
     expect(fileLuDeletedAtLabel(null, 120)).toBe('2m ago');

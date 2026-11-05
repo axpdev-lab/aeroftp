@@ -612,7 +612,7 @@ aeroftp-cli trash delete --profile "My FileLu" 2a7b9xq1k0zz
 aeroftp-cli trash empty --profile "My Nextcloud" --force
 ```
 
-On a provider with a recycle bin, `rm` moves the file to the trash and frees no space; these commands are the counterpart that reclaims it, the same as the GUI trash managers. Supported today: Nextcloud WebDAV and FileLu (where the id is the file code). FileLu has no call that empties the trash at once, so `trash empty` deletes the items one by one; if one fails it stops, exits with code 5 and says how many it had already deleted. Every other backend exits with code 4.
+On a provider with a recycle bin, `rm` moves the file to the server's trash, where it can still be restored; whether a trashed file still counts against the storage quota depends on the provider. These commands list, restore or permanently delete what is there, the same as the GUI trash managers. Supported today: Nextcloud WebDAV and FileLu (where the id is the file code). FileLu has no call that empties the trash at once, so `trash empty` deletes the items one by one; if one fails it stops, exits with code 5 and says how many it had already deleted. A FileLu row without a file code cannot be deleted: it is left in place, and `trash empty` exits with code 5 and says how many such rows remain. Every other backend exits with code 4.
 
 ### mv - Rename / Move
 

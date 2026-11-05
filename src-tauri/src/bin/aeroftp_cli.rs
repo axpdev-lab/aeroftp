@@ -2648,9 +2648,10 @@ enum Commands {
     /// Server-side trash / recycle bin: list, restore, or permanently delete.
     ///
     /// A `rm` against a provider with a recycle bin (Nextcloud, FileLu, and the
-    /// other trash-capable backends) does NOT free space: the server moves the file
-    /// to its trash. This is the counterpart that actually reclaims it, and the
-    /// CLI equivalent of the GUI trash managers.
+    /// other trash-capable backends) moves the file to the server's trash, where
+    /// it can still be restored; whether it still counts against the quota
+    /// depends on the provider. These commands list, restore or permanently
+    /// delete what is there, like the GUI trash managers.
     Trash {
         #[command(subcommand)]
         command: TrashCommands,
@@ -52743,6 +52744,9 @@ fn filelu_deleted_label(entry: &ftp_client_gui_lib::providers::filelu::DeletedFi
     }
 }
 
+/// `trash list` on FileLu: prints each trash row (file code, deletion time or
+/// age, name), or the rows as JSON. Returns the exit code: 0, or 5 when the
+/// trash cannot be read.
 async fn cmd_trash_list_filelu(
     fl: &mut ftp_client_gui_lib::providers::filelu::FileLuProvider,
     format: OutputFormat,
@@ -52788,14 +52792,25 @@ async fn cmd_trash_empty_filelu(
     format: OutputFormat,
 ) -> i32 {
     match fl.empty_trash().await {
-        Ok(emptied) => {
+        Ok(done) if done.left_without_code > 0 => {
+            print_error(
+                format,
+                &format!(
+                    "trash not emptied: {} item(s) deleted, {} left because FileLu lists them without a file code; run `trash list` to see them",
+                    done.deleted, done.left_without_code
+                ),
+                5,
+            );
+            5
+        }
+        Ok(done) => {
             if matches!(format, OutputFormat::Json) {
                 println!(
                     "{}",
-                    serde_json::json!({ "emptied": true, "items": emptied })
+                    serde_json::json!({ "emptied": true, "items": done.deleted })
                 );
             } else {
-                println!("Trash emptied: {} item(s)", emptied);
+                println!("Trash emptied: {} item(s)", done.deleted);
             }
             0
         }
@@ -52902,6 +52917,9 @@ fn cmd_checkpoints_forget(
     }
 }
 
+/// `trash list`: connects and lists the server-side trash of FileLu or
+/// Nextcloud. Returns the exit code: 0, 4 for a backend without a trash the
+/// CLI reaches, 5 when the listing fails.
 async fn cmd_trash_list(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _p) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
@@ -52950,6 +52968,10 @@ async fn cmd_trash_list(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     }
 }
 
+/// `trash empty`: refuses without `--force` (exit 2), then permanently deletes
+/// every item of the FileLu or Nextcloud trash. Returns the exit code: 0, 4 for
+/// a backend without a trash the CLI reaches, 5 when the trash is left not
+/// empty.
 async fn cmd_trash_empty(url: &str, force: bool, cli: &Cli, format: OutputFormat) -> i32 {
     if !force {
         print_error(
@@ -52998,6 +53020,9 @@ async fn cmd_trash_empty(url: &str, force: bool, cli: &Cli, format: OutputFormat
     }
 }
 
+/// `trash restore`: puts the item `id` (a FileLu file code or a Nextcloud
+/// trash id, as `trash list` shows it) back where it was. Returns the exit
+/// code: 0, 4 for a backend without a trash the CLI reaches, 5 on failure.
 async fn cmd_trash_restore(id: &str, url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _p) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,
@@ -53029,6 +53054,9 @@ async fn cmd_trash_restore(id: &str, url: &str, cli: &Cli, format: OutputFormat)
     }
 }
 
+/// `trash delete`: permanently deletes the item `id` (a FileLu file code or a
+/// Nextcloud trash id) from the trash. Returns the exit code: 0, 4 for a
+/// backend without a trash the CLI reaches, 5 on failure.
 async fn cmd_trash_delete(id: &str, url: &str, cli: &Cli, format: OutputFormat) -> i32 {
     let (mut provider, _p) = match create_and_connect(url, cli, format).await {
         Ok(v) => v,

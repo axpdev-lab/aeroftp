@@ -157,6 +157,15 @@ pub struct DeletedFileEntry {
     deleted_ago_hours_as_secs: Option<u64>,
 }
 
+/// What [`FileLuProvider::empty_trash`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TrashEmptied {
+    /// Files permanently deleted.
+    pub deleted: usize,
+    /// Trash rows left in place because they carry no usable file code.
+    pub left_without_code: usize,
+}
+
 /// A file entry returned by /folder/list
 /// FileLu API fields: name, size (int or string), uploaded (date string)
 #[derive(Debug, Deserialize)]
@@ -2054,6 +2063,8 @@ impl FileLuProvider {
         Ok(true)
     }
 
+    /// The files in the FileLu trash (`files/deleted`), with their deletion time
+    /// as a UTC instant and their age in seconds whichever field FileLu sent it in.
     pub async fn list_deleted_files(&mut self) -> Result<Vec<DeletedFileEntry>, ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
@@ -2146,16 +2157,15 @@ impl FileLuProvider {
     }
 
     /// Permanently delete every file in the trash, one by one: FileLu has no
-    /// call that empties it at once. Returns how many files went. The first
+    /// call that empties it at once. Returns how many files went and how many
+    /// rows were left because they carry no file code (or a blank one), which
+    /// cannot be deleted and is never sent as an empty `file_code`. The first
     /// failure stops it and comes back with how many went before it, so a
-    /// caller can say how far it got; a row without a file code (or with a
-    /// blank one) cannot be deleted and is left alone, never sent as an empty
-    /// `file_code`.
-    pub async fn empty_trash(&mut self) -> Result<usize, (usize, ProviderError)> {
-        let codes: Vec<String> = self
-            .list_deleted_files()
-            .await
-            .map_err(|e| (0, e))?
+    /// caller can say how far it got.
+    pub async fn empty_trash(&mut self) -> Result<TrashEmptied, (usize, ProviderError)> {
+        let entries = self.list_deleted_files().await.map_err(|e| (0, e))?;
+        let total = entries.len();
+        let codes: Vec<String> = entries
             .into_iter()
             .filter_map(|entry| entry.file_code)
             .filter(|code| !code.trim().is_empty())
@@ -2165,7 +2175,10 @@ impl FileLuProvider {
                 .await
                 .map_err(|e| (emptied, e))?;
         }
-        Ok(codes.len())
+        Ok(TrashEmptied {
+            deleted: codes.len(),
+            left_without_code: total - codes.len(),
+        })
     }
 }
 
@@ -4754,6 +4767,8 @@ mod tests {
         ("2026-07-15 12:00:00", "2026-07-15T16:00:00Z"),
     ];
 
+    /// Every sample and boundary of [`EASTERN_TO_UTC`] converts to its instant,
+    /// and the single parser reads it back as the same one.
     #[test]
     fn filelu_eastern_times_become_utc_instants() {
         for (eastern, utc) in EASTERN_TO_UTC {
@@ -4767,6 +4782,8 @@ mod tests {
         }
     }
 
+    /// `pre_utc_fix_reading` inverts the conversion for every instant it
+    /// produces, and has no answer for the one it never produces.
     #[test]
     fn the_pre_fix_reading_is_the_eastern_string_taken_as_utc() {
         for (eastern, _) in EASTERN_TO_UTC {
@@ -4789,6 +4806,7 @@ mod tests {
         assert_eq!(pre_utc_fix_reading(repeated), None);
     }
 
+    /// FileLu keeps no comparable modification-time precision.
     #[test]
     fn filelu_times_stay_out_of_sync_comparisons() {
         // Baselines and indexes written before the UTC fix hold FileLu times
@@ -4800,6 +4818,8 @@ mod tests {
         );
     }
 
+    /// A local copy stamped with the old reading is downloaded once more, and
+    /// skipped once it carries the real time.
     #[test]
     fn a_file_downloaded_before_the_utc_fix_is_fetched_once_more_then_skipped() {
         // A download before the fix stamped the local copy with the old
@@ -4828,6 +4848,7 @@ mod tests {
         }
     }
 
+    /// Times in any other shape pass through unchanged.
     #[test]
     fn only_the_exact_filelu_shape_is_shifted() {
         for raw in [
@@ -4849,6 +4870,8 @@ mod tests {
         );
     }
 
+    /// Listing and version entries carry `uploaded` as a UTC instant, and an
+    /// absent or null time stays None.
     #[test]
     fn listing_and_version_times_deserialize_as_utc() {
         let file: FileEntry =
@@ -4866,6 +4889,8 @@ mod tests {
         assert_eq!(version.uploaded.as_deref(), Some("2026-11-01T10:31:00Z"));
     }
 
+    /// `list` and `stat` report the converted instant for a file FileLu lists
+    /// on the Eastern clock.
     #[tokio::test]
     async fn list_and_stat_report_the_utc_instant() {
         let (mut provider, _) = provider_against(|_, path, query| {
@@ -4892,6 +4917,9 @@ mod tests {
         assert_eq!(stat.modified.as_deref(), Some("2026-04-17T20:29:19Z"));
     }
 
+    /// `deleted_ago_hours` reads in seconds from a string, a number or a
+    /// fraction, invalid values read as None, and the field never reaches the
+    /// frontend.
     #[test]
     fn trash_age_in_hours_is_read_as_seconds() {
         let read = |json: &str| -> DeletedFileEntry { serde_json::from_str(json).unwrap() };
@@ -4924,6 +4952,8 @@ mod tests {
         assert!(sent.get("deleted_ago_hours_as_secs").is_none(), "{sent}");
     }
 
+    /// The trash listing fills `deleted_ago_sec` from the hours when the
+    /// seconds are missing, and keeps the seconds when FileLu sent them.
     #[tokio::test]
     async fn the_trash_listing_fills_seconds_from_hours() {
         let (mut provider, _) = provider_against(|_, path, _| match path {
@@ -4985,10 +5015,18 @@ mod tests {
         .await
     }
 
+    /// Emptying deletes every trashed file by its code and counts the rows it
+    /// left because they have no usable code.
     #[tokio::test]
     async fn emptying_the_trash_deletes_each_file_by_its_code() {
         let (mut provider, calls) = provider_with_three_trashed(None).await;
-        assert_eq!(provider.empty_trash().await.unwrap(), 3);
+        assert_eq!(
+            provider.empty_trash().await.unwrap(),
+            TrashEmptied {
+                deleted: 3,
+                left_without_code: 2
+            }
+        );
         let calls = calls.lock().unwrap().clone();
         assert_eq!(
             calls,
@@ -5001,6 +5039,8 @@ mod tests {
         );
     }
 
+    /// A refused delete stops the emptying, reports how many files went before
+    /// it, and nothing after it is tried.
     #[tokio::test]
     async fn emptying_the_trash_stops_at_the_first_refusal_and_says_how_far_it_got() {
         let (mut provider, calls) = provider_with_three_trashed(Some("B")).await;
@@ -5017,6 +5057,8 @@ mod tests {
         );
     }
 
+    /// Restore and permanent delete call FileLu with the file code they were
+    /// given, and a refusal is an error.
     #[tokio::test]
     async fn restore_and_delete_from_the_trash_name_the_file_code() {
         let (mut provider, calls) = provider_with_three_trashed(None).await;
@@ -6253,6 +6295,8 @@ mod tests {
         .await
     }
 
+    /// Versions are listed newest first, each by its own code, with its upload
+    /// time as a UTC instant.
     #[tokio::test]
     async fn versions_are_listed_newest_first_by_their_own_codes() {
         let (mut provider, _) = provider_with_versions(AfterDelete::Removes).await;
