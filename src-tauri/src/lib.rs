@@ -3246,9 +3246,52 @@ fn restart_app(app: tauri::AppHandle) {
     app.restart();
 }
 
+struct PrivilegedUpdatePackage {
+    _directory: tempfile::TempDir,
+    path: PathBuf,
+    sha256: String,
+}
+
+/// Give the privileged helper a path its allowlist accepts even when XDG
+/// Downloads resolves through a symlink to another filesystem. The private
+/// temporary directory and the second digest check preserve the verified-bytes
+/// contract without requiring a newer helper to perform the update.
+fn stage_privileged_update_package(
+    source: &Path,
+    expected_sha256: &str,
+) -> Result<PrivilegedUpdatePackage, String> {
+    let directory = tempfile::Builder::new()
+        .prefix("aeroftp-update-")
+        .tempdir_in("/var/tmp")
+        .map_err(|error| format!("Failed to prepare privileged update staging: {error}"))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(directory.path(), std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("Failed to secure privileged update staging: {error}"))?;
+    }
+    let file_name = source
+        .file_name()
+        .ok_or_else(|| "Downloaded update has no file name".to_string())?;
+    let path = directory.path().join(file_name);
+    std::fs::copy(source, &path)
+        .map_err(|error| format!("Failed to stage update for privileged install: {error}"))?;
+    let staged_sha256 = sha256_file_hex(&path)?;
+    if staged_sha256 != expected_sha256 {
+        return Err(
+            "Refusing to install: the update artifact changed while it was being staged"
+                .to_string(),
+        );
+    }
+    Ok(PrivilegedUpdatePackage {
+        _directory: directory,
+        path,
+        sha256: staged_sha256,
+    })
+}
+
 /// Install a .deb package via pkexec with branded Polkit dialog and restart the app.
 /// Uses /usr/lib/aeroftp/aeroftp-update-helper (installed by .deb) for branded auth dialog.
-/// Falls back to generic `pkexec dpkg -i` if helper is not found.
 #[tauri::command]
 async fn install_deb_update(
     app: AppHandle,
@@ -3270,14 +3313,16 @@ async fn install_deb_update(
     // verified digest to pkexec (not a fresh self-computed hash that proves
     // nothing about authenticity).
     let package_hash = ensure_update_artifact_verified(&downloaded_path)?;
+    let package = stage_privileged_update_package(Path::new(&downloaded_path), &package_hash)?;
     let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)
-        .arg(&downloaded_path)
-        .arg(&package_hash)
+        .arg(&package.path)
+        .arg(&package.sha256)
         .status()
         .await
         .map_err(|error| format!("Failed to launch AeroFTP update helper: {}", error))?;
+    drop(package);
 
     if !status.success() {
         return Err(format!(
@@ -3296,7 +3341,6 @@ async fn install_deb_update(
 }
 
 /// Install an .rpm package via pkexec with branded Polkit dialog and restart the app.
-/// Same helper/fallback pattern as install_deb_update.
 #[tauri::command]
 async fn install_rpm_update(
     app: AppHandle,
@@ -3318,14 +3362,16 @@ async fn install_rpm_update(
     // verified digest to pkexec (not a fresh self-computed hash that proves
     // nothing about authenticity).
     let package_hash = ensure_update_artifact_verified(&downloaded_path)?;
+    let package = stage_privileged_update_package(Path::new(&downloaded_path), &package_hash)?;
     let _ = app.emit("update_install_phase", "auth");
     let status = tokio::process::Command::new("pkexec")
         .arg(helper)
-        .arg(&downloaded_path)
-        .arg(&package_hash)
+        .arg(&package.path)
+        .arg(&package.sha256)
         .status()
         .await
         .map_err(|error| format!("Failed to launch AeroFTP update helper: {}", error))?;
+    drop(package);
 
     if !status.success() {
         return Err(format!(
@@ -25474,6 +25520,95 @@ mod appimage_swap_tests {
         );
         assert_eq!(std::fs::read(&fs.target).expect("read"), b"old appimage");
         assert_eq!(names_in(&fs.dir), vec!["AeroFTP.AppImage".to_string()]);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod privileged_update_staging_tests {
+    use super::{sha256_file_hex, stage_privileged_update_package};
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+    use std::process::Command;
+
+    #[test]
+    fn a_deb_from_symlinked_downloads_passes_the_real_helper_allowlist() {
+        let root = tempfile::tempdir().expect("test dir");
+        let mounted_downloads = root.path().join("media/Downloads");
+        std::fs::create_dir_all(&mounted_downloads).expect("mounted downloads");
+        let home = root.path().join("home");
+        std::fs::create_dir(&home).expect("home");
+        let downloads = home.join("Downloads");
+        std::os::unix::fs::symlink(&mounted_downloads, &downloads).expect("downloads link");
+        let source = downloads.join("AeroFTP_4.2.6_amd64.deb");
+        std::fs::write(&source, b"verified package").expect("package");
+        let digest = sha256_file_hex(&source).expect("source digest");
+
+        let staged = stage_privileged_update_package(&source, &digest).expect("staged package");
+        assert!(staged.path.starts_with("/var/tmp"));
+        assert_eq!(
+            sha256_file_hex(&staged.path).expect("staged digest"),
+            digest
+        );
+        assert_eq!(
+            std::fs::metadata(staged.path.parent().expect("staging parent"))
+                .expect("staging metadata")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o700
+        );
+
+        let fake_bin = root.path().join("bin");
+        std::fs::create_dir(&fake_bin).expect("fake bin");
+        let fake_dpkg = fake_bin.join("dpkg");
+        let dpkg_called = root.path().join("dpkg-called");
+        std::fs::write(
+            &fake_dpkg,
+            b"#!/bin/sh\ntouch \"$AEROFTP_TEST_DPKG_CALLED\"\n",
+        )
+        .expect("fake dpkg");
+        std::fs::set_permissions(&fake_dpkg, std::fs::Permissions::from_mode(0o755))
+            .expect("fake dpkg mode");
+        let path = format!(
+            "{}:{}",
+            fake_bin.display(),
+            std::env::var("PATH").expect("PATH")
+        );
+        let status = Command::new("bash")
+            .arg(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/resources/aeroftp-update-helper"
+            ))
+            .arg(&staged.path)
+            .arg(&staged.sha256)
+            .env("PATH", path)
+            .env("AEROFTP_TEST_DPKG_CALLED", &dpkg_called)
+            .status()
+            .expect("real helper");
+        assert!(status.success());
+        assert!(dpkg_called.exists());
+
+        let staged_path = staged.path.clone();
+        drop(staged);
+        assert!(!staged_path.exists());
+    }
+
+    #[test]
+    fn staging_refuses_bytes_that_do_not_match_the_verified_digest() {
+        let root = tempfile::tempdir().expect("test dir");
+        let source = root.path().join("AeroFTP_4.2.6_amd64.deb");
+        std::fs::write(&source, b"changed package").expect("package");
+        let error = stage_privileged_update_package(&source, &"0".repeat(64))
+            .err()
+            .expect("digest mismatch must fail");
+        assert!(error.contains("changed while it was being staged"));
+        assert_eq!(std::fs::read(&source).expect("source"), b"changed package");
+    }
+
+    #[test]
+    fn staging_rejects_a_missing_source() {
+        let missing = Path::new("/definitely-missing-aeroftp-update.deb");
+        assert!(stage_privileged_update_package(missing, &"0".repeat(64)).is_err());
     }
 }
 
