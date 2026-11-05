@@ -52759,11 +52759,13 @@ async fn cmd_trash_list_filelu(
                 println!("Trash is empty");
             } else {
                 for i in &items {
+                    // Provider strings reach the terminal: sanitized here only,
+                    // the JSON above keeps them as FileLu sent them.
                     println!(
                         "{:<16}  {:<22}  {}",
-                        i.file_code.as_deref().unwrap_or("-"),
-                        filelu_deleted_label(i),
-                        i.name.as_deref().unwrap_or("")
+                        sanitize_filename(i.file_code.as_deref().unwrap_or("-")),
+                        sanitize_filename(&filelu_deleted_label(i)),
+                        sanitize_filename(i.name.as_deref().unwrap_or(""))
                     );
                 }
                 println!("\n{} item(s)", items.len());
@@ -52924,11 +52926,13 @@ async fn cmd_trash_list(url: &str, cli: &Cli, format: OutputFormat) -> i32 {
                 println!("Trash is empty");
             } else {
                 for i in &items {
+                    // Server strings reach the terminal: sanitized here only,
+                    // the JSON above keeps them as the server sent them.
                     println!(
                         "{:<44}  {:>10}  {}",
-                        i.id,
+                        sanitize_filename(&i.id),
                         format_size(i.size),
-                        i.original_path
+                        sanitize_filename(&i.original_path)
                     );
                 }
                 println!(

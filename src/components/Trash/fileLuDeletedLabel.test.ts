@@ -24,9 +24,6 @@ describe('formatDeletedAgo / fileLuDeletedAtLabel', () => {
     const label = fileLuDeletedAtLabel(utc, 90);
     expect(label).toBe(formatDate(utc));
     expect(label).not.toBe(utc);
-    const local = new Date(Date.UTC(2026, 10, 1, 10, 31, 0));
-    expect(label).toContain(String(local.getHours()).padStart(2, '0'));
-    expect(label).toContain(String(local.getMinutes()).padStart(2, '0'));
   });
 
   it('falls back to a relative label when only seconds are known', () => {

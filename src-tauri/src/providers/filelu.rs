@@ -2148,8 +2148,9 @@ impl FileLuProvider {
     /// Permanently delete every file in the trash, one by one: FileLu has no
     /// call that empties it at once. Returns how many files went. The first
     /// failure stops it and comes back with how many went before it, so a
-    /// caller can say how far it got; a row without a file code cannot be
-    /// deleted and is left alone.
+    /// caller can say how far it got; a row without a file code (or with a
+    /// blank one) cannot be deleted and is left alone, never sent as an empty
+    /// `file_code`.
     pub async fn empty_trash(&mut self) -> Result<usize, (usize, ProviderError)> {
         let codes: Vec<String> = self
             .list_deleted_files()
@@ -2157,6 +2158,7 @@ impl FileLuProvider {
             .map_err(|e| (0, e))?
             .into_iter()
             .filter_map(|entry| entry.file_code)
+            .filter(|code| !code.trim().is_empty())
             .collect();
         for (emptied, code) in codes.iter().enumerate() {
             self.permanent_delete_file(code)
@@ -4952,8 +4954,8 @@ mod tests {
         );
     }
 
-    /// A provider whose trash holds `A`, `B` and `C` (and a row with no file
-    /// code), where `file/permanent_delete` refuses `refused` and every other
+    /// A provider whose trash holds `A`, `B` and `C` (and rows with no file
+    /// code and a blank one), where `file/permanent_delete` refuses `refused` and every other
     /// call succeeds. Returns it and the calls that are not listings.
     async fn provider_with_three_trashed(
         refused: Option<&'static str>,
@@ -4967,6 +4969,7 @@ mod tests {
                 "result": [
                     {"file_code": "A", "name": "a.txt", "deleted_ago_hours": "1"},
                     {"name": "no-code.txt"},
+                    {"file_code": " ", "name": "blank-code.txt"},
                     {"file_code": "B", "name": "b.txt", "deleted_ago_hours": "1"},
                     {"file_code": "C", "name": "c.txt", "deleted_ago_hours": "1"}
                 ]
