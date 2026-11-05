@@ -1,15 +1,15 @@
 # AeroFTP Protocol Features Matrix
 
-> Last Updated: 26 October 2026
-> Version: v4.2.5
+> Last Updated: 4 November 2026
+> Version: v4.2.6
 >
 > **Note**: AeroFTP organizes integrations on three tiers:
 >
-> 1. **7 transport protocols** (FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
+> 1. **8 transport protocols** (FTP, FTPS, SFTP, SCP, WebDAV, S3, Azure Blob, OpenStack Swift) - native wire-level support;
 > 2. **26 native provider integrations** with dedicated OAuth2 / API key / SDK code paths (Google Drive, Dropbox, OneDrive, MEGA, Proton Drive, Box, pCloud, Filen, Zoho WorkDrive, Internxt, kDrive, Koofr, Jottacloud, FileLu, Yandex Disk, OpenDrive, 4shared, Drime, Backblaze B2, GitHub, GitLab, Immich, ImageKit, Uploadcare, Cloudinary, Twake Drive);
 > 3. **47 pre-configured presets** in the Discover catalog, generated into [`PROVIDER-INVENTORY.json`](PROVIDER-INVENTORY.json): S3-compatible (Amazon S3, Google Cloud Storage, Cloudflare R2, Backblaze B2 S3, Wasabi, DigitalOcean Spaces, IDrive e2, Filebase, MEGA S4, FileLu S5, Filen Desktop S3, Storj, S3Drive, Quotaless, MinIO, Oracle Cloud, Alibaba OSS, Tencent COS, Yandex Object Storage, IBM Cloud Object Storage), WebDAV-compatible (Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, CloudMe, DriveHQ, Jianguoyun, Mail.ru Cloud, Koofr WebDAV, FileLu WebDAV, Yandex Disk WebDAV, OpenDrive WebDAV, pCloud WebDAV, 4shared WebDAV, Quotaless WebDAV, MEGAcmd WebDAV, Filen Desktop WebDAV), FTP, FTPS and SFTP (Hetzner Storage Box, SourceForge, FileLu FTP, FileLu FTPS), MEGA, Blomp (Swift) and the media services (Cloudinary, ImageKit, Uploadcare).
 >
-> The feature matrix tables below cover the core production set. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
+> The feature matrix tables below cover the core production set. SCP capabilities and server requirements are detailed in the dedicated section below. GitHub, GitLab, Immich, ImageKit, Uploadcare, and Cloudinary have repository / media-specific semantics and are documented inline in their dedicated sections.
 
 ---
 
@@ -90,24 +90,29 @@ open still fails, re-toggle File Transfer on the phone and retry.
 Some SSH servers have no SFTP: a stock OpenWrt router runs Dropbear without `sftp-server`, and an OpenSSH server can have its `Subsystem sftp` line removed. AeroFTP reaches them in two ways, both on the connection SFTP would use (same host-key check, same login order: `none`, then the password or the key):
 
 - **SFTP with SCP fallback (default).** An SFTP profile whose server refuses the SFTP subsystem, or accepts it and ends it at once, goes on over SCP on the same connection, as WinSCP does by default. The GUI shows a notice and the CLI prints one on stderr. The fallback never starts on a timeout, a transport error or a refused login. It can be turned off per profile ("Allow SCP fallback") or with `--no-scp-fallback`; the error then names the cause and the remedies.
-- **SCP as a protocol.** `scp://user@host/path` in the CLI, the SCP entry in the connection form, and WinSCP sessions imported with protocol "SCP". It never asks for SFTP.
+- **SCP as a protocol.** Choose SCP in Add Services or the connection form, use `scp://user@host/path` in the CLI, or import a WinSCP session with protocol "SCP". It shares SFTP's password/key form and SSH host-key verification, and never asks for SFTP.
 
 | | SCP |
 |---|---|
-| List, stat, mkdir, delete, rename, chmod | Yes, as POSIX shell commands with every path single-quoted (`ls --full-time` and `find -print0` for listings) |
+| List, stat, mkdir, delete, rename, chmod | POSIX shell commands with every path single-quoted; each operation needs its corresponding tool (`ls --full-time` and `find -print0` for listings) |
 | Upload and download with progress | Yes; an upload keeps the file's time, and the speed limit applies both ways |
 | Resume | Downloads continue from their partial file (the server seeks with `dd`). Interrupted uploads restart from zero: separate exec commands cannot bind an append to the file whose prefix was verified, so upload append is not advertised |
-| Parallel transfers | Yes: up to 8 at once, each on its own exec channel of the one connection (no second login) |
-| Ranged reads and segmented downloads | Yes, with the same `dd` seek, up to 8 windows per file on the one connection (the CLI's `--multi-thread-streams` too); archive badges read the file's head and tail this way |
+| Parallel transfers | Up to 8 at once when `dd`, `cat` and `head` are available, each on its own exec channel of the one connection (no second login); otherwise the executor runs one file at a time |
+| Ranged reads and segmented downloads | With `dd`, `cat` and `head`, up to 8 windows per file on the one connection (the CLI's `--multi-thread-streams` too), subject to the configured size cutoff; archive badges read the file's head and tail this way |
 | Delta sync | No |
-| Replace an existing file | Yes, with `mv -f`; a folder is never replaced by a file, nor a file by a folder |
-| Free space | From `df -Pk` |
+| Native server-side copy | No |
+| Replace an existing file | With `mv`, atomic on the same filesystem; a folder is never replaced by a file, nor a file by a folder |
+| Free space | From `df -Pk`, when `df` is available |
 | Search | With `find` on the server |
 | Server-side digests | SHA-256 with `sha256sum` and MD5 with `md5sum`, each when the server has the tool |
 | Speed test | Yes |
 | Rename onto an existing name | Refused, as over SFTP |
 
-The server needs a POSIX shell with `scp`, an `ls` that takes `--full-time` and a `find` with `-print0` (BusyBox, GNU and uutils all qualify); resumed downloads need `dd` and `cat`, and bounded ranged reads and segmented downloads also need `head`, which the same three provide (without those tools downloads use one whole-file stream); a restricted account (rssh, scponly, a forced command) is refused with the reason. WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallback on, 2 is SFTP with it off, and export writes them back the same way.
+The connection probes for a POSIX shell with `scp`, an `ls` that takes `--full-time`, and a `find` supporting `-mindepth`, `-maxdepth` and `-print0`. Standard OpenWrt BusyBox, GNU and uutils environments provide the required listing features; custom/minimal builds must provide them too. Resumed downloads need `dd` and `cat`; bounded ranged reads and segmented downloads also need `head`. Without these optional tools, whole-file transfers still work. Restricted accounts that cannot run the shell commands (rssh, scponly or a forced command) are refused with the reason.
+
+Legacy SCP cannot transfer a basename containing a newline or NUL: AeroFTP refuses it instead of changing the filename. Listings preserve whitespace and resolve control-character names separately so a filename cannot forge another entry's metadata. Interrupted uploads restart the whole file; SCP does not advertise upload append, multipart upload or delta sync.
+
+WinSCP sessions map as WinSCP defines them: 0 is SCP, 1 is SFTP with the fallback on, 2 is SFTP with it off, and export writes them back the same way.
 
 ## Protocol Security Matrix
 
@@ -837,7 +842,7 @@ All non-FTP providers receive periodic keep-alive pings to prevent connection ti
 
 ### AI Tool Support by Protocol
 
-The remote-facing tools route through the `StorageProvider` trait, with capability-dependent behavior across the 7 transport protocols and 26 native provider integrations. Features such as quota, checksum, server-side copy, versions and trash depend on the selected provider and wrapper. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
+The remote-facing tools route through the `StorageProvider` trait, with capability-dependent behavior across the 8 transport protocols and 26 native provider integrations. Features such as quota, checksum, server-side copy, versions and trash depend on the selected provider and wrapper. Local-only tools (file management, search, archives, clipboard, shell) act on the local filesystem.
 
 **Remote tools (protocol-routed)**
 

@@ -65,7 +65,7 @@ describe('one glyph per connection method (#347)', () => {
         expect(modeGroupsRaw).toContain("methodIcon('API'");
         expect(modeGroupsRaw).toContain("methodIcon('S3'");
 
-        for (const method of ['OAuth', 'API', 'WebDAV', 'S3', 'SFTP']) {
+        for (const method of ['OAuth', 'API', 'WebDAV', 'S3', 'SFTP', 'SCP']) {
             expect(
                 myServersRaw,
                 `My Servers still hand-picks an icon for ${method}`,

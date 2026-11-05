@@ -26,7 +26,7 @@
  * came from one word standing for four different things. The counts below are
  * deliberately named after what they count:
  *
- *   transport_protocols  the wire protocols implemented natively (7)
+ *   transport_protocols  the wire protocols implemented natively
  *   native_integrations  providers with a dedicated OAuth2 / API-key / SDK code
  *                        path rather than a preset over a transport protocol
  *   presets              a connection form that ARRIVES ALREADY FILLED IN: it
@@ -77,13 +77,12 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, '..', 'docs', 'PROVIDER-INVENTORY.json');
 
 /**
- * The wire protocols. `ftps` is not in this list by accident: the catalog models
- * FTPS as a mode of `ftp` rather than a separate entry, so it never appears as a
- * protocol id. It is a real protocol to a user and is counted in
- * `transport_protocols` below, which is why that number is stated here rather
- * than derived from the catalog: deriving it would silently report 6.
+ * The wire protocols, including SCP's own provider. The company catalog is not
+ * the complete transport inventory: it models FTPS as a mode of `ftp`, and SCP
+ * is a generic Add Services entry rather than a company. Count the explicit
+ * transport list so neither disappears when deriving figures from the catalog.
  */
-const TRANSPORT_PROTOCOL_IDS = ['ftp', 'ftps', 'sftp', 'webdav', 's3', 'azure', 'swift'];
+const TRANSPORT_PROTOCOL_IDS = ['ftp', 'ftps', 'sftp', 'scp', 'webdav', 's3', 'azure', 'swift'];
 
 const catalogProtocolIds = (): string[] => [
     ...new Set(PROVIDER_CATALOG.flatMap((c) => (c.protocols ?? []).map((p) => p.protocol))),

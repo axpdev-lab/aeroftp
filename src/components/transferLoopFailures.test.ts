@@ -3,6 +3,10 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { parseSync } from 'rolldown/experimental';
+import { transformWithOxc } from 'vite';
+import { splitForFileBatch } from '../utils/fileBatchRouting';
+import { usesProviderApi } from '../types';
+import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import app from '../App.tsx?raw';
 import { DEFAULT_CONFIG, useCircuitBreaker } from '../hooks/useCircuitBreaker';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, folder, local, remote, type Options } from './appTransfers.testkit';
@@ -26,7 +30,7 @@ vi.mock('react', async importOriginal => ({
  * event settled it first. The loops and the queue's Retry now have the error.
  *
  * This runs App's own closures with the IPC mocked and the app's circuit
- * breaker (two retries per file, three errors in a row pause the batch), and
+ * breaker (download retries, three errors in a row pause the batch), and
  * a queue that keeps a settled row as the app does.
  */
 
@@ -43,23 +47,102 @@ async function upload(options: Options) {
 const attempts = (f: ReturnType<typeof fixture>, command: string) =>
   f.invoke.mock.calls.filter(([name]) => name === command).length;
 
+// Exercise the file-picker branch of the actual App closure too. The shared
+// fixture reaches selection/drop; this branch starts with no panel selection.
+const pickerStart = app.indexOf('  const uploadMultipleFiles = withBatchLatch(');
+const pickerEnd = app.indexOf('  // === Bulk Operations ===', pickerStart);
+const { code: pickerCode } = await transformWithOxc(
+  app.slice(pickerStart, pickerEnd) + '\nreturn uploadMultipleFiles;', 'upload-picker.ts',
+);
+async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<typeof breaker>) {
+  const context = {
+    withBatchLatch: <T,>(fn: T) => fn, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
+    getActiveLocalState: () => f.panels.local, resetOverwriteSettings: vi.fn(),
+    pickFile: vi.fn(async () => [`${LOCAL}/up.txt`]), t: (key: string) => key,
+    splitForFileBatch, fileBatchSessionFlags: () => ({ aeroVaultOverlay: false, gitHostUpload: false }),
+    liveConnectionParams: { protocol: 'webdav' }, usesProviderApi,
+    batchCancelledRef: f.batchCancelledRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
+    invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
+    transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
+    uploadFile: f.uploadFile, notify: f.notify, checkOverwrite: f.checkOverwrite,
+    humanLog: f.humanLog, isCancelledTransferError,
+    joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,
+  };
+  const run = new Function(...Object.keys(context), pickerCode)(...Object.values(context));
+  await run();
+}
+
 describe('a failed file is seen by its queue row, the retry and the circuit breaker', () => {
-  it('a file that lands on its second attempt is retried and completed', async () => {
-    const f = await upload({ fail: (_command, call) => (call === 1 ? 'Operation timed out' : undefined) });
-    expect(attempts(f, UPLOAD)).toBe(2);
+  it('an upload in a session without a protocol retries a transient failure', async () => {
+    const f = await upload({
+      protocol: '',
+      fail: (_command, call) => call === 1 ? 'Operation timed out' : undefined,
+    });
+    expect(attempts(f, 'upload_file')).toBe(2);
+    expect(f.transferQueue.completeTransfer).toHaveBeenCalledTimes(1);
     expect(f.row('q0')).toMatchObject({ status: 'completed' });
     expect(f.notify.error).not.toHaveBeenCalled();
   });
 
-  it('a file that keeps failing is retried twice, then its row fails with the error, shown once', async () => {
+  it.each(['Operation timed out', 'Upload HTTP 503 Service Unavailable'])(
+    'a provider upload answered with %s is not automatically replayed',
+    async error => {
+      const circuit = breaker();
+      // The first write may already have committed. A second invocation would
+      // succeed, but can create another revision of that very same file.
+      const f = await upload({ breaker: circuit, fail: (_command, call) => call === 1 ? error : undefined });
+      expect(attempts(f, UPLOAD)).toBe(1);
+      expect(f.row('q0')).toMatchObject({ status: 'error', error });
+      expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
+      expect(f.notify.error).toHaveBeenCalledTimes(1);
+      expect(circuit.stateRef.current).toBe('closed'); // One failure, not three retries.
+
+      // The owner can inspect the remote state and explicitly Retry the row.
+      const [retry] = [...f.retryCallbacksRef.current.values()];
+      f.transferQueue.retryItem('q0');
+      await retry();
+      expect(attempts(f, UPLOAD)).toBe(2);
+      expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    },
+  );
+
+  it('three provider upload failures still reach the circuit breaker', async () => {
     const circuit = breaker();
-    const f = await upload({ breaker: circuit, fail: () => 'Operation timed out' });
+    // One file per drop uses the single-file path, with a fresh run each time.
+    // Preserve the breaker across runs to count independent failures here.
+    circuit.reset = () => {};
+    const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: circuit, fail: () => 'Operation timed out' });
+    for (let i = 0; i < 3; i++) await f.drop([local('up.txt')], false, REMOTE, 'local');
     expect(attempts(f, UPLOAD)).toBe(3);
-    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'Operation timed out' });
-    expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
-    expect(f.notify.error).toHaveBeenCalledTimes(1);
-    // Three errors in a row: the breaker has them all.
     expect(circuit.stateRef.current).toBe('open');
+    expect(f.notify.error).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['Operation timed out', 'Upload HTTP 503 Service Unavailable'])(
+    'a picked provider upload answered with %s waits for explicit Retry',
+    async error => {
+      const circuit = breaker();
+      const f = fixture({ breaker: circuit, fail: (_command, call) => call === 1 ? error : undefined });
+      await uploadPicked(f, circuit);
+      expect(attempts(f, UPLOAD)).toBe(1);
+      expect(f.row('q0')).toMatchObject({ status: 'error', error });
+      expect(f.notify.error).toHaveBeenCalledTimes(1);
+      const [retry] = [...f.retryCallbacksRef.current.values()];
+      f.transferQueue.retryItem('q0');
+      await retry();
+      expect(attempts(f, UPLOAD)).toBe(2);
+      expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    },
+  );
+
+  it('a download that keeps timing out still retries twice', async () => {
+    const circuit = breaker();
+    const f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: circuit, fail: () => 'Operation timed out' });
+    await f.drop([remote('a.txt')], true, SUB);
+    expect(attempts(f, DOWNLOAD)).toBe(3);
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'Operation timed out' });
+    expect(circuit.stateRef.current).toBe('open');
+    expect(f.notify.error).toHaveBeenCalledTimes(1);
   });
 
   it('an error that a retry cannot fix fails the row at once', async () => {
@@ -81,9 +164,9 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
         if (call === eventCall) f.transferQueue.failTransfer('q0', 'Operation timed out');
         return call === 1 ? 'Operation timed out' : undefined;
       };
-      f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
-      await f.drop([local('up.txt')], false, REMOTE, 'local');
-      expect(attempts(f, UPLOAD)).toBe(2);
+      f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: breaker(), fail });
+      await f.drop([remote('a.txt')], true, SUB);
+      expect(attempts(f, DOWNLOAD)).toBe(2);
       // The row reads as transferring while the retry runs, not as failed.
       expect(duringRetry).toBe('transferring');
       expect(f.row('q0')).toMatchObject({ status: 'completed' });
@@ -118,24 +201,18 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     expect(f.row('q1')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
   });
 
-  it.each([['upload', UPLOAD], ['download', DOWNLOAD]] as const)('a Stop during the wait before a retry cancels the file instead of retrying it (%s)', async (direction, command) => {
+  it('a Stop during the wait before a download retry cancels the file', async () => {
     let f: ReturnType<typeof fixture>;
     const circuit = breaker();
     const delay = circuit.getRetryDelay;
-    // The wait starts: the Stop lands during it.
     circuit.getRetryDelay = (attempt: number) => {
       f.batchCancelledRef.current = true;
       return delay(attempt);
     };
-    const fail = (_command: string, call: number) => (call === 1 ? 'Operation timed out' : undefined);
-    if (direction === 'upload') {
-      f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: circuit, fail });
-      await f.drop([local('up.txt')], false, REMOTE, 'local');
-    } else {
-      f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: circuit, fail });
-      await f.drop([remote('a.txt')], true, SUB);
-    }
-    expect(attempts(f, command)).toBe(1);
+    f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: circuit,
+      fail: (_command, call) => call === 1 ? 'Operation timed out' : undefined });
+    await f.drop([remote('a.txt')], true, SUB);
+    expect(attempts(f, DOWNLOAD)).toBe(1);
     expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
     expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
   });
@@ -448,4 +525,3 @@ describe('every transfer that completes a queue row passes its error on', () => 
     expect(uncounted).toEqual([]);
   });
 });
-

@@ -1719,6 +1719,70 @@ impl ProviderDownloadExecutor {
     }
 }
 
+/// An upload error does not prove whether its write committed. Retain the
+/// provider's typed error for safe presentation, but never replay a whole file.
+#[derive(Debug)]
+enum UploadAttemptFailure {
+    Provider(crate::providers::ProviderError),
+    TimedOut(u64),
+    Cancelled,
+}
+
+impl UploadAttemptFailure {
+    fn into_failure(self) -> TransferFailure {
+        use crate::providers::ProviderError;
+        let (mut failure, uncertain) = match self {
+            Self::Cancelled | Self::Provider(ProviderError::Cancelled) => {
+                return TransferFailure::new(
+                    crate::transfer_domain::TransferFailureKind::Cancelled,
+                    "Transfer cancelled by user",
+                    false,
+                );
+            }
+            Self::Provider(error) => {
+                // Preserve typed redaction for permanent refusals. Classification
+                // decorates diagnostics only; it never authorizes write replay.
+                let failure = TransferFailure::from_transfer_error(
+                    &crate::transfer_dag::TransferError::from_provider(&error),
+                );
+                let uncertain = !matches!(
+                    error,
+                    ProviderError::AlreadyExists(_)
+                        | ProviderError::InvalidPath(_)
+                        | ProviderError::InvalidConfig(_)
+                        | ProviderError::NotFound(_)
+                        | ProviderError::NotSupported(_)
+                        | ProviderError::AuthenticationFailed(_)
+                        | ProviderError::HostKeyRejected(_)
+                        | ProviderError::PermissionDenied(_)
+                        | ProviderError::FileTooLarge(_)
+                        | ProviderError::ReadOnly(_)
+                        | ProviderError::RestrictedChar { .. }
+                ) && failure.retryable;
+                (failure, uncertain)
+            }
+            Self::TimedOut(seconds) => (
+                TransferFailure::new(
+                    crate::transfer_domain::TransferFailureKind::Timeout,
+                    format!("Upload timed out after {seconds} seconds"),
+                    false,
+                ),
+                true,
+            ),
+        };
+        if uncertain {
+            failure.message = format!(
+                "Upload outcome uncertain: {}. Check the destination before retrying.",
+                failure.message,
+            );
+        }
+        // Carry terminalness through the domain-to-DAG adapter too: diagnostic
+        // words such as "timeout" must not reopen an outer retry budget.
+        failure.retryable = false;
+        failure
+    }
+}
+
 pub struct ProviderUploadExecutor {
     no_clobber: bool,
     sink: Arc<dyn TransferEventSink>,
@@ -1807,8 +1871,8 @@ impl ProviderUploadExecutor {
         if self.cancel_token.is_cancelled() {
             return self.failed_upload(entry, "Transfer cancelled by user".into());
         }
-        // Name refusals are permanent per-file failures. Validate once before
-        // retrying any I/O, retaining the actionable restricted-character reason.
+        // Name refusals are permanent per-file failures. Validate before any
+        // I/O, retaining the actionable restricted-character reason.
         if let Err(error) =
             crate::restricted_chars::validate_path(provider.provider_type(), &entry.remote_path)
         {
@@ -1822,91 +1886,41 @@ impl ProviderUploadExecutor {
             );
         }
 
-        let mut retry_policy = self.runtime_settings.retry_policy();
-        if provider.manages_upload_retries() {
-            retry_policy.max_retries = 0;
-        }
-        let mut last_error = String::new();
-
-        for attempt in 0..=retry_policy.max_retries {
-            if self.cancel_token.is_cancelled() {
-                last_error = "Transfer cancelled by user".to_string();
-                break;
-            }
-
-            if attempt > 0 {
-                let delay = retry_policy.delay_for_attempt(attempt);
-                tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_millis(delay)) => {}
-                    _ = self.cancel_token.cancelled() => {
-                        last_error = "Transfer cancelled by user".to_string();
-                        break;
-                    }
+        // Providers own safe request/part recovery and lazy session preparation
+        // (including pinned host keys and carried working directories). A whole
+        // upload must never be replayed here after an uncertain acknowledgement.
+        note_transfer_attempt(&self.attempt_counts, &entry.id, 1);
+        match self
+            .upload_attempt(provider, &entry, &file_transfer_id, file_size)
+            .await
+        {
+            Ok(false) => {
+                self.sink.emit_transfer_event(crate::TransferEvent {
+                    event_type: "file_skip".into(),
+                    transfer_id: file_transfer_id.clone(),
+                    filename: entry.display_name.clone(),
+                    direction: "upload".into(),
+                    message: Some("Skipped: destination already exists".into()),
+                    progress: None,
+                    path: Some(entry.remote_path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                });
+                TransferOutcome::Skipped {
+                    reason: "Destination already exists".into(),
                 }
             }
-
-            // Meter every attempt actually made (first try included) before
-            // it runs, so a cancel during backoff or mid-transfer still
-            // leaves an honest count behind.
-            note_transfer_attempt(&self.attempt_counts, &entry.id, attempt + 1);
-            match self
-                .upload_attempt(provider, &entry, &file_transfer_id, file_size)
-                .await
-            {
-                // A create-only upload whose earlier attempt failed may have
-                // stored the file before its answer was lost: the name that
-                // now exists can be this transfer's own bytes, so it is not
-                // a skip of something that was already there.
-                Ok(false) if attempt > 0 => {
-                    last_error = format!(
-                        "Upload outcome uncertain: an earlier attempt failed and {} now exists, \
-                         possibly from that attempt. Check the destination before retrying.",
-                        entry.remote_path
-                    );
-                    break;
+            Ok(true) => {
+                self.emit_upload_complete(&entry, &file_transfer_id);
+                TransferOutcome::Success
+            }
+            Err(error) => {
+                if self.cancel_token.is_cancelled() {
+                    return self.failed_upload(entry, "Transfer cancelled by user".into());
                 }
-                Ok(false) => {
-                    self.sink.emit_transfer_event(crate::TransferEvent {
-                        event_type: "file_skip".into(),
-                        transfer_id: file_transfer_id.clone(),
-                        filename: entry.display_name.clone(),
-                        direction: "upload".into(),
-                        message: Some("Skipped: destination already exists".into()),
-                        progress: None,
-                        path: Some(entry.remote_path.clone()),
-                        delta_stats: None,
-                        fallback_reason: None,
-                    });
-                    return TransferOutcome::Skipped {
-                        reason: "Destination already exists".into(),
-                    };
-                }
-                Ok(true) => {
-                    self.emit_upload_complete(&entry, &file_transfer_id);
-                    return TransferOutcome::Success;
-                }
-                Err(error) => {
-                    last_error = error;
-                    if attempt_is_over(self.cancel_token.is_cancelled(), &last_error) {
-                        break;
-                    }
-                    let err_info =
-                        crate::sync::classify_sync_error(&last_error, Some(&entry.local_path));
-                    if attempt >= retry_policy.max_retries || !err_info.retryable {
-                        break;
-                    }
-                    warn!(
-                        "Retrying provider upload {} (attempt {}/{}): {}",
-                        entry.local_path,
-                        attempt + 1,
-                        retry_policy.max_retries,
-                        err_info.message
-                    );
-                }
+                self.emit_upload_failure(entry, error.into_failure())
             }
         }
-
-        self.failed_upload(entry, last_error)
     }
 
     async fn upload_attempt(
@@ -1915,7 +1929,7 @@ impl ProviderUploadExecutor {
         entry: &TransferEntry,
         file_transfer_id: &str,
         file_size: u64,
-    ) -> Result<bool, String> {
+    ) -> Result<bool, UploadAttemptFailure> {
         let remote_path = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
         let commit_message = self.commit_message.clone();
@@ -1926,13 +1940,21 @@ impl ProviderUploadExecutor {
             .max(size_secs + self.runtime_settings.timeout_seconds);
 
         if self.no_clobber && !provider.supports_upload_if_absent() {
-            return Err("Provider cannot guarantee a create-only upload".into());
+            return Err(UploadAttemptFailure::Provider(
+                crate::providers::ProviderError::NotSupported(
+                    "Provider cannot guarantee a create-only upload".into(),
+                ),
+            ));
         }
         if is_plain_github_provider(provider) {
             let github = provider
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
-                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+                .ok_or_else(|| {
+                    UploadAttemptFailure::Provider(crate::providers::ProviderError::NotSupported(
+                        "Failed to access GitHub provider".into(),
+                    ))
+                })?;
             let upload = async {
                 match tokio::time::timeout(
                     Duration::from_secs(eff_timeout),
@@ -1940,14 +1962,14 @@ impl ProviderUploadExecutor {
                 )
                 .await
                 {
-                    Ok(result) => result.map_err(|e| e.to_string()),
-                    Err(_) => Err(format!("Upload timed out after {} seconds", eff_timeout)),
+                    Ok(result) => result.map_err(UploadAttemptFailure::Provider),
+                    Err(_) => Err(UploadAttemptFailure::TimedOut(eff_timeout)),
                 }
             };
             return tokio::select! {
                 biased;
                 _ = self.cancel_token.cancelled() => {
-                    Err("Transfer cancelled by user".to_string())
+                    Err(UploadAttemptFailure::Cancelled)
                 }
                 result = upload => result.map(|()|true),
             };
@@ -2016,12 +2038,12 @@ impl ProviderUploadExecutor {
         });
         tokio::select! {
             biased;
-            _ = cancel_race.cancelled() => Err("Transfer cancelled by user".to_string()),
+            _ = cancel_race.cancelled() => Err(UploadAttemptFailure::Cancelled),
             res = upload_fut => match res {
                 Ok(Ok(()))=>Ok(true),
                 Ok(Err(crate::providers::ProviderError::AlreadyExists(_))) if self.no_clobber=>Ok(false),
-                Ok(Err(error))=>Err(error.to_string()),
-                Err(_) => Err(format!("Upload timed out after {} seconds", eff_timeout)),
+                Ok(Err(error))=>Err(UploadAttemptFailure::Provider(error)),
+                Err(_) => Err(UploadAttemptFailure::TimedOut(eff_timeout)),
             },
         }
     }
@@ -3539,6 +3561,21 @@ mod tests {
         stat_reading: StatReading,
         moved_source_expected: bool,
         native_refusal: bool,
+        upload_script: Option<UploadScript>,
+    }
+
+    /// A writer that prepares its own lazy session before committing. Its
+    /// generic connect method must never replace that provider-owned path.
+    #[derive(Default)]
+    struct UploadScript {
+        disconnected: bool,
+        prepare_calls: usize,
+        committed: usize,
+        response_error: Option<crate::providers::ProviderError>,
+        stall_after_commit: bool,
+        cancel_during_prepare: Option<CancellationToken>,
+        cancel_after_commit: Option<CancellationToken>,
+        managed: bool,
     }
 
     /// What the fake's `stat` does when it has no scripted ranges.
@@ -3564,6 +3601,7 @@ mod tests {
                 stat_reading: StatReading::default(),
                 moved_source_expected: false,
                 native_refusal: false,
+                upload_script: None,
             }
         }
 
@@ -3658,14 +3696,25 @@ mod tests {
         fn display_name(&self) -> String {
             "flaky-download".to_string()
         }
+        fn manages_upload_retries(&self) -> bool {
+            self.upload_script
+                .as_ref()
+                .is_none_or(|script| script.managed)
+        }
         async fn connect(&mut self) -> Result<(), crate::providers::ProviderError> {
+            assert!(
+                self.upload_script.is_none(),
+                "upload preparation must stay inside the provider"
+            );
             Ok(())
         }
         async fn disconnect(&mut self) -> Result<(), crate::providers::ProviderError> {
             Ok(())
         }
         fn is_connected(&self) -> bool {
-            true
+            self.upload_script
+                .as_ref()
+                .is_none_or(|script| !script.disconnected)
         }
         async fn list(
             &mut self,
@@ -3720,6 +3769,27 @@ mod tests {
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), crate::providers::ProviderError> {
             self.upload_calls += 1;
+            if let Some(script) = &mut self.upload_script {
+                if script.disconnected {
+                    script.prepare_calls += 1;
+                    if let Some(cancel) = &script.cancel_during_prepare {
+                        cancel.cancel();
+                        std::future::pending::<()>().await;
+                    }
+                    script.disconnected = false;
+                }
+                script.committed += 1;
+                if let Some(cancel) = &script.cancel_after_commit {
+                    cancel.cancel();
+                    std::future::pending::<()>().await;
+                }
+                if script.stall_after_commit {
+                    std::future::pending::<()>().await;
+                }
+                if let Some(error) = script.response_error.take() {
+                    return Err(error);
+                }
+            }
             Ok(())
         }
         fn supports_upload_if_absent(&self) -> bool {
@@ -4625,12 +4695,11 @@ mod tests {
         assert_eq!(written, crate::parse_remote_mtime(CARRIED).unwrap());
     }
 
-    /// CodeRabbit on #1350: a create-only upload whose first attempt lost
-    /// its answer may have stored the file, so the "already exists" of the
-    /// retry is not a skip: the outcome is uncertain and reported as a
-    /// failure. A name taken on the first attempt is still a skip.
+    /// A create-only upload whose first attempt lost its answer may have
+    /// stored the file. Never send it again or mistake that write for a skip.
+    /// A name taken on the first attempt is still a skip.
     #[tokio::test]
-    async fn a_create_only_upload_retried_after_a_lost_answer_is_not_a_skip() {
+    async fn a_create_only_upload_with_a_lost_answer_is_not_replayed_or_skipped() {
         let dir = tempfile::tempdir().expect("tempdir");
         let local = dir.path().join("in.bin");
         std::fs::write(&local, b"ok").expect("local file");
@@ -4667,6 +4736,7 @@ mod tests {
                     modified: None,
                 })
                 .await;
+            assert_eq!(executor.take_transfer_attempts("create-only"), Some(1));
             if expect_skip {
                 assert!(
                     matches!(outcome, TransferOutcome::Skipped { .. }),
@@ -4676,6 +4746,218 @@ mod tests {
                 assert!(matches!(outcome, TransferOutcome::Failed(_)), "{outcome:?}");
             }
         }
+    }
+
+    fn retry_upload_executor(cancel: CancellationToken) -> ProviderUploadExecutor {
+        ProviderUploadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(Mutex::new(None)),
+            ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 2,
+                timeout_seconds: 1,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                sftp_download_preset: None,
+            },
+            None,
+            cancel,
+            ProviderExecutorSessionModel::locked(Some(ProviderType::S3)),
+            TransferCapabilities::default(),
+        )
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_retry_never_replays_a_write_after_a_lost_response() {
+        use crate::providers::ProviderError;
+        for managed in [false, true] {
+            for error in [
+                ProviderError::Timeout,
+                ProviderError::NetworkError("response reset".into()),
+                ProviderError::ConnectionFailed("response lost after commit".into()),
+                ProviderError::ConnectionLost("response lost after commit".into()),
+                ProviderError::NotConnected,
+                ProviderError::ServerError("HTTP 503".into()),
+                ProviderError::TransferFailed("connection timeout mid-stream".into()),
+            ] {
+                let dir = tempfile::tempdir().unwrap();
+                let mut provider = FlakyDownloadProvider::fail_first(0);
+                provider.upload_script = Some(UploadScript {
+                    response_error: Some(error),
+                    managed,
+                    ..UploadScript::default()
+                });
+                let executor = retry_upload_executor(CancellationToken::new());
+                let outcome = executor
+                    .execute_with_provider(retry_entry(dir.path()), &mut provider)
+                    .await;
+                let TransferOutcome::Failed(failure) = outcome else {
+                    panic!("a lost acknowledgement is an error, not a second write: {outcome:?}");
+                };
+                assert!(!failure.retryable, "{failure:?}");
+                assert_eq!(
+                    failure.to_transfer_error().retry,
+                    crate::transfer_dag::RetryDirective::Never
+                );
+                assert!(
+                    failure.message.contains("Check the destination"),
+                    "{failure:?}"
+                );
+                assert_eq!(provider.upload_calls, 1);
+                assert_eq!(provider.upload_script.as_ref().unwrap().committed, 1);
+                assert_eq!(executor.take_transfer_attempts("flaky"), Some(1));
+            }
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_retry_timeout_after_commit_does_not_send_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.upload_script = Some(UploadScript {
+            stall_after_commit: true,
+            ..UploadScript::default()
+        });
+        let executor = retry_upload_executor(CancellationToken::new());
+        let outcome = executor
+            .execute_with_provider(retry_entry(dir.path()), &mut provider)
+            .await;
+        let TransferOutcome::Failed(failure) = outcome else {
+            panic!("{outcome:?}");
+        };
+        assert!(!failure.retryable);
+        assert_eq!(
+            failure.to_transfer_error().retry,
+            crate::transfer_dag::RetryDirective::Never
+        );
+        assert!(failure.message.contains("timed out"));
+        assert_eq!(provider.upload_calls, 1);
+        assert_eq!(provider.upload_script.as_ref().unwrap().committed, 1);
+        assert_eq!(executor.take_transfer_attempts("flaky"), Some(1));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_retry_leaves_lazy_session_preparation_inside_the_provider() {
+        for managed in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut provider = FlakyDownloadProvider::fail_first(0);
+            provider.upload_script = Some(UploadScript {
+                disconnected: true,
+                managed,
+                ..UploadScript::default()
+            });
+            let executor = retry_upload_executor(CancellationToken::new());
+            // connect() panics for this scripted writer: upload() must retain
+            // its own preparation, as FTP/SFTP do with cwd and host-key pins.
+            let outcome = executor
+                .execute_with_provider(retry_entry(dir.path()), &mut provider)
+                .await;
+            assert!(matches!(outcome, TransferOutcome::Success), "{outcome:?}");
+            assert_eq!(provider.upload_script.as_ref().unwrap().prepare_calls, 1);
+            assert_eq!(provider.upload_script.as_ref().unwrap().committed, 1);
+            assert_eq!(provider.upload_calls, 1);
+            assert_eq!(executor.take_transfer_attempts("flaky"), Some(1));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_retry_create_only_existing_name_skips_and_lost_answer_fails_once() {
+        for lost_answers in [0, 1] {
+            let dir = tempfile::tempdir().unwrap();
+            let mut provider = FlakyDownloadProvider::fail_first(lost_answers);
+            provider.upload_script = Some(UploadScript::default());
+            let executor = retry_upload_executor(CancellationToken::new()).with_no_clobber(true);
+            let outcome = executor
+                .execute_with_provider(retry_entry(dir.path()), &mut provider)
+                .await;
+            match outcome {
+                TransferOutcome::Skipped { .. } if lost_answers == 0 => {}
+                TransferOutcome::Failed(failure) if lost_answers == 1 => {
+                    assert!(!failure.retryable);
+                    assert_eq!(
+                        failure.to_transfer_error().retry,
+                        crate::transfer_dag::RetryDirective::Never
+                    );
+                }
+                other => panic!("unexpected create-only outcome: {other:?}"),
+            }
+            assert_eq!(provider.upload_calls, 1);
+            assert_eq!(executor.take_transfer_attempts("flaky"), Some(1));
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_retry_cancellation_never_starts_or_restarts_a_write() {
+        for when in ["before", "provider-prepare", "after-commit"] {
+            let dir = tempfile::tempdir().unwrap();
+            let cancel = CancellationToken::new();
+            let mut provider = FlakyDownloadProvider::fail_first(0);
+            provider.upload_script = Some(UploadScript {
+                disconnected: true,
+                cancel_during_prepare: (when == "provider-prepare").then(|| cancel.clone()),
+                cancel_after_commit: (when == "after-commit").then(|| cancel.clone()),
+                ..UploadScript::default()
+            });
+            if when == "before" {
+                cancel.cancel();
+            }
+            let executor = retry_upload_executor(cancel);
+            let outcome = executor
+                .execute_with_provider(retry_entry(dir.path()), &mut provider)
+                .await;
+            let TransferOutcome::Failed(failure) = outcome else {
+                panic!("{outcome:?}");
+            };
+            assert_eq!(
+                failure.kind,
+                crate::transfer_domain::TransferFailureKind::Cancelled
+            );
+            assert!(!failure.retryable);
+            assert_eq!(provider.upload_calls, usize::from(when != "before"));
+            assert_eq!(
+                provider.upload_script.as_ref().unwrap().prepare_calls,
+                usize::from(when != "before")
+            );
+            assert_eq!(
+                provider.upload_script.as_ref().unwrap().committed,
+                usize::from(when == "after-commit")
+            );
+            assert_eq!(
+                executor.take_transfer_attempts("flaky"),
+                (when != "before").then_some(1)
+            );
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_retry_keeps_a_permanent_refusal_safely_redacted() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.upload_script = Some(UploadScript {
+            response_error: Some(crate::providers::ProviderError::InvalidPath(
+                "timeout is part of this filename".into(),
+            )),
+            ..UploadScript::default()
+        });
+        let executor = retry_upload_executor(CancellationToken::new());
+        let outcome = executor
+            .execute_with_provider(retry_entry(dir.path()), &mut provider)
+            .await;
+        let TransferOutcome::Failed(failure) = outcome else {
+            panic!("{outcome:?}");
+        };
+        assert!(!failure.retryable);
+        assert_eq!(
+            failure.to_transfer_error().retry,
+            crate::transfer_dag::RetryDirective::Never
+        );
+        assert_eq!(
+            failure.kind,
+            crate::transfer_domain::TransferFailureKind::NotFound
+        );
+        assert_eq!(failure.message, "Requested file or path was not found");
+        assert!(!failure.message.contains("outcome uncertain"));
+        assert_eq!(provider.upload_calls, 1);
     }
 
     /// A clean first-try success meters one attempt => zero retries.

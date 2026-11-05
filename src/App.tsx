@@ -13213,6 +13213,10 @@ const App: React.FC = () => {
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
     if (!isConnected) return;
+    // A timeout or 5xx can follow a committed upload. Providers own their safe
+    // transport retries; the GUI must not start that write again automatically.
+    // The queue's explicit Retry remains available to the user.
+    const maxUploadRetries = usesProviderApi(liveConnectionParams.protocol) ? 0 : circuitBreaker.config.maxRetriesPerFile;
     // The panel the names come from: a right-click in panel 2 uploads panel
     // 2's files, not panel 1's of the same name.
     const panel = getActiveLocalState(localPanelId);
@@ -13595,7 +13599,7 @@ const App: React.FC = () => {
 
           // Per-file retry with exponential backoff
           transferQueue.startTransfer(item.id);
-          for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
+          for (let attempt = 0; attempt <= maxUploadRetries; attempt++) {
             if (attempt > 0) {
               await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
               // A Stop during the wait: the file is cancelled, not retried.
@@ -13622,7 +13626,7 @@ const App: React.FC = () => {
               // A folder with failed files is not sent again, nor counted
               // toward the pause: its command has retried each file.
               const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
-              if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+              if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
                 transferQueue.failTransfer(item.id, String(error));
                 notify.error(t('toast.uploadFailed'), String(error));
                 break;
@@ -13812,7 +13816,7 @@ const App: React.FC = () => {
 
         // Per-file retry with exponential backoff
         transferQueue.startTransfer(item.id);
-        for (let attempt = 0; attempt <= circuitBreaker.config.maxRetriesPerFile; attempt++) {
+        for (let attempt = 0; attempt <= maxUploadRetries; attempt++) {
           if (attempt > 0) {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
             // A Stop during the wait: the file is cancelled, not retried.
@@ -13837,7 +13841,7 @@ const App: React.FC = () => {
               break;
             }
             const result = circuitBreaker.recordFailure(String(error));
-            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
+            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.uploadFailed'), String(error));
               break;

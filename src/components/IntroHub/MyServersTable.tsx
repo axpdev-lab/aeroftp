@@ -93,6 +93,7 @@ const PROTOCOL_ICON: Record<string, React.ReactNode> = {
     FTP: methodIcon('FTP', { size: 14, className: 'text-gray-500' }),
     FTPS: methodIcon('FTPS', { size: 14, className: 'text-sky-500' }),
     SFTP: methodIcon('SFTP', { size: 14, className: 'text-indigo-500' }),
+    SCP: methodIcon('SCP', { size: 14, className: 'text-indigo-500' }),
     S3: methodIcon('S3', { size: 14, className: 'text-orange-500' }),
     Azure: <Cloud size={14} className="text-blue-600" />,
     AeroCloud: <Cloud size={14} className="text-purple-500" />,

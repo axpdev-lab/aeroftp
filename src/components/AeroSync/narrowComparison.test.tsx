@@ -76,6 +76,44 @@ describe('the Plan notice for a compare made with other settings', () => {
         expect(button('aerosync.narrowApply')).toBeUndefined();
     });
 
+    it.each(['pending', 'rejected', 'invalid'] as const)(
+        'blocks a flat comparison while backup validation is %s, with backup off',
+        async validation => {
+            mocks.invoke.mockImplementation(async (cmd: string) => {
+                if (cmd === 'load_sync_profiles_cmd') return [];
+                if (cmd === 'sync_backup_validate') {
+                    if (validation === 'pending') return new Promise(() => {});
+                    if (validation === 'rejected') throw new Error('validation unavailable');
+                    return { status: 'invalid', code: 'name', message: 'invalid backup folder' };
+                }
+                throw new Error(`Unexpected IPC ${cmd}`);
+            });
+            const execute = vi.fn();
+            const flat = compareEntries([{ name: '.env', isDir: false, size: 10 }], []);
+            await render(React.createElement(PlanTabContent, {
+                result: flat, pairKind: 'local-local', canExecute: true, onExecute: execute,
+                compareExcludes: [], compareBackupDir: undefined,
+            }));
+            expect(host.textContent).toContain('aerosync.rescanFlat');
+            const executeButton = button('aerosync.execute')!;
+            expect(executeButton.disabled).toBe(true);
+            await React.act(async () => executeButton.click());
+            expect(execute).not.toHaveBeenCalled();
+        },
+    );
+
+    it('keeps a full comparison with matching scan settings executable', async () => {
+        const execute = vi.fn();
+        await render(React.createElement(PlanTabContent, {
+            result, pairKind: 'local-local', canExecute: true, onExecute: execute,
+            compareExcludes: [], compareBackupDir: backup,
+        }));
+        const executeButton = button('aerosync.execute')!;
+        expect(executeButton.disabled).toBe(false);
+        await React.act(async () => executeButton.click());
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
     it('shows a refusal for the settings it refused, and not for the next ones', async () => {
         const refusal = { userExcludes: ['['], backupDir: backup, message: 'invalid exclude pattern' };
         await plan('[', [], backup, undefined, refusal);

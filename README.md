@@ -85,7 +85,7 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague. The figures below are generated into [`docs/PROVIDER-INVENTORY.json`](docs/PROVIDER-INVENTORY.json) from the catalog and the registry, and CI fails when they drift from the code:
 
-1. **Transport protocols (7):** native wire-level support for FTP, FTPS, SFTP, WebDAV, S3, Azure Blob, OpenStack Swift. Plus **portable devices over MTP / WPD** - attached phones, cameras and media players that the OS never assigns a drive letter, saved as profiles keyed to a stable device fingerprint (see [Portable devices](docs/PROTOCOL-FEATURES.md#portable-devices-mtp--wpd)).
+1. **Transport protocols (8):** native wire-level support for FTP, FTPS, SFTP, SCP, WebDAV, S3, Azure Blob, OpenStack Swift. SCP reaches SSH servers without SFTP, including OpenWrt routers; SFTP profiles fall back to SCP on the same connection by default (see [SCP support and limits](docs/PROTOCOL-FEATURES.md#scp-ssh-servers-without-sftp)). Plus **portable devices over MTP / WPD** - attached phones, cameras and media players that the OS never assigns a drive letter, saved as profiles keyed to a stable device fingerprint (see [Portable devices](docs/PROTOCOL-FEATURES.md#portable-devices-mtp--wpd)).
 2. **Native provider integrations (26):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
 3. **Pre-configured presets (47):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above (S3-compatible endpoints from MEGA S4 to FileLu S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.). A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies.
 
@@ -168,7 +168,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 <!-- END PROVIDERS-GRID -->
 
 <p align="center">
-  <sub>+ FTP, FTPS, SFTP, WebDAV, Swift protocols</sub><br>
+  <sub>+ FTP, FTPS, SFTP, SCP, WebDAV, Swift protocols</sub><br>
   <sub>We reached out directly to providers to ensure quality integration.</sub><br>
   <sub>Special thanks to MEGA, Koofr, FileLu, Felicloud, Storj, pCloud, IDrive, Jottacloud, InfiniCLOUD, and SourceForge for their responsive technical support.</sub>
 </p>
@@ -325,7 +325,7 @@ AeroFTP defines eight user-facing file formats. Each has a single purpose and a 
 
 ```
 AeroFTP
-├── AeroCloud    - Personal cloud (7 transport protocols + 26 native providers, media services included, sync, share)
+├── AeroCloud    - Personal cloud (supported server and cloud profiles, sync, share)
 ├── AeroFile     - Professional file manager (multi-file Properties, recursive search, default-app routing)
 ├── AeroShare    - Peer-to-peer user-to-user transfer (end-to-end encrypted, no server in the middle) [Beta]
 ├── AeroMount    - Persistent FUSE / WebDAV mounts with cross-platform autostart (the Mount Manager)
@@ -344,7 +344,7 @@ AeroFTP
 
 > [Full documentation →](https://docs.aeroftp.app/features/aerocloud.html)
 
-Turn **any server** into a private personal cloud. Connect through 7 transport protocols and 26 native provider integrations with bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. Background tray sync with native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
+Turn a supported server or cloud account into a private personal cloud. Choose from the profiles offered in AeroCloud setup for bidirectional sync, selective sync, file versioning, .aeroignore, share links, and per-project folders. SCP connections are available in AeroFTP but are not yet offered by AeroCloud setup. Background tray sync includes native OS file manager badges (Nautilus, Nemo, Windows Explorer). See the [protocol features matrix](docs/PROTOCOL-FEATURES.md) for full per-provider capabilities.
 
 ---
 
@@ -543,7 +543,7 @@ AeroFTP is built for both humans and AI agents. As agentic AI, computer use, and
 
 > [Full documentation →](https://docs.aeroftp.app/cli/installation.html)
 
-Production CLI sharing the same Rust backend as the GUI. 99 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 7 transport protocols and 26 native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
+Production CLI sharing the same Rust backend as the GUI. 99 top-level commands (several grouping their own subcommands: `daemon`, `jobs`, `vault`, `archive`, `crypt`, `import`/`export`, `serve`, `users`, `groups`) across 8 transport protocols and 26 native provider integrations, encrypted vault profiles, JSON output, batch scripting, daemon mode with job queue, FUSE filesystem mounting, ncdu TUI explorer, zero-knowledge crypt overlay, single-file AeroVault containers (`vault`, all formats v1/v2/v3), plaintext `.aerozip` archives (`archive create/list/extract`), recursive used-storage scan (`df --scan`) with a manual total-cap override, and native MCP server mode for AI integration.
 
 > **Short invocation**: every package ships a native dispatcher, so `aeroftp <subcommand>` and the built-in 4-character name `aftp` both route to the CLI; `aeroftp-cli` is kept for back-compat. An opt-in `aero` alias can be enabled with `aeroftp-cli alias-toggle aero` (idempotent, the same command turns it off). See the [Short Invocation](docs/CLI-GUIDE.md#short-invocation) section of the CLI Guide.
 
