@@ -52800,7 +52800,9 @@ async fn cmd_trash_empty_filelu(
         Err((emptied, e)) => {
             print_error(
                 format,
-                &format!("empty trash stopped after {emptied} item(s): {e}"),
+                &format!(
+                    "empty trash stopped after {emptied} item(s): {e}; run `trash list` to see what is left"
+                ),
                 5,
             );
             5

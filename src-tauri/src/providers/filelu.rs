@@ -332,8 +332,7 @@ fn filelu_time_to_utc(raw: &str) -> String {
     let Some(wall) = crate::parse_remote_datetime(text).map(|dt| dt.naive_utc()) else {
         return raw.to_string();
     };
-    let offset_hours = if us_eastern_daylight_time(wall) { 4 } else { 5 };
-    (wall + chrono::Duration::hours(offset_hours))
+    (wall + chrono::Duration::hours(us_eastern_offset_hours(wall)))
         .format("%Y-%m-%dT%H:%M:%SZ")
         .to_string()
 }
@@ -351,11 +350,27 @@ pub(crate) fn pre_utc_fix_reading(
     // Daylight first: an instant in the hour after the March switch has a
     // second, standard-time preimage in the skipped hour, which FileLu never
     // writes.
-    [4, 5].into_iter().find_map(|offset_hours| {
-        let wall = (instant - chrono::Duration::hours(offset_hours)).naive_utc();
-        let daylight = us_eastern_daylight_time(wall);
-        (daylight == (offset_hours == 4)).then(|| wall.and_utc())
-    })
+    [EDT_HOURS_BEHIND_UTC, EST_HOURS_BEHIND_UTC]
+        .into_iter()
+        .find_map(|offset_hours| {
+            let wall = (instant - chrono::Duration::hours(offset_hours)).naive_utc();
+            (us_eastern_offset_hours(wall) == offset_hours).then(|| wall.and_utc())
+        })
+}
+
+/// Hours US Eastern daylight time (EDT) is behind UTC.
+const EDT_HOURS_BEHIND_UTC: i64 = 4;
+/// Hours US Eastern standard time (EST) is behind UTC.
+const EST_HOURS_BEHIND_UTC: i64 = 5;
+
+/// Hours the US Eastern wall-clock time `wall` is behind UTC: see
+/// [`us_eastern_daylight_time`].
+fn us_eastern_offset_hours(wall: chrono::NaiveDateTime) -> i64 {
+    if us_eastern_daylight_time(wall) {
+        EDT_HOURS_BEHIND_UTC
+    } else {
+        EST_HOURS_BEHIND_UTC
+    }
 }
 
 /// Whether the US Eastern wall-clock time `wall` is daylight time (EDT,
@@ -4989,6 +5004,10 @@ mod tests {
         let (emptied, error) = provider.empty_trash().await.unwrap_err();
         assert_eq!(emptied, 1, "{error}");
         let calls = calls.lock().unwrap().clone();
+        assert!(
+            calls.contains(&"/api/file/permanent_delete?file_code=B".to_string()),
+            "the refused item was tried: {calls:?}"
+        );
         assert!(
             !calls.iter().any(|c| c.ends_with("file_code=C")),
             "nothing after the refusal: {calls:?}"
