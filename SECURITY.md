@@ -63,7 +63,7 @@ For the full encryption architecture, cipher comparison tables, and AeroVault v2
 
 ### Connection Protocols
 
-AeroFTP supports 7 transport protocols and 25+ native provider integrations with appropriate transport security:
+AeroFTP supports 8 transport protocols and 26 native provider integrations with appropriate transport security:
 
 | Category | Protocols |
 | -------- | --------- |
@@ -72,8 +72,8 @@ AeroFTP supports 7 transport protocols and 25+ native provider integrations with
 | **TLS/HTTPS** | S3, WebDAV, Azure Blob, pCloud, FileLu, Jottacloud, OpenDrive, Yandex Disk |
 | **API Token over HTTPS** | GitHub, GitLab (PAT / Project Access Token, API v4) |
 | **API Key over HTTPS (media)** | ImageKit (private key, HTTP Basic), Uploadcare (public + secret), Cloudinary (cloudname + key + secret), Immich (`x-api-key`) |
-| **SSH** | SFTP with TOFU host key verification |
-| **Configurable TLS** | FTP/FTPS (Explicit, Implicit, opportunistic) |
+| **SSH** | SFTP and SCP, with TOFU host key verification |
+| **Configurable TLS** | FTP/FTPS: None, Explicit TLS, Explicit TLS if available, or Implicit TLS. A failed explicit upgrade stops the connection |
 
 Plain FTP connections display a prominent insecure warning badge. WebDAV supports RFC 2617 Digest Authentication with automatic detection. SFTP uses Trust On First Use host key verification with visual fingerprint dialog and MITM change detection.
 
@@ -94,7 +94,7 @@ For the complete AI security model with grant properties, tool classification, a
 
 All release artifacts are signed with Sigstore Cosign via GitHub Actions OIDC keyless signing:
 
-- **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates. As of v4.1.0 (sigstore 0.14) the in-app check parses GitHub's current v0.3 signing bundles and returns a real verified result; it stays a non-blocking second factor, with the artifact SHA-256 as the primary integrity check
+- **Client-side verification**: The app verifies `.sigstore.json` bundles against the CI workflow identity before installing updates. As of v4.1.0 (sigstore 0.14) the in-app check parses GitHub's current v0.3 signing bundles and returns a real verified result. A bundle that does not verify is `VerificationFailed`: the updater deletes the artifact and the bundle and does not install
 - **Linux hardening**: The privileged update helper re-verifies SHA-256 before executing `dpkg`/`rpm`
 - **Plugin registry**: Remote installation disabled until cryptographic registry authentication is implemented (fail-closed)
 - **Build gates**: the Checks workflow runs `cargo audit --deny warnings` on pull requests and pushes to `main`. A clean audit and complete CI on the exact release source are separate pre-tag requirements. The tag publication workflow gates signing and publication on its validation/build jobs; it does not depend on the separate Checks audit job
@@ -162,7 +162,7 @@ For the complete privacy model, data storage locations, and deletion instruction
 | v2.8.7 | Claude Opus 4.6 + GPT 5.4 | 45+ findings resolved, grade A- | |
 | v2.4.0 | 12 auditors, 4 phases | Provider integration audit, grade A- | |
 
-Cumulative: 300+ findings identified across 9 audits, all critical and high findings remediated. For the complete audit history with finding details, see [Security Audits](https://docs.aeroftp.app/security/audits).
+Cumulative: 300+ findings identified across the audits in the [public archive](https://docs.aeroftp.app/security/audits). P0 and P1 findings recorded there were marked remediated in the write-ups.
 
 ### Compliance Verification
 
