@@ -1,6 +1,6 @@
 # AeroFTP Roadmap
 
-> _Last updated: 2026-10-26_
+> _Last updated: 2026-11-05_
 
 > A transparent view of where AeroFTP has been, where it is today, and where it's headed.
 > This roadmap is updated continuously. Feature requests and feedback are welcome via [GitHub Issues](https://github.com/axpdev-lab/aeroftp/issues).
@@ -53,6 +53,7 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | 🟢 Shipped | AeroVault v3 (Archive tier) + AeroFile Dual Panel Slice A | v3.7.9 |
 | 🟢 Shipped | AeroCrypt overlay first-class + ImageKit / Uploadcare + CLI audit | v3.7.2 |
 | 🟢 Shipped | Persistent Mount Manager (GUI + CLI) | v3.7.1 |
+| 🟡 In Flight | IPFS native, Filebase IPFS and remote pinning | design |
 | 🔵 Up Next | Bitbucket / Gitea / Forgejo native integrations | planned |
 | 🔵 Up Next | Compression wrapper profile | planned |
 | 🔵 Up Next | Selectable XChaCha20 vault cipher | planned |
@@ -64,7 +65,6 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 | ⚪ Horizon | AeroIndex (content-aware file intelligence) | exploring |
 | ⚪ Horizon | Mobile companion app (Android) | exploring |
 | ⚪ Horizon | Flathub publish | exploring |
-| ⚪ Horizon | IPFS / Web3 storage | exploring |
 | ⚪ Horizon | Tor support | exploring |
 | ⚪ Horizon | Biometric unlock | exploring |
 | ⚪ Horizon | Per-protocol comparison page in docs | exploring |
@@ -173,10 +173,8 @@ Every roadmap item at a glance; the lanes below carry the full detail.
 
 ### 🟡 In Flight
 
-_v4.2.5 release preparation is in progress as of 26 October 2026. Documentation
-changes and the final release notes must be reconciled with the reviewed merged
-source before publication; this page does not announce the release or a pending
-PR merge._
+- **IPFS native and managed connectors** (design opened 2026-10-29)
+  A native Kubo RPC + UnixFS/MFS provider for self-hosted Kubo and Filebase IPFS RPC, with separate Filebase IPFS S3 and standard remote-pinning connectors. The first gate is a live compatibility spike, followed by the native vertical slice. No embedded node is claimed.
 
 ### 🔵 Up Next
 
@@ -205,8 +203,6 @@ PR merge._
   Android with Capacitor 6 and React. FTP, SFTP, and WebDAV protocols, plus AeroVault import/export.
 - **Flathub publish**
   Flatpak manifest (`app.aeroftp.AeroFTP.yml`) done and maintained in-repo, awaiting acceptance into the Flathub remote.
-- **IPFS / Web3 Storage**
-  Decentralized storage integration.
 - **Tor Support**
   Anonymous file transfers via Tor hidden services.
 - **Biometric Unlock**
