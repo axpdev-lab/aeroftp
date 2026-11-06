@@ -985,9 +985,29 @@ async fn write_plaintext_atomic(output_path: &str, plaintext: &[u8]) -> Result<(
         let _ = tokio::fs::create_dir_all(parent).await;
     }
     let tmp = crate::util::temp_name::sibling(std::path::Path::new(output_path), ".aerotmp");
-    tokio::fs::write(&tmp, plaintext)
-        .await
-        .map_err(ProviderError::IoError)?;
+    // The temporary's name is predictable, and `fs::write` follows a link
+    // standing there, writing the plaintext to the link's target
+    // (deep-scan 36). Whatever is at the name is removed (a link without
+    // following it) and the file is created new, which refuses a link.
+    match tokio::fs::remove_file(&tmp).await {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(ProviderError::IoError(e)),
+    }
+    let written = async {
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp)
+            .await?;
+        tokio::io::AsyncWriteExt::write_all(&mut file, plaintext).await?;
+        file.sync_all().await
+    }
+    .await;
+    if let Err(e) = written {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(ProviderError::IoError(e));
+    }
     if let Err(e) = tokio::fs::rename(&tmp, output_path).await {
         let _ = tokio::fs::remove_file(&tmp).await;
         return Err(ProviderError::IoError(e));
@@ -3625,6 +3645,24 @@ pub fn clear_overlay_in_place(slot: &mut Option<Box<dyn StorageProvider>>) -> bo
 
 #[cfg(test)]
 pub(crate) mod tests {
+    /// Deep-scan 36: a link at the plaintext's temporary name is not
+    /// followed: its target keeps its content.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_plaintext_temporary_never_follows_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim.txt");
+        std::fs::write(&victim, b"precious").unwrap();
+        let out = dir.path().join("plain.txt");
+        let tmp = crate::util::temp_name::sibling(&out, ".aerotmp");
+        std::os::unix::fs::symlink(&victim, &tmp).unwrap();
+        super::write_plaintext_atomic(out.to_str().unwrap(), b"decrypted")
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        assert_eq!(std::fs::read(&out).unwrap(), b"decrypted");
+    }
+
     use super::*;
 
     #[test]
