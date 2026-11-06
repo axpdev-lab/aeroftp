@@ -1799,6 +1799,9 @@ impl CredentialStore {
         Self::update_gui_config_under(path, key, &guard, account, check, mutate)
     }
 
+    /// [`Self::update_gui_config_under`] with its own guard, for tests that
+    /// pass a vault and key instead of the cached ones.
+    #[cfg(test)]
     fn update_gui_config_with_key(
         path: &Path,
         key: &[u8; 32],
