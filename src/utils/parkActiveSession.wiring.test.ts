@@ -150,18 +150,38 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(body).not.toContain('setActiveSessionId(');
     });
 
-    it('shows a parked tab connected again when it is clicked', () => {
+    it('shows a clicked parked tab connected once it reconnects, and parked again if it does not', () => {
         // The tab bar calls switchSession directly: with the workspace marked
         // disconnected by the park, the tab reconnected behind a panel that
-        // still read as disconnected.
+        // still read as disconnected. Marked connected before the reconnect, a
+        // failed one left a dead tab active, which a click no longer retried.
         const start = APP.indexOf('  const switchSession = async');
         const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
-        const activate = body.indexOf('setActiveSessionId(sessionId);');
+        const success = body.indexOf("setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));");
         const connected = body.indexOf('setIsConnected(true);');
-        expect(activate).toBeGreaterThan(-1);
-        expect(connected).toBeGreaterThan(activate);
-        expect(body.slice(activate, connected)).not.toContain('await ');
+        expect(success).toBeGreaterThan(-1);
+        expect(connected).toBeGreaterThan(success);
+        expect(body.slice(body.indexOf('setActiveSessionId(sessionId);'), success)).toContain('await ');
+        expect(body).toContain('const fromParked = activeSessionId === null;');
+        // The two cancel branches and the failure branch.
+        expect(body.split('backToParked();').length - 1).toBe(3);
         expect(APP).toContain('onTabClick={switchSession}');
+    });
+
+    it('lets the park keep the old tab\'s Navigation Sync', () => {
+        // Reset before the host-key question, the park would store the reset
+        // values in the tab: parkActiveSession resets them itself, afterwards.
+        const early = calls(TEARDOWN)
+            .filter(c => PARKING.includes(c.context))
+            .filter(c => {
+                const path = pathTo(c);
+                const park = path.lastIndexOf(PARK);
+                const branch = path.lastIndexOf('setLoading(true);', park);
+                const between = path.slice(Math.max(branch, 0), park);
+                return between.includes('setIsSyncNavigation(false)') || between.includes('setSyncBasePaths(null)');
+            })
+            .map(c => `App.tsx:${c.line} ${c.command} in ${c.context}`);
+        expect(early).toEqual([]);
     });
 
     it('parks before an OAuth or 4shared connect replaces the backend in My Servers', () => {
@@ -253,13 +273,16 @@ describe('a cancelled connect keeps the tabs that were open before it', () => {
             '  const abortConnectAfterCancel = async', '  // V2: a cancelled tab SWITCH', 'abortConnectAfterCancel', ctx);
         await fn(() => true, phaseVersion);
         const setSessions = ctx.setSessions as ReturnType<typeof vi.fn>;
-        const update = setSessions.mock.calls[0][0] as (prev: { id: string }[]) => { id: string }[];
-        return { ctx: ctx as Record<string, ReturnType<typeof vi.fn>>, tabs: update([{ id: 'a' }, { id: 'b' }, { id: 'added' }]).map(s => s.id) };
+        const update = setSessions.mock.calls[0][0] as (prev: { id: string; status: string }[]) => { id: string; status: string }[];
+        const kept = update([{ id: 'a', status: 'connected' }, { id: 'b', status: 'cached' }, { id: 'added', status: 'connected' }]);
+        return { ctx: ctx as Record<string, ReturnType<typeof vi.fn>>, tabs: kept.map(s => s.id), statuses: kept.map(s => s.status) };
     };
 
-    it('removes only the tab the cancelled connect added', async () => {
-        const { ctx, tabs } = await abort({ phaseVersion: 3, ids: new Set(['a', 'b']) }, 3);
+    it('removes only the tab the cancelled connect added, and parks the ones it keeps', async () => {
+        const { ctx, tabs, statuses } = await abort({ phaseVersion: 3, ids: new Set(['a', 'b']) }, 3);
         expect(tabs).toEqual(['a', 'b']);
+        // The backend is gone: no kept tab may read as connected.
+        expect(statuses).toEqual(['cached', 'cached']);
         expect(ctx.setActiveSessionId).toHaveBeenCalledWith(null);
         expect(ctx.setShowConnectionScreen).toHaveBeenCalledWith(true);
     });
@@ -268,11 +291,15 @@ describe('a cancelled connect keeps the tabs that were open before it', () => {
         expect((await abort({ phaseVersion: 3, ids: new Set() }, 3)).tabs).toEqual([]);
     });
 
-    it('clears every tab for a connect it has no record of', async () => {
-        // Another entry point (the AeroCloud tab, a GitHub branch) bumped the
-        // phase version without recording the tabs: the old behavior stands.
-        expect((await abort({ phaseVersion: 3, ids: new Set(['a', 'b']) }, 4)).tabs).toEqual([]);
-        expect((await abort(null, 4)).tabs).toEqual([]);
+    it('keeps every tab, parked, for a connect it has no record of', async () => {
+        // Another entry point (the AeroCloud tab, a GitHub branch switch) bumped
+        // the phase version without recording the tabs. It added none, so a
+        // Cancel there no longer costs the user every open tab.
+        for (const recorded of [{ phaseVersion: 3, ids: new Set(['a', 'b']) }, null]) {
+            const { tabs, statuses } = await abort(recorded, 4);
+            expect(tabs).toEqual(['a', 'b', 'added']);
+            expect(statuses).toEqual(['cached', 'cached', 'cached']);
+        }
     });
 
     it('records the tabs when a connect phase starts, and hands its version to the abort', () => {

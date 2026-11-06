@@ -8313,8 +8313,8 @@ const App: React.FC = () => {
       }
 
       setLoading(true);
-      setIsSyncNavigation(false);
-      setSyncBasePaths(null);
+      // Navigation Sync is reset by parkActiveSession, after the host-key
+      // check: reset here, the park would keep the reset values for the tab.
       // Use displayName if available, otherwise use server/bucket/username
       // No protocol prefix in tab name - icon distinguishes the protocol
       const providerName = effectiveParams.displayName || (protocol === 's3'
@@ -8563,9 +8563,7 @@ const App: React.FC = () => {
     // FTP/FTPS/SFTP - use legacy commands
     if (!effectiveParams.server || !effectiveParams.username) { notify.error(t('toast.missingFields'), t('toast.fillServerUser')); return; }
     setLoading(true);
-    // Reset navigation sync for new connection
-    setIsSyncNavigation(false);
-    setSyncBasePaths(null);
+    // Navigation Sync is reset by parkActiveSession, which keeps the old tab's.
     const protocolLabel = connectionViaLabel(effectiveParams);
     const logId = humanLog.logStart('CONNECT', { server: effectiveParams.server, protocol: protocolLabel });
     try {
@@ -8813,6 +8811,15 @@ const App: React.FC = () => {
       if (!showRemotePanel) setShowRemotePanel(true);
       return;
     }
+    // Reconnecting a parked tab (nothing active): if it fails or is cancelled,
+    // the tab goes back to parked, so clicking it again retries instead of
+    // finding it "already active" over a backend that is not there.
+    const fromParked = activeSessionId === null;
+    const backToParked = () => {
+      if (!fromParked) return;
+      setActiveSessionId(null);
+      setIsConnected(false);
+    };
 
     // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts),
     // asked before anything of the current tab changes: a refused key leaves
@@ -8863,10 +8870,6 @@ const App: React.FC = () => {
     setOverlayDecrypting(false);
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
-    // A tab parked by "+" or by a connect over it left the workspace marked
-    // disconnected; clicking it must show it connected again, like the card and
-    // "Active Sessions", which set this before calling here.
-    setIsConnected(true);
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting
@@ -9193,6 +9196,10 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
+      // A tab parked by "+" or by a connect over it left the workspace marked
+      // disconnected: the tab bar calls here directly, so the workspace reads as
+      // connected again only once the reconnect has succeeded.
+      setIsConnected(true);
       activityLog.updateEntry(reconnectLogId, {
         status: 'success',
         // Honest wording: a live-slot reuse never reconnected (#128-C), so don't
@@ -9240,6 +9247,7 @@ const App: React.FC = () => {
         });
         setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
         setCurrentLocalPath(targetSession.localPath);
+        backToParked();
         return;
       }
       // W3.1: user-cancelled reconnect. Mark the session cached (not errored)
@@ -9251,6 +9259,7 @@ const App: React.FC = () => {
         });
         setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
         setCurrentLocalPath(targetSession.localPath);
+        backToParked();
         return;
       }
       logger.error('Reconnect error:', e);
@@ -9261,6 +9270,7 @@ const App: React.FC = () => {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
       // Even on error, ensure local path is set correctly from session cache
       setCurrentLocalPath(targetSession.localPath);
+      backToParked();
       // Issue #128: when reconnect fails because the saved session is stale
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.
@@ -10024,13 +10034,16 @@ const App: React.FC = () => {
     setActivePanel('local');
     setRemoteFiles([]);
     setCurrentRemotePath('/');
-    // Tabs that were open before this connect stay (it parked the live one, so
-    // clicking it reconnects); only a tab the cancelled connect added goes. A
-    // connect with no such record (another entry point) clears them all.
+    // Tabs that were open before this connect stay, parked: the backend is gone,
+    // so none of them reads as connected, and clicking one reconnects it. Only a
+    // tab the cancelled connect added goes. An entry point that records no start
+    // (the AeroCloud tab, a GitHub branch switch) added none, so every tab stays.
     const before = connectStartSessionsRef.current?.phaseVersion === phaseVersion
       ? connectStartSessionsRef.current.ids
       : null;
-    setSessions(prev => before ? prev.filter(s => before.has(s.id)) : []);
+    setSessions(prev => prev
+      .filter(s => !before || before.has(s.id))
+      .map(s => s.status === 'connected' ? { ...s, status: 'cached' } : s));
     setActiveSessionId(null);
     setShowConnectionScreen(true);
     setShowRemotePanel(false);
@@ -19060,8 +19073,8 @@ const App: React.FC = () => {
                 if (isProvider) {
                   // S3/WebDAV connection via provider_connect
                   setLoading(true);
-                  setIsSyncNavigation(false);
-                  setSyncBasePaths(null);
+                  // Navigation Sync is reset by parkActiveSession, after the
+                  // host-key check, which keeps the old tab's.
                   // Use displayName if available - no protocol prefix, icon shows protocol
                   const providerName = normalizedParams.displayName || (normalizedParams.protocol === 's3'
                     ? normalizedParams.options?.bucket || 'S3'
@@ -19271,9 +19284,7 @@ const App: React.FC = () => {
 
                 // Standard FTP/SFTP connection
                 setLoading(true);
-                // Reset navigation sync for new connection
-                setIsSyncNavigation(false);
-                setSyncBasePaths(null);
+                // Navigation Sync is reset by parkActiveSession, which keeps the old tab's.
                 const protocolLabel = connectionViaLabel(params);
                 const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
                 try {
