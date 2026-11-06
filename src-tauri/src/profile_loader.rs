@@ -998,7 +998,9 @@ mod tests {
             extra.get("region").map(String::as_str),
             Some("eu-central-2")
         );
-        // A stored region always wins; an unreadable host keeps the default.
+        // A stored region the host contradicts loses to the host's (#1506
+        // Requested 200: eu-gb cannot sign for the us-south endpoint); an
+        // unreadable host keeps the default.
         let mut extra = HashMap::new();
         extra.insert("region".to_string(), "eu-gb".to_string());
         apply_s3_profile_defaults(
@@ -1006,7 +1008,7 @@ mod tests {
             Some("ibm-cos"),
             "s3.us-south.cloud-object-storage.appdomain.cloud",
         );
-        assert_eq!(extra.get("region").map(String::as_str), Some("eu-gb"));
+        assert_eq!(extra.get("region").map(String::as_str), Some("us-south"));
         let mut extra = HashMap::new();
         apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "cos.example.internal");
         assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
