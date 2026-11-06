@@ -26,8 +26,11 @@ use crate::{
 //
 // `safe_replica_path` rejects any key that is empty, absolute, rooted, or contains a parent
 // (`..`) component, and returns the joined path only when it provably stays under `out_path`.
-// Lexical checking is sufficient here because materialization only ever creates directories
-// and regular files (never symlinks), so no on-disk component can later redirect the path.
+// Lexical checking is not enough on its own: materialization creates only directories and
+// regular files, but the folder the user picks may already hold links (or gain one between
+// runs), and a write or delete through one lands outside the root. `write_replica_file` and
+// `remove_replica_file` refuse a key whose path on disk goes through a link, and the write goes
+// through a fresh temporary renamed over the name, which replaces a link instead of following it.
 // --------------------------------------------------------------------------------------------
 
 /// Join a publisher-controlled manifest key under `out_path`, or `None` if the key would escape
@@ -47,6 +50,111 @@ pub(crate) fn safe_replica_path(out_path: &Path, rel_key: &str) -> Option<PathBu
         }
     }
     Some(out_path.join(rel))
+}
+
+/// The first existing entry from `out_path` down to `target` (included) that is a link, if
+/// any. Entries not there yet stop the walk: they are created as real folders. Any other
+/// error reading an entry (a folder that cannot be read, say) is returned: it is not proof
+/// that no link is on the way.
+fn link_on_the_way(out_path: &Path, target: &Path) -> std::io::Result<Option<PathBuf>> {
+    let rel = target.strip_prefix(out_path).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} is not under the replica folder", target.display()),
+        )
+    })?;
+    let mut at = out_path.to_path_buf();
+    for part in rel.components() {
+        at.push(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) if meta.file_type().is_symlink() => return Ok(Some(at)),
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(None)
+}
+
+fn refuse_link_on_the_way(out_path: &Path, target: &Path) -> std::io::Result<()> {
+    match link_on_the_way(out_path, target)? {
+        Some(link) => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "refusing a replica path through the link {}",
+                link.display()
+            ),
+        )),
+        None => Ok(()),
+    }
+}
+
+/// Write one replica file at `target` (already through `safe_replica_path`) under `out_path`:
+/// no link on the way before or after its folders are made, and the bytes go to a new
+/// temporary renamed over the name (deep-scan 14).
+pub(crate) fn write_replica_file(
+    out_path: &Path,
+    target: &Path,
+    data: &[u8],
+) -> std::io::Result<()> {
+    use std::io::Write;
+    refuse_link_on_the_way(out_path, target)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    refuse_link_on_the_way(out_path, target)?;
+    let name = target.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "replica path names no file",
+        )
+    })?;
+    let mut temp_name = std::ffi::OsString::from(".");
+    temp_name.push(name);
+    temp_name.push(format!(".replica-{:016x}", rand::random::<u64>()));
+    let temp = target.with_file_name(temp_name);
+    let written = (|| {
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp)?;
+        file.write_all(data)?;
+        file.sync_all()?;
+        std::fs::rename(&temp, target)
+    })();
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    written
+}
+
+/// Write one replica file, or report why it was refused and answer `false`: the caller skips
+/// that key and goes on, so one refused key (a link on its way, an unwritable folder) cannot
+/// stop the replication of the others.
+pub(crate) fn write_replica_or_skip(
+    out_path: &Path,
+    target: &Path,
+    data: &[u8],
+    report: impl FnOnce(&std::io::Error),
+) -> bool {
+    match write_replica_file(out_path, target, data) {
+        Ok(()) => true,
+        Err(e) => {
+            report(&e);
+            false
+        }
+    }
+}
+
+/// Remove one replica file, never through a link on the way (the file itself, if a link, is
+/// removed as a link).
+pub(crate) fn remove_replica_file(out_path: &Path, target: &Path) -> std::io::Result<()> {
+    if let Some(link) = link_on_the_way(out_path, target)? {
+        if link != target {
+            return refuse_link_on_the_way(out_path, target);
+        }
+    }
+    std::fs::remove_file(target)
 }
 
 // --------------------------------------------------------------------------------------------
@@ -1051,10 +1159,11 @@ pub async fn run_docs_replicate(
             }
 
             // Write to out/<rel_key> (target was containment-checked above).
-            if let Some(parent) = target.parent() {
-                let _ = std::fs::create_dir_all(parent);
+            if !write_replica_or_skip(out_path, &target, &pt, |e| {
+                println!("FAIL {} (write refused: {})", rel_key, e)
+            }) {
+                continue;
             }
-            std::fs::write(&target, &pt)?;
             println!("OK {} (pt_len={}, blake3 verified)", rel_key, pt.len());
             prev_files.insert(rel_key.clone(), expected_blake3.clone());
             ok += 1;
@@ -1232,10 +1341,11 @@ pub async fn run_docs_replicate(
                                     continue;
                                 }
                                 // target was containment-checked above.
-                                if let Some(parent) = target.parent() {
-                                    std::fs::create_dir_all(parent)?;
+                                if !write_replica_or_skip(out_path, &target, &ptt, |e| {
+                                    eprintln!("converge: write {rkey} refused: {e}")
+                                }) {
+                                    continue;
                                 }
-                                std::fs::write(&target, &ptt)?;
                                 written += 1;
                             }
 
@@ -1246,8 +1356,9 @@ pub async fn run_docs_replicate(
                                     // remove_file outside the replica root. Keys reach prev_files
                                     // only after passing the guard, but re-check defensively.
                                     if let Some(target) = safe_replica_path(out_path, old_key) {
-                                        let _ = std::fs::remove_file(&target);
-                                        deleted += 1;
+                                        if remove_replica_file(out_path, &target).is_ok() {
+                                            deleted += 1;
+                                        }
                                     }
                                 }
                             }
@@ -1388,5 +1499,68 @@ mod replica_path_tests {
         // Absolute key would replace the base in Path::join.
         assert_eq!(safe_replica_path(root, "/etc/passwd"), None);
         assert_eq!(safe_replica_path(root, "/home/u/.bashrc"), None);
+    }
+
+    /// Deep-scan 14: a replica file is never written or removed through a link in the folder.
+    #[cfg(unix)]
+    #[test]
+    fn replica_files_never_go_through_a_link() {
+        use crate::drive::{
+            link_on_the_way, remove_replica_file, write_replica_file, write_replica_or_skip,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("victim"), b"precious").unwrap();
+        std::os::unix::fs::symlink(&outside, out.join("docs")).unwrap();
+        std::os::unix::fs::symlink(outside.join("victim"), out.join("top.txt")).unwrap();
+
+        let through_folder = safe_replica_path(&out, "docs/victim").unwrap();
+        assert!(write_replica_file(&out, &through_folder, b"evil").is_err());
+        assert!(remove_replica_file(&out, &through_folder).is_err());
+        assert_eq!(std::fs::read(outside.join("victim")).unwrap(), b"precious");
+
+        // A link at the name itself is refused too (the rename covers one that appears later).
+        let at_name = safe_replica_path(&out, "top.txt").unwrap();
+        assert!(link_on_the_way(&out, &at_name).unwrap().is_some());
+        assert!(write_replica_file(&out, &at_name, b"new").is_err());
+        assert_eq!(std::fs::read(outside.join("victim")).unwrap(), b"precious");
+
+        let fresh = safe_replica_path(&out, "a/b/c.txt").unwrap();
+        write_replica_file(&out, &fresh, b"ok").unwrap();
+        assert_eq!(std::fs::read(&fresh).unwrap(), b"ok");
+        remove_replica_file(&out, &fresh).unwrap();
+        assert!(!fresh.exists());
+
+        // A refused key is reported and skipped; the next key is still written.
+        let mut reported = Vec::new();
+        assert!(!write_replica_or_skip(
+            &out,
+            &through_folder,
+            b"evil",
+            |e| { reported.push(e.kind()) }
+        ));
+        assert_eq!(reported, vec![std::io::ErrorKind::InvalidInput]);
+        let next = safe_replica_path(&out, "next.txt").unwrap();
+        assert!(write_replica_or_skip(&out, &next, b"next", |_| panic!(
+            "not refused"
+        )));
+        assert_eq!(std::fs::read(&next).unwrap(), b"next");
+        assert_eq!(std::fs::read(outside.join("victim")).unwrap(), b"precious");
+
+        // A folder that cannot be read is not proof that no link is on the way.
+        use std::os::unix::fs::PermissionsExt;
+        let locked = out.join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let behind = safe_replica_path(&out, "locked/x.txt").unwrap();
+        let walked = link_on_the_way(&out, &behind);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+        assert!(
+            walked.is_err(),
+            "a permission error is reported, not read as no link"
+        );
     }
 }
