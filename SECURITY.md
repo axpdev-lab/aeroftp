@@ -125,7 +125,7 @@ Findings not yet addressed are surfaced as **open**. Findings accepted with writ
 #### Third-party tooling
 
 - **[Socket.dev](https://socket.dev)**: Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection
-- **[Snyk](https://snyk.io)**: Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs
+- **[Snyk](https://snyk.io)**: pull-request checks and recurring tests on `main`. Snyk Open Source checks the npm manifests and opens automated fix PRs; Snyk Code runs static analysis on the Rust, TypeScript, JavaScript and Python source. Snyk does not read Cargo manifests, so the Rust dependencies are covered by `cargo audit` and `osv-scanner` above. The first Snyk Code run (November 2026, `main` at `d508eb0fe`) reported 236 findings; each was reviewed and none is exploitable in the shipped app
 - **[CodeRabbit](https://www.coderabbit.ai)** and **Greptile**: pull-request review. They are not a vulnerability scan and not a substitute for `cargo audit`
 - **GitHub Dependabot**: Native alerts and auto-PRs cross-referenced against the self-hosted audit suppression list
 - **[Aikido Security](https://aikido.dev)**: Past audits (February-May 2026) archived - Top 5% benchmark, 0 open issues during the trial period

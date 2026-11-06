@@ -621,7 +621,7 @@ The rows above are dated runs. The newest one is a scan of `main` after 4.2.6, n
 | **OpenSSF Best Practices** | [100% passing](https://www.bestpractices.dev/projects/11994) - all 67 criteria met |
 | **Aikido Security** | Past audits archived - **Top 5% benchmark**, 0 open issues during trial period (Feb-May 2026) |
 | **Socket.dev** | Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection |
-| **Snyk** | Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs |
+| **Snyk** | Pull-request checks and recurring tests on `main`: Snyk Open Source on the npm manifests, with automated fix PRs, and Snyk Code static analysis of the Rust, TypeScript, JavaScript and Python source. Snyk does not read Cargo manifests; `cargo audit` and `osv-scanner` cover the Rust dependencies. The first Snyk Code run (November 2026, `main` at `d508eb0fe`) reported 236 findings, each reviewed: none is exploitable in the shipped app. They are test fixtures, hashes a protocol requires (rsync, WebDAV Digest, OAuth 1.0a, Cryptomator, provider checksums) and development scripts |
 | **CodeRabbit and Greptile** | Pull-request review. They are not a vulnerability scan and not a substitute for `cargo audit` |
 | **Dependabot** | GitHub-native dependency alerts and auto-PRs cross-referenced against the self-hosted audit list |
 | **Dependency Scanning** | npm/Cargo dependency graphs monitored through the configured CI and advisory workflows; counts depend on the locked revision |
