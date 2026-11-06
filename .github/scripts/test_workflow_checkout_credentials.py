@@ -23,7 +23,7 @@ USES = re.compile(r"^(\s*)(- )?uses:\s*actions/checkout@")
 
 
 def checkouts_without_the_setting(text):
-    """Line numbers (1-based) of checkout steps that lack persist-credentials: false."""
+    """Line numbers (1-based) of checkout steps whose `with:` lacks persist-credentials: false."""
     lines = text.split("\n")
     missing = []
     for i, line in enumerate(lines):
@@ -41,9 +41,37 @@ def checkouts_without_the_setting(text):
                 if indent < key_indent or (indent == key_indent - 2 and stripped.startswith("- ")):
                     break
             block.append(nxt)
-        if not any(re.match(r"^\s*persist-credentials:\s*false\s*(#.*)?$", b) for b in block):
+        if not with_sets_it(block, key_indent):
             missing.append(i + 1)
     return missing
+
+
+def with_sets_it(block, key_indent):
+    """True when the step's own `with:` map holds persist-credentials: false.
+
+    The key counts only as a direct child of `with:`: under `env:` (or nested
+    anywhere else) it is an environment variable or a stray key, and
+    actions/checkout still persists the token. A step that writes its keys
+    above `uses:` is reported too, which errs on the side of a red check.
+    """
+    inside = False
+    child_indent = None
+    for line in block:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if indent == key_indent:
+            inside = re.match(r"^with:\s*(#.*)?$", stripped) is not None
+            child_indent = None
+            continue
+        if not inside or indent < key_indent:
+            continue
+        if child_indent is None:
+            child_indent = indent
+        if indent == child_indent and re.match(r"^persist-credentials:\s*false\s*(#.*)?$", stripped):
+            return True
+    return False
 
 
 class CheckoutCredentials(unittest.TestCase):
@@ -73,6 +101,26 @@ class CheckoutCredentials(unittest.TestCase):
         )
         # The setting on the NEXT step does not count for the first checkout.
         self.assertEqual(checkouts_without_the_setting(bad), [2, 7])
+
+    def test_the_setting_counts_only_under_with(self):
+        misplaced = (
+            "    steps:\n"
+            "      - uses: actions/checkout@0123456789012345678901234567890123456789 # v5\n"
+            "        env:\n"
+            "          persist-credentials: false\n"
+            "        with:\n"
+            "          fetch-depth: 0\n"
+            "      - name: Checkout\n"
+            "        uses: actions/checkout@0123456789012345678901234567890123456789 # v5\n"
+            "        with:\n"
+            "          options:\n"
+            "            persist-credentials: false\n"
+            "      - name: Checkout\n"
+            "        uses: actions/checkout@0123456789012345678901234567890123456789 # v5\n"
+            "        persist-credentials: false\n"
+        )
+        # Under env:, nested deeper in with:, or as a step key: checkout persists the token.
+        self.assertEqual(checkouts_without_the_setting(misplaced), [2, 8, 13])
 
     def test_every_checkout_drops_the_token(self):
         files = sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml"))
