@@ -2497,13 +2497,19 @@ impl WebDavProvider {
         // share with 403. Whether that is the reason comes from its
         // capabilities, not from the message, which is translated (German
         // "Passwörter sind ... erforderlich" carries no "password"). #1506
-        // row 164. Without the capabilities the refusal stands.
-        if status == StatusCode::FORBIDDEN
-            && self
-                .nextcloud_link_password_enforced(&base)
-                .await
-                .unwrap_or(false)
-        {
+        // row 164. When the capabilities cannot be read, a password is tried
+        // once all the same (a 403 for another reason refuses again), and a
+        // refusal that stands then says the lookup failed (CodeRabbit, #1520).
+        let mut capability_failure: Option<String> = None;
+        let password_needed = status == StatusCode::FORBIDDEN
+            && match self.nextcloud_link_password_enforced(&base).await {
+                Ok(enforced) => enforced,
+                Err(e) => {
+                    capability_failure = Some(e.to_string());
+                    true
+                }
+            };
+        if password_needed {
             let password = Self::generate_share_password();
             let form_with_pw = format!("{}&password={}", form_body, urlencoding::encode(&password));
 
@@ -2524,10 +2530,15 @@ impl WebDavProvider {
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !status2.is_success() {
+                let lookup = capability_failure
+                    .as_deref()
+                    .map(|e| format!(" (the sharing capabilities could not be read: {e})"))
+                    .unwrap_or_default();
                 return Err(ProviderError::ServerError(format!(
-                    "OCS share failed: HTTP {} - {}",
+                    "OCS share failed: HTTP {} - {}{}",
                     status2,
-                    &text2[..text2.floor_char_boundary(200)]
+                    &text2[..text2.floor_char_boundary(200)],
+                    lookup
                 )));
             }
 
@@ -6672,7 +6683,7 @@ mod tests {
     /// A Nextcloud with `password.enforced` refusing a link share without a
     /// password, in German, and answering a second POST with one.
     async fn serve_share_refusal(
-        enforced: bool,
+        enforced: Option<bool>,
     ) -> (
         String,
         std::sync::Arc<std::sync::Mutex<Vec<bool>>>,
@@ -6691,6 +6702,9 @@ mod tests {
                     let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
                     let body = String::from_utf8_lossy(&body).to_string();
                     if method == axum::http::Method::GET && path == "/ocs/v1.php/cloud/capabilities" {
+                        let Some(enforced) = enforced else {
+                            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, String::new());
+                        };
                         let caps = format!(
                             r#"{{"ocs":{{"data":{{"capabilities":{{"files_sharing":{{"public":{{"enabled":true,"password":{{"enforced":{enforced}}}}}}}}}}}}}}}"#
                         );
@@ -6726,7 +6740,7 @@ mod tests {
     /// check returned the refusal instead of the link.
     #[tokio::test]
     async fn an_enforced_link_password_is_read_from_the_capabilities() {
-        let (base, posts, server) = serve_share_refusal(true).await;
+        let (base, posts, server) = serve_share_refusal(Some(true)).await;
         let mut provider =
             WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
                 .unwrap();
@@ -6741,10 +6755,30 @@ mod tests {
         assert_eq!(posts, vec![false, true]);
     }
 
+    /// CodeRabbit (#1520): capabilities that cannot be read do not leave a
+    /// password-enforcing server's refusal standing: a password is tried.
+    #[tokio::test]
+    async fn an_unreadable_capability_still_tries_a_password() {
+        let (base, posts, server) = serve_share_refusal(None).await;
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        let outcome = provider
+            .nextcloud_create_share("/report.pdf", ShareLinkOptions::default())
+            .await;
+        let posts = posts.lock().unwrap().clone();
+        server.abort();
+        assert!(outcome
+            .expect("the retry with a password gets the link")
+            .password
+            .is_some());
+        assert_eq!(posts, vec![false, true]);
+    }
+
     /// Without the capability a 403 is the answer: no second POST.
     #[tokio::test]
     async fn a_refusal_without_an_enforced_password_is_not_retried() {
-        let (base, posts, server) = serve_share_refusal(false).await;
+        let (base, posts, server) = serve_share_refusal(Some(false)).await;
         let mut provider =
             WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
                 .unwrap();
