@@ -2122,7 +2122,11 @@ async fn remote_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
             // real whole-bucket sweep needs an explicit acknowledgement.
             let dry_run = get_bool_opt(args, "dry_run").unwrap_or(true);
             let confirm_whole_bucket = get_bool_opt(args, "confirm_whole_bucket").unwrap_or(false);
-            if !dry_run && prefix.is_empty() && !confirm_whole_bucket {
+            // S3 drops a leading slash from the prefix (`providers/s3.rs`), so
+            // "/" or "//" sweeps the whole bucket too and needs the same
+            // acknowledgement as an empty prefix.
+            let whole_bucket = prefix.trim_start_matches('/').is_empty();
+            if !dry_run && whole_bucket && !confirm_whole_bucket {
                 return Err(ToolError::InvalidArgs {
                     tool: "remote_trash".to_string(),
                     reason: "action=empty with an empty prefix permanently purges every version and delete marker in the whole bucket: pass a non-empty 'prefix' to scope the purge, or set confirm_whole_bucket=true to acknowledge a whole-bucket purge".to_string(),
@@ -7351,6 +7355,27 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("confirm_whole_bucket"), "got: {msg}");
         assert!(backend.empty_calls.lock().unwrap().is_empty());
+    }
+
+    // Deep scan item 28: S3 drops a leading slash from the prefix, so "/"
+    // sweeps the whole bucket and needs the same acknowledgement.
+    #[tokio::test]
+    async fn trash_empty_with_a_slash_only_prefix_requires_confirm_flag() {
+        for prefix in ["/", "//"] {
+            let backend = Arc::new(FakeBackend::sample());
+            let ctx = test_ctx(Arc::clone(&backend));
+            let err = remote_trash(
+                &ctx,
+                &json!({"server": "s", "action": "empty", "dry_run": false, "prefix": prefix}),
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                err.to_string().contains("confirm_whole_bucket"),
+                "{prefix}: {err}"
+            );
+            assert!(backend.empty_calls.lock().unwrap().is_empty(), "{prefix}");
+        }
     }
 
     #[tokio::test]
