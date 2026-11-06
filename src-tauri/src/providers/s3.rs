@@ -1891,6 +1891,20 @@ impl S3Provider {
             .map_err(|error| ProviderError::ServerError(error.to_string()))
     }
 
+    /// Fastly Object Storage answers 501 NotImplemented to `GetBucketVersioning`
+    /// (Tier 0, 2026-11-06), so every version call is refused here as "not
+    /// supported", the same answer the capability flag gives, instead of
+    /// surfacing the 501 as a server error. The GUI, CLI and MCP already check
+    /// `supports_versions` first; this covers a direct trait call.
+    fn reject_fastly_versioning(&self) -> Result<(), ProviderError> {
+        if self.is_fastly_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Fastly Object Storage does not support object versioning".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Whether a server-side copy of `source_size` bytes is composed as a
     /// multipart `UploadPartCopy` sequence instead of a single-PUT
     /// `CopyObject`. Filebase is the exception: it rejects `UploadPartCopy`
@@ -7636,6 +7650,7 @@ impl StorageProvider for S3Provider {
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -7963,6 +7978,7 @@ impl StorageProvider for S3Provider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -8027,6 +8043,7 @@ impl StorageProvider for S3Provider {
     /// object (makes the prior version current again with no data copy); with a
     /// content version's id it permanently purges that version.
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -8074,6 +8091,7 @@ impl StorageProvider for S3Provider {
         prefix: &str,
         include_noncurrent: bool,
     ) -> Result<Vec<TrashEntry>, ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -13663,6 +13681,22 @@ mod tests {
         ] {
             assert!(
                 matches!(&result, Err(ProviderError::NotSupported(m)) if m.contains("Fastly") && m.contains("tagging")),
+                "{result:?}"
+            );
+        }
+        // A direct version call is refused as not supported (FOS answers 501).
+        for result in [
+            provider.list_versions("/a.txt").await.map(|_| ()),
+            provider.restore_version("/a.txt", "v1").await,
+            provider.delete_version("/a.txt", "v1").await,
+            provider.list_object_versions("/", true).await.map(|_| ()),
+            provider
+                .empty_object_versions("/", true, true)
+                .await
+                .map(|_| ()),
+        ] {
+            assert!(
+                matches!(&result, Err(ProviderError::NotSupported(m)) if m.contains("Fastly") && m.contains("versioning")),
                 "{result:?}"
             );
         }
