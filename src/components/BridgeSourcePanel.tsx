@@ -31,6 +31,8 @@ interface ImportedServer {
     aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
     hasStoredAeroCryptPassword?: boolean;
     hasStoredAeroCryptSalt?: boolean;
+    /** The Filen CLI API key the backend moved into the vault (#230). */
+    hasStoredFilenApiKey?: boolean;
 }
 
 interface BridgeImportResult {
@@ -235,6 +237,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                 aeroCryptOverlay: s.aeroCryptOverlay,
                 hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
                 hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
+                hasStoredFilenApiKey: s.hasStoredFilenApiKey,
             }));
         if (selected.length === 0 || committingRef.current) return;
         // The commit is not idempotent: onImport appends to the persisted list

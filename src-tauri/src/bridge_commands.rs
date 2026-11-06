@@ -579,6 +579,18 @@ pub fn materialize_imported_crypt_overlay(
     Ok(())
 }
 
+/// `entry` without the private `__aeroftp_*` options. Only the backend writes
+/// them, from the vault, when credentials are exported (`inject_rclone_*`): a
+/// caller that sends them would otherwise get its own token and app keys
+/// written into a file that reports no credentials (Codex review, 2026-11-06).
+fn without_private_export_options(entry: &Value) -> Value {
+    let mut entry = entry.clone();
+    if let Some(options) = entry.get_mut("options").and_then(|o| o.as_object_mut()) {
+        options.retain(|key, _| !key.starts_with("__aeroftp_"));
+    }
+    entry
+}
+
 /// Import profiles from a third-party config file. Validates the path
 /// (traversal reject + canonicalize + regular-file + 10 MB cap),
 /// upgrades any recovered secret into the AES-256-GCM vault and returns
@@ -631,6 +643,44 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                 crate::user_partitions::store_active_credential_dual(store, key, secret)
                     .map_err(|e| e.to_string())
             })?;
+        }
+        // Issue #230: the Filen CLI API key lives in the vault under
+        // `filen_api_key_<id>`, never in the saved profile's options, which
+        // reach the renderer and the profile store. The one-time startup
+        // migration does not run again, so an imported key is moved here.
+        for server in &mut servers {
+            let Some(key) = server
+                .get_mut("options")
+                .and_then(|o| o.as_object_mut())
+                .and_then(|o| o.remove("filen_api_key"))
+            else {
+                continue;
+            };
+            let key = key.as_str().map(str::trim).unwrap_or("").to_string();
+            let id = server
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if key.is_empty() || id.is_empty() {
+                continue;
+            }
+            let stored = store.as_ref().is_some_and(|store| {
+                crate::user_partitions::store_active_credential_dual(
+                    store,
+                    &format!("filen_api_key_{id}"),
+                    &key,
+                )
+                .is_ok()
+            });
+            if stored {
+                server["hasStoredFilenApiKey"] = Value::Bool(true);
+            } else {
+                secret_failures.push((
+                    id,
+                    "its Filen API key was not stored (unlock the vault and import again, or add the key in the profile)".to_string(),
+                ));
+            }
         }
     }
 
@@ -747,6 +797,7 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                 "aeroCryptOverlay": s.get("aeroCryptOverlay").cloned().unwrap_or(Value::Null),
                 "hasStoredAeroCryptPassword": s.get("hasStoredAeroCryptPassword").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredAeroCryptSalt": s.get("hasStoredAeroCryptSalt").cloned().unwrap_or(Value::Bool(false)),
+                "hasStoredFilenApiKey": s.get("hasStoredFilenApiKey").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredCredential": has_cred,
             })
         })
@@ -1612,7 +1663,7 @@ async fn export_bridge_profiles(
                 // refreshable remote. Other sources are untouched.
                 let injected_entry;
                 let entry: &Value = if source == "rclone" && include_credentials {
-                    let mut e = entry.clone();
+                    let mut e = without_private_export_options(entry);
                     if let Some(st) = store {
                         let id = e
                             .get("id")
@@ -1644,13 +1695,14 @@ async fn export_bridge_profiles(
                     injected_entry = e;
                     &injected_entry
                 } else if include_credentials {
-                    entry
+                    injected_entry = without_private_export_options(entry);
+                    &injected_entry
                 } else {
                     // Review L10: a secret an older import left in `options`
                     // (the load-time crypt migration refuses a profile whose
                     // crypt password is empty, and keeps its salt there) is
                     // still a credential, and this export has none.
-                    let mut e = entry.clone();
+                    let mut e = without_private_export_options(entry);
                     if let Some(o) =
                         crate::rclone_import::options_without_secrets(e.get("options"))
                     {
@@ -1756,6 +1808,21 @@ async fn export_bridge_profiles(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_export_options_never_come_from_the_caller() {
+        let entry = json!({
+            "id": "x",
+            "options": {
+                "__aeroftp_oauth_token": "{}",
+                "__aeroftp_oauth_client_id": "app",
+                "__aeroftp_oauth_client_secret": "secret",
+                "region": "eu"
+            }
+        });
+        let cleaned = without_private_export_options(&entry);
+        assert_eq!(cleaned["options"], json!({ "region": "eu" }));
+    }
 
     /// The GUI Export greys out a profile whose protocol is not in
     /// `supportedProtocols` and, for FileLu, used to say the tool does not
