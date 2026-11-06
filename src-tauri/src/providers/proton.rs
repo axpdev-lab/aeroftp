@@ -133,6 +133,11 @@ pub struct ProtonCliProvider {
     /// proton-drive launch ([`LISTING_REUSE`]). Any launch that may change the
     /// remote clears it.
     recent_listing: std::sync::Mutex<Option<(String, Vec<RemoteEntry>, std::time::Instant)>>,
+    /// Whether the latest bulk download bound its names (and claimed sizes)
+    /// from the reused listing: a size mismatch then goes back to the
+    /// single-file path, which checks the file without that listing's size,
+    /// rather than failing for good on what may be an older revision's.
+    binding_reused_listing: bool,
 }
 
 /// How long a listing of this instance still serves a bulk download's
@@ -175,9 +180,10 @@ impl ProtonCliProvider {
         if first_segment(first) != "my-files" || remotes.iter().any(|r| parent_of(r) != parent) {
             return (remotes.to_vec(), claimed);
         }
-        let Ok(entries) = self.listing_for_binding(&parent).await else {
+        let Ok((entries, reused)) = self.listing_for_binding(&parent).await else {
             return (remotes.to_vec(), claimed);
         };
+        self.binding_reused_listing = reused;
         let mut by_name = std::collections::HashMap::new();
         let mut duplicates = std::collections::HashSet::new();
         for entry in entries {
@@ -231,18 +237,23 @@ impl ProtonCliProvider {
         let reading = args.first().map(AsRef::as_ref) == Some("filesystem")
             && matches!(verb, "list" | "info" | "download");
         if !reading {
-            if let Ok(mut listing) = self.recent_listing.lock() {
-                *listing = None;
-            }
+            self.forget_listing();
+        }
+    }
+
+    fn forget_listing(&self) {
+        if let Ok(mut listing) = self.recent_listing.lock() {
+            *listing = None;
         }
     }
 
     /// The entries of `folder` from this instance's last listing when it is
     /// that folder and recent enough, else a fresh listing.
+    /// `true` with the entries when they came from the reused listing.
     async fn listing_for_binding(
         &mut self,
         folder: &str,
-    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+    ) -> Result<(Vec<RemoteEntry>, bool), ProviderError> {
         let reused = self.recent_listing.lock().ok().and_then(|listing| {
             listing
                 .as_ref()
@@ -250,8 +261,8 @@ impl ProtonCliProvider {
                 .map(|(_, entries, _)| entries.clone())
         });
         match reused {
-            Some(entries) => Ok(entries),
-            None => self.list(folder).await,
+            Some(entries) => Ok((entries, true)),
+            None => Ok((self.list(folder).await?, false)),
         }
     }
 
@@ -290,10 +301,15 @@ impl ProtonCliProvider {
         progress: Option<BulkProgress>,
     ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
         let mut claimed = std::collections::HashMap::new();
+        self.binding_reused_listing = false;
         let outcomes = self
             .transfer_bulk_once(items, upload, progress, &mut claimed)
             .await?;
-        if !upload {
+        if !upload && self.binding_reused_listing {
+            // Sizes from a reused listing may be an older revision's: the
+            // single-file path checks what it downloads without them.
+            self.bulk_claimed_sizes.clear();
+        } else if !upload {
             // Only what goes back to the single-file path is held to the
             // listing's claimed size there: a file this bulk published, or
             // failed for good, keeps the ordinary single-file download.
@@ -547,7 +563,16 @@ impl ProtonCliProvider {
                     Err(error) => Err(error),
                 };
                 if let Err(error) = publish {
-                    *result = BulkTransferOutcome::Failed(ProviderError::IoError(error));
+                    let stale = self.binding_reused_listing
+                        && claimed_sizes.contains_key(&name)
+                        && error.kind() == std::io::ErrorKind::InvalidData;
+                    *result = if stale {
+                        BulkTransferOutcome::NotAttempted(format!(
+                            "{error}; the size came from a reused listing, so the single-file path checks it afresh"
+                        ))
+                    } else {
+                        BulkTransferOutcome::Failed(ProviderError::IoError(error))
+                    };
                     continue;
                 }
             }
@@ -571,6 +596,7 @@ impl ProtonCliProvider {
             binary,
             bulk_claimed_sizes: std::collections::HashMap::new(),
             recent_listing: std::sync::Mutex::new(None),
+            binding_reused_listing: false,
             trash_listing: None,
         }
     }
@@ -1661,6 +1687,8 @@ impl StorageProvider for ProtonCliProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // A new session may be another account: no listing carries over.
+        self.forget_listing();
         self.binary = resolve_proton_drive(self.config.binary_path.as_deref());
         if !binary_exists(&self.binary) {
             return Err(ProviderError::InvalidConfig(format!(
@@ -1699,6 +1727,7 @@ impl StorageProvider for ProtonCliProvider {
     }
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
+        self.forget_listing();
         // Must not call `auth logout`: that session belongs to the user.
         self.connected = false;
         self.current_path = START_DIR.to_string();
@@ -2397,6 +2426,7 @@ impl StorageProvider for ProtonCliProvider {
             // A listing clone downloads nothing.
             bulk_claimed_sizes: std::collections::HashMap::new(),
             recent_listing: std::sync::Mutex::new(None),
+            binding_reused_listing: false,
             trash_listing: None,
         }))
     }
@@ -2857,6 +2887,89 @@ mod cli_sequence_tests {
             );
             let download = verbs(&argv, "download");
             assert!(download[0].contains(&format!("/my-files/{uid_a}")));
+        }
+    }
+
+    fn bulk_fixture(dir: &Path, claimed: Option<u64>) -> Vec<BulkTransferItem> {
+        let uid_a = format!("{}~{}", "A".repeat(22), "B".repeat(22));
+        let uid_b = format!("{}~{}", "A".repeat(22), "C".repeat(22));
+        let revision = |size: Option<u64>| match size {
+            Some(size) => serde_json::json!({"claimedSize": size}),
+            None => serde_json::json!({}),
+        };
+        std::fs::write(
+            dir.join("my-files_bulk.json"),
+            serde_json::to_vec(&serde_json::json!([
+                {"name":{"ok":true,"value":"a.txt"},"uid":uid_a,"type":"file","activeRevision":revision(claimed)},
+                {"name":{"ok":true,"value":"b.txt"},"uid":uid_b,"type":"file","activeRevision":revision(None)}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        let map: std::collections::HashMap<_, _> =
+            [(uid_a, "a.txt"), (uid_b, "b.txt")].into_iter().collect();
+        std::fs::write(
+            dir.join("uid-name-map.json"),
+            serde_json::to_vec(&map).unwrap(),
+        )
+        .unwrap();
+        ["a.txt", "b.txt"]
+            .iter()
+            .map(|name| BulkTransferItem {
+                local_path: dir.join(name).to_string_lossy().into_owned(),
+                remote_path: format!("/my-files/bulk/{name}"),
+                size: 14,
+            })
+            .collect()
+    }
+
+    /// A reconnect may be another account: the listing of the previous
+    /// session is not reused.
+    #[tokio::test]
+    async fn a_reconnect_drops_the_reusable_listing() {
+        let dir = tempfile::tempdir().unwrap();
+        let shim = link_shim(dir.path());
+        let items = bulk_fixture(dir.path(), None);
+        let mut p = provider(&shim);
+        p.list("/my-files/bulk").await.unwrap();
+        p.disconnect().await.unwrap();
+        p.connect().await.unwrap();
+        let before = verbs(&read_argv(dir.path()), "list").len();
+        p.download_bulk(&items, None).await.unwrap();
+        assert_eq!(verbs(&read_argv(dir.path()), "list").len() - before, 1);
+    }
+
+    /// The stand-in writes 14 bytes. A claimed size of 10 from a listing the
+    /// bulk reused may be an older revision's: the file goes back to the
+    /// single-file path, which checks it without that size. From a fresh
+    /// listing the same mismatch stays a final failure, as before.
+    #[tokio::test]
+    async fn a_size_mismatch_on_a_reused_listing_goes_back_to_single_file() {
+        for reuse in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let shim = link_shim(dir.path());
+            let items = bulk_fixture(dir.path(), Some(10));
+            let mut p = provider(&shim);
+            if reuse {
+                p.list("/my-files/bulk").await.unwrap();
+            }
+            let results = p.download_bulk(&items, None).await.unwrap();
+            if reuse {
+                assert!(
+                    matches!(results[0], BulkTransferOutcome::NotAttempted(_)),
+                    "{results:?}"
+                );
+                assert!(p.bulk_claimed_sizes.is_empty());
+            } else {
+                assert!(
+                    matches!(results[0], BulkTransferOutcome::Failed(_)),
+                    "{results:?}"
+                );
+            }
+            assert!(
+                matches!(results[1], BulkTransferOutcome::Completed),
+                "{results:?}"
+            );
         }
     }
 

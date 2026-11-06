@@ -41,6 +41,13 @@ const TRANSFER_ROWS: &str = "--limit=1000";
 /// Paths are printed in full up to this many characters; a row whose path
 /// is cut anyway never matches a staged file exactly, so it proves nothing.
 const PATH_DISPLAY: &str = "--path-display-size=4096";
+/// Silence after which a bulk command is cut, as a single transfer is; short
+/// in tests so a stalled stand-in is cut quickly.
+const BULK_IDLE: Duration = if cfg!(test) {
+    Duration::from_secs(3)
+} else {
+    Duration::from_secs(super::MEGA_TRANSFER_IDLE_SECS)
+};
 /// How long one `mega-transfers -c` may take when a dropped bulk cancels
 /// what it owns.
 const CANCEL_WAIT: Duration = Duration::from_secs(5);
@@ -152,10 +159,14 @@ fn transfers_now(command: &str, args: &[&str]) -> Option<String> {
     let mut child = builder.spawn().ok()?;
     let mut stdout = child.stdout.take()?;
     // Read on a thread: a long table fills the pipe before the process ends.
-    let reader = std::thread::spawn(move || {
+    // The thread is never joined: on Windows `mega-transfers.bat` runs
+    // `MegaClient.exe`, which can keep the pipe open after the batch file is
+    // killed, and the drop handler must not wait for it.
+    let (sent, received) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
         let mut out = String::new();
         let _ = stdout.read_to_string(&mut out);
-        out
+        let _ = sent.send(out);
     });
     let deadline = std::time::Instant::now() + CANCEL_WAIT;
     loop {
@@ -171,7 +182,11 @@ fn transfers_now(command: &str, args: &[&str]) -> Option<String> {
             }
         }
     }
-    reader.join().ok()
+    // At least a moment for a table that is already complete.
+    let left = deadline.saturating_duration_since(std::time::Instant::now());
+    received
+        .recv_timeout(left.max(Duration::from_millis(200)))
+        .ok()
 }
 
 /// The transfers one bulk handed to the MEGAcmd server, which goes on with
@@ -602,13 +617,18 @@ impl MegaCmdProvider {
         };
         let run = run_bulk_command(
             self.bulk_command("mega-put", &args),
-            Duration::from_secs(super::MEGA_TRANSFER_IDLE_SECS),
+            BULK_IDLE,
             &mut on_line,
         )
         .await;
         if let Err(e) = &run {
             tracing::warn!(target: "mega", "[BULK] mega-put did not end normally: {e:?}");
         }
+        // Cut for silence, the client printed no more start lines, but the
+        // server may already hold sources it had not announced: then no tag
+        // does not mean never started. (A put that could not be launched at
+        // all, or that ended by itself, announced every source it took.)
+        let put_was_cut = matches!(run, Err(None));
 
         // Without the record every tag counts as unfinished and is cancelled,
         // and no file is proven (uncertain).
@@ -639,7 +659,7 @@ impl MegaCmdProvider {
                 .collect();
             let listed = after.as_ref().map(|names| names.get(&a.name).copied());
             outcomes[a.index] = match (tags.as_slice(), listed) {
-                ([], Some(None)) => BulkTransferOutcome::NotAttempted(
+                ([], Some(None)) if !put_was_cut => BulkTransferOutcome::NotAttempted(
                     "MEGAcmd did not start this upload".into(),
                 ),
                 ([], _) => BulkTransferOutcome::Uncertain(
@@ -668,11 +688,14 @@ impl MegaCmdProvider {
                             item.size
                         ))
                     }
+                    // Ended for good and not on MEGA: nothing reached the
+                    // folder, so the single-file path may try it once, with
+                    // its own retries, as for a transient failure.
                     (Some(state @ ("FAILED" | "CANCELLED")), Some(None)) => {
-                        BulkTransferOutcome::Failed(ProviderError::TransferFailed(format!(
-                            "MEGAcmd reported the upload as {}",
+                        BulkTransferOutcome::NotAttempted(format!(
+                            "MEGAcmd reported the upload as {} and MEGA does not list the file",
                             state.to_lowercase()
-                        )))
+                        ))
                     }
                     (state, _) => BulkTransferOutcome::Uncertain(format!(
                         "No proof of this upload ({}); it may be on MEGA",
@@ -738,12 +761,8 @@ impl MegaCmdProvider {
             remote_folder.clone(),
             Self::normalize_local_path_for_cli(&staging.path().to_string_lossy()),
         ];
-        let run = run_bulk_command(
-            self.bulk_command("mega-get", &args),
-            Duration::from_secs(super::MEGA_TRANSFER_IDLE_SECS),
-            &mut |_| {},
-        )
-        .await;
+        let run =
+            run_bulk_command(self.bulk_command("mega-get", &args), BULK_IDLE, &mut |_| {}).await;
         if let Err(e) = &run {
             tracing::warn!(target: "mega", "[BULK] mega-get did not end normally: {e:?}");
         }
@@ -1070,7 +1089,7 @@ mod tests {
                 outcomes[1]
             );
             assert!(
-                matches!(outcomes[2], BulkTransferOutcome::Failed(_)),
+                matches!(outcomes[2], BulkTransferOutcome::NotAttempted(_)),
                 "{:?}",
                 outcomes[2]
             );
@@ -1365,6 +1384,28 @@ mod tests {
                 matches!(outcomes[2], BulkTransferOutcome::Completed),
                 "{outcomes:?}"
             );
+        }
+
+        /// A put cut for silence may leave sources the server took but the
+        /// client never announced: such a file is uncertain, never sent again
+        /// by the single-file path, even when MEGA does not list it yet.
+        #[tokio::test]
+        async fn a_cut_put_leaves_unannounced_files_uncertain() {
+            let (mut provider, dir) = provider_on_bulk_stand_in();
+            std::fs::write(dir.path().join("listing.txt"), b"").unwrap();
+            std::fs::write(dir.path().join("put-stall"), b"").unwrap();
+            let local = tempfile::tempdir().unwrap();
+            let items = uploads(local.path(), &["a.bin", "b.bin"]);
+            let outcomes = provider.bulk_upload(&items, None).await.unwrap();
+            assert!(
+                matches!(outcomes[0], BulkTransferOutcome::Uncertain(_)),
+                "{outcomes:?}"
+            );
+            assert!(
+                matches!(outcomes[1], BulkTransferOutcome::Uncertain(_)),
+                "{outcomes:?}"
+            );
+            assert_eq!(read(&dir.path().join("cancel.log")).trim(), "101");
         }
 
         fn staging_left(local: &Path) -> bool {

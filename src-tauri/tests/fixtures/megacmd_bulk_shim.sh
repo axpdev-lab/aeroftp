@@ -10,7 +10,8 @@
 #   MEGAcmd 2.6 does with --print-tag-at-start, records `N|STATE` in
 #   up-rows.txt and lists a completed file in listing.txt. put-skip-<name>:
 #   no tag and no file; put-fail-<name>: FAILED, no file; put-size-<name>:
-#   lists that size instead; put-hang: rows stay ACTIVE and the put waits.
+#   lists that size instead; put-hang: rows stay ACTIVE and the put waits;
+#   put-stall: only the first source is announced, then silence.
 # - mega-get <folder> <staging> writes every file of listing.txt under
 #   <staging>/<folder> and records `N|STATE|<destination>` in down-rows.txt,
 #   with a row for the folder itself first. get-fail-<name>: FAILED, no
@@ -59,6 +60,14 @@ case "$(basename "$0")" in
         fi
         state=COMPLETED
         [ -f "$here/put-hang" ] && state=ACTIVE
+        # put-stall: the first source is announced and ACTIVE, then the put
+        # goes silent before announcing the others.
+        if [ -f "$here/put-stall" ]; then
+            next_tag
+            printf 'Upload started: Tag = %s. Source = %s\n' "$tag" "$1"
+            echo "$tag|ACTIVE" >> "$here/up-rows.txt"
+            exec sleep 10
+        fi
         while [ $# -gt 1 ]; do
             src=$1
             name=$(basename "$src")
