@@ -36,6 +36,18 @@ function computeOutputDimensions(
     return { width: Math.round(w), height: Math.round(h) };
 }
 
+/**
+ * Where "Save Copy" writes: the typed name reduced to its last component, in
+ * the image's own folder. A name holding `/`, `\\` or `..` used to be joined
+ * as typed and the copy landed outside the folder (deep-scan 81); an empty,
+ * `.` or `..` name falls back to the original's base name.
+ */
+export function copyOutputPath(directory: string, name: string, baseName: string, format: string): string {
+    const last = (name.split(/[\\/]/).pop() ?? '').trim();
+    const plain = last === '' || last === '.' || last === '..' ? baseName : last;
+    return `${directory}/${plain}_edited.${format}`;
+}
+
 export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
     isOpen, filePath, fileName, editState, originalDimensions, onSaved, onClose,
 }) => {
@@ -92,7 +104,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
         setError(null);
         const outputPath = mode === 'replace'
             ? filePath
-            : `${directory}/${name}_edited.${format}`;
+            : copyOutputPath(directory, name, baseName, format);
         try {
             const result = await invoke<ImageResult>('process_image', {
                 inputPath: filePath,
