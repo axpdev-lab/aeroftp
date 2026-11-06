@@ -65,6 +65,17 @@ export const endpointStaysOnThisMachine = (endpoint: string): boolean => {
 
 const spellings = (rule: RelaxationRule): string[] => [rule.key, ...(rule.aliases ?? [])];
 
+/** The host a URL parser reaches for `endpoint`, lowercase, or undefined. */
+const endpointHost = (endpoint: string): string | undefined => {
+    const trimmed = endpoint.trim();
+    if (!trimmed) return undefined;
+    try {
+        return new URL(trimmed.includes('://') ? trimmed : `http://${trimmed}`).hostname.toLowerCase() || undefined;
+    } catch {
+        return undefined;
+    }
+};
+
 /**
  * The relaxing options of a profile. The loopback exemption holds only when
  * every address the profile names (its `host` and its `options.endpoint`)
@@ -77,6 +88,14 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
     const addresses = [profile.host, options.endpoint]
         .filter((a): a is string => typeof a === 'string' && a.trim() !== '');
     const onLoopback = addresses.length > 0 && addresses.every(endpointStaysOnThisMachine);
+    // A preset owns its defaults only at the address it fixes: an imported
+    // file can name a local-bridge preset and point it at a remote server.
+    const presetHosts = [presetDefaults?.server, presetDefaults?.endpoint]
+        .filter((a): a is string => typeof a === 'string')
+        .map(endpointHost)
+        .filter((h): h is string => !!h);
+    const presetOwnsTheAddress = !!presetDefaults && addresses.every(address =>
+        endpointStaysOnThisMachine(address) || presetHosts.includes(endpointHost(address) ?? ''));
     const found: Relaxation[] = [];
     for (const rule of rules) {
         const actual = spellings(rule)
@@ -84,7 +103,7 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
             .map(key => options[key])
             .find(value => rule.unsafe.some(u => matches(value, u)));
         if (actual === undefined) continue;
-        if (presetDefaults && rule.key in presetDefaults) continue;
+        if (presetOwnsTheAddress && presetDefaults && rule.key in presetDefaults) continue;
         if (rule.loopbackExempt && onLoopback) continue;
         found.push({ key: rule.key, value: typeof actual === 'string' ? actual : String(actual) });
     }

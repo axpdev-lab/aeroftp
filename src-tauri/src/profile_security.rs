@@ -113,6 +113,22 @@ pub fn security_relaxations_of(
         && addresses
             .iter()
             .all(|address| crate::util::endpoint_stays_on_this_machine(address));
+    // A preset owns its defaults only at the address it fixes: an imported
+    // file can name a local-bridge preset and point it at a remote server
+    // (CodeRabbit on #1506 Requested 198), so the exemption needs every
+    // address of the profile to be the preset's own host or loopback.
+    let preset_owns_the_address = preset.is_some_and(|preset| {
+        let own: Vec<String> = ["server", "endpoint"]
+            .iter()
+            .filter_map(|key| preset.defaults.get(*key).and_then(Value::as_str))
+            .filter_map(crate::util::endpoint::endpoint_host)
+            .collect();
+        addresses.iter().all(|address| {
+            crate::util::endpoint_stays_on_this_machine(address)
+                || crate::util::endpoint::endpoint_host(address)
+                    .is_some_and(|host| own.contains(&host))
+        })
+    });
     table()
         .relaxations
         .iter()
@@ -122,7 +138,9 @@ pub fn security_relaxations_of(
                 .filter(|(key, _)| rule.names(key))
                 .map(|(_, value)| value)
                 .find(|value| rule.unsafe_values.iter().any(|u| value_matches(value, u)))?;
-            if preset.is_some_and(|preset| preset.defaults.contains_key(&rule.key)) {
+            if preset_owns_the_address
+                && preset.is_some_and(|preset| preset.defaults.contains_key(&rule.key))
+            {
                 return None;
             }
             if rule.loopback_exempt && on_loopback {

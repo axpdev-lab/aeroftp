@@ -1379,7 +1379,7 @@
             "importSecurityTitle": "უსაფრთხოების პარამეტრები ამ სარეზერვო ასლში",
             "importSecurityHelp": "ეს პარამეტრები გამორთავს უსაფრთხოების შემოწმებას. თითოეული შემოვა უსაფრთხო მდგომარეობაში, თუ არ მონიშნავთ, რომ ფაილში არსებული სახით დარჩეს.",
             "importSecurityVerifyCert": "სერტიფიკატის შემოწმება გამორთულია",
-            "importSecurityCleartextEndpoint": "დაშიფრული არ არის S3 ბოლო წერტილი, ნებადართულია",
+            "importSecurityCleartextEndpoint": "დაუშიფრავი S3 ბოლო წერტილი ნებადართულია",
             "importSecurityCleartextStorage": "დაუშიფრავი საცავის მისამართი ნებადართულია",
             "importSecurityPlainHttp": "ჩვეულებრივი HTTP HTTPS-ის ნაცვლად",
             "importSecurityPasvAddress": "მონაცემთა კავშირი სერვერის მიერ მითითებულ მისამართზე (PASV)",

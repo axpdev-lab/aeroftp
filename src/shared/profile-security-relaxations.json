@@ -2,7 +2,7 @@
   "_doc": [
     "Saved-profile options that turn off a check the connection would otherwise make. One table, read by the backend (src-tauri/src/profile_security.rs) and by the frontend (src/utils/profileSecurity.ts); both test against the cases below. #1506 Requested 188 and 198.",
     "An import (an .aeroftp backup, a keystore restore, a third-party config) brings each of these in its safe state, which is the option left out, unless the user keeps it on purpose. CLI strict mode refuses a profile that carries one.",
-    "A relaxed value is not reported when the profile's preset declares a default for the same key (the preset owns that setting: Blomp's cleartext storage, the Filen Desktop S3 bridge's certificate, the local WebDAV bridges' scheme), or, for an entry marked loopbackExempt, when the profile reaches a loopback host (the bytes never leave this machine).",
+    "A relaxed value is not reported when the profile's preset declares a default for the same key and every address the profile names is the preset's own host or loopback (the preset owns that setting at that address: Blomp's cleartext storage, the Filen Desktop S3 bridge's certificate, the local WebDAV bridges' scheme), or, for an entry marked loopbackExempt, when the profile reaches a loopback host (the bytes never leave this machine).",
     "unsafe lists the values that relax the check. A boolean option counts as relaxed whether it is stored as a JSON boolean or as the string the providers read; webdavScheme compares case-insensitively. aliases are the other spellings the connection loader reads as the same option (the backend matches them through canonicalize_profile_option_key, a test checks the list). The safe state removes every spelling; safe, when present, is the value stored instead, for an option whose absence is not safe on its own (a WebDAV host on port 80 picks HTTP when no scheme is set). The loopback exemption needs every address the profile names, its host and its options.endpoint, to stay on this machine."
   ],
   "relaxations": [
@@ -33,6 +33,8 @@
     { "name": "the snake_case spelling the loader reads", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "verify_cert": false } }, "relaxed": ["verifyCert"] },
     { "name": "an unused loopback endpoint does not exempt a remote host", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "verifyCert": false, "endpoint": "http://127.0.0.1" } }, "relaxed": ["verifyCert"] },
     { "name": "plain WebDAV stored as tls_mode", "profile": { "host": "dav.example.com", "port": 80, "protocol": "webdav", "options": { "tls_mode": "http" } }, "relaxed": ["webdavScheme"] },
+    { "name": "a local-bridge preset pointed at a remote server is not exempt", "profile": { "host": "", "protocol": "s3", "providerId": "filen-desktop-s3", "options": { "endpoint": "https://s3.attacker.example", "verifyCert": false } }, "relaxed": ["verifyCert"] },
+    { "name": "Blomp on another host keeps no exemption", "profile": { "host": "swift.example.net", "protocol": "swift", "providerId": "blomp", "options": { "allowCleartextStorage": true } }, "relaxed": ["allowCleartextStorage"] },
     { "name": "plain FTP is information, not a relaxation", "profile": { "host": "ftp.example.com", "protocol": "ftp", "options": { "tlsMode": "none" } }, "relaxed": [] }
   ]
 }
