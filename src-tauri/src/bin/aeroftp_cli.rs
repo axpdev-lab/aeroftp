@@ -31641,6 +31641,16 @@ use ftp_client_gui_lib::credential_store::CredentialStore;
 /// `aerocrypt_overlay_pw_<id>` / `aerocrypt_overlay_salt_<id>` shared by both
 /// overlay kinds (lib.rs ~15610). Mirrors `cli_unlock_crypt_compare_keys`, which
 /// resolves the SAME binding for the compare path.
+/// The binding the chokepoint wraps a profile's session with, secrets aside:
+/// the one the GUI, the MCP and AeroCloud read (`overlay_binding_from_profile`),
+/// so an unscoped binding anchors at the starting folder here too. The CLI
+/// built its own copy, which read it as the whole remote.
+fn cli_overlay_binding(
+    profile: &serde_json::Value,
+) -> Option<ftp_client_gui_lib::crypt_compare::OverlayUnlockParams> {
+    ftp_client_gui_lib::crypt_overlay_provider::overlay_binding_from_profile(profile)
+}
+
 async fn cli_apply_crypt_overlay(
     provider: Box<dyn StorageProvider>,
     cli: &Cli,
@@ -31680,24 +31690,13 @@ async fn cli_apply_crypt_overlay(
         return Ok(provider);
     }
 
-    let overlay = profile
-        .get("aeroCryptOverlay")
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
-    let kind = ftp_client_gui_lib::crypt_overlay_provider::overlay_kind(&overlay).to_string();
+    // Confirmed bound above, so from here on fail closed.
+    let Some(binding) = cli_overlay_binding(profile) else {
+        print_error(format, "Crypt overlay unlock failed: unreadable binding", 6);
+        return Err(6);
+    };
+    let kind = binding.kind.clone();
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    // The bound plaintext anchor: the binding's scope, or the starting folder
-    // when it names none, as the app reads it; "" = whole-remote crypt.
-    let remote_scope = ftp_client_gui_lib::crypt_overlay_provider::profile_overlay_scope(profile);
-    let filename_encryption = overlay
-        .get("filenameEncryption")
-        .and_then(|v| v.as_str())
-        .unwrap_or("standard")
-        .to_string();
-    let directory_name_encryption = overlay
-        .get("directoryNameEncryption")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(true);
 
     // Scope the overlay-secret read to the SAME user the profile was loaded for
     // (honor --user), matching cli_unlock_crypt_compare_keys.
@@ -31749,23 +31748,11 @@ async fn cli_apply_crypt_overlay(
     let salt = stored_salt
         .or_else(|| std::env::var("AEROFTP_CRYPT_OVERLAY_SALT").ok())
         .unwrap_or_default();
-    let (password_form, salt_form) = ftp_client_gui_lib::rclone_crypt::crypt_secret_forms(profile);
     let local_config_json =
         read_server_cred(&store, uid, &format!("aerocrypt_overlay_config_{}", id))
             .filter(|s| !s.is_empty());
 
-    let with_header = overlay
-        .get("withHeader")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
-    let use_default_salt =
-        ftp_client_gui_lib::crypt_overlay_provider::overlay_uses_default_salt(&overlay);
     let params = ftp_client_gui_lib::crypt_compare::OverlayUnlockParams {
-        kind,
-        remote_scope,
-        filename_encryption,
-        directory_name_encryption,
-        off_suffix: None,
         profile_id: Some(id.to_string()),
         local_config_json,
         local_config_salt: if salt.is_empty() {
@@ -31773,18 +31760,17 @@ async fn cli_apply_crypt_overlay(
         } else {
             Some(salt.clone())
         },
-        with_header,
-        use_default_salt,
         password_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
-            password_form,
+            binding.password_form,
             password_from_env,
             "AEROFTP_CRYPT_OVERLAY_PASSWORD_FORM",
         ),
         salt_form: ftp_client_gui_lib::rclone_crypt::secret_form_for_source(
-            salt_form,
+            binding.salt_form,
             salt_from_env,
             "AEROFTP_CRYPT_OVERLAY_SALT_FORM",
         ),
+        ..binding
     };
     match ftp_client_gui_lib::crypt_overlay_provider::wrap_provider_with_overlay_if_bound(
         provider,
@@ -69553,6 +69539,37 @@ mod hashsum_digest_tests {
         assert!(profile.pointer("/options/filen_api_key").is_none());
         assert_eq!(profile["hasStoredFilenApiKey"], true);
         assert!(!profile.to_string().contains("FILEN-KEY-2"));
+    }
+
+    /// The chokepoint anchors an unscoped binding at the starting folder, as
+    /// the app does; read as the whole remote it encrypted the starting
+    /// folder's own name and missed the vault the app wrote there.
+    #[test]
+    fn the_cli_binding_falls_back_to_the_starting_folder() {
+        let profile = |scope: &str, start: &str| {
+            serde_json::json!({
+                "id": "p", "username": "alice", "initialPath": start,
+                "aeroCryptOverlay": { "enabled": true, "kind": "rclone-crypt", "remoteScope": scope,
+                    "filenameEncryption": "obfuscate", "withHeader": true }
+            })
+        };
+        let binding = cli_overlay_binding(&profile("", "/data/{username}")).unwrap();
+        assert_eq!(binding.remote_scope, "/data/alice");
+        assert_eq!(binding.kind, "rclone-crypt");
+        assert_eq!(binding.filename_encryption, "obfuscate");
+        assert!(binding.with_header);
+        assert_eq!(
+            cli_overlay_binding(&profile("/enc", "/data"))
+                .unwrap()
+                .remote_scope,
+            "/enc"
+        );
+        assert_eq!(
+            cli_overlay_binding(&profile("", "")).unwrap().remote_scope,
+            ""
+        );
+        let disabled = serde_json::json!({ "aeroCryptOverlay": { "enabled": false } });
+        assert!(cli_overlay_binding(&disabled).is_none());
     }
 
     /// What `crypt set-form` writes: the forms given, recorded on an enabled

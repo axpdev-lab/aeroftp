@@ -302,7 +302,7 @@ describe('crypt overlay deferred connect unlock', () => {
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');
         expect(app).toContain('savedOverlayHint ? savedOauthInitialPath : undefined');
         // Both provider connect flows, Quick Connect and saved.
-        expect(app.split("overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined")).toHaveLength(3);
+        expect(app.split("overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined")).toHaveLength(3);
     });
 });
 

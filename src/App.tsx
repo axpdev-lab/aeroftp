@@ -44,7 +44,7 @@ import {
 import { assertOverlayActivationCurrent, profileOverlayApplyParams } from './utils/profileOverlayUnlock';
 import { cryptUnlockTargetKey, overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
 import type { OverlayActivationOwnership, ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
-import { bannerOverlayParams } from './utils/rcloneCryptBanner';
+import { bannerAnchorFolder, bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
 import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
@@ -8643,7 +8643,7 @@ const App: React.FC = () => {
           quickConnectDirs.localDir || currentLocalPath,
           overlayHint && !overlayHint.opensOutside ? [] : files,
           undefined,
-          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined
+          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
         );
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -18766,7 +18766,7 @@ const App: React.FC = () => {
                     setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
                     await activateProviderCryptOverlay(
                       { sessionId: activeSessionId ?? undefined },
-                      bannerOverlayParams(banner, currentRemotePath),
+                      bannerOverlayParams(banner, bannerAnchorFolder(sessions.find(s => s.id === activeSessionId)?.serverInitialPath, currentRemotePath)),
                       activeSessionId,
                     );
                     await loadRemoteFiles(undefined, true);
@@ -19446,7 +19446,7 @@ const App: React.FC = () => {
                       resolvedLocalPath2,
                       overlayHint && !overlayHint.opensOutside ? [] : files,
                       undefined,
-                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined
+                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
                     ));
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);

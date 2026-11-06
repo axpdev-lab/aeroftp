@@ -34,3 +34,15 @@ export function bannerOverlayParams(banner: RcloneCryptBannerValues, folder: str
         saltForm: 'clear' as CryptSecretForm,
     };
 }
+
+/**
+ * The folder the banner anchors at: the profile's start folder, where the
+ * import put the crypt remote's folder, when it is absolute (the legacy
+ * importer wrote it from the root). The panel's folder only when there is no
+ * such folder: the banner can be clicked long after the connect, and anchored
+ * at a subfolder the user moved to, the names rclone derived from the real
+ * root read as noise and uploads were named where rclone never looks.
+ */
+export function bannerAnchorFolder(startFolder: string | null | undefined, shownFolder: string): string {
+    return startFolder?.startsWith('/') ? startFolder : shownFolder;
+}

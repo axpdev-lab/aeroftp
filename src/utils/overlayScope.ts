@@ -70,6 +70,8 @@ export const normalizeLoginRelative = (p: string): string => {
 // anchor above the vault is the misconfiguration that produces the empty-listing).
 export const isValidOverlayScope = (scope: string, remotePath: string, protocol?: string | null): boolean => {
     if (!scope) return true;
+    // A `..` would leave the login folder: the backend refuses it, so the form does too.
+    if (isLoginRelativeScope(scope) && normalizeLoginRelative(scope).split('/').includes('..')) return false;
     const remote = loginRelativeForm(remotePath, protocol);
     if (isLoginRelativeScope(remote)) {
         // Under the login folder only a scope in the same form compares.

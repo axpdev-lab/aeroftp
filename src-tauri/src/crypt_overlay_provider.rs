@@ -2849,12 +2849,11 @@ fn no_name_decrypted(encrypted_rows: usize, decrypted_rows: usize) -> bool {
 /// Extract the [`OverlayUnlockParams`] binding from a saved profile's
 /// `aeroCryptOverlay` JSON, or `None` when the profile carries no enabled
 /// overlay. Pure (no vault access): the secret lookup is the caller's job. The
-/// whole session is wrapped at the resolver, so the binding's own `remoteScope`
-/// is the authoritative plaintext anchor ('' / unset = whole-remote crypt),
-/// matching the CLI chokepoint and `mcp::pool::resolve_overlay_secrets`.
-pub(crate) fn overlay_binding_from_profile(
-    profile: &serde_json::Value,
-) -> Option<OverlayUnlockParams> {
+/// anchor is [`profile_overlay_scope`]: the binding's `remoteScope`, else the
+/// starting folder ('' = whole-remote crypt). `pub` so the CLI chokepoint
+/// builds its binding here instead of from a copy that read an unscoped
+/// binding as the whole remote.
+pub fn overlay_binding_from_profile(profile: &serde_json::Value) -> Option<OverlayUnlockParams> {
     let overlay = profile.get("aeroCryptOverlay")?;
     if !overlay
         .get("enabled")

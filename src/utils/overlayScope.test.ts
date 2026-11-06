@@ -186,6 +186,9 @@ describe('an overlay scope under the login folder', () => {
             expect(isValidOverlayScope('~/docs/sub', 'docs', protocol)).toBe(true);
             expect(isValidOverlayScope('~/other', 'docs', protocol)).toBe(false);
             expect(isValidOverlayScope('~/vault', '/', protocol)).toBe(true);
+            // A `..` under the login folder is refused, never saved for the backend to refuse.
+            expect(isValidOverlayScope(resolveOverlayScope('~/docs/../../etc', 'docs', protocol), 'docs', protocol)).toBe(false);
+            expect(isValidOverlayScope(resolveOverlayScope('~/../etc', '', protocol), '', protocol)).toBe(false);
         }
         // Elsewhere the old reading stays: a relative Remote Path is from the root.
         expect(resolveOverlayScope('', 'docs', 'ftp')).toBe('/docs');
