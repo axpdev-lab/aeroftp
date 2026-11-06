@@ -587,6 +587,73 @@ fn rclone_jotta_to_aeroftp(remote: &RcloneRemote) -> Option<String> {
 // Provider tables now live in `crate::bridge_shared` (Refactor 6): a single
 // source for every importer instead of per-module duplicates.
 
+/// An rclone backend the bridge carries, by rclone's own `type` name.
+#[cfg(test)]
+pub(crate) struct RcloneBridgeBackend {
+    pub rclone_type: &'static str,
+    /// How the docs name it; `None` keeps a backend out of the published
+    /// figures (Google Photos: the provider is on hold, import only).
+    pub label: Option<&'static str>,
+    /// Whether `export_rclone` writes it (every listed type imports).
+    pub exported: bool,
+}
+
+/// Every rclone backend type the bridge maps, the one list the published
+/// figures come from (README, CLI guide). `crypt` and `alias` are not storage
+/// backends and stay out: they wrap one of these. Tests pin this list to the
+/// `type = ...` lines `export_rclone` writes, to the arms `map_remote` reads,
+/// and to the docs, so none of them can drift alone again (the README said
+/// 17 while the code carried 24).
+#[cfg(test)]
+pub(crate) const RCLONE_BRIDGE_BACKENDS: &[RcloneBridgeBackend] = &[
+    backend("ftp", "FTP"),
+    backend("sftp", "SFTP"),
+    backend("s3", "S3"),
+    backend("webdav", "WebDAV"),
+    backend("drive", "Google Drive"),
+    backend("dropbox", "Dropbox"),
+    backend("onedrive", "OneDrive"),
+    backend("mega", "MEGA"),
+    backend("internxt", "Internxt"),
+    backend("filen", "Filen"),
+    backend("box", "Box"),
+    backend("pcloud", "pCloud"),
+    backend("azureblob", "Azure Blob"),
+    backend("swift", "Swift"),
+    backend("yandex", "Yandex Disk"),
+    backend("zoho", "Zoho WorkDrive"),
+    backend("koofr", "Koofr"),
+    backend("jottacloud", "Jottacloud"),
+    backend("b2", "Backblaze B2"),
+    backend("opendrive", "OpenDrive"),
+    backend("drime", "Drime"),
+    backend("cloudinary", "Cloudinary"),
+    backend("imagekit", "ImageKit"),
+    backend("protondrive", "Proton Drive"),
+    RcloneBridgeBackend {
+        rclone_type: "gphotos",
+        label: None,
+        exported: false,
+    },
+];
+
+#[cfg(test)]
+const fn backend(rclone_type: &'static str, label: &'static str) -> RcloneBridgeBackend {
+    RcloneBridgeBackend {
+        rclone_type,
+        label: Some(label),
+        exported: true,
+    }
+}
+
+/// The backends the docs count: listed, exported and imported.
+#[cfg(test)]
+fn rclone_published_backends() -> impl Iterator<Item = &'static RcloneBridgeBackend> {
+    RCLONE_BRIDGE_BACKENDS
+        .iter()
+        .filter(|b| b.label.is_some() && b.exported)
+}
+
 /// Convert a single rclone remote to an AeroFTP profile.
 /// `aeroftp_export` is what the header says when AeroFTP's own export wrote the
 /// file ([`aeroftp_export_header`]), `None` for any other rclone.conf.
@@ -9691,5 +9758,111 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             .skipped
             .iter()
             .any(|s| s.reason.contains("unsupported rclone type: alias")));
+    }
+    // ---- the published backend count is the code's (2026-11-06) ----
+
+    /// The body of a top-level fn in this file, from its signature to the next
+    /// top-level item.
+    fn source_fn_body(signature: &str) -> &'static str {
+        let src = include_str!("rclone_import.rs");
+        let start = src
+            .find(signature)
+            .unwrap_or_else(|| panic!("no {signature}"));
+        let rest = &src[start..];
+        let end = rest[1..]
+            .find("\nfn ")
+            .into_iter()
+            .chain(rest[1..].find("\npub fn "))
+            .chain(rest[1..].find("\n#[cfg(test)]"))
+            .min()
+            .map_or(rest.len(), |e| e + 1);
+        &rest[..end]
+    }
+
+    #[test]
+    fn the_backend_list_is_what_the_export_writes() {
+        let body = source_fn_body("pub fn export_rclone(");
+        let mut written: Vec<&str> = body
+            .split("push_str(\"type = ")
+            .skip(1)
+            .filter_map(|rest| rest.split(|c: char| !c.is_ascii_alphanumeric()).next())
+            .filter(|t| *t != "alias")
+            .collect();
+        written.sort_unstable();
+        written.dedup();
+        let mut listed: Vec<&str> = RCLONE_BRIDGE_BACKENDS
+            .iter()
+            .filter(|b| b.exported)
+            .map(|b| b.rclone_type)
+            .collect();
+        listed.sort_unstable();
+        assert_eq!(
+            written, listed,
+            "export_rclone and RCLONE_BRIDGE_BACKENDS disagree"
+        );
+    }
+
+    #[test]
+    fn the_backend_list_is_what_the_import_reads() {
+        let body = source_fn_body("fn map_remote(");
+        let match_start = body
+            .find("match rclone_type.as_str()")
+            .expect("the type match");
+        let mut read: Vec<&str> = body[match_start..]
+            .lines()
+            // The type arms sit at one indentation; the first name is
+            // rclone's, the others are aliases of it (`yandexdisk`).
+            .filter_map(|l| l.strip_prefix("        \""))
+            .filter(|l| l.contains("=>"))
+            .filter_map(|l| l.split('"').next())
+            // Recognized to be refused with the reason (FileLu's key).
+            .filter(|t| *t != "filelu")
+            .collect();
+        read.sort_unstable();
+        read.dedup();
+        let mut listed: Vec<&str> = RCLONE_BRIDGE_BACKENDS
+            .iter()
+            .map(|b| b.rclone_type)
+            .collect();
+        listed.sort_unstable();
+        assert_eq!(
+            read, listed,
+            "map_remote and RCLONE_BRIDGE_BACKENDS disagree"
+        );
+        for backend in RCLONE_BRIDGE_BACKENDS {
+            let conf = format!("[x]\ntype = {}\n", backend.rclone_type);
+            let remotes = parse_rclone_conf(&conf);
+            if let Err(e) = map_remote("x", &remotes["x"], None) {
+                assert!(
+                    !e.contains("unsupported rclone type"),
+                    "{}: {e}",
+                    backend.rclone_type
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_readme_and_the_cli_guide_quote_the_code_count() {
+        let count = rclone_published_backends().count();
+        let readme = include_str!("../../README.md");
+        let row = readme
+            .lines()
+            .find(|l| l.starts_with("| **rclone** |"))
+            .expect("README bridge row");
+        assert!(
+            row.contains(&format!("| {count} backend types")),
+            "README says {row:?}, the code carries {count}"
+        );
+        let guide = include_str!("../../docs/CLI-GUIDE.md");
+        let sentence = guide
+            .lines()
+            .find(|l| l.starts_with("Supports these rclone backend types:"))
+            .expect("CLI guide backend sentence");
+        let listed = sentence.split(". ").next().unwrap_or(sentence);
+        for backend in rclone_published_backends() {
+            let label = backend.label.unwrap();
+            assert!(listed.contains(label), "CLI guide misses {label}: {listed}");
+        }
     }
 }
