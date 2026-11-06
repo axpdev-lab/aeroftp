@@ -837,7 +837,48 @@ pub(crate) fn resolve_proton_drive(custom: Option<&str>) -> String {
     "proton-drive".to_string()
 }
 
+/// The drive SDK error classes proton-drive prints in front of a message
+/// ("NotFoundAPIError: Node not found" in a bulk summary). The names are the
+/// SDK's own (they are in the CLI binary) and do not follow the language; the
+/// message after them can, as the API words it in the account's language.
+/// Longest first, so a subclass is not read as its parent class.
+const SDK_ERROR_CLASSES: &[&str] = &[
+    "NodeWithSameNameExistsValidationError",
+    "InvalidRequirementsAPIError",
+    "SignatureVerificationError",
+    "NotFoundAPIError",
+    "RateLimitedError",
+    "ConnectionError",
+    "DecryptionError",
+    "ValidationError",
+    "IntegrityError",
+    "APICodeError",
+    "APIHTTPError",
+    "ServerError",
+    "AbortError",
+];
+
+/// The SDK class that opens a line of `msg`, after an optional `Error: `.
+/// None when the CLI printed a bare message, as it does for a path it cannot
+/// resolve ("Node not found: name", measured 2026-11-06).
+fn sdk_error_class(msg: &str) -> Option<&'static str> {
+    msg.lines().find_map(|line| {
+        let line = line.trim();
+        let line = line.strip_prefix("Error: ").unwrap_or(line);
+        SDK_ERROR_CLASSES.iter().copied().find(|class| {
+            line.strip_prefix(class)
+                .is_some_and(|rest| rest.starts_with(':'))
+        })
+    })
+}
+
 fn is_transient(msg: &str) -> bool {
+    if matches!(
+        sdk_error_class(msg),
+        Some("RateLimitedError" | "ConnectionError")
+    ) {
+        return true;
+    }
     let lower = msg.to_lowercase();
     lower.contains("temporarily unavailable")
         || lower.contains("try again")
@@ -1168,6 +1209,14 @@ fn classify_transfer_failures(failures: &[(String, String)]) -> ProviderError {
 /// A Proton refusal for a full drive: API codes 200001, 200002, 200100 and
 /// 200101, which the SDK raises as a plain `ValidationError` and the CLI's
 /// JSON reduces to `ValidationError: <API message>`.
+///
+/// Known limit (#1506 row 164): the prefix is stable, the message after it is
+/// the API's and can follow the account's language, and the CLI's JSON drops
+/// the numeric code. A full drive refused in another language is then a plain
+/// failure for that file rather than a stop for the batch. Nor can usage be
+/// compared with the quota: the CLI has no account, usage or quota command
+/// (`proton-drive --help`, 0.9; `filesystem size` is a node's size). Reading
+/// the code needs the CLI to print it.
 fn is_storage_full(error: &str) -> bool {
     let Some(message) = error.strip_prefix("ValidationError:") else {
         return false;
@@ -1180,6 +1229,19 @@ fn is_storage_full(error: &str) -> bool {
 }
 
 fn classify_cli_error(msg: &str) -> ProviderError {
+    // The SDK class first: it holds in every language. Existence decisions
+    // are confirmed again by a parent listing (`confirm_absence`), since a
+    // bare message has no class. #1506 row 164.
+    match sdk_error_class(msg) {
+        Some("NotFoundAPIError") => return ProviderError::NotFound(msg.to_string()),
+        Some("NodeWithSameNameExistsValidationError") => {
+            return ProviderError::AlreadyExists(msg.to_string())
+        }
+        Some("RateLimitedError" | "ConnectionError") => {
+            return ProviderError::NetworkError(msg.to_string())
+        }
+        _ => {}
+    }
     let lower = msg.to_lowercase();
     if lower.contains("need to login") || lower.contains("not authenticated") {
         ProviderError::AuthenticationFailed(NEED_LOGIN.to_string())
@@ -1580,6 +1642,61 @@ fn extract_url(stdout: &str) -> Option<String> {
 }
 
 impl ProtonCliProvider {
+    /// What a failed CLI call on `abs` means for its existence. One listing
+    /// of the parent decides: the name is not there, `NotFound`; it is there,
+    /// the error stands and is not an absence. The message is not read for
+    /// this: proton-drive words its errors in the account's language
+    /// (measured: an Italian account gets Italian refusals, whatever LANG
+    /// says), so a missing node arrived as a server error, and an English
+    /// "not found" may name something other than the path. Errors that say
+    /// nothing about the path (login, connection, time, cancel) stand as
+    /// they are, and so does any error when the parent cannot be listed.
+    /// The listing goes straight to the CLI, never through a reused one.
+    /// #1506 row 164.
+    async fn confirm_absence(&mut self, abs: &str, error: ProviderError) -> ProviderError {
+        if matches!(
+            error,
+            ProviderError::AuthenticationFailed(_)
+                | ProviderError::NotConnected
+                | ProviderError::ConnectionFailed(_)
+                | ProviderError::ConnectionLost(_)
+                | ProviderError::Timeout
+                | ProviderError::Cancelled
+        ) {
+            return error;
+        }
+        let parent = parent_of(abs);
+        if parent == abs {
+            return error;
+        }
+        let Ok(stdout) = self
+            .run_cli(&["filesystem", "list", &parent, "-j"], META_TIMEOUT_SECS)
+            .await
+        else {
+            return error;
+        };
+        let Ok(entries) = parse_list_json(&stdout, &parent) else {
+            return error;
+        };
+        // The parser drops a node whose name it cannot read; with one
+        // dropped, the listing does not prove an absence (Greptile, #1517).
+        let listed = serde_json::from_str::<Value>(stdout.trim())
+            .ok()
+            .and_then(|value| value.as_array().map(Vec::len));
+        if listed != Some(entries.len()) {
+            return error;
+        }
+        let name = basename(abs);
+        if entries.iter().any(|entry| entry.name == name) {
+            match error {
+                ProviderError::NotFound(message) => ProviderError::ServerError(message),
+                other => other,
+            }
+        } else {
+            ProviderError::NotFound(abs.to_string())
+        }
+    }
+
     async fn capture_uid(&mut self, abs: &str) -> Result<String, ProviderError> {
         let stdout = self
             .run_cli(&["filesystem", "info", abs, "-j"], META_TIMEOUT_SECS)
@@ -2156,24 +2273,29 @@ impl StorageProvider for ProtonCliProvider {
         };
         let name = basename(&abs);
 
+        // "Already gone" is decided by the parent listing (`confirm_absence`),
+        // not by the CLI's words for it.
         let captured_uid = if !in_trash {
             match self.capture_uid(&abs).await {
                 Ok(uid) => Some(uid),
-                Err(ProviderError::NotFound(_)) => return Ok(false),
-                Err(e) => return Err(e),
+                Err(error) => match self.confirm_absence(&abs, error).await {
+                    ProviderError::NotFound(_) => return Ok(false),
+                    other => return Err(other),
+                },
             }
         } else {
             None
         };
 
         if !in_trash {
-            match self
+            if let Err(error) = self
                 .run_cli(&["filesystem", "trash", &abs], META_TIMEOUT_SECS)
                 .await
             {
-                Ok(_) => {}
-                Err(ProviderError::NotFound(_)) => return Ok(false),
-                Err(e) => return Err(e),
+                return match self.confirm_absence(&abs, error).await {
+                    ProviderError::NotFound(_) => Ok(false),
+                    other => Err(other),
+                };
             }
         }
 
@@ -2259,13 +2381,13 @@ impl StorageProvider for ProtonCliProvider {
         if abs == "/" {
             return Ok(RemoteEntry::directory("/".to_string(), "/".to_string()));
         }
-        let stdout = self
+        let stdout = match self
             .run_cli(&["filesystem", "info", &abs, "-j"], META_TIMEOUT_SECS)
             .await
-            .map_err(|e| match e {
-                ProviderError::NotFound(_) => ProviderError::NotFound(abs.clone()),
-                other => other,
-            })?;
+        {
+            Ok(stdout) => stdout,
+            Err(error) => return Err(self.confirm_absence(&abs, error).await),
+        };
         let mut entry = parse_info_json(&stdout, &parent_of(&abs))?;
         entry.path = abs;
         Ok(entry)
@@ -4065,6 +4187,105 @@ mod cli_sequence_tests {
         });
         p.connected = true;
         p
+    }
+
+    /// #1506 row 164: whether a Proton path exists is decided by one listing
+    /// of its parent, never by the words of the refusal, which follow the
+    /// account's language. The CLI's own answer for a missing path, measured
+    /// 2026-11-06, is a bare "Node not found: <name>" with exit 1.
+    #[tokio::test]
+    async fn a_missing_path_is_known_by_its_parent_listing_in_any_language() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(dir.join("existing.json"), r#"["/my-files/docs/here.txt"]"#).unwrap();
+        std::fs::write(
+            dir.join("my-files_docs.json"),
+            serde_json::to_vec(&serde_json::json!([
+                {"name":{"ok":true,"value":"here.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~BBBBBBBBBBBBBBBBBBBBBB","type":"file"},
+                {"name":{"ok":true,"value":"unreadable.txt"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~CCCCCCCCCCCCCCCCCCCCCC","type":"file"}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        for refusal in [
+            "Node not found: gone.txt",
+            "Errore: nodo non trovato",
+            "Fehler: Knoten nicht gefunden",
+            "NotFoundAPIError: Nodo non trovato",
+        ] {
+            std::fs::write(dir.join("info-error.txt"), refusal).unwrap();
+            let mut p = provider(&shim);
+            assert!(
+                !p.exists("/my-files/docs/gone.txt").await.unwrap(),
+                "{refusal}"
+            );
+            assert!(
+                !p.delete_permanent("/my-files/docs/gone.txt").await.unwrap(),
+                "{refusal}"
+            );
+        }
+        // A parent listing with a node whose name cannot be read proves no
+        // absence: the refusal stands.
+        std::fs::write(
+            dir.join("my-files_locked.json"),
+            serde_json::to_vec(&serde_json::json!([
+                {"name":{"ok":false,"error":"decryption failed"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~DDDDDDDDDDDDDDDDDDDDDD","type":"file"}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(dir.join("info-error.txt"), "Errore: nodo non trovato").unwrap();
+        let mut p = provider(&shim);
+        let unreadable_parent = p.exists("/my-files/locked/gone.txt").await;
+        assert!(unreadable_parent.is_err(), "{unreadable_parent:?}");
+        // A name the parent lists is there, whatever the refusal says: an
+        // English "not found" about it is a failure to read it, not an
+        // absence, so nothing takes it for a free name.
+        std::fs::write(dir.join("info-error.txt"), "Node not found: unreadable.txt").unwrap();
+        let mut p = provider(&shim);
+        let outcome = p.exists("/my-files/docs/unreadable.txt").await;
+        assert!(
+            matches!(outcome, Err(ProviderError::ServerError(_))),
+            "{outcome:?}"
+        );
+        assert!(p.exists("/my-files/docs/here.txt").await.unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The SDK class in front of a message holds in every language; a bare
+    /// message falls to the text checks (and existence to the listing).
+    #[test]
+    fn the_sdk_error_class_is_read_before_the_message() {
+        assert!(matches!(
+            classify_cli_error("NotFoundAPIError: Nodo non trovato"),
+            ProviderError::NotFound(_)
+        ));
+        assert!(matches!(
+            classify_cli_error(
+                "Error: NodeWithSameNameExistsValidationError: Esiste già un file o una cartella con quel nome"
+            ),
+            ProviderError::AlreadyExists(_)
+        ));
+        assert!(matches!(
+            classify_cli_error("RateLimitedError: Troppe richieste, riprova più tardi"),
+            ProviderError::NetworkError(_)
+        ));
+        assert!(is_transient("RateLimitedError: Zu viele Anfragen"));
+        assert!(is_transient("ConnectionError: Connessione persa"));
+        assert_eq!(
+            sdk_error_class("ValidationError: Quota superata"),
+            Some("ValidationError")
+        );
+        assert_eq!(
+            sdk_error_class("NodeWithSameNameExistsValidationError: x"),
+            Some("NodeWithSameNameExistsValidationError")
+        );
+        assert_eq!(sdk_error_class("NotFoundAPIErrorX: x"), None);
+        assert_eq!(
+            sdk_error_class("Esiste già un file o una cartella con quel nome"),
+            None
+        );
+        assert_eq!(sdk_error_class("Node not found: gone.txt"), None);
     }
 
     fn workdir() -> PathBuf {

@@ -141,7 +141,11 @@ if verb == "filesystem" and sub == "info":
     # exists.
     existing = pathlib.Path(HERE, "existing.json")
     if existing.exists() and path not in json.loads(existing.read_text()):
-        print("Error: %s not found" % path, file=sys.stderr)
+        # info-error.txt: the refusal in other words, as the account's
+        # language or the SDK prints it.
+        custom = pathlib.Path(HERE, "info-error.txt")
+        print(custom.read_text().strip() if custom.exists() else "Error: %s not found" % path,
+              file=sys.stderr)
         sys.exit(1)
     print(json.dumps({
         "name": {"ok": True, "value": name},

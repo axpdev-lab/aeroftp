@@ -258,6 +258,20 @@ export function translate(key: string, params?: Record<string, string | number>)
 }
 
 /**
+ * The value of `key` in every language, without duplicates. For reading data
+ * an older build wrote with a translated label in it (the transfer journal's
+ * cancelled rows): new code stores a marker instead of matching text.
+ */
+export function translationsInEveryLanguage(key: string): string[] {
+    const values = new Set<string>();
+    for (const { translations } of Object.values(TRANSLATIONS)) {
+        const value = getNestedValue(translations as unknown as Record<string, unknown>, key);
+        if (typeof value === 'string' && value.length > 0) values.add(value);
+    }
+    return [...values];
+}
+
+/**
  * Replace template parameters in translation string
  * Example: interpolate('Hello {name}!', { name: 'World' }) -> 'Hello World!'
  */

@@ -24,6 +24,9 @@ import {
     computeFooterPercentage,
     queueDisplayCounts,
     updateTransferStatus,
+    cancelTransfer as cancelTransferHelper,
+    stopItems as stopItemsHelper,
+    retryAllFailed as retryAllFailedHelper,
     type AddItemOptions,
     type NewQueueItem,
 } from './transferQueueActions';
@@ -48,6 +51,12 @@ export interface TransferItem {
     /** Live transfer speed in bytes/sec for the active file (per-item, real). */
     speedBps?: number;
     error?: string;
+    /**
+     * The user stopped this row. Every decision reads this flag ("Retry all
+     * failed", the journal status); `error` then only holds the label shown,
+     * in the user's language, and no code reads it back.
+     */
+    cancelled?: boolean;
     startTime?: number;
     endTime?: number;
     /** Registered upfront from an AeroSync plan, not discovered file by file. */
@@ -927,6 +936,10 @@ export const useTransferQueue = () => {
         setItems(prev => applyItemProgress(prev, id, progress, speedBps));
     const completeTransfer = (id: string) => updateStatus(id, 'completed', 100);
     const failTransfer = (id: string, error: string) => updateStatus(id, 'error', undefined, error);
+    // A row the user stopped: marked `cancelled`, so no retry and no journal
+    // reads the translated label to know it.
+    const cancelTransfer = (id: string, label: string) =>
+        setItems(prev => cancelTransferHelper(prev, id, label));
 
     // Update folder transfer progress (total files and completed count)
     const updateFolderProgress = (id: string, totalFiles: number, completedFiles: number) => {
@@ -962,20 +975,12 @@ export const useTransferQueue = () => {
 
     // Soft cancel: stop only pending items, let current transfer finish
     const stopPending = () => {
-        setItems(prev => prev.map(item =>
-            item.status === 'pending'
-                ? { ...item, status: 'error' as TransferStatus, error: 'Stopped by user', endTime: Date.now() }
-                : item
-        ));
+        setItems(prev => stopItemsHelper(prev, ['pending'], 'Stopped by user'));
     };
 
     // Hard cancel: stop everything including current transfer
     const stopAll = () => {
-        setItems(prev => prev.map(item =>
-            item.status === 'pending' || item.status === 'transferring'
-                ? { ...item, status: 'error' as TransferStatus, error: 'Stopped by user', endTime: Date.now() }
-                : item
-        ));
+        setItems(prev => stopItemsHelper(prev, ['pending', 'transferring'], 'Stopped by user'));
     };
 
     const removeItem = (id: string) => {
@@ -985,7 +990,7 @@ export const useTransferQueue = () => {
     const retryItem = (id: string) => {
         setItems(prev => prev.map(item =>
             item.id === id
-                ? { ...item, status: 'pending' as TransferStatus, error: undefined, progress: undefined, startTime: Date.now(), endTime: undefined }
+                ? { ...item, status: 'pending' as TransferStatus, error: undefined, cancelled: undefined, progress: undefined, startTime: Date.now(), endTime: undefined }
                 : item
         ));
     };
@@ -993,13 +998,11 @@ export const useTransferQueue = () => {
     // Re-queue all failed items (except user-cancelled): returns IDs for retry callback execution
     const retryAllFailed = (): string[] => {
         const failedIds: string[] = [];
-        setItems(prev => prev.map(item => {
-            if (item.status === 'error' && item.error && !item.error.includes('cancelled') && !item.error.includes('Stopped by user')) {
-                failedIds.push(item.id);
-                return { ...item, status: 'pending' as TransferStatus, error: undefined, progress: undefined, startTime: Date.now(), endTime: undefined };
-            }
-            return item;
-        }));
+        setItems(prev => {
+            const { next, ids } = retryAllFailedHelper(prev);
+            failedIds.splice(0, failedIds.length, ...ids);
+            return next;
+        });
         return failedIds;
     };
 
@@ -1062,6 +1065,7 @@ export const useTransferQueue = () => {
         setProgress,
         completeTransfer,
         failTransfer,
+        cancelTransfer,
         updateFolderProgress,
         markAsFolder,
         clear,
