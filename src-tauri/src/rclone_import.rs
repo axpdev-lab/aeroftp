@@ -712,6 +712,17 @@ fn expand_rclone_path(path: &str, config_dir: Option<&Path>) -> String {
     out
 }
 
+/// The folder `${RCLONE_CONFIG_DIR}` names for the file at `config_path`,
+/// made absolute against the current folder. A bare `rclone.conf` (the CLI
+/// passes the argument as typed) has an empty parent, and the key path
+/// `${RCLONE_CONFIG_DIR}/id_ed25519` became `/id_ed25519`.
+fn rclone_config_dir(config_path: &Path) -> Option<std::path::PathBuf> {
+    std::path::absolute(config_path)
+        .ok()?
+        .parent()
+        .map(Path::to_path_buf)
+}
+
 /// Expand every `key_file` the way rclone does ([`expand_rclone_path`]) once,
 /// where the folder of the file is known.
 fn expand_rclone_key_files(
@@ -1068,9 +1079,9 @@ fn map_remote(
             username: name.to_string(), // rclone doesn't store email for drive
             password: None,
             options: None,
-            // rclone writes `root_folder_id =` blank for the account root.
+            // rclone writes `root_folder_id =` blank for the account root (the
+            // parser has already trimmed the value).
             initial_path: get_str("root_folder_id")
-                .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string),
             // Issue #214: import the OAuth token blob so the destination
@@ -1867,6 +1878,7 @@ fn map_alias_remote(
         ));
     }
     let mut mapped = map_remote(name, base_remote, aeroftp_export)?;
+    let alias_has_path = !path.trim().trim_matches('/').is_empty();
     // A Drive remote rooted at a folder id (`root_folder_id`, which the profile
     // keeps as its start) reads the alias path under that folder; written as a
     // path it opened at the account root instead.
@@ -1874,8 +1886,8 @@ fn map_alias_remote(
         && mapped
             .initial_path
             .as_deref()
-            .is_some_and(|root| !root.trim().is_empty())
-        && !path.trim().trim_matches('/').is_empty()
+            .is_some_and(|root| !root.is_empty())
+        && alias_has_path
     {
         return Err(format!(
             "alias remote opens a folder inside the Drive folder '{base}' is rooted at \
@@ -2311,7 +2323,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         std::fs::read_to_string(config_path).map_err(|e| format!("Read rclone.conf: {}", e))?;
 
     let mut sections = parse_rclone_conf(&content);
-    expand_rclone_key_files(&mut sections, config_path.parent());
+    expand_rclone_key_files(&mut sections, rclone_config_dir(config_path).as_deref());
     let aeroftp_export = aeroftp_export_header(&content);
     let total_remotes = sections.len();
     let mut servers = Vec::new();
@@ -2721,6 +2733,10 @@ fn crypt_export_remote_target(
             };
             if scope.is_empty() {
                 format!("{clear_name}:{folder}")
+            } else if folder.is_empty() {
+                // The login folder an sftp remote opens: `nas:vault` is under
+                // it, `nas:/vault` at the server root.
+                format!("{clear_name}:{scope}")
             } else {
                 format!("{clear_name}:{folder}/{scope}")
             }
@@ -3323,6 +3339,14 @@ fn webdav_alias_path(url: &str, initial_path: &str, username: &str) -> String {
         Some(rest) => rest.to_string(),
         None => start,
     }
+}
+
+/// An sftp overlay scope saved under the login folder (`/~/projects/vault`)
+/// as a path from that folder (`/projects/vault`), the form the alias and the
+/// sftp remote use; `None` for a scope that is not under `~`.
+fn sftp_login_relative_scope(scope: &str) -> Option<String> {
+    let rest = scope.trim_start_matches('/').strip_prefix('~')?;
+    (rest.is_empty() || rest.starts_with('/')).then(|| format!("/{}", rest.trim_start_matches('/')))
 }
 
 /// The section names of one exported file.
@@ -4452,6 +4476,11 @@ pub fn export_rclone(
                 // cannot be written there, and the alias is left out. An empty
                 // alias path is the collection the WebDAV URL already opens.
                 if alias_path.is_empty() {
+                    // sftp's `~`: the login folder the remote already opens,
+                    // where a crypt scope is relative too.
+                    if proto == "sftp" {
+                        crypt_folder = Some(String::new());
+                    }
                 } else if path.ends_with(char::is_whitespace) {
                     notes.push_str(&format!(
                         "# start-folder alias for '{}' omitted: rclone's config cannot hold '{}', whose name ends in a space\n",
@@ -4511,7 +4540,7 @@ pub fn export_rclone(
         // rclone's webdav remote, and the alias over it, start at the URL's
         // collection: the scope is taken in that form, or the collection
         // would be written twice (`dav-path:/remote.php/dav/files/alice/docs`).
-        let webdav_crypt_options = match (proto, webdav_url.as_deref(), options) {
+        let scoped_crypt_options = match (proto, webdav_url.as_deref(), options) {
             ("webdav", Some(url), Some(o)) => o
                 .get("rcloneCryptOverlayScope")
                 .and_then(|v| v.as_str())
@@ -4523,6 +4552,25 @@ pub fn export_rclone(
                     ));
                     o
                 }),
+            // Under the login folder the app saves the scope with the `~` it
+            // read as a folder (`resolveOverlayScope` turns `~/projects` into
+            // `/~/projects`), while the alias holds `projects`: taken as
+            // written, the crypt opened `/~/projects` inside the start folder.
+            ("sftp", _, Some(o))
+                if options
+                    .and_then(|o| o.get("initial_path"))
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|start| start.starts_with('~')) =>
+            {
+                o.get("rcloneCryptOverlayScope")
+                    .and_then(|v| v.as_str())
+                    .and_then(sftp_login_relative_scope)
+                    .map(|scope| {
+                        let mut o = o.clone();
+                        o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope);
+                        o
+                    })
+            }
             _ => None,
         };
         let mut crypt_section = String::new();
@@ -4538,7 +4586,7 @@ pub fn export_rclone(
                 }
             }),
             crypt_folder.as_deref(),
-            webdav_crypt_options.as_ref().or(options),
+            scoped_crypt_options.as_ref().or(options),
             &mut names,
         );
         if let CryptSection::Refused(reason) = &crypt {
@@ -9778,6 +9826,50 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     }
 
     #[test]
+    fn an_sftp_crypt_under_the_login_folder_opens_where_the_profile_does() {
+        // The app saves the scope from `~/projects` as `/~/projects`
+        // (`resolveOverlayScope`); the alias holds `projects`.
+        let crypt = |start: &str, scope: &str| {
+            server_with(
+                "nas",
+                "sftp",
+                "nas.example.test",
+                22,
+                None,
+                serde_json::json!({
+                    "initial_path": start,
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptOverlayScope": scope,
+                    "rcloneCryptPassword": "pw"
+                }),
+            )
+        };
+        let remote_of = |start: &str, scope: &str| {
+            let (_, conf) = export_to_string(&[crypt(start, scope)], "crypt-login-folder");
+            conf.lines()
+                .skip_while(|line| *line != "type = crypt")
+                .find_map(|line| line.strip_prefix("remote = "))
+                .unwrap_or_else(|| panic!("no crypt remote:\n{conf}"))
+                .to_string()
+        };
+        assert_eq!(remote_of("~/projects", "/~/projects"), "nas-path:");
+        assert_eq!(
+            remote_of("~/projects", "/~/projects/vault"),
+            "nas-path:/vault"
+        );
+        assert_eq!(
+            remote_of("~/projects", "/vault"),
+            "nas-path:/vault",
+            "an older scope relative to the start folder"
+        );
+        // `~` alone: no alias, the crypt wraps the login folder itself.
+        assert_eq!(remote_of("~", "/~"), "nas:");
+        assert_eq!(remote_of("~", "/~/vault"), "nas:vault");
+        assert_eq!(sftp_login_relative_scope("/~x/vault"), None);
+        assert_eq!(sftp_login_relative_scope("/srv/~"), None);
+    }
+
+    #[test]
     fn a_webdav_crypt_scope_saved_on_the_server_path_is_taken_from_the_collection() {
         // The app saves the scope as a server path; rclone's remote and the
         // start-folder alias begin at the collection the URL opens.
@@ -10483,6 +10575,12 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         );
         assert_eq!(expand_rclone_path("~/.ssh/id $ x", None), "~/.ssh/id $ x");
         assert_eq!(expand_rclone_path("/k/${open", None), "/k/${open");
+        // A bare file name, as the CLI passes `rclone.conf`: the folder is the
+        // current one, not the empty parent that made `/id_ed25519`.
+        assert_eq!(
+            rclone_config_dir(Path::new("rclone.conf")),
+            Some(std::env::current_dir().unwrap())
+        );
 
         let result = import_text(
             "[key]\ntype = sftp\nhost = h.example.test\nuser = u\n\
