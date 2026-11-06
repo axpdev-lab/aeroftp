@@ -8,13 +8,13 @@ import { probeAliveArgs, sameQuickConnectTarget } from './probeAliveArgs';
 describe('probeAliveArgs', () => {
     it('names the saved profile and the endpoint, not only the user', () => {
         expect(probeAliveArgs({ server: '127.0.0.1', port: 2162, username: 'row163', password: '', protocol: 'ftp', savedServerId: 'srv_b' }, 'ftp'))
-            .toEqual({ protocol: 'ftp', username: 'row163', profileId: 'srv_b', host: '127.0.0.1', port: 2162, bucket: null });
+            .toEqual({ protocol: 'ftp', username: 'row163', profileId: 'srv_b', host: '127.0.0.1', port: 2162, bucket: null, endpoint: null, region: null });
     });
 
     it('sends nulls for what a Quick Connect tab does not have', () => {
         expect(probeAliveArgs({ server: 'ftp.example.com', username: '', password: '' }))
-            .toEqual({ protocol: null, username: null, profileId: null, host: 'ftp.example.com', port: null, bucket: null });
-        expect(probeAliveArgs(undefined, 'mega')).toEqual({ protocol: 'mega', username: null, profileId: null, host: null, port: null, bucket: null });
+            .toEqual({ protocol: null, username: null, profileId: null, host: 'ftp.example.com', port: null, bucket: null, endpoint: null, region: null });
+        expect(probeAliveArgs(undefined, 'mega')).toEqual({ protocol: 'mega', username: null, profileId: null, host: null, port: null, bucket: null, endpoint: null, region: null });
     });
 });
 
@@ -48,11 +48,14 @@ describe('sameQuickConnectTarget', () => {
         const s3 = { ...tab, server: 's3.example.com', options: { bucket: 'photos' } };
         expect(sameQuickConnectTarget(s3, { ...s3, options: { bucket: 'backups' } }, 's3')).toBe(false);
         expect(sameQuickConnectTarget(s3, { ...s3 }, 's3')).toBe(true);
+        expect(sameQuickConnectTarget(s3, { ...s3, options: { bucket: 'photos', endpoint: 'https://minio.example:9000' } }, 's3')).toBe(false);
+        expect(sameQuickConnectTarget(s3, { ...s3, options: { bucket: 'photos', region: 'us-east-1' } }, 's3')).toBe(false);
         expect(sameQuickConnectTarget(tab, { ...tab, username: 'v' }, 'ftp')).toBe(false);
         expect(sameQuickConnectTarget(tab, { ...tab, server: 'other.example.com' }, 'ftp')).toBe(false);
     });
 
-    it('sends the bucket to the probe', () => {
-        expect(probeAliveArgs({ server: 's3.example.com', username: 'k', password: '', options: { bucket: 'photos' } }, 's3').bucket).toBe('photos');
+    it('sends the S3 bucket, endpoint and region to the probe', () => {
+        const args = probeAliveArgs({ server: '', username: 'k', password: '', options: { bucket: 'photos', endpoint: 'https://minio.example:9000', region: 'eu-west-1' } }, 's3');
+        expect([args.bucket, args.endpoint, args.region]).toEqual(['photos', 'https://minio.example:9000', 'eu-west-1']);
     });
 });

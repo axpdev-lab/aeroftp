@@ -1173,6 +1173,29 @@ pub struct ProviderConnectionParams {
     pub opendrive_default_privacy: Option<String>,
 }
 
+/// The host the backend uses for a cloud API whatever the tab's server field
+/// says, or `None` where the user's server is the endpoint. One list for the
+/// connection and for the liveness probe, which compares endpoints only where
+/// they are the user's.
+fn fixed_api_host(provider_type: ProviderType) -> Option<&'static str> {
+    Some(match provider_type {
+        ProviderType::Mega => "mega.nz",
+        ProviderType::Proton => "drive.proton.me",
+        ProviderType::Internxt => "gateway.internxt.com",
+        ProviderType::KDrive => "api.infomaniak.com",
+        ProviderType::Jottacloud => "jfs.jottacloud.com",
+        ProviderType::DrimeCloud => "app.drime.cloud",
+        ProviderType::FileLu => "filelu.com",
+        ProviderType::Koofr => "app.koofr.net",
+        ProviderType::OpenDrive => "dev.opendrive.com",
+        ProviderType::YandexDisk => "cloud-api.yandex.net",
+        ProviderType::ImageKit => "api.imagekit.io",
+        ProviderType::Uploadcare => "api.uploadcare.com",
+        ProviderType::Cloudinary => "api.cloudinary.com",
+        _ => return None,
+    })
+}
+
 impl ProviderConnectionParams {
     /// Convert to provider configuration
     pub fn to_provider_config(&self) -> Result<ProviderConfig, String> {
@@ -1641,32 +1664,8 @@ impl ProviderConnectionParams {
             }
         }
 
-        let host = if provider_type == ProviderType::Mega {
-            "mega.nz".to_string()
-        } else if provider_type == ProviderType::Proton {
-            "drive.proton.me".to_string()
-        } else if provider_type == ProviderType::Internxt {
-            "gateway.internxt.com".to_string()
-        } else if provider_type == ProviderType::KDrive {
-            "api.infomaniak.com".to_string()
-        } else if provider_type == ProviderType::Jottacloud {
-            "jfs.jottacloud.com".to_string()
-        } else if provider_type == ProviderType::DrimeCloud {
-            "app.drime.cloud".to_string()
-        } else if provider_type == ProviderType::FileLu {
-            "filelu.com".to_string()
-        } else if provider_type == ProviderType::Koofr {
-            "app.koofr.net".to_string()
-        } else if provider_type == ProviderType::OpenDrive {
-            "dev.opendrive.com".to_string()
-        } else if provider_type == ProviderType::YandexDisk {
-            "cloud-api.yandex.net".to_string()
-        } else if provider_type == ProviderType::ImageKit {
-            "api.imagekit.io".to_string()
-        } else if provider_type == ProviderType::Uploadcare {
-            "api.uploadcare.com".to_string()
-        } else if provider_type == ProviderType::Cloudinary {
-            "api.cloudinary.com".to_string()
+        let host = if let Some(host) = fixed_api_host(provider_type) {
+            host.to_string()
         } else if provider_type == ProviderType::Azure {
             // Azure constructs endpoint from account_name if server is empty
             if self.server.is_empty() {
@@ -2731,6 +2730,9 @@ struct ProbeIdentity<'a> {
     host: Option<&'a str>,
     port: Option<u16>,
     bucket: Option<&'a str>,
+    /// An S3 tab's custom endpoint and region (`options.endpoint`, `options.region`).
+    endpoint: Option<&'a str>,
+    region: Option<&'a str>,
 }
 
 /// An endpoint as a tab or a config writes it: `[scheme://]host[:port][/path]`.
@@ -2772,19 +2774,29 @@ fn endpoint_of(text: &str) -> Endpoint<'_> {
 
 /// Whether the tab's endpoint `expected`, on `port`, is the slot's `actual`
 /// on `actual_port`. A scheme written on one side only does not tell them
-/// apart; a port written into a host must be the port compared.
-fn same_endpoint(expected: &str, actual: &str, port: u16, actual_port: u16) -> bool {
+/// apart. Where `url_port_wins` (WebDAV), a port written in the URL is the one
+/// the connection uses; elsewhere a port written into a host must be the
+/// port compared.
+fn same_endpoint(
+    expected: &str,
+    actual: &str,
+    port: u16,
+    actual_port: u16,
+    url_port_wins: bool,
+) -> bool {
     let (expected, actual) = (endpoint_of(expected), endpoint_of(actual));
     let schemes_agree = match (&expected.scheme, &actual.scheme) {
         (Some(a), Some(b)) => a == b,
         _ => true,
     };
-    schemes_agree
-        && expected.host == actual.host
-        && expected.path == actual.path
-        && port == actual_port
-        && expected.port.is_none_or(|p| p == port)
-        && actual.port.is_none_or(|p| p == actual_port)
+    let ports_agree = if url_port_wins {
+        expected.port.unwrap_or(port) == actual.port.unwrap_or(actual_port)
+    } else {
+        port == actual_port
+            && expected.port.is_none_or(|p| p == port)
+            && actual.port.is_none_or(|p| p == actual_port)
+    };
+    schemes_agree && expected.host == actual.host && expected.path == actual.path && ports_agree
 }
 
 /// Whether the slot holds the account `expected` names, judged from the
@@ -2820,11 +2832,29 @@ fn slot_matches_identity(
     }
     // An S3 slot keeps its bucket under `bucket`; Azure, kDrive and Cloudinary
     // keep theirs under other keys, so only a slot that has one is compared.
-    if let (Some(bucket), Some(actual)) = (
+    // An S3 tab that names no bucket cannot be shown to be the slot's.
+    match (
         expected.bucket.filter(|b| !b.is_empty()),
         config.extra.get("bucket"),
     ) {
-        if bucket != actual {
+        (Some(bucket), Some(actual)) if bucket != actual => return false,
+        (None, Some(_)) if config.provider_type == ProviderType::S3 => return false,
+        _ => {}
+    }
+    // An S3 custom endpoint and region, where both sides name them.
+    if let (Some(endpoint), Some(actual)) = (
+        expected.endpoint.map(str::trim).filter(|e| !e.is_empty()),
+        config.extra.get("endpoint"),
+    ) {
+        if !same_endpoint(endpoint, actual, 0, 0, true) {
+            return false;
+        }
+    }
+    if let (Some(region), Some(actual)) = (
+        expected.region.map(str::trim).filter(|r| !r.is_empty()),
+        config.extra.get("region"),
+    ) {
+        if !region.eq_ignore_ascii_case(actual.trim()) {
             return false;
         }
     }
@@ -2834,9 +2864,11 @@ fn slot_matches_identity(
         .unwrap_or_else(|| config.default_port());
     let host = expected.host.map(str::trim).filter(|h| !h.is_empty());
     let actual_host = Some(config.host.trim()).filter(|h| !h.is_empty());
-    let endpoint_matches =
-        |host: &str, actual: &str| same_endpoint(host, actual, port, config.effective_port());
-    let endpoint_counts = endpoint_is_identity(config.provider_type);
+    let url_port_wins = config.provider_type == ProviderType::WebDav;
+    let endpoint_matches = |host: &str, actual: &str| {
+        same_endpoint(host, actual, port, config.effective_port(), url_port_wins)
+    };
+    let endpoint_counts = fixed_api_host(config.provider_type).is_none();
     let expected_profile = expected.profile_id.filter(|id| !id.is_empty());
     match (expected_profile, slot_profile.filter(|id| !id.is_empty())) {
         // The same saved profile, and where both sides name an endpoint, the
@@ -2852,34 +2884,18 @@ fn slot_matches_identity(
         }
         // One side is a saved profile and the other is not: not the same.
         (Some(_), None) | (None, Some(_)) => false,
-        // Without a profile, a server protocol is its endpoint; a cloud API
-        // account is its protocol and user, checked above.
+        // Without a profile, the endpoint is the account where it is the
+        // user's; a cloud API account, or one where neither side names a
+        // server, is its protocol and user, checked above.
         (None, None) => {
             !endpoint_counts
                 || match (host, actual_host) {
                     (Some(host), Some(actual)) => endpoint_matches(host, actual),
+                    (None, None) => true,
                     _ => false,
                 }
         }
     }
-}
-
-/// Whether a protocol's host is the server the user names, and so part of the
-/// account. A cloud API's host is fixed or rewritten by the backend
-/// (`mega.nz`, `drive.proton.me`, `gateway.internxt.com`, ...), so a tab may
-/// hold another value for the same account: there the profile and the user
-/// decide, and the 2FA accounts #128-C exists for keep their reuse.
-fn endpoint_is_identity(provider_type: ProviderType) -> bool {
-    matches!(
-        provider_type,
-        ProviderType::Ftp
-            | ProviderType::Ftps
-            | ProviderType::Sftp
-            | ProviderType::Scp
-            | ProviderType::WebDav
-            | ProviderType::S3
-            | ProviderType::Swift
-    )
 }
 
 /// Lightweight liveness probe for the currently connected provider (#128-C).
@@ -2893,6 +2909,7 @@ fn endpoint_is_identity(provider_type: ProviderType) -> bool {
 /// connected, another account in the slot, a listing that failed or did not
 /// answer within [`PROBE_ALIVE_TIMEOUT`]) tells the UI to fall back to
 /// the normal disconnect + reconnect flow.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_probe_alive(
     state: State<'_, ProviderState>,
@@ -2902,6 +2919,8 @@ pub async fn provider_probe_alive(
     host: Option<String>,
     port: Option<u16>,
     bucket: Option<String>,
+    endpoint: Option<String>,
+    region: Option<String>,
 ) -> Result<bool, String> {
     let expected = ProbeIdentity {
         protocol: protocol.as_deref(),
@@ -2910,6 +2929,8 @@ pub async fn provider_probe_alive(
         host: host.as_deref(),
         port,
         bucket: bucket.as_deref(),
+        endpoint: endpoint.as_deref(),
+        region: region.as_deref(),
     };
     Ok(probe_alive_inner(&state, &expected, PROBE_ALIVE_TIMEOUT).await)
 }
@@ -18207,6 +18228,8 @@ mod tests {
             host: Some(Box::leak(host.to_string().into_boxed_str())),
             port: Some(port),
             bucket: None,
+            endpoint: None,
+            region: None,
         }
     }
 
@@ -18461,6 +18484,149 @@ mod tests {
             )
         };
         assert!(slot_matches_identity(&azure, Some("srv_az"), &tab));
+    }
+
+    // #1514 round 2 (Greptile): a self-hosted server such as Immich is its
+    // endpoint; only the hosts `to_provider_config` fixes are left out.
+    #[test]
+    fn a_self_hosted_server_is_its_endpoint_and_a_fixed_api_host_is_not() {
+        let mut immich = probe_config("https://photos.one.example", 443, "me");
+        immich.provider_type = ProviderType::Immich;
+        let tab = |host| ProbeIdentity {
+            protocol: Some("immich"),
+            ..probe_for(host, 443, "me", None)
+        };
+        assert!(!slot_matches_identity(
+            &immich,
+            None,
+            &tab("https://photos.two.example")
+        ));
+        assert!(slot_matches_identity(
+            &immich,
+            None,
+            &tab("https://photos.one.example")
+        ));
+        for (provider, protocol) in [
+            (ProviderType::Mega, "mega"),
+            (ProviderType::Internxt, "internxt"),
+        ] {
+            let fixed = fixed_api_host(provider).expect("a fixed API host");
+            let mut slot = probe_config(fixed, 443, "me");
+            slot.provider_type = provider;
+            let unsaved = ProbeIdentity {
+                protocol: Some(protocol),
+                host: None,
+                ..probe_for("", 443, "me", None)
+            };
+            assert!(slot_matches_identity(&slot, None, &unsaved), "{protocol}");
+            let typed = ProbeIdentity {
+                protocol: Some(protocol),
+                ..probe_for("whatever the form holds", 443, "me", Some("srv"))
+            };
+            assert!(
+                slot_matches_identity(&slot, Some("srv"), &typed),
+                "{protocol}"
+            );
+        }
+        // Neither side names a server: protocol and user decide.
+        let mut filen = probe_config("", 443, "me");
+        filen.provider_type = ProviderType::Filen;
+        let unsaved = ProbeIdentity {
+            protocol: Some("filen"),
+            host: None,
+            ..probe_for("", 443, "me", None)
+        };
+        assert!(slot_matches_identity(&filen, None, &unsaved));
+    }
+
+    #[test]
+    fn to_provider_config_uses_the_one_list_of_fixed_api_hosts() {
+        assert_eq!(fixed_api_host(ProviderType::Mega), Some("mega.nz"));
+        assert_eq!(fixed_api_host(ProviderType::Immich), None);
+        let src = include_str!("provider_commands.rs");
+        let start = src
+            .find("pub fn to_provider_config(")
+            .expect("to_provider_config");
+        let body = &src[start..start + 40_000];
+        assert!(body.contains("let host = if let Some(host) = fixed_api_host(provider_type) {"));
+        assert!(!body.contains(&format!("\"{}\".to_string()", "mega.nz")));
+    }
+
+    // #1514 round 2 (CodeRabbit): an S3 tab without a bucket, or on another
+    // endpoint or region, is not the slot's account.
+    #[test]
+    fn an_s3_tab_must_name_the_slots_bucket_endpoint_and_region() {
+        let mut slot = probe_config("", 443, "key");
+        slot.provider_type = ProviderType::S3;
+        slot.host = String::new();
+        slot.extra
+            .insert("bucket".to_string(), "photos".to_string());
+        slot.extra.insert(
+            "endpoint".to_string(),
+            "https://minio.one.example:9000".to_string(),
+        );
+        slot.extra
+            .insert("region".to_string(), "eu-west-1".to_string());
+        let tab = |bucket, endpoint, region| ProbeIdentity {
+            protocol: Some("s3"),
+            host: None,
+            bucket,
+            endpoint,
+            region,
+            ..probe_for("", 443, "key", Some("srv_s3"))
+        };
+        let one = Some("https://minio.one.example:9000/");
+        assert!(slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), one, Some("EU-WEST-1"))
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(None, one, None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), Some("https://minio.two.example:9000"), None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), Some("https://minio.one.example:9001"), None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), one, Some("us-east-1"))
+        ));
+    }
+
+    // #1514 round 2 (CodeRabbit): WebDAV connects to the port in its URL.
+    #[test]
+    fn a_webdav_url_port_is_the_port_it_connects_to() {
+        let mut dav = probe_config("https://dav.example.com:8443/dav", 443, "u");
+        dav.provider_type = ProviderType::WebDav;
+        let tab = |host| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com:8443/dav")
+        ));
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com/dav")
+        ));
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com:9443/dav")
+        ));
     }
 
     // #1514 review: an OAuth or 4shared install carries no config, and the
