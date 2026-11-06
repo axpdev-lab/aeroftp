@@ -1469,6 +1469,21 @@ impl S3Provider {
             .unwrap_or(false)
     }
 
+    /// Whether the `<Key>`s of this Filen listing are URL-encoded, and so are
+    /// decoded once. Every Filen listing asks for `encoding-type=url`; the
+    /// answer says whether it was honoured, the AWS rule:
+    /// - the Desktop rclone bridge (gofakes3 `listBucket`, since 2024-12)
+    ///   encodes keys and echoes `<EncodingType>url</EncodingType>` when
+    ///   asked, and lists literal keys otherwise;
+    /// - the Node filen-s3 server ignores the parameter and lists literal keys
+    ///   (`responses.ts` `listObjectsV2`), with no echo.
+    ///
+    /// Decoding a literal key such as `report%20final.txt` turned it into
+    /// another name, so a delete or download could reach another object.
+    fn filen_listing_is_encoded(&self, xml: &str) -> bool {
+        self.is_filen_s3_endpoint() && xml.contains("<EncodingType>url</EncodingType>")
+    }
+
     /// Refuse an `http://` endpoint that leaves this machine, unless the profile
     /// said it accepts that.
     ///
@@ -2479,7 +2494,7 @@ impl S3Provider {
         // for "my folder"), unlike AWS-standard which returns them verbatim.
         // Decode here so RemoteEntry holds the logical name and downstream `build_url`
         // re-encodes consistently. Reported in #196 (Filen S3 tree shows `%20`).
-        let filen_decode = self.is_filen_s3_endpoint();
+        let filen_decode = self.filen_listing_is_encoded(xml_str);
         let repair_mojibake = self.is_filelu_s3_endpoint();
 
         let mut reader = Reader::from_str(xml_str);
@@ -4668,6 +4683,7 @@ impl S3Provider {
                 .text()
                 .await
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let page_encoded = filen_decode && self.filen_listing_is_encoded(&xml_str);
 
             // Parse keys and next token using quick-xml
             let mut reader = Reader::from_str(&xml_str);
@@ -4735,7 +4751,7 @@ impl S3Provider {
                                     all_keys.push(repair_double_utf8_key(
                                         filen_decode_listed_key(
                                             std::mem::take(&mut current_key),
-                                            filen_decode,
+                                            page_encoded,
                                         ),
                                         repair_mojibake,
                                     ));
@@ -5058,14 +5074,14 @@ impl StorageProvider for S3Provider {
         loop {
             let mut params: Vec<(&str, &str)> = if filen_dialect {
                 // Filen always returns all results in one shot, no pagination.
-                // No `encoding-type` here, unlike `find`: the strict filen-s3
-                // server takes only `prefix` and `delimiter`, and this is the
-                // listing every Filen session needs. `parse_listing_of`
-                // decodes as before (#196).
+                // Plus `encoding-type=url` (below): see `filen_listing_is_encoded`.
                 vec![("delimiter", "/"), ("prefix", &prefix_with_slash)]
             } else {
                 vec![("list-type", "2"), ("delimiter", "/"), ("max-keys", "1000")]
             };
+            if filen_dialect {
+                params.push(("encoding-type", "url"));
+            }
 
             if !filen_dialect && !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));
@@ -5124,6 +5140,7 @@ impl StorageProvider for S3Provider {
                 }
                 status => {
                     let body = response.text().await.unwrap_or_default();
+
                     // Extract error message from XML if present
                     let error_msg = if body.contains("<Message>") {
                         body.split("<Message>")
@@ -6402,6 +6419,7 @@ impl StorageProvider for S3Provider {
                 .text()
                 .await
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let page_encoded = self.filen_listing_is_encoded(&xml_str);
 
             // Parse keys, sizes, and filter by pattern using quick-xml
             let mut find_reader = Reader::from_str(&xml_str);
@@ -6483,7 +6501,7 @@ impl StorageProvider for S3Provider {
                             "Contents" => {
                                 if let Some(ref raw_key) = find_key {
                                     let key =
-                                        &filen_decode_listed_key(raw_key.clone(), filen_decode);
+                                        &filen_decode_listed_key(raw_key.clone(), page_encoded);
                                     if !key.ends_with('/') {
                                         let name = key.rsplit('/').next().unwrap_or(key);
                                         if super::matches_find_pattern(name, pattern) {
@@ -7035,6 +7053,7 @@ impl StorageProvider for S3Provider {
                 .text()
                 .await
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let page_encoded = self.filen_listing_is_encoded(&xml_str);
 
             debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
 
@@ -7170,7 +7189,7 @@ impl StorageProvider for S3Provider {
                             "Version" => {
                                 // Only include versions whose key exactly matches
                                 if let Some(ref vk) = v_key {
-                                    if filen_decode_listed_key(vk.clone(), filen_decode) == key {
+                                    if filen_decode_listed_key(vk.clone(), page_encoded) == key {
                                         let version_id = v_version_id
                                             .as_ref()
                                             .map(|v| v.trim().to_string())
@@ -10020,13 +10039,13 @@ mod tests {
                     }
                     let (status, body) = if method == "GET" && query.contains("versions") {
                         (200, format!(
-                            "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>{listed}</Key>\
+                            "<ListVersionsResult><EncodingType>url</EncodingType><IsTruncated>false</IsTruncated><Version><Key>{listed}</Key>\
                              <VersionId>v1</VersionId><IsLatest>true</IsLatest><Size>3</Size>\
                              <LastModified>2026-11-06T00:00:00.000Z</LastModified></Version></ListVersionsResult>"
                         ))
                     } else if method == "GET" && path == "/test-bucket/" {
                         (200, format!(
-                            "<ListBucketResult><IsTruncated>false</IsTruncated><Contents><Key>{listed}</Key>\
+                            "<ListBucketResult><EncodingType>url</EncodingType><IsTruncated>false</IsTruncated><Contents><Key>{listed}</Key>\
                              <Size>3</Size><LastModified>2026-11-06T00:00:00.000Z</LastModified></Contents>\
                              </ListBucketResult>"
                         ))
@@ -10073,6 +10092,61 @@ mod tests {
         assert!(requests.iter().any(|(m, _)| m == "DELETE"), "{requests:?}");
         for (method, path) in &requests {
             assert_eq!(path, "/test-bucket/dir/my%20file%2B1%25.txt", "{method}");
+        }
+    }
+
+    /// CodeRabbit on #1515: `list` on Filen decoded every key, so a literal
+    /// `report%20final.txt` (listed as is by rclone without the parameter, and
+    /// by the Node filen-s3 server always) read as `report final.txt`, and a
+    /// delete could reach another object. `list` now asks for
+    /// `encoding-type=url` and decodes only what the server says it encoded.
+    #[tokio::test]
+    async fn filen_list_asks_for_encoded_keys_and_keeps_literal_ones_literal() {
+        for echo in [true, false] {
+            let seen: Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+            let log = seen.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let log = log.clone();
+                    async move {
+                        log.lock().unwrap().push(req.uri().query().unwrap_or("").to_string());
+                        let (encoding, key) = if echo {
+                            ("<EncodingType>url</EncodingType>", "report%2520final.txt")
+                        } else {
+                            ("", "report%20final.txt")
+                        };
+                        let body = format!(
+                            "<ListBucketResult>{encoding}<IsTruncated>false</IsTruncated><Contents><Key>{key}</Key>\
+                             <Size>3</Size></Contents></ListBucketResult>"
+                        );
+                        axum::http::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            provider.config.region = "filen".into();
+            let entries = provider.list("/").await.expect("list failed");
+            server.abort();
+            assert!(
+                seen.lock()
+                    .unwrap()
+                    .iter()
+                    .all(|q| q.contains("encoding-type=url")),
+                "{:?}",
+                seen.lock().unwrap()
+            );
+            // The object is literally named `report%20final.txt` both times.
+            assert_eq!(entries.len(), 1, "{entries:?}");
+            assert_eq!(entries[0].name, "report%20final.txt", "echo={echo}");
         }
     }
 
@@ -10567,7 +10641,13 @@ mod tests {
                             format!("<Contents><Key>{}</Key><Size>2</Size></Contents>", quick_xml::escape::escape(&listed))
                         }
                     } else { String::new() };
-                    body = format!("<ListBucketResult><IsTruncated>false</IsTruncated>{contents}</ListBucketResult>");
+                    // rclone's bridge echoes the encoding it was asked for.
+                    let echo = if url.query_pairs().any(|(k, v)| k == "encoding-type" && v == "url") {
+                        "<EncodingType>url</EncodingType>"
+                    } else {
+                        ""
+                    };
+                    body = format!("<ListBucketResult>{echo}<IsTruncated>false</IsTruncated>{contents}</ListBucketResult>");
                 } else if method == Method::HEAD && source {
                     if r.fetch_add(1, Ordering::SeqCst) < 3 { status = 404; }
                 } else if method == Method::PUT && copy.is_some() {
@@ -12730,6 +12810,7 @@ mod tests {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult>
   <Name>b</Name>
+  <EncodingType>url</EncodingType>
   <Prefix></Prefix>
   <Delimiter>/</Delimiter>
   <CommonPrefixes><Prefix>my%20folder/</Prefix></CommonPrefixes>
@@ -12750,6 +12831,20 @@ mod tests {
         assert_eq!(file.name, "foto vacanze.jpg");
         assert_eq!(file.path, "/foto vacanze.jpg");
         assert_eq!(file.size, 1024);
+
+        // #1506 Requested 167: without the echo the keys are literal (rclone
+        // not asked, or the Node filen-s3 server), so a file really named
+        // `foto%20vacanze.jpg` keeps its name instead of turning into another.
+        let literal = xml.replace("  <EncodingType>url</EncodingType>\n", "");
+        assert!(!literal.contains("EncodingType"));
+        let (entries, _) = provider
+            .parse_list_response(&literal, false)
+            .expect("parse");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
+        assert_eq!(file.name, "foto%20vacanze.jpg");
+        assert_eq!(file.path, "/foto%20vacanze.jpg");
+        let dir = entries.iter().find(|e| e.is_dir).expect("dir entry");
+        assert_eq!(dir.name, "my%20folder");
     }
 
     /// The delta planner repeats the multipart threshold as its own floor so it

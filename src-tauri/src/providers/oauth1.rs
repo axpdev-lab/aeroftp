@@ -10,7 +10,6 @@ use base64::Engine;
 use hmac::{Hmac, Mac};
 use rand::Rng;
 use sha1::Sha1;
-use std::collections::BTreeMap;
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -82,14 +81,21 @@ pub fn generate_timestamp() -> String {
 fn sign(
     method: &str,
     url: &str,
-    params: &BTreeMap<String, String>,
+    params: &[(String, String)],
     consumer_secret: &str,
     token_secret: &str,
 ) -> String {
-    // 1. Parameter string (sorted, percent-encoded key=value pairs)
-    let param_string: String = params
+    // 1. Parameter string. RFC 5849 3.4.1.3.2: every pair is encoded first,
+    // then sorted by encoded name and, for a repeated name, by encoded value
+    // (`%5B` sorts before `A`, and `x=1&x=2` keeps both pairs).
+    let mut encoded: Vec<(String, String)> = params
         .iter()
-        .map(|(k, v)| format!("{}={}", percent_encode(k), percent_encode(v)))
+        .map(|(k, v)| (percent_encode(k), percent_encode(v)))
+        .collect();
+    encoded.sort();
+    let param_string: String = encoded
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
         .collect::<Vec<_>>()
         .join("&");
 
@@ -159,24 +165,25 @@ pub fn authorization_header(
     let (base_url, query_params) = split_url_query(url);
 
     // Collect all params for signature (OAuth + query + extra)
-    let mut params = BTreeMap::new();
-    params.insert("oauth_consumer_key".to_string(), creds.consumer_key.clone());
-    params.insert("oauth_nonce".to_string(), nonce.clone());
-    params.insert(
-        "oauth_signature_method".to_string(),
-        "HMAC-SHA1".to_string(),
-    );
-    params.insert("oauth_timestamp".to_string(), timestamp.clone());
-    params.insert("oauth_token".to_string(), creds.token.clone());
-    params.insert("oauth_version".to_string(), "1.0".to_string());
+    let mut params: Vec<(String, String)> = vec![
+        ("oauth_consumer_key".to_string(), creds.consumer_key.clone()),
+        ("oauth_nonce".to_string(), nonce.clone()),
+        (
+            "oauth_signature_method".to_string(),
+            "HMAC-SHA1".to_string(),
+        ),
+        ("oauth_timestamp".to_string(), timestamp.clone()),
+        ("oauth_token".to_string(), creds.token.clone()),
+        ("oauth_version".to_string(), "1.0".to_string()),
+    ];
 
     // Include query parameters from URL in signature
     for (k, v) in &query_params {
-        params.insert(k.clone(), v.clone());
+        params.push((k.clone(), v.clone()));
     }
 
     for (k, v) in extra_params {
-        params.insert(k.to_string(), v.to_string());
+        params.push((k.to_string(), v.to_string()));
     }
 
     let signature = sign(
@@ -210,24 +217,25 @@ pub fn authorization_header_consumer_only(
     let nonce = generate_nonce();
     let timestamp = generate_timestamp();
 
-    let mut params = BTreeMap::new();
-    params.insert("oauth_consumer_key".to_string(), consumer_key.to_string());
-    params.insert("oauth_nonce".to_string(), nonce.clone());
-    params.insert(
-        "oauth_signature_method".to_string(),
-        "HMAC-SHA1".to_string(),
-    );
-    params.insert("oauth_timestamp".to_string(), timestamp.clone());
-    params.insert("oauth_version".to_string(), "1.0".to_string());
+    let mut params: Vec<(String, String)> = vec![
+        ("oauth_consumer_key".to_string(), consumer_key.to_string()),
+        ("oauth_nonce".to_string(), nonce.clone()),
+        (
+            "oauth_signature_method".to_string(),
+            "HMAC-SHA1".to_string(),
+        ),
+        ("oauth_timestamp".to_string(), timestamp.clone()),
+        ("oauth_version".to_string(), "1.0".to_string()),
+    ];
 
     for (k, v) in extra_params {
-        params.insert(k.to_string(), v.to_string());
+        params.push((k.to_string(), v.to_string()));
     }
 
     // Extract query params from URL for signing
     let (base_url, query_params) = split_url_query(url);
     for (k, v) in &query_params {
-        params.insert(k.clone(), v.clone());
+        params.push((k.clone(), v.clone()));
     }
 
     // token_secret is empty for request_token
@@ -411,8 +419,7 @@ mod tests {
     /// reproduced byte for byte (that example carries no `oauth_version`).
     #[test]
     fn sign_matches_the_rfc_5849_example() {
-        let mut params = BTreeMap::new();
-        for (k, v) in [
+        let params: Vec<(String, String)> = [
             ("file", "vacation.jpg"),
             ("size", "original"),
             ("oauth_consumer_key", "dpf43f3p2l4k3l03"),
@@ -420,9 +427,10 @@ mod tests {
             ("oauth_signature_method", "HMAC-SHA1"),
             ("oauth_timestamp", "137131202"),
             ("oauth_nonce", "chapoH"),
-        ] {
-            params.insert(k.to_string(), v.to_string());
-        }
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
         assert_eq!(
             sign(
                 "GET",
@@ -452,17 +460,40 @@ mod tests {
                 ("empty".to_string(), String::new()),
             ]
         );
-        let mut from_url = BTreeMap::new();
-        for (k, v) in &params {
-            from_url.insert(k.clone(), v.clone());
-        }
-        let mut raw = BTreeMap::new();
-        raw.insert("name".to_string(), "vacation photo+1%.jpg".to_string());
-        raw.insert("q".to_string(), "a b".to_string());
-        raw.insert("empty".to_string(), String::new());
+        let raw: Vec<(String, String)> = vec![
+            ("name".to_string(), "vacation photo+1%.jpg".to_string()),
+            ("q".to_string(), "a b".to_string()),
+            ("empty".to_string(), String::new()),
+        ];
         assert_eq!(
-            sign("GET", &base, &from_url, "cs", "ts"),
+            sign("GET", &base, &params, "cs", "ts"),
             sign("GET", &base, &raw, "cs", "ts")
+        );
+    }
+
+    /// CodeRabbit on #1515, RFC 5849 3.4.1.3.2: pairs are sorted by ENCODED
+    /// name (`%5B` before `A`, while the decoded `[` sorts after `A`), then by
+    /// encoded value, and a repeated name keeps every pair (`x=1&%78=2` is two
+    /// `x` pairs, which a map collapsed into one).
+    #[test]
+    fn sign_sorts_encoded_pairs_and_keeps_repeated_names() {
+        let base = "https://h.example/p";
+        let reference = |pairs: &str| {
+            let base_string = format!("GET&{}&{}", percent_encode(base), percent_encode(pairs));
+            let mut mac = HmacSha1::new_from_slice(b"cs&ts").unwrap();
+            mac.update(base_string.as_bytes());
+            base64::engine::general_purpose::STANDARD.encode(mac.finalize().into_bytes())
+        };
+        let (_, bracket) = split_url_query("https://h.example/p?A=1&%5B=2");
+        assert_eq!(
+            sign("GET", base, &bracket, "cs", "ts"),
+            reference("%5B=2&A=1")
+        );
+        let (_, repeated) = split_url_query("https://h.example/p?x=2&%78=1");
+        assert_eq!(repeated.len(), 2);
+        assert_eq!(
+            sign("GET", base, &repeated, "cs", "ts"),
+            reference("x=1&x=2")
         );
     }
 
