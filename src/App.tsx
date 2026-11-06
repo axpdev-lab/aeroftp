@@ -9286,7 +9286,19 @@ const App: React.FC = () => {
       setLocalFiles(localFilesData);
       setCurrentLocalPath(targetSession.localPath);
 
-    } catch (e) { connectScope.assert();
+    } catch (e) {
+      try { connectScope.assert(); } catch (cancelled) {
+        // A cancelled scope (the card's own Cancel, the controller's Stop)
+        // skips the branches below. A parked tab must still go back to parked
+        // while this switch owns it, or a click on it finds it "already
+        // active" and never retries. The cancellation still propagates.
+        if (fromParked && phaseVersion === remoteConnectPhaseVersionRef.current) {
+          setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
+          setCurrentLocalPath(targetSession.localPath);
+          backToParked();
+        }
+        throw cancelled;
+      }
       // V2: the user cancelled the switch listing from the panel spinner.
       // cancelRemoteNavigation runs abortSwitchAfterCancel, which unwinds only
       // the half-switched backend, so keep the workspace: mark just THIS target

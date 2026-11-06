@@ -169,8 +169,16 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(body.split('setIsConnected(true);').length - 1).toBe(1);
         expect(body.slice(body.indexOf('setActiveSessionId(sessionId);'), success)).toContain('await ');
         expect(body).toContain('const fromParked = activeSessionId === null;');
-        // The refused host key, the two cancel branches and the failure branch.
-        expect(body.split('backToParked();').length - 1).toBe(4);
+        // The refused host key, a cancelled scope, the two cancel branches and
+        // the failure branch.
+        expect(body.split('backToParked();').length - 1).toBe(5);
+        // A cancelled scope (the card's Cancel, the controller's Stop) throws
+        // from the catch before the branches: it parks the tab first, while
+        // the switch still owns the phase, then rethrows.
+        const scoped = body.slice(body.indexOf('try { connectScope.assert(); } catch (cancelled) {'));
+        expect(scoped.indexOf('backToParked();')).toBeGreaterThan(-1);
+        expect(scoped.indexOf('backToParked();')).toBeLessThan(scoped.indexOf('throw cancelled;'));
+        expect(scoped.slice(0, scoped.indexOf('throw cancelled;'))).toContain('fromParked && phaseVersion === remoteConnectPhaseVersionRef.current');
         // Back to parked means nothing active and a disconnected workspace, so
         // the next click on the tab passes the "already active" return and
         // reconnects again.
@@ -227,16 +235,29 @@ describe('a connect parks the live tab before it ends the connection', () => {
         // exposing a parked tab's cached files to remote actions while another
         // server held the backend. The only setIsConnected(true) on the way
         // into a switch is switchSession's own, after the reconnect.
-        const lines = APP.split('\n');
-        const offenders: string[] = [];
-        lines.forEach((line, i) => {
-            if (!/\bswitchSession\(/.test(line) || /const switchSession = async/.test(line)) return;
-            const before = lines.slice(Math.max(0, i - 12), i).join('\n');
-            const scopeStart = before.lastIndexOf('const ');
-            const window = scopeStart >= 0 ? before.slice(scopeStart) : before;
-            if (window.includes('setIsConnected(true)')) offenders.push(`App.tsx:${i + 1}`);
-        });
-        expect(offenders).toEqual([]);
+        // From the start of the enclosing callback (the nearest `async (` or
+        // `=> {` opener above the call) to the call itself.
+        const earlyFlags = (source: string) => {
+            const lines = source.split('\n');
+            const found: string[] = [];
+            lines.forEach((line, i) => {
+                if (!/\bswitchSession\(/.test(line) || /const switchSession = async/.test(line)) return;
+                let start = i;
+                while (start > 0 && !/async \(|=> \{\s*$/.test(lines[start - 1])) start--;
+                const window = lines.slice(Math.max(0, start - 1), i).join('\n');
+                if (window.includes('setIsConnected(true)')) found.push(`line ${i + 1}`);
+            });
+            return found;
+        };
+        expect(earlyFlags(APP)).toEqual([]);
+        // A flag set at the top of the callback, before any const, is caught too.
+        const regression = [
+            '              onSkipToFileManager={async () => {',
+            '                setIsConnected(true);',
+            '                const lastSession = sessions[sessions.length - 1];',
+            '                await switchSession(lastSession.id);',
+        ].join('\n');
+        expect(earlyFlags(regression)).toEqual(['line 4']);
         // The callers this pins, so the scan cannot pass by finding none.
         expect(APP).toContain('switchSession(existing.id, connectScope)');
         expect(APP).toContain('await switchSession(lastSession.id);');
