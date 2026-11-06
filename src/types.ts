@@ -841,9 +841,11 @@ export const effectiveManualCap = (
  */
 export const profileHasQuota = (server: {
   protocol?: ProviderType;
+  providerId?: string | null;
   options?: ProviderOptions;
 }): boolean =>
   connectionSupportsStorageQuota((server.protocol || "ftp") as ProviderType, server.options) ||
+  s3PresetReportsUsage(server.protocol, server.providerId) ||
   !!(server.options?.manualTotalBytes && server.options.manualTotalBytes > 0);
 
 // Crypt-overlay kind for a saved profile, or null when the profile has no

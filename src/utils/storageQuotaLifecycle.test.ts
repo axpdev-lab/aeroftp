@@ -19,7 +19,8 @@ function closure(name: string, next: string) {
 }
 const { code: executable } = await transformWithOxc(
   closure('fetchStorageQuota', 'scanUsedStorage')
-  + closure('scanUsedStorage', 'cancelUsedStorageScan'),
+  + closure('scanUsedStorage', 'cancelUsedStorageScan')
+  + closure('handleQuotaAfterTransfer', 'keepAliveTick'),
   'quota-lifecycle.ts',
 );
 
@@ -46,6 +47,12 @@ function fixture(mode: Mode, options: {
   /** The saved profile's protocol and initial folder (default WebDAV at /A). */
   protocol?: string;
   initialPath?: string;
+  /** An S3 preset that reports usage on request (Tigris), as `s3PresetReportsUsage` says. */
+  reportsUsage?: boolean;
+  /** `provider_storage_info` rejects, as it does for a key that cannot read the stats. */
+  storageInfoFails?: boolean;
+  /** The figure the saved profile already holds from an earlier scan. */
+  lastQuota?: { used: number; total: number; usedSource: string };
 } = {}) {
   const holdFirstProfileRead = options.holdFirstProfileRead ?? true;
   let profilesRequested!: () => void;
@@ -54,7 +61,7 @@ function fixture(mode: Mode, options: {
   const profilesPending = new Promise<unknown[]>(resolve => { release = resolve; });
   const protocol = options.protocol ?? 'webdav';
   const profile = { id: 'A', protocol, initialPath: options.initialPath ?? '/A',
-    options: { autoScanUsedOnConnect: true } };
+    options: { autoScanUsedOnConnect: true }, lastQuota: options.lastQuota };
   const params = { protocol, savedServerId: 'A',
     providerId: mode === 'InfiniCloud' ? 'infinicloud' : undefined,
     options: { ...profile.options, apiKey: 'fixture', infinicloudNode: 'fixture' } };
@@ -65,6 +72,7 @@ function fixture(mode: Mode, options: {
   const invoke = vi.fn(async (command: string, _args?: unknown) => {
     commands.push({ command, backend });
     if (command === 'provider_storage_info') {
+      if (options.storageInfoFails) throw new Error('not supported');
       return mode === 'usable quota' ? { used: 5, total: 100, free: 95 } : { used: 0, total: 0, free: 0 };
     }
     if (command === 'infinicloud_quota') return { used: 5, total: 100, available: 95 };
@@ -72,6 +80,7 @@ function fixture(mode: Mode, options: {
     throw new Error(`Unexpected command: ${command}`);
   });
   const persist = vi.fn(async (..._args: unknown[]) => {});
+  const mergeProfile = vi.fn(async (..._args: unknown[]) => {});
   // A real state cell, so a functional update sees what the previous one left.
   const quota: { current: Quota } = { current: null };
   const queued: Array<(prev: Quota) => Quota> = [];
@@ -97,7 +106,7 @@ function fixture(mode: Mode, options: {
     connectionParams: params, liveConnectionParams: params, invoke, loadSavedServerProfiles: profiles,
     resolveLiveProfile: () => profile, persistQuotaToProfile: persist,
     connectionSupportsStorageQuota: () => mode !== 'no quota API',
-    s3PresetReportsUsage: () => false,
+    s3PresetReportsUsage: () => options.reportsUsage ?? false,
     effectiveManualCap: () => undefined,
     resolveEffectiveQuota: (used: number, total: number) => ({ used, total }),
     isMegaCmdQuotaProfile: () => false, setStorageQuota: display,
@@ -108,13 +117,19 @@ function fixture(mode: Mode, options: {
     t: (key: string) => key, formatBytes: String, shouldPersistUsedScan, usedScanRoot,
     usedScanBoundKey: () => null, listen: vi.fn(options.listen ?? (async () => vi.fn())),
     console: { warn: vi.fn() },
+    quotaRefreshTimer: { current: null as number | null }, window: { setTimeout: vi.fn(), clearTimeout: vi.fn() },
+    mergeSavedServerProfile: mergeProfile, setServersRefreshKey: vi.fn(),
+    // The slice for the after-transfer handler runs up to the next const and so
+    // takes in the effect that follows it: it is declared, never run.
+    useEffect: vi.fn(), isConnected: false,
   };
   const runtime = new Function(...Object.keys(context),
-    executable + '\nreturn { fetchQuota: fetchStorageQuota, scan: scanUsedStorage };')(...Object.values(context)) as {
+    executable + '\nreturn { fetchQuota: fetchStorageQuota, scan: scanUsedStorage, afterTransfer: handleQuotaAfterTransfer };')(...Object.values(context)) as {
     fetchQuota: (protocol: string) => Promise<void>;
     scan: () => Promise<void>;
+    afterTransfer: (info: { direction: string; bytes: number }) => void;
   };
-  return { runtime, invoke, commands, persist, display, quota, flush, profiles, profilesReady, version, connection,
+  return { runtime, invoke, commands, persist, mergeProfile, display, quota, flush, profiles, profilesReady, version, connection,
     activityLog, notify,
     release: () => release([profile]),
     // A switch or a disconnect changes the connection; both also invalidate
@@ -231,6 +246,55 @@ describe('App used-storage scan lifecycle', () => {
     expect(f.commands.map(c => c.command)).not.toContain('provider_scan_used');
     expect(f.activityLog.updateEntry).toHaveBeenCalledWith('log',
       expect.objectContaining({ status: 'success', message: 'transfer.cancelled' }));
+  });
+});
+
+// A preset that reports usage on request (Tigris) can still be refused it: the
+// connection then behaves as plain S3 instead of ending on an empty bar.
+describe('App usage on request that is not available', () => {
+  // The figure read from the API is not a running total: an upload that
+  // replaces an object adds nothing, and one read per upload is billed.
+  it('does not add the bytes of an upload to the usage a Tigris profile read', async () => {
+    const f = fixture('no quota API', { holdFirstProfileRead: false, reportsUsage: true, protocol: 's3' });
+    f.quota.current = { used: 50, total: 0, free: 0 };
+    f.runtime.afterTransfer({ direction: 'upload', bytes: 10 });
+    await settle();
+    expect(f.quota.current).toEqual({ used: 50, total: 0, free: 0 });
+    expect(f.mergeProfile).not.toHaveBeenCalled();
+    expect(f.commands.map(c => c.command)).not.toContain('provider_storage_info');
+  });
+
+  it('still adds the bytes of an upload on plain S3', async () => {
+    const f = fixture('no quota API', { holdFirstProfileRead: false, protocol: 's3' });
+    f.quota.current = { used: 50, total: 0, free: 0 };
+    f.runtime.afterTransfer({ direction: 'upload', bytes: 10 });
+    await settle();
+    expect(f.quota.current).toMatchObject({ used: 60 });
+  });
+
+  it('starts the opted-in first scan when the usage call is refused', async () => {
+    const f = fixture('no quota API', { holdFirstProfileRead: false, reportsUsage: true, storageInfoFails: true });
+    await f.runtime.fetchQuota('s3');
+    await vi.waitFor(() => expect(f.commands.map(c => c.command)).toContain('provider_scan_used'));
+    expect(f.commands.map(c => c.command)[0]).toBe('provider_storage_info');
+  });
+
+  it('shows the cached figure of an earlier scan when the usage call is refused', async () => {
+    const f = fixture('no quota API', {
+      holdFirstProfileRead: false, reportsUsage: true, storageInfoFails: true,
+      lastQuota: { used: 7, total: 0, usedSource: 'scan' },
+    });
+    await f.runtime.fetchQuota('s3');
+    expect(f.quota.current).toMatchObject({ used: 7 });
+    expect(f.commands.map(c => c.command)).not.toContain('provider_scan_used');
+  });
+
+  it('still clears the bar when a provider that is not such a preset fails', async () => {
+    const f = fixture('usable quota', { holdFirstProfileRead: false, storageInfoFails: true });
+    f.quota.current = { used: 5, total: 100, free: 95 };
+    await f.runtime.fetchQuota('webdav');
+    expect(f.quota.current).toBeNull();
+    expect(f.commands.map(c => c.command)).not.toContain('provider_scan_used');
   });
 });
 

@@ -33,6 +33,49 @@ use super::{
     StorageProvider, TrashEntry, UploadedPart,
 };
 
+/// What a folder rename that stopped halfway tells the user. A retry is refused
+/// while the destination holds objects, so the message says where each kind of
+/// object is and what clearing may touch. Objects moved by the metadata rename
+/// exist only under the destination: deleting them there loses them, so the
+/// advice for those is to move them back.
+fn partial_rename_message(
+    moved: usize,
+    copied: usize,
+    total: usize,
+    from: &str,
+    to: &str,
+    failed_key: &str,
+    cause: &dyn std::fmt::Display,
+) -> String {
+    // The answer to the failed key may have been lost after the server acted
+    // on it, so it is the one object whose folder is not known.
+    let unsure = format!("{failed_key} itself may be in either folder: look for it in both");
+    if moved == 0 && copied == 0 {
+        format!(
+            "rename of {total} objects to {to} failed on {failed_key} before any was copied \
+             or moved; {unsure} before retrying: {cause}"
+        )
+    } else if moved == 0 {
+        format!(
+            "rename copied {copied} of {total} objects to {to} before copying {failed_key} \
+             failed; the other originals are all still in {from}, the {copied} copies \
+             stay under {to}, and a retry is refused until they are removed; {unsure}: {cause}"
+        )
+    } else {
+        let copies = if copied > 0 {
+            format!(" and delete from {to} only the {copied} copies that also exist in {from}")
+        } else {
+            String::new()
+        };
+        format!(
+            "rename moved {moved} and copied {copied} of {total} objects to {to} before \
+             {failed_key} failed; the {moved} moved objects are only under {to} now, so do \
+             not delete them: to retry, move them back to {from}{copies}. The rest are \
+             still in {from}; {unsure}: {cause}"
+        )
+    }
+}
+
 /// Returns true when the S3 endpoint targets a loopback address or a known
 /// local-bridge hostname (Filen Desktop S3 at local.s3.filen.io, MEGAcmd, ...).
 /// Used to auto-trust self-signed TLS certificates in S3Provider::new without
@@ -2135,23 +2178,15 @@ impl S3Provider {
                     // The copies made so far stay under the destination, so a
                     // retry would be refused as AlreadyExists with nothing to
                     // say why: say it here.
-                    let copied = to_delete.len();
-                    return Err(ProviderError::Other(if moved == 0 {
-                        format!(
-                            "rename copied {copied} of {} objects to {to} before copying {old_key} \
-                             failed; the originals are all still in {from}, the {copied} copies \
-                             stay under {to}, and a retry is refused until they are removed: {e}",
-                            keys.len()
-                        )
-                    } else {
-                        format!(
-                            "rename moved {moved} and copied {copied} of {} objects to {to} before \
-                             {old_key} failed; the {moved} moved objects are only under {to} now, \
-                             the {copied} copied ones are in both folders, the rest are still in \
-                             {from}, and a retry is refused until the destination is cleared: {e}",
-                            keys.len()
-                        )
-                    }));
+                    return Err(ProviderError::Other(partial_rename_message(
+                        moved,
+                        to_delete.len(),
+                        keys.len(),
+                        from,
+                        to,
+                        old_key,
+                        &e,
+                    )));
                 }
                 to_delete.push(old_key.clone());
             }
@@ -12348,6 +12383,16 @@ mod tests {
                                         .unwrap()
                                         .trim_start_matches("/test-bucket/")
                                         .to_string();
+                                    // A source that cannot be read fails to copy
+                                    // with or without the header.
+                                    if source.contains("unreadable") {
+                                        return reply(
+                                            500,
+                                            &[],
+                                            b"<Error><Code>InternalError</Code></Error>"
+                                                .to_vec(),
+                                        );
+                                    }
                                     match store.get(&source) {
                                         Some(data) => {
                                             let data = data.clone();
@@ -12707,6 +12752,31 @@ mod tests {
         }
         assert!(tigris_requests(&log, "DELETE").is_empty());
         assert!(tigris_requests(&log, "POST").is_empty());
+    }
+
+    /// A folder rename that fails after some keys were moved: those keys exist
+    /// only under the destination, so the error must never tell the user to
+    /// empty it.
+    #[tokio::test]
+    async fn tigris_folder_rename_failing_after_a_move_does_not_advise_clearing_the_destination() {
+        let (mut provider, objects, _) = tigris_double(
+            &[("src/a.txt", "A"), ("src/unreadable.txt", "B")],
+            TigrisDoubleConfig::default(),
+        )
+        .await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the second key cannot be copied");
+        let message = err.to_string();
+        assert!(
+            objects.lock().unwrap().contains_key("dst/a.txt"),
+            "the first key was moved: {message}"
+        );
+        assert!(message.contains("only under"), "{message}");
+        assert!(message.contains("move them back to"), "{message}");
+        assert!(!message.contains("destination is cleared"), "{message}");
+        assert!(!message.contains("until the destination"), "{message}");
     }
 
     /// Off Tigris nothing changes: no header, a delete.
@@ -13168,6 +13238,54 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("copied 1 of 2"), "{message}");
         assert!(message.contains("retry"), "{message}");
+    }
+
+    /// The message after a halfway rename names where each object is. Objects
+    /// moved by the metadata rename exist only at the destination, so the
+    /// advice must never be to clear it before moving them back.
+    #[test]
+    fn partial_rename_message_keeps_moved_objects_safe() {
+        let after_moves = partial_rename_message(3, 1, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(
+            after_moves.contains("3 moved objects are only under /dst"),
+            "{after_moves}"
+        );
+        assert!(after_moves.contains("do not delete them"), "{after_moves}");
+        assert!(
+            after_moves.contains("move them back to /src"),
+            "{after_moves}"
+        );
+        assert!(
+            after_moves.contains("delete from /dst only the 1 copies that also exist in /src"),
+            "{after_moves}"
+        );
+        assert!(!after_moves.contains("cleared"), "{after_moves}");
+        assert!(after_moves.ends_with("boom"), "{after_moves}");
+
+        let only_moves = partial_rename_message(2, 0, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(!only_moves.contains("copies"), "{only_moves}");
+
+        for message in [&after_moves, &only_moves] {
+            assert!(
+                message.contains("src/x itself may be in either folder"),
+                "{message}"
+            );
+        }
+
+        let nothing_done = partial_rename_message(0, 0, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(
+            nothing_done.contains("before any was copied"),
+            "{nothing_done}"
+        );
+        assert!(!nothing_done.contains("copies stay"), "{nothing_done}");
+        assert!(!nothing_done.contains("removed"), "{nothing_done}");
+
+        let copies_only = partial_rename_message(0, 2, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(
+            copies_only.contains("originals are all still in /src"),
+            "{copies_only}"
+        );
+        assert!(!copies_only.contains("moved objects"), "{copies_only}");
     }
 
     /// Opt-in live check. Supply a disposable bucket's saved-profile export

@@ -6,6 +6,7 @@ import {
     NATIVE_PROVIDER_PROTOCOLS,
     connectionSupportsStorageQuota,
     s3PresetReportsUsage,
+    profileHasQuota,
     providerServesQuota,
     effectiveManualCap,
 } from './types';
@@ -61,5 +62,12 @@ describe('S3 presets that report usage on request', () => {
 
     it('stays out of the after-transfer refresh gate, which would bill a request per upload', () => {
         expect(connectionSupportsStorageQuota('s3', {})).toBe(false);
+    });
+
+    it('shows the fetched usage of a Tigris profile in My Servers, with no manual cap', () => {
+        expect(profileHasQuota({ protocol: 's3', providerId: 'tigris', options: {} })).toBe(true);
+        expect(profileHasQuota({ protocol: 's3', providerId: 'filebase', options: {} })).toBe(false);
+        expect(profileHasQuota({ protocol: 's3', options: {} })).toBe(false);
+        expect(profileHasQuota({ protocol: 's3', options: { manualTotalBytes: 1 } })).toBe(true);
     });
 });
