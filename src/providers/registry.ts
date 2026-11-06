@@ -2286,14 +2286,13 @@ export const resolveProfileS3Location = (
     const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
     const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
     const signing = (region?: string) => region || 'us-east-1';
-    // An explicit endpoint signs with the region it names (SigV4 credential
-    // scope), even over a stored region that contradicts it (an importer's
-    // us-east-1, #1506 Requested 200), then the stored region, then the
-    // preset's declared default, as the Rust loader does
-    // (apply_s3_profile_defaults).
+    // An explicit endpoint signs with the region it names, spelled as the
+    // host spells it (SigV4's credential scope is case-sensitive), even over
+    // a stored region (an importer's us-east-1, #1506 Requested 200), then
+    // the stored region, then the preset's declared default, as the Rust
+    // loader does (apply_s3_profile_defaults).
     const explicit = (endpoint: string) => {
-        const named = regionFromS3Endpoint(providerId, endpoint);
-        const region = (named && storedRegion?.toLowerCase() === named ? storedRegion : named)
+        const region = regionFromS3Endpoint(providerId, endpoint)
             || storedRegion
             || (providerId ? getProviderById(providerId)?.defaults?.region : undefined);
         return { endpoint, region, signingRegion: signing(region) };

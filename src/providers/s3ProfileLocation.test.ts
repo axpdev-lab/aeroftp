@@ -195,11 +195,13 @@ describe('MEGA S4 preset', () => {
     it.each([
         ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'us-east-1', 'eu-central-1'],
         ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'eu-central-1', 'eu-central-1'],
-        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'EU-CENTRAL-1', 'EU-CENTRAL-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'EU-CENTRAL-1', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', ' eu-central-1 ', 'eu-central-1'],
         ['wasabi', 'https://s3.eu-central-1.wasabisys.com', undefined, 'eu-central-1'],
         ['ibm-cos', 'https://s3.us-south.cloud-object-storage.appdomain.cloud', 'eu-de', 'us-south'],
         ['digitalocean-spaces', 'https://fra1.digitaloceanspaces.com', 'us-east-1', 'fra1'],
         ['wasabi', 'https://storage.example.com', 'us-west-1', 'us-west-1'],
+        ['wasabi', 'https://storage.example.com', ' us-west-1 ', 'us-west-1'],
     ])('%s %s with stored %s signs %s', (provider, endpoint, region, expected) => {
         const location = resolveProfileS3Location(provider, { endpoint, region }, '');
         expect(location.region).toBe(expected);

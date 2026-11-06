@@ -508,26 +508,31 @@ pub fn apply_s3_profile_defaults(
                 .then(|| host.to_string())
         });
 
-    // The region the endpoint names wins over a stored one that contradicts
-    // it (#1506 Requested 200): an importer (kopia, restic, mc, aws, rclone)
-    // stores its source's region as given, often us-east-1, and a host that
-    // carries its region in the preset's template signs with that region, as
-    // the same profile made in the form does. A stored region the endpoint
-    // agrees with, or one beside an endpoint the template does not parse,
-    // stays the profile's.
+    // The region the endpoint names wins over a stored one (#1506 Requested
+    // 200): an importer (kopia, restic, mc, aws, rclone) stores its source's
+    // region as given, often us-east-1, and a host that carries its region in
+    // the preset's template signs with that region, spelled as the host
+    // spells it (SigV4's credential scope is case-sensitive), as the same
+    // profile made in the form does. The source says "profile" only when the
+    // stored value is exactly that region. A stored region beside an
+    // endpoint the template does not parse stays, trimmed.
     let named_region = explicit_endpoint
         .as_deref()
         .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint));
     let stored_region = extra.get("region").map(|region| region.trim().to_string());
     let region_source = match (stored_region, named_region) {
-        (Some(stored), Some(named)) if !stored.eq_ignore_ascii_case(&named) => {
+        (stored, Some(named)) => {
+            let source = if stored.as_deref() == Some(named.as_str()) {
+                "profile"
+            } else {
+                "endpoint"
+            };
             extra.insert("region".to_string(), named);
-            "endpoint"
+            source
         }
-        (Some(_), _) => "profile",
-        (None, Some(named)) => {
-            extra.insert("region".to_string(), named);
-            "endpoint"
+        (Some(stored), None) => {
+            extra.insert("region".to_string(), stored);
+            "profile"
         }
         (None, None) => {
             if let Some(default_region) = s3_profile_default_region(provider_id) {
@@ -1050,7 +1055,15 @@ mod tests {
                 "wasabi",
                 "https://s3.eu-central-1.wasabisys.com",
                 Some("EU-CENTRAL-1"),
-                "EU-CENTRAL-1",
+                // SigV4's scope is case-sensitive: the host's spelling signs.
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some(" eu-central-1 "),
+                "eu-central-1",
                 "profile",
             ),
             (
@@ -1079,6 +1092,13 @@ mod tests {
                 "wasabi",
                 "https://storage.example.com",
                 Some("us-west-1"),
+                "us-west-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://storage.example.com",
+                Some(" us-west-1 "),
                 "us-west-1",
                 "profile",
             ),
