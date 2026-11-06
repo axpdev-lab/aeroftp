@@ -490,19 +490,22 @@ fn s3_slowdown_delay(
 }
 
 /// Delay before another attempt of an upload request that Fastly Object
-/// Storage answered with 408 (the request ran past its 120 s limit and was not
-/// stored) or 503. Both are repeatable for a single PUT or one part: the same
-/// key and bytes overwrite, nothing is created twice. Bounded by the shared
-/// retry allowance, `Retry-After` honored up to the configured cap, and decided
-/// on the status alone. `attempt` is how many such replies were already
-/// followed.
-fn fastly_transient_delay(
+/// Storage answered with 408: the request ran past its 120 s limit and was not
+/// completed (RFC 9110 15.5.9). The repeat is safe for a single PUT or one
+/// part, because it carries the same key and bytes (a part overwrites by
+/// number), so nothing is stored twice. Only a 408 qualifies. A plain 503 on a
+/// write is an uncertain outcome and stays on its response like on every
+/// other S3 endpoint (`docs/HTTP-RETRY-SAFETY.md`); a 429 is already repeated
+/// by the shared layer. Bounded by the shared retry allowance, `Retry-After`
+/// honored up to the configured cap. `attempt` is how many 408 replies were
+/// already followed.
+fn fastly_timeout_delay(
     status: u16,
     retry_after: Option<std::time::Duration>,
     attempt: u32,
     config: &super::HttpRetryConfig,
 ) -> Option<std::time::Duration> {
-    if !matches!(status, 408 | 503) || attempt >= config.max_retries {
+    if status != 408 || attempt >= config.max_retries {
         return None;
     }
     let cap = std::time::Duration::from_millis(config.max_delay_ms);
@@ -3716,8 +3719,8 @@ impl S3Provider {
         Ok(etag)
     }
 
-    /// `UploadPart` on Fastly: a 408 or 503 answer is repeated with backoff
-    /// (`fastly_transient_delay`), because a part is overwritten by number and
+    /// `UploadPart` on Fastly: a 408 answer is repeated with backoff
+    /// (`fastly_timeout_delay`), because a part is overwritten by number and
     /// a repeat stores nothing twice. The last answer is returned as it came.
     async fn fastly_upload_part_request(
         &self,
@@ -3735,7 +3738,7 @@ impl S3Provider {
                 .await?;
             let status = response.status().as_u16();
             let retry_after = super::http_retry::parse_retry_after(&response);
-            match fastly_transient_delay(status, retry_after, attempt, &retry) {
+            match fastly_timeout_delay(status, retry_after, attempt, &retry) {
                 Some(delay) => {
                     attempt += 1;
                     tokio::time::sleep(delay).await;
@@ -6413,7 +6416,8 @@ impl StorageProvider for S3Provider {
                 &mut remaining_retries,
             )
             .await?;
-            // Fastly also repeats a 408 (see `fastly_transient_delay`).
+            // Fastly also repeats a 408 (see `fastly_timeout_delay`); a plain 503
+            // stays on its response, as everywhere (docs/HTTP-RETRY-SAFETY.md).
             let status = response.status();
             let fastly = self.is_fastly_endpoint();
             if status != StatusCode::SERVICE_UNAVAILABLE
@@ -6432,7 +6436,7 @@ impl StorageProvider for S3Provider {
             let delay = s3_slowdown_delay(status.as_u16(), &body, retry_after, attempt, &retry)
                 .or_else(|| {
                     if fastly {
-                        fastly_transient_delay(status.as_u16(), retry_after, attempt, &retry)
+                        fastly_timeout_delay(status.as_u16(), retry_after, attempt, &retry)
                     } else {
                         None
                     }
@@ -13436,40 +13440,34 @@ mod tests {
     }
 
     #[test]
-    fn fastly_transient_delay_covers_408_and_503_within_the_budget() {
+    fn fastly_timeout_delay_covers_408_only_within_the_budget() {
         let config = super::super::HttpRetryConfig::default();
         let zero = Some(std::time::Duration::ZERO);
-        for status in [408u16, 503] {
-            assert!(
-                fastly_transient_delay(status, zero, 0, &config).is_some(),
-                "{status}"
-            );
-            assert!(
-                fastly_transient_delay(status, None, 1, &config).is_some(),
-                "{status}"
-            );
+        assert!(fastly_timeout_delay(408, zero, 0, &config).is_some());
+        assert!(fastly_timeout_delay(408, None, 1, &config).is_some());
+        assert_eq!(
+            fastly_timeout_delay(408, zero, config.max_retries, &config),
+            None,
+            "past the budget"
+        );
+        // Everything else is the caller's to report. A 503 on a write is an
+        // uncertain outcome and stays on its response like on every other S3
+        // endpoint (docs/HTTP-RETRY-SAFETY.md); a 429 is the shared layer's; a 4xx
+        // is a refusal and a 500 may have done its work.
+        for status in [200u16, 400, 403, 404, 412, 429, 500, 502, 503, 504] {
             assert_eq!(
-                fastly_transient_delay(status, zero, config.max_retries, &config),
-                None,
-                "{status} past the budget"
-            );
-        }
-        // Everything else is the caller's to report: a 4xx is a refusal and a
-        // 500 may have done its work.
-        for status in [200u16, 400, 403, 404, 412, 429, 500, 502] {
-            assert_eq!(
-                fastly_transient_delay(status, zero, 0, &config),
+                fastly_timeout_delay(status, zero, 0, &config),
                 None,
                 "{status}"
             );
         }
         // Retry-After is honored, up to the configured cap.
         assert_eq!(
-            fastly_transient_delay(503, Some(std::time::Duration::from_secs(2)), 0, &config),
+            fastly_timeout_delay(408, Some(std::time::Duration::from_secs(2)), 0, &config),
             Some(std::time::Duration::from_secs(2))
         );
         assert_eq!(
-            fastly_transient_delay(408, Some(std::time::Duration::from_secs(9999)), 0, &config),
+            fastly_timeout_delay(408, Some(std::time::Duration::from_secs(9999)), 0, &config),
             Some(std::time::Duration::from_millis(config.max_delay_ms))
         );
     }
@@ -13513,9 +13511,10 @@ mod tests {
     }
 
     /// A single PUT on Fastly repeats a 408 (it ran past 120 s and was not
-    /// stored) and a 503, and leaves a 500 and a 403 on the first answer.
+    /// completed) and a 503 SlowDown (like every S3 endpoint), and leaves a
+    /// plain 503, a 500 and a 403 on the first answer.
     #[tokio::test]
-    async fn fastly_single_put_repeats_a_408_and_a_503_only() {
+    async fn fastly_single_put_repeats_a_408_and_a_slowdown_only() {
         use std::sync::atomic::Ordering;
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("src.bin");
@@ -13524,7 +13523,8 @@ mod tests {
 
         for (status, body, sends) in [
             (408u16, "<Error><Code>RequestTimeout</Code></Error>", 2usize),
-            (503, "<Error><Code>ServiceUnavailable</Code></Error>", 2),
+            (503, "<Error><Code>SlowDown</Code></Error>", 2),
+            (503, "<Error><Code>ServiceUnavailable</Code></Error>", 1),
             (500, "<Error><Code>InternalError</Code></Error>", 1),
             (403, "<Error><Code>AccessDenied</Code></Error>", 1),
         ] {
@@ -13533,8 +13533,12 @@ mod tests {
             provider.connected = true;
             provider.force_fastly = true;
             let outcome = provider.upload(local, "/x.bin", None).await;
-            assert_eq!(puts.load(Ordering::SeqCst), sends, "{status}: {outcome:?}");
-            assert_eq!(outcome.is_ok(), sends == 2, "{status}: {outcome:?}");
+            assert_eq!(
+                puts.load(Ordering::SeqCst),
+                sends,
+                "{status} {body}: {outcome:?}"
+            );
+            assert_eq!(outcome.is_ok(), sends == 2, "{status} {body}: {outcome:?}");
         }
 
         // The retry allowance is bounded and the last answer is reported.
@@ -13566,17 +13570,25 @@ mod tests {
         assert_eq!(puts.load(Ordering::SeqCst), 1);
     }
 
-    /// One part on Fastly repeats a 408 and a 503 under the same bounds.
+    /// One part on Fastly repeats a 408 under the same bound. A 503 of any
+    /// kind, a 500 and a 403 come back at once: a write whose outcome is
+    /// uncertain is not replayed (docs/HTTP-RETRY-SAFETY.md).
     #[tokio::test]
-    async fn fastly_part_upload_repeats_a_408_and_a_503_only() {
+    async fn fastly_part_upload_repeats_a_408_only() {
         use std::sync::atomic::Ordering;
-        for (status, sends, ok) in [
-            (408u16, 2usize, true),
-            (503, 2, true),
-            (500, 1, false),
-            (403, 1, false),
+        for (status, body, sends, ok) in [
+            (408u16, "", 2usize, true),
+            (503, "", 1, false),
+            (
+                503,
+                "<Error><Code>ServiceUnavailable</Code></Error>",
+                1,
+                false,
+            ),
+            (500, "", 1, false),
+            (403, "", 1, false),
         ] {
-            let (origin, puts) = fastly_put_double(vec![(status, "")]).await;
+            let (origin, puts) = fastly_put_double(vec![(status, body)]).await;
             let mut provider = make_provider(Some(&origin));
             provider.force_fastly = true;
             let outcome = provider
@@ -13585,7 +13597,7 @@ mod tests {
             assert_eq!(puts.load(Ordering::SeqCst), sends, "{status}: {outcome:?}");
             assert_eq!(outcome.is_ok(), ok, "{status}: {outcome:?}");
         }
-        let (origin, puts) = fastly_put_double(vec![(503, ""); 10]).await;
+        let (origin, puts) = fastly_put_double(vec![(408, ""); 10]).await;
         let mut provider = make_provider(Some(&origin));
         provider.force_fastly = true;
         let outcome = provider
@@ -13594,7 +13606,7 @@ mod tests {
         assert!(outcome.is_err(), "{outcome:?}");
         assert_eq!(puts.load(Ordering::SeqCst), 4);
 
-        let (origin, puts) = fastly_put_double(vec![(503, "")]).await;
+        let (origin, puts) = fastly_put_double(vec![(408, "")]).await;
         let provider = make_provider(Some(&origin));
         let outcome = provider
             .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
