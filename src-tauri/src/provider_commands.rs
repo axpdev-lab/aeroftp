@@ -7431,6 +7431,7 @@ mod site_connection_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         })));
         state
     }
@@ -21078,6 +21079,7 @@ mod overlay_activation_discard_tests {
             tls_mode: crate::providers::FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         *state.provider.lock().await = Some(Box::new(CryptOverlayProvider::new(
             Box::new(raw),

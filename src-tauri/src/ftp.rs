@@ -100,6 +100,9 @@ pub struct FtpManager {
     /// control channel is then out of step, so `disconnect` sends no QUIT,
     /// whose reply could be the one the login was waiting for.
     abandoned_command: bool,
+    /// Use the address a PASV reply names (off by default, see
+    /// `FtpConfig::trust_pasv_address`).
+    trust_pasv_address: bool,
 }
 
 #[allow(dead_code)]
@@ -113,7 +116,13 @@ impl FtpManager {
             password: None,
             timeouts: FtpTimeoutConfig::default(),
             abandoned_command: false,
+            trust_pasv_address: false,
         }
+    }
+
+    /// Whether the next connection uses the address a PASV reply names.
+    pub fn set_trust_pasv_address(&mut self, trust: bool) {
+        self.trust_pasv_address = trust;
     }
 
     /// Apply GUI transfer timeout to connection-oriented FTP operations.
@@ -177,6 +186,10 @@ impl FtpManager {
         .await
         .context("Connection timeout")?
         .map_err(|e| FtpManagerError::ConnectionError(e.to_string()))?;
+        let mut stream = stream;
+        // Data connections go to the control peer unless the profile trusts
+        // the PASV address (#1506 Requested 188).
+        stream.set_passive_nat_workaround(!self.trust_pasv_address);
 
         self.stream = Some(stream);
         // A new control connection owes nothing.

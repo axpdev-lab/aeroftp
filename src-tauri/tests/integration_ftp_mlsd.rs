@@ -35,6 +35,7 @@ fn provider() -> FtpProvider {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: None,
+        trust_pasv_address: false,
     })
 }
 

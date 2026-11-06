@@ -389,6 +389,12 @@ pub struct FtpConfig {
     pub tls_mode: FtpTlsMode,
     pub verify_cert: bool,
     pub initial_path: Option<String>,
+    /// Use the address a PASV reply names for the data connection. Off by
+    /// default: the data connection goes to the control connection's peer
+    /// with the PASV port, as curl does since 7.74, so a server cannot steer
+    /// the client to another host (#1506 Requested 188). On only for a server
+    /// that serves data from another address (`trust_pasv_address`).
+    pub trust_pasv_address: bool,
 }
 
 impl FtpConfig {
@@ -427,6 +433,10 @@ impl FtpConfig {
             tls_mode,
             verify_cert,
             initial_path: config.initial_path.clone(),
+            trust_pasv_address: config
+                .extra
+                .get("trust_pasv_address")
+                .is_some_and(|v| v == "true"),
         })
     }
 }

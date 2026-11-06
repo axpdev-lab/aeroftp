@@ -1621,6 +1621,10 @@ pub struct ConnectionParams {
     /// so legacy callers that omit it keep working.
     #[serde(default, alias = "connectToken")]
     connect_token: Option<String>,
+    /// The profile's "use the address the server gives for passive data
+    /// connections" option (#1506 Requested 188); absent means off.
+    #[serde(default, alias = "trustPasvAddress")]
+    trust_pasv_address: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -3508,6 +3512,7 @@ async fn connect_ftp_inner(
         .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     let mut ftp_manager = state.ftp_manager.lock().await;
+    ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
     let do_connect = async {
         ftp_manager

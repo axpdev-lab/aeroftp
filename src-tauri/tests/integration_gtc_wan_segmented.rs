@@ -636,6 +636,7 @@ fn ftp_config(password: String) -> FtpConfig {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: Some("/".to_string()),
+        trust_pasv_address: false,
     }
 }
 

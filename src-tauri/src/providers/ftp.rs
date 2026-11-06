@@ -1713,6 +1713,12 @@ impl StorageProvider for FtpProvider {
             }
         };
 
+        // The data connection of a PASV transfer goes to the control
+        // connection's peer, never to the address the 227 reply names, unless
+        // the profile says this server serves data elsewhere (#1506 Requested
+        // 188). EPSV always uses the peer.
+        stream.set_passive_nat_workaround(!self.config.trust_pasv_address);
+
         // Login
         use secrecy::ExposeSecret;
         let pwd = self.config.password.expose_secret();
@@ -5076,6 +5082,128 @@ fn ftp_range_read_error(e: std::io::Error) -> ProviderError {
 }
 
 #[cfg(test)]
+mod pasv_address_tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
+
+    /// A server whose 227 reply names another host (203.0.113.9, a
+    /// documentation address nothing answers on) while its data listener is
+    /// on the control connection's address. A client that follows the reply
+    /// is steered away; one that uses the control peer gets the bytes.
+    async fn steering_server() -> (u16, tokio::task::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let _ = tokio::time::timeout(Duration::from_secs(15), async move {
+                let (socket, _) = listener.accept().await.unwrap();
+                let (read, mut write) = socket.into_split();
+                let mut lines = BufReader::new(read).lines();
+                let mut data_listener: Option<TcpListener> = None;
+                write.write_all(b"220 ready\r\n").await.unwrap();
+                while let Ok(Some(line)) = lines.next_line().await {
+                    let verb = line.split(' ').next().unwrap_or("").to_string();
+                    let reply = match verb.as_str() {
+                        "USER" => "331 password please\r\n".to_string(),
+                        "PASS" => "230 logged in\r\n".to_string(),
+                        "PWD" => "257 \"/\" is current\r\n".to_string(),
+                        "FEAT" => "211-Features\r\n211 End\r\n".to_string(),
+                        "SIZE" => "213 4\r\n".to_string(),
+                        "PASV" => {
+                            let data = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                            let p = data.local_addr().unwrap().port();
+                            data_listener = Some(data);
+                            format!(
+                                "227 Entering Passive Mode (203,0,113,9,{},{})\r\n",
+                                p / 256,
+                                p % 256
+                            )
+                        }
+                        "EPSV" => "500 not here\r\n".to_string(),
+                        "RETR" => {
+                            let data = data_listener.take().expect("RETR without PASV");
+                            let (mut data, _) = data.accept().await.unwrap();
+                            write.write_all(b"150 opening\r\n").await.unwrap();
+                            let _ = data.write_all(b"DATA").await;
+                            drop(data);
+                            "226 done\r\n".to_string()
+                        }
+                        "QUIT" => "221 goodbye\r\n".to_string(),
+                        _ => "200 ok\r\n".to_string(),
+                    };
+                    if write.write_all(reply.as_bytes()).await.is_err() || verb == "QUIT" {
+                        break;
+                    }
+                }
+            })
+            .await;
+        });
+        (port, server)
+    }
+
+    fn config(port: u16, trust_pasv_address: bool) -> FtpConfig {
+        FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+            trust_pasv_address,
+        }
+    }
+
+    /// #1506 Requested 188: by default the data connection goes to the
+    /// control peer, so a 227 reply naming another host cannot steer it.
+    #[tokio::test]
+    async fn a_pasv_reply_cannot_steer_the_data_connection() {
+        let (port, server) = steering_server().await;
+        let mut provider = FtpProvider::new(config(port, false));
+        provider.connect().await.expect("connect");
+        let bytes = tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.download_to_bytes("/f.bin"),
+        )
+        .await
+        .expect("the data connection must not wait on 203.0.113.9")
+        .expect("download");
+        assert_eq!(bytes, b"DATA");
+        server.abort();
+    }
+
+    /// The profile option is read from the saved profile's extra map, off by
+    /// default.
+    #[test]
+    fn trust_pasv_address_is_an_explicit_opt_in() {
+        let mut extra = std::collections::HashMap::new();
+        let profile =
+            |extra: std::collections::HashMap<String, String>| crate::providers::ProviderConfig {
+                name: "t".to_string(),
+                provider_type: ProviderType::Ftp,
+                host: "ftp.example.com".to_string(),
+                port: Some(21),
+                username: Some("u".to_string()),
+                password: Some("p".to_string()),
+                initial_path: None,
+                extra,
+            };
+        assert!(
+            !FtpConfig::from_provider_config(&profile(extra.clone()))
+                .unwrap()
+                .trust_pasv_address
+        );
+        extra.insert("trust_pasv_address".to_string(), "true".to_string());
+        assert!(
+            FtpConfig::from_provider_config(&profile(extra))
+                .unwrap()
+                .trust_pasv_address
+        );
+    }
+}
+
+#[cfg(test)]
 mod restart_contract_tests {
     use super::*;
     use std::sync::Mutex;
@@ -5180,6 +5308,7 @@ mod restart_contract_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         };
         (config, log, server)
     }
@@ -5535,6 +5664,7 @@ mod restart_contract_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         };
         (config, log, server)
     }
@@ -5837,6 +5967,7 @@ mod tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider.current_path = "/srv/backups".to_string();
         assert_eq!(
@@ -6067,6 +6198,7 @@ mod tests {
                 tls_mode: FtpTlsMode::Explicit,
                 verify_cert,
                 initial_path: None,
+                trust_pasv_address: false,
             });
             assert!(
                 provider.make_tls_connector().is_ok(),
@@ -6296,6 +6428,7 @@ mod tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         })
     }
 
@@ -6560,6 +6693,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
 
         let line = "type=file;size=12345;modify=20260131120000;unix.mode=0644; readme.txt";
@@ -6583,6 +6717,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
 
         let line = "type=dir;modify=20260115080000; projects";
@@ -6615,6 +6750,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
 
         assert!(provider
@@ -6784,6 +6920,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::Explicit,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         };
         let mut provider = FtpProvider::new(config.clone());
         assert!(matches!(
@@ -6818,6 +6955,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         assert_eq!(provider.transfer_executor_max_sessions(), 5);
     }
@@ -6835,6 +6973,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         assert_eq!(provider.multi_thread_streams, 1);
         provider.set_multi_thread_download(999, 0);
@@ -6871,6 +7010,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         assert_eq!(provider.buffer_size, FTP_DOWNLOAD_BUFFER_DEFAULT);
         provider.set_chunk_sizes(None, Some(256 * 1024));
@@ -6888,6 +7028,7 @@ MLSD "no-facts-here" @ "/"
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         fresh.set_chunk_sizes(None, None);
         assert_eq!(fresh.buffer_size, FTP_DOWNLOAD_BUFFER_DEFAULT);
@@ -7383,6 +7524,7 @@ mod live_listing_timeout {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider
             .connect()
@@ -7532,6 +7674,7 @@ mod late_reply_guard_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider.connect().await.expect("the dial must succeed");
         let outcome = tokio::time::timeout(
@@ -7573,6 +7716,7 @@ mod late_reply_guard_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider
             .connect()
@@ -7632,6 +7776,7 @@ mod late_reply_guard_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider
             .connect()
@@ -7973,6 +8118,7 @@ mod rename_contract_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider
             .connect()
@@ -8494,6 +8640,7 @@ mod hash_negotiation_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider
             .connect()
@@ -8721,6 +8868,7 @@ mod hash_negotiation_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider.connect().await.expect("the lab accepts the login");
 
@@ -8909,6 +9057,7 @@ mod transfer_verdict_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider.connect().await.expect("the dial must succeed");
         provider
@@ -9272,6 +9421,7 @@ mod transfer_verdict_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         };
         tokio::time::timeout(
             Duration::from_secs(20),
@@ -9425,6 +9575,7 @@ mod transfer_verdict_tests {
             tls_mode: FtpTlsMode::Implicit,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         tokio::time::timeout(Duration::from_secs(10), provider.connect())
             .await
@@ -9466,6 +9617,7 @@ mod transfer_verdict_tests {
             tls_mode: FtpTlsMode::Explicit,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         let connector = provider.make_tls_connector().unwrap();
         let tcp = TcpStream::connect(addr).await.unwrap();
@@ -9565,6 +9717,7 @@ mod transfer_verdict_tests {
             tls_mode: FtpTlsMode::Implicit,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider.connect().await.expect("the dial must succeed");
         let dir = tempfile::tempdir().unwrap();
@@ -9878,6 +10031,7 @@ pub(crate) mod walk_scope_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider
             .connect()
@@ -10242,6 +10396,7 @@ mod abandoned_command_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
             initial_path: None,
+            trust_pasv_address: false,
         });
         provider.connect().await.expect("the dial must succeed");
         provider
