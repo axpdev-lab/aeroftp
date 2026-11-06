@@ -55,6 +55,8 @@ mod ai_model_catalog;
 pub mod ai_native;
 pub mod ai_stream;
 mod ai_tools;
+/// The approval text of an AI tool call, shared with the CLI agent's prompt.
+pub use ai_tools::approval_message_for as ai_tool_approval_message;
 pub mod app_events;
 mod archive_browse;
 mod archive_source;

@@ -464,7 +464,7 @@ pub(crate) const MAX_APPROVAL_MESSAGE_CHARS: usize = 64 * 1024;
 
 /// The approval message for a call, or why it cannot be approved: a message
 /// longer than [`MAX_APPROVAL_MESSAGE_CHARS`] would not be read in full.
-pub(crate) fn approval_message_for(tool_name: &str, args: &Value) -> Result<String, String> {
+pub fn approval_message_for(tool_name: &str, args: &Value) -> Result<String, String> {
     let message = build_ai_tool_approval_message(tool_name, args);
     let length = message.chars().count();
     if length > MAX_APPROVAL_MESSAGE_CHARS {
