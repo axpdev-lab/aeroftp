@@ -182,7 +182,7 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
     await f.drop([local('up.txt')], false, REMOTE, 'local');
     expect(attempts(f, UPLOAD)).toBe(1);
-    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
     expect(f.notify.error).not.toHaveBeenCalled();
   });
 
@@ -198,7 +198,7 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     await f.drop(items, false, REMOTE, 'local');
     expect(attempts(f, UPLOAD)).toBe(1);
     expect(attempts(f, 'provider_upload_folder')).toBe(0);
-    expect(f.row('q1')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.row('q1')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
   });
 
   it('a Stop during the wait before a download retry cancels the file', async () => {
@@ -213,7 +213,7 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
       fail: (_command, call) => call === 1 ? 'Operation timed out' : undefined });
     await f.drop([remote('a.txt')], true, SUB);
     expect(attempts(f, DOWNLOAD)).toBe(1);
-    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
     expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
   });
 
@@ -262,7 +262,7 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     const [retry] = [...f.retryCallbacksRef.current.values()];
     f.transferQueue.retryItem('q0');
     await retry();
-    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
     // The first attempt's error only.
     expect(f.notify.error).toHaveBeenCalledTimes(1);
   });
@@ -276,7 +276,7 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     };
     f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
     await f.drop([local('up.txt')], false, REMOTE, 'local');
-    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
     const [retry] = [...f.retryCallbacksRef.current.values()];
     f.transferQueue.retryItem('q0');
     await retry();
@@ -367,7 +367,7 @@ describe('a folder whose files failed fails its queue row', () => {
     const sub = folder(local('Sub'));
     f = fixture({ folders: { [LOCAL]: [sub] }, breaker: breaker(), folderOutcome });
     await f.drop([sub], false, REMOTE, 'local');
-    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser' });
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
     expect(f.notify.error).not.toHaveBeenCalled();
   });
 
@@ -506,7 +506,7 @@ describe('every transfer that completes a queue row passes its error on', () => 
     const waits = [...app.matchAll(/await new Promise\(r => setTimeout\(r, circuitBreaker\.getRetryDelay\(attempt\)\)\);/g)]
       .map(({ index }) => app.slice(index, app.indexOf('transferQueue.retryItem(item.id);', index)));
     expect(waits).toHaveLength(3);
-    const stops = /if \(batchCancelledRef\.current\) \{\s*transferQueue\.failTransfer\(item\.id, t\('transfer\.cancelledByUser'\)\);\s*break;/;
+    const stops = /if \(batchCancelledRef\.current\) \{\s*transferQueue\.cancelTransfer\(item\.id, t\('transfer\.cancelledByUser'\)\);\s*break;/;
     expect(waits.filter(text => !stops.test(text))).toEqual([]);
   });
 

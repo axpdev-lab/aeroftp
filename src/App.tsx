@@ -462,7 +462,7 @@ import { adaptFileComparisons } from './utils/recursiveCompare';
 import { usedScanRoot } from './utils/protonPaths';
 import { compareOutcome, describeScanIncompleteError, isCompareCancelled, isScanIncompleteError } from './utils/scanCompleteness';
 import { useCancelStaleCompare } from './hooks/useCancelStaleCompare';
-import { useTranslation } from './i18n';
+import { translationsInEveryLanguage, useTranslation } from './i18n';
 
 // Components
 import { ConfirmDialog, InputDialog, ArchivePasswordDialog, SyncNavDialog, PropertiesDialog, FileProperties, ChecksumAlgorithm, ChecksumCapability, MultiFilePropertiesDialog, MultiFileProperties, MasterPasswordSetupDialog } from './components/Dialogs';
@@ -10997,7 +10997,7 @@ const App: React.FC = () => {
       // stop is not shown as a failure. The flag also stays set after an
       // earlier stopped batch, so it takes a cancel error to say so.
       if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
-        transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+        transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
       } else {
         transferQueue.failTransfer(id, String(error));
         notify.error(t(direction === 'download' ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
@@ -11007,8 +11007,11 @@ const App: React.FC = () => {
 
   // Queues the restorable entries of the journal read at startup.
   const restoreJournalEntries = useLatestCallback((entries: TransferQueueJournalEntryDto[]) => {
+    // A journal from before the cancel marker saved a row stopped in another
+    // language as failed, with the translated label: read it as a cancel.
+    const legacyCancelLabels = new Set(translationsInEveryLanguage('transfer.cancelledByUser'));
     for (const entry of entries) {
-      if (!isRestorableJournalEntry(entry)) continue;
+      if (!isRestorableJournalEntry(entry, legacyCancelLabels)) continue;
       const direction = entry.direction === 'upload' ? 'upload' : 'download';
       const displayPath = displayPathForRestore(
         direction,
@@ -13272,7 +13275,7 @@ const App: React.FC = () => {
       const landedIds = new Set<string>();
       for (let i = 0; i < singleEntries.length; i++) {
         if (batchCancelledRef.current) {
-          transferQueue.failTransfer(queueIds[i], t('transfer.cancelledByUser'));
+          transferQueue.cancelTransfer(queueIds[i], t('transfer.cancelledByUser'));
           continue;
         }
         const entry = singleEntries[i];
@@ -13513,7 +13516,7 @@ const App: React.FC = () => {
               // stop is not shown as a failure. The flag also stays set after an
               // earlier stopped batch, so it takes a cancel error to say so.
               if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
-                transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
               } else {
                 transferQueue.failTransfer(id, String(error));
                 notify.error(t('toast.uploadFailed'), String(error));
@@ -13570,7 +13573,7 @@ const App: React.FC = () => {
               }
               if (action === 'cancel') {
                 for (let j = i; j < queueItems.length; j++) {
-                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                  transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
                 }
                 break;
               }
@@ -13644,9 +13647,9 @@ const App: React.FC = () => {
             // Folder: show FolderOverwriteDialog in 'ask' mode
             const folderResult = await checkFolderOverwrite(item.fileName, 'upload', remainingInQueue, destinationFiles);
             if (folderResult.action === 'cancel') {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -13667,9 +13670,9 @@ const App: React.FC = () => {
             );
 
             if (overwriteResult.action === 'cancel') {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -13689,7 +13692,7 @@ const App: React.FC = () => {
 
           // Skip if batch was cancelled
           if (batchCancelledRef.current) {
-            transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+            transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
             continue;
           }
 
@@ -13713,7 +13716,7 @@ const App: React.FC = () => {
                 const decision = await waitForBatchResume(i);
                 if (decision === 'cancel') {
                   for (let j = i; j < queueItems.length; j++) {
-                    transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                    transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
                   }
                   break;
                 }
@@ -13725,7 +13728,7 @@ const App: React.FC = () => {
               const decision = await waitForBatchResume(i);
               if (decision === 'cancel') {
                 for (let j = i; j < queueItems.length; j++) {
-                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                  transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
                 }
                 break;
               }
@@ -13742,7 +13745,7 @@ const App: React.FC = () => {
               await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
               // A Stop during the wait: the file is cancelled, not retried.
               if (batchCancelledRef.current) {
-                transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
                 break;
               }
               // The error event of the attempt before may have settled the row.
@@ -13758,7 +13761,7 @@ const App: React.FC = () => {
             } catch (error) {
               // A cancelled batch stops here: the file is cancelled, not retried.
               if (batchCancelledRef.current) {
-                transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
                 break;
               }
               // A folder with failed files is not sent again, nor counted
@@ -13858,7 +13861,7 @@ const App: React.FC = () => {
             // stop is not shown as a failure. The flag also stays set after an
             // earlier stopped batch, so it takes a cancel error to say so.
             if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
-              transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
             } else {
               transferQueue.failTransfer(id, String(error));
               notify.error(t('toast.uploadFailed'), String(error));
@@ -13887,9 +13890,9 @@ const App: React.FC = () => {
         );
 
         if (overwriteResult.action === 'cancel') {
-          transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+          transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
           for (let j = i + 1; j < queueItems.length; j++) {
-            transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+            transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
           }
           break;
         }
@@ -13906,7 +13909,7 @@ const App: React.FC = () => {
         }
 
         if (batchCancelledRef.current) {
-          transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+          transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
           continue;
         }
 
@@ -13930,7 +13933,7 @@ const App: React.FC = () => {
               const decision = await waitForBatchResume(i);
               if (decision === 'cancel') {
                 for (let j = i; j < queueItems.length; j++) {
-                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                  transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
                 }
                 break;
               }
@@ -13942,7 +13945,7 @@ const App: React.FC = () => {
             const decision = await waitForBatchResume(i);
             if (decision === 'cancel') {
               for (let j = i; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -13959,7 +13962,7 @@ const App: React.FC = () => {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
             // A Stop during the wait: the file is cancelled, not retried.
             if (batchCancelledRef.current) {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
             // The error event of the attempt before may have settled the row.
@@ -13975,7 +13978,7 @@ const App: React.FC = () => {
           } catch (error) {
             // A cancelled batch stops here: the file is cancelled, not retried.
             if (batchCancelledRef.current) {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
             const result = circuitBreaker.recordFailure(String(error));
@@ -14077,7 +14080,7 @@ const App: React.FC = () => {
             // stop is not shown as a failure. The flag also stays set after an
             // earlier stopped batch, so it takes a cancel error to say so.
             if (batchCancelledRef.current && isCancelledTransferError(String(error))) {
-              transferQueue.failTransfer(id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
             } else {
               transferQueue.failTransfer(id, String(error));
               notify.error(t('toast.downloadFailed'), String(error));
@@ -14109,9 +14112,9 @@ const App: React.FC = () => {
             // Folder: show FolderOverwriteDialog in 'ask' mode
             const folderResult = await checkFolderOverwrite(item.file.name, 'download', remainingInQueue, destinationFiles);
             if (folderResult.action === 'cancel') {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -14132,9 +14135,9 @@ const App: React.FC = () => {
             );
 
             if (overwriteResult.action === 'cancel') {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               for (let j = i + 1; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -14160,7 +14163,7 @@ const App: React.FC = () => {
 
         // Skip if batch was cancelled
         if (batchCancelledRef.current) {
-          transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+          transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
           continue;
         }
 
@@ -14184,7 +14187,7 @@ const App: React.FC = () => {
               const decision = await waitForBatchResume(i);
               if (decision === 'cancel') {
                 for (let j = i; j < queueItems.length; j++) {
-                  transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                  transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
                 }
                 break;
               }
@@ -14196,7 +14199,7 @@ const App: React.FC = () => {
             const decision = await waitForBatchResume(i);
             if (decision === 'cancel') {
               for (let j = i; j < queueItems.length; j++) {
-                transferQueue.failTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
+                transferQueue.cancelTransfer(queueItems[j].id, t('transfer.cancelledByUser'));
               }
               break;
             }
@@ -14213,7 +14216,7 @@ const App: React.FC = () => {
             await new Promise(r => setTimeout(r, circuitBreaker.getRetryDelay(attempt)));
             // A Stop during the wait: the file is cancelled, not retried.
             if (batchCancelledRef.current) {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
             // The error event of the attempt before may have settled the row.
@@ -14229,7 +14232,7 @@ const App: React.FC = () => {
           } catch (error) {
             // A cancelled batch stops here: the file is cancelled, not retried.
             if (batchCancelledRef.current) {
-              transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
+              transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
             // A folder with failed files is not downloaded again, nor counted
