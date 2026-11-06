@@ -1117,7 +1117,7 @@ pub(crate) mod temp_claim {
             std::fs::write(&victim, b"precious").unwrap();
             let name = dir.path().join("download.bin");
             std::os::unix::fs::symlink(&victim, &name).unwrap();
-            let mut file = super::AtomicFile::new(name.to_str().unwrap())
+            let mut file = crate::providers::atomic_write::AtomicFile::new(name.to_str().unwrap())
                 .await
                 .unwrap();
             file.write_all(b"downloaded").await.unwrap();
