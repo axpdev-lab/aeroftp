@@ -645,6 +645,27 @@ impl FtpProvider {
                 .is_some_and(crate::providers::types::os_error_kind_closes_the_session)
     }
 
+    /// The part of [`Self::is_stale_data_connection_error`] that says the
+    /// session was out of step before anything was sent: a data connection
+    /// still open from an earlier operation (425 / "already open") or a
+    /// control stream suppaftp could not parse. Safe to redial and send
+    /// again. A dropped connection is not in it: it may come after the
+    /// transfer landed.
+    fn is_desync_before_transfer_error(err: &ProviderError) -> bool {
+        let message = match err {
+            ProviderError::ServerError(msg)
+            | ProviderError::TransferFailed(msg)
+            | ProviderError::ConnectionFailed(msg)
+            | ProviderError::Other(msg) => msg,
+            _ => return false,
+        };
+        let lower = message.to_lowercase();
+        lower.contains("data connection is already open")
+            || (lower.contains("425") && lower.contains("data connection"))
+            || lower.contains("invalid syntax")
+            || lower.contains("invalid response")
+    }
+
     /// Only a dead control connection permits retrying navigation. Ordinary
     /// server refusals (including 550) must not pass the broader data predicate.
     async fn closed_control_failure(&self, err: &FtpError) -> bool {
@@ -2099,7 +2120,13 @@ impl StorageProvider for FtpProvider {
             .await
         {
             Ok(()) => Ok(()),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            // Only a session that was out of step before the transfer is
+            // dialled again and sent once more. A dropped connection (reset,
+            // broken pipe, in any language) can come after the server stored
+            // the bytes, and a second STOR then replaced the file and could
+            // overwrite a concurrent change (CodeRabbit, #1520): that outcome
+            // is returned as it is.
+            Err(err) if Self::is_desync_before_transfer_error(&err) => {
                 self.reconnect_after_data_error("STOR", remote_path, &err)
                     .await?;
                 self.upload_single(local_path, remote_path, None).await
@@ -6602,6 +6629,32 @@ MLSD "no-facts-here" @ "/"
     fn test_detects_stale_data_connection_error() {
         let err = ProviderError::ServerError("425 Data connection is already open".to_string());
         assert!(FtpProvider::is_stale_data_connection_error(&err));
+    }
+
+    /// CodeRabbit (#1520): an upload is sent again only after a desync that
+    /// came before the transfer, never after a dropped connection.
+    #[cfg(unix)]
+    #[test]
+    fn an_upload_is_not_sent_again_after_a_dropped_connection() {
+        for dropped in [
+            ProviderError::TransferFailed("Connection reset by peer".into()),
+            ProviderError::TransferFailed("Broken pipe".into()),
+            ProviderError::TransferFailed(format!(
+                "Connessione azzerata dal corrispondente (os error {})",
+                libc::ECONNRESET
+            )),
+        ] {
+            assert!(
+                FtpProvider::is_stale_data_connection_error(&dropped),
+                "{dropped}"
+            );
+            assert!(
+                !FtpProvider::is_desync_before_transfer_error(&dropped),
+                "{dropped}"
+            );
+        }
+        let desync = ProviderError::ServerError("425 Data connection is already open".into());
+        assert!(FtpProvider::is_desync_before_transfer_error(&desync));
     }
 
     /// #1506 row 164: a dropped connection in the OS's language is known by
