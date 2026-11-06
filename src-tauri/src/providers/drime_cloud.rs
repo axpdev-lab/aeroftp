@@ -1670,14 +1670,17 @@ impl StorageProvider for DrimeCloudProvider {
             // that name in the parent is what proves the name taken. The
             // English phrase still counts, for a listing not yet indexed.
             // #1506 row 164.
-            if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
-                let listed = matches!(
-                    self.find_exact_in_folder(&parent_id, dir_name).await,
-                    Ok(Some((_, true, _)))
-                );
-                if listed || body_lower.contains("already exists") {
-                    return Err(ProviderError::AlreadyExists(resolved));
-                }
+            // The English phrase settles it without a request; only a
+            // refusal in other words costs a listing, which can stall
+            // (CodeRabbit, #1520).
+            if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
+                && (body_lower.contains("already exists")
+                    || matches!(
+                        self.find_exact_in_folder(&parent_id, dir_name).await,
+                        Ok(Some((_, true, _)))
+                    ))
+            {
+                return Err(ProviderError::AlreadyExists(resolved));
             }
             return Err(ProviderError::ServerError(format!(
                 "Create directory failed ({}): {}",
@@ -2836,6 +2839,10 @@ impl StorageProvider for DrimeCloudProvider {
 
 #[cfg(test)]
 mod tests {
+    std::thread_local! {
+        /// GET requests the Drime double served on this test's thread.
+        static DOUBLE_LISTINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
     #[tokio::test]
     async fn probe_contract_drime_root_is_not_a_missing_child() {
         let (mut provider, _) = provider_on_drime(false, 200).await;
@@ -3065,6 +3072,7 @@ mod tests {
                     let ok =
                         || axum::Json(serde_json::json!({ "status": "success" })).into_response();
                     if method == "GET" {
+                        DOUBLE_LISTINGS.with(|n| n.set(n.get() + 1));
                         let parent = query
                             .split('&')
                             .find_map(|pair| pair.strip_prefix("parentIds="))
@@ -3179,11 +3187,18 @@ mod tests {
                         }
                         // A folder create refused as Laravel does in an
                         // Italian account, whatever the name.
-                        ("POST", "/folders") => (
-                            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
-                            r#"{"message":"Il nome è già stato preso.","errors":{"name":["Il nome è già stato preso."]}}"#,
-                        )
-                            .into_response(),
+                        ("POST", "/folders") => {
+                            let english = args
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .is_some_and(|n| n.starts_with("english"));
+                            let refusal = if english {
+                                r#"{"message":"The name has already been taken.","errors":{"name":["A folder with that name already exists."]}}"#
+                            } else {
+                                r#"{"message":"Il nome è già stato preso.","errors":{"name":["Il nome è già stato preso."]}}"#
+                            };
+                            (axum::http::StatusCode::UNPROCESSABLE_ENTITY, refusal).into_response()
+                        }
                         _ => (axum::http::StatusCode::BAD_REQUEST, "unexpected").into_response(),
                     }
                 }
@@ -3235,6 +3250,34 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// CodeRabbit (#1520): an English refusal settles mkdir without the
+    /// listing a refusal in other words costs.
+    #[tokio::test]
+    async fn an_english_mkdir_refusal_needs_no_listing() {
+        let (mut provider, _, _) =
+            provider_on_drime_entries(&[(1, "d", "", "folder"), (2, "sub", "1", "folder")]).await;
+        // Resolve the parent once, so only the refusal's own cost is counted.
+        let _ = provider.mkdir("/d/other").await;
+        let before = DOUBLE_LISTINGS.with(|n| n.get());
+        let english = provider.mkdir("/d/english-taken").await;
+        let english_cost = DOUBLE_LISTINGS.with(|n| n.get()) - before;
+        let before = DOUBLE_LISTINGS.with(|n| n.get());
+        let localized = provider.mkdir("/d/sub").await;
+        let localized_cost = DOUBLE_LISTINGS.with(|n| n.get()) - before;
+        assert!(
+            matches!(english, Err(ProviderError::AlreadyExists(_))),
+            "{english:?}"
+        );
+        assert!(
+            matches!(localized, Err(ProviderError::AlreadyExists(_))),
+            "{localized:?}"
+        );
+        assert!(
+            english_cost < localized_cost,
+            "english {english_cost} vs localized {localized_cost} listings"
+        );
     }
 
     /// #1506 row 164: a mkdir refused with a 422 in the account's language
