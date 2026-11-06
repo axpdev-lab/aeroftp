@@ -124,15 +124,12 @@ fn split_url_query(url: &str) -> (String, Vec<(String, String)>) {
     if let Some(qmark) = url.find('?') {
         let base = url[..qmark].to_string();
         let query = &url[qmark + 1..];
-        let params: Vec<(String, String)> = query
-            .split('&')
-            .filter(|p| !p.is_empty())
-            .filter_map(|p| {
-                let mut parts = p.splitn(2, '=');
-                let key = parts.next()?.to_string();
-                let value = parts.next().unwrap_or("").to_string();
-                Some((key, value))
-            })
+        // RFC 5849 3.4.1.3.1: the query is parsed as
+        // application/x-www-form-urlencoded, so names and values are DECODED
+        // here (`%20` and `+` become a space). `sign` encodes every parameter
+        // once; keeping the wire form here signed `a%2520b` for `a%20b`.
+        let params: Vec<(String, String)> = url::form_urlencoded::parse(query.as_bytes())
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect();
         (base, params)
     } else {
@@ -409,6 +406,65 @@ fn parse_token_response(body: &str) -> Result<(String, String), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// RFC 5849 section 1.2: the documented photos request and its signature,
+    /// reproduced byte for byte (that example carries no `oauth_version`).
+    #[test]
+    fn sign_matches_the_rfc_5849_example() {
+        let mut params = BTreeMap::new();
+        for (k, v) in [
+            ("file", "vacation.jpg"),
+            ("size", "original"),
+            ("oauth_consumer_key", "dpf43f3p2l4k3l03"),
+            ("oauth_token", "nnch734d00sl2jdk"),
+            ("oauth_signature_method", "HMAC-SHA1"),
+            ("oauth_timestamp", "137131202"),
+            ("oauth_nonce", "chapoH"),
+        ] {
+            params.insert(k.to_string(), v.to_string());
+        }
+        assert_eq!(
+            sign(
+                "GET",
+                "http://photos.example.net/photos",
+                &params,
+                "kd94hf93k423kf44",
+                "pfkkdhi9sl3r4s00",
+            ),
+            "MdpQcU8iPSUjWoN/UDMsK2sui9I="
+        );
+    }
+
+    /// #1506 Requested 167, OAuth 1.0 side: query values taken from a URL are
+    /// on the wire already encoded, so they are decoded before `sign` encodes
+    /// them once. A value from the URL signs exactly like the same raw value
+    /// passed as an extra parameter.
+    #[test]
+    fn split_url_query_decodes_so_a_query_value_is_signed_once() {
+        let (base, params) =
+            split_url_query("https://h.example/p?name=vacation%20photo%2B1%25.jpg&q=a+b&empty=");
+        assert_eq!(base, "https://h.example/p");
+        assert_eq!(
+            params,
+            vec![
+                ("name".to_string(), "vacation photo+1%.jpg".to_string()),
+                ("q".to_string(), "a b".to_string()),
+                ("empty".to_string(), String::new()),
+            ]
+        );
+        let mut from_url = BTreeMap::new();
+        for (k, v) in &params {
+            from_url.insert(k.clone(), v.clone());
+        }
+        let mut raw = BTreeMap::new();
+        raw.insert("name".to_string(), "vacation photo+1%.jpg".to_string());
+        raw.insert("q".to_string(), "a b".to_string());
+        raw.insert("empty".to_string(), String::new());
+        assert_eq!(
+            sign("GET", &base, &from_url, "cs", "ts"),
+            sign("GET", &base, &raw, "cs", "ts")
+        );
+    }
 
     #[test]
     fn test_percent_encode() {
