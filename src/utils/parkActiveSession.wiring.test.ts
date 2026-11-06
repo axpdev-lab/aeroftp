@@ -224,6 +224,10 @@ describe('parkActiveSession', () => {
         expect(ctx.setActiveSessionId).toHaveBeenCalledWith(null);
         expect(ctx.setIsConnected).toHaveBeenCalledWith(false);
         expect(ctx.setAeroVaultOverlaySession).toHaveBeenCalledWith(null);
+        // The remote panel no longer lists the parked session's files while the
+        // next connection lists; the cached tab keeps them (asserted above).
+        expect(ctx.setRemoteFiles).toHaveBeenCalledWith([]);
+        expect(ctx.setSelectedRemoteFiles).toHaveBeenCalledWith(new Set());
     });
 
     it('touches no tab when none is active', async () => {

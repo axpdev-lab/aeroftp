@@ -4838,7 +4838,8 @@ const App: React.FC = () => {
 
   /** Puts the active session tab aside before the backend leaves it: the tab
    *  becomes `cached` with its files, paths, Navigation Sync and vault overlay,
-   *  nothing is active, and the remote view reads as disconnected. Every path
+   *  nothing is active, and the remote view reads as disconnected, with an
+   *  empty file list. Every path
    *  that drops the live connection for another one calls it first ("+" new
    *  tab, a connect from My Servers or the Quick Connect form, a portable
    *  device), so a Cancel or a failure never leaves a tab marked connected over
@@ -4858,6 +4859,10 @@ const App: React.FC = () => {
       };
       setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, ...parked } : s));
     }
+    // The remote panel stops showing the parked session's files while the next
+    // connection lists: they live on in the cached tab and come back with it.
+    setRemoteFiles([]);
+    setSelectedRemoteFiles(new Set());
     setActiveSessionId(null);
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
