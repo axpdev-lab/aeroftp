@@ -206,14 +206,27 @@ impl FtpManager {
         self.password = Some(SecretString::from(password.to_string())); // Store for auto-reconnect
         info!("Successfully logged in as {}", username);
 
-        // Get current working directory after login. Only an answer settles
-        // the channel: a PWD that timed out may still be answered later.
+        // Get current working directory after login. A refusal is a reply and
+        // leaves the channel in step, with "/" as the directory. A PWD that
+        // timed out may still be answered, and the next command would read
+        // that answer as its own: the session is closed and the login fails.
         match self.pwd().await {
             Ok(path) => {
                 self.current_path = path;
                 self.abandoned_command = false;
             }
-            Err(_) => self.current_path = "/".to_string(),
+            Err(e) if e.downcast_ref::<tokio::time::error::Elapsed>().is_some() => {
+                self.stream = None;
+                self.abandoned_command = false;
+                return Err(FtpManagerError::OperationFailed(
+                    "Login failed: the server did not answer PWD after login".to_string(),
+                )
+                .into());
+            }
+            Err(_) => {
+                self.current_path = "/".to_string();
+                self.abandoned_command = false;
+            }
         }
 
         Ok(())
@@ -1561,6 +1574,21 @@ mod abandoned_login_tests {
             tokio::time::sleep(Duration::from_millis(200)).await;
             assert!(!sent(&log, "QUIT"), "{silent}: {:?}", log.lock().unwrap());
         }
+    }
+
+    /// A post-login PWD that times out fails the login and closes the session,
+    /// so no later command reads its late answer.
+    #[tokio::test]
+    async fn a_login_whose_pwd_times_out_fails_and_closes_the_session() {
+        let (port, _log) = server("PWD").await;
+        let mut manager = FtpManager::new();
+        manager.timeouts.command_timeout = Duration::from_millis(200);
+        manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
+        let outcome = tokio::time::timeout(Duration::from_secs(5), manager.login("u", "p"))
+            .await
+            .expect("the login must end");
+        assert!(outcome.is_err());
+        assert!(!manager.is_connected());
     }
 
     /// A login that came back leaves nothing marked: the disconnect still sends QUIT.

@@ -152,19 +152,22 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(body).not.toContain('setActiveSessionId(');
     });
 
-    it('shows a clicked parked tab connected while it reconnects, and parked again if it does not', () => {
+    it('shows a clicked parked tab connected once it reconnects, and parked again if it does not', () => {
         // The tab bar calls switchSession directly: with the workspace marked
         // disconnected by the park, the tab reconnected behind a panel that
-        // still read as disconnected, and a stalled listing had no Cancel in
-        // sight. A failed reconnect must not leave a dead tab active, which a
+        // still read as disconnected. Marked connected before the reconnect,
+        // its cached files took remote actions while another server held the
+        // backend, and the provider capabilities were read from that server.
+        // A failed reconnect must not leave a dead tab active either, which a
         // click would no longer retry.
         const start = APP.indexOf('  const switchSession = async');
         const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
-        const activate = body.indexOf('setActiveSessionId(sessionId);');
+        const success = body.indexOf("setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));");
         const connected = body.indexOf('setIsConnected(true);');
-        expect(activate).toBeGreaterThan(-1);
-        expect(connected).toBeGreaterThan(activate);
-        expect(body.slice(activate, connected)).not.toContain('await ');
+        expect(success).toBeGreaterThan(-1);
+        expect(connected).toBeGreaterThan(success);
+        expect(body.split('setIsConnected(true);').length - 1).toBe(1);
+        expect(body.slice(body.indexOf('setActiveSessionId(sessionId);'), success)).toContain('await ');
         expect(body).toContain('const fromParked = activeSessionId === null;');
         // The refused host key, the two cancel branches and the failure branch.
         expect(body.split('backToParked();').length - 1).toBe(4);
@@ -190,6 +193,18 @@ describe('a connect parks the live tab before it ends the connection', () => {
         const branch = body.slice(drop, body.indexOf('\n    }\n', drop));
         expect(branch).toContain("setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));");
         expect(branch).toContain('setActivePortableDeviceId(null);');
+    });
+
+    it('keeps a stalled reconnect listing of a parked tab cancellable with the panel hidden', () => {
+        // The workspace reads as connected only once the reconnect succeeds,
+        // so the remote panel and its spinner Cancel are hidden meanwhile; a
+        // stalled listing holds the provider, so this Cancel is the way out.
+        const at = APP.indexOf('{remoteListLoading && !isConnected && !showConnectionScreen && (');
+        expect(at).toBeGreaterThan(-1);
+        const overlay = APP.slice(at, APP.indexOf('{stillConnecting && (', at));
+        expect(overlay).toContain('onClick={cancelRemoteNavigation}');
+        // No rows to act on while another server may hold the backend.
+        expect(overlay).not.toContain('remoteFiles');
     });
 
     it('keeps a parked tab parked when its host key is refused', () => {

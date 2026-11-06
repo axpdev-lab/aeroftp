@@ -8916,11 +8916,6 @@ const App: React.FC = () => {
     setOverlayDecrypting(false);
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
-    // The tab bar calls here directly, and a parked tab left the workspace
-    // marked disconnected: shown from here on, the remote panel and its Cancel
-    // are there while the reconnect lists. A failed or cancelled reconnect of a
-    // parked tab goes back to parked (backToParked).
-    setIsConnected(true);
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting
@@ -9247,6 +9242,12 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
+      // The tab bar calls here directly, and a parked tab left the workspace
+      // marked disconnected. It reads as connected again only now: earlier,
+      // its cached files would take remote actions while another server still
+      // holds the backend, and the provider capabilities read on connecting
+      // would come from that server.
+      setIsConnected(true);
       activityLog.updateEntry(reconnectLogId, {
         status: 'success',
         // Honest wording: a live-slot reuse never reconnected (#128-C), so don't
@@ -18320,6 +18321,32 @@ const App: React.FC = () => {
             with the Esc-cancel path: the Cancel button calls cancel_connection
             via cancelActiveConnect; runConnect then closes this modal and
             surfaces the calm "connection cancelled" toast. */}
+        {/* A parked tab reconnects with the workspace still marked disconnected,
+            so the remote panel, and the Cancel on its spinner, are hidden. A
+            listing stalled there holds the provider, so nothing else gets
+            through (another tab, closing the tab, a new connect), and Esc only
+            acts on a connect: this Cancel is the way out. Spinner and Cancel
+            only, no cached rows to act on. */}
+        {remoteListLoading && !isConnected && !showConnectionScreen && (
+          <div className="fixed inset-x-0 bottom-16 z-[80] flex justify-center pointer-events-none">
+            <div className="pointer-events-auto flex items-center gap-3 px-4 py-2 rounded-lg shadow-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+              <Loader2 size={16} className="animate-spin text-blue-500/80 shrink-0" />
+              {remoteListReason && (
+                <span className="max-w-[40vw] truncate text-xs text-gray-600 dark:text-gray-300" title={remoteListReason}>
+                  {remoteListReason}
+                </span>
+              )}
+              <span className="text-xs text-gray-500 dark:text-gray-400">{t('browser.pleaseWait')}</span>
+              <button
+                onClick={cancelRemoteNavigation}
+                className="pointer-events-auto px-3 py-1.5 text-xs font-medium rounded-md bg-white/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-sm flex items-center gap-1.5"
+                title={t('common.cancel')}
+              >
+                <X size={14} /> {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        )}
         {stillConnecting && (
           <div className="fixed inset-0 z-[90] flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm animate-scale-in">
             <div className="w-full max-w-sm mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6">
