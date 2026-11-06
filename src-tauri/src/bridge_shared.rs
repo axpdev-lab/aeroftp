@@ -1081,13 +1081,15 @@ impl ExportReport for BridgeExportOutcome {
 }
 
 impl ExportReport for crate::rclone_import::RcloneExportOutcome {
+    /// Reports profiles, as every other exporter does: the remotes count
+    /// (`exported`) also holds the aliases and crypt overlays they write.
     fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
         let refused = self
             .skipped
             .into_iter()
             .map(|s| (s.name, s.reason))
             .collect();
-        (self.exported, refused)
+        (self.profiles, refused)
     }
 }
 
