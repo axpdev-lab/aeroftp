@@ -192,6 +192,8 @@ describe('a scope under the login folder', () => {
     expect(placeUnderLoginFolder('/docs', '/home/u')).toBe('/docs');
     expect(placeUnderLoginFolder('~docs', '/home/u')).toBe('~docs');
     expect(placeUnderLoginFolder('~/../etc', '/home/u')).toBe('~/../etc');
+    expect(placeUnderLoginFolder('~/./docs//sub/', '/home/u')).toBe('/home/u/docs/sub');
+    expect(placeUnderLoginFolder('~/.', '/home/u')).toBe('/home/u');
     expect(placeUnderLoginFolder('~/a/../../etc', '/home/u')).toBe('~/a/../../etc');
     expect(placeUnderLoginFolder(undefined, '/home/u')).toBeNull();
   });

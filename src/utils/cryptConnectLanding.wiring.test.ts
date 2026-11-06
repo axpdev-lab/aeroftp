@@ -287,8 +287,8 @@ describe('crypt overlay deferred connect unlock', () => {
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, startFolder)');
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');
         expect(app).toContain('savedOverlayHint ? savedOauthInitialPath : undefined');
-        expect(app).toContain("overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined");
-        expect(app).toContain("overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined");
+        // Both provider connect flows, Quick Connect and saved.
+        expect(app.split("overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined")).toHaveLength(3);
     });
 });
 
@@ -419,14 +419,17 @@ describe('a relative start folder is listed once', () => {
         const end = app.indexOf('const placeLoginRelativeScope', start);
         const calls: string[] = [];
         const place = (path: string | null, answer: () => Promise<string>) => execute<string | null>(app.slice(start, end), {
+            isLoginRelativeScope,
             invoke: async (_command: string, args: { path: string }) => { calls.push(args.path); return answer(); },
         }, `return placeStartFolder(${JSON.stringify(path)});`);
         await expect(place('docs', async () => '/home/u/docs')).resolves.toBe('/home/u/docs');
         await expect(place('~/docs', async () => '/home/u/docs')).resolves.toBe('/home/u/docs');
-        await expect(place('docs', async () => { throw new Error('gone'); })).resolves.toBe('docs');
+        // Not placed: the folder the connect opened (null), never `docs` again.
+        await expect(place('docs', async () => { throw new Error('gone'); })).resolves.toBeNull();
+        await expect(place('~/docs', async () => { throw new Error('gone'); })).resolves.toBe('~/docs');
         await expect(place('/srv', async () => 'never')).resolves.toBe('/srv');
         await expect(place(null, async () => 'never')).resolves.toBeNull();
-        expect(calls).toEqual(['docs', '~/docs', 'docs']);
+        expect(calls).toEqual(['docs', '~/docs', 'docs', '~/docs']);
     });
 });
 

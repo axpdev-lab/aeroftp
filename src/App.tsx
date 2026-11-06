@@ -6290,11 +6290,12 @@ const App: React.FC = () => {
   // A start folder given relative (`docs`) or under the login folder
   // (`~/docs`), as the absolute folder the connect opened: listed again as
   // given, `docs` resolved against the folder already open and listed
-  // `docs/docs`. Absolute folders come back as given, and so does any folder
-  // the session cannot place.
+  // `docs/docs`. Absolute folders come back as given. A relative folder the
+  // session cannot place is the folder the connect left it in (null), never
+  // listed again as given; a `~` one is resolved by the listing itself.
   const placeStartFolder = async (path: string | null | undefined): Promise<string | null> => (
     path && !path.startsWith('/')
-      ? await invoke<string>('provider_start_folder', { path }).catch(() => path)
+      ? await invoke<string>('provider_start_folder', { path }).catch(() => isLoginRelativeScope(path) ? path : null)
       : path ?? null
   );
 

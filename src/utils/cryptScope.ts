@@ -46,9 +46,11 @@ export const isLoginRelativeScope = (s?: string | null): boolean =>
  */
 export const placeUnderLoginFolder = (path: string | null | undefined, loginFolder: string | null | undefined): string | null => {
   if (!path || !loginFolder || !isLoginRelativeScope(path)) return path ?? null;
-  const rest = path === '~' ? '' : path.slice(2);
+  const segments = path === '~' ? [] : path.slice(2).split('/');
   // A `..` would leave the login folder: left unplaced, so it anchors nothing.
-  if (rest.split('/').includes('..')) return path;
+  if (segments.includes('..')) return path;
+  // `.` and empty segments name the same folder, written as the server lists it.
+  const rest = segments.filter((segment) => segment !== '' && segment !== '.').join('/');
   const base = loginFolder.replace(/\/+$/, '');
   return rest ? `${base}/${rest}` : base || '/';
 };

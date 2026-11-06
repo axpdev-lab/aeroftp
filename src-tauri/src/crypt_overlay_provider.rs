@@ -3573,12 +3573,20 @@ pub(crate) async fn resolve_home_scope(
     if !is_login_relative_scope(scope) {
         return Ok(None);
     }
-    let rest = scope.strip_prefix("~/").unwrap_or("");
-    if rest.split('/').any(|segment| segment == "..") {
+    let segments: Vec<&str> = scope.strip_prefix("~/").unwrap_or("").split('/').collect();
+    if segments.contains(&"..") {
         return Err(format!(
             "the overlay folder {scope} leaves the login folder"
         ));
     }
+    // `.` and empty segments name the same folder, written as the server
+    // lists it, as the window places it (`placeUnderLoginFolder`).
+    let rest = segments
+        .into_iter()
+        .filter(|segment| !segment.is_empty() && *segment != ".")
+        .collect::<Vec<_>>()
+        .join("/");
+    let rest = rest.as_str();
     let unresolved =
         |e: ProviderError| format!("the overlay folder {scope} could not be resolved: {e}");
     let back = provider.pwd().await.map_err(unresolved)?;
@@ -6209,6 +6217,13 @@ pub(crate) mod tests {
         assert_eq!(mem.pwd().await.unwrap(), "/srv");
         assert_eq!(login_folder(&mut mem).await.unwrap(), MEM_HOME);
         assert!(resolve_home_scope(&mut mem, "~/../etc").await.is_err());
+        assert_eq!(
+            resolve_home_scope(&mut mem, "~/./docs//sub/")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("/home/mem/docs/sub")
+        );
         // A server that opens `~` as a plain folder has no login folder.
         let mut literal = MemProvider::new();
         literal.cd("/srv").await.unwrap();
