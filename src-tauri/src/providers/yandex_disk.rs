@@ -377,6 +377,7 @@ fn yandex_auth_message(description: &str) -> String {
 
 fn is_yandex_terminal_auth_message(message: &str) -> bool {
     let lower = message.to_ascii_lowercase();
+    // Kept as text (#1506 row 164): Yandex sends only UnauthorizedError/401 for every token problem; the description is its own prose.
     lower.contains("revoked")
         || lower.contains("expired")
         || lower.contains("invalid_token")

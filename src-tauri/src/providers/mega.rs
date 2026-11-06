@@ -169,6 +169,7 @@ impl MegaCmdProvider {
     }
 
     /// Check if an error is transient and worth retrying (ERR-02).
+    // Kept as text (#1506 row 164): MEGAcmd has no exit status for a transient failure.
     fn is_transient_error(stderr: &str) -> bool {
         let lower = stderr.to_lowercase();
         lower.contains("temporarily unavailable")

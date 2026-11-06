@@ -214,6 +214,7 @@ fn classify_graphql_error(err: &GraphQLError) -> GitHubError {
     }
 }
 
+// Kept as text (#1506 row 164): GraphQL gives only type UNPROCESSABLE; GitHub's API messages are English.
 fn classify_unprocessable(message: &str) -> GitHubError {
     let lower = message.to_lowercase();
 

@@ -1316,6 +1316,7 @@ impl OpenDriveProvider {
         match move_result {
             Ok(()) => Ok(()),
             Err(ProviderError::InvalidPath(message))
+                // Kept as text (#1506 row 164): OpenDrive's error.code is 400 for every invalid argument.
                 if message.contains("Invalid value specified for `move`") =>
             {
                 self.move_file_via_temp_copy(&from_resolved, &to_resolved, overwrite)

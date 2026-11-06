@@ -5820,6 +5820,7 @@ mod restart_contract_tests {
 /// permission refusal, do not qualify.
 pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
     let lower = reply.to_ascii_lowercase();
+    // Kept as text (#1506 row 164): FTP has no reply code finer than the 550 already checked; an empty-listing probe follows.
     lower.contains("not empty") || lower.contains("notempty")
 }
 
