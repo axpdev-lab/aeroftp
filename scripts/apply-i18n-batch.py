@@ -26,6 +26,10 @@ def esc(value: str) -> str:
 def apply_batch(batch: dict, *, force: bool = False) -> int:
     changed = 0
     for locale, entries in batch.items():
+        # A locale is a bare language code: the batch file is the only input,
+        # and a key such as "../../x" made the path leave the locale folder.
+        if not re.fullmatch(r"[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?", locale):
+            sys.exit(f"invalid locale name: {locale!r}")
         path = LOCALES / f"{locale}.json"
         if not path.exists():
             sys.exit(f"unknown locale: {locale}")
