@@ -5207,9 +5207,18 @@ fn is_s3_clock_skew_error(error_msg: &str, body: &str) -> bool {
         .and_then(|rest| rest.split("</Code>").next())
         .map(str::trim)
         .filter(|code| !code.is_empty());
+    let lower = error_msg.to_lowercase();
     match code {
-        Some(code) => matches!(code, "RequestTimeTooSkewed" | "RequestExpired"),
-        None => error_msg.to_lowercase().contains("expired"),
+        Some("RequestTimeTooSkewed" | "RequestExpired") => true,
+        // Tencent COS answers a skewed clock with the generic AccessDenied
+        // and says why in the message (CodeRabbit, #1520).
+        Some("AccessDenied") => {
+            lower.contains("requesttimetooskewed")
+                || lower.contains("time too skewed")
+                || lower.contains("request has expired")
+        }
+        Some(_) => false,
+        None => lower.contains("expired"),
     }
 }
 
@@ -9547,6 +9556,15 @@ mod tests {
         assert!(!is_s3_clock_skew_error(
             "Access Denied",
             "<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"
+        ));
+        // Tencent COS: AccessDenied with the skew in the message.
+        assert!(is_s3_clock_skew_error(
+            "Request has expired",
+            "<Error><Code>AccessDenied</Code><Message>Request has expired</Message></Error>"
+        ));
+        assert!(is_s3_clock_skew_error(
+            "RequestTimeTooSkewed",
+            "<Error><Code>AccessDenied</Code><Message>RequestTimeTooSkewed</Message></Error>"
         ));
         assert!(
             !is_s3_clock_skew_error("Connection timeout while reading response", ""),
