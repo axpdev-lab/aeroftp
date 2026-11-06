@@ -163,6 +163,18 @@ fn is_filesystem_root(comparable: &str) -> bool {
 /// it, though `root` itself passes the policy (deep scan item 22: deleting
 /// `~/.config` took `~/.config/aeroftp`).
 pub(crate) fn protected_location_within(root: &str) -> Option<String> {
+    protected_location_below(root, true)
+}
+
+/// The first protected location (system or home) below `root`, whether it
+/// exists yet or not: where a write into `root` could create one. An
+/// extraction creates the folders its entries name, so a fresh home without
+/// `~/.ssh` would otherwise take `.ssh/authorized_keys` (deep scan item 42).
+pub(crate) fn protected_location_creatable_within(root: &str) -> Option<String> {
+    protected_location_below(root, false)
+}
+
+fn protected_location_below(root: &str, existing_only: bool) -> Option<String> {
     let real = canonical_comparable(root)?;
     let homes = home_spellings();
     let home_locations = homes
@@ -177,7 +189,7 @@ pub(crate) fn protected_location_within(root: &str) -> Option<String> {
         .find(|location| {
             location != &real
                 && path_matches_prefix(location, &real)
-                && std::path::Path::new(location).exists()
+                && (!existing_only || std::path::Path::new(location).exists())
         })
 }
 

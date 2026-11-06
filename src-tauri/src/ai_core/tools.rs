@@ -3343,11 +3343,68 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("protected path"), "{err}");
         assert!(!fake.home.join(".ssh/authorized_keys").exists());
+        // A protected location the home does not hold yet is refused as well:
+        // the extraction would create it.
+        std::fs::remove_dir_all(fake.home.join(".ssh")).unwrap();
+        let err = dispatch_tool(&ctx, "archive_decompress", &args(false))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(!fake.home.join(".ssh").exists());
+        // An archive whose own subfolder would be a protected location.
+        let named = fake.home.join(".ssh.tar.gz");
+        std::fs::write(&named, b"not reached").unwrap();
+        let err = dispatch_tool(
+            &ctx,
+            "archive_decompress",
+            &json!({
+                "archive_path": named.display().to_string(),
+                "output_dir": fake.home.display().to_string(),
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains(".ssh"), "{err}");
+        assert!(!fake.home.join(".ssh").exists());
         // Into its own subfolder the archive extracts as before.
         dispatch_tool(&ctx, "archive_decompress", &args(true))
             .await
             .expect("a subfolder holds nothing protected");
         assert!(fake.home.join("bundle/.ssh/authorized_keys").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    // The shared test-only env lock must cover the async call using this HOME.
+    #[allow(clippy::await_holding_lock)]
+    async fn an_archive_subfolder_that_is_a_symlink_does_not_lead_the_extraction_out() {
+        use std::io::Write;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let downloads = fake.home.join("downloads");
+        let elsewhere = fake.home.join("elsewhere");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, downloads.join("payload")).unwrap();
+        let archive = downloads.join("payload.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        zip.start_file("planted.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(b"planted").unwrap();
+        zip.finish().unwrap();
+        let outcome = dispatch_tool(
+            &ctx,
+            "archive_decompress",
+            &json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": downloads.display().to_string(),
+                "create_subfolder": true,
+            }),
+        )
+        .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!elsewhere.join("planted.txt").exists());
     }
 
     #[tokio::test]
