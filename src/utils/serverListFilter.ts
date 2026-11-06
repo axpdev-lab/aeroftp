@@ -24,6 +24,14 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
     if (NATIVE_PROVIDER_PROTOCOLS.has(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
+        // Tigris first, on its domain boundary: a bucket-qualified Tigris host
+        // can carry another vendor's name (backblaze-backups.t3.storage.dev),
+        // which the substring rules below would take for that vendor.
+        // Current t3.storage.dev plus the legacy fly.storage.tigris.dev.
+        const tigrisHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+        for (const domain of ['t3.storage.dev', 'fly.storage.tigris.dev']) {
+            if (tigrisHost === domain || tigrisHost.endsWith('.' + domain)) return 'tigris';
+        }
         if (host.includes('backblaze')) return 'backblaze';
         if (host.includes('r2.cloudflarestorage')) return 'cloudflare-r2';
         if (host.includes('wasabi')) return 'wasabi';
@@ -31,10 +39,6 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
         // Domain-boundary match: exact s3.filebase.io (+ optional port) or bucket subdomains; reject lookalikes
         const s3Host = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
         if (s3Host === 's3.filebase.io' || s3Host.endsWith('.s3.filebase.io')) return 'filebase';
-        // Tigris: current t3.storage.dev plus the legacy fly.storage.tigris.dev, same domain boundary.
-        for (const domain of ['t3.storage.dev', 'fly.storage.tigris.dev']) {
-            if (s3Host === domain || s3Host.endsWith('.' + domain)) return 'tigris';
-        }
         if (host.includes('storj')) return 'storj';
         // Host boundary, same idea as Filebase. The old includes('mega.io')
         // also matched notmega.io and mega.io.example. s4.mega.io is named

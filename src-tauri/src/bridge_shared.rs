@@ -98,6 +98,18 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
         .next()
         .unwrap_or(endpoint)
         .to_lowercase();
+    // Tigris first, on its domain boundary: a bucket-qualified Tigris host can
+    // carry another vendor's marker (`x.b2-y.t3.storage.dev`), which the
+    // substring rules below would take for that vendor. Current `t3.storage.dev`
+    // and the legacy `fly.storage.tigris.dev`, exact host or bucket subdomain.
+    {
+        let host = h.split(':').next().unwrap_or("");
+        for domain in ["t3.storage.dev", "fly.storage.tigris.dev"] {
+            if host == domain || host.ends_with(&format!(".{domain}")) {
+                return "tigris";
+            }
+        }
+    }
     if h.is_empty() || h.contains("amazonaws.com") {
         return "amazon-s3";
     }
@@ -134,13 +146,6 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
         let host = h.split(':').next().unwrap_or("");
         if host == "s3.filebase.io" || host.ends_with(".s3.filebase.io") {
             return "filebase";
-        }
-        // Tigris: current `t3.storage.dev` and the legacy `fly.storage.tigris.dev`,
-        // exact host or bucket subdomain, never a substring.
-        for domain in ["t3.storage.dev", "fly.storage.tigris.dev"] {
-            if host == domain || host.ends_with(&format!(".{domain}")) {
-                return "tigris";
-            }
         }
     }
     if h.contains("ionos") {
@@ -1269,6 +1274,10 @@ mod tests {
             "https://my-bucket.t3.storage.dev",
             "https://fly.storage.tigris.dev",
             "https://my-bucket.fly.storage.tigris.dev/key",
+            // A bucket whose name carries another vendor's marker.
+            "https://x.b2-y.t3.storage.dev",
+            "https://idrivee2-copy.t3.storage.dev",
+            "https://minio-mirror.t3.storage.dev",
         ] {
             assert_eq!(
                 map_s3_provider_from_endpoint(endpoint),

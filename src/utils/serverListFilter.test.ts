@@ -114,6 +114,14 @@ describe('deriveProviderId Tigris host boundary', () => {
         expect(deriveProviderId(s3('https://my-bucket.fly.storage.tigris.dev/key'))).toBe('tigris');
     });
 
+    it('keeps a bucket named after another vendor on Tigris', () => {
+        for (const bucket of ['backblaze-backups', 'wasabi-archive', 'idrive-copy', 'storj-mirror']) {
+            expect(deriveProviderId(s3(`${bucket}.t3.storage.dev`))).toBe('tigris');
+            expect(deriveProviderId(s3(`https://${bucket}.fly.storage.tigris.dev`))).toBe('tigris');
+        }
+        expect(deriveProviderId(s3('backblaze-backups.t3.storage.dev.example.com'))).toBe('backblaze');
+    });
+
     it('rejects lookalikes', () => {
         expect(deriveProviderId(s3('t3.storage.dev.example.com'))).toBeUndefined();
         expect(deriveProviderId(s3('not-t3.storage.dev'))).toBeUndefined();

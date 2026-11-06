@@ -3599,7 +3599,12 @@ const App: React.FC = () => {
             ? prof.options.manualTotalBytes
             : opts?.manualTotalBytes;
           const autoScan = !!(prof.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
-          const hasScanBaseline = !!q && (q.usedSource === 'scan' || q.used > 0);
+          // After a refused usage call the cached figure may be the one the API
+          // gave before, which is no scan: only a real scan counts as the
+          // baseline there, so the opted-in first scan can still run.
+          const hasScanBaseline = !!q && (usageUnavailable
+            ? q.usedSource === 'scan'
+            : (q.usedSource === 'scan' || q.used > 0));
           if (q && (q.used > 0 || q.total > 0)) {
             const eff = resolveEffectiveQuota(q.used, q.total, manualTotal);
             if (version === quotaVersionRef.current) {

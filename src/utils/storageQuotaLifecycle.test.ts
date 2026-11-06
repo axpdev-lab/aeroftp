@@ -289,6 +289,16 @@ describe('App usage on request that is not available', () => {
     expect(f.commands.map(c => c.command)).not.toContain('provider_scan_used');
   });
 
+  it('starts the opted-in scan when the cached figure came from the API and the call is now refused', async () => {
+    const f = fixture('no quota API', {
+      holdFirstProfileRead: false, reportsUsage: true, storageInfoFails: true,
+      lastQuota: { used: 7, total: 0, usedSource: 'api' },
+    });
+    await f.runtime.fetchQuota('s3');
+    expect(f.quota.current).toMatchObject({ used: 7 });
+    await vi.waitFor(() => expect(f.commands.map(c => c.command)).toContain('provider_scan_used'));
+  });
+
   it('still clears the bar when a provider that is not such a preset fails', async () => {
     const f = fixture('usable quota', { holdFirstProfileRead: false, storageInfoFails: true });
     f.quota.current = { used: 5, total: 100, free: 95 };

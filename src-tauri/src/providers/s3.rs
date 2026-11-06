@@ -1898,6 +1898,16 @@ impl S3Provider {
                 })
             })?;
         if !status.is_success() {
+            // A throttled or failing service is a failure the caller can tell
+            // from a key or a gateway that does not offer the extension. 501
+            // is the gateway saying it does not offer it.
+            if status == StatusCode::TOO_MANY_REQUESTS
+                || (status.is_server_error() && status != StatusCode::NOT_IMPLEMENTED)
+            {
+                return Err(ProviderError::ServerError(format!(
+                    "Tigris usage request failed (HTTP {status})"
+                )));
+            }
             return Err(ProviderError::NotSupported(format!(
                 "Tigris did not report account usage for this key (HTTP {status})"
             )));
@@ -2460,26 +2470,40 @@ impl S3Provider {
             .await
     }
 
+    /// The dotted-bucket message (C6) when a request failed on the TLS name of
+    /// a Tigris bucket with dots in its name under virtual-host addressing.
+    fn dotted_bucket_tls_error(&self, error: &reqwest::Error) -> Option<ProviderError> {
+        if !(self.is_tigris_endpoint()
+            && !self.config.path_style
+            && self.config.bucket.contains('.'))
+        {
+            return None;
+        }
+        let mut text = error.to_string();
+        let mut source = std::error::Error::source(error);
+        while let Some(cause) = source {
+            text.push(' ');
+            text.push_str(&cause.to_string());
+            source = cause.source();
+        }
+        is_tls_name_failure(&text).then(|| {
+            ProviderError::ConnectionFailed(tigris_dotted_bucket_message(&self.config.bucket))
+        })
+    }
+
     /// The error for a request that failed before any answer. A TLS name
     /// failure on a Tigris bucket with dots in its name gets its own message
     /// (C6); everything else keeps the transport text.
     fn transport_error(&self, error: &reqwest::Error) -> ProviderError {
-        if self.is_tigris_endpoint() && !self.config.path_style && self.config.bucket.contains('.')
-        {
-            let mut text = error.to_string();
-            let mut source = std::error::Error::source(error);
-            while let Some(cause) = source {
-                text.push(' ');
-                text.push_str(&cause.to_string());
-                source = cause.source();
-            }
-            if is_tls_name_failure(&text) {
-                return ProviderError::ConnectionFailed(tigris_dotted_bucket_message(
-                    &self.config.bucket,
-                ));
-            }
-        }
-        ProviderError::NetworkError(error.to_string())
+        self.dotted_bucket_tls_error(error)
+            .unwrap_or_else(|| ProviderError::NetworkError(error.to_string()))
+    }
+
+    /// [`Self::transport_error`] for a streaming upload, which keeps the URL
+    /// out of the message it shows.
+    fn upload_transport_error(&self, error: reqwest::Error) -> ProviderError {
+        self.dotted_bucket_tls_error(&error)
+            .unwrap_or_else(|| ProviderError::NetworkError(error.without_url().to_string()))
     }
 
     /// Make a signed request to S3 with extra headers included in the signature
@@ -6125,11 +6149,7 @@ impl StorageProvider for S3Provider {
                         .body(body))
                 },
                 &retry,
-                |error| {
-                    super::http_send_error(error, |error| {
-                        ProviderError::NetworkError(error.without_url().to_string())
-                    })
-                },
+                |error| super::http_send_error(error, |error| self.upload_transport_error(error)),
                 true,
                 &mut remaining_retries,
             )
@@ -12868,7 +12888,12 @@ mod tests {
     async fn tigris_storage_info_without_the_extension_is_not_supported() {
         for stats in [
             None,
+            Some((400, "{}")),
+            Some((401, "{}")),
             Some((403, "{}")),
+            Some((404, "{}")),
+            Some((405, "{}")),
+            Some((501, "{}")),
             Some((200, "<ListAllMyBucketsResult/>")),
             Some((200, "{}")),
         ] {
@@ -12881,6 +12906,24 @@ mod tests {
             assert!(
                 matches!(outcome, Err(ProviderError::NotSupported(_))),
                 "{stats:?}: {outcome:?}"
+            );
+        }
+    }
+
+    /// A throttled or failing usage endpoint is an operational error, never
+    /// "this account has no usage report".
+    #[tokio::test]
+    async fn tigris_storage_info_keeps_throttling_and_server_errors_distinct() {
+        for status in [429_u16, 503] {
+            let config = TigrisDoubleConfig {
+                stats: Some((status, "{}")),
+                ..Default::default()
+            };
+            let (mut provider, _, _) = tigris_double(&[], config).await;
+            let outcome = provider.storage_info().await;
+            assert!(
+                matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains(&status.to_string())),
+                "{status}: {outcome:?}"
             );
         }
     }
@@ -13108,6 +13151,14 @@ mod tests {
         match provider("plain", false).transport_error(&error) {
             ProviderError::NetworkError(_) => {}
             other => panic!("{other:?}"),
+        }
+        // A streaming upload takes the same classification and keeps the URL
+        // out of the text it shows.
+        match provider("my.bucket", false).upload_transport_error(error) {
+            ProviderError::NetworkError(text) => {
+                assert!(!text.contains("127.0.0.1:1"), "{text}");
+            }
+            other => panic!("a refused connection is not a name failure: {other:?}"),
         }
     }
 
