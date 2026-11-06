@@ -1669,7 +1669,15 @@ impl StorageProvider for FtpProvider {
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
                 let connector = FtpsConnector(self.make_tls_connector()?);
                 stream.into_secure(connector, &domain).await.map_err(|e| {
-                    ProviderError::ConnectionFailed(format!("TLS upgrade failed: {}", e))
+                    // Never a silent fall back to plaintext: say how to choose
+                    // plain FTP on purpose (#1506 Requested 198, a saved
+                    // profile with no TLS mode now requires TLS everywhere).
+                    ProviderError::ConnectionFailed(format!(
+                        "TLS upgrade failed: {e}. The server did not accept explicit TLS, so \
+                         nothing was sent in the clear. To connect without encryption on \
+                         purpose, set the profile's encryption to None in the connection \
+                         form, or pass --tls none to the CLI."
+                    ))
                 })?
             }
             FtpTlsMode::Implicit => {
