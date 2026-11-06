@@ -2018,9 +2018,11 @@ async fn install_connected_provider_with_config(
     // overlay keys must never re-arm onto it. Bump generation + zeroize while
     // still holding the provider lock, so a concurrent re-arm is serialized out.
     state.invalidate_overlay_key_cache();
-    if let Some(config) = config {
-        *state.config.lock().await = Some(config);
-    }
+    // The config always describes the provider in the slot. An install without
+    // one (OAuth, 4shared; `provider_connect` sets its own right after) clears
+    // the previous connection's, which the liveness probe would otherwise
+    // compare against the new provider.
+    *state.config.lock().await = config;
     Ok(())
 }
 
@@ -2720,7 +2722,7 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
 const PROBE_ALIVE_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The account a tab expects to find in the provider slot, as the frontend
-/// knows it: its protocol, user, saved profile and endpoint.
+/// knows it: its protocol, user, saved profile, endpoint and bucket.
 #[derive(Debug, Default, Clone, Copy)]
 struct ProbeIdentity<'a> {
     protocol: Option<&'a str>,
@@ -2728,6 +2730,61 @@ struct ProbeIdentity<'a> {
     profile_id: Option<&'a str>,
     host: Option<&'a str>,
     port: Option<u16>,
+    bucket: Option<&'a str>,
+}
+
+/// An endpoint as a tab or a config writes it: `[scheme://]host[:port][/path]`.
+/// The scheme and the host compare without case; a path (a WebDAV collection)
+/// is part of the endpoint and compares exactly.
+struct Endpoint<'a> {
+    scheme: Option<String>,
+    host: String,
+    port: Option<u16>,
+    path: &'a str,
+}
+
+fn endpoint_of(text: &str) -> Endpoint<'_> {
+    let text = text.trim();
+    let (scheme, rest) = match text.split_once("://") {
+        Some((scheme, rest)) => (Some(scheme.to_ascii_lowercase()), rest),
+        None => (None, text),
+    };
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
+        // An IPv6 literal: `[::1]` or `[::1]:21`.
+        let (host, after) = bracketed.split_once(']').unwrap_or((bracketed, ""));
+        (host, after.strip_prefix(':').and_then(|p| p.parse().ok()))
+    } else {
+        match authority.rsplit_once(':') {
+            Some((host, port)) if !host.contains(':') && port.parse::<u16>().is_ok() => {
+                (host, port.parse().ok())
+            }
+            _ => (authority, None),
+        }
+    };
+    Endpoint {
+        scheme,
+        host: host.to_ascii_lowercase(),
+        port,
+        path: path.trim_end_matches('/'),
+    }
+}
+
+/// Whether the tab's endpoint `expected`, on `port`, is the slot's `actual`
+/// on `actual_port`. A scheme written on one side only does not tell them
+/// apart; a port written into a host must be the port compared.
+fn same_endpoint(expected: &str, actual: &str, port: u16, actual_port: u16) -> bool {
+    let (expected, actual) = (endpoint_of(expected), endpoint_of(actual));
+    let schemes_agree = match (&expected.scheme, &actual.scheme) {
+        (Some(a), Some(b)) => a == b,
+        _ => true,
+    };
+    schemes_agree
+        && expected.host == actual.host
+        && expected.path == actual.path
+        && port == actual_port
+        && expected.port.is_none_or(|p| p == port)
+        && actual.port.is_none_or(|p| p == actual_port)
 }
 
 /// Whether the slot holds the account `expected` names, judged from the
@@ -2735,7 +2792,9 @@ struct ProbeIdentity<'a> {
 /// connected. Protocol and user alone are not an identity: two servers with
 /// the same user (root, admin, one account on two ports) would pass, and the
 /// tab would act on the other server. So a saved profile must be the same
-/// profile, and a connection without one must reach the same host and port.
+/// profile, a connection without one must reach the same endpoint, an omitted
+/// port is the default port and not any port, and an S3 tab's bucket must be
+/// the slot's.
 fn slot_matches_identity(
     config: &ProviderConfig,
     slot_profile: Option<&str>,
@@ -2759,23 +2818,68 @@ fn slot_matches_identity(
             return false;
         }
     }
-    let expected_profile = expected.profile_id.filter(|id| !id.is_empty());
-    match (expected_profile, slot_profile.filter(|id| !id.is_empty())) {
-        (Some(expected), Some(actual)) => return expected == actual,
-        // One side is a saved profile and the other is not: not the same.
-        (Some(_), None) | (None, Some(_)) => return false,
-        (None, None) => {}
+    // An S3 slot keeps its bucket under `bucket`; Azure, kDrive and Cloudinary
+    // keep theirs under other keys, so only a slot that has one is compared.
+    if let (Some(bucket), Some(actual)) = (
+        expected.bucket.filter(|b| !b.is_empty()),
+        config.extra.get("bucket"),
+    ) {
+        if bucket != actual {
+            return false;
+        }
     }
-    let Some(host) = expected.host.map(str::trim).filter(|h| !h.is_empty()) else {
-        return false;
-    };
-    if !host.eq_ignore_ascii_case(config.host.trim()) {
-        return false;
-    }
-    expected
+    let port = expected
         .port
         .filter(|port| *port != 0)
-        .is_none_or(|port| port == config.effective_port())
+        .unwrap_or_else(|| config.default_port());
+    let host = expected.host.map(str::trim).filter(|h| !h.is_empty());
+    let actual_host = Some(config.host.trim()).filter(|h| !h.is_empty());
+    let endpoint_matches =
+        |host: &str, actual: &str| same_endpoint(host, actual, port, config.effective_port());
+    let endpoint_counts = endpoint_is_identity(config.provider_type);
+    let expected_profile = expected.profile_id.filter(|id| !id.is_empty());
+    match (expected_profile, slot_profile.filter(|id| !id.is_empty())) {
+        // The same saved profile, and where both sides name an endpoint, the
+        // same endpoint: an edited profile connected anew is not the server
+        // an older tab of it shows.
+        (Some(expected), Some(actual)) => {
+            expected == actual
+                && (!endpoint_counts
+                    || match (host, actual_host) {
+                        (Some(host), Some(actual)) => endpoint_matches(host, actual),
+                        _ => true,
+                    })
+        }
+        // One side is a saved profile and the other is not: not the same.
+        (Some(_), None) | (None, Some(_)) => false,
+        // Without a profile, a server protocol is its endpoint; a cloud API
+        // account is its protocol and user, checked above.
+        (None, None) => {
+            !endpoint_counts
+                || match (host, actual_host) {
+                    (Some(host), Some(actual)) => endpoint_matches(host, actual),
+                    _ => false,
+                }
+        }
+    }
+}
+
+/// Whether a protocol's host is the server the user names, and so part of the
+/// account. A cloud API's host is fixed or rewritten by the backend
+/// (`mega.nz`, `drive.proton.me`, `gateway.internxt.com`, ...), so a tab may
+/// hold another value for the same account: there the profile and the user
+/// decide, and the 2FA accounts #128-C exists for keep their reuse.
+fn endpoint_is_identity(provider_type: ProviderType) -> bool {
+    matches!(
+        provider_type,
+        ProviderType::Ftp
+            | ProviderType::Ftps
+            | ProviderType::Sftp
+            | ProviderType::Scp
+            | ProviderType::WebDav
+            | ProviderType::S3
+            | ProviderType::Swift
+    )
 }
 
 /// Lightweight liveness probe for the currently connected provider (#128-C).
@@ -2797,6 +2901,7 @@ pub async fn provider_probe_alive(
     profile_id: Option<String>,
     host: Option<String>,
     port: Option<u16>,
+    bucket: Option<String>,
 ) -> Result<bool, String> {
     let expected = ProbeIdentity {
         protocol: protocol.as_deref(),
@@ -2804,6 +2909,7 @@ pub async fn provider_probe_alive(
         profile_id: profile_id.as_deref(),
         host: host.as_deref(),
         port,
+        bucket: bucket.as_deref(),
     };
     Ok(probe_alive_inner(&state, &expected, PROBE_ALIVE_TIMEOUT).await)
 }
@@ -18100,6 +18206,7 @@ mod tests {
             profile_id,
             host: Some(Box::leak(host.to_string().into_boxed_str())),
             port: Some(port),
+            bucket: None,
         }
     }
 
@@ -18153,17 +18260,12 @@ mod tests {
             Some("srv_b"),
             &probe_for("ftp.example.com", 2162, "row163", Some("srv_b"))
         ));
-        // Quick Connect: the endpoint decides; host case and an unset port do not.
+        // Quick Connect: the endpoint decides; host case does not.
         assert!(slot_matches_identity(
             &slot,
             None,
             &probe_for("FTP.Example.com ", 2162, "row163", None)
         ));
-        let default_port = ProbeIdentity {
-            port: None,
-            ..probe_for("ftp.example.com", 0, "row163", None)
-        };
-        assert!(slot_matches_identity(&slot, None, &default_port));
         // Protocol and user still have to agree.
         let other_protocol = ProbeIdentity {
             protocol: Some("sftp"),
@@ -18179,6 +18281,200 @@ mod tests {
             Some("srv_b"),
             &probe_for("ftp.example.com", 2162, "other", Some("srv_b"))
         ));
+    }
+
+    // #1514 review: a tab that leaves its port unset means the default port,
+    // not any port, so a slot on another port of the same host is not it.
+    #[test]
+    fn an_unset_port_is_the_default_port_not_any_port() {
+        let unset = |host| ProbeIdentity {
+            port: None,
+            ..probe_for(host, 0, "row163", None)
+        };
+        assert!(!slot_matches_identity(
+            &probe_config("ftp.example.com", 2162, "row163"),
+            None,
+            &unset("ftp.example.com")
+        ));
+        assert!(slot_matches_identity(
+            &probe_config("ftp.example.com", 21, "row163"),
+            None,
+            &unset("ftp.example.com")
+        ));
+        let mut slot_without_port = probe_config("ftp.example.com", 0, "row163");
+        slot_without_port.port = None;
+        assert!(slot_matches_identity(
+            &slot_without_port,
+            None,
+            &unset("ftp.example.com")
+        ));
+        assert!(slot_matches_identity(
+            &slot_without_port,
+            None,
+            &probe_for("ftp.example.com", 21, "row163", None)
+        ));
+    }
+
+    // #1514 review: an edited profile connected anew on another endpoint is
+    // not the server an older tab of the same profile shows.
+    #[test]
+    fn a_saved_profile_on_another_endpoint_is_not_alive() {
+        let slot = probe_config("new.example.com", 21, "row163");
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_a"),
+            &probe_for("old.example.com", 21, "row163", Some("srv_a"))
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_a"),
+            &probe_for("new.example.com", 2121, "row163", Some("srv_a"))
+        ));
+        // A tab or a slot that names no endpoint (a cloud API) keeps the profile.
+        let api_tab = ProbeIdentity {
+            host: None,
+            ..probe_for("", 21, "row163", Some("srv_a"))
+        };
+        assert!(slot_matches_identity(&slot, Some("srv_a"), &api_tab));
+        let mut api_slot = probe_config("", 21, "row163");
+        api_slot.host = String::new();
+        assert!(slot_matches_identity(
+            &api_slot,
+            Some("srv_a"),
+            &probe_for("old.example.com", 21, "row163", Some("srv_a"))
+        ));
+    }
+
+    #[test]
+    fn an_endpoint_compares_its_host_without_case_and_its_path_exactly() {
+        let dav = probe_config("https://Dav.Example.com/remote.php/dav/Files", 443, "u");
+        let tab = |host| probe_for(host, 443, "u", None);
+        assert!(slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com/remote.php/dav/Files/")
+        ));
+        // Another collection, by case only, is another endpoint.
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com/remote.php/dav/files")
+        ));
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("http://dav.example.com/remote.php/dav/Files")
+        ));
+        // A port written into the host is the port; a scheme on one side only
+        // does not tell two endpoints apart.
+        let ftp = probe_config("example.com", 21, "u");
+        assert!(slot_matches_identity(
+            &ftp,
+            None,
+            &probe_for("example.com:21", 21, "u", None)
+        ));
+        assert!(!slot_matches_identity(
+            &ftp,
+            None,
+            &probe_for("example.com:2121", 21, "u", None)
+        ));
+        assert!(slot_matches_identity(
+            &ftp,
+            None,
+            &probe_for("ftp://example.com", 21, "u", None)
+        ));
+        let v6 = probe_config("[::1]", 2161, "u");
+        assert!(slot_matches_identity(
+            &v6,
+            None,
+            &probe_for("[::1]:2161", 2161, "u", None)
+        ));
+        assert!(!slot_matches_identity(
+            &v6,
+            None,
+            &probe_for("[::1]:2162", 2161, "u", None)
+        ));
+    }
+
+    // #1514 review: two S3 tabs on one endpoint with one user differ by bucket.
+    #[test]
+    fn an_s3_tab_is_alive_only_on_its_own_bucket() {
+        let mut slot = probe_config("s3.example.com", 443, "key");
+        slot.provider_type = ProviderType::S3;
+        slot.extra
+            .insert("bucket".to_string(), "photos".to_string());
+        let tab = |bucket| ProbeIdentity {
+            protocol: Some("s3"),
+            bucket: Some(bucket),
+            ..probe_for("s3.example.com", 443, "key", None)
+        };
+        assert!(slot_matches_identity(&slot, None, &tab("photos")));
+        assert!(!slot_matches_identity(&slot, None, &tab("backups")));
+    }
+
+    // #1514 review (CLI): a cloud API's host is the backend's (`mega.nz`), and
+    // a tab may hold another value: the profile and the user decide there, so
+    // the 2FA accounts keep their reuse without a reconnect.
+    #[test]
+    fn a_cloud_api_account_is_its_profile_and_user_not_its_host() {
+        let mut mega = probe_config("mega.nz", 443, "me@example.com");
+        mega.provider_type = ProviderType::Mega;
+        let tab = |host, profile| ProbeIdentity {
+            protocol: Some("mega"),
+            ..probe_for(host, 0, "me@example.com", profile)
+        };
+        assert!(slot_matches_identity(
+            &mega,
+            Some("srv_mega"),
+            &tab("mega", Some("srv_mega"))
+        ));
+        assert!(slot_matches_identity(&mega, None, &tab("", None)));
+        assert!(!slot_matches_identity(
+            &mega,
+            Some("srv_mega"),
+            &tab("mega", Some("srv_other"))
+        ));
+        let other_user = ProbeIdentity {
+            username: Some("you@example.com"),
+            ..tab("mega", None)
+        };
+        assert!(!slot_matches_identity(&mega, None, &other_user));
+    }
+
+    // #1514 review (CLI): Azure keeps its container under `container`, so a
+    // bucket the tab sends is compared only with a slot that has a `bucket`.
+    #[test]
+    fn a_bucket_is_compared_only_with_a_slot_that_has_one() {
+        let mut azure = probe_config("account.blob.core.windows.net", 443, "account");
+        azure.provider_type = ProviderType::Azure;
+        azure
+            .extra
+            .insert("container".to_string(), "photos".to_string());
+        let tab = ProbeIdentity {
+            protocol: Some("azure"),
+            bucket: Some("photos"),
+            ..probe_for(
+                "account.blob.core.windows.net",
+                443,
+                "account",
+                Some("srv_az"),
+            )
+        };
+        assert!(slot_matches_identity(&azure, Some("srv_az"), &tab));
+    }
+
+    // #1514 review: an OAuth or 4shared install carries no config, and the
+    // previous connection's stayed, so the probe compared the new provider
+    // with another server's endpoint.
+    #[tokio::test]
+    async fn an_install_without_a_config_clears_the_previous_one() {
+        let state = probe_state(answering(), Some("srv_b"));
+        install_connected_provider(&state, Box::new(answering()), Some("srv_oauth".to_string()))
+            .await
+            .unwrap();
+        assert!(state.config.lock().await.is_none());
+        let tab = probe_for("127.0.0.1", 2162, "row163", None);
+        assert!(!probe_alive_inner(&state, &tab, Duration::from_secs(5)).await);
     }
 
     fn probe_state(provider: StallProvider, profile: Option<&str>) -> ProviderState {

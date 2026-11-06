@@ -522,7 +522,7 @@ import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
-import { probeAliveArgs } from './utils/probeAliveArgs';
+import { probeAliveArgs, sameQuickConnectTarget } from './utils/probeAliveArgs';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -4844,12 +4844,18 @@ const App: React.FC = () => {
   /** Hands the remote panel to whatever replaces the session on screen: a
    *  listing or scope entry still running for the old one is discarded when
    *  it lands (the generation moves on), its navigation latch is released,
-   *  and its spinner, reason and overlay-decrypting state are cleared. Every
+   *  and its spinner, reason and overlay-decrypting state are cleared, and the
+   *  backend aborts that listing, which holds the provider lock. Every
    *  takeover calls it before it lists anything: a connect phase as it
    *  starts, a tab switch, and `takeOverActiveSession`. */
   const releaseRemoteNavigation = useLatestCallback(() => {
     ++remoteNavCounter.current;
     remoteNavInFlightRef.current = 0;
+    // The backend drops the listing still in flight, which holds the provider
+    // lock: a stalled one would otherwise keep the takeover's disconnect, and
+    // a switch's probe, waiting on it with no Cancel left on screen. Nothing
+    // of the next session lists yet, so only the old listing is cancelled.
+    void invoke('cancel_remote_listing').catch(() => undefined);
     setRemoteListLoading(false);
     setRemoteListReason(null);
     setOverlayDecrypting(false);
@@ -6808,12 +6814,15 @@ const App: React.FC = () => {
       }
       // Discard our result if a newer foreground listing already took over, so a
       // slow response never overwrites the directory the user has since moved to.
-      if (showBusy && navId !== remoteNavCounter.current) return null;
+      // A silent refresh too: a takeover (another connection, a switch, "+")
+      // moves the generation, and its late listing would paint the old
+      // session's files over the new workspace.
+      if (navId !== remoteNavCounter.current) return null;
       applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
       return response;
     } catch (error) {
       // A superseded listing must not surface its (now irrelevant) error toast.
-      if (showBusy && navId !== remoteNavCounter.current) return null;
+      if (navId !== remoteNavCounter.current) return null;
       // Neither must a listing the user aborted from the spinner's Cancel.
       if (isListingCancelled(error)) return null;
       if (String(error).toLowerCase().includes('vault not unlocked')) {
@@ -8332,9 +8341,7 @@ const App: React.FC = () => {
           if (!p || p.protocol !== protocol) return false;
           return (p.savedServerId && effectiveParams.savedServerId)
             ? p.savedServerId === effectiveParams.savedServerId
-            : (p.username || '') === (effectiveParams.username || '')
-            && (p.server || '') === (effectiveParams.server || '')
-            && (p.port || null) === (effectiveParams.port || null);
+            : sameQuickConnectTarget(p, effectiveParams, protocol);
         });
         if (reusable) {
           let alive = false;
@@ -8919,12 +8926,13 @@ const App: React.FC = () => {
 
     // Save current session state before switching (including sync navigation
     // state). The tab left behind no longer holds the backend, so it reads as
-    // cached, not connected.
+    // cached: connected, or still connecting when this switch supersedes the
+    // one that was opening it.
     setSessions(prev => prev.map(s =>
       s.id === activeSessionId
         ? {
           ...s,
-          ...(s.status === 'connected' ? { status: 'cached' as const } : {}),
+          ...(s.status === 'connected' || s.status === 'connecting' ? { status: 'cached' as const } : {}),
           remoteFiles: capturedRemoteFiles,
           localFiles: capturedLocalFiles,
           remotePath: capturedRemotePath,
@@ -9299,22 +9307,32 @@ const App: React.FC = () => {
       // Fetch storage quota after successful reconnection
       fetchStorageQuota(protocol, targetSession.connectionParams, { newConnection: true });
 
-      // Also refresh local files for this session's local path
-      const localFilesData: LocalFile[] = await connectScope.step(() => invoke('get_local_files', {
-        path: targetSession.localPath,
-        showHidden: showHiddenFiles
-      }));
-      setLocalFiles(localFilesData);
-      setCurrentLocalPath(targetSession.localPath);
+      // Also refresh local files for this session's local path. The remote
+      // session is up by now: a local folder that is gone or unreadable must
+      // not send the tab back to cached through the reconnect's catch.
+      try {
+        const localFilesData: LocalFile[] = await connectScope.step(() => invoke('get_local_files', {
+          path: targetSession.localPath,
+          showHidden: showHiddenFiles
+        }));
+        setLocalFiles(localFilesData);
+        setCurrentLocalPath(targetSession.localPath);
+      } catch (localError) {
+        connectScope.assert();
+        logger.warn('[switchSession] local folder refresh failed after the reconnect', localError);
+      }
 
     } catch (e) {
+      // A newer switch or connect owns the workspace now: this one's failure
+      // must not write over it (its tab, local path or active session).
+      const ownsWorkspace = phaseVersion === remoteConnectPhaseVersionRef.current;
       try { connectScope.assert(); } catch (cancelled) {
         // A cancelled scope (the card's own Cancel, the controller's Stop)
         // skips the branches below. Its cancel dropped the backend, so while
         // this switch still owns the phase the target goes back to cached
         // with nothing active, or a click on it finds it "already active" and
         // never retries. The cancellation still propagates.
-        if (phaseVersion === remoteConnectPhaseVersionRef.current) {
+        if (ownsWorkspace) {
           setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
           setCurrentLocalPath(targetSession.localPath);
           leaveNothingActive();
@@ -9332,9 +9350,11 @@ const App: React.FC = () => {
           status: 'success',
           message: t('toast.connectionCancelled'),
         });
-        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
-        setCurrentLocalPath(targetSession.localPath);
-        leaveNothingActive();
+        if (ownsWorkspace) {
+          setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
+          setCurrentLocalPath(targetSession.localPath);
+          leaveNothingActive();
+        }
         return;
       }
       // W3.1: user-cancelled reconnect. Mark the session cached (not errored)
@@ -9344,9 +9364,11 @@ const App: React.FC = () => {
           status: 'success',
           message: t('toast.connectionCancelled'),
         });
-        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
-        setCurrentLocalPath(targetSession.localPath);
-        leaveNothingActive();
+        if (ownsWorkspace) {
+          setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
+          setCurrentLocalPath(targetSession.localPath);
+          leaveNothingActive();
+        }
         return;
       }
       logger.error('Reconnect error:', e);
@@ -9354,10 +9376,12 @@ const App: React.FC = () => {
         status: 'error',
         message: t('activity.reconnect_error', { server: targetSession.serverName })
       });
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
-      // Even on error, ensure local path is set correctly from session cache
-      setCurrentLocalPath(targetSession.localPath);
-      leaveNothingActive();
+      if (ownsWorkspace) {
+        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
+        // Even on error, ensure local path is set correctly from session cache
+        setCurrentLocalPath(targetSession.localPath);
+        leaveNothingActive();
+      }
       // Issue #128: when reconnect fails because the saved session is stale
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.

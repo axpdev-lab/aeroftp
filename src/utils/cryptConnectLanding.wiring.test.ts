@@ -21,7 +21,7 @@ const RELEASE = app.slice(app.indexOf('  const releaseRemoteNavigation = useLate
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
     context = { ownership: undefined, navigationOverlayLogId: null, settleNavigationOverlayLog: vi.fn(), assertOverlayActivationCurrent, ...context };
     if (source.includes('releaseRemoteNavigation()') && !('releaseRemoteNavigation' in context)) {
-        context.releaseRemoteNavigation = await execute(RELEASE, { ...context, useLatestCallback: (fn: unknown) => fn, releaseRemoteNavigation: null }, 'return releaseRemoteNavigation;');
+        context.releaseRemoteNavigation = await execute(RELEASE, { ...context, useLatestCallback: (fn: unknown) => fn, invoke: context.invoke ?? (async () => false), releaseRemoteNavigation: null }, 'return releaseRemoteNavigation;');
     }
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
     return new Function(...Object.keys(context), `return (async () => { ${code}\n${suffix} })();`)(...Object.values(context));

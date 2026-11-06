@@ -180,7 +180,8 @@ describe('a connect parks the live tab before it ends the connection', () => {
         const scoped = body.slice(body.indexOf('try { connectScope.assert(); } catch (cancelled) {'));
         expect(scoped.indexOf('leaveNothingActive();')).toBeGreaterThan(-1);
         expect(scoped.indexOf('leaveNothingActive();')).toBeLessThan(scoped.indexOf('throw cancelled;'));
-        expect(scoped.slice(0, scoped.indexOf('throw cancelled;'))).toContain('if (phaseVersion === remoteConnectPhaseVersionRef.current) {');
+        expect(scoped.slice(0, scoped.indexOf('throw cancelled;'))).toContain('if (ownsWorkspace) {');
+        expect(body).toContain('const ownsWorkspace = phaseVersion === remoteConnectPhaseVersionRef.current;');
         // Nothing active means a disconnected workspace too, so the next click
         // on the tab passes the "already active" return and reconnects again.
         const back = body.slice(body.indexOf('const leaveNothingActive = () => {'), body.indexOf('\n    };', body.indexOf('const leaveNothingActive = () => {')));

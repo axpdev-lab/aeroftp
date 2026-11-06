@@ -43,6 +43,7 @@ describe('a takeover outside a connect phase releases the remote navigation', ()
             useLatestCallback: (fn: unknown) => fn,
             remoteNavCounter: { current: 7 },
             remoteNavInFlightRef: { current: 7 },
+            invoke: vi.fn(async () => true),
         };
         const release = await run<() => void>(
             slice('  const releaseRemoteNavigation = useLatestCallback(', '  /** Puts the active session tab aside'),
@@ -54,6 +55,9 @@ describe('a takeover outside a connect phase releases the remote navigation', ()
         expect(ctx.setRemoteListLoading).toHaveBeenCalledWith(false);
         expect(ctx.setRemoteListReason).toHaveBeenCalledWith(null);
         expect(ctx.setOverlayDecrypting).toHaveBeenCalledWith(false);
+        // The backend drops that listing too: a stalled one holds the provider
+        // lock the takeover's disconnect waits for.
+        expect(ctx.invoke).toHaveBeenCalledWith('cancel_remote_listing');
     });
 
     it('releases before it parks', async () => {
@@ -116,7 +120,7 @@ describe('a tab switch from a live tab that is cancelled or fails leaves nothing
 
     const failSwitch = async (opts: { scopeCancelled?: boolean; superseded?: boolean; listingCancelled?: boolean; connectCancelled?: boolean }) => {
         const helpers = slice('    const fromParked = activeSessionId === null;', '\n    };', SWITCH_AT) + '\n    };\n';
-        const handlers = slice('try { connectScope.assert(); } catch (cancelled) {', '      tryShowTwoFactorPrompt(', SWITCH_AT);
+        const handlers = slice('const ownsWorkspace = phaseVersion === remoteConnectPhaseVersionRef.current;', '      tryShowTwoFactorPrompt(', SWITCH_AT);
         const ctx: Record<string, unknown> = {
             activeSessionId: LIVE_TAB,
             sessionId: TARGET,
@@ -158,6 +162,20 @@ describe('a tab switch from a live tab that is cancelled or fails leaves nothing
         expect(ctx.setIsConnected).not.toHaveBeenCalled();
     });
 
+    // #1514 review: click B, then C while B lists. C moves the generation, B's
+    // listing fails as cancelled, and B's catch cleared C's active tab.
+    it.each([
+        ['a listing cancelled by the newer switch', { listingCancelled: true }],
+        ['a cancelled reconnect', { connectCancelled: true }],
+        ['a failed reconnect', {}],
+    ])('nor on %s once a newer switch owns the phase', async (_name, opts) => {
+        const { ctx, tabs } = await failSwitch({ ...opts, superseded: true });
+        expect(tabs).toEqual(['a:cached', 'b:connecting']);
+        expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+        expect(ctx.setIsConnected).not.toHaveBeenCalled();
+        expect(ctx.setCurrentLocalPath).not.toHaveBeenCalled();
+    });
+
     it.each([
         ['the listing Cancel', { listingCancelled: true }],
         ['a cancelled reconnect', { connectCancelled: true }],
@@ -193,8 +211,43 @@ describe('the tab a switch leaves', () => {
         const [left, other] = update([{ id: 'a', status: 'connected' }, { id: 'c', status: 'cached' }]);
         expect(left).toMatchObject({ id: 'a', status: 'cached', remotePath: '/remote', localPath: '/home/user' });
         expect(other).toEqual({ id: 'c', status: 'cached' });
+        // A tab still connecting, its switch superseded by this one, too.
+        const [connecting] = update([{ id: 'a', status: 'connecting' }]);
+        expect(connecting.status).toBe('cached');
         // A tab already off the backend keeps its own status.
         const [disconnected] = update([{ id: 'a', status: 'disconnected' }]);
         expect(disconnected.status).toBe('disconnected');
+    });
+});
+
+describe('a reconnected tab', () => {
+    // #1514 review: the remote session was up when the local refresh failed,
+    // and the reconnect's catch sent the tab back to cached.
+    it('stays active when its local folder cannot be listed', async () => {
+        const ctx: Record<string, unknown> = {
+            targetSession: { localPath: '/gone' },
+            showHiddenFiles: false,
+            connectScope: { assert: () => {}, step: (run: () => Promise<unknown>) => run() },
+            invoke: vi.fn(async () => { throw new Error('No such file or directory'); }),
+            logger: { warn: vi.fn() },
+        };
+        const tail = slice("      // Also refresh local files for this session's local path.", '    } catch (e) {', SWITCH_AT);
+        await expect(run(tail, ctx, "return 'listed';")).resolves.toBe('listed');
+        expect(ctx.setLocalFiles).not.toHaveBeenCalled();
+        expect(ctx.logger).toMatchObject({ warn: expect.any(Function) });
+        expect((ctx.logger as { warn: Spy }).warn).toHaveBeenCalled();
+    });
+});
+
+describe('a silent refresh', () => {
+    // #1514 review: only a foreground listing checked its generation, so a
+    // silent refresh of the old session painted over the one that replaced it.
+    it('is discarded once a takeover moved the generation', () => {
+        const at = APP.indexOf('  const loadRemoteFiles = useLatestCallback(');
+        const load = APP.slice(at, APP.indexOf('\n  });\n', at));
+        expect(at).toBeGreaterThan(-1);
+        expect(load).toContain('const navId = showBusy ? ++remoteNavCounter.current : remoteNavCounter.current;');
+        expect(load).not.toContain('showBusy && navId !== remoteNavCounter.current');
+        expect(load.split('if (navId !== remoteNavCounter.current) return null;').length - 1).toBe(2);
     });
 });
