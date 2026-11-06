@@ -30,6 +30,7 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     'idrive-e2': 'idrive-e2',
     filebase: 'filebase',
     tigris: 'tigris',
+    fastly: 'fastly-object-storage',
     minio: 'minio',
     'oracle-cloud': 'oracle-cloud',
     'google-cloud-storage': 'google-cloud-storage',

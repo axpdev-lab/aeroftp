@@ -220,6 +220,27 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(profiles[0])).toBe(getStorageDedupKey(profiles[1]));
     });
 
+    it('case 4e: Fastly same access key in two regions counts one drive', () => {
+        // A Fastly access key is account-wide; the region is only the host label.
+        const profiles = [
+            make({
+                id: 'f1', protocol: 's3', providerId: 'fastly',
+                host: 'eu-central-1.object.fastlystorage.app', port: 443,
+                username: 'FASTLYEXAMPLEKEY1',
+                used: 1_000_000_000, total: 5_000_000_000,
+            }),
+            make({
+                id: 'f2', protocol: 's3', providerId: 'fastly',
+                host: 'us-east.object.fastlystorage.app', port: 443,
+                username: 'FASTLYEXAMPLEKEY1',
+                used: 2_000_000_000, total: 5_000_000_000,
+            }),
+        ];
+        expect(aggregateByDedupKey(profiles).uniqueCount).toBe(1);
+        expect(getStorageDedupKey(profiles[0]).startsWith('s3:fastly:')).toBe(true);
+        expect(getStorageDedupKey(profiles[0])).toBe(getStorageDedupKey(profiles[1]));
+    });
+
     it('case 5: OAuth keyed by email, not by display name', () => {
         const profiles = [
             make({

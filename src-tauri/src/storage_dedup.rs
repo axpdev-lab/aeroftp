@@ -198,6 +198,7 @@ pub fn is_s3_preset(provider_id: Option<&str>) -> bool {
                 | "filebase"
                 | "ibm-cos"
                 | "tigris"
+                | "fastly"
         )
     )
 }
@@ -565,6 +566,7 @@ mod tests {
             "filebase",
             "ibm-cos",
             "tigris",
+            "fastly",
         ] {
             assert!(is_s3_preset(Some(preset)), "{preset} must be an S3 preset");
         }

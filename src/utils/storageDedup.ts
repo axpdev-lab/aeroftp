@@ -83,6 +83,7 @@ const S3_PRESET_IDS = new Set<string>([
     'filebase',
     'ibm-cos',
     'tigris',
+    'fastly',
 ]);
 
 /** Lowercase, trim, strip scheme + www. + trailing path. */
