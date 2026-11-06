@@ -221,6 +221,28 @@ describe('a connect parks the live tab before it ends the connection', () => {
         }
     });
 
+    it('leaves the connected flag to switchSession wherever a caller reopens a tab', () => {
+        // The profile card, Active Sessions and a transfer resume on an open
+        // tab marked the workspace connected before switchSession reconnected,
+        // exposing a parked tab's cached files to remote actions while another
+        // server held the backend. The only setIsConnected(true) on the way
+        // into a switch is switchSession's own, after the reconnect.
+        const lines = APP.split('\n');
+        const offenders: string[] = [];
+        lines.forEach((line, i) => {
+            if (!/\bswitchSession\(/.test(line) || /const switchSession = async/.test(line)) return;
+            const before = lines.slice(Math.max(0, i - 12), i).join('\n');
+            const scopeStart = before.lastIndexOf('const ');
+            const window = scopeStart >= 0 ? before.slice(scopeStart) : before;
+            if (window.includes('setIsConnected(true)')) offenders.push(`App.tsx:${i + 1}`);
+        });
+        expect(offenders).toEqual([]);
+        // The callers this pins, so the scan cannot pass by finding none.
+        expect(APP).toContain('switchSession(existing.id, connectScope)');
+        expect(APP).toContain('await switchSession(lastSession.id);');
+        expect(APP).toContain('await switchSession(existing.id);\n      return waitForLiveProfile(profile.id, requireOverlay);');
+    });
+
     it('keeps a parked tab parked when its host key is refused', () => {
         // The card and Active Sessions mark the workspace connected before they
         // call switchSession: a refused key must not leave it connected with

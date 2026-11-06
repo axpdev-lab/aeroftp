@@ -9351,7 +9351,9 @@ const App: React.FC = () => {
     setShowConnectionScreen(false);
     setShowRemotePanel(true);
     setShowLocalPreview(false);
-    setIsConnected(true);
+    // Not marked connected here: switchSession does it once the reconnect has
+    // succeeded, so a parked tab's cached files take no remote action while
+    // another server still holds the backend.
     await connectScope.cancellable(() => { void cancelActiveConnect(); return cancelRemoteNavigation(); }, () => switchSession(existing.id, connectScope));
     return true;
   };
@@ -11062,7 +11064,8 @@ const App: React.FC = () => {
       setShowConnectionScreen(false);
       setShowRemotePanel(true);
       setShowLocalPreview(false);
-      setIsConnected(true);
+      // Marked connected by switchSession once the reconnect has succeeded,
+      // not here: see goToActiveSession. The resume then waits for that.
       await switchSession(existing.id);
       return waitForLiveProfile(profile.id, requireOverlay);
     }
@@ -19460,7 +19463,9 @@ const App: React.FC = () => {
                   const lastSession = sessions[sessions.length - 1];
                   // Hide connection screen FIRST to avoid flash
                   setShowConnectionScreen(false);
-                  setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
+                  // Marked connected by switchSession once the reconnect has
+                  // succeeded, not here: see goToActiveSession.
+                  setShowRemotePanel(true); setShowLocalPreview(false);
                   // Then switch session (async reconnect happens in background)
                   await switchSession(lastSession.id);
                 } else {
