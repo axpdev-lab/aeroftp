@@ -63,6 +63,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
+          persist-credentials: false
           fetch-depth: 0
 
       # The dispatch input goes through the environment, never through `${{ }}`
@@ -154,6 +155,7 @@ jobs:
       - name: Checkout the release tag
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
+          persist-credentials: false
           ref: ${{ needs.audit.outputs.tag }}
 
       - name: Setup Node.js
@@ -232,6 +234,7 @@ jobs:
       - name: Checkout the release tag (snap sources)
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
+          persist-credentials: false
           ref: ${{ needs.audit.outputs.tag }}
 
       # Same guard as the release pipeline, and here it earns its keep: this job
@@ -307,6 +310,7 @@ jobs:
       - name: Checkout current CI tooling
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
+          persist-credentials: false
           path: ci-tools
 
       - name: Gate G1 - snap ABI floor vs base
