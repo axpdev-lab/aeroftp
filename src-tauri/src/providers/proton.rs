@@ -1678,6 +1678,14 @@ impl ProtonCliProvider {
         let Ok(entries) = parse_list_json(&stdout, &parent) else {
             return error;
         };
+        // The parser drops a node whose name it cannot read; with one
+        // dropped, the listing does not prove an absence (Greptile, #1517).
+        let listed = serde_json::from_str::<Value>(stdout.trim())
+            .ok()
+            .and_then(|value| value.as_array().map(Vec::len));
+        if listed != Some(entries.len()) {
+            return error;
+        }
         let name = basename(abs);
         if entries.iter().any(|entry| entry.name == name) {
             match error {
@@ -4215,6 +4223,20 @@ mod cli_sequence_tests {
                 "{refusal}"
             );
         }
+        // A parent listing with a node whose name cannot be read proves no
+        // absence: the refusal stands.
+        std::fs::write(
+            dir.join("my-files_locked.json"),
+            serde_json::to_vec(&serde_json::json!([
+                {"name":{"ok":false,"error":"decryption failed"},"uid":"AAAAAAAAAAAAAAAAAAAAAA~DDDDDDDDDDDDDDDDDDDDDD","type":"file"}
+            ]))
+            .unwrap(),
+        )
+        .unwrap();
+        std::fs::write(dir.join("info-error.txt"), "Errore: nodo non trovato").unwrap();
+        let mut p = provider(&shim);
+        let unreadable_parent = p.exists("/my-files/locked/gone.txt").await;
+        assert!(unreadable_parent.is_err(), "{unreadable_parent:?}");
         // A name the parent lists is there, whatever the refusal says: an
         // English "not found" about it is a failure to read it, not an
         // absence, so nothing takes it for a free name.

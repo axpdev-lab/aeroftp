@@ -1845,14 +1845,35 @@ pub fn reason_without_the_echoed_path(reply: &str, path: &str) -> String {
 /// "Spazio su disco insufficiente. (os error 112)", glibc in a GTK process
 /// "Permesso negato (os error 13)"), so no English needle sees it; the code
 /// is the same in every language. It is mapped by `std` for the platform this
-/// build runs on, which is where the error was made. The last code in the
-/// message wins, as the innermost cause is printed last. #1506 row 164.
+/// build runs on, which is where the error was made. #1506 row 164.
+///
+/// Only the suffix as std prints it counts: a space before it, and after it
+/// the end, a space or punctuation, so a file named `(os error 28).txt` or
+/// `/x/(os error 28)` is not a code. The first one wins: the transfer layer
+/// adds its context, and the paths it names, after the cause. Callers that
+/// know the path should remove it first, as `classify_sync_error` does.
 pub fn os_error_kind(message: &str) -> Option<std::io::ErrorKind> {
     const MARK: &str = "(os error ";
-    let start = message.rfind(MARK)? + MARK.len();
-    let rest = &message[start..];
-    let code: i32 = rest[..rest.find(')')?].trim().parse().ok()?;
-    Some(std::io::Error::from_raw_os_error(code).kind())
+    let mut from = 0;
+    while let Some(found) = message[from..].find(MARK) {
+        let start = from + found;
+        from = start + MARK.len();
+        let spaced = start == 0 || message[..start].ends_with(' ');
+        let rest = &message[from..];
+        let Some(close) = rest.find(')') else {
+            continue;
+        };
+        let after = rest[close + 1..].chars().next();
+        let ends =
+            after.is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ';' | ':' | ')' | ']'));
+        if !spaced || !ends {
+            continue;
+        }
+        if let Ok(code) = rest[..close].trim().parse::<i32>() {
+            return Some(std::io::Error::from_raw_os_error(code).kind());
+        }
+    }
+    None
 }
 
 /// An OS error kind that means the connection is gone.

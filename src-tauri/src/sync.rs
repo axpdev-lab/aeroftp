@@ -4643,7 +4643,9 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     // OS's own, in the user's language, and a full disk on an Italian Windows
     // ("Spazio su disco insufficiente. (os error 112)") fell to Unknown,
     // retryable, so it never stopped the batch. #1506 row 164.
-    let by_os_code = crate::providers::types::os_error_kind(raw).and_then(sync_error_of_os_kind);
+    // Read from the text with the caller's path removed: a file name can
+    // hold "(os error N)" too.
+    let by_os_code = crate::providers::types::os_error_kind(&lower).and_then(sync_error_of_os_kind);
 
     let (kind, retryable) = if let Some(classified) = by_os_code {
         classified
@@ -6996,6 +6998,38 @@ mod tests {
                 );
             }
         }
+        // A code inside a file name is not the error's code (Greptile, #1517):
+        // the reset stays a lost connection, not a full disk.
+        #[cfg(unix)]
+        {
+            let reset_on_a_named_file = format!(
+                "Connection reset by peer (os error {}) (while downloading /reports/(os error {}).txt)",
+                libc::ECONNRESET,
+                libc::ENOSPC
+            );
+            let info =
+                classify_sync_error(&reset_on_a_named_file, Some("/reports/(os error 28).txt"));
+            assert_eq!(
+                (info.kind, info.retryable),
+                (K::Network, true),
+                "{reset_on_a_named_file}"
+            );
+            let no_path_given = format!(
+                "Connection reset by peer (os error {}) (while downloading /reports/x (os error {}) y.txt)",
+                libc::ECONNRESET,
+                libc::ENOSPC
+            );
+            let info = classify_sync_error(&no_path_given, None);
+            assert_eq!(
+                (info.kind, info.retryable),
+                (K::Network, true),
+                "{no_path_given}"
+            );
+        }
+        assert_eq!(
+            crate::providers::types::os_error_kind("/x/(os error 28).txt failed"),
+            None
+        );
         // No code, a code that is not a number: the text decides, as before.
         assert_eq!(crate::providers::types::os_error_kind("Disk full"), None);
         assert_eq!(
