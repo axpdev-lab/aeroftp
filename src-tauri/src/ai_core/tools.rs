@@ -3338,6 +3338,46 @@ mod tests {
         assert!(staged.join("aeroftp/vault.db").exists());
     }
 
+    // A folder that refuses traversal can still be renamed: what it holds
+    // cannot be seen, so a protected location in it counts as present. As
+    // root the location is simply seen; the refusal holds either way.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_folder_that_cannot_be_inspected_is_not_renamed_away() {
+        use std::os::unix::fs::PermissionsExt;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let config = fake.home.join(".config");
+        let plain = fake.home.join("plain");
+        std::fs::create_dir_all(plain.join("inner")).unwrap();
+        for folder in [&config, &plain] {
+            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        let refused = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": config.display().to_string(), "to": fake.home.join("config-old").display().to_string()}),
+        )
+        .await;
+        // The control: a folder that holds nothing protected is renamed.
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": plain.display().to_string(), "to": fake.home.join("plain-old").display().to_string()}),
+        )
+        .await;
+        for folder in [config.clone(), fake.home.join("plain-old"), plain.clone()] {
+            let _ = std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755));
+        }
+        let refused = refused.unwrap_err();
+        assert!(refused.to_string().contains("protected path"), "{refused}");
+        assert!(config.join("aeroftp/vault.db").exists());
+        renamed.expect("an ordinary folder is renamed");
+        assert!(fake.home.join("plain-old/inner").exists());
+    }
+
     // A protected location reached through a symlink is protected at its real
     // path too: `~/.config -> /data/config`.
     #[cfg(unix)]

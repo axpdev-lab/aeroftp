@@ -4477,10 +4477,18 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
             }
         }
     }
+    // A remote file whose local counterpart the policy keeps out of the scan
+    // is not missing locally: it was never looked at. It is counted apart.
+    let policy = crate::ai_core::local_tools::PathPolicy::current();
+    let mut protected_skipped: usize = 0;
     if !one_way {
         for (rel, remote) in &remote_map {
             let rsize = remote.size;
             if !local_map.contains_key(rel) {
+                if policy.refuses(&local_path.join(rel)) {
+                    protected_skipped += 1;
+                    continue;
+                }
                 missing_local_g.push(json!({
                     "path": rel,
                     "remote_size": rsize,
@@ -4506,6 +4514,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         "differ_count": differ_g.len(),
         "missing_remote_count": missing_remote_g.len(),
         "missing_local_count": missing_local_g.len(),
+        "protected_skipped_count": protected_skipped,
         "local_scan_incomplete": !local_scan.is_complete(),
         "local_scan_errors": local_scan.list_errors,
         "local_scan_truncated": local_scan.truncated,
@@ -8178,6 +8187,51 @@ mod tests {
     /// `reconcile` compares only what sits under the remote folder, and a
     /// comparison against a scan that missed part of the tree is `partial`,
     /// not a verdict: a file it never saw would read as missing.
+    /// A protected file present on both sides was reported missing locally:
+    /// the local scan leaves it out. It is counted apart, and the comparison
+    /// stays partial.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn reconcile_of_the_home_does_not_call_a_protected_file_missing_locally() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        for rel in [".ssh/id_fixture", "notes.txt"] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let mut fake = FakeBackend::sample();
+        fake.tree.insert(
+            "/remote".into(),
+            vec![
+                entry("/remote/.ssh", true, 0),
+                entry("/remote/notes.txt", false, 1),
+            ],
+        );
+        fake.tree.insert(
+            "/remote/.ssh".into(),
+            vec![entry("/remote/.ssh/id_fixture", false, 1)],
+        );
+        let report = reconcile(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "s", "local_dir": home.to_string_lossy(), "remote_dir": "/remote"}),
+        )
+        .await;
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let report = report.unwrap();
+        let summary = &report["summary"];
+        assert_eq!(summary["missing_local_count"], 0, "{report}");
+        assert_eq!(summary["protected_skipped_count"], 1, "{report}");
+        assert_eq!(summary["match_count"], 1, "{report}");
+        assert_eq!(report["status"], "partial", "{report}");
+    }
+
     #[tokio::test]
     async fn reconcile_compares_each_remote_path_once_and_says_when_it_did_not() {
         for (case, backend, root, files, _, _, _, refused) in defective_listings() {

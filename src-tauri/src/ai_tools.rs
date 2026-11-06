@@ -426,7 +426,7 @@ fn format_approval_value(value: &Value) -> String {
             map.iter()
                 .map(|(key, value)| {
                     let key_text: String = key.chars().flat_map(char::escape_debug).collect();
-                    if is_secret_approval_key(key) {
+                    if hides_approval_value(key, value) {
                         format!("{key_text}: (hidden)")
                     } else {
                         format!("{key_text}: {}", format_approval_value(value))
@@ -438,7 +438,16 @@ fn format_approval_value(value: &Value) -> String {
     }
 }
 
-/// Arguments whose value is a secret: named, never shown.
+/// Whether an argument's value is a secret: named, never shown. The key names
+/// a secret (`api_token`, `accessToken`, `passwords`), and the value can hold
+/// one: a number or a boolean cannot, so `max_tokens: 32768`, the output limit
+/// the approval has to show, stays visible.
+fn hides_approval_value(key: &str, value: &Value) -> bool {
+    is_secret_approval_key(key) && !matches!(value, Value::Number(_) | Value::Bool(_) | Value::Null)
+}
+
+/// A key naming a secret: a secret word, alone or plural, that ends the key or
+/// a part of it, not one that begins a longer word.
 fn is_secret_approval_key(key: &str) -> bool {
     let key = key.to_ascii_lowercase();
     [
@@ -451,7 +460,16 @@ fn is_secret_approval_key(key: &str) -> bool {
         "private_key",
     ]
     .iter()
-    .any(|secret| key.contains(secret))
+    .any(|secret| {
+        key.match_indices(secret).any(|(at, word)| {
+            let rest = &key[at + word.len()..];
+            let rest = rest.strip_prefix('s').unwrap_or(rest);
+            !rest
+                .chars()
+                .next()
+                .is_some_and(|next| next.is_ascii_alphabetic())
+        })
+    })
 }
 
 /// Arguments that carry a file's content: the chat shows it, the approval
@@ -591,7 +609,7 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
         rest.sort_by(|a, b| a.0.cmp(b.0));
         for (key, value) in rest {
             let key_text: String = key.chars().flat_map(char::escape_debug).collect();
-            if is_secret_approval_key(key) {
+            if hides_approval_value(key, value) {
                 details.push(format!("{key_text}: (hidden)"));
             } else if CONTENT_APPROVAL_KEYS.contains(&key.as_str()) {
                 let size = value
@@ -2943,6 +2961,28 @@ mod approval_tests {
         requires_backend_write_approval, split_approval_message, ALLOWED_TOOLS,
     };
     use serde_json::json;
+
+    #[test]
+    fn an_output_limit_is_shown_while_a_token_is_hidden() {
+        let message = build_ai_tool_approval_message(
+            "gui_run",
+            &json!({
+                "intent": "settings_update",
+                "set": {
+                    "max_tokens": 32768,
+                    "accessToken": "SECRETWORD",
+                    "token_value": "SECRETWORD",
+                    "passwords": ["SECRETWORD"],
+                    "secretary": "visible",
+                },
+            }),
+        );
+        assert!(message.contains("max_tokens: 32768"), "{message}");
+        assert!(!message.contains("SECRETWORD"), "{message}");
+        assert!(message.contains("accessToken: (hidden)"), "{message}");
+        assert!(message.contains("passwords: (hidden)"), "{message}");
+        assert!(message.contains("secretary: visible"), "{message}");
+    }
 
     #[test]
     fn a_secret_nested_in_an_argument_is_named_never_shown() {
