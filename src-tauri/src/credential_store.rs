@@ -100,6 +100,8 @@ static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 static VAULT_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 pub(crate) const VAULT_FILENAME: &str = "vault.db";
+/// Why an open stopped without writing: vault.key changed under it.
+const VAULT_KEY_CHANGED: &str = "vault.key changed while the vault was being opened; try again";
 pub(crate) const VAULTKEY_FILENAME: &str = "vault.key";
 /// Beside vault.db; never copied or migrated, it only serializes writers.
 const VAULT_LOCK_FILENAME: &str = "vault.db.lock";
@@ -1150,8 +1152,8 @@ fn load_passphrase_from_keyring(
 
 /// What [`CredentialStore::migrate_legacy_key_in`] did with a LegacyAuto vault.key.
 enum LegacyKeyMigration {
-    /// vault.key now names a keyring account.
-    Migrated,
+    /// vault.key now names a keyring account: the bytes written.
+    Migrated(Vec<u8>),
     /// vault.key stays on disk (no keyring, vault busy, write failed).
     Kept,
     /// vault.key was changed by another process meanwhile; nothing written.
@@ -1276,6 +1278,24 @@ impl CredentialStore {
     /// Initialize the credential store at app startup.
     /// Returns "OK" if vault is open, "MASTER_PASSWORD_REQUIRED" if locked.
     pub fn init() -> Result<String, CredentialError> {
+        // Once more when vault.key changed under this process while it opened
+        // the vault (another process enabled a master password, reset the
+        // vault): the second attempt reads what is there now.
+        match Self::init_attempt() {
+            Err(error) if Self::is_key_changed(&error) => Self::init_attempt(),
+            other => other,
+        }
+    }
+
+    fn key_changed() -> CredentialError {
+        CredentialError::Encryption(VAULT_KEY_CHANGED.to_string())
+    }
+
+    fn is_key_changed(error: &CredentialError) -> bool {
+        matches!(error, CredentialError::Encryption(message) if message == VAULT_KEY_CHANGED)
+    }
+
+    fn init_attempt() -> Result<String, CredentialError> {
         if !VaultKeyFile::exists() {
             // VER-005: Acquire file lock to prevent concurrent CLI+GUI vault creation
             let lock_path = Self::acquire_init_lock()?;
@@ -1324,18 +1344,22 @@ impl CredentialStore {
                     &key_file,
                     passphrase,
                 )?;
-                if matches!(migration, LegacyKeyMigration::Changed) {
+                // The vault.key this passphrase now opens through.
+                let key_bytes = match migration {
                     // Another process replaced vault.key (a master password
-                    // enabled, say) while this one waited: open what is there now.
-                    return Self::init();
-                }
+                    // enabled, say) while this one waited: `init` opens what is
+                    // there now.
+                    LegacyKeyMigration::Changed => return Err(Self::key_changed()),
+                    LegacyKeyMigration::Migrated(written) => written,
+                    LegacyKeyMigration::Kept => key_file.to_bytes(),
+                };
 
                 let passphrase = Zeroizing::new(*passphrase);
                 let mut vault_key = crate::crypto::derive_from_passphrase(&passphrase[..]);
                 let vault_path = Self::vault_path()?;
 
                 // If vault.db doesn't exist yet (shouldn't happen but be safe), create it
-                Self::create_empty_vault_if_absent(&vault_path, &vault_key)?;
+                Self::create_empty_vault_if_absent(&vault_path, &vault_key, Some(&key_bytes))?;
 
                 if Self::totp_secret_with_key(&vault_path, &vault_key)?
                     .as_deref()
@@ -1385,17 +1409,29 @@ impl CredentialStore {
         native_account: Option<&str>,
         dir: &Path,
     ) -> Result<(PathBuf, [u8; 32]), CredentialError> {
-        let slot = match VaultKeyFile::read_in(dir) {
-            Ok(VaultKeyFile {
-                mode: VaultKeyMode::AutoKeyring { slot },
-            }) => slot,
-            _ => KeyringSlot::Default,
+        let key_file = VaultKeyFile::read_in(dir).ok();
+        let key_bytes = key_file.as_ref().map(VaultKeyFile::to_bytes);
+        // The passphrase this vault.key opens with. A master-password file
+        // here means another process changed the mode since the caller read
+        // vault.key: the keyring account may still hold the old passphrase,
+        // which would create a database the master key cannot open.
+        let mut passphrase = match key_file.map(|file| file.mode) {
+            Some(VaultKeyMode::AutoKeyring { slot }) => {
+                load_passphrase_in(slots, &slot, default_account, native_account)?
+            }
+            Some(VaultKeyMode::LegacyAuto { passphrase }) => passphrase,
+            Some(VaultKeyMode::Master { .. }) => return Err(Self::key_changed()),
+            None => load_passphrase_in(
+                slots,
+                &KeyringSlot::Default,
+                default_account,
+                native_account,
+            )?,
         };
-        let mut passphrase = load_passphrase_in(slots, &slot, default_account, native_account)?;
         let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
         passphrase.zeroize();
         let vault_path = dir.join(VAULT_FILENAME);
-        Self::create_empty_vault_if_absent(&vault_path, &vault_key)?;
+        Self::create_empty_vault_if_absent(&vault_path, &vault_key, key_bytes.as_deref())?;
 
         Self::verify_vault_key(&vault_path, &vault_key)?;
         Ok((vault_path, vault_key))
@@ -1472,15 +1508,15 @@ impl CredentialStore {
                 return Err(error);
             }
         }
-        let written = VaultKeyFile {
+        let migrated = VaultKeyFile {
             mode: VaultKeyMode::AutoKeyring { slot: slot.clone() },
-        }
-        .write(&guard);
+        };
+        let written = migrated.write(&guard);
         drop(guard);
         match written {
             Ok(()) => {
                 info!("Migrated on-disk vault.key passphrase to system keyring");
-                Ok(LegacyKeyMigration::Migrated)
+                Ok(LegacyKeyMigration::Migrated(migrated.to_bytes()))
             }
             Err(e) => {
                 undo();
@@ -1656,16 +1692,30 @@ impl CredentialStore {
 
     /// Create vault.db when it does not exist yet. The check runs under the
     /// lock, so two processes opening a vault together never both create it.
+    /// `key_file` is the vault.key `vault_key` came from (`None`: none was
+    /// readable): if vault.key is another one now (a reset by another process
+    /// that wrote its new key and stopped before its database), nothing is
+    /// created, since that key would not open it, and the caller tries again.
     fn create_empty_vault_if_absent(
         path: &Path,
         vault_key: &[u8; 32],
+        key_file: Option<&[u8]>,
     ) -> Result<(), CredentialError> {
         if path.exists() {
             return Ok(());
         }
-        let guard = VaultWriteGuard::acquire(Self::lock_dir(path)?)?;
+        let dir = Self::lock_dir(path)?;
+        let guard = VaultWriteGuard::acquire(dir)?;
         if path.exists() {
             return Ok(());
+        }
+        if VaultKeyFile::read_in(dir)
+            .ok()
+            .map(|now| now.to_bytes())
+            .as_deref()
+            != key_file
+        {
+            return Err(Self::key_changed());
         }
         Self::create_empty_vault(path, vault_key, &guard)
     }
@@ -3622,7 +3672,7 @@ mod vault_lock_tests {
             &passphrase,
         )
         .unwrap();
-        assert!(matches!(migration, LegacyKeyMigration::Migrated));
+        assert!(matches!(migration, LegacyKeyMigration::Migrated(_)));
         assert_eq!(
             keyring.holds(ACCOUNT).as_deref(),
             Some(BASE64.encode(passphrase).as_str())
@@ -3861,6 +3911,76 @@ mod vault_lock_tests {
         println!("token check {per_check:?} per write; one Argon2 (test profile) {argon2:?}");
     }
 
+    /// A missing vault.db is created only for the vault.key its key came
+    /// from: after another process wrote a new vault.key and stopped before
+    /// its database, the old key creates nothing the new one cannot open.
+    #[test]
+    fn a_missing_database_is_created_only_for_the_key_it_came_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(VAULT_FILENAME);
+        let first = write_legacy_key(dir.path(), &[20u8; PASSPHRASE_LEN]).to_bytes();
+        let second = write_legacy_key(dir.path(), &[21u8; PASSPHRASE_LEN]).to_bytes();
+        let err =
+            CredentialStore::create_empty_vault_if_absent(&path, &KEY, Some(&first)).unwrap_err();
+        assert!(CredentialStore::is_key_changed(&err), "{err}");
+        assert!(!path.exists());
+        assert!(
+            CredentialStore::create_empty_vault_if_absent(&path, &KEY, None).is_err(),
+            "a key file appeared"
+        );
+        CredentialStore::create_empty_vault_if_absent(&path, &KEY, Some(&second)).unwrap();
+        assert!(path.is_file());
+    }
+
+    /// The open of a keyring vault whose vault.db is missing: when vault.key
+    /// is replaced while the passphrase is read, no database is created and
+    /// the open says to try again.
+    #[test]
+    fn opening_creates_no_database_for_a_replaced_vault_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = FakeKeyring::default();
+        let passphrase = [22u8; PASSPHRASE_LEN];
+        CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &passphrase)
+            .unwrap()
+            .unwrap();
+        let vault_path = dir.path().join(VAULT_FILENAME);
+        std::fs::remove_file(&vault_path).unwrap();
+        let other_dir = dir.path().to_path_buf();
+        *keyring.on_read.borrow_mut() = Some(Box::new(move || {
+            write_master_key(&other_dir, &[23u8; PASSPHRASE_LEN]);
+        }));
+        let err = CredentialStore::verify_auto_keyring_in(&keyring, ACCOUNT, None, dir.path())
+            .unwrap_err();
+        assert!(CredentialStore::is_key_changed(&err), "{err}");
+        assert!(!vault_path.exists());
+    }
+
+    /// A keyring open that meets a vault.key changed to another mode opens
+    /// with what that file says: a master-password file stops it (try again,
+    /// nothing created), an on-disk key opens with its own passphrase.
+    #[test]
+    fn opening_follows_the_mode_vault_key_has_now() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = FakeKeyring::default();
+        CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &[24u8; PASSPHRASE_LEN])
+            .unwrap()
+            .unwrap();
+        let vault_path = dir.path().join(VAULT_FILENAME);
+        std::fs::remove_file(&vault_path).unwrap();
+        write_master_key(dir.path(), &[25u8; PASSPHRASE_LEN]);
+        let err = CredentialStore::verify_auto_keyring_in(&keyring, ACCOUNT, None, dir.path())
+            .unwrap_err();
+        assert!(CredentialStore::is_key_changed(&err), "{err}");
+        assert!(!vault_path.exists());
+
+        let on_disk = [26u8; PASSPHRASE_LEN];
+        write_legacy_key(dir.path(), &on_disk);
+        let (path, vault_key) =
+            CredentialStore::verify_auto_keyring_in(&keyring, ACCOUNT, None, dir.path()).unwrap();
+        assert_eq!(path, vault_path);
+        assert_eq!(vault_key, crate::crypto::derive_from_passphrase(&on_disk));
+    }
+
     #[test]
     fn every_write_has_its_own_temporary() {
         let dir = Path::new("/config");
@@ -3948,7 +4068,7 @@ mod vault_lock_tests {
         let path = new_vault(dir.path());
         let store = CredentialStore::from_verified_key(&path, &KEY);
         store.store("kept", "value").unwrap();
-        CredentialStore::create_empty_vault_if_absent(&path, &KEY).unwrap();
+        CredentialStore::create_empty_vault_if_absent(&path, &KEY, None).unwrap();
         assert_eq!(store.get("kept").unwrap(), "value");
     }
 
