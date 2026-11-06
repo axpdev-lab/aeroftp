@@ -777,6 +777,21 @@ mod tests {
         assert!(err.contains("Malformed hunk line"), "{err}");
     }
 
+    /// The prefix is read as a character and the content after it kept whole:
+    /// a line adding and one removing multibyte text apply exactly.
+    #[test]
+    fn a_multibyte_line_is_applied_exactly() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), "caf\u{e9}\n").expect("write");
+        let patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-caf\u{e9}\n+\u{e9}t\u{e9} \u{1f600}\n";
+        let result = apply_coding_patch(request(dir.path(), patch, false)).expect("apply");
+        assert!(result.success, "{:?}", result.diagnostics);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).expect("read"),
+            "\u{e9}t\u{e9} \u{1f600}\n"
+        );
+    }
+
     fn request(root: &Path, patch: &str, dry_run: bool) -> ApplyCodingPatchRequest {
         ApplyCodingPatchRequest {
             workspace_root: root.to_string_lossy().to_string(),

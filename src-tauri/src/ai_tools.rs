@@ -569,10 +569,9 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
                         details.push(format!("patch target: {path} ({change})"));
                     }
                 }
-                Err(reason) => {
-                    let reason: String = reason.chars().flat_map(char::escape_debug).collect();
-                    details.push(format!("patch targets: unreadable ({reason})"));
-                }
+                // The parser's reason can quote a line of the patch, and the
+                // approval shows the patch by its size only.
+                Err(_) => details.push("patch targets: unreadable".to_string()),
             }
         }
     }
@@ -3385,6 +3384,15 @@ mod approval_tests {
             "{text}"
         );
         assert!(!text.contains("PATCHBODY"), "{text}");
+        // A patch the parser refuses is named unreadable, without the line of
+        // it the parser's reason quotes.
+        let broken = build_ai_tool_approval_details(
+            "coding_apply_patch",
+            &json!({"workspace_root": "/work", "patch": "--- a/x\n+++ b/x\n@@ CANARYLINE @@\n+y\n"}),
+        )
+        .join("\n");
+        assert!(broken.contains("patch targets: unreadable"), "{broken}");
+        assert!(!broken.contains("CANARYLINE"), "{broken}");
     }
 
     // Deep scan item 29: the message cut a command at 160 characters while

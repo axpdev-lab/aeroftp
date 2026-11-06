@@ -437,6 +437,13 @@ async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
             let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"delete it"})).unwrap()];
             let (result, ()) = tokio::join!(agent_tool_loop(&cfg, &mut messages, false), server);
             assert_eq!(result.unwrap(), "Not deleted.", "level {level}");
+            // Denied before dispatch: the call never reached the tool engine.
+            let dispatched = CLI_TOOL_DISPATCHES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .any(|(name, args)| name == "remote_delete" && args["server"] == "srv-a");
+            assert!(!dispatched, "level {level}: the denied remote_delete was dispatched");
         })
         .await
         .unwrap();

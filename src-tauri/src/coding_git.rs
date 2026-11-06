@@ -590,9 +590,10 @@ fn parse_status(
         let index = chars.next().unwrap_or(' ');
         let worktree = chars.next().unwrap_or(' ');
         // After the two status characters and their separator, counted as
-        // characters, never bytes.
+        // characters, never bytes, and decoded from git's quoting: a quoted
+        // path handed back to `git_stage` named another literal path.
         let rest = chars.as_str();
-        let path = rest.strip_prefix(' ').unwrap_or(rest).to_string();
+        let path = unquote_git_path(rest.strip_prefix(' ').unwrap_or(rest));
         let entry = CodingGitFileStatus {
             path,
             index_status: index.to_string(),
@@ -873,6 +874,52 @@ fn exit_code(status: &std::process::ExitStatus) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+/// A path as git prints it in `status --porcelain`: as is, or in double
+/// quotes with C-style escapes (`\"`, `\\`, `\t`, `\n`, ...) and octal bytes
+/// (`\303\251` for `é` while `core.quotepath` is on), decoded back to the
+/// path itself.
+fn unquote_git_path(raw: &str) -> String {
+    let Some(inner) = raw
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+    else {
+        return raw.to_string();
+    };
+    let mut bytes = Vec::with_capacity(inner.len());
+    let mut input = inner.bytes().peekable();
+    while let Some(byte) = input.next() {
+        if byte != b'\\' {
+            bytes.push(byte);
+            continue;
+        }
+        match input.next() {
+            Some(b'a') => bytes.push(0x07),
+            Some(b'b') => bytes.push(0x08),
+            Some(b't') => bytes.push(b'\t'),
+            Some(b'n') => bytes.push(b'\n'),
+            Some(b'v') => bytes.push(0x0b),
+            Some(b'f') => bytes.push(0x0c),
+            Some(b'r') => bytes.push(b'\r'),
+            Some(first @ b'0'..=b'7') => {
+                let mut value = u32::from(first - b'0');
+                for _ in 0..2 {
+                    match input.peek() {
+                        Some(digit @ b'0'..=b'7') => {
+                            value = value * 8 + u32::from(digit - b'0');
+                            input.next();
+                        }
+                        _ => break,
+                    }
+                }
+                bytes.push(value as u8);
+            }
+            Some(other) => bytes.push(other),
+            None => bytes.push(b'\\'),
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
 fn truncate_chars(value: &str, max_bytes: usize) -> (String, bool) {
     if value.len() <= max_bytes {
         return (value.to_string(), false);
@@ -918,10 +965,58 @@ mod tests {
         assert!(raw.contains("\u{e9}t\u{e9}/a.txt"), "{raw}");
     }
 
+    #[test]
+    fn a_quoted_status_path_is_decoded() {
+        assert_eq!(unquote_git_path("plain.txt"), "plain.txt");
+        assert_eq!(
+            unquote_git_path("\"caf\\303\\251 \\\"x\\\".txt\""),
+            "caf\u{e9} \"x\".txt"
+        );
+        assert_eq!(unquote_git_path("\"tab\\there\""), "tab\there");
+        assert_eq!(unquote_git_path("\"back\\\\slash\""), "back\\slash");
+    }
+
+    /// A path git prints quoted (a non-ASCII name while `core.quotepath` is
+    /// on, a double quote always) came back to the agent quoted, and
+    /// `git_stage` with it staged nothing or another literal path. Both
+    /// settings, in the repository's own config so no user config decides.
+    #[test]
+    fn a_status_path_round_trips_through_git_stage() {
+        for quotepath in ["true", "false"] {
+            let dir = init_repo();
+            run(dir.path(), &["config", "core.quotepath", quotepath]);
+            // A double quote is not a valid file name character on Windows.
+            let name = if cfg!(windows) {
+                "caf\u{e9} x.txt"
+            } else {
+                "caf\u{e9} \"x\".txt"
+            };
+            fs::write(dir.path().join(name), "x\n").expect("write");
+            let status = git_status(path_to_string(dir.path()), None).expect("status");
+            let listed: Vec<&str> = status.untracked.iter().map(|e| e.path.as_str()).collect();
+            assert_eq!(listed, vec![name], "quotepath {quotepath}");
+            let stage = git_stage(CodingGitStageRequest {
+                workspace_root: path_to_string(dir.path()),
+                paths: vec![listed[0].to_string()],
+                dry_run: false,
+            })
+            .expect("stage the listed path");
+            let after = stage.after.expect("after");
+            let staged: Vec<&str> = after.staged.iter().map(|e| e.path.as_str()).collect();
+            assert_eq!(staged, vec![name], "quotepath {quotepath}");
+        }
+    }
+
     fn run(repo: &Path, args: &[&str]) {
+        // No user or system config reaches the fixture repository.
         let output = Command::new("git")
             .args(args)
             .current_dir(repo)
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
+            .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
             .expect("run git");
         assert!(

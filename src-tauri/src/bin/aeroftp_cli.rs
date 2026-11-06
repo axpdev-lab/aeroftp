@@ -75887,10 +75887,21 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
 
 /// Execute a CLI tool locally (no Tauri dependency).
 /// Returns JSON result or error string.
+/// Every tool call that reached dispatch, for the tests that prove a denied
+/// call never does. Test builds only.
+#[cfg(test)]
+static CLI_TOOL_DISPATCHES: std::sync::Mutex<Vec<(String, serde_json::Value)>> =
+    std::sync::Mutex::new(Vec::new());
+
 async fn execute_cli_tool(
     tool_name: &str,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
+    #[cfg(test)]
+    CLI_TOOL_DISPATCHES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push((tool_name.to_string(), args.clone()));
     // Every tool the CLI offers goes through the unified tool engine and its
     // path policy; one it does not know is not available here.
     let json_mode = std::env::args().any(|a| a == "--json");
