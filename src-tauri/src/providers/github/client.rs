@@ -149,12 +149,26 @@ impl GitHubHttpClient {
             return Ok(response);
         }
 
+        // GitHub signals a spent primary quota with `x-ratelimit-remaining: 0`
+        // on a 403 or 429; that header, not the words "rate limit" in the
+        // message, decides. #1506 row 164.
+        let quota_spent = matches!(status.as_u16(), 403 | 429)
+            && response
+                .headers()
+                .get("x-ratelimit-remaining")
+                .and_then(|v| v.to_str().ok())
+                .map(str::trim)
+                == Some("0");
+
         // Read the error body and classify.
         let body_text = response.text().await.unwrap_or_else(|_| String::from("{}"));
         let body_json: serde_json::Value = serde_json::from_str(&body_text)
             .unwrap_or_else(|_| serde_json::json!({ "message": sanitize_api_error(&body_text) }));
 
         let mut err = classify_api_error(status.as_u16(), &body_json, path_hint);
+        if quota_spent && !matches!(err, GitHubError::SecondaryRateLimit { .. }) {
+            err = GitHubError::PrimaryRateLimit { reset_at: 0 };
+        }
 
         // Enrich rate-limit errors with the actual reset timestamp.
         if let GitHubError::PrimaryRateLimit { ref mut reset_at } = err {

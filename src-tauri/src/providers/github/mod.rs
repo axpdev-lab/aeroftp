@@ -1999,6 +1999,57 @@ mod tests {
         server.abort();
     }
 
+    /// #1506 row 164: a spent primary quota is read from
+    /// `x-ratelimit-remaining: 0`, whatever the message says; a 403 without
+    /// it stays a permission refusal.
+    #[tokio::test]
+    async fn a_spent_quota_is_read_from_the_header_not_the_message() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+                let mut response = (
+                    axum::http::StatusCode::FORBIDDEN,
+                    axum::Json(
+                        serde_json::json!({"message": "Kontingent für API-Anfragen erschöpft"}),
+                    ),
+                )
+                    .into_response();
+                if uri.path().ends_with("/spent") {
+                    response.headers_mut().insert(
+                        "x-ratelimit-remaining",
+                        axum::http::HeaderValue::from_static("0"),
+                    );
+                }
+                response
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/"))).unwrap(),
+        )
+        .unwrap();
+        provider.client.api_origin_override = Some(format!("http://{addr}"));
+        let base = provider.client.api_base();
+        let spent = provider
+            .client
+            .get_json::<serde_json::Value>(&format!("{base}/spent"))
+            .await;
+        let refused = provider
+            .client
+            .get_json::<serde_json::Value>(&format!("{base}/refused"))
+            .await;
+        server.abort();
+        assert!(
+            matches!(spent, Err(GitHubError::PrimaryRateLimit { .. })),
+            "{spent:?}"
+        );
+        assert!(
+            matches!(refused, Err(GitHubError::InsufficientPermissions(_))),
+            "{refused:?}"
+        );
+    }
+
     /// #1506 row 164: a branch that appears between the lookup and the
     /// create (422 from git/refs) is found by a second lookup, not by the
     /// message; a 422 for any other reason still fails.
