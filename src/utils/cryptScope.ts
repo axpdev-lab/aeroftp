@@ -16,7 +16,9 @@ import type { ServerProfile } from '../types';
 // the badge reads it on every render and the difference between "no anchor" and
 // "the anchor is the whole remote" is not observable from the rendered tree.
 
-import { normalizeRemotePath } from './overlayScope';
+import { isLoginRelativeScope, loginRelativeForm, normalizeRemotePath } from './overlayScope';
+
+export { isLoginRelativeScope };
 
 // Match the backend anchor exactly, including literal leading/trailing spaces.
 export const normCryptScope = (s?: string | null): string => normalizeRemotePath(s || '');
@@ -28,16 +30,6 @@ export const normCryptScope = (s?: string | null): string => normalizeRemotePath
  * root ('').
  */
 export const normLandingPath = (s?: string | null): string => normCryptScope(s);
-
-/**
- * A folder under the login folder (`~`, `~/docs`), as the rclone import writes
- * for an SFTP crypt remote such as `nas:docs`. Only the connected session
- * knows the absolute folder it names: the backend resolves it when it applies
- * the overlay and returns that anchor. Read as a path before then, `~/docs`
- * became `/~/docs`, a folder nobody wrote to.
- */
-export const isLoginRelativeScope = (s?: string | null): boolean =>
-  s === '~' || !!s?.startsWith('~/');
 
 /**
  * A login-relative path placed under the login folder the session reported
@@ -132,29 +124,40 @@ export const resolveBoundCryptScope = (
  * The folder a profile's overlay is bound to: its Overlays Path, or its
  * Remote Path when the binding names none, with the `{username}` template
  * resolved. The one place that fallback lives, so the anchor, the badge and
- * restored transfers read the same folder.
+ * restored transfers read the same folder. On SFTP and SCP a relative folder
+ * opens under the login folder, so it comes back as `~/...`: read as `/docs`,
+ * the anchor was a folder the session never opened.
  */
 export const profileOverlayScope = (
-  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
-): string => resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username)
-  || resolveUsernameTemplate(profile.initialPath, profile.username) || '';
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username' | 'protocol'>,
+): string => loginRelativeForm(
+  resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username)
+    || resolveUsernameTemplate(profile.initialPath, profile.username) || '',
+  profile.protocol,
+);
 
 /** A restored path outside the encrypted island is ordinary plaintext. Unknown
  * relative paths fail closed; the persisted absolute remote path retains the
- * plaintext anchor even when its encrypted tail is opaque.
+ * plaintext anchor even when its encrypted tail is opaque. A scope under the
+ * login folder is placed where the live session reports it (`loginFolder`,
+ * from `provider_login_folder`): the backend compares the active overlay's
+ * absolute anchor, so the unplaced `~/docs` refused every restored retry.
+ * Without a login folder it reads as the whole remote (fail closed).
  */
 export const restoredTransferCryptScope = (
-  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username' | 'protocol'>,
+  loginFolder?: string | null,
 ): string | undefined => profile.aeroCryptOverlay?.enabled
-  ? knownCryptScope(profileOverlayScope(profile))
+  ? knownCryptScope(placeUnderLoginFolder(profileOverlayScope(profile), loginFolder))
   : undefined;
 
 export const restoredTransferRequiresOverlay = (
-  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username' | 'protocol'>,
   remotePath: string | null | undefined,
+  loginFolder?: string | null,
 ): boolean => {
   if (!profile.aeroCryptOverlay?.enabled) return false;
   if (!remotePath?.startsWith('/')) return true;
-  const scope = restoredTransferCryptScope(profile);
+  const scope = restoredTransferCryptScope(profile, loginFolder);
   return isWithinCryptScope(scope, remotePath);
 };

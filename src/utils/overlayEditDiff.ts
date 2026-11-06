@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import type { AeroCryptOverlayBinding, CryptSecretForm } from '../types';
-import { normalizeRemotePath, resolveOverlayScope } from './overlayScope';
+import { loginRelativeForm, normalizeOverlayAnchor, resolveOverlayScope } from './overlayScope';
 
 /** The overlay fields of the Quick Connect form, as the user has left them. */
 export interface OverlayEditForm {
@@ -18,6 +18,8 @@ export interface OverlayEditForm {
     overlaysRemotePath: string;
     /** The Remote Path field. */
     remoteDir: string;
+    /** The profile's protocol: SFTP and SCP open a relative Remote Path under the login folder. */
+    protocol?: string | null;
     /** Typed secrets. Never prefilled on edit, so any text is a change. */
     password: string;
     salt: string;
@@ -71,8 +73,8 @@ export function overlayEditDiffers(form: OverlayEditForm, stored: OverlayEditSto
 
     // A blank stored scope means "the Remote Path", and the form materializes it
     // on edit, so compare the anchor each side actually resolves to.
-    const storedAnchor = normalizeRemotePath(b.remoteScope || '') || normalizeRemotePath(stored.remotePath);
-    const formAnchor = resolveOverlayScope(form.overlaysRemotePath, form.remoteDir);
+    const storedAnchor = normalizeOverlayAnchor(b.remoteScope || '') || normalizeOverlayAnchor(loginRelativeForm(stored.remotePath, form.protocol));
+    const formAnchor = resolveOverlayScope(form.overlaysRemotePath, form.remoteDir, form.protocol);
     if (formAnchor !== storedAnchor) return true;
 
     if (form.password.trim() !== '') return true;

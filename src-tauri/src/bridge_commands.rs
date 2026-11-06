@@ -662,6 +662,35 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     } else {
         dispatch_import(&source, &canonical)?
     };
+    let store = CredentialStore::from_cache();
+    let mut write = |key: &str, secret: &str| -> Result<(), String> {
+        let store = store.as_ref().ok_or("the credential vault is locked")?;
+        crate::user_partitions::store_active_credential_dual(store, key, secret)
+            .map_err(|e| e.to_string())
+    };
+    let vault: Option<VaultWrite<'_>> = if store.is_some() {
+        Some(&mut write)
+    } else {
+        None
+    };
+    finish_bridge_import(&source, &value, secret_failures, vault)
+}
+
+/// One vault write: the entry's key and its secret.
+type VaultWrite<'a> = &'a mut dyn FnMut(&str, &str) -> Result<(), String>;
+
+/// What an import does once the file is parsed: the rclone crypt and Filen
+/// secrets move into the vault, the recovered passwords are stored, and the
+/// profiles go back to the window redacted, with every secret that was not
+/// stored named in the warnings. `vault` writes one vault entry; `None` is a
+/// locked vault. Split from [`import_bridge_config`] so a test reads the
+/// response the window commits, not only the helpers.
+fn finish_bridge_import(
+    source: &str,
+    value: &Value,
+    mut secret_failures: Vec<(String, String)>,
+    mut vault: Option<VaultWrite<'_>>,
+) -> Result<Value, String> {
     let mut servers = value
         .get("servers")
         .and_then(|s| s.as_array())
@@ -669,14 +698,10 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         .unwrap_or_default();
 
     if source == "rclone" {
-        let store = CredentialStore::from_cache();
         for server in &mut servers {
-            materialize_imported_crypt_overlay(server, |key, secret| {
-                let store = store
-                    .as_ref()
-                    .ok_or("Unlock the credential vault before importing Crypt profiles")?;
-                crate::user_partitions::store_active_credential_dual(store, key, secret)
-                    .map_err(|e| e.to_string())
+            materialize_imported_crypt_overlay(server, |key, secret| match vault.as_mut() {
+                Some(write) => write(key, secret),
+                None => Err("Unlock the credential vault before importing Crypt profiles".into()),
             })?;
         }
         for server in &mut servers {
@@ -685,10 +710,9 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            let moved = move_imported_filen_api_key(server, |key, secret| {
-                let store = store.as_ref().ok_or("the credential vault is locked")?;
-                crate::user_partitions::store_active_credential_dual(store, key, secret)
-                    .map_err(|e| e.to_string())
+            let moved = move_imported_filen_api_key(server, |key, secret| match vault.as_mut() {
+                Some(write) => write(key, secret),
+                None => Err("the credential vault is locked".into()),
             });
             // The error names the vault failure, never the key, which is
             // only ever passed as the value.
@@ -716,8 +740,8 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         std::collections::HashSet::new();
     let mut stored = 0usize;
     let mut stored_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    match CredentialStore::from_cache() {
-        Some(store) => {
+    match vault.as_mut() {
+        Some(write) => {
             for s in &servers {
                 if stored >= MAX_IMPORTED_CREDENTIALS {
                     cred_errors.push(format!(
@@ -746,11 +770,7 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                     stored += 1;
                     stored_ids.insert(id.to_string());
                     // MUV-3: dual-write into vault + active user's partition.
-                    if let Err(e) = crate::user_partitions::store_active_credential_dual(
-                        &store,
-                        &format!("server_{}", id),
-                        cred,
-                    ) {
+                    if let Err(e) = write(&format!("server_{}", id), cred) {
                         cred_errors.push(format!("{id}: {e}"));
                         unsaved_credentials.insert(id.to_string());
                         secret_failures
@@ -837,7 +857,7 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         })
         .collect();
     Ok(bridge_import_response(
-        &value,
+        value,
         redacted,
         servers.len(),
         secret_warnings,
@@ -1876,6 +1896,55 @@ mod tests {
         assert!(err.contains("no id"), "{err}");
         assert!(server.pointer("/options/filen_api_key").is_none());
         assert!(server.get("hasStoredFilenApiKey").is_none());
+
+        // Through the import the window commits: the response it builds the
+        // saved profiles from carries the flag only after a stored key, and
+        // never the key itself.
+        let mut vault = HashMap::new();
+        let mut write = |k: &str, v: &str| -> Result<(), String> {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        };
+        let response =
+            finish_bridge_import("rclone", &value, Vec::new(), Some(&mut write)).unwrap();
+        let committed = &response["servers"][0];
+        assert_eq!(committed["id"].as_str(), Some(id.as_str()));
+        assert_eq!(committed["hasStoredFilenApiKey"], true);
+        assert!(committed.pointer("/options/filen_api_key").is_none());
+        assert!(!response.to_string().contains("FILEN-KEY-1"));
+        assert_eq!(vault[&format!("filen_api_key_{id}")], "FILEN-KEY-1");
+        assert_eq!(response["warnings"], json!([]));
+
+        // A failed write and a locked vault: no flag, no key, and a warning
+        // that names the profile and what the vault answered.
+        let mut refuse = |k: &str, _: &str| -> Result<(), String> {
+            if k.starts_with("filen_api_key_") {
+                Err("disk full".into())
+            } else {
+                Ok(())
+            }
+        };
+        let failed = finish_bridge_import("rclone", &value, Vec::new(), Some(&mut refuse)).unwrap();
+        let locked = finish_bridge_import("rclone", &value, Vec::new(), None).unwrap();
+        for (response, reason) in [
+            (&failed, "disk full"),
+            (&locked, "the credential vault is locked"),
+        ] {
+            let committed = &response["servers"][0];
+            assert_eq!(committed["hasStoredFilenApiKey"], false, "{reason}");
+            assert!(
+                committed.pointer("/options/filen_api_key").is_none(),
+                "{reason}"
+            );
+            assert!(!response.to_string().contains("FILEN-KEY-1"), "{reason}");
+            let warning = &response["warnings"][0];
+            assert_eq!(warning["name"], committed["name"], "{reason}");
+            let text = warning["reason"].as_str().unwrap_or_default();
+            assert!(
+                text.contains("its Filen API key was not stored") && text.contains(reason),
+                "{text}"
+            );
+        }
     }
 
     #[test]

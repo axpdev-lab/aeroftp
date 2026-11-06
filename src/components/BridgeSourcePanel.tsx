@@ -14,26 +14,8 @@ import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources';
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
-import { bridgeProfileKey, commitImportedServers } from './bridge/bridgeImportCommit';
+import { bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
-
-interface ImportedServer {
-    id: string;
-    name: string;
-    host: string;
-    port: number;
-    username: string;
-    protocol?: string;
-    initialPath?: string;
-    options?: Record<string, unknown>;
-    providerId?: string;
-    hasStoredCredential?: boolean;
-    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
-    hasStoredAeroCryptPassword?: boolean;
-    hasStoredAeroCryptSalt?: boolean;
-    /** The Filen CLI API key the backend moved into the vault (#230). */
-    hasStoredFilenApiKey?: boolean;
-}
 
 interface BridgeImportResult {
     servers: ImportedServer[];
@@ -226,19 +208,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         if (!result) return;
         const selected: ServerProfile[] = result.servers
             .filter(s => selectedIds.has(s.id))
-            .map(s => ({
-                id: s.id, name: s.name, host: s.host, port: s.port,
-                username: s.username,
-                protocol: s.protocol as ServerProfile['protocol'],
-                initialPath: s.initialPath,
-                options: s.options as ServerProfile['options'],
-                providerId: s.providerId,
-                hasStoredCredential: s.hasStoredCredential || false,
-                aeroCryptOverlay: s.aeroCryptOverlay,
-                hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
-                hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
-                hasStoredFilenApiKey: s.hasStoredFilenApiKey,
-            }));
+            .map(importedServerProfile);
         if (selected.length === 0 || committingRef.current) return;
         // The commit is not idempotent: onImport appends to the persisted list
         // and existingServerKeys still holds the pre-import snapshot, so a

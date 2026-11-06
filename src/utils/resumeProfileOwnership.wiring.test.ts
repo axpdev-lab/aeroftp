@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
-import { restoredTransferCryptScope, restoredTransferRequiresOverlay } from './cryptScope';
+import { isLoginRelativeScope, profileOverlayScope, restoredTransferCryptScope, restoredTransferRequiresOverlay } from './cryptScope';
 import { useResumeProfileGuard } from '../hooks/useResumeProfileGuard';
 import type { FtpSession } from '../types';
 
@@ -42,7 +42,7 @@ async function fixture() {
     const switchSession = vi.fn(async () => undefined);
     const notify = { info: vi.fn(), error: vi.fn() };
     const context = {
-        restoredTransferCryptScope, restoredTransferRequiresOverlay, sessions: current.sessions, isLiveOnProfile: readFromOriginalRender, waitForLiveProfile: guard.waitForLiveProfile, connectToFtp, switchSession,
+        restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder: async () => null, sessions: current.sessions, isLiveOnProfile: readFromOriginalRender, waitForLiveProfile: guard.waitForLiveProfile, connectToFtp, switchSession,
         setQuickConnectDirs: vi.fn(), setShowConnectionScreen: vi.fn(), setShowRemotePanel: vi.fn(), setShowLocalPreview: vi.fn(), setIsConnected: vi.fn(),
         notify, t: (s: string) => s, isOAuthProvider: () => false, isFourSharedProvider: () => false,
         getCredentialWithRetry: async () => 'fixture', logger: { error: vi.fn() }, isConnectCancelledError: () => false,
@@ -158,7 +158,7 @@ it('captures a backend generation only while the intended profile stays ready', 
     const completeTransfer = vi.fn();
     let live = true;
     const ctx = { useLatestCallback: (fn: unknown) => fn, transferQueue: { startTransfer: vi.fn(), failTransfer, completeTransfer },
-        restoredTransferCryptScope, restoredTransferRequiresOverlay, loadSavedServerProfiles: async () => [{ id: 'profile-A' }], isLiveOnProfile: () => live,
+        restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder: async () => null, loadSavedServerProfiles: async () => [{ id: 'profile-A' }], isLiveOnProfile: () => live,
         invoke: vi.fn(async () => { live = false; return 7; }), downloadFile, uploadFile: vi.fn(),
         parentDir: () => '/local', batchCancelledRef: { current: false }, notify: { error: vi.fn() }, t: (s: string) => s,
         isCancelledTransferError: () => false };
@@ -187,7 +187,7 @@ it('resumes plaintext siblings immediately while encrypted entries wait for thei
     const clearRestoredFlags = vi.fn();
     const ctx = { groupIds: ['crypt', 'plain'], profileId: 'A', profile: { name: 'A', username: 'u', aeroCryptOverlay: { enabled: true, remoteScope: '/vault' } },
         journalDescriptorsRef: { current: new Map([['crypt', { remote_path: '/vault/opaque' }], ['plain', { remote_path: '/public/f.txt' }]]) },
-        restoredTransferCryptScope, restoredTransferRequiresOverlay, waitForLiveProfile: (_id: string, crypt: boolean) => crypt ? encrypted : Promise.resolve(true),
+        restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder: async () => null, waitForLiveProfile: (_id: string, crypt: boolean) => crypt ? encrypted : Promise.resolve(true),
         transferQueue: { clearRestoredFlags }, logResume: vi.fn(), fireRetryCallbacks };
     const resume = new Function(...Object.keys(ctx), `${code}; return resumeOwnedEntries;`)(...Object.values(ctx));
     const pending = resume();
@@ -204,7 +204,7 @@ it('retries an out-of-scope entry with backend profile identity but without requ
     const downloadFile = vi.fn(async () => true);
     const ctx = { useLatestCallback: (fn: unknown) => fn, transferQueue: { startTransfer: vi.fn(), failTransfer: vi.fn(), completeTransfer: vi.fn() },
         loadSavedServerProfiles: async () => [{ id: 'A', username: 'u', aeroCryptOverlay: { enabled: true, remoteScope: '/vault' } }],
-        restoredTransferCryptScope, restoredTransferRequiresOverlay, isLiveOnProfile: (_id: string, requireOverlay: boolean) => !requireOverlay,
+        restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder: async () => null, isLiveOnProfile: (_id: string, requireOverlay: boolean) => !requireOverlay,
         invoke: vi.fn(async () => 17), downloadFile, uploadFile: vi.fn(), parentDir: () => '/local',
         batchCancelledRef: { current: false }, notify: { error: vi.fn() }, t: (s: string) => s, isCancelledTransferError: () => false };
     const retry = new Function(...Object.keys(ctx), `${code}; return retryRestoredEntry;`)(...Object.values(ctx));
@@ -212,4 +212,47 @@ it('retries an out-of-scope entry with backend profile identity but without requ
     expect(downloadFile).toHaveBeenCalledWith('/public/f', 'f', '/local', false, undefined, false, 'throw', { profileId: 'A', generation: 17, requireOverlay: false, cryptScope: '/vault' });
     expect(ctx.transferQueue.completeTransfer).toHaveBeenCalledWith('entry');
     expect(ctx.transferQueue.failTransfer).not.toHaveBeenCalled();
+});
+
+// #1523 Greptile: the backend compares the active overlay's absolute anchor,
+// and an SFTP profile's `docs` is `~/docs`, which only the session places.
+// Unplaced, every restored retry under it was refused.
+it('places a scope under the login folder through the live session before a restored retry', async () => {
+    const helper = (await transformWithOxc(block('  const restoredTransferLoginFolder =', '  const getEnabledProfileOverlay ='), 'login-folder.ts')).code;
+    const code = (await transformWithOxc(block('  const retryRestoredEntry =', '  // Queues the restorable entries'), 'retry-login.ts')).code;
+    const invoke = vi.fn(async (cmd: string) => (cmd === 'provider_login_folder' ? '/home/u' : 23));
+    const restoredTransferLoginFolder = new Function('invoke', 'isLoginRelativeScope', 'profileOverlayScope',
+        `${helper}; return restoredTransferLoginFolder;`)(invoke, isLoginRelativeScope, profileOverlayScope);
+    const profile = { id: 'S', username: 'u', protocol: 'sftp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } };
+    const run = async (remotePath: string) => {
+        const downloadFile = vi.fn(async (..._args: unknown[]) => true);
+        const ctx = { useLatestCallback: (fn: unknown) => fn, transferQueue: { startTransfer: vi.fn(), failTransfer: vi.fn(), completeTransfer: vi.fn() },
+            loadSavedServerProfiles: async () => [profile],
+            restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder, isLiveOnProfile: () => true,
+            invoke, downloadFile, uploadFile: vi.fn(), parentDir: () => '/local',
+            batchCancelledRef: { current: false }, notify: { error: vi.fn() }, t: (s: string) => s, isCancelledTransferError: () => false };
+        const retry = new Function(...Object.keys(ctx), `${code}; return retryRestoredEntry;`)(...Object.values(ctx));
+        await retry('entry', { direction: 'download', profile_id: 'S', filename: 'f', remote_path: remotePath, local_path: '/local/f' });
+        expect(ctx.transferQueue.failTransfer).not.toHaveBeenCalled();
+        return downloadFile.mock.calls[0]?.[7];
+    };
+    expect(await run('/home/u/docs/opaque')).toEqual({ profileId: 'S', generation: 23, requireOverlay: true, cryptScope: '/home/u/docs' });
+    // Beside the island the file is plaintext, read against the same placed anchor.
+    expect(await run('/home/u/public/f')).toEqual({ profileId: 'S', generation: 23, requireOverlay: false, cryptScope: '/home/u/docs' });
+    expect(invoke).toHaveBeenCalledWith('provider_login_folder');
+});
+
+it('asks the session for no login folder when the scope is absolute', async () => {
+    const helper = (await transformWithOxc(block('  const restoredTransferLoginFolder =', '  const getEnabledProfileOverlay ='), 'login-folder-abs.ts')).code;
+    const invoke = vi.fn(async () => '/home/u');
+    const restoredTransferLoginFolder = new Function('invoke', 'isLoginRelativeScope', 'profileOverlayScope',
+        `${helper}; return restoredTransferLoginFolder;`)(invoke, isLoginRelativeScope, profileOverlayScope);
+    expect(await restoredTransferLoginFolder({ protocol: 'sftp', initialPath: '/srv', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBeNull();
+    expect(await restoredTransferLoginFolder({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBeNull();
+    expect(invoke).not.toHaveBeenCalled();
+    // A session that cannot report it leaves the scope unplaced (fail closed).
+    const failing = vi.fn(async () => { throw new Error('no session'); });
+    const unplaced = new Function('invoke', 'isLoginRelativeScope', 'profileOverlayScope',
+        `${helper}; return restoredTransferLoginFolder;`)(failing, isLoginRelativeScope, profileOverlayScope);
+    expect(await unplaced({ protocol: 'scp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBeNull();
 });

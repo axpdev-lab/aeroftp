@@ -12,6 +12,7 @@ import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
 import { connectLandsOutsideOverlay, isLoginRelativeScope, isWithinCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
+import { loginRelativeForm } from './overlayScope';
 import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
@@ -250,16 +251,18 @@ describe('crypt overlay deferred connect unlock', () => {
         const start = app.indexOf('const getProfileOverlayHint = async (');
         const end = app.indexOf('// Open and Create from', start);
         if (start < 0 || end < 0) throw new Error('profile overlay hint block not found in App.tsx');
-        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt', loginFolder: string | null = '/home/alice') => execute(app.slice(start, end), {
+        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt', loginFolder: string | null = '/home/alice', protocol = 'ftp') => execute(app.slice(start, end), {
             landingPath,
             loadSavedServerProfiles: async () => [{
                 id: 'srv_1',
+                protocol,
                 initialPath: profilePath,
                 username: 'alice',
                 hasStoredAeroCryptPassword: true,
                 aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: overlayScope },
             }],
             resolveUsernameTemplate,
+            loginRelativeForm,
             connectLandsOutsideOverlay,
             isLoginRelativeScope,
             placeUnderLoginFolder,
@@ -283,6 +286,17 @@ describe('crypt overlay deferred connect unlock', () => {
         await expect(hintFor(undefined, '~/docs', '~/docs', null)).resolves.toMatchObject({ anchor: null, opensOutside: false, loginFolder: null });
         // Nothing under the login folder asks the session for it.
         await expect(hintFor(undefined, '/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', loginFolder: null });
+        // #1523 Greptile: SFTP and SCP open a relative Remote Path under the
+        // login folder, and an empty Overlays Path is that folder. Read from
+        // the root it was `/docs`, the opening fell outside and the connect
+        // skipped the unlock.
+        for (const protocol of ['sftp', 'scp']) {
+            await expect(hintFor('/home/alice/docs', 'docs', '', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false, loginFolder: '/home/alice' });
+            await expect(hintFor(undefined, 'docs', '', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false });
+            await expect(hintFor('/home/alice/docs', 'docs', 'docs/sub', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs/sub', opensOutside: true });
+        }
+        // Elsewhere a relative folder keeps its meaning, and no login folder is asked.
+        await expect(hintFor('/docs', 'docs', '', null, 'ftp')).resolves.toMatchObject({ anchor: 'docs', opensOutside: false, loginFolder: null });
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, startFolder)');
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');

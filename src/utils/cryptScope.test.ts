@@ -226,6 +226,31 @@ describe('profileOverlayScope', () => {
     expect(profileOverlayScope({ username: 'u', initialPath: '/{username}', aeroCryptOverlay: overlay })).toBe('/u');
     expect(profileOverlayScope({ username: 'u', aeroCryptOverlay: overlay })).toBe('');
   });
+
+  // #1523 Greptile: SFTP and SCP open `docs` under the login folder, so the
+  // overlay folder is `~/docs` there; read from the root it was `/docs`.
+  it('reads a relative folder under the login folder on SFTP and SCP only', () => {
+    for (const protocol of ['sftp', 'scp'] as const) {
+      expect(profileOverlayScope({ protocol, username: 'u', initialPath: 'docs', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('~/docs');
+      expect(profileOverlayScope({ protocol, username: 'u', initialPath: '/srv', aeroCryptOverlay: { ...overlay, remoteScope: 'enc' } })).toBe('~/enc');
+      expect(profileOverlayScope({ protocol, username: 'u', initialPath: '/srv', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('/srv');
+      expect(profileOverlayScope({ protocol, username: 'u', initialPath: '~/v', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('~/v');
+      expect(profileOverlayScope({ protocol, username: 'u', aeroCryptOverlay: overlay })).toBe('');
+    }
+    expect(profileOverlayScope({ protocol: 'ftp', username: 'u', initialPath: 'docs', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('docs');
+  });
+
+  // #1523 Greptile: pin_transfer_owner compares the live overlay's absolute
+  // anchor, so a restored retry under `~/docs` needs the placed folder.
+  it('places a restored transfer scope under the login folder the session reports', () => {
+    const sftp = { protocol: 'sftp' as const, username: 'u', initialPath: 'docs', aeroCryptOverlay: { ...overlay, remoteScope: '' } };
+    expect(restoredTransferCryptScope(sftp, '/home/u')).toBe('/home/u/docs');
+    expect(restoredTransferCryptScope(sftp)).toBe('');
+    expect(restoredTransferRequiresOverlay(sftp, '/home/u/docs/opaque', '/home/u')).toBe(true);
+    expect(restoredTransferRequiresOverlay(sftp, '/home/u/public/f', '/home/u')).toBe(false);
+    // Unplaced, every path counts as inside (fail closed).
+    expect(restoredTransferRequiresOverlay(sftp, '/home/u/public/f')).toBe(true);
+  });
 });
 
 import app from '../App.tsx?raw';

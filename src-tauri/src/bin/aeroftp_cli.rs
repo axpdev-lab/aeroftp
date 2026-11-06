@@ -31686,14 +31686,9 @@ async fn cli_apply_crypt_overlay(
         .unwrap_or(serde_json::Value::Null);
     let kind = ftp_client_gui_lib::crypt_overlay_provider::overlay_kind(&overlay).to_string();
     let id = profile.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    // The bound plaintext anchor: "" / unset = whole-remote crypt. Unlike the
-    // compare path (which targets a specific remote path) the chokepoint wraps
-    // the whole session, so the binding's own scope is authoritative.
-    let remote_scope = overlay
-        .get("remoteScope")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    // The bound plaintext anchor: the binding's scope, or the starting folder
+    // when it names none, as the app reads it; "" = whole-remote crypt.
+    let remote_scope = ftp_client_gui_lib::crypt_overlay_provider::profile_overlay_scope(profile);
     let filename_encryption = overlay
         .get("filenameEncryption")
         .and_then(|v| v.as_str())

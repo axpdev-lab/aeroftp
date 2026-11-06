@@ -214,6 +214,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
+import { loginRelativeForm } from './utils/overlayScope';
 import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
@@ -6307,6 +6308,15 @@ const App: React.FC = () => {
       : scope ?? null
   );
 
+  // The login folder of the live session, asked only for a profile whose
+  // overlay sits under it; null when the session cannot report it, which
+  // leaves the scope unplaced (fail closed).
+  const restoredTransferLoginFolder = async (profile: ServerProfile): Promise<string | null> => (
+    profile.aeroCryptOverlay?.enabled && isLoginRelativeScope(profileOverlayScope(profile))
+      ? await invoke<string>('provider_login_folder').catch(() => '') || null
+      : null
+  );
+
   const getEnabledProfileOverlay = async (
     savedServerId?: string,
   ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
@@ -6344,9 +6354,11 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      const configuredLanding = landingPath === undefined
+      // On SFTP and SCP a relative Remote Path opens under the login folder,
+      // as the scope below reads it.
+      const configuredLanding = loginRelativeForm(landingPath === undefined
         ? profileInitialPath
-        : resolveUsernameTemplate(landingPath, profile.username);
+        : resolveUsernameTemplate(landingPath, profile.username), profile.protocol) || null;
       const configuredScope = profileOverlayScope(profile);
       // `~/docs` (the rclone import of an SFTP `nas:docs`) names a folder only
       // the session knows: it is placed under the login folder the connection
@@ -11035,15 +11047,21 @@ const App: React.FC = () => {
       if (entry.profile_id) {
         const profiles = await loadSavedServerProfiles();
         const profile = profiles.find(p => p.id === entry.profile_id);
-        const requireOverlay = !!profile && restoredTransferRequiresOverlay(profile, entry.remote_path);
-        if (!profile || !isLiveOnProfile(entry.profile_id, requireOverlay)) {
+        if (!profile || !isLiveOnProfile(entry.profile_id)) {
+          throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
+        }
+        // The backend compares the active overlay's absolute anchor, so a
+        // scope under the login folder is placed through the live session.
+        const loginFolder = await restoredTransferLoginFolder(profile);
+        const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path, loginFolder);
+        if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
         }
         const generation = await invoke<number>('provider_connection_generation');
         if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile changed');
         }
-        ownership = { profileId: entry.profile_id, generation, requireOverlay, cryptScope: restoredTransferCryptScope(profile) };
+        ownership = { profileId: entry.profile_id, generation, requireOverlay, cryptScope: restoredTransferCryptScope(profile, loginFolder) };
       }
       if (direction === 'download') {
         await downloadFile(

@@ -4,6 +4,45 @@
 import { ServerProfile } from '../../types';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
+/** A profile as `import_bridge_config` returns it, credentials redacted. */
+export interface ImportedServer {
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+    username: string;
+    protocol?: string;
+    initialPath?: string;
+    options?: Record<string, unknown>;
+    providerId?: string;
+    hasStoredCredential?: boolean;
+    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+    hasStoredAeroCryptPassword?: boolean;
+    hasStoredAeroCryptSalt?: boolean;
+    /** The Filen CLI API key the backend moved into the vault (#230). */
+    hasStoredFilenApiKey?: boolean;
+}
+
+/**
+ * The saved profile an imported one becomes. Only the fields the backend
+ * returned are kept: what it took out of the options (a Filen API key, the
+ * crypt secrets) stays in the vault, and each `hasStored*` flag says only
+ * what the vault holds.
+ */
+export const importedServerProfile = (s: ImportedServer): ServerProfile => ({
+    id: s.id, name: s.name, host: s.host, port: s.port,
+    username: s.username,
+    protocol: s.protocol as ServerProfile['protocol'],
+    initialPath: s.initialPath,
+    options: s.options as ServerProfile['options'],
+    providerId: s.providerId,
+    hasStoredCredential: s.hasStoredCredential || false,
+    aeroCryptOverlay: s.aeroCryptOverlay,
+    hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
+    hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
+    hasStoredFilenApiKey: s.hasStoredFilenApiKey,
+});
+
 export interface CommitOutcome {
     added: number;
     updated: number;

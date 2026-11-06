@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRemotePath, isValidOverlayScope, resolveOverlayScope } from './overlayScope';
+import { normalizeRemotePath, isValidOverlayScope, loginRelativeForm, normalizeOverlayAnchor, resolveOverlayScope } from './overlayScope';
 
 describe('normalizeRemotePath', () => {
     it('recognizes the root without stripping literal whitespace names', () => {
@@ -155,4 +155,61 @@ it('retains whitespace names through profile save and scope matching', () => {
   expect(resolveOverlayScope(' vault ', '/reports ')).toBe('/reports / vault ');
   expect(isValidOverlayScope('/reports / vault ', '/reports ')).toBe(true);
   expect(isValidOverlayScope('/reports', '/reports ')).toBe(false);
+});
+
+// #1523: SFTP and SCP open a relative Remote Path under the login folder, and
+// only the session places it. The saved anchor keeps that form: `docs` and
+// `~/docs` were saved as `/docs` and `/~/docs`, folders the session never opened.
+describe('an overlay scope under the login folder', () => {
+    it('reads a relative path under the login folder on SFTP and SCP only', () => {
+        expect(loginRelativeForm('docs', 'sftp')).toBe('~/docs');
+        expect(loginRelativeForm('docs', 'scp')).toBe('~/docs');
+        expect(loginRelativeForm('docs', 'ftp')).toBe('docs');
+        expect(loginRelativeForm('/docs', 'sftp')).toBe('/docs');
+        expect(loginRelativeForm('~/docs', 'sftp')).toBe('~/docs');
+        expect(loginRelativeForm('', 'sftp')).toBe('');
+        expect(loginRelativeForm('~docs', 'sftp')).toBe('~/~docs');
+    });
+
+    it('saves the anchor in the login folder form', () => {
+        for (const protocol of ['sftp', 'scp']) {
+            expect(resolveOverlayScope('', 'docs', protocol)).toBe('~/docs');
+            expect(resolveOverlayScope('', '~/docs/', protocol)).toBe('~/docs');
+            expect(resolveOverlayScope('sub', 'docs', protocol)).toBe('~/docs/sub');
+            expect(resolveOverlayScope('~/docs/sub', '~/docs', protocol)).toBe('~/docs/sub');
+            expect(resolveOverlayScope('../x', '~/docs', protocol)).toBe('~/docs/x');
+            expect(resolveOverlayScope('~/vault', '', protocol)).toBe('~/vault');
+            expect(resolveOverlayScope('', '~', protocol)).toBe('~');
+            // An absolute folder under an unplaced one is kept as typed and refused.
+            expect(resolveOverlayScope('/home/u/docs', '~/docs', protocol)).toBe('/home/u/docs');
+            expect(isValidOverlayScope('/home/u/docs', '~/docs', protocol)).toBe(false);
+            expect(isValidOverlayScope('~/docs/sub', 'docs', protocol)).toBe(true);
+            expect(isValidOverlayScope('~/other', 'docs', protocol)).toBe(false);
+            expect(isValidOverlayScope('~/vault', '/', protocol)).toBe(true);
+        }
+        // Elsewhere the old reading stays: a relative Remote Path is from the root.
+        expect(resolveOverlayScope('', 'docs', 'ftp')).toBe('/docs');
+        expect(resolveOverlayScope('~/vault', '', 'ftp')).toBe('/~/vault');
+    });
+
+    it('normalizes an anchor in the form the backend reads', () => {
+        expect(normalizeOverlayAnchor('~/./docs//')).toBe('~/docs');
+        expect(normalizeOverlayAnchor('~/../etc')).toBe('~/../etc');
+        expect(normalizeOverlayAnchor('/a//b/')).toBe('/a/b');
+        expect(normalizeOverlayAnchor('')).toBe('');
+    });
+});
+
+import connectionScreen from '../components/ConnectionScreen.tsx?raw';
+
+// The form saves, validates and hydrates the anchor: each of them reads the
+// Remote Path as the protocol opens it, or an SFTP `docs` is saved as `/docs`.
+describe('the connection form reads the anchor with its protocol', () => {
+    it('passes the protocol to every resolve and validate', () => {
+        const lines = connectionScreen.split('\n').filter(line => /(?:resolveOverlayScope|isValidOverlayScope)\(/.test(line) && !line.includes('import ') && !line.trim().startsWith('//'));
+        expect(lines.length).toBe(4);
+        for (const line of lines) expect(line).not.toMatch(/quickConnectDirs\.remoteDir\)/);
+        expect(connectionScreen.split('quickConnectDirs.remoteDir, protocol)').length - 1).toBe(6);
+        expect(connectionScreen).toContain('overlayBinding.remoteScope || loginRelativeForm(profileRemote, profile.protocol)');
+    });
 });

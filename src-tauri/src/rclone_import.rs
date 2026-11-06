@@ -2118,6 +2118,12 @@ fn map_crypt_remote(
     if mapped.protocol == "sftp" {
         let raw = remote_target.split_once(':').map_or("", |(_, path)| path);
         apply_rclone_start_folder(&mut mapped, raw);
+        // `nas:` names the login folder too. No start folder opens it, but the
+        // scope falls back to the start folder, and an empty scope is the
+        // whole remote from the root, where rclone wrote nothing.
+        if mapped.initial_path.is_none() {
+            mapped.initial_path = Some("~".to_string());
+        }
     } else if crypt_subpath.is_some() {
         mapped.initial_path = crypt_subpath;
     }
@@ -4718,15 +4724,17 @@ pub fn export_rclone(
                     ));
                     o
                 }),
-            // Under the login folder the app saves the scope with the `~` it
-            // read as a folder (`resolveOverlayScope` turns `~/projects` into
-            // `/~/projects`), while the alias holds `projects`: taken as
-            // written, the crypt opened `/~/projects` inside the start folder.
+            // Under the login folder the app saves the scope as `~/projects`
+            // (`resolveOverlayScope`; before, `/~/projects`, the `~` read as a
+            // folder), while the alias holds `projects`: taken as written, the
+            // crypt opened `/~/projects` inside the start folder. A relative
+            // start folder (`projects`) and no start folder are under the login
+            // folder too, where SFTP opens them.
             ("sftp", _, Some(o))
-                if options
+                if !options
                     .and_then(|o| o.get("initial_path"))
                     .and_then(|v| v.as_str())
-                    .is_some_and(|start| start.starts_with('~')) =>
+                    .is_some_and(|start| start.starts_with('/')) =>
             {
                 o.get("rcloneCryptOverlayScope")
                     .and_then(|v| v.as_str())
@@ -4739,6 +4747,22 @@ pub fn export_rclone(
             }
             _ => None,
         };
+        // No start folder: the remote opens the login folder, where a scope
+        // under `~` is relative too (`nas:vault`); from the root it was
+        // `nas:/vault`, a folder rclone never wrote to.
+        if proto == "sftp"
+            && options
+                .and_then(|o| o.get("initial_path"))
+                .and_then(|v| v.as_str())
+                .is_none_or(str::is_empty)
+            && options
+                .and_then(|o| o.get("rcloneCryptOverlayScope"))
+                .and_then(|v| v.as_str())
+                .and_then(sftp_login_relative_scope)
+                .is_some()
+        {
+            crypt_folder = Some(String::new());
+        }
         let mut crypt_section = String::new();
         let crypt = append_crypt_remote_section(
             &mut crypt_section,
@@ -10032,6 +10056,18 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // `~` alone: no alias, the crypt wraps the login folder itself.
         assert_eq!(remote_of("~", "/~"), "nas:");
         assert_eq!(remote_of("~", "/~/vault"), "nas:vault");
+        // The form the app saves now (`~/projects`), for a start folder under
+        // `~`, a relative one (SFTP opens it under the login folder) and none.
+        assert_eq!(remote_of("~/projects", "~/projects"), "nas-path:");
+        assert_eq!(
+            remote_of("~/projects", "~/projects/vault"),
+            "nas-path:/vault"
+        );
+        assert_eq!(remote_of("projects", "~/projects/vault"), "nas-path:/vault");
+        assert_eq!(remote_of("~", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("", "~"), "nas:");
+        assert_eq!(remote_of("", "/srv/vault"), "nas:/srv/vault");
         assert_eq!(sftp_login_relative_scope("/~x/vault"), None);
         assert_eq!(sftp_login_relative_scope("/srv/~"), None);
     }
@@ -11293,6 +11329,10 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
              [relcrypt]\ntype = crypt\nremote = nas: docs\n\
              password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\n\
              [abscrypt]\ntype = crypt\nremote = nas:/docs\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\n\
+             [homecrypt]\ntype = crypt\nremote = nas:\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\n\
+             [rootcrypt]\ntype = crypt\nremote = nas:/\n\
              password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n",
             "lead-space-foreign",
         );
@@ -11305,6 +11345,15 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert_eq!(
             imported(&foreign, "abscrypt").initial_path.as_deref(),
             Some("/docs")
+        );
+        // `nas:` is the login folder, never the whole remote from the root.
+        assert_eq!(
+            imported(&foreign, "homecrypt").initial_path.as_deref(),
+            Some("~")
+        );
+        assert_eq!(
+            imported(&foreign, "rootcrypt").initial_path.as_deref(),
+            Some("/")
         );
         assert_eq!(bucket_of(&foreign, "pics").as_deref(), Some(" media"));
         assert_eq!(
