@@ -132,12 +132,30 @@ pub(crate) fn is_dangerous_root(path: &str) -> bool {
     let Some(real) = canonical_comparable(path) else {
         return true;
     };
-    if real == "/" || real.ends_with(":/") || real.is_empty() {
+    if is_filesystem_root(&real) {
         return true;
     }
     home_spellings()
         .iter()
         .any(|home| path_matches_prefix(home, &real))
+}
+
+/// Whether a path in `comparable_path` form is the root of a filesystem: `/`,
+/// a Windows drive root (`\\?\E:\` compares as `e:`, since the trailing
+/// slash is dropped) or a UNC share root (`//server/share`). A drive other
+/// than the home's is no ancestor of the home, so only this test refuses it.
+fn is_filesystem_root(comparable: &str) -> bool {
+    if comparable.is_empty() || comparable == "/" {
+        return true;
+    }
+    let bytes = comparable.as_bytes();
+    if bytes.len() == 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+        return true;
+    }
+    if let Some(unc) = comparable.strip_prefix("//") {
+        return unc.split('/').filter(|part| !part.is_empty()).count() <= 2;
+    }
+    false
 }
 
 /// The first protected location (system or home) that exists inside `root`:
@@ -2174,6 +2192,29 @@ mod windows_home_denylist_tests {
         assert_eq!(unc, "//server/share/x");
         // Case is kept where the filesystem distinguishes it.
         assert_eq!(comparable_path("/home/Me/.SSH/", false), "/home/Me/.SSH");
+    }
+
+    #[test]
+    fn every_filesystem_root_is_refused_whatever_drive_holds_the_home() {
+        for root in [
+            r"\\?\E:\",
+            r"E:\",
+            r"\\?\UNC\server\share\",
+            r"\\server\share",
+        ] {
+            let comparable = comparable_path(root, true);
+            assert!(is_filesystem_root(&comparable), "{root} as {comparable}");
+        }
+        assert!(is_filesystem_root("/"));
+        for inside in [
+            r"\\?\E:\data",
+            r"\\?\UNC\server\share\dir",
+            "/home",
+            "c:users",
+        ] {
+            let comparable = comparable_path(inside, true);
+            assert!(!is_filesystem_root(&comparable), "{inside} as {comparable}");
+        }
     }
 
     #[test]
