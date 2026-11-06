@@ -23,10 +23,11 @@ function context() {
     const ctx = {
         remoteNavCounter: { current: 7 }, remoteNavInFlightRef: { current: 7 },
         remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false as false | string },
+        connectStartSessionsRef: { current: null as unknown }, sessions: [] as { id: string }[],
         setOverlayDecrypting: vi.fn((value: boolean) => { state.decrypting = value; }),
         setRemoteListLoading: vi.fn((value: boolean) => { state.loading = value; }),
         setRemoteListReason: vi.fn((value: string | null) => { state.reason = value; }),
-        setActiveSessionId: vi.fn(), setShowRemotePanel: vi.fn(), sessionId: 'new-tab',
+        setActiveSessionId: vi.fn(), setShowRemotePanel: vi.fn(), setIsConnected: vi.fn(), sessionId: 'new-tab',
         ConnectScope: class {}, cancelRemoteNavigation: vi.fn(),
     };
     return { state, ctx };

@@ -94,6 +94,12 @@ pub struct FtpManager {
     username: Option<String>,
     password: Option<SecretString>, // Stored for auto-reconnect, zeroized on drop
     timeouts: FtpTimeoutConfig,
+    /// The login was given up before its reply came: `connect_ftp` drops the
+    /// login future on a Cancel (during `USER`/`PASS` or the `PWD` that ends
+    /// it), after `connect` already kept the stream. The
+    /// control channel is then out of step, so `disconnect` sends no QUIT,
+    /// whose reply could be the one the login was waiting for.
+    abandoned_command: bool,
 }
 
 #[allow(dead_code)]
@@ -106,6 +112,7 @@ impl FtpManager {
             username: None,
             password: None,
             timeouts: FtpTimeoutConfig::default(),
+            abandoned_command: false,
         }
     }
 
@@ -172,6 +179,8 @@ impl FtpManager {
         .map_err(|e| FtpManagerError::ConnectionError(e.to_string()))?;
 
         self.stream = Some(stream);
+        // A new control connection owes nothing.
+        self.abandoned_command = false;
         self.server = Some(server_addr.clone());
         info!("Successfully connected to {}", server_addr);
 
@@ -184,34 +193,64 @@ impl FtpManager {
 
         info!("Logging in as {}", username);
 
-        stream
-            .login(username, password)
-            .await
-            .map_err(|e| FtpManagerError::OperationFailed(format!("Login failed: {}", e)))?;
+        // Tracked through the PWD that ends the login: `connect_ftp` can drop
+        // the future during either request.
+        self.abandoned_command = true;
+        if let Err(e) = stream.login(username, password).await {
+            // A refusal is a reply: the channel is in step.
+            self.abandoned_command = false;
+            return Err(FtpManagerError::OperationFailed(format!("Login failed: {}", e)).into());
+        }
 
         self.username = Some(username.to_string());
         self.password = Some(SecretString::from(password.to_string())); // Store for auto-reconnect
         info!("Successfully logged in as {}", username);
 
-        // Get current working directory after login
-        self.current_path = self.pwd().await.unwrap_or_else(|_| "/".to_string());
+        // Get current working directory after login. A refusal is a reply and
+        // leaves the channel in step, with "/" as the directory. A PWD that
+        // timed out may still be answered, and the next command would read
+        // that answer as its own: the session is closed and the login fails.
+        match self.pwd().await {
+            Ok(path) => {
+                self.current_path = path;
+                self.abandoned_command = false;
+            }
+            Err(e) if e.downcast_ref::<tokio::time::error::Elapsed>().is_some() => {
+                self.stream = None;
+                self.abandoned_command = false;
+                return Err(FtpManagerError::OperationFailed(
+                    "Login failed: the server did not answer PWD after login".to_string(),
+                )
+                .into());
+            }
+            Err(_) => {
+                self.current_path = "/".to_string();
+                self.abandoned_command = false;
+            }
+        }
 
         Ok(())
     }
 
     /// Disconnect from FTP server
     pub async fn disconnect(&mut self) -> Result<()> {
+        let abandoned = std::mem::take(&mut self.abandoned_command);
         if let Some(mut stream) = self.stream.take() {
             info!("Disconnecting from FTP server");
 
-            // Send QUIT command with timeout
-            let result =
-                tokio::time::timeout(self.timeouts.disconnect_timeout, stream.quit()).await;
+            if abandoned {
+                // See `abandoned_command`: no QUIT on a channel out of step.
+                info!("The login was abandoned before its reply; closing without QUIT");
+            } else {
+                // Send QUIT command with timeout
+                let result =
+                    tokio::time::timeout(self.timeouts.disconnect_timeout, stream.quit()).await;
 
-            match result {
-                Ok(Ok(_)) => info!("Successfully disconnected"),
-                Ok(Err(e)) => warn!("Error during disconnect: {:?}", e),
-                Err(_) => warn!("Disconnect timeout"),
+                match result {
+                    Ok(Ok(_)) => info!("Successfully disconnected"),
+                    Ok(Err(e)) => warn!("Error during disconnect: {:?}", e),
+                    Err(_) => warn!("Disconnect timeout"),
+                }
             }
 
             self.stream = None;
@@ -1448,5 +1487,119 @@ pub(crate) mod exists_tests {
         assert!(ftp.exists("/d").await.unwrap());
         assert!(!ftp.exists("/missing").await.unwrap());
         ftp.disconnect().await.unwrap();
+    }
+}
+
+/// A login abandoned before its reply (a cancelled `connect_ftp`) leaves the
+/// control channel out of step: the disconnect that follows sends no QUIT and
+/// does not wait for one.
+#[cfg(test)]
+mod abandoned_login_tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use std::time::{Duration, Instant};
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
+
+    /// A server that greets, logs every command line and answers each one,
+    /// except `silent_on` (a command name, or "" for none), which it never
+    /// answers. It keeps reading, so a QUIT sent afterwards would still reach
+    /// the log.
+    async fn server(silent_on: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let server_log = Arc::clone(&log);
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let log = Arc::clone(&server_log);
+                tokio::spawn(async move {
+                    let (read, mut write) = stream.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    if write.write_all(b"220 ready\r\n").await.is_err() {
+                        return;
+                    }
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        log.lock().unwrap().push(line.clone());
+                        let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+                        if cmd == silent_on {
+                            continue;
+                        }
+                        let reply = match cmd.as_str() {
+                            "USER" => "331 password please\r\n",
+                            "PASS" => "230 logged in\r\n",
+                            "PWD" => "257 \"/\" is current\r\n",
+                            "QUIT" => "221 bye\r\n",
+                            _ => "200 ok\r\n",
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (port, log)
+    }
+
+    fn sent(log: &Mutex<Vec<String>>, command: &str) -> bool {
+        log.lock()
+            .unwrap()
+            .iter()
+            .any(|line| line.to_uppercase().starts_with(command))
+    }
+
+    /// A login dropped during USER or its closing PWD disconnects at once, with no QUIT.
+    #[tokio::test]
+    async fn a_cancelled_login_is_closed_at_once_without_quit() {
+        // What a Cancel of `connect_ftp` does: the login future is dropped
+        // while it waits, for the reply to USER or to the PWD that ends it.
+        for silent in ["USER", "PWD"] {
+            let (port, log) = server(silent).await;
+            let mut manager = FtpManager::new();
+            manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
+            tokio::select! {
+                _ = manager.login("u", "p") => panic!("the server never answers {silent}"),
+                _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+            }
+            assert!(sent(&log, silent), "{:?}", log.lock().unwrap());
+
+            let started = Instant::now();
+            manager.disconnect().await.unwrap();
+            let took = started.elapsed();
+            assert!(
+                took < Duration::from_secs(1),
+                "{silent}: the disconnect took {took:?}"
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            assert!(!sent(&log, "QUIT"), "{silent}: {:?}", log.lock().unwrap());
+        }
+    }
+
+    /// A post-login PWD that times out fails the login and closes the session,
+    /// so no later command reads its late answer.
+    #[tokio::test]
+    async fn a_login_whose_pwd_times_out_fails_and_closes_the_session() {
+        let (port, _log) = server("PWD").await;
+        let mut manager = FtpManager::new();
+        manager.timeouts.command_timeout = Duration::from_millis(200);
+        manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
+        let outcome = tokio::time::timeout(Duration::from_secs(5), manager.login("u", "p"))
+            .await
+            .expect("the login must end");
+        assert!(outcome.is_err());
+        assert!(!manager.is_connected());
+    }
+
+    /// A login that came back leaves nothing marked: the disconnect still sends QUIT.
+    #[tokio::test]
+    async fn a_disconnect_after_a_login_still_says_goodbye() {
+        let (port, log) = server("").await;
+        let mut manager = FtpManager::new();
+        manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
+        manager.login("u", "p").await.unwrap();
+        manager.disconnect().await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 }

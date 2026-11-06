@@ -1001,6 +1001,11 @@ const App: React.FC = () => {
   // aborts the listing and leaves them in the directory they were in.
   const remoteConnectPhaseRef = useRef<false | 'connect' | 'switch'>(false);
   const remoteConnectPhaseVersionRef = useRef(0);
+  // The session tabs open when a connect from the servers screen or the Quick
+  // Connect form started, keyed by its phase version: a Cancel of that connect
+  // keeps them (the parked tab reconnects when it is clicked) and removes only
+  // what the connect itself added.
+  const connectStartSessionsRef = useRef<{ phaseVersion: number; ids: ReadonlySet<string> } | null>(null);
   // Bumped the instant a Cancel decides to abort a connect. A connect flow is a
   // long chain of awaits that paints the panel, names the tab and registers the
   // session; the aborted listing only unwinds the await it was blocked on, so
@@ -1217,13 +1222,15 @@ const App: React.FC = () => {
   }>(null);
   const rcloneCryptBannerHandledRef = useRef<string | null>(null);
   useEffect(() => {
-    if (isConnected || !rcloneCryptVaultId) return;
+    // A tab being reconnected (active, not yet connected) restores its own
+    // overlay: this disconnect cleanup must not clear it under the reconnect.
+    if (isConnected || !rcloneCryptVaultId || activeSessionId) return;
     setRcloneCryptVaultId(null);
     setCryptOverlayOwner(null);
     void invoke('provider_clear_crypt_overlay', { full: true }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
-  }, [isConnected, rcloneCryptVaultId]);
+  }, [isConnected, rcloneCryptVaultId, activeSessionId]);
   useEffect(() => {
     if (!isConnected || rcloneCryptVaultId || rcloneCryptImportBanner) return;
     const opts = (liveConnectionParams.options ?? {}) as Record<string, unknown>;
@@ -1326,13 +1333,15 @@ const App: React.FC = () => {
   // stuck empty.
   const overlaySuppressedRef = useRef(false);
   useEffect(() => {
-    if (isConnected || !aeroCryptVaultId) return;
+    // A tab being reconnected (active, not yet connected) restores its own
+    // overlay: this disconnect cleanup must not clear it under the reconnect.
+    if (isConnected || !aeroCryptVaultId || activeSessionId) return;
     setAeroCryptVaultId(null);
     setCryptOverlayOwner(null);
     void invoke('provider_clear_crypt_overlay', { full: true }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
-  }, [isConnected, aeroCryptVaultId]);
+  }, [isConnected, aeroCryptVaultId, activeSessionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4831,6 +4840,58 @@ const App: React.FC = () => {
   const mtpGvfsMountPathRef = useRef<string | null>(null);
   const MTP_HONESTY_SEEN_KEY = 'aerofile_mtp_honesty_seen';
 
+  /** Puts the active session tab aside before the backend leaves it: the tab
+   *  becomes `cached` with its files, paths, Navigation Sync and vault overlay,
+   *  nothing is active, and the remote view reads as disconnected, with an
+   *  empty file list. Every path
+   *  that drops the live connection for another one calls it first ("+" new
+   *  tab, a connect from My Servers or the Quick Connect form, a portable
+   *  device), so a Cancel or a failure never leaves a tab marked connected over
+   *  a backend that has already gone, and clicking that tab, or going back to
+   *  the file manager, reconnects it. */
+  const parkActiveSession = useLatestCallback((keepDeviceTab = false) => {
+    if (activeSessionId) {
+      const parked = {
+        status: 'cached' as const,
+        remoteFiles: [...remoteFiles],
+        localFiles: [...localFiles],
+        remotePath: currentRemotePath,
+        localPath: currentLocalPath,
+        isSyncNavigation,
+        syncBasePaths,
+        aeroVaultOverlaySession,
+      };
+      setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, ...parked } : s));
+    }
+    if (!keepDeviceTab) {
+      // A portable device tab cannot be parked: reopening it needs the live
+      // device (PLACES or its card), which a tab click does not have. The
+      // connection replacing the backend ends it, so its tab goes, and so does
+      // the unplug watch, which would otherwise disconnect the new provider.
+      // "+" keeps it: the backend is unchanged, and going back reuses it.
+      setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
+      setActivePortableDeviceId(null);
+      mtpGvfsMountPathRef.current = null;
+    }
+    // The remote panel stops showing the parked session's files while the next
+    // connection lists: they live on in the cached tab and come back with it.
+    // Search results and the query that filters the panel go with them.
+    setRemoteFiles([]);
+    setSelectedRemoteFiles(new Set());
+    setRemoteSearchResults(null);
+    setRemoteSearchQuery('');
+    // A quota fetch or scan of the parked session must not land on, or scan,
+    // the provider that replaces it (as switchSession does).
+    quotaVersionRef.current++;
+    quotaConnectionRef.current++;
+    setStorageQuota(null);
+    setActiveSessionId(null);
+    setIsSyncNavigation(false);
+    setSyncBasePaths(null);
+    setAeroVaultOverlaySession(null);
+    setIsConnected(false);
+  });
+
   /** Shared open path for PLACES exclusive fallback and saved device profile card.
    *  Gvfs-first: if the desktop already mounted the phone, install an FS-backed
    *  provider rooted at that mount (no libmtp; no bus fight). Else exclusive
@@ -4843,6 +4904,8 @@ const App: React.FC = () => {
   ) => {
     connectScope.assert();
     try {
+      // The live tab is put aside before its backend goes.
+      parkActiveSession();
       // Drop any live remote/FTP slot first; open also drains ProviderState.
       try { await connectScope.step(() => invoke('provider_disconnect')); } catch { connectScope.assert(); /* not connected */ }
       try { await connectScope.step(() => invoke('disconnect_ftp')); } catch { connectScope.assert(); /* not connected */ }
@@ -5005,7 +5068,9 @@ const App: React.FC = () => {
       };
       setIsSyncNavigation(false);
       setSyncBasePaths(null);
-      setSessions([newSession]);
+      // The other tabs stay, parked: a device tab joins them, and replaces only
+      // an earlier device tab (one ProviderState slot).
+      setSessions(prev => [...prev.filter(s => s.connectionParams?.protocol !== 'mtp'), newSession]);
       setActiveSessionId(newSession.id);
 
       const storageNames = session.storages
@@ -5058,29 +5123,37 @@ const App: React.FC = () => {
       }));
       throw err;
     }
-  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles, logActivity]);
+  }, [notify, t, currentLocalPath, localFiles, showHiddenFiles, logActivity, parkActiveSession]);
 
   /** PLACES portable row: open without a saved profile. */
   const handleOpenPortableDevice = useCallback(async (device: MtpDeviceInfo) => {
     await openMtpSessionFromLiveDevice(device);
   }, [openMtpSessionFromLiveDevice]);
 
+  /** A portable device went away: closes it, ends its tab, and disconnects the
+   *  provider only when the device owns it. */
   const handlePortableDeviceClosed = useCallback((deviceId: string) => {
     setActivePortableDeviceId((prev) => (prev === deviceId ? null : prev));
     mtpGvfsMountPathRef.current = null;
     // Device unplugged or ejected: release ProviderState. Eject already called
     // mtp_close_device; unplug may not have, so both are best-effort.
+    // The provider slot is the device's unless another session is live: a tab
+    // of another server is active, so disconnecting would end that one.
+    const deviceOwnsProvider = !activeSessionId || liveConnectionParams.protocol === 'mtp';
     void (async () => {
       try { await invoke('mtp_close_device', { deviceId }); } catch { /* ignore */ }
-      try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+      if (deviceOwnsProvider) {
+        try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+      }
     })();
+    // A device tab "+" kept may outlive the view; it goes in every case.
+    setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
     // Step the remote panel out only when this was an MTP session.
     if (liveConnectionParams.protocol === 'mtp') {
       setIsConnected(false);
       setRemoteFiles([]);
       setCurrentRemotePath('/');
       setCurrentRemoteDisplayPath('/');
-      setSessions([]);
       setActiveSessionId(null);
       setShowRemotePanel(false);
       setShowConnectionScreen(true);
@@ -5095,6 +5168,7 @@ const App: React.FC = () => {
       }
     }
   }, [
+    activeSessionId,
     liveConnectionParams.protocol,
     liveConnectionParams.server,
     humanLog,
@@ -6603,6 +6677,7 @@ const App: React.FC = () => {
       setRemoteListReason(null);
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
       remoteConnectPhaseRef.current = 'connect';
+      connectStartSessionsRef.current = { phaseVersion, ids: new Set(sessions.map(s => s.id)) };
       setOverlayDecrypting(false);
       try {
         const scope = args[args.length - 1];
@@ -6758,7 +6833,8 @@ const App: React.FC = () => {
         setRemoteFiles([]);
         setCurrentRemotePath('/');
         setCurrentRemoteDisplayPath('/');
-        setSessions([]);
+        // Only the device tab goes: the others were parked when it opened.
+        setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
         setActiveSessionId(null);
         setShowRemotePanel(false);
         setShowConnectionScreen(true);
@@ -8077,7 +8153,9 @@ const App: React.FC = () => {
 
     if (isOAuth) {
       // OAuth provider is already connected via OAuthConnect/FourSharedConnect component
-      // Just switch to file manager view
+      // Just switch to file manager view. The component replaced the backend,
+      // so the live tab is put aside first.
+      parkActiveSession();
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
@@ -8271,8 +8349,8 @@ const App: React.FC = () => {
       }
 
       setLoading(true);
-      setIsSyncNavigation(false);
-      setSyncBasePaths(null);
+      // Navigation Sync is reset by parkActiveSession, after the host-key
+      // check: reset here, the park would keep the reset values for the tab.
       // Use displayName if available, otherwise use server/bucket/username
       // No protocol prefix in tab name - icon distinguishes the protocol
       const providerName = effectiveParams.displayName || (protocol === 's3'
@@ -8328,6 +8406,8 @@ const App: React.FC = () => {
           const accepted = await checkSftpHostKey(target.server, target.port || 22);
           if (!accepted) { setLoading(false); return; }
         }
+        // The live tab is put aside before its backend goes.
+        parkActiveSession();
         // Disconnect any existing provider first
         try {
           await invoke('provider_disconnect');
@@ -8519,12 +8599,12 @@ const App: React.FC = () => {
     // FTP/FTPS/SFTP - use legacy commands
     if (!effectiveParams.server || !effectiveParams.username) { notify.error(t('toast.missingFields'), t('toast.fillServerUser')); return; }
     setLoading(true);
-    // Reset navigation sync for new connection
-    setIsSyncNavigation(false);
-    setSyncBasePaths(null);
+    // Navigation Sync is reset by parkActiveSession, which keeps the old tab's.
     const protocolLabel = connectionViaLabel(effectiveParams);
     const logId = humanLog.logStart('CONNECT', { server: effectiveParams.server, protocol: protocolLabel });
     try {
+      // The live tab is put aside before its backend goes.
+      parkActiveSession();
       // First disconnect any active OAuth provider to avoid conflicts
       try {
         await invoke('provider_disconnect');
@@ -8756,6 +8836,8 @@ const App: React.FC = () => {
 
   useFaviconDetection(sessions, activeSessionId, handleFaviconDetected);
 
+  /** Makes `sessionId` the active tab and reconnects it, showing its cached
+   *  view at once; a failed reconnect of a parked tab leaves it parked. */
   const switchSession = async (sessionId: string, connectScope = new ConnectScope()) => {
     connectScope.assert();
     // Find the target session from current sessions state
@@ -8767,6 +8849,15 @@ const App: React.FC = () => {
       if (!showRemotePanel) setShowRemotePanel(true);
       return;
     }
+    // Reconnecting a parked tab (nothing active): if it fails or is cancelled,
+    // the tab goes back to parked, so clicking it again retries instead of
+    // finding it "already active" over a backend that is not there.
+    const fromParked = activeSessionId === null;
+    const backToParked = () => {
+      if (!fromParked) return;
+      setActiveSessionId(null);
+      setIsConnected(false);
+    };
 
     // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts),
     // asked before anything of the current tab changes: a refused key leaves
@@ -8775,12 +8866,24 @@ const App: React.FC = () => {
     if (isSshProtocol(targetSession.connectionParams?.protocol)) {
       const target = normalizeProviderConnectionParams(targetSession.connectionParams);
       const accepted = await connectScope.step(() => checkSftpHostKey(target.server, target.port || 22, connectScope));
-      if (!accepted) return;
+      if (!accepted) { backToParked(); return; }
     }
 
     // Same reason as the disconnect path: the scan belongs to the session being
     // left behind, not to the one being switched to.
     closeAeroSyncForTornDownSession();
+
+    // Switching to another server replaces the backend, which ends a portable
+    // device session: its tab cannot be reconnected from a click (it needs the
+    // live device), so every device tab goes, with its unplug watch, as at a
+    // connect park. Left in place, a click on it would disconnect this server
+    // before the device connect is refused.
+    if (targetSession.connectionParams?.protocol !== 'mtp'
+      && sessions.some(s => s.connectionParams?.protocol === 'mtp')) {
+      setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
+      setActivePortableDeviceId(null);
+      mtpGvfsMountPathRef.current = null;
+    }
 
     // Capture current state values before any async operations
     const capturedRemoteFiles = [...remoteFiles];
@@ -9143,6 +9246,12 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
+      // The tab bar calls here directly, and a parked tab left the workspace
+      // marked disconnected. It reads as connected again only now: earlier,
+      // its cached files would take remote actions while another server still
+      // holds the backend, and the provider capabilities read on connecting
+      // would come from that server.
+      setIsConnected(true);
       activityLog.updateEntry(reconnectLogId, {
         status: 'success',
         // Honest wording: a live-slot reuse never reconnected (#128-C), so don't
@@ -9177,7 +9286,19 @@ const App: React.FC = () => {
       setLocalFiles(localFilesData);
       setCurrentLocalPath(targetSession.localPath);
 
-    } catch (e) { connectScope.assert();
+    } catch (e) {
+      try { connectScope.assert(); } catch (cancelled) {
+        // A cancelled scope (the card's own Cancel, the controller's Stop)
+        // skips the branches below. A parked tab must still go back to parked
+        // while this switch owns it, or a click on it finds it "already
+        // active" and never retries. The cancellation still propagates.
+        if (fromParked && phaseVersion === remoteConnectPhaseVersionRef.current) {
+          setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
+          setCurrentLocalPath(targetSession.localPath);
+          backToParked();
+        }
+        throw cancelled;
+      }
       // V2: the user cancelled the switch listing from the panel spinner.
       // cancelRemoteNavigation runs abortSwitchAfterCancel, which unwinds only
       // the half-switched backend, so keep the workspace: mark just THIS target
@@ -9190,6 +9311,7 @@ const App: React.FC = () => {
         });
         setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
         setCurrentLocalPath(targetSession.localPath);
+        backToParked();
         return;
       }
       // W3.1: user-cancelled reconnect. Mark the session cached (not errored)
@@ -9201,6 +9323,7 @@ const App: React.FC = () => {
         });
         setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
         setCurrentLocalPath(targetSession.localPath);
+        backToParked();
         return;
       }
       logger.error('Reconnect error:', e);
@@ -9211,6 +9334,7 @@ const App: React.FC = () => {
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'cached' } : s));
       // Even on error, ensure local path is set correctly from session cache
       setCurrentLocalPath(targetSession.localPath);
+      backToParked();
       // Issue #128: when reconnect fails because the saved session is stale
       // and the provider now wants a fresh TOTP, surface the 2FA prompt so
       // the user can supply the code without re-opening Edit on the profile.
@@ -9239,7 +9363,9 @@ const App: React.FC = () => {
     setShowConnectionScreen(false);
     setShowRemotePanel(true);
     setShowLocalPreview(false);
-    setIsConnected(true);
+    // Not marked connected here: switchSession does it once the reconnect has
+    // succeeded, so a parked tab's cached files take no remote action while
+    // another server still holds the backend.
     await connectScope.cancellable(() => { void cancelActiveConnect(); return cancelRemoteNavigation(); }, () => switchSession(existing.id, connectScope));
     return true;
   };
@@ -9291,31 +9417,10 @@ const App: React.FC = () => {
     await disconnectFromFtp('close-all');
   };
 
+  /** The "+" new tab: parks the live tab, keeping a device tab, and opens a
+   *  fresh connection form. */
   const handleNewTabFromSavedServer = () => {
-    // Capture current state before any changes
-    const capturedRemoteFiles = [...remoteFiles];
-    const capturedLocalFiles = [...localFiles];
-    const capturedRemotePath = currentRemotePath;
-    const capturedLocalPath = currentLocalPath;
-    const capturedSyncNav = isSyncNavigation;
-    const capturedSyncPaths = syncBasePaths;
-    const capturedVaultOverlay = aeroVaultOverlaySession;
-
-    // Mark current session as cached and go to connection screen (including sync state)
-    if (activeSessionId) {
-      setSessions(prev => prev.map(s =>
-        s.id === activeSessionId
-          ? { ...s, status: 'cached', remoteFiles: capturedRemoteFiles, localFiles: capturedLocalFiles, remotePath: capturedRemotePath, localPath: capturedLocalPath, isSyncNavigation: capturedSyncNav, syncBasePaths: capturedSyncPaths, aeroVaultOverlaySession: capturedVaultOverlay }
-          : s
-      ));
-    }
-    // Deselect the active session since we're going to connection screen
-    setActiveSessionId(null);
-    // Reset sync state for new connection
-    setIsSyncNavigation(false);
-    setSyncBasePaths(null);
-    setAeroVaultOverlaySession(null);
-    setIsConnected(false);
+    parkActiveSession(true);
     // Reset connection form for a fresh "new server" experience
     setConnectionParams({ server: '', username: '', password: '' });
     setQuickConnectDirs({ remoteDir: '', localDir: '' });
@@ -9959,8 +10064,9 @@ const App: React.FC = () => {
   // already aborted, so neither disconnect can inherit its stall on the provider
   // mutex. Both are best-effort: the point of a Cancel is never to trade one
   // stuck call for another, and which disconnect applies depends on the
-  // protocol, so issue both. Shared by the connect abort (which then wipes the
-  // whole workspace) and the switch abort (which keeps every healthy tab).
+  // protocol, so issue both. Shared by the connect abort (which then clears the
+  // remote view and the tabs the connect added) and the switch abort (which
+  // keeps every healthy tab).
   const lockAndDropBackendConnection = async (owns: () => boolean) => {
     const overlaySessionId = aeroVaultOverlaySession?.sessionId;
     return runOwnedConnectionCleanup(owns, [
@@ -9986,7 +10092,9 @@ const App: React.FC = () => {
     setAeroVaultOverlaySession(null);
   };
 
-  const abortConnectAfterCancel = async (owns: () => boolean) => {
+  /** Unwinds a cancelled connect: drops its backend, keeps the tabs it found
+   *  (parked) and removes the ones it added, then returns to My Servers. */
+  const abortConnectAfterCancel = async (owns: () => boolean, phaseVersion: number) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
     if (!await lockAndDropBackendConnection(owns) || !owns()) return;
@@ -9996,7 +10104,16 @@ const App: React.FC = () => {
     setActivePanel('local');
     setRemoteFiles([]);
     setCurrentRemotePath('/');
-    setSessions([]);
+    // Tabs that were open before this connect stay, parked: the backend is gone,
+    // so none of them reads as connected, and clicking one reconnects it. Only a
+    // tab the cancelled connect added goes. An entry point that records no start
+    // (the AeroCloud tab, a GitHub branch switch) added none, so every tab stays.
+    const before = connectStartSessionsRef.current?.phaseVersion === phaseVersion
+      ? connectStartSessionsRef.current.ids
+      : null;
+    setSessions(prev => prev
+      .filter(s => !before || before.has(s.id))
+      .map(s => s.status === 'connected' ? { ...s, status: 'cached' } : s));
     setActiveSessionId(null);
     setShowConnectionScreen(true);
     setShowRemotePanel(false);
@@ -10050,14 +10167,14 @@ const App: React.FC = () => {
       } catch (error) {
         logger.debug('[cancelRemoteNavigation] backend abort failed:', error);
       }
-      // A cancelled fresh connect has no session to keep, so tear the whole
-      // workspace down and return to My Servers. A cancelled tab SWITCH keeps
+      // A cancelled connect drops its backend and returns to My Servers,
+      // keeping the tabs that were open before it. A cancelled tab SWITCH keeps
       // every healthy tab: unwind only the half-switched backend and let
       // switchSession's cancel branch mark the target tab cached.
       const owns = () => phaseVersion === remoteConnectPhaseVersionRef.current && navVersion === remoteNavCounter.current;
       if (!owns()) return;
       if (kind === 'switch') await abortSwitchAfterCancel(owns);
-      else if (kind) await abortConnectAfterCancel(owns);
+      else if (kind) await abortConnectAfterCancel(owns, phaseVersion);
     })();
   };
 
@@ -10959,7 +11076,8 @@ const App: React.FC = () => {
       setShowConnectionScreen(false);
       setShowRemotePanel(true);
       setShowLocalPreview(false);
-      setIsConnected(true);
+      // Marked connected by switchSession once the reconnect has succeeded,
+      // not here: see goToActiveSession. The resume then waits for that.
       await switchSession(existing.id);
       return waitForLiveProfile(profile.id, requireOverlay);
     }
@@ -18222,6 +18340,32 @@ const App: React.FC = () => {
             with the Esc-cancel path: the Cancel button calls cancel_connection
             via cancelActiveConnect; runConnect then closes this modal and
             surfaces the calm "connection cancelled" toast. */}
+        {/* A parked tab reconnects with the workspace still marked disconnected,
+            so the remote panel, and the Cancel on its spinner, are hidden. A
+            listing stalled there holds the provider, so nothing else gets
+            through (another tab, closing the tab, a new connect), and Esc only
+            acts on a connect: this Cancel is the way out. Spinner and Cancel
+            only, no cached rows to act on. */}
+        {remoteListLoading && !isConnected && !showConnectionScreen && (
+          <div className="fixed inset-x-0 bottom-16 z-[80] flex justify-center pointer-events-none">
+            <div className="pointer-events-auto flex items-center gap-3 px-4 py-2 rounded-lg shadow-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+              <Loader2 size={16} className="animate-spin text-blue-500/80 shrink-0" />
+              {remoteListReason && (
+                <span className="max-w-[40vw] truncate text-xs text-gray-600 dark:text-gray-300" title={remoteListReason}>
+                  {remoteListReason}
+                </span>
+              )}
+              <span className="text-xs text-gray-500 dark:text-gray-400">{t('browser.pleaseWait')}</span>
+              <button
+                onClick={cancelRemoteNavigation}
+                className="pointer-events-auto px-3 py-1.5 text-xs font-medium rounded-md bg-white/90 dark:bg-gray-800/90 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 shadow-sm flex items-center gap-1.5"
+                title={t('common.cancel')}
+              >
+                <X size={14} /> {t('common.cancel')}
+              </button>
+            </div>
+          </div>
+        )}
         {stillConnecting && (
           <div className="fixed inset-0 z-[90] flex items-start justify-center pt-[20vh] bg-black/50 backdrop-blur-sm animate-scale-in">
             <div className="w-full max-w-sm mx-4 rounded-xl shadow-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-6">
@@ -18880,6 +19024,7 @@ const App: React.FC = () => {
               connectingProfileId={connectingProfileId}
               onDisconnectProfile={disconnectProfile}
               onOpenMtpDeviceProfile={openMtpSessionFromLiveDevice}
+              onParkActiveSession={parkActiveSession}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {
@@ -19025,8 +19170,8 @@ const App: React.FC = () => {
                 if (isProvider) {
                   // S3/WebDAV connection via provider_connect
                   setLoading(true);
-                  setIsSyncNavigation(false);
-                  setSyncBasePaths(null);
+                  // Navigation Sync is reset by parkActiveSession, after the
+                  // host-key check, which keeps the old tab's.
                   // Use displayName if available - no protocol prefix, icon shows protocol
                   const providerName = normalizedParams.displayName || (normalizedParams.protocol === 's3'
                     ? normalizedParams.options?.bucket || 'S3'
@@ -19068,6 +19213,8 @@ const App: React.FC = () => {
                       const accepted = await connectScope.step(() => checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22, connectScope));
                       if (!accepted) return 'pending_human' as const;
                     }
+                    // The live tab is put aside before its backend goes.
+                    parkActiveSession();
                     // Disconnect any existing connections
                     try { await connectScope.step(() => invoke('provider_disconnect')); } catch { connectScope.assert(); }
                     try { await connectScope.step(() => invoke('disconnect_ftp')); } catch { connectScope.assert(); }
@@ -19234,12 +19381,12 @@ const App: React.FC = () => {
 
                 // Standard FTP/SFTP connection
                 setLoading(true);
-                // Reset navigation sync for new connection
-                setIsSyncNavigation(false);
-                setSyncBasePaths(null);
+                // Navigation Sync is reset by parkActiveSession, which keeps the old tab's.
                 const protocolLabel = connectionViaLabel(params);
                 const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
                 try {
+                  // The live tab is put aside before its backend goes.
+                  parkActiveSession();
                   // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
                   try { await connectScope.step(() => invoke('provider_disconnect')); } catch { connectScope.assert(); }
 
@@ -19328,7 +19475,9 @@ const App: React.FC = () => {
                   const lastSession = sessions[sessions.length - 1];
                   // Hide connection screen FIRST to avoid flash
                   setShowConnectionScreen(false);
-                  setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
+                  // Marked connected by switchSession once the reconnect has
+                  // succeeded, not here: see goToActiveSession.
+                  setShowRemotePanel(true); setShowLocalPreview(false);
                   // Then switch session (async reconnect happens in background)
                   await switchSession(lastSession.id);
                 } else {
