@@ -8858,6 +8858,10 @@ const App: React.FC = () => {
     setOverlayDecrypting(false);
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
+    // A tab parked by "+" or by a connect over it left the workspace marked
+    // disconnected; clicking it must show it connected again, like the card and
+    // "Active Sessions", which set this before calling here.
+    setIsConnected(true);
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting

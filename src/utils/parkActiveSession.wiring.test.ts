@@ -150,6 +150,20 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(body).not.toContain('setActiveSessionId(');
     });
 
+    it('shows a parked tab connected again when it is clicked', () => {
+        // The tab bar calls switchSession directly: with the workspace marked
+        // disconnected by the park, the tab reconnected behind a panel that
+        // still read as disconnected.
+        const start = APP.indexOf('  const switchSession = async');
+        const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
+        const activate = body.indexOf('setActiveSessionId(sessionId);');
+        const connected = body.indexOf('setIsConnected(true);');
+        expect(activate).toBeGreaterThan(-1);
+        expect(connected).toBeGreaterThan(activate);
+        expect(body.slice(activate, connected)).not.toContain('await ');
+        expect(APP).toContain('onTabClick={switchSession}');
+    });
+
     it('parks before an OAuth or 4shared connect replaces the backend in My Servers', () => {
         for (const run of ['scopedCancellable(doOAuthConnect)', 'scopedCancellable(doFourSharedConnect)']) {
             const at = MY_SERVERS.indexOf(run);
