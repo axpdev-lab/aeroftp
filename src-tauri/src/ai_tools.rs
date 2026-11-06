@@ -402,20 +402,6 @@ static AI_TOOL_APPROVAL_REQUESTS: LazyLock<
 static AI_TOOL_APPROVAL_GRANTS: LazyLock<tokio::sync::Mutex<HashMap<String, AiToolApprovalGrant>>> =
     LazyLock::new(|| tokio::sync::Mutex::new(HashMap::new()));
 
-fn truncate_display(value: &str, max_len: usize) -> String {
-    if value.chars().count() <= max_len {
-        return value.to_string();
-    }
-
-    let truncated: String = value.chars().take(max_len).collect();
-    format!("{}...", truncated)
-}
-
-fn approval_display_text(value: &str, max_chars: usize) -> String {
-    let escaped: String = value.chars().flat_map(char::escape_debug).collect();
-    truncate_display(&escaped, max_chars)
-}
-
 /// A value as the approver reads it: whole, escaped so it cannot forge a line
 /// of its own. The approval authorizes the whole value, so no part of it may
 /// stay out of sight (a command padded past a display limit ran in full).
@@ -433,11 +419,22 @@ fn format_approval_value(value: &Value) -> String {
         Value::Bool(boolean_value) => boolean_value.to_string(),
         Value::Number(number_value) => number_value.to_string(),
         Value::Null => "null".to_string(),
-        other => other
-            .to_string()
-            .chars()
-            .flat_map(char::escape_debug)
-            .collect(),
+        // A secret nested in an object (`set.api_token` of a settings update)
+        // is named, never shown, like one at the top level.
+        Value::Object(map) => format!(
+            "{{{}}}",
+            map.iter()
+                .map(|(key, value)| {
+                    let key_text: String = key.chars().flat_map(char::escape_debug).collect();
+                    if is_secret_approval_key(key) {
+                        format!("{key_text}: (hidden)")
+                    } else {
+                        format!("{key_text}: {}", format_approval_value(value))
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
     }
 }
 
@@ -528,11 +525,9 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
     if tool_name == "gui_run" {
         if let Some(names) = args.get("names").and_then(Value::as_array) {
             details.push(format!("selection: {} item(s)", names.len()));
-            for name in names.iter().take(3).filter_map(Value::as_str) {
-                details.push(format!(
-                    "selected name: {}",
-                    approval_display_text(name, 120)
-                ));
+            // Every name the selection acts on, whole.
+            for name in names {
+                details.push(format!("selected name: {}", format_approval_value(name)));
             }
         }
     }
@@ -857,9 +852,10 @@ fn session_grant_operation<'a>(tool_name: &str, args: &'a Value) -> Option<&'a s
     }
 }
 
-/// Scope of a chat-wide grant: the tool, its context and, where the arguments
-/// pick the operation, that operation; no other argument, so a grant for
-/// `local_mkdir` covers the next folder too.
+/// Scope of a chat-wide grant: the tool, its context, the saved server the
+/// call names and, where the arguments pick the operation, that operation; no
+/// other argument, so a grant for `local_mkdir` covers the next folder too,
+/// and one for `server_exec ls` on one server does not cover another.
 fn build_session_scope_key(
     tool_name: &str,
     args: &Value,
@@ -869,10 +865,27 @@ fn build_session_scope_key(
     serde_json::to_string(&json!({
         "tool": tool_name,
         "operation": session_grant_operation(tool_name, args),
+        "server": args.get("server").and_then(Value::as_str),
         "context_local_path": context_local_path,
         "remote_context": remote_context,
     }))
     .map_err(|e| format!("Failed to build AI approval session scope: {}", e))
+}
+
+/// The keys an execution checks its approval against, after the length check
+/// the approval made: a call too long to show in full was never approved, also
+/// not through a chat-wide grant, which skips the window.
+fn execution_approval_keys(
+    tool_name: &str,
+    args: &Value,
+    context_local_path: Option<&str>,
+    remote_context: Option<&str>,
+) -> Result<(String, String), String> {
+    approval_message_for(tool_name, args)?;
+    Ok((
+        build_tool_cache_key(tool_name, args, context_local_path, remote_context)?,
+        build_session_scope_key(tool_name, args, context_local_path, remote_context)?,
+    ))
 }
 
 fn build_tool_cache_key(
@@ -2432,13 +2445,7 @@ async fn execute_ai_tool_of_turn(
 
     if requires_backend_write_approval(&tool_name, &args) {
         let remote_context = build_remote_cache_context(&state, &app_state).await;
-        let scope_key = build_tool_cache_key(
-            &tool_name,
-            &args,
-            context_local_path.as_deref(),
-            remote_context.as_deref(),
-        )?;
-        let session_scope_key = build_session_scope_key(
+        let (scope_key, session_scope_key) = execution_approval_keys(
             &tool_name,
             &args,
             context_local_path.as_deref(),
@@ -2609,6 +2616,23 @@ mod session_grant_tests {
                 remember_for_session: true,
             },
         );
+    }
+
+    // A chat-wide grant for `server_exec ls` on one saved server does not
+    // cover the same operation on another.
+    #[test]
+    fn a_chat_wide_grant_covers_only_its_own_server() {
+        let scope = |server: &str| {
+            build_session_scope_key(
+                "server_exec",
+                &json!({"operation": "ls", "server": server}),
+                Some("/work"),
+                None,
+            )
+            .unwrap()
+        };
+        assert_eq!(scope("srv-a"), scope("srv-a"));
+        assert_ne!(scope("srv-a"), scope("srv-b"));
     }
 
     // Deep scan item 30: a chat-wide grant for `sync_control stop` or a
@@ -2915,10 +2939,49 @@ mod session_grant_tests {
 #[cfg(test)]
 mod approval_tests {
     use super::{
-        build_ai_tool_approval_details, build_ai_tool_approval_message,
+        build_ai_tool_approval_details, build_ai_tool_approval_message, execution_approval_keys,
         requires_backend_write_approval, split_approval_message, ALLOWED_TOOLS,
     };
     use serde_json::json;
+
+    #[test]
+    fn a_secret_nested_in_an_argument_is_named_never_shown() {
+        let message = build_ai_tool_approval_message(
+            "gui_run",
+            &json!({
+                "intent": "settings_update",
+                "set": {"api_token": "SECRETWORD", "theme": "dark", "nested": [{"password": "SECRETWORD"}]},
+            }),
+        );
+        assert!(!message.contains("SECRETWORD"), "{message}");
+        assert!(message.contains("api_token: (hidden)"), "{message}");
+        assert!(message.contains("password: (hidden)"), "{message}");
+        assert!(message.contains("theme: dark"), "{message}");
+    }
+
+    // A chat-wide grant skips the window, so the execution repeats the length
+    // check: a call too long to show in full was never approved.
+    #[test]
+    fn an_execution_refuses_a_call_too_long_to_have_been_approved() {
+        let paths: Vec<String> = (0..2_000)
+            .map(|index| format!("/work/a-rather-long-folder-name/file-{index:05}.txt"))
+            .collect();
+        let err = execution_approval_keys(
+            "local_copy_files",
+            &json!({"paths": paths, "destination": "/work/out"}),
+            Some("/work"),
+            None,
+        )
+        .unwrap_err();
+        assert!(err.contains("too long to approve"), "{err}");
+        execution_approval_keys(
+            "local_copy_files",
+            &json!({"paths": ["/work/one.txt"], "destination": "/work/out"}),
+            Some("/work"),
+            None,
+        )
+        .expect("a call that fits");
+    }
 
     #[test]
     fn gui_controller_tools_are_reachable_and_control_requires_approval() {
@@ -3002,7 +3065,7 @@ mod approval_tests {
     }
 
     #[test]
-    fn gui_approval_names_action_target_and_bounded_selection() {
+    fn gui_approval_names_action_target_and_every_selected_name() {
         let details = build_ai_tool_approval_details(
             "gui_run",
             &json!({
@@ -3018,11 +3081,11 @@ mod approval_tests {
             "selection: 4 item(s)",
             "selected name: first.txt",
             "selected name: third.txt",
+            "selected name: fourth.txt",
         ] {
-            assert!(details.iter().any(|line| line == expected));
+            assert!(details.iter().any(|line| line == expected), "{expected}");
         }
         let message = details.join("\n");
-        assert!(!message.contains("fourth.txt"));
         assert!(!message.contains("SECRET"));
     }
 
@@ -3044,10 +3107,8 @@ mod approval_tests {
         assert!(details
             .iter()
             .any(|line| line == "path: /folder\\nintent: stop"));
-        assert!(details
-            .iter()
-            .filter(|line| line.starts_with("selected name: "))
-            .all(|line| line.chars().count() <= "selected name: ".len() + 123));
+        let long = format!("selected name: {}", "x".repeat(500));
+        assert!(details.iter().any(|line| line == &long));
     }
 
     #[test]

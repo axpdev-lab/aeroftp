@@ -183,8 +183,18 @@ fn protected_location_below(root: &str, existing_only: bool) -> Option<String> {
         .find(|location| {
             location != &real
                 && path_matches_prefix(location, &real)
-                && (!existing_only || std::path::Path::new(location).exists())
+                && (!existing_only || may_exist(std::path::Path::new(location)))
         })
+}
+
+/// Whether `path` exists, or could not be inspected: a folder that refuses
+/// traversal can still be renamed, so an inspection error counts as present
+/// (fail closed). Only a clear absence is absent.
+fn may_exist(path: &std::path::Path) -> bool {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => true,
+        Err(error) => error.kind() != std::io::ErrorKind::NotFound,
+    }
 }
 
 /// The protected location a move or rename of `source` to `dest` would
@@ -201,9 +211,7 @@ fn carried_into_protected(source: &str, dest: &str) -> Option<String> {
             location
                 .strip_prefix(&dest_real)
                 .and_then(|rest| rest.strip_prefix('/'))
-                .is_some_and(|rel| {
-                    std::fs::symlink_metadata(std::path::Path::new(source).join(rel)).is_ok()
-                })
+                .is_some_and(|rel| may_exist(&std::path::Path::new(source).join(rel)))
         })
 }
 

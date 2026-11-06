@@ -3355,11 +3355,17 @@ fn scan_local_files(
     };
     let mut files = LocalFiles::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
+    // A local_dir the policy allows says nothing of what lies below it: a
+    // protected file is never listed, sized or read for a checksum.
+    let policy = crate::ai_core::local_tools::PathPolicy::current();
     for entry in walkdir::WalkDir::new(local_path)
         .follow_links(false)
         .max_depth(MAX_BFS_DEPTH)
         .into_iter()
-        .filter_entry(|e| e.depth() == 0 || !exclude.is_excluded(&relative_of(e.path())))
+        .filter_entry(|e| {
+            e.depth() == 0
+                || (!exclude.is_excluded(&relative_of(e.path())) && !policy.refuses(e.path()))
+        })
     {
         let entry = match entry {
             Ok(entry) => entry,
@@ -4574,6 +4580,29 @@ mod tests {
         for (rel, bytes) in entries {
             assert_eq!(files[rel].0, bytes.len() as u64);
         }
+    }
+
+    // A reconcile or sync doctor of the home lists, sizes and checksums what
+    // it finds: a protected file below the root is never among it.
+    #[test]
+    fn a_local_scan_of_the_home_leaves_protected_files_out() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        for rel in [".ssh/id_fixture", ".config/aeroftp/vault.db", "notes.txt"] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let (files, _) = scan_local_files(&home, &crate::sync_exclude::ExcludeMatcher::default());
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let listed: Vec<&String> = files.keys().collect();
+        assert_eq!(listed, vec!["notes.txt"], "{listed:?}");
     }
 
     #[test]

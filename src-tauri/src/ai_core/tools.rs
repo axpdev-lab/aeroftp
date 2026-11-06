@@ -3377,7 +3377,12 @@ mod tests {
         std::fs::create_dir_all(&work).unwrap();
         let file = work.join("key.pub");
         std::fs::write(&file, b"public").unwrap();
-        for prefix in ["../.ssh/", "/tmp/elsewhere/"] {
+        // The absolute prefix names a folder that exists and is writable, so
+        // only the refusal keeps the file in place, not a failed rename.
+        let elsewhere = fake.home.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        let absolute = format!("{}/", elsewhere.display());
+        for prefix in ["../.ssh/", absolute.as_str()] {
             let renamed = dispatch_tool(
                 &ctx,
                 "local_batch_rename",
@@ -3387,6 +3392,11 @@ mod tests {
             let text = format!("{renamed:?}");
             assert!(file.exists(), "{prefix}: the file moved ({text})");
             assert!(!fake.home.join(".ssh/key.pub").exists(), "{prefix}");
+            assert_eq!(
+                std::fs::read_dir(&elsewhere).unwrap().count(),
+                0,
+                "{prefix}"
+            );
         }
         let source = fake.home.join("staging/.ssh");
         std::fs::create_dir_all(&source).unwrap();
