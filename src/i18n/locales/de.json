@@ -2359,7 +2359,9 @@
             "allowScpFallback": "SCP als Ausweichlösung erlauben",
             "allowScpFallbackHint": "Hat der Server kein SFTP, geht es über SCP auf derselben Verbindung weiter, wie bei WinSCP.",
             "discoverScp": "Dateikopie über SSH für Server ohne SFTP",
-            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)"
+            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)",
+            "trustPasvAddress": "Vom Server genannte passive Adresse verwenden",
+            "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet."
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

@@ -2359,7 +2359,9 @@
             "allowScpFallback": "允许回退到 SCP",
             "allowScpFallbackHint": "如果服务器没有 SFTP，则像 WinSCP 一样在同一连接上改用 SCP 继续。",
             "discoverScp": "为没有 SFTP 的服务器通过 SSH 复制文件",
-            "discoverTigris": "Tigris：全球分布式 S3 兼容存储，无出站流量费用（5 GB 免费）"
+            "discoverTigris": "Tigris：全球分布式 S3 兼容存储，无出站流量费用（5 GB 免费）",
+            "trustPasvAddress": "使用服务器提供的被动模式地址",
+            "trustPasvAddressHelp": "关闭：数据连接会发往你所连接的主机，与 curl 一致。仅对从其他地址发送数据的服务器开启。"
         },
         "shortcuts": {
             "title": "键盘快捷键",

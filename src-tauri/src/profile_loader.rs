@@ -34,6 +34,8 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         // connection read: an explicit site on port 21 was opened as implicit.
         "ftpsMode" => "tls_mode",
         "verifyCert" => "verify_cert",
+        // FTP passive data address opt-in (#1506 Requested 188).
+        "trustPasvAddress" => "trust_pasv_address",
         // Swift: the GUI stores `options.allowCleartextStorage`; the provider
         // reads `allow_cleartext_storage_endpoint`. Without this line a saved
         // profile loaded outside the GUI keeps the camelCase key, the provider
@@ -646,6 +648,10 @@ mod tests {
     #[test]
     fn normalize_known_camel_case_keys() {
         assert_eq!(normalize_profile_option_key("tlsMode"), "tls_mode");
+        assert_eq!(
+            normalize_profile_option_key("trustPasvAddress"),
+            "trust_pasv_address"
+        );
         assert_eq!(
             normalize_profile_option_key("allowCleartextStorage"),
             "allow_cleartext_storage_endpoint"

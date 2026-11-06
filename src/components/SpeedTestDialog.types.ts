@@ -67,6 +67,7 @@ export interface SpeedTestProviderConnectionParams {
     allow_scp_fallback?: false;
     tls_mode?: string | null;
     verify_cert?: boolean | null;
+    trust_pasv_address?: boolean;
 }
 
 export interface SpeedTestRunRequest {

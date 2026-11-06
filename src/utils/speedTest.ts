@@ -120,6 +120,7 @@ export async function buildSpeedTestConnection(server: ServerProfile): Promise<S
         ...scpFallbackConnectParam(protocol, options),
         tls_mode: options.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : null),
         verify_cert: options.verifyCert !== undefined ? options.verifyCert : true,
+        trust_pasv_address: options.trustPasvAddress === true,
     };
 }
 

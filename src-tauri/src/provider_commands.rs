@@ -1120,6 +1120,10 @@ pub struct ProviderConnectionParams {
     pub tls_mode: Option<String>,
     /// FTP/FTPS: Accept invalid/self-signed certificates
     pub verify_cert: Option<bool>,
+    /// FTP/FTPS: use the address a PASV reply names for the data connection
+    /// (absent or false: the control connection's peer, #1506 Requested 188).
+    #[serde(default)]
+    pub trust_pasv_address: Option<bool>,
     /// Swift only. Accept a catalog-issued cleartext object-store endpoint after
     /// an HTTPS Keystone session. Absent or false means the downgrade guard is
     /// armed, which is the default for every profile that does not ask for it.
@@ -1465,6 +1469,9 @@ impl ProviderConnectionParams {
             }
             if let Some(verify) = self.verify_cert {
                 extra.insert("verify_cert".to_string(), verify.to_string());
+            }
+            if self.trust_pasv_address == Some(true) {
+                extra.insert("trust_pasv_address".to_string(), "true".to_string());
             }
         }
 
@@ -16433,6 +16440,7 @@ mod tests {
             timeout: None,
             tls_mode: None,
             verify_cert: None,
+            trust_pasv_address: None,
             allow_cleartext_storage: None,
             two_factor_code: None,
             totp_secret: None,

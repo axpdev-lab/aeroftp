@@ -2359,7 +2359,9 @@
             "allowScpFallback": "SCP als terugvaloptie toestaan",
             "allowScpFallbackHint": "Als de server geen SFTP heeft, gaat de verbinding verder via SCP, zoals WinSCP doet.",
             "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP",
-            "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)"
+            "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)",
+            "trustPasvAddress": "Het door de server opgegeven passieve adres gebruiken",
+            "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt."
         },
         "shortcuts": {
             "title": "Sneltoetsen",

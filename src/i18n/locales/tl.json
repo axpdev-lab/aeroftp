@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Payagan ang SCP bilang kapalit",
             "allowScpFallbackHint": "Kung walang SFTP ang server, magpapatuloy ang koneksyon sa SCP, gaya ng ginagawa ng WinSCP.",
             "discoverScp": "Pagkopya ng file sa SSH para sa mga server na walang SFTP",
-            "discoverTigris": "Tigris: globally distributed na storage na compatible sa S3, walang bayad sa egress (5 GB libre)"
+            "discoverTigris": "Tigris: globally distributed na storage na compatible sa S3, walang bayad sa egress (5 GB libre)",
+            "trustPasvAddress": "Gamitin ang passive address na ibinibigay ng server",
+            "trustPasvAddressHelp": "Naka-off: ang mga koneksyon ng data ay pupunta sa host na kinonektahan mo, tulad ng ginagawa ng curl. I-on lang para sa server na nagpapadala ng data mula sa ibang address."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

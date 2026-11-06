@@ -3469,6 +3469,8 @@
         },
         "protocol": {
             "acceptInvalidCerts": "Accept invalid or self-signed certificates",
+            "trustPasvAddress": "Use the passive address the server gives",
+            "trustPasvAddressHelp": "Off: data connections go to the host you connected to, as curl does. Turn on only for a server that sends data from another address.",
             "advanced": "Advanced",
             "advancedWarning": "These fields are pre-configured for this provider. Changing them may prevent the connection from working correctly.",
             "advancedUnlock": "Edit anyway",

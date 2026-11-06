@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Luba SCP varulahendusena",
             "allowScpFallbackHint": "Kui serveril pole SFTP-d, jätkatakse SCP kaudu sama ühendusega, nagu teeb WinSCP.",
             "discoverScp": "Failide kopeerimine SSH kaudu serveritele, millel pole SFTP-d",
-            "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)"
+            "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)",
+            "trustPasvAddress": "Kasuta serveri antud passiivset aadressi",
+            "trustPasvAddressHelp": "Väljas: andmeühendused lähevad hostile, millega ühendusid, nagu curl teeb. Lülita sisse ainult serveri jaoks, mis saadab andmeid mujalt aadressilt."
         },
         "shortcuts": {
             "title": "Kiirklahvid",

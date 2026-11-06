@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Tillad SCP som reserve",
             "allowScpFallbackHint": "Hvis serveren ikke har SFTP, fortsættes via SCP på samme forbindelse, som WinSCP gør.",
             "discoverScp": "Filkopiering via SSH til servere uden SFTP",
-            "discoverTigris": "Tigris: globalt distribueret S3-kompatibel lagring, ingen gebyrer for udgående data (5 GB gratis)"
+            "discoverTigris": "Tigris: globalt distribueret S3-kompatibel lagring, ingen gebyrer for udgående data (5 GB gratis)",
+            "trustPasvAddress": "Brug den passive adresse, serveren angiver",
+            "trustPasvAddressHelp": "Fra: dataforbindelser går til den vært, du har forbundet til, som curl gør. Slå kun til for en server, der sender data fra en anden adresse."
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

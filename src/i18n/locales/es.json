@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Permitir SCP como alternativa",
             "allowScpFallbackHint": "Si el servidor no tiene SFTP, continúa por SCP en la misma conexión, como hace WinSCP.",
             "discoverScp": "Copia de archivos por SSH para servidores sin SFTP",
-            "discoverTigris": "Tigris: almacenamiento distribuido globalmente compatible con S3, sin cargos por salida de datos (5 GB gratis)"
+            "discoverTigris": "Tigris: almacenamiento distribuido globalmente compatible con S3, sin cargos por salida de datos (5 GB gratis)",
+            "trustPasvAddress": "Usar la dirección pasiva indicada por el servidor",
+            "trustPasvAddressHelp": "Desactivado: las conexiones de datos van al host al que te has conectado, como hace curl. Actívalo solo para un servidor que envía los datos desde otra dirección."
         },
         "shortcuts": {
             "title": "Atajos de Teclado",

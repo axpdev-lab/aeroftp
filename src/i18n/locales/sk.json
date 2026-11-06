@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Povoliť záložné SCP",
             "allowScpFallbackHint": "Ak server nemá SFTP, pripojenie pokračuje cez SCP, ako to robí WinSCP.",
             "discoverScp": "Kopírovanie súborov cez SSH pre servery bez SFTP",
-            "discoverTigris": "Tigris: globálne distribuované úložisko kompatibilné s S3, bez poplatkov za odchádzajúce dáta (5 GB zadarmo)"
+            "discoverTigris": "Tigris: globálne distribuované úložisko kompatibilné s S3, bez poplatkov za odchádzajúce dáta (5 GB zadarmo)",
+            "trustPasvAddress": "Použiť pasívnu adresu zadanú serverom",
+            "trustPasvAddressHelp": "Vypnuté: dátové spojenia smerujú na hostiteľa, ku ktorému ste sa pripojili, rovnako ako pri curl. Zapnite len pre server, ktorý posiela dáta z inej adresy."
         },
         "shortcuts": {
             "title": "Klávesové skratky",

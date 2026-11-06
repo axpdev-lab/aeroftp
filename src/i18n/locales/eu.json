@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Baimendu SCP ordezko gisa",
             "allowScpFallbackHint": "Zerbitzariak SFTPrik ez badu, SCP bidez jarraitzen du konexio berean, WinSCPk egiten duen bezala.",
             "discoverScp": "Fitxategiak kopiatzea SSH bidez SFTPrik gabeko zerbitzarietarako",
-            "discoverTigris": "Tigris: mundu osoan banatutako S3-rekin bateragarria den biltegiratzea, datu-irteeren kosturik gabe (5 GB doan)"
+            "discoverTigris": "Tigris: mundu osoan banatutako S3-rekin bateragarria den biltegiratzea, datu-irteeren kosturik gabe (5 GB doan)",
+            "trustPasvAddress": "Erabili zerbitzariak emandako helbide pasiboa",
+            "trustPasvAddressHelp": "Desaktibatuta: datu-konexioak konektatu zaren ostalarira doaz, curl-ek egiten duen bezala. Aktibatu soilik datuak beste helbide batetik bidaltzen dituen zerbitzari baterako."
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

@@ -7594,6 +7594,7 @@ const App: React.FC = () => {
         ? effectiveParams.options?.webdavScheme
         : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
       verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
+      trust_pasv_address: effectiveParams.options?.trustPasvAddress === true,
       allow_cleartext_storage: effectiveParams.options?.allowCleartextStorage === true,
       two_factor_code: effectiveParams.options?.two_factor_code || null,
       totp_secret: effectiveParams.options?.totp_secret || null,
@@ -8661,7 +8662,11 @@ const App: React.FC = () => {
       }
       const ftpProto = effectiveParams.protocol || 'ftp';
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
-      await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', effectiveParams as unknown as Record<string, unknown>));
+      await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', {
+        ...(effectiveParams as unknown as Record<string, unknown>),
+        // #1506 Requested 188: the PASV address opt-in rides with the legacy command.
+        trustPasvAddress: effectiveParams.options?.trustPasvAddress === true,
+      }));
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
       // login (#180 / 4486730822). Separate signal from health.
@@ -9193,7 +9198,10 @@ const App: React.FC = () => {
         } catch { connectScope.assert();
           // Ignore if not connected to OAuth
         }
-        await connectScope.step(() => runConnect('connect_ftp', targetSession.connectionParams as unknown as Record<string, unknown>, connectScope));
+        await connectScope.step(() => runConnect('connect_ftp', {
+          ...(targetSession.connectionParams as unknown as Record<string, unknown>),
+          trustPasvAddress: targetSession.connectionParams.options?.trustPasvAddress === true,
+        }, connectScope));
 
         // Navigate to the saved path to restore session state.
         // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
@@ -9688,6 +9696,7 @@ const App: React.FC = () => {
             ...scpFallbackConnectParam(protocol, cloudServer.options),
             tls_mode: cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
+            trust_pasv_address: cloudServer.options?.trustPasvAddress === true,
             allow_cleartext_storage: cloudServer.options?.allowCleartextStorage === true,
             two_factor_code: cloudServer.options?.two_factor_code || null,
             totp_secret: cloudServer.options?.totp_secret || null,

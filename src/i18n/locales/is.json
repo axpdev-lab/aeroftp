@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Leyfa SCP til vara",
             "allowScpFallbackHint": "Ef netþjónninn hefur ekki SFTP er haldið áfram um SCP á sömu tengingu, eins og WinSCP gerir.",
             "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP",
-            "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)"
+            "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)",
+            "trustPasvAddress": "Nota óvirka vistfangið sem þjónninn gefur upp",
+            "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

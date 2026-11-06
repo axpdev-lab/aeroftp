@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Ruhusu SCP kama mbadala",
             "allowScpFallbackHint": "Ikiwa seva haina SFTP, muunganisho unaendelea kupitia SCP, kama WinSCP inavyofanya.",
             "discoverScp": "Kunakili faili kupitia SSH kwa seva zisizo na SFTP",
-            "discoverTigris": "Tigris: hifadhi iliyosambazwa duniani kote inayooana na S3, bila ada za data inayotoka nje (5 GB bila malipo)"
+            "discoverTigris": "Tigris: hifadhi iliyosambazwa duniani kote inayooana na S3, bila ada za data inayotoka nje (5 GB bila malipo)",
+            "trustPasvAddress": "Tumia anwani ya passive inayotolewa na seva",
+            "trustPasvAddressHelp": "Zima: miunganisho ya data huenda kwa mwenyeji uliyeunganishwa naye, kama curl inavyofanya. Washa tu kwa seva inayotuma data kutoka anwani nyingine."
         },
         "shortcuts": {
             "title": "Njia za Mkato",

@@ -605,6 +605,8 @@
             "encryptionImplicit": "Richiedi FTP implicito su TLS",
             "encryptionExplicitIfAvailable": "Usa FTP esplicito su TLS se disponibile",
             "acceptInvalidCerts": "Accetta certificati non validi o autofirmati",
+            "trustPasvAddress": "Usa l'indirizzo passivo indicato dal server",
+            "trustPasvAddressHelp": "Disattivato: le connessioni dati vanno all'host a cui ti sei connesso, come fa curl. Attivalo solo per un server che invia i dati da un altro indirizzo.",
             "selectRegion": "Seleziona regione...",
             "providerDocumentation": "Documentazione {name}",
             "webdavExampleLabel": "Esempio:",

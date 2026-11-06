@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Benarkan SCP sebagai sandaran",
             "allowScpFallbackHint": "Jika pelayan tiada SFTP, sambungan diteruskan melalui SCP, seperti yang dilakukan WinSCP.",
             "discoverScp": "Salinan fail melalui SSH untuk pelayan tanpa SFTP",
-            "discoverTigris": "Tigris: storan teragih secara global yang serasi dengan S3, tanpa yuran egress (5 GB percuma)"
+            "discoverTigris": "Tigris: storan teragih secara global yang serasi dengan S3, tanpa yuran egress (5 GB percuma)",
+            "trustPasvAddress": "Gunakan alamat pasif yang diberikan pelayan",
+            "trustPasvAddressHelp": "Mati: sambungan data menuju hos yang anda sambungkan, seperti yang dilakukan curl. Hidupkan hanya untuk pelayan yang menghantar data dari alamat lain."
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

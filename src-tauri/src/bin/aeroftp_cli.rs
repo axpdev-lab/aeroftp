@@ -268,6 +268,17 @@ struct Cli {
     )]
     tls: Option<String>,
 
+    /// FTP: connect passive data channels to the address the server's PASV
+    /// reply names, instead of the control connection's host (the default,
+    /// as curl). Only for a server that serves data from another address.
+    #[arg(
+        long,
+        global = true,
+        hide_short_help = true,
+        help_heading = "Connection options"
+    )]
+    trust_pasv_address: bool,
+
     /// Skip TLS certificate verification
     #[arg(
         long,
@@ -13500,6 +13511,9 @@ fn url_to_provider_config(url: &str, cli: &Cli) -> Result<(ProviderConfig, Strin
         extra.insert("tls_mode".to_string(), tls.clone());
     } else if provider_type == ProviderType::Ftps {
         extra.insert("tls_mode".to_string(), "implicit".to_string());
+    }
+    if cli.trust_pasv_address {
+        extra.insert("trust_pasv_address".to_string(), "true".to_string());
     }
 
     // TLS cert verification
@@ -31506,6 +31520,9 @@ fn profile_value_to_provider_config(
     apply_cli_ssh_extras(cli, &mut extra);
     if let Some(ref tls) = cli.tls {
         extra.insert("tls_mode".to_string(), tls.clone());
+    }
+    if cli.trust_pasv_address {
+        extra.insert("trust_pasv_address".to_string(), "true".to_string());
     }
     if cli.insecure {
         extra.insert("verify_cert".to_string(), "false".to_string());
@@ -84956,6 +84973,7 @@ mod tests {
             container: None,
             token: None,
             tls: None,
+            trust_pasv_address: false,
             insecure: false,
             trust_host_key: false,
             no_scp_fallback: false,

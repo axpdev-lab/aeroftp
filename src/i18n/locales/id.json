@@ -2359,7 +2359,9 @@
             "allowScpFallback": "Izinkan SCP sebagai cadangan",
             "allowScpFallbackHint": "Jika server tidak memiliki SFTP, lanjutkan melalui SCP pada koneksi yang sama, seperti yang dilakukan WinSCP.",
             "discoverScp": "Salin file melalui SSH untuk server tanpa SFTP",
-            "discoverTigris": "Tigris: penyimpanan terdistribusi global yang kompatibel dengan S3, tanpa biaya egress (5 GB gratis)"
+            "discoverTigris": "Tigris: penyimpanan terdistribusi global yang kompatibel dengan S3, tanpa biaya egress (5 GB gratis)",
+            "trustPasvAddress": "Gunakan alamat pasif yang diberikan server",
+            "trustPasvAddressHelp": "Nonaktif: koneksi data menuju host tempat Anda terhubung, seperti yang dilakukan curl. Aktifkan hanya untuk server yang mengirim data dari alamat lain."
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
