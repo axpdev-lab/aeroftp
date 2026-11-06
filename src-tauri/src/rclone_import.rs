@@ -956,12 +956,20 @@ fn map_remote(
                 provider_id
             };
             // A remote with no region is `us-east-1` everywhere but on Tigris,
-            // whose own default (and the preset's) is `auto`.
+            // whose own default (and the preset's) is `auto`, and on Fastly,
+            // where the region is the label of the endpoint host (the signing
+            // region must equal it) and the preset's default is `eu-central-1`.
             let region = match get_str("region") {
-                Some(region) if provider_id != "tigris" || !region.trim().is_empty() => {
+                Some(region)
+                    if !matches!(provider_id, "tigris" | "fastly") || !region.trim().is_empty() =>
+                {
                     region.to_string()
                 }
                 _ if provider_id == "tigris" => "auto".to_string(),
+                _ if provider_id == "fastly" => {
+                    crate::profile_loader::s3_region_from_endpoint("fastly", &endpoint)
+                        .unwrap_or_else(|| "eu-central-1".to_string())
+                }
                 _ => "us-east-1".to_string(),
             };
 
@@ -974,6 +982,10 @@ fn map_remote(
                     .to_string()
             } else if provider_id == "amazon-s3" {
                 format!("s3.{}.amazonaws.com", region)
+            } else if provider_id == "fastly" {
+                // rclone's Fastly provider is named by region; the host is the
+                // region label under the Fastly domain.
+                format!("{}.object.fastlystorage.app", region.trim())
             } else {
                 // Generic S3: need endpoint
                 return Err("s3 remote has no endpoint".to_string());
@@ -3678,6 +3690,11 @@ pub fn export_rclone(
                     // addressing style, written below, keeps rclone on the
                     // virtual-host path Tigris documents.
                     "tigris" => "Other",
+                    // Fastly Object Storage has its own provider token since
+                    // rclone 1.74.0 (it sets path-style and the opaque-ETag
+                    // quirk). An older rclone rejects the name; the bridge does
+                    // not check the installed version, so the docs say so.
+                    "fastly" => "Fastly",
                     _ => "Other",
                 };
                 body.push_str(&format!("provider = {}\n", rclone_provider));
@@ -3698,9 +3715,10 @@ pub fn export_rclone(
                 let mut path_style_option: Option<bool> = None;
                 if let Some(opts) = options {
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
-                        // A blank region on a Tigris profile is no region: it
-                        // gets the `auto` written below, as the preset does.
-                        if !(provider_id == "tigris" && region.trim().is_empty()) {
+                        // A blank region on a Tigris or Fastly profile is no
+                        // region: it gets the preset's value written below.
+                        if !(matches!(provider_id, "tigris" | "fastly") && region.trim().is_empty())
+                        {
                             body.push_str(&format!("region = {}\n", region));
                             region_written = true;
                         }
@@ -3769,6 +3787,16 @@ pub fn export_rclone(
                         )
                     });
 
+                // Fastly signs with the host label as the region, so a profile
+                // without a usable region gets the label of its endpoint, else
+                // the preset's Frankfurt.
+                let fastly_region = (provider_id == "fastly").then(|| {
+                    resolved_endpoint
+                        .as_deref()
+                        .and_then(|e| crate::profile_loader::s3_region_from_endpoint("fastly", e))
+                        .unwrap_or_else(|| "eu-central-1".to_string())
+                });
+
                 if let Some(endpoint) = resolved_endpoint {
                     let endpoint = endpoint.trim_end_matches('/');
                     let endpoint =
@@ -3806,6 +3834,19 @@ pub fn export_rclone(
                     body.push_str(&format!(
                         "force_path_style = {}\n",
                         path_style_option.unwrap_or(dotted_bucket)
+                    ));
+                }
+
+                // The Fastly provider already implies path-style, but the choice
+                // is written out so an older profile and a newer rclone agree;
+                // a stored choice wins.
+                if let Some(region) = fastly_region {
+                    if !region_written {
+                        body.push_str(&format!("region = {region}\n"));
+                    }
+                    body.push_str(&format!(
+                        "force_path_style = {}\n",
+                        path_style_option.unwrap_or(true)
                     ));
                 }
 
@@ -5668,6 +5709,212 @@ endpoint = https://s3.filebase.io
             .find(|s| s.name == "plain-custom")
             .expect("plain-custom remote");
         assert_eq!(plain.provider_id.as_deref(), Some("custom-s3"));
+    }
+
+    #[test]
+    fn test_import_rclone_fastly_remotes_keep_preset_region_and_path_style() {
+        use std::io::Write;
+        // rclone >= 1.74.0 writes `provider = Fastly`. Region and addressing may
+        // be missing, blank or typed as strings; each must land on the preset
+        // value, and the region must follow the endpoint label because Fastly
+        // signs with it.
+        let conf = r#"
+[fastly-full]
+type = s3
+provider = Fastly
+access_key_id = AK
+secret_access_key = SK
+endpoint = us-east.object.fastlystorage.app
+region = us-east
+force_path_style = true
+
+[fastly-no-region]
+type = s3
+provider = Fastly
+access_key_id = AK
+secret_access_key = SK
+endpoint = us-east-1.object.fastlystorage.app
+
+[fastly-blank-region]
+type = s3
+provider = Fastly
+access_key_id = AK
+secret_access_key = SK
+endpoint = https://eu-central.object.fastlystorage.app
+region =
+
+[fastly-region-only]
+type = s3
+provider = Fastly
+access_key_id = AK
+secret_access_key = SK
+region = jp-central-1
+
+[fastly-nothing]
+type = s3
+provider = Fastly
+access_key_id = AK
+secret_access_key = SK
+
+[fastly-other]
+type = s3
+provider = Other
+access_key_id = AK
+secret_access_key = SK
+endpoint = https://eu-west-1.object.fastlystorage.app
+
+[fastly-path-style-off]
+type = s3
+provider = Fastly
+access_key_id = AK
+secret_access_key = SK
+endpoint = eu-south-1.object.fastlystorage.app
+force_path_style = false
+"#;
+        let tmp = std::env::temp_dir().join("aeroftp-test-rclone-fastly.conf");
+        {
+            let mut f = std::fs::File::create(&tmp).unwrap();
+            f.write_all(conf.as_bytes()).unwrap();
+        }
+        let result = import_rclone(&tmp).expect("should parse");
+        std::fs::remove_file(&tmp).ok();
+        let server = |name: &str| {
+            result
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("{name} remote"))
+        };
+        let region_of = |name: &str| {
+            server(name)
+                .options
+                .as_ref()
+                .and_then(|o| o.get("region"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        let path_style_of = |name: &str| {
+            server(name)
+                .options
+                .as_ref()
+                .and_then(|o| o.get("pathStyle"))
+                .and_then(|v| v.as_bool())
+        };
+        for name in [
+            "fastly-full",
+            "fastly-no-region",
+            "fastly-blank-region",
+            "fastly-region-only",
+            "fastly-nothing",
+            "fastly-other",
+            "fastly-path-style-off",
+        ] {
+            assert_eq!(
+                server(name).provider_id.as_deref(),
+                Some("fastly"),
+                "{name}"
+            );
+        }
+        assert_eq!(region_of("fastly-full").as_deref(), Some("us-east"));
+        // us-east-1 is a different region from us-east: the label wins.
+        assert_eq!(region_of("fastly-no-region").as_deref(), Some("us-east-1"));
+        assert_eq!(
+            region_of("fastly-blank-region").as_deref(),
+            Some("eu-central")
+        );
+        assert_eq!(
+            region_of("fastly-region-only").as_deref(),
+            Some("jp-central-1")
+        );
+        assert_eq!(
+            server("fastly-region-only").host,
+            "jp-central-1.object.fastlystorage.app"
+        );
+        assert_eq!(region_of("fastly-nothing").as_deref(), Some("eu-central-1"));
+        assert_eq!(
+            server("fastly-nothing").host,
+            "eu-central-1.object.fastlystorage.app"
+        );
+        assert_eq!(region_of("fastly-other").as_deref(), Some("eu-west-1"));
+        for name in [
+            "fastly-full",
+            "fastly-no-region",
+            "fastly-blank-region",
+            "fastly-nothing",
+        ] {
+            assert_eq!(path_style_of(name), Some(true), "{name}");
+        }
+        // An explicit choice is kept.
+        assert_eq!(path_style_of("fastly-path-style-off"), Some(false));
+    }
+
+    #[test]
+    fn test_export_fastly_s3_uses_the_provider_token_with_region_and_path_style() {
+        let export = |options: serde_json::Value, host: &str| {
+            let servers = vec![RcloneExportServer {
+                id: "fastly".into(),
+                name: "fastly".into(),
+                host: host.into(),
+                port: 443,
+                username: "AKFASTLY".into(),
+                protocol: Some("s3".into()),
+                options: Some(options),
+                provider_id: Some("fastly".into()),
+            }];
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("rclone.conf");
+            export_rclone(&servers, &HashMap::new(), &path).unwrap();
+            std::fs::read_to_string(path).unwrap()
+        };
+
+        // Preset defaults only: the endpoint and region come from the manifest.
+        let conf = export(serde_json::json!({ "bucket": "photos" }), "");
+        assert!(conf.contains("provider = Fastly\n"), "{conf}");
+        assert!(
+            conf.contains("endpoint = https://eu-central-1.object.fastlystorage.app\n"),
+            "{conf}"
+        );
+        assert!(conf.contains("region = eu-central-1\n"), "{conf}");
+        assert!(conf.contains("force_path_style = true\n"), "{conf}");
+        assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
+
+        // A stored region is written once; the older regions stay themselves.
+        let conf = export(
+            serde_json::json!({ "bucket": "photos", "region": "us-east" }),
+            "us-east.object.fastlystorage.app",
+        );
+        assert!(conf.contains("region = us-east\n"), "{conf}");
+        assert!(
+            conf.contains("endpoint = https://us-east.object.fastlystorage.app\n"),
+            "{conf}"
+        );
+        assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
+
+        // A blank region follows the endpoint label, not the generic default.
+        for blank in ["", "   "] {
+            let conf = export(
+                serde_json::json!({ "bucket": "photos", "region": blank }),
+                "eu-west-1.object.fastlystorage.app",
+            );
+            assert!(conf.contains("region = eu-west-1\n"), "{conf}");
+            assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
+        }
+
+        // Addressing: typed as a bool or a string, a stored choice wins.
+        for (stored, expected) in [
+            (serde_json::json!(true), true),
+            (serde_json::json!("true"), true),
+            (serde_json::json!(" FALSE "), false),
+        ] {
+            let conf = export(
+                serde_json::json!({ "bucket": "photos", "pathStyle": stored }),
+                "",
+            );
+            assert!(
+                conf.contains(&format!("force_path_style = {expected}\n")),
+                "{stored}: {conf}"
+            );
+        }
     }
 
     #[test]

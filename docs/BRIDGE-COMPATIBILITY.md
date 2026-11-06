@@ -40,7 +40,10 @@ S3 sub-providers ride the single S3 protocol, so every S3-capable tool above
 covers them: Amazon S3, Cloudflare R2, DigitalOcean Spaces, Wasabi, Backblaze B2
 (via its S3 gateway), Linode Object Storage, Scaleway, Storj, IDrive e2, MinIO,
 IONOS S3, Alibaba OSS, Tencent COS, Qiniu Kodo, Google Cloud Storage, and generic
-custom S3. WebDAV vendors (Nextcloud, ownCloud, and custom WebDAV for
+custom S3. Fastly Object Storage exports to rclone as `provider = Fastly`,
+which needs rclone 1.74.0 or newer (older versions reject the name), and is
+recognized on import from that token or from a `.object.fastlystorage.app`
+endpoint. WebDAV vendors (Nextcloud, ownCloud, and custom WebDAV for
 SharePoint / Fastmail / Koofr-dav) likewise ride WebDAV.
 
 ## Native cloud providers (rclone is the only bridge)
