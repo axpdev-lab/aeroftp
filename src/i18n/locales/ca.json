@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Feu servir SCP només per a servidors sense SFTP, per exemple encaminadors OpenWrt.",
             "allowScpFallback": "Permet recórrer a SCP",
             "allowScpFallbackHint": "Si el servidor no té SFTP, continua per SCP a la mateixa connexió, com fa WinSCP.",
-            "discoverScp": "Còpia de fitxers per SSH per a servidors sense SFTP"
+            "discoverScp": "Còpia de fitxers per SSH per a servidors sense SFTP",
+            "discoverTigris": "Tigris: emmagatzematge distribuït globalment compatible amb S3, sense càrrecs per sortida de dades (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",

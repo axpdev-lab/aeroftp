@@ -29,6 +29,7 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     storj: 'storj',
     'idrive-e2': 'idrive-e2',
     filebase: 'filebase',
+    tigris: 'tigris',
     minio: 'minio',
     'oracle-cloud': 'oracle-cloud',
     'google-cloud-storage': 'google-cloud-storage',

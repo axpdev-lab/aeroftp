@@ -33,6 +33,49 @@ use super::{
     StorageProvider, TrashEntry, UploadedPart,
 };
 
+/// What a folder rename that stopped halfway tells the user. A retry is refused
+/// while the destination holds objects, so the message says where each kind of
+/// object is and what clearing may touch. Objects moved by the metadata rename
+/// exist only under the destination: deleting them there loses them, so the
+/// advice for those is to move them back.
+fn partial_rename_message(
+    moved: usize,
+    copied: usize,
+    total: usize,
+    from: &str,
+    to: &str,
+    failed_key: &str,
+    cause: &dyn std::fmt::Display,
+) -> String {
+    // The answer to the failed key may have been lost after the server acted
+    // on it, so it is the one object whose folder is not known.
+    let unsure = format!("{failed_key} itself may be in either folder: look for it in both");
+    if moved == 0 && copied == 0 {
+        format!(
+            "rename of {total} objects to {to} failed on {failed_key} before any was copied \
+             or moved; {unsure} before retrying: {cause}"
+        )
+    } else if moved == 0 {
+        format!(
+            "rename copied {copied} of {total} objects to {to} before copying {failed_key} \
+             failed; the other originals are all still in {from}, the {copied} copies \
+             stay under {to}, and a retry is refused until they are removed; {unsure}: {cause}"
+        )
+    } else {
+        let copies = if copied > 0 {
+            format!(" and delete from {to} only the {copied} copies that also exist in {from}")
+        } else {
+            String::new()
+        };
+        format!(
+            "rename moved {moved} and copied {copied} of {total} objects to {to} before \
+             {failed_key} failed; the {moved} moved objects are only under {to} now, so do \
+             not delete them: to retry, move them back to {from}{copies}. The rest are \
+             still in {from}; {unsure}: {cause}"
+        )
+    }
+}
+
 /// Returns true when the S3 endpoint targets a loopback address or a known
 /// local-bridge hostname (Filen Desktop S3 at local.s3.filen.io, MEGAcmd, ...).
 /// Used to auto-trust self-signed TLS certificates in S3Provider::new without
@@ -594,6 +637,72 @@ pub struct S3Provider {
     /// N identical warnings. Shared across clones on purpose: a clone is the
     /// same profile talking to the same endpoint.
     cleartext_warned: Arc<std::sync::atomic::AtomicBool>,
+    /// What this session has learned about Tigris' `X-Tigris-Rename` header
+    /// (`TIGRIS_RENAME_*`), shared by clones. The header is not in the
+    /// published API pages' SigV4 contract for every gateway state, so the
+    /// rename shortcut is detected, never assumed (C12).
+    tigris_rename_state: Arc<std::sync::atomic::AtomicU8>,
+    /// Makes a loopback test double answer to the Tigris detector.
+    #[cfg(test)]
+    force_tigris: bool,
+}
+
+/// The shortest gap AeroCloud leaves between two full remote scans of a
+/// Tigris pair.
+const TIGRIS_MIN_FULL_SCAN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// `X-Tigris-Rename` not tried yet on this session.
+const TIGRIS_RENAME_UNKNOWN: u8 = 0;
+/// The last rename removed the source key by itself.
+const TIGRIS_RENAME_HONORED: u8 = 1;
+/// The header was refused or ignored: renames use copy and delete.
+const TIGRIS_RENAME_REFUSED: u8 = 2;
+
+/// A single CopyObject that failed, with what the caller needs to tell a
+/// refusal of a request header from every other failure: the HTTP status the
+/// server answered (`None` when no answer came) and its S3 error code.
+struct CopyFailure {
+    error: ProviderError,
+    status: Option<StatusCode>,
+    code: Option<String>,
+}
+
+impl CopyFailure {
+    /// A failure before or without a server answer.
+    fn without_answer(error: ProviderError) -> Self {
+        Self {
+            error,
+            status: None,
+            code: None,
+        }
+    }
+
+    /// Whether the server refused the request itself, as a gateway that does
+    /// not accept `X-Tigris-Rename` would: a client error, but neither a
+    /// missing source (404), a throttle or timeout (408, 429) nor a source
+    /// too large for one CopyObject. Everything else (5xx, a lost
+    /// connection, a timeout) says nothing about the header.
+    fn refuses_the_request(&self) -> bool {
+        self.status.is_some_and(|status| {
+            status.is_client_error()
+                && !matches!(
+                    status,
+                    StatusCode::NOT_FOUND
+                        | StatusCode::REQUEST_TIMEOUT
+                        | StatusCode::TOO_MANY_REQUESTS
+                )
+        }) && self.code.as_deref() != Some("EntityTooLarge")
+    }
+}
+
+/// What [`S3Provider::tigris_rename_object`] left behind.
+#[derive(Debug, PartialEq, Eq)]
+enum TigrisRename {
+    /// The destination holds the object and the source key is gone.
+    Renamed,
+    /// The destination holds a copy and the source key is still there: the
+    /// caller deletes it, as after any copy.
+    Copied,
 }
 
 /// Owned snapshot of the credentials a single signing pass uses, taken under
@@ -780,6 +889,9 @@ impl S3Provider {
             temp_credentials: Arc::new(std::sync::RwLock::new(None)),
             sts_refresh_lock: Arc::new(tokio::sync::Mutex::new(())),
             cleartext_warned: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            tigris_rename_state: Arc::new(std::sync::atomic::AtomicU8::new(TIGRIS_RENAME_UNKNOWN)),
+            #[cfg(test)]
+            force_tigris: false,
         })
     }
 
@@ -1663,6 +1775,18 @@ impl S3Provider {
             .unwrap_or(false)
     }
 
+    /// Detect Tigris endpoints: the current `t3.storage.dev` and the legacy
+    /// `fly.storage.tigris.dev`, exact host or virtual-hosted bucket
+    /// subdomain, never a substring. Host-parsed so a profile saved from the
+    /// "Custom S3" form gets the same behaviour as the preset.
+    fn is_tigris_endpoint(&self) -> bool {
+        #[cfg(test)]
+        if self.force_tigris {
+            return true;
+        }
+        self.config.endpoint.as_deref().is_some_and(is_tigris_host)
+    }
+
     /// Whether a server-side copy of `source_size` bytes is composed as a
     /// multipart `UploadPartCopy` sequence instead of a single-PUT
     /// `CopyObject`. Filebase is the exception: it rejects `UploadPartCopy`
@@ -1782,6 +1906,151 @@ impl S3Provider {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "unknown".to_string())
         )))
+    }
+
+    /// Account usage on Tigris: `GET /?IncludeStats=true` with
+    /// `Accept: application/json`, signed with the profile's own key, answers
+    /// `Stats.TotalStorageBytes`. The call is in the vendor SDKs but not in the
+    /// published API pages, so it is feature-detected (C12): any answer that
+    /// does not carry the figure is `NotSupported`, which every surface
+    /// already shows as "no usage available", and nothing else depends on it.
+    /// It is billed like a listing, so it runs on demand only, never on a
+    /// timer. There is no quota to report (paid accounts are unlimited), so
+    /// `total` and `free` stay 0 and the caller shows used bytes alone.
+    async fn tigris_storage_info(&self) -> Result<super::StorageInfo, ProviderError> {
+        use sha2::{Digest, Sha256};
+        const MAX_STATS_BODY: u64 = 256 * 1024;
+
+        self.ensure_fresh_credentials().await?;
+        let url = format!("{}/?IncludeStats=true", self.endpoint());
+        let payload_hash = hex::encode(Sha256::digest(b""));
+        let mut headers = HashMap::new();
+        headers.insert("accept".to_string(), "application/json".to_string());
+        let authorization = self.sign_request("GET", &url, &mut headers, &payload_hash)?;
+        let mut request = self.client.get(&url);
+        for (key, value) in &headers {
+            request = request.header(key, value);
+        }
+        let request = request
+            .header("Authorization", authorization)
+            .build()
+            .map_err(|e| ProviderError::NetworkError(format!("usage request build failed: {e}")))?;
+        let response =
+            super::send_with_retry(&self.client, request, &super::HttpRetryConfig::default())
+                .await
+                .map_http_err(|e| {
+                    ProviderError::NetworkError(format!("usage request failed: {e}"))
+                })?;
+        let status = response.status();
+        let body = super::response_bytes_with_limit(response, MAX_STATS_BODY)
+            .await
+            .map_err(|e| {
+                super::keep_timeout(e, |e| {
+                    ProviderError::ServerError(format!("usage response rejected: {e}"))
+                })
+            })?;
+        if !status.is_success() {
+            // A throttled or failing service is a failure the caller can tell
+            // from a key or a gateway that does not offer the extension. 501
+            // is the gateway saying it does not offer it.
+            if status == StatusCode::TOO_MANY_REQUESTS
+                || (status.is_server_error() && status != StatusCode::NOT_IMPLEMENTED)
+            {
+                return Err(ProviderError::ServerError(format!(
+                    "Tigris usage request failed (HTTP {status})"
+                )));
+            }
+            return Err(ProviderError::NotSupported(format!(
+                "Tigris did not report account usage for this key (HTTP {status})"
+            )));
+        }
+        let used =
+            parse_tigris_total_storage_bytes(&String::from_utf8_lossy(&body)).ok_or_else(|| {
+                ProviderError::NotSupported(
+                    "Tigris did not report account usage for this key".to_string(),
+                )
+            })?;
+        Ok(super::StorageInfo {
+            used,
+            total: 0,
+            free: 0,
+            versioning_bytes: None,
+        })
+    }
+
+    /// Whether renames on this session may try Tigris' `X-Tigris-Rename`.
+    fn tigris_rename_enabled(&self) -> bool {
+        self.is_tigris_endpoint()
+            && self
+                .tigris_rename_state
+                .load(std::sync::atomic::Ordering::Relaxed)
+                != TIGRIS_RENAME_REFUSED
+    }
+
+    /// Move `from_key` to `to_key` inside the bucket with `X-Tigris-Rename`.
+    ///
+    /// The header is feature-detected (C12). When the rename copy fails, the
+    /// plain copy decides: if it works the header is the problem and the
+    /// session stops using it, if it fails too that error is the answer. The
+    /// first success is checked with a HEAD on the source, because a gateway
+    /// that ignores the header answers 200 and leaves the source in place.
+    async fn tigris_rename_object(
+        &mut self,
+        from_key: &str,
+        to_key: &str,
+    ) -> Result<TigrisRename, ProviderError> {
+        if let Err(rename_failure) = self
+            .copy_object_single_detailed(from_key, to_key, true)
+            .await
+        {
+            debug!(
+                "[S3] Tigris rename copy failed, trying a plain copy: {}",
+                rename_failure.error
+            );
+            if let Err(copy_error) = self.copy_prepared_source(from_key, to_key).await {
+                // The rename may have worked and only its response got lost:
+                // then the source is gone and the plain copy finds nothing.
+                // The destination settles it (the caller already listed the
+                // source, so a missing source here means it was moved).
+                if matches!(copy_error, ProviderError::NotFound(_)) {
+                    let moved = self
+                        .s3_request(Method::HEAD, to_key, None, None)
+                        .await
+                        .is_ok_and(|resp| resp.status() == StatusCode::OK);
+                    if moved {
+                        return Ok(TigrisRename::Renamed);
+                    }
+                }
+                return Err(copy_error);
+            }
+            // The header is the problem only when the server refused the
+            // request. A 5xx, a lost connection or a source too large for one
+            // CopyObject also end here, and must not switch the shortcut off
+            // for the rest of the session: the next rename tries it again.
+            if rename_failure.refuses_the_request() {
+                self.tigris_rename_state
+                    .store(TIGRIS_RENAME_REFUSED, Ordering::Relaxed);
+            }
+            return Ok(TigrisRename::Copied);
+        }
+        if self.tigris_rename_state.load(Ordering::Relaxed) == TIGRIS_RENAME_HONORED {
+            return Ok(TigrisRename::Renamed);
+        }
+        match self.s3_request(Method::HEAD, from_key, None, None).await {
+            Ok(resp) if resp.status() == StatusCode::NOT_FOUND => {
+                self.tigris_rename_state
+                    .store(TIGRIS_RENAME_HONORED, Ordering::Relaxed);
+                Ok(TigrisRename::Renamed)
+            }
+            Ok(resp) if resp.status() == StatusCode::OK => {
+                self.tigris_rename_state
+                    .store(TIGRIS_RENAME_REFUSED, Ordering::Relaxed);
+                Ok(TigrisRename::Copied)
+            }
+            // Cannot tell: leave the state and let the caller delete the
+            // source, which is idempotent if the rename did remove it.
+            _ => Ok(TigrisRename::Copied),
+        }
     }
 
     /// Rename or replace by CopyObject then delete: S3 has no move. With
@@ -1927,6 +2196,20 @@ impl S3Provider {
                 }
                 Err(e) => return Err(e),
             }
+            if self.tigris_rename_enabled() {
+                let outcome = self
+                    .tigris_rename_object(from_key, to.trim_start_matches('/'))
+                    .await?;
+                self.verify_copy_target_exists(to).await?;
+                if outcome == TigrisRename::Copied {
+                    self.delete(from).await?;
+                }
+                info!(
+                    "Renamed file (Tigris rename, {:?}) {} to {}",
+                    outcome, from, to
+                );
+                return Ok(());
+            }
             self.copy_prepared_source(from, to).await?;
             self.verify_copy_target_exists(to).await?;
             self.delete(from).await?;
@@ -1934,40 +2217,61 @@ impl S3Provider {
         } else {
             // Directory rename: copy all objects to new prefix, then delete
             // originals (the folder marker, when there is one, is among them).
-            for (copied, old_key) in keys.iter().enumerate() {
+            // On Tigris each key is a metadata-only rename and needs no
+            // delete; a key that had to be copied is deleted like any other.
+            let mut to_delete: Vec<String> = Vec::with_capacity(keys.len());
+            let mut moved = 0usize;
+            for old_key in keys.iter() {
                 let new_key = old_key.replacen(&prefix, &to_prefix, 1);
-                if let Err(e) = self
-                    .server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
-                    .await
-                {
+                let step = if self.tigris_rename_enabled() {
+                    match self.tigris_rename_object(old_key, &new_key).await {
+                        Ok(TigrisRename::Renamed) => {
+                            moved += 1;
+                            continue;
+                        }
+                        Ok(TigrisRename::Copied) => Ok(()),
+                        Err(e) => Err(e),
+                    }
+                } else {
+                    self.server_copy(&format!("/{}", old_key), &format!("/{}", new_key))
+                        .await
+                };
+                if let Err(e) = step {
                     // The copies made so far stay under the destination, so a
                     // retry would be refused as AlreadyExists with nothing to
                     // say why: say it here.
-                    return Err(ProviderError::Other(format!(
-                        "rename copied {copied} of {} objects to {to} before copying {old_key} \
-                         failed; the originals are all still in {from}, the {copied} copies \
-                         stay under {to}, and a retry is refused until they are removed: {e}",
-                        keys.len()
+                    return Err(ProviderError::Other(partial_rename_message(
+                        moved,
+                        to_delete.len(),
+                        keys.len(),
+                        from,
+                        to,
+                        old_key,
+                        &e,
                     )));
                 }
+                to_delete.push(old_key.clone());
             }
 
             // A delete that fails leaves the folder under both names: that is
             // a failed rename, never a success.
-            let originals: Vec<(String, Option<String>)> =
-                keys.iter().map(|key| (key.clone(), None)).collect();
-            self.batch_delete_objects(&originals).await.map_err(|e| {
-                ProviderError::Other(format!(
-                    "rename copied {} objects to {}, but deleting the originals failed, \
-                     so the folder now exists under both names: {e}",
-                    keys.len(),
-                    to
-                ))
-            })?;
+            if !to_delete.is_empty() {
+                let originals: Vec<(String, Option<String>)> =
+                    to_delete.iter().map(|key| (key.clone(), None)).collect();
+                self.batch_delete_objects(&originals).await.map_err(|e| {
+                    ProviderError::Other(format!(
+                        "rename copied {} objects to {}, but deleting the originals failed, \
+                         so the folder now exists under both names: {e}",
+                        to_delete.len(),
+                        to
+                    ))
+                })?;
+            }
 
             info!(
-                "Renamed directory (copy+delete {} objects) {} to {}",
-                keys.len(),
+                "Renamed directory ({} moved, {} copied+deleted) {} to {}",
+                moved,
+                to_delete.len(),
                 from,
                 to
             );
@@ -2200,6 +2504,42 @@ impl S3Provider {
             .await
     }
 
+    /// The dotted-bucket message (C6) when a request failed on the TLS name of
+    /// a Tigris bucket with dots in its name under virtual-host addressing.
+    fn dotted_bucket_tls_error(&self, error: &reqwest::Error) -> Option<ProviderError> {
+        if !(self.is_tigris_endpoint()
+            && !self.config.path_style
+            && self.config.bucket.contains('.'))
+        {
+            return None;
+        }
+        let mut text = error.to_string();
+        let mut source = std::error::Error::source(error);
+        while let Some(cause) = source {
+            text.push(' ');
+            text.push_str(&cause.to_string());
+            source = cause.source();
+        }
+        is_tls_name_failure(&text).then(|| {
+            ProviderError::ConnectionFailed(tigris_dotted_bucket_message(&self.config.bucket))
+        })
+    }
+
+    /// The error for a request that failed before any answer. A TLS name
+    /// failure on a Tigris bucket with dots in its name gets its own message
+    /// (C6); everything else keeps the transport text.
+    fn transport_error(&self, error: &reqwest::Error) -> ProviderError {
+        self.dotted_bucket_tls_error(error)
+            .unwrap_or_else(|| ProviderError::NetworkError(error.to_string()))
+    }
+
+    /// [`Self::transport_error`] for a streaming upload, which keeps the URL
+    /// out of the message it shows.
+    fn upload_transport_error(&self, error: reqwest::Error) -> ProviderError {
+        self.dotted_bucket_tls_error(&error)
+            .unwrap_or_else(|| ProviderError::NetworkError(error.without_url().to_string()))
+    }
+
     /// Make a signed request to S3 with extra headers included in the signature
     async fn s3_request_ext(
         &self,
@@ -2322,7 +2662,7 @@ impl S3Provider {
             &super::HttpRetryConfig::default(),
         )
         .await
-        .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+        .map_http_err(|e| self.transport_error(&e))?;
 
         let status = response.status();
         if !status.is_success() {
@@ -2949,7 +3289,14 @@ impl S3Provider {
         if let Some(acl) = self.effective_acl() {
             headers.insert("x-amz-acl".to_string(), acl.to_string());
         }
-        match self.config.sse_mode.as_deref() {
+        // Tigris encrypts every object at rest and ignores the SSE request
+        // headers: sending them would promise a choice that does not exist.
+        let sse_mode = if self.is_tigris_endpoint() {
+            None
+        } else {
+            self.config.sse_mode.as_deref()
+        };
+        match sse_mode {
             Some("AES256") => {
                 headers.insert(
                     "x-amz-server-side-encryption".to_string(),
@@ -3539,7 +3886,34 @@ impl S3Provider {
         from_key: &str,
         to_key: &str,
     ) -> Result<(), ProviderError> {
-        self.ensure_fresh_credentials().await?;
+        self.copy_object_single(from_key, to_key, false).await
+    }
+
+    /// [`Self::copy_object_single_detailed`] with the plain error.
+    async fn copy_object_single(
+        &self,
+        from_key: &str,
+        to_key: &str,
+        tigris_rename: bool,
+    ) -> Result<(), ProviderError> {
+        self.copy_object_single_detailed(from_key, to_key, tigris_rename)
+            .await
+            .map_err(|failure| failure.error)
+    }
+
+    /// [`Self::server_side_copy_single`], optionally with Tigris'
+    /// `X-Tigris-Rename: true`, which makes the CopyObject a metadata-only
+    /// move of the key inside the bucket. The header goes into the map before
+    /// signing like every other one (C1).
+    async fn copy_object_single_detailed(
+        &self,
+        from_key: &str,
+        to_key: &str,
+        tigris_rename: bool,
+    ) -> Result<(), CopyFailure> {
+        self.ensure_fresh_credentials()
+            .await
+            .map_err(CopyFailure::without_answer)?;
         let copy_source = self.copy_source(from_key);
 
         let url = self.build_url(to_key);
@@ -3555,8 +3929,13 @@ impl S3Provider {
         headers.insert("x-amz-copy-source".to_string(), copy_source);
         // COPY-01: Preserve original object metadata during copy
         headers.insert("x-amz-metadata-directive".to_string(), "COPY".to_string());
+        if tigris_rename {
+            headers.insert("x-tigris-rename".to_string(), "true".to_string());
+        }
         self.append_upload_headers(&mut headers);
-        let authorization = self.sign_request("PUT", &url, &mut headers, &payload_hash)?;
+        let authorization = self
+            .sign_request("PUT", &url, &mut headers, &payload_hash)
+            .map_err(CopyFailure::without_answer)?;
 
         let mut request = self.client.put(&url);
         for (key, value) in headers.iter() {
@@ -3568,7 +3947,8 @@ impl S3Provider {
         let response = request
             .send()
             .await
-            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))?;
+            .map_http_err(|e| ProviderError::NetworkError(e.to_string()))
+            .map_err(CopyFailure::without_answer)?;
 
         let status = response.status();
         let retry_header = response
@@ -3593,23 +3973,36 @@ impl S3Provider {
                         .nth(1)
                         .and_then(|s| s.split("</Message>").next())
                         .unwrap_or("S3 provider returned an error during copy");
-                    return Err(ProviderError::ServerError(format!(
-                        "Copy failed ({}): {} - {}",
-                        status,
-                        sanitize_api_error(err_code),
-                        sanitize_api_error(err_msg)
-                    )));
+                    return Err(CopyFailure {
+                        error: ProviderError::ServerError(format!(
+                            "Copy failed ({}): {} - {}",
+                            status,
+                            sanitize_api_error(err_code),
+                            sanitize_api_error(err_msg)
+                        )),
+                        // A 200 carries no verdict on the request headers.
+                        status: None,
+                        code: Some(err_code.to_string()),
+                    });
                 }
 
                 info!("Copied {} to {}", from_key, to_key);
                 Ok(())
             }
-            _ => Err(ProviderError::ServerError(format_s3_error(
-                "Copy failed",
-                status,
-                &body,
-                retry_header.as_deref(),
-            ))),
+            _ => Err(CopyFailure {
+                error: ProviderError::ServerError(format_s3_error(
+                    "Copy failed",
+                    status,
+                    &body,
+                    retry_header.as_deref(),
+                )),
+                status: Some(status),
+                code: body
+                    .split("<Code>")
+                    .nth(1)
+                    .and_then(|s| s.split("</Code>").next())
+                    .map(|code| code.trim().to_string()),
+            }),
         }
     }
 
@@ -5796,11 +6189,7 @@ impl StorageProvider for S3Provider {
                         .body(body))
                 },
                 &retry,
-                |error| {
-                    super::http_send_error(error, |error| {
-                        ProviderError::NetworkError(error.without_url().to_string())
-                    })
-                },
+                |error| super::http_send_error(error, |error| self.upload_transport_error(error)),
                 true,
                 &mut remaining_retries,
             )
@@ -6216,6 +6605,9 @@ impl StorageProvider for S3Provider {
                     .to_string(),
             ));
         }
+        if self.is_tigris_endpoint() {
+            return self.tigris_storage_info().await;
+        }
         Err(ProviderError::NotSupported("storage_info".to_string()))
     }
 
@@ -6258,7 +6650,9 @@ impl StorageProvider for S3Provider {
 
         let key = path.trim_start_matches('/');
         // MEGA S4 presigned URLs have a maximum expiration of 7 days (604800 seconds)
-        let max_expires = if self.is_mega_s4_endpoint() {
+        // Tigris documents 90 days, but its own engineering blog (2026-07-14)
+        // says one week: clamp at 7 days until a live probe settles it (C5).
+        let max_expires = if self.is_mega_s4_endpoint() || self.is_tigris_endpoint() {
             604800_u64
         } else {
             u64::MAX
@@ -6999,6 +7393,15 @@ impl StorageProvider for S3Provider {
         }
     }
 
+    /// Tigris bills a listing as a write-class request and the free plan
+    /// includes 10,000 of those a month, so AeroCloud may not repeat a full
+    /// scan more often than this; the watcher syncs changes path by path in
+    /// between (C8).
+    fn min_full_scan_interval(&self) -> Option<std::time::Duration> {
+        self.is_tigris_endpoint()
+            .then_some(TIGRIS_MIN_FULL_SCAN_INTERVAL)
+    }
+
     fn supports_versions(&self) -> bool {
         // MEGA S4 and Filebase do not support object versioning
         !self.is_mega_s4_endpoint() && !self.is_filebase_endpoint()
@@ -7074,6 +7477,8 @@ impl StorageProvider for S3Provider {
             let mut v_is_latest: Option<String> = None;
             let mut v_last_modified: Option<String> = None;
             let mut v_size: Option<String> = None;
+            // Tigris flags an entry of its soft-delete bin `SoftDeleted` (C4).
+            let mut v_soft_deleted = false;
 
             // Pagination fields
             let mut is_truncated = false;
@@ -7095,6 +7500,7 @@ impl StorageProvider for S3Provider {
                                 v_is_latest = None;
                                 v_last_modified = None;
                                 v_size = None;
+                                v_soft_deleted = false;
                             }
                             "DeleteMarker" => {
                                 _in_delete_marker = true;
@@ -7149,6 +7555,9 @@ impl StorageProvider for S3Provider {
                                     .get_or_insert_with(String::new)
                                     .push_str(text),
                                 "Size" => v_size.get_or_insert_with(String::new).push_str(text),
+                                "SoftDeleted" => {
+                                    v_soft_deleted = text.trim().eq_ignore_ascii_case("true");
+                                }
                                 _ => {}
                             }
                         }
@@ -7187,9 +7596,15 @@ impl StorageProvider for S3Provider {
                         let tag_name = e.name().as_ref().to_string();
                         match tag_name.as_str() {
                             "Version" => {
-                                // Only include versions whose key exactly matches
+                                // Only include versions whose key exactly matches.
+                                // A soft-deleted entry (Tigris) is a deleted object:
+                                // it is neither the current object nor a previous
+                                // version to restore with a CopyObject, which cannot
+                                // read it (C4).
                                 if let Some(ref vk) = v_key {
-                                    if filen_decode_listed_key(vk.clone(), page_encoded) == key {
+                                    if filen_decode_listed_key(vk.clone(), page_encoded) == key
+                                        && !v_soft_deleted
+                                    {
                                         let version_id = v_version_id
                                             .as_ref()
                                             .map(|v| v.trim().to_string())
@@ -8682,7 +9097,12 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
                 match tag_name.as_str() {
                     "Version" | "DeleteMarker" => {
                         let is_delete_marker = tag_name == "DeleteMarker";
-                        if let Some(key) = e_key.take() {
+                        let key = e_key.take();
+                        // A Tigris `SoftDeleted` entry is kept on purpose: on a
+                        // soft-delete bucket those entries ARE the trash, and
+                        // the purge deletes them by version id. Only the
+                        // version listing of a live key drops them (C4).
+                        if let Some(key) = key {
                             let size = if is_delete_marker {
                                 0
                             } else {
@@ -8732,6 +9152,73 @@ fn parse_object_versions_page(xml_str: &str) -> Result<VersionsPage, ProviderErr
         next_key_marker,
         next_version_id_marker,
     ))
+}
+
+/// Hosts a Tigris endpoint can have: the current one and the legacy Fly.io one.
+const TIGRIS_HOSTS: [&str; 2] = ["t3.storage.dev", "fly.storage.tigris.dev"];
+
+/// Whether `endpoint` (URL or bare host, optional port and path) names Tigris:
+/// the exact host or a subdomain of it, never a substring, so
+/// `t3.storage.dev.example.com` and `not-t3.storage.dev` do not match.
+fn is_tigris_host(endpoint: &str) -> bool {
+    let endpoint = endpoint.trim();
+    let with_scheme = if endpoint.contains("://") {
+        endpoint.to_string()
+    } else {
+        format!("https://{endpoint}")
+    };
+    url::Url::parse(&with_scheme)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| {
+            TIGRIS_HOSTS
+                .iter()
+                .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
+        })
+}
+
+/// `Stats.TotalStorageBytes` of a Tigris `ListBuckets?IncludeStats=true`
+/// answer. `None` when the body is not JSON or carries no such figure, which
+/// is how a gateway without the extension looks.
+fn parse_tigris_total_storage_bytes(body: &str) -> Option<u64> {
+    let value: serde_json::Value = serde_json::from_str(body).ok()?;
+    let stats = value
+        .as_object()?
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("stats"))?
+        .1
+        .as_object()?;
+    let total = stats
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("totalstoragebytes"))?
+        .1;
+    total
+        .as_u64()
+        .or_else(|| total.as_f64().filter(|n| *n >= 0.0).map(|n| n as u64))
+        .or_else(|| total.as_str().and_then(|text| text.trim().parse().ok()))
+}
+
+/// Whether a transport error text is a TLS certificate failure.
+///
+/// Broad on purpose: the TLS stacks word a name mismatch in different ways, and
+/// the caller already requires Tigris, virtual-host addressing and a dotted
+/// bucket name, so any certificate error there is the wildcard limit (C6).
+fn is_tls_name_failure(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("certificate")
+        || lower.contains("notvalidforname")
+        || lower.contains("not valid for name")
+}
+
+/// The message for a TLS name failure on a Tigris bucket with dots in its
+/// name (C6): the wildcard certificate of `*.t3.storage.dev` covers one label,
+/// so `my.bucket.t3.storage.dev` cannot be verified.
+fn tigris_dotted_bucket_message(bucket: &str) -> String {
+    format!(
+        "Tigris cannot serve the bucket name '{bucket}' with virtual-host addressing: the \
+         certificate of *.t3.storage.dev does not cover a name that contains dots. Use a \
+         bucket name without dots, or turn on Path-Style Access for this profile."
+    )
 }
 
 #[cfg(test)]
@@ -11920,6 +12407,968 @@ mod tests {
         (provider, bucket, log)
     }
 
+    // ---- Tigris (preset tests: detector, signed headers, rename, usage) ----
+
+    /// One request seen by [`tigris_double`], header names lowercased.
+    #[derive(Debug, Clone)]
+    struct TigrisSeen {
+        method: String,
+        uri: String,
+        headers: HashMap<String, String>,
+    }
+
+    impl TigrisSeen {
+        fn header(&self, name: &str) -> Option<&str> {
+            self.headers.get(name).map(String::as_str)
+        }
+    }
+
+    /// How the double treats `X-Tigris-Rename` on a CopyObject.
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum RenameHeader {
+        /// Moves the key: the destination appears and the source disappears.
+        Honor,
+        /// Copies and leaves the source, as a gateway that does not know it.
+        Ignore,
+        /// Answers 400.
+        Refuse,
+        /// Answers 500 to the renaming copy only.
+        ServerError,
+        /// Answers 400 EntityTooLarge to the renaming copy only.
+        TooLarge,
+    }
+
+    #[derive(Clone, Copy)]
+    struct TigrisDoubleConfig {
+        rename: RenameHeader,
+        stats: Option<(u16, &'static str)>,
+        versions_xml: Option<&'static str>,
+    }
+
+    impl Default for TigrisDoubleConfig {
+        fn default() -> Self {
+            Self {
+                rename: RenameHeader::Honor,
+                stats: None,
+                versions_xml: None,
+            }
+        }
+    }
+
+    type TigrisLog = std::sync::Arc<std::sync::Mutex<Vec<TigrisSeen>>>;
+
+    /// A path-style double of a Tigris bucket (`test-bucket`) that keeps its
+    /// objects in memory and records every request with its headers. The
+    /// provider it returns is connected and answers to the Tigris detector.
+    async fn tigris_double(
+        objects: &[(&str, &str)],
+        config: TigrisDoubleConfig,
+    ) -> (S3Provider, MemObjects, TigrisLog) {
+        use std::sync::{Arc, Mutex};
+        let bucket: MemObjects = Arc::new(Mutex::new(
+            objects
+                .iter()
+                .map(|(key, body)| (key.to_string(), body.as_bytes().to_vec()))
+                .collect(),
+        ));
+        let log: TigrisLog = Arc::default();
+        let (store, seen) = (Arc::clone(&bucket), Arc::clone(&log));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (store, seen) = (Arc::clone(&store), Arc::clone(&seen));
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let headers: HashMap<String, String> = req
+                        .headers()
+                        .iter()
+                        .map(|(name, value)| {
+                            (
+                                name.as_str().to_string(),
+                                value.to_str().unwrap_or_default().to_string(),
+                            )
+                        })
+                        .collect();
+                    let uri = req.uri().to_string();
+                    seen.lock().unwrap().push(TigrisSeen {
+                        method: method.clone(),
+                        uri: uri.clone(),
+                        headers: headers.clone(),
+                    });
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    let query: HashMap<String, String> = url.query_pairs().into_owned().collect();
+                    let key = urlencoding::decode(
+                        url.path()
+                            .trim_start_matches("/test-bucket")
+                            .trim_start_matches('/'),
+                    )
+                    .unwrap()
+                    .into_owned();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 20)
+                        .await
+                        .unwrap();
+                    let reply = |status: u16, extra: &[(&str, String)], body: Vec<u8>| {
+                        let mut builder = axum::response::Response::builder().status(status);
+                        for (name, value) in extra {
+                            builder = builder.header(*name, value);
+                        }
+                        builder.body(axum::body::Body::from(body)).unwrap()
+                    };
+                    let mut store = store.lock().unwrap();
+                    if query.contains_key("IncludeStats") {
+                        return match config.stats {
+                            Some((status, json)) => {
+                                reply(status, &[], json.as_bytes().to_vec())
+                            }
+                            None => reply(404, &[], Vec::new()),
+                        };
+                    }
+                    if query.contains_key("uploads") && method == "POST" {
+                        return reply(
+                            200,
+                            &[],
+                            b"<InitiateMultipartUploadResult><UploadId>u1</UploadId></InitiateMultipartUploadResult>"
+                                .to_vec(),
+                        );
+                    }
+                    if query.contains_key("uploadId") && method == "POST" {
+                        return reply(
+                            200,
+                            &[],
+                            b"<CompleteMultipartUploadResult><ETag>\"abc-1\"</ETag></CompleteMultipartUploadResult>"
+                                .to_vec(),
+                        );
+                    }
+                    if query.contains_key("partNumber") && method == "PUT" {
+                        return reply(
+                            200,
+                            &[("etag", "\"part-etag\"".to_string())],
+                            b"<CopyPartResult><ETag>\"part-etag\"</ETag></CopyPartResult>"
+                                .to_vec(),
+                        );
+                    }
+                    match method.as_str() {
+                        "GET" if key.is_empty() && query.contains_key("versions") => reply(
+                            200,
+                            &[],
+                            config.versions_xml.unwrap_or("<ListVersionsResult/>").as_bytes().to_vec(),
+                        ),
+                        "GET" if key.is_empty() => {
+                            let prefix = query.get("prefix").cloned().unwrap_or_default();
+                            let contents: String = store
+                                .keys()
+                                .filter(|k| k.starts_with(&prefix))
+                                .map(|k| {
+                                    format!("<Contents><Key>{k}</Key><Size>1</Size></Contents>")
+                                })
+                                .collect();
+                            let xml = format!(
+                                "<ListBucketResult><IsTruncated>false</IsTruncated>{contents}</ListBucketResult>"
+                            );
+                            reply(200, &[], xml.into_bytes())
+                        }
+                        "HEAD" | "GET" => match store.get(&key) {
+                            Some(data) => {
+                                let length = data.len().to_string();
+                                let data = if method == "GET" {
+                                    data.clone()
+                                } else {
+                                    Vec::new()
+                                };
+                                reply(200, &[("content-length", length)], data)
+                            }
+                            None => reply(404, &[], Vec::new()),
+                        },
+                        "PUT" => {
+                            let rename = headers.contains_key("x-tigris-rename");
+                            let data = match headers.get("x-amz-copy-source") {
+                                Some(source) => {
+                                    if rename && config.rename == RenameHeader::Refuse {
+                                        return reply(
+                                            400,
+                                            &[],
+                                            b"<Error><Code>InvalidArgument</Code></Error>"
+                                                .to_vec(),
+                                        );
+                                    }
+                                    if rename && config.rename == RenameHeader::ServerError {
+                                        return reply(
+                                            500,
+                                            &[],
+                                            b"<Error><Code>InternalError</Code></Error>"
+                                                .to_vec(),
+                                        );
+                                    }
+                                    if rename && config.rename == RenameHeader::TooLarge {
+                                        return reply(
+                                            400,
+                                            &[],
+                                            b"<Error><Code>EntityTooLarge</Code></Error>"
+                                                .to_vec(),
+                                        );
+                                    }
+                                    let source = urlencoding::decode(source)
+                                        .unwrap()
+                                        .trim_start_matches("/test-bucket/")
+                                        .to_string();
+                                    // A source that cannot be read fails to copy
+                                    // with or without the header.
+                                    if source.contains("unreadable") {
+                                        return reply(
+                                            500,
+                                            &[],
+                                            b"<Error><Code>InternalError</Code></Error>"
+                                                .to_vec(),
+                                        );
+                                    }
+                                    match store.get(&source) {
+                                        Some(data) => {
+                                            let data = data.clone();
+                                            if rename && config.rename == RenameHeader::Honor {
+                                                store.remove(&source);
+                                            }
+                                            data
+                                        }
+                                        None => return reply(404, &[], Vec::new()),
+                                    }
+                                }
+                                None => body.to_vec(),
+                            };
+                            store.insert(key, data);
+                            reply(200, &[], b"<CopyObjectResult></CopyObjectResult>".to_vec())
+                        }
+                        "DELETE" => {
+                            store.remove(&key);
+                            reply(204, &[], Vec::new())
+                        }
+                        _ => reply(405, &[], Vec::new()),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.force_tigris = true;
+        (provider, bucket, log)
+    }
+
+    fn tigris_requests(log: &TigrisLog, method: &str) -> Vec<TigrisSeen> {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|r| r.method == method)
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn tigris_endpoint_detection_uses_a_domain_boundary() {
+        for endpoint in [
+            "https://t3.storage.dev",
+            "HTTPS://T3.STORAGE.DEV",
+            "https://t3.storage.dev:443",
+            "t3.storage.dev",
+            "https://my-bucket.t3.storage.dev",
+            "https://fly.storage.tigris.dev",
+            "https://my-bucket.fly.storage.tigris.dev",
+        ] {
+            assert!(
+                make_provider(Some(endpoint)).is_tigris_endpoint(),
+                "{endpoint}"
+            );
+        }
+        for endpoint in [
+            "https://t3.storage.dev.example.com",
+            "https://not-t3.storage.dev",
+            "https://t3.storage.dev.attacker",
+            "https://fly.storage.tigris.dev.example.com",
+            "https://myfly.storage.tigris.dev",
+            "https://tigris.dev",
+            "https://storage.dev",
+            "https://s3.us-east-1.amazonaws.com",
+            "http://localhost:9000",
+        ] {
+            assert!(
+                !make_provider(Some(endpoint)).is_tigris_endpoint(),
+                "{endpoint}"
+            );
+        }
+        assert!(!make_provider(None).is_tigris_endpoint());
+    }
+
+    /// C1: every `x-amz-*` and `x-tigris-*` header of every request this
+    /// provider builds is inside SignedHeaders. Tigris rejects an unsigned
+    /// `x-amz-*` header since 2026-09-28, so a header added after signing is
+    /// a hard failure there and a silent one everywhere else. The requests
+    /// run through the real code paths against a recording double, with every
+    /// optional header switched on.
+    #[tokio::test]
+    async fn every_amz_and_tigris_header_is_signed() {
+        let (mut provider, _, log) = tigris_double(
+            &[("a.txt", "A"), ("b.txt", "B")],
+            TigrisDoubleConfig::default(),
+        )
+        .await;
+        provider.set_storage_class_override(Some("STANDARD_IA".to_string()));
+        provider.set_acl(Some("public-read".to_string()));
+        provider.config.sse_mode = Some("aws:kms".to_string());
+        provider.config.sse_kms_key_id = Some("alias/ignored".to_string());
+
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"payload").unwrap();
+
+        let _ = provider.list("/").await;
+        let _ = provider.stat("/a.txt").await;
+        let _ = provider.mkdir("/d").await;
+        let _ = provider
+            .upload(local.path().to_str().unwrap(), "/up.txt", None)
+            .await;
+        let _ = provider.read_range("/a.txt", 0, 1).await;
+        let _ = provider.server_side_copy_single("a.txt", "copy.txt").await;
+        let _ = provider
+            .copy_object_single("b.txt", "renamed.txt", true)
+            .await;
+        let _ = provider
+            .batch_delete_objects(&[("copy.txt".to_string(), None)])
+            .await;
+        let _ = provider.storage_info().await;
+        let _ = provider.list_versions("/a.txt").await;
+        let _ = provider.change_storage_class("/a.txt", "GLACIER").await;
+        let upload_id = provider.create_multipart_upload("m.bin", None, None).await;
+        let _ = provider
+            .upload_part_internal("m.bin", "u1", 1, b"part".to_vec())
+            .await;
+        let _ = provider
+            .complete_multipart_upload_internal("m.bin", "u1", &[(1, "\"part-etag\"".to_string())])
+            .await;
+        let _ = provider
+            .upload_part_copy_internal("m2.bin", "u1", 1, "/test-bucket/a.txt", 0, 0, None)
+            .await;
+        let _ = provider
+            .abort_multipart_upload_internal("m.bin", "u1")
+            .await;
+        let _ = provider.delete("/a.txt").await;
+        assert!(upload_id.is_ok(), "{upload_id:?}");
+
+        let seen = log.lock().unwrap().clone();
+        let mut checked_vendor = 0;
+        let mut checked_amz = 0;
+        for request in &seen {
+            let authorization = request
+                .header("authorization")
+                .unwrap_or_else(|| panic!("unsigned request: {request:?}"));
+            let signed: HashSet<&str> = authorization
+                .split("SignedHeaders=")
+                .nth(1)
+                .and_then(|rest| rest.split(',').next())
+                .unwrap_or_default()
+                .split(';')
+                .collect();
+            assert!(signed.contains("host"), "{request:?}");
+            for name in request.headers.keys() {
+                if name.starts_with("x-amz-") {
+                    checked_amz += 1;
+                }
+                if name.starts_with("x-tigris-") {
+                    checked_vendor += 1;
+                }
+                if name.starts_with("x-amz-") || name.starts_with("x-tigris-") {
+                    assert!(
+                        signed.contains(name.as_str()),
+                        "{name} is sent but not signed on {} {}: {authorization}",
+                        request.method,
+                        request.uri
+                    );
+                }
+            }
+        }
+        // The check must have looked at something.
+        assert!(seen.len() >= 15, "{} requests", seen.len());
+        assert!(checked_amz > 30, "{checked_amz} x-amz headers");
+        assert_eq!(checked_vendor, 1, "one X-Tigris-Rename was sent");
+        // Tigris ignores SSE: the profile's SSE setting is not sent at all.
+        assert!(
+            !seen
+                .iter()
+                .any(|r| r.headers.contains_key("x-amz-server-side-encryption")),
+            "SSE headers must not be sent to Tigris"
+        );
+        assert!(seen
+            .iter()
+            .any(|r| r.header("x-amz-storage-class") == Some("STANDARD_IA")));
+    }
+
+    /// The F2 shortcut: one CopyObject with the header, no DELETE.
+    #[tokio::test]
+    async fn tigris_file_rename_is_one_signed_copy_without_a_delete() {
+        let (mut provider, objects, log) = tigris_double(
+            &[("a.txt", "A"), ("b.txt", "B")],
+            TigrisDoubleConfig::default(),
+        )
+        .await;
+        provider.rename("/a.txt", "/c.txt").await.expect("rename");
+        {
+            let objects = objects.lock().unwrap();
+            assert!(!objects.contains_key("a.txt"), "{objects:?}");
+            assert_eq!(objects.get("c.txt").map(Vec::as_slice), Some(&b"A"[..]));
+        }
+        assert!(tigris_requests(&log, "DELETE").is_empty());
+        let copies: Vec<_> = tigris_requests(&log, "PUT");
+        assert_eq!(copies.len(), 1, "{copies:?}");
+        assert_eq!(copies[0].header("x-tigris-rename"), Some("true"));
+        let signed = copies[0].header("authorization").unwrap();
+        assert!(signed.contains("x-tigris-rename"), "{signed}");
+
+        // The first rename checked its source once; the second trusts it.
+        let heads_of_source = |log: &TigrisLog| {
+            tigris_requests(log, "HEAD")
+                .iter()
+                .filter(|r| {
+                    r.uri.contains("/test-bucket/a.txt") || r.uri.contains("/test-bucket/b.txt")
+                })
+                .count()
+        };
+        let before = heads_of_source(&log);
+        provider
+            .rename("/b.txt", "/d.txt")
+            .await
+            .expect("second rename");
+        assert!(tigris_requests(&log, "DELETE").is_empty());
+        // Two HEADs of the new key and one of the source probe at most: the
+        // detection HEAD is not repeated.
+        let after = heads_of_source(&log);
+        assert!(after - before <= 1, "{before} -> {after}");
+    }
+
+    /// A gateway that ignores the header leaves the source: it is detected,
+    /// the source is deleted, and later renames stop sending the header.
+    #[tokio::test]
+    async fn tigris_rename_ignored_by_the_gateway_falls_back_to_copy_and_delete() {
+        let config = TigrisDoubleConfig {
+            rename: RenameHeader::Ignore,
+            ..Default::default()
+        };
+        let (mut provider, objects, log) =
+            tigris_double(&[("a.txt", "A"), ("b.txt", "B")], config).await;
+        provider.rename("/a.txt", "/c.txt").await.expect("rename");
+        {
+            let objects = objects.lock().unwrap();
+            assert!(!objects.contains_key("a.txt"), "{objects:?}");
+            assert!(objects.contains_key("c.txt"), "{objects:?}");
+        }
+        assert_eq!(tigris_requests(&log, "DELETE").len(), 1);
+        provider
+            .rename("/b.txt", "/d.txt")
+            .await
+            .expect("second rename");
+        let renames = tigris_requests(&log, "PUT")
+            .iter()
+            .filter(|r| r.headers.contains_key("x-tigris-rename"))
+            .count();
+        assert_eq!(
+            renames, 1,
+            "the header is not sent again after it was ignored"
+        );
+        assert!(!objects.lock().unwrap().contains_key("b.txt"));
+    }
+
+    /// A refusal of the header (400) falls back to the plain copy at once.
+    #[tokio::test]
+    async fn tigris_rename_refused_by_the_gateway_falls_back_to_copy_and_delete() {
+        let config = TigrisDoubleConfig {
+            rename: RenameHeader::Refuse,
+            ..Default::default()
+        };
+        let (mut provider, objects, log) = tigris_double(&[("a.txt", "A")], config).await;
+        provider.rename("/a.txt", "/c.txt").await.expect("rename");
+        {
+            let objects = objects.lock().unwrap();
+            assert!(!objects.contains_key("a.txt"), "{objects:?}");
+            assert_eq!(objects.get("c.txt").map(Vec::as_slice), Some(&b"A"[..]));
+        }
+        assert_eq!(tigris_requests(&log, "DELETE").len(), 1);
+        assert_eq!(
+            provider
+                .tigris_rename_state
+                .load(std::sync::atomic::Ordering::Relaxed),
+            TIGRIS_RENAME_REFUSED
+        );
+    }
+
+    /// A failure that says nothing about the header (a 500, a source too
+    /// large for one CopyObject) falls back to the plain copy but leaves the
+    /// shortcut available: the next rename sends the header again.
+    #[tokio::test]
+    async fn tigris_rename_failures_that_are_not_a_refusal_keep_the_shortcut() {
+        for mode in [RenameHeader::ServerError, RenameHeader::TooLarge] {
+            let config = TigrisDoubleConfig {
+                rename: mode,
+                ..Default::default()
+            };
+            let (mut provider, objects, log) =
+                tigris_double(&[("a.txt", "A"), ("b.txt", "B")], config).await;
+            provider.rename("/a.txt", "/c.txt").await.expect("rename");
+            assert!(!objects.lock().unwrap().contains_key("a.txt"));
+            assert_eq!(
+                provider
+                    .tigris_rename_state
+                    .load(std::sync::atomic::Ordering::Relaxed),
+                TIGRIS_RENAME_UNKNOWN
+            );
+            provider.rename("/b.txt", "/d.txt").await.expect("rename");
+            let with_header = tigris_requests(&log, "PUT")
+                .iter()
+                .filter(|r| r.header("x-tigris-rename").is_some())
+                .count();
+            assert_eq!(with_header, 2, "the header is tried again");
+        }
+    }
+
+    #[test]
+    fn only_a_client_error_that_blames_the_request_refuses_the_header() {
+        let failure = |status: Option<u16>, code: Option<&str>| CopyFailure {
+            error: ProviderError::ServerError("x".into()),
+            status: status.map(|s| StatusCode::from_u16(s).unwrap()),
+            code: code.map(String::from),
+        };
+        assert!(failure(Some(400), Some("InvalidArgument")).refuses_the_request());
+        assert!(failure(Some(403), None).refuses_the_request());
+        for status in [404, 408, 429, 500, 501, 503] {
+            assert!(
+                !failure(Some(status), None).refuses_the_request(),
+                "{status}"
+            );
+        }
+        assert!(!failure(Some(400), Some("EntityTooLarge")).refuses_the_request());
+        assert!(!failure(None, None).refuses_the_request());
+    }
+
+    /// A genuine failure (missing source) is that failure, not a refusal.
+    #[tokio::test]
+    async fn tigris_rename_of_a_missing_source_is_not_found_and_keeps_the_shortcut() {
+        let (mut provider, _, _) =
+            tigris_double(&[("a.txt", "A")], TigrisDoubleConfig::default()).await;
+        assert!(provider.rename("/nope.txt", "/c.txt").await.is_err());
+        assert_eq!(
+            provider
+                .tigris_rename_state
+                .load(std::sync::atomic::Ordering::Relaxed),
+            TIGRIS_RENAME_UNKNOWN
+        );
+    }
+
+    /// A folder rename moves each key and deletes nothing.
+    #[tokio::test]
+    async fn tigris_folder_rename_moves_every_key_without_deleting() {
+        let (mut provider, objects, log) = tigris_double(
+            &[("src/a.txt", "A"), ("src/sub/b.txt", "B")],
+            TigrisDoubleConfig::default(),
+        )
+        .await;
+        provider.rename("/src", "/dst").await.expect("rename");
+        {
+            let objects = objects.lock().unwrap();
+            assert_eq!(
+                objects.keys().cloned().collect::<Vec<_>>(),
+                ["dst/a.txt", "dst/sub/b.txt"],
+                "{objects:?}"
+            );
+        }
+        assert!(tigris_requests(&log, "DELETE").is_empty());
+        assert!(tigris_requests(&log, "POST").is_empty());
+    }
+
+    /// A folder rename that fails after some keys were moved: those keys exist
+    /// only under the destination, so the error must never tell the user to
+    /// empty it.
+    #[tokio::test]
+    async fn tigris_folder_rename_failing_after_a_move_does_not_advise_clearing_the_destination() {
+        let (mut provider, objects, _) = tigris_double(
+            &[("src/a.txt", "A"), ("src/unreadable.txt", "B")],
+            TigrisDoubleConfig::default(),
+        )
+        .await;
+        let err = provider
+            .rename("/src", "/dst")
+            .await
+            .expect_err("the second key cannot be copied");
+        let message = err.to_string();
+        assert!(
+            objects.lock().unwrap().contains_key("dst/a.txt"),
+            "the first key was moved: {message}"
+        );
+        assert!(message.contains("only under"), "{message}");
+        assert!(message.contains("move them back to"), "{message}");
+        assert!(!message.contains("destination is cleared"), "{message}");
+        assert!(!message.contains("until the destination"), "{message}");
+    }
+
+    /// Off Tigris nothing changes: no header, a delete.
+    #[tokio::test]
+    async fn non_tigris_rename_never_sends_the_rename_header() {
+        let (mut provider, objects, log) =
+            tigris_double(&[("a.txt", "A")], TigrisDoubleConfig::default()).await;
+        provider.force_tigris = false;
+        provider.rename("/a.txt", "/c.txt").await.expect("rename");
+        assert!(!objects.lock().unwrap().contains_key("a.txt"));
+        assert!(tigris_requests(&log, "PUT")
+            .iter()
+            .all(|r| !r.headers.contains_key("x-tigris-rename")));
+        assert_eq!(tigris_requests(&log, "DELETE").len(), 1);
+    }
+
+    #[test]
+    fn only_tigris_declares_a_full_scan_floor() {
+        assert_eq!(
+            make_provider(Some("https://t3.storage.dev")).min_full_scan_interval(),
+            Some(std::time::Duration::from_secs(1800))
+        );
+        assert_eq!(
+            make_provider(Some("https://s3.us-east-1.amazonaws.com")).min_full_scan_interval(),
+            None
+        );
+    }
+
+    #[test]
+    fn tigris_stats_parser_reads_total_storage_bytes_and_nothing_else() {
+        assert_eq!(
+            parse_tigris_total_storage_bytes(
+                r#"{"Stats":{"ActiveBuckets":2,"TotalObjects":9,"TotalStorageBytes":1234567,"TotalUniqueObjects":9}}"#
+            ),
+            Some(1_234_567)
+        );
+        assert_eq!(
+            parse_tigris_total_storage_bytes(r#"{"stats":{"totalStorageBytes":"42"}}"#),
+            Some(42)
+        );
+        assert_eq!(
+            parse_tigris_total_storage_bytes(r#"{"Stats":{"TotalStorageBytes":2048.0}}"#),
+            Some(2048)
+        );
+        for body in [
+            "",
+            "<ListAllMyBucketsResult/>",
+            "[]",
+            r#"{"Buckets":[]}"#,
+            r#"{"Stats":{"TotalObjects":1}}"#,
+            r#"{"Stats":{"TotalStorageBytes":-5}}"#,
+            r#"{"Stats":{"TotalStorageBytes":null}}"#,
+        ] {
+            assert_eq!(parse_tigris_total_storage_bytes(body), None, "{body}");
+        }
+    }
+
+    /// F3: used bytes from the stats call, signed and JSON-negotiated; the
+    /// bar has no total.
+    #[tokio::test]
+    async fn tigris_storage_info_reports_used_bytes_only() {
+        let config = TigrisDoubleConfig {
+            stats: Some((
+                200,
+                r#"{"Stats":{"ActiveBuckets":1,"TotalObjects":3,"TotalStorageBytes":987654321,"TotalUniqueObjects":3}}"#,
+            )),
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[], config).await;
+        let info = provider.storage_info().await.expect("usage");
+        assert_eq!(info.used, 987_654_321);
+        assert_eq!((info.total, info.free), (0, 0));
+        let requests = tigris_requests(&log, "GET");
+        assert_eq!(requests.len(), 1, "{requests:?}");
+        assert!(
+            requests[0].uri.contains("IncludeStats=true"),
+            "{requests:?}"
+        );
+        assert_eq!(requests[0].header("accept"), Some("application/json"));
+        assert!(requests[0]
+            .header("authorization")
+            .unwrap()
+            .contains("SignedHeaders="));
+    }
+
+    /// C12: a gateway that does not answer the extension is "no usage", not
+    /// an error the user has to read.
+    #[tokio::test]
+    async fn tigris_storage_info_without_the_extension_is_not_supported() {
+        for stats in [
+            None,
+            Some((400, "{}")),
+            Some((401, "{}")),
+            Some((403, "{}")),
+            Some((404, "{}")),
+            Some((405, "{}")),
+            Some((501, "{}")),
+            Some((200, "<ListAllMyBucketsResult/>")),
+            Some((200, "{}")),
+        ] {
+            let config = TigrisDoubleConfig {
+                stats,
+                ..Default::default()
+            };
+            let (mut provider, _, _) = tigris_double(&[], config).await;
+            let outcome = provider.storage_info().await;
+            assert!(
+                matches!(outcome, Err(ProviderError::NotSupported(_))),
+                "{stats:?}: {outcome:?}"
+            );
+        }
+    }
+
+    /// A throttled or failing usage endpoint is an operational error, never
+    /// "this account has no usage report".
+    #[tokio::test]
+    async fn tigris_storage_info_keeps_throttling_and_server_errors_distinct() {
+        for status in [429_u16, 503] {
+            let config = TigrisDoubleConfig {
+                stats: Some((status, "{}")),
+                ..Default::default()
+            };
+            let (mut provider, _, _) = tigris_double(&[], config).await;
+            let outcome = provider.storage_info().await;
+            assert!(
+                matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains(&status.to_string())),
+                "{status}: {outcome:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn other_s3_endpoints_still_have_no_storage_info() {
+        let (mut provider, _, log) = tigris_double(&[], TigrisDoubleConfig::default()).await;
+        provider.force_tigris = false;
+        assert!(matches!(
+            provider.storage_info().await,
+            Err(ProviderError::NotSupported(_))
+        ));
+        assert!(log.lock().unwrap().is_empty());
+    }
+
+    /// C5: a Tigris share link is clamped to 7 days.
+    #[tokio::test]
+    async fn tigris_share_link_expiry_is_clamped_to_seven_days() {
+        let (mut provider, _, _) =
+            tigris_double(&[("a.txt", "A")], TigrisDoubleConfig::default()).await;
+        for requested in [90 * 24 * 3600_u64, 604_800, 3600] {
+            let link = provider
+                .create_share_link(
+                    "/a.txt",
+                    ShareLinkOptions {
+                        expires_in_secs: Some(requested),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("presign");
+            let expected = requested.min(604_800);
+            assert!(
+                link.url.contains(&format!("X-Amz-Expires={expected}&")),
+                "{requested}: {}",
+                link.url
+            );
+        }
+        provider.force_tigris = false;
+        let link = provider
+            .create_share_link(
+                "/a.txt",
+                ShareLinkOptions {
+                    expires_in_secs: Some(90 * 24 * 3600),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("presign");
+        assert!(
+            link.url.contains("X-Amz-Expires=7776000&"),
+            "other endpoints keep their own limit: {}",
+            link.url
+        );
+    }
+
+    /// C4: a soft-deleted entry of a Tigris bucket is a deleted object, never
+    /// a version of a live key. The version listing drops it; the trash parser
+    /// keeps it, because it is what the trash purges.
+    const TIGRIS_SOFT_DELETED_VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>1790000000000000001</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T10:00:00.000Z</LastModified>
+    <Size>10</Size>
+    <SoftDeleted>false</SoftDeleted>
+  </Version>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>1790000000000000002</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>20</Size>
+    <SoftDeleted>true</SoftDeleted>
+  </Version>
+  <Version>
+    <Key>docs/gone.txt</Key>
+    <VersionId>1790000000000000003</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+    <Size>30</Size>
+    <SoftDeleted>true</SoftDeleted>
+  </Version>
+</ListVersionsResult>"#;
+
+    #[test]
+    fn soft_deleted_entries_stay_in_the_trash_parser() {
+        // On a soft-delete bucket those entries are the trash: hiding them
+        // would make deleted objects impossible to purge.
+        let (entries, truncated, _, _) =
+            parse_object_versions_page(TIGRIS_SOFT_DELETED_VERSIONS).expect("parse");
+        assert!(!truncated);
+        let ids: Vec<&str> = entries.iter().map(|e| e.version_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            [
+                "1790000000000000001",
+                "1790000000000000002",
+                "1790000000000000003"
+            ],
+            "{entries:?}"
+        );
+    }
+
+    /// A deleted key on a soft-delete bucket: a delete marker on top of a
+    /// `SoftDeleted` version. Both are trash and both are purged.
+    const TIGRIS_TRASH_VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <DeleteMarker>
+    <Key>docs/gone.txt</Key>
+    <VersionId>1790000000000000009</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+  </DeleteMarker>
+  <Version>
+    <Key>docs/gone.txt</Key>
+    <VersionId>1790000000000000008</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>30</Size>
+    <SoftDeleted>true</SoftDeleted>
+  </Version>
+</ListVersionsResult>"#;
+
+    #[tokio::test]
+    async fn empty_trash_purges_soft_deleted_entries() {
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(TIGRIS_TRASH_VERSIONS),
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let listed = provider
+            .list_object_versions("", false)
+            .await
+            .expect("trash");
+        assert_eq!(listed.len(), 2, "{listed:?}");
+        let (count, bytes) = provider
+            .empty_object_versions("", false, false)
+            .await
+            .expect("empty trash");
+        assert_eq!((count, bytes), (2, 30));
+        let purges = tigris_requests(&log, "POST");
+        assert_eq!(
+            purges.iter().filter(|r| r.uri.contains("delete")).count(),
+            1,
+            "{purges:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn soft_deleted_entries_are_not_versions_of_a_live_key() {
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(TIGRIS_SOFT_DELETED_VERSIONS),
+            ..Default::default()
+        };
+        let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let versions = provider
+            .list_versions("/docs/a.txt")
+            .await
+            .expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["1790000000000000001"], "{versions:?}");
+        let gone = provider
+            .list_versions("/docs/gone.txt")
+            .await
+            .expect("versions");
+        assert!(gone.is_empty(), "{gone:?}");
+    }
+
+    /// C6: the dotted-bucket TLS message, and what triggers it.
+    #[test]
+    fn tls_name_failures_are_recognised_and_other_errors_are_not() {
+        for text in [
+            "invalid peer certificate: NotValidForName",
+            "error trying to connect: invalid peer certificate: UnknownIssuer",
+            "certificate verify failed",
+            "presented server name type wasn't supported, not valid for name",
+        ] {
+            assert!(is_tls_name_failure(text), "{text}");
+        }
+        for text in [
+            "operation timed out",
+            "dns error: failed to lookup address information",
+            "connection refused",
+        ] {
+            assert!(!is_tls_name_failure(text), "{text}");
+        }
+        let message = tigris_dotted_bucket_message("my.photos");
+        assert!(message.contains("'my.photos'"), "{message}");
+        assert!(message.contains("Path-Style"), "{message}");
+        assert!(!message.contains("2025"), "{message}");
+        assert!(!message.contains('\u{2014}'), "{message}");
+    }
+
+    /// C6, end to end: a real TLS name failure (a self-signed double whose
+    /// certificate does not name the bucket host) on a dotted Tigris bucket
+    /// turns into the actionable message; the same failure on a bucket
+    /// without dots keeps the transport text.
+    #[test]
+    fn transport_error_names_the_dotted_bucket_only_when_the_name_is_the_problem() {
+        let provider = |bucket: &str, path_style: bool| {
+            let mut provider = make_provider(Some("https://t3.storage.dev"));
+            provider.config.bucket = bucket.to_string();
+            provider.config.path_style = path_style;
+            provider
+        };
+        // A reqwest error from a refused connection stands in for any
+        // non-TLS failure.
+        let client = reqwest::Client::new();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let error = runtime
+            .block_on(client.get("http://127.0.0.1:1/").send())
+            .expect_err("connection refused");
+        match provider("my.bucket", false).transport_error(&error) {
+            ProviderError::NetworkError(_) => {}
+            other => panic!("a refused connection is not a name failure: {other:?}"),
+        }
+        match provider("plain", false).transport_error(&error) {
+            ProviderError::NetworkError(_) => {}
+            other => panic!("{other:?}"),
+        }
+        // A streaming upload takes the same classification and keeps the URL
+        // out of the text it shows.
+        match provider("my.bucket", false).upload_transport_error(error) {
+            ProviderError::NetworkError(text) => {
+                assert!(!text.contains("127.0.0.1:1"), "{text}");
+            }
+            other => panic!("a refused connection is not a name failure: {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn copy_object_preserves_profile_sse_kms_policy() {
         let (mut provider, _, seen) = provider_on_memory_bucket(&[("source.txt", "payload")]).await;
@@ -12047,6 +13496,54 @@ mod tests {
         let message = err.to_string();
         assert!(message.contains("copied 1 of 2"), "{message}");
         assert!(message.contains("retry"), "{message}");
+    }
+
+    /// The message after a halfway rename names where each object is. Objects
+    /// moved by the metadata rename exist only at the destination, so the
+    /// advice must never be to clear it before moving them back.
+    #[test]
+    fn partial_rename_message_keeps_moved_objects_safe() {
+        let after_moves = partial_rename_message(3, 1, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(
+            after_moves.contains("3 moved objects are only under /dst"),
+            "{after_moves}"
+        );
+        assert!(after_moves.contains("do not delete them"), "{after_moves}");
+        assert!(
+            after_moves.contains("move them back to /src"),
+            "{after_moves}"
+        );
+        assert!(
+            after_moves.contains("delete from /dst only the 1 copies that also exist in /src"),
+            "{after_moves}"
+        );
+        assert!(!after_moves.contains("cleared"), "{after_moves}");
+        assert!(after_moves.ends_with("boom"), "{after_moves}");
+
+        let only_moves = partial_rename_message(2, 0, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(!only_moves.contains("copies"), "{only_moves}");
+
+        for message in [&after_moves, &only_moves] {
+            assert!(
+                message.contains("src/x itself may be in either folder"),
+                "{message}"
+            );
+        }
+
+        let nothing_done = partial_rename_message(0, 0, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(
+            nothing_done.contains("before any was copied"),
+            "{nothing_done}"
+        );
+        assert!(!nothing_done.contains("copies stay"), "{nothing_done}");
+        assert!(!nothing_done.contains("removed"), "{nothing_done}");
+
+        let copies_only = partial_rename_message(0, 2, 9, "/src", "/dst", "src/x", &"boom");
+        assert!(
+            copies_only.contains("originals are all still in /src"),
+            "{copies_only}"
+        );
+        assert!(!copies_only.contains("moved objects"), "{copies_only}");
     }
 
     /// Opt-in live check. Supply a disposable bucket's saved-profile export

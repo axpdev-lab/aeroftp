@@ -52,6 +52,7 @@ fn record_of_part(temp: &Path) -> Option<PathBuf> {
 /// filename probes use the same protection for their owned private folder.
 pub fn is_download_staging_dir_name(name: &str) -> bool {
     name.starts_with(".aeroftp-proton-bulk-")
+        || name.starts_with(".aeroftp-mega-bulk-")
         || name.starts_with(".aeroftp-proton-dl-")
         || name.starts_with(".aeroftp-name-probe-")
 }

@@ -21,6 +21,8 @@ use super::{
     StorageInfo, StorageProvider,
 };
 
+mod bulk;
+
 /// Timeout for all MEGAcmd commands (seconds).
 const MEGA_CMD_TIMEOUT_SECS: u64 = 60;
 /// A transfer (`mega-put`, `mega-get`) is cut only after this long with no
@@ -174,15 +176,19 @@ impl MegaCmdProvider {
         on_percent: Option<&(dyn Fn(f64) + Sync)>,
     ) -> Result<String, ProviderError> {
         self.log_debug(&format!("[CMD] {} {:?}", cmd, args));
-        #[cfg(test)]
-        if let Some(dir) = &self.cmd_dir {
-            return self
-                .run_resolved_mega_cmd(cmd, &dir.join(cmd).to_string_lossy(), args, on_percent)
-                .await;
-        }
-        let resolved_cmd = Self::resolve_mega_cmd(cmd);
+        let resolved_cmd = self.command_path(cmd);
         self.run_resolved_mega_cmd(cmd, &resolved_cmd, args, on_percent)
             .await
+    }
+
+    /// The executable `cmd` runs as: the stand-in of that name in tests that
+    /// set one, the installed MEGAcmd command otherwise.
+    fn command_path(&self, cmd: &str) -> String {
+        #[cfg(test)]
+        if let Some(dir) = &self.cmd_dir {
+            return dir.join(cmd).to_string_lossy().into_owned();
+        }
+        Self::resolve_mega_cmd(cmd)
     }
 
     /// [`run_mega_cmd`] with the executable already resolved.
@@ -1000,6 +1006,40 @@ impl StorageProvider for MegaCmdProvider {
         Ok(())
     }
 
+    fn supports_bulk_upload(&self) -> bool {
+        true
+    }
+
+    fn supports_bulk_download(&self) -> bool {
+        true
+    }
+
+    /// Several files of one folder in one `mega-put`, each followed by the
+    /// transfer tag MEGAcmd gives it (see `bulk`).
+    async fn upload_bulk(
+        &mut self,
+        items: &[super::bulk::BulkTransferItem],
+        progress: Option<super::bulk::BulkProgress>,
+    ) -> Result<Vec<super::bulk::BulkTransferOutcome>, ProviderError> {
+        self.bulk_upload(items, progress).await
+    }
+
+    /// The adapter's own admission (see `bulk`): one remote folder, new names
+    /// only for uploads, a whole folder of at most 256 files for downloads.
+    async fn bulk_admits(&mut self, items: &[super::bulk::BulkTransferItem], upload: bool) -> bool {
+        self.bulk_admits_group(items, upload).await
+    }
+
+    /// Every file of one folder in one folder `mega-get` into private
+    /// staging, published file by file on proof (see `bulk`).
+    async fn download_bulk(
+        &mut self,
+        items: &[super::bulk::BulkTransferItem],
+        progress: Option<super::bulk::BulkProgress>,
+    ) -> Result<Vec<super::bulk::BulkTransferOutcome>, ProviderError> {
+        self.bulk_download(items, progress).await
+    }
+
     async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
         // CQ-06: Resolve path
         let p = self.resolve_path(p);
@@ -1469,10 +1509,13 @@ impl StorageProvider for MegaCmdProvider {
         // Neither path improves on the legacy upload() that already
         // runs mega-put through the streaming path. Comment recorded
         // here so future reviewers don't re-litigate the decision.
-        super::TransferOptimizationHints {
-            supports_resume_download: true,
-            ..Default::default()
-        }
+        //
+        // No download resume either: `download` removes an existing target
+        // and runs `mega-get` without `--resume`, so an interrupted download
+        // starts over. Claiming resume kept the native bulk off downloads
+        // (a resuming provider keeps its single-file path) and told agents
+        // something the code does not do.
+        super::TransferOptimizationHints::default()
     }
 }
 
@@ -2200,7 +2243,7 @@ mod tests {
         );
     }
 
-    fn test_provider() -> MegaCmdProvider {
+    pub(super) fn test_provider() -> MegaCmdProvider {
         let config = MegaConfig {
             email: "u@example.com".to_string(),
             password: secrecy::SecretString::from("pw".to_string()),
@@ -2211,6 +2254,26 @@ mod tests {
             connection_mode: MegaConnectionMode::MegaCmd,
         };
         MegaCmdProvider::new(config)
+    }
+
+    /// The MEGAcmd adapter does not resume a download: `download` removes an
+    /// existing target before `mega-get`, which runs without `--resume`. Its
+    /// hints say so, and so the native bulk carries both directions.
+    #[test]
+    fn megacmd_claims_no_download_resume_and_bulks_both_ways() {
+        let provider = test_provider();
+        let hints = provider.transfer_optimization_hints();
+        assert!(!hints.supports_resume_download);
+        assert!(!hints.supports_resume_upload);
+        let source = include_str!("mega.rs");
+        let download = &source[source.find("    async fn download(").unwrap()..];
+        let download = &download[..download.find("    async fn download_to_bytes(").unwrap()];
+        assert!(download.contains("std::fs::remove_file(l)"));
+        assert!(!download.contains("--resume\""));
+        assert_eq!(
+            crate::providers::bulk::bulk_directions(&provider.transfer_capabilities()),
+            (true, true)
+        );
     }
 
     #[test]

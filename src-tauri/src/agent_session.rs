@@ -558,6 +558,8 @@ pub fn default_transfer_optimization_hints_for_provider(
         },
         ProviderType::Mega => TransferOptimizationHints {
             // Factory default is MegaNativeProvider (canonical chunk ramp).
+            // A MEGAcmd-mode session reports its own hints under
+            // `live_provider`: no resume in either direction.
             supports_multipart: true,
             multipart_threshold: 32 * 1024 * 1024,
             multipart_part_size: 1024 * 1024,

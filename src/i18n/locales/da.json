@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Brug kun SCP til servere uden SFTP, for eksempel OpenWrt-routere.",
             "allowScpFallback": "Tillad SCP som reserve",
             "allowScpFallbackHint": "Hvis serveren ikke har SFTP, fortsættes via SCP på samme forbindelse, som WinSCP gør.",
-            "discoverScp": "Filkopiering via SSH til servere uden SFTP"
+            "discoverScp": "Filkopiering via SSH til servere uden SFTP",
+            "discoverTigris": "Tigris: globalt distribueret S3-kompatibel lagring, ingen gebyrer for udgående data (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

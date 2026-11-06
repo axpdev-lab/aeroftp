@@ -5,8 +5,14 @@ import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
 
+/** The production takeover helper, run with the same refs and setters as the slice that calls it. */
+const RELEASE = app.slice(app.indexOf('  const releaseRemoteNavigation = useLatestCallback('), app.indexOf('  /** Puts the active session tab aside'));
+
 async function run<T>(source: string, context: Record<string, unknown>, suffix = ''): Promise<T> {
     context = { navigationOverlayLogId: null, settleNavigationOverlayLog: vi.fn(), ...context };
+    if (source.includes('releaseRemoteNavigation()') && !('releaseRemoteNavigation' in context)) {
+        context.releaseRemoteNavigation = await run(RELEASE, { ...context, useLatestCallback: (fn: unknown) => fn, invoke: context.invoke ?? (async () => false), releaseRemoteNavigation: null }, 'return releaseRemoteNavigation;');
+    }
     const { code } = await transformWithOxc(source, 'remote-navigation-takeover.ts');
     return new Function(...Object.keys(context), `return (async () => { ${code}\n${suffix} })();`)(...Object.values(context));
 }

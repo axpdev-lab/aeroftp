@@ -103,6 +103,35 @@ describe('deriveProviderId MEGA S4 host boundary', () => {
     });
 });
 
+describe('deriveProviderId Tigris host boundary', () => {
+    const s3 = (host: string) => ({ name: 's', host, username: '', protocol: 's3' as const });
+
+    it('classifies the current host, the legacy host and bucket subdomains', () => {
+        expect(deriveProviderId(s3('t3.storage.dev'))).toBe('tigris');
+        expect(deriveProviderId(s3('https://t3.storage.dev:443/bucket'))).toBe('tigris');
+        expect(deriveProviderId(s3('https://my-bucket.t3.storage.dev'))).toBe('tigris');
+        expect(deriveProviderId(s3('fly.storage.tigris.dev'))).toBe('tigris');
+        expect(deriveProviderId(s3('https://my-bucket.fly.storage.tigris.dev/key'))).toBe('tigris');
+    });
+
+    it('keeps a bucket named after another vendor on Tigris', () => {
+        for (const bucket of ['backblaze-backups', 'wasabi-archive', 'idrive-copy', 'storj-mirror']) {
+            expect(deriveProviderId(s3(`${bucket}.t3.storage.dev`))).toBe('tigris');
+            expect(deriveProviderId(s3(`https://${bucket}.fly.storage.tigris.dev`))).toBe('tigris');
+        }
+        expect(deriveProviderId(s3('backblaze-backups.t3.storage.dev.example.com'))).toBe('backblaze');
+    });
+
+    it('rejects lookalikes', () => {
+        expect(deriveProviderId(s3('t3.storage.dev.example.com'))).toBeUndefined();
+        expect(deriveProviderId(s3('not-t3.storage.dev'))).toBeUndefined();
+        expect(deriveProviderId(s3('fly.storage.tigris.dev.evil.com'))).toBeUndefined();
+        expect(deriveProviderId(s3('myfly.storage.tigris.dev'))).toBeUndefined();
+        expect(deriveProviderId(s3('tigris.dev'))).toBeUndefined();
+        expect(deriveProviderId(s3('storage.dev'))).toBeUndefined();
+    });
+});
+
 describe('select all on a filtered checklist', () => {
     const all = ids(LAB);
 

@@ -309,6 +309,13 @@ impl<'a> Disk<'a> {
             let Some(name) = entry.file_name().to_str().map(str::to_string) else {
                 continue;
             };
+            // A bulk download stages its files beside their destination
+            // (Proton, MEGAcmd): partial files there are never content, as
+            // for the full scan and the watchers.
+            if meta.is_dir() && crate::providers::atomic_write::is_download_staging_dir_name(&name)
+            {
+                continue;
+            }
             *budget = budget.checked_sub(1).ok_or(())?;
             let child = format!("{key}/{name}");
             let local = local_info(&path, &meta, name);

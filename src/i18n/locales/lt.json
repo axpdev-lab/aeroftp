@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "SCP naudokite tik serveriams be SFTP, pavyzdžiui, OpenWrt maršrutizatoriams.",
             "allowScpFallback": "Leisti atsarginį SCP",
             "allowScpFallbackHint": "Jei serveris neturi SFTP, ryšys tęsiamas per SCP, kaip tai daro WinSCP.",
-            "discoverScp": "Failų kopijavimas per SSH serveriams be SFTP"
+            "discoverScp": "Failų kopijavimas per SSH serveriams be SFTP",
+            "discoverTigris": "Tigris: pasauliniu mastu paskirstyta su S3 suderinama saugykla, be išeinančio srauto mokesčių (5 GB nemokamai)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

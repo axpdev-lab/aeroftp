@@ -74,6 +74,23 @@ describe('resolveProfileS3Location signingRegion', () => {
     });
 });
 
+describe('Tigris static endpoint', () => {
+    it('resolves the manifest endpoint with the fixed auto region and no region select', () => {
+        expect(resolveProfileS3Location('tigris', {}, ''))
+            .toEqual({ endpoint: 'https://t3.storage.dev', region: 'auto', signingRegion: 'auto' });
+        const preset = getProviderById('tigris');
+        expect(preset?.defaults?.pathStyle).toBe(false);
+        expect(preset?.fields.some(f => f.key === 'region')).toBe(false);
+    });
+
+    it('keeps a profile saved on the legacy host and signs it with auto', () => {
+        expect(resolveProfileS3Location('tigris', {}, 'fly.storage.tigris.dev'))
+            .toEqual({ endpoint: 'fly.storage.tigris.dev', region: 'auto', signingRegion: 'auto' });
+        expect(resolveProfileS3Location('tigris', { endpoint: 'https://fly.storage.tigris.dev' }, '').endpoint)
+            .toBe('https://fly.storage.tigris.dev');
+    });
+});
+
 describe('signing region read back from an explicit endpoint', () => {
     // Same case table as s3_region_is_read_back_from_a_regional_endpoint in
     // src-tauri/src/profile_loader.rs: the two sides must agree.
@@ -94,6 +111,8 @@ describe('signing region read back from an explicit endpoint', () => {
         ['digitalocean-spaces', 'https://bucket.fra1.digitaloceanspaces.com', undefined],
         ['cloudflare-r2', 'https://abc.r2.cloudflarestorage.com', undefined],
         ['backblaze', 's3.eu-central-003.backblazeb2.com', undefined],
+        ['tigris', 'https://t3.storage.dev', undefined],
+        ['tigris', 'https://fly.storage.tigris.dev', undefined],
     ];
     it.each(cases)('%s %s -> %s', (preset, endpoint, readBack) => {
         // Through both explicit forms: stored endpoint option and host. A host

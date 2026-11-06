@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Az SCP-t csak SFTP nélküli szerverekhez használja, például OpenWrt routerekhez.",
             "allowScpFallback": "SCP tartalék engedélyezése",
             "allowScpFallbackHint": "Ha a szerveren nincs SFTP, a kapcsolat SCP-n folytatódik, ahogy a WinSCP is teszi.",
-            "discoverScp": "Fájlmásolás SSH-n keresztül SFTP nélküli szerverekhez"
+            "discoverScp": "Fájlmásolás SSH-n keresztül SFTP nélküli szerverekhez",
+            "discoverTigris": "Tigris: globálisan elosztott, S3-kompatibilis tárhely, kimenő forgalmi díj nélkül (5 GB ingyenes)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

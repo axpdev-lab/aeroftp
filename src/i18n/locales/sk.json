@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "SCP používajte len pre servery bez SFTP, napríklad routery s OpenWrt.",
             "allowScpFallback": "Povoliť záložné SCP",
             "allowScpFallbackHint": "Ak server nemá SFTP, pripojenie pokračuje cez SCP, ako to robí WinSCP.",
-            "discoverScp": "Kopírovanie súborov cez SSH pre servery bez SFTP"
+            "discoverScp": "Kopírovanie súborov cez SSH pre servery bez SFTP",
+            "discoverTigris": "Tigris: globálne distribuované úložisko kompatibilné s S3, bez poplatkov za odchádzajúce dáta (5 GB zadarmo)"
         },
         "shortcuts": {
             "title": "Klávesové skratky",

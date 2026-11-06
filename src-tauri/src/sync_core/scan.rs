@@ -2938,6 +2938,7 @@ pub(crate) mod tests {
         fs::write(root.join("keep.bin"), b"x").unwrap();
         for staging in [
             ".aeroftp-proton-bulk-Ab12Cd",
+            ".aeroftp-mega-bulk-Ef34Gh",
             ".aeroftp-proton-dl-0f9e",
             ".aeroftp-name-probe-Ab12",
         ] {

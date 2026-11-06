@@ -4,14 +4,14 @@
   "counts": {
     "transport_protocols": 8,
     "native_integrations": 26,
-    "presets": 47,
-    "presets_over_transport": 43,
-    "connection_forms": 52,
+    "presets": 48,
+    "presets_over_transport": 44,
+    "connection_forms": 53,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 56,
-    "connection_methods": 70,
-    "catalog_services": 78
+    "providers": 57,
+    "connection_methods": 71,
+    "catalog_services": 79
   },
   "transport_protocols": [
     "ftp",
@@ -85,6 +85,7 @@
       "s3drive",
       "storj",
       "tencent-cos",
+      "tigris",
       "wasabi",
       "yandex-storage"
     ],
@@ -123,7 +124,7 @@
   ],
   "catalog_categories": {
     "protocols": 8,
-    "object-storage": 22,
+    "object-storage": 23,
     "webdav": 19,
     "cloud-storage": 20,
     "media-services": 5,
@@ -439,6 +440,12 @@
     },
     {
       "id": "tencent-cos",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "tigris",
       "protocols": [
         "s3"
       ]

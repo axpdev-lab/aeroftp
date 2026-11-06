@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Gebruik SCP alleen voor servers zonder SFTP, bijvoorbeeld OpenWrt-routers.",
             "allowScpFallback": "SCP als terugvaloptie toestaan",
             "allowScpFallbackHint": "Als de server geen SFTP heeft, gaat de verbinding verder via SCP, zoals WinSCP doet.",
-            "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP"
+            "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP",
+            "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Notaðu SCP aðeins fyrir netþjóna án SFTP, til dæmis OpenWrt-beina.",
             "allowScpFallback": "Leyfa SCP til vara",
             "allowScpFallbackHint": "Ef netþjónninn hefur ekki SFTP er haldið áfram um SCP á sömu tengingu, eins og WinSCP gerir.",
-            "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP"
+            "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP",
+            "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
