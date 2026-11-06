@@ -864,6 +864,10 @@ impl StorageProvider for MegaCmdProvider {
             ));
         }
 
+        // Resolve the remote node first: a refused or failed lookup must leave
+        // the local file where it is (Greptile on the 188/189 branch).
+        let remote_address = self.node_address(&abs_remote).await?;
+
         // MEGAcmd's `mega-get` does NOT overwrite an existing local target: it
         // writes to a ` (1)`-suffixed sibling and leaves the original file
         // untouched. Callers that pre-create the destination (a NamedTempFile
@@ -893,7 +897,6 @@ impl StorageProvider for MegaCmdProvider {
                 bar.report((*size as f64 * percent / 100.0) as u64);
             }
         };
-        let remote_address = self.node_address(&abs_remote).await?;
         match self
             .run_mega_transfer_with_reauth(
                 "mega-get",
@@ -1590,8 +1593,16 @@ impl MegaCmdProvider {
         if !mega_wildcard(path) {
             return Ok(path.to_string());
         }
-        let mut current = "/".to_string();
-        for name in path.split('/').filter(|part| !part.is_empty()) {
+        // A MEGAcmd special root (`//bin`, `//in`) is its own root, never a
+        // folder of that name under `/` (Greptile on the 188/189 branch).
+        let (mut current, rest) = match path.strip_prefix("//") {
+            Some(special) => {
+                let (root, rest) = special.split_once('/').unwrap_or((special, ""));
+                (format!("//{root}"), rest)
+            }
+            None => ("/".to_string(), path),
+        };
+        for name in rest.split('/').filter(|part| !part.is_empty()) {
             let listing = self
                 .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", &current])
                 .await?;
@@ -2396,6 +2407,68 @@ mod tests {
             unique_handle_for(&twice, "*"),
             Err(ProviderError::InvalidPath(_))
         ));
+    }
+
+    /// A wildcard name whose lookup fails leaves the existing local file
+    /// untouched: the remote node is resolved before the local target is
+    /// cleared for `mega-get` (Greptile on the 188/189 branch).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_wildcard_lookup_keeps_the_local_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        // The listing never holds the requested name, so the lookup fails.
+        let ls = "#!/bin/sh\n\
+                  echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'\n\
+                  echo '----    1            2 06Nov2026 12:20:41 H:other001 b.txt'\n";
+        let get = "#!/bin/sh\necho \"mega-get $*\" >> \"$(dirname \"$0\")/argv.log\"\n";
+        for (name, body) in [("mega-ls", ls), ("mega-get", get)] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let local = dir.path().join("keep.txt");
+        std::fs::write(&local, b"precious").unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let outcome = provider
+            .download("/a?.txt", local.to_str().unwrap(), None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(std::fs::read(&local).unwrap(), b"precious");
+        assert!(
+            !dir.path().join("argv.log").exists(),
+            "mega-get must not run"
+        );
+    }
+
+    /// A wildcard path under the rubbish bin is resolved from `//bin`, never
+    /// from a folder named `bin` under `/`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_wildcard_path_in_the_bin_resolves_from_the_bin_root() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ls = "#!/bin/sh\n\
+                  echo \"mega-ls $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
+                  echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'\n\
+                  echo '----    1            5 06Nov2026 12:20:41 H:binstar1 a?.txt'\n";
+        let path = dir.path().join("mega-ls");
+        std::fs::write(&path, ls).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let address = provider
+            .node_address("//bin/a?.txt")
+            .await
+            .expect("resolved");
+        assert_eq!(address, "H:binstar1");
+        let argv = std::fs::read_to_string(dir.path().join("argv.log")).unwrap();
+        assert!(argv.contains("--show-handles //bin"), "{argv}");
+        assert!(
+            !argv.contains("--show-handles /\n"),
+            "listed / instead of //bin: {argv}"
+        );
     }
 
     /// End to end on a MEGAcmd stand-in that records its arguments: purging a

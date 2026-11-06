@@ -7644,6 +7644,9 @@ fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
     if cli.trust_host_key {
         bad.push("--trust-host-key (skips SSH host-key TOFU verification)");
     }
+    if cli.trust_pasv_address {
+        bad.push("--trust-pasv-address (lets an FTP server choose the data host)");
+    }
     if cli.drive_acknowledge_abuse {
         bad.push("--drive-acknowledge-abuse (downloads files Google flagged as abusive)");
     }
@@ -85256,6 +85259,7 @@ mod tests {
         let cases: &[fn(&mut Cli)] = &[
             |c| c.insecure = true,
             |c| c.trust_host_key = true,
+            |c| c.trust_pasv_address = true,
             |c| c.drive_acknowledge_abuse = true,
             |c| c.drive_cross_account_copy = true,
             |c| c.azure_archive_tier_delete = true,
