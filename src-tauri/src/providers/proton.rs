@@ -127,7 +127,18 @@ pub struct ProtonCliProvider {
     /// published, and expires after [`BULK_CLAIMED_SIZE_TTL`].
     bulk_claimed_sizes: std::collections::HashMap<String, (u64, std::time::Instant)>,
     trash_listing: Option<(String, Vec<RemoteEntry>)>,
+    /// The last folder this instance listed: its absolute path, entries and
+    /// when. A bulk download that binds names to node UIDs right after the
+    /// caller planned from that listing reuses it instead of a second
+    /// proton-drive launch ([`LISTING_REUSE`]). Any launch that may change the
+    /// remote clears it.
+    recent_listing: std::sync::Mutex<Option<(String, Vec<RemoteEntry>, std::time::Instant)>>,
 }
+
+/// How long a listing of this instance still serves a bulk download's
+/// binding. What it may miss in that time is what the caller's own planning
+/// listing already misses: a file replaced by another client in between.
+const LISTING_REUSE: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How long a claimed size from a bulk's listing still describes the file a
 /// single-file retry downloads.
@@ -164,7 +175,7 @@ impl ProtonCliProvider {
         if first_segment(first) != "my-files" || remotes.iter().any(|r| parent_of(r) != parent) {
             return (remotes.to_vec(), claimed);
         }
-        let Ok(entries) = self.list(&parent).await else {
+        let Ok(entries) = self.listing_for_binding(&parent).await else {
             return (remotes.to_vec(), claimed);
         };
         let mut by_name = std::collections::HashMap::new();
@@ -212,9 +223,42 @@ impl ProtonCliProvider {
         }
     }
 
+    /// Clear the reusable listing before any launch but a listing, an info or
+    /// a download: everything else (upload, create-folder, rename, move,
+    /// trash, delete, restore, sharing) may change what a folder holds.
+    fn forget_listing_unless_reading(&self, args: &[impl AsRef<str>]) {
+        let verb = args.get(1).map(AsRef::as_ref).unwrap_or("");
+        let reading = args.first().map(AsRef::as_ref) == Some("filesystem")
+            && matches!(verb, "list" | "info" | "download");
+        if !reading {
+            if let Ok(mut listing) = self.recent_listing.lock() {
+                *listing = None;
+            }
+        }
+    }
+
+    /// The entries of `folder` from this instance's last listing when it is
+    /// that folder and recent enough, else a fresh listing.
+    async fn listing_for_binding(
+        &mut self,
+        folder: &str,
+    ) -> Result<Vec<RemoteEntry>, ProviderError> {
+        let reused = self.recent_listing.lock().ok().and_then(|listing| {
+            listing
+                .as_ref()
+                .filter(|(path, _, at)| path == folder && at.elapsed() < LISTING_REUSE)
+                .map(|(_, entries, _)| entries.clone())
+        });
+        match reused {
+            Some(entries) => Ok(entries),
+            None => self.list(folder).await,
+        }
+    }
+
     /// Unlike `run_cli`, a mutating multi-file call is NEVER replayed. An
     /// interrupted process may have committed an arbitrary subset of revisions.
     async fn run_bulk_once(&self, args: &[String]) -> Result<std::process::Output, ProviderError> {
+        self.forget_listing_unless_reading(args);
         if self.binary.is_empty() || !binary_exists(&self.binary) {
             return Err(ProviderError::InvalidConfig(MISSING_CLI.to_string()));
         }
@@ -526,6 +570,7 @@ impl ProtonCliProvider {
             account_email: None,
             binary,
             bulk_claimed_sizes: std::collections::HashMap::new(),
+            recent_listing: std::sync::Mutex::new(None),
             trash_listing: None,
         }
     }
@@ -536,6 +581,7 @@ impl ProtonCliProvider {
 
     async fn run_cli(&self, args: &[&str], timeout_secs: u64) -> Result<String, ProviderError> {
         self.log(&format!("[CMD] proton-drive {:?}", redact_cli_args(args)));
+        self.forget_listing_unless_reading(args);
         if self.binary.is_empty() || !binary_exists(&self.binary) {
             return Err(ProviderError::InvalidConfig(MISSING_CLI.to_string()));
         }
@@ -1672,7 +1718,11 @@ impl StorageProvider for ProtonCliProvider {
                 ProviderError::NotFound(_) => ProviderError::NotFound(target.clone()),
                 other => explain_unlistable(&target, other),
             })?;
-        parse_list_json(&stdout, &target)
+        let entries = parse_list_json(&stdout, &target)?;
+        if let Ok(mut listing) = self.recent_listing.lock() {
+            *listing = Some((target, entries.clone(), std::time::Instant::now()));
+        }
+        Ok(entries)
     }
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
@@ -2346,6 +2396,7 @@ impl StorageProvider for ProtonCliProvider {
             binary: self.binary.clone(),
             // A listing clone downloads nothing.
             bulk_claimed_sizes: std::collections::HashMap::new(),
+            recent_listing: std::sync::Mutex::new(None),
             trash_listing: None,
         }))
     }
@@ -2738,6 +2789,75 @@ mod cli_sequence_tests {
                 }
             })
             .collect()
+    }
+
+    /// Row 71: the caller plans a download from a listing, and the bulk then
+    /// binds names to node UIDs from that same listing of this instance: one
+    /// proton-drive `list`, not two. A launch that may change the folder in
+    /// between (here a create-folder) clears it, and the bulk lists afresh.
+    #[tokio::test]
+    async fn a_bulk_download_reuses_the_planning_listing_until_something_changes() {
+        for mutate in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let shim = link_shim(dir.path());
+            let uid_a = format!("{}~{}", "A".repeat(22), "B".repeat(22));
+            let uid_b = format!("{}~{}", "A".repeat(22), "C".repeat(22));
+            std::fs::write(
+                dir.path().join("my-files_bulk.json"),
+                serde_json::to_vec(&serde_json::json!([
+                    {"name":{"ok":true,"value":"a.txt"},"uid":uid_a,"type":"file"},
+                    {"name":{"ok":true,"value":"b.txt"},"uid":uid_b,"type":"file"}
+                ]))
+                .unwrap(),
+            )
+            .unwrap();
+            let map: std::collections::HashMap<_, _> =
+                [(uid_a.clone(), "a.txt"), (uid_b.clone(), "b.txt")]
+                    .into_iter()
+                    .collect();
+            std::fs::write(
+                dir.path().join("uid-name-map.json"),
+                serde_json::to_vec(&map).unwrap(),
+            )
+            .unwrap();
+            let mut p = provider(&shim);
+            p.list("/my-files/bulk").await.unwrap();
+            if mutate {
+                p.mkdir("/my-files/bulk/sub").await.unwrap();
+            }
+            let items: Vec<_> = ["a.txt", "b.txt"]
+                .iter()
+                .map(|name| BulkTransferItem {
+                    local_path: dir.path().join(name).to_string_lossy().into_owned(),
+                    remote_path: format!("/my-files/bulk/{name}"),
+                    size: 14,
+                })
+                .collect();
+            let folder_lists = |argv: &[Vec<String>]| {
+                verbs(argv, "list")
+                    .iter()
+                    .filter(|a| a.iter().any(|x| x == "/my-files/bulk"))
+                    .count()
+            };
+            let before = folder_lists(&read_argv(dir.path()));
+            let results = p.download_bulk(&items, None).await.unwrap();
+            assert!(
+                results
+                    .iter()
+                    .all(|r| matches!(r, BulkTransferOutcome::Completed)),
+                "{results:?}"
+            );
+            let argv = read_argv(dir.path());
+            // Planning listing reused: the bulk lists nothing; after a change
+            // it lists the folder once more.
+            assert_eq!(
+                folder_lists(&argv) - before,
+                usize::from(mutate),
+                "mutate {mutate}: {argv:?}"
+            );
+            let download = verbs(&argv, "download");
+            assert!(download[0].contains(&format!("/my-files/{uid_a}")));
+        }
     }
 
     #[tokio::test]
