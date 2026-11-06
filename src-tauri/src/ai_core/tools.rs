@@ -2982,7 +2982,12 @@ mod tests {
     /// moment the code lost it, and would stay green on the one day it
     /// mattered: the day a tool stops being routed here while the CLI binary no
     /// longer keeps a legacy arm to answer it. This is where the list lives.
-    const ROUTED_CLI_TOOLS: [(&str, &[&str]); 33] = [
+    const ROUTED_CLI_TOOLS: [(&str, &[&str]); 35] = [
+        // `app_info` has no argument and only reads the version and the
+        // working folder; `hash_file` refuses the NUL path. The CLI binary
+        // keeps no legacy arm for either.
+        ("app_info", &[]),
+        ("hash_file", &["path"]),
         ("archive_compress", &["paths", "output_path"]),
         ("archive_decompress", &["archive_path", "output_dir"]),
         ("local_batch_rename", &["paths", "mode"]),
@@ -3023,7 +3028,7 @@ mod tests {
         ("server_exec", &["server", "operation"]),
     ];
 
-    /// The other four names of the thirty-seven. They are asserted more weakly
+    /// The other four names of the thirty-nine. They are asserted more weakly
     /// below, and the weaker claim is stated rather than disguised: a call that
     /// reached their handlers would run a shell command, write the clipboard,
     /// write to the memory database or list the saved profiles, and a test that

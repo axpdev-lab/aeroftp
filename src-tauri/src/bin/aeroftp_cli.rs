@@ -9043,33 +9043,6 @@ fn use_color() -> bool {
     std::io::stderr().is_terminal()
 }
 
-const CLI_DENIED_SYSTEM_PREFIXES: &[&str] = &[
-    "/proc",
-    "/sys",
-    "/dev",
-    "/boot",
-    "/root",
-    "/etc/shadow",
-    "/etc/passwd",
-    "/etc/ssh",
-    "/etc/sudoers",
-];
-
-const CLI_DENIED_HOME_RELATIVE_PREFIXES: &[&str] = &[
-    ".ssh",
-    ".gnupg",
-    ".aws",
-    ".kube",
-    ".docker",
-    ".config/gcloud",
-    ".config/aeroftp",
-    ".vault-token",
-];
-
-fn path_matches_prefix(path: &str, prefix: &str) -> bool {
-    path == prefix || path.starts_with(&format!("{}/", prefix))
-}
-
 // ── Filter System ─────────────────────────────────────────────────
 
 /// Parse an age/duration string like "7d", "24h", "2w" into seconds.
@@ -75918,157 +75891,20 @@ async fn execute_cli_tool(
     tool_name: &str,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, String> {
-    use serde_json::json;
-
-    // Helper to extract string argument
-    let get_str = |key: &str| -> Result<String, String> {
-        args.get(key)
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-            .ok_or_else(|| format!("Missing required argument: {}", key))
-    };
-
-    let get_str_opt = |key: &str| -> Option<String> {
-        args.get(key)
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string())
-    };
-
-    // Validate local path - deny sensitive paths (mirrors ai_tools.rs::validate_path)
-    let validate_path = |path: &str, param: &str| -> Result<(), String> {
-        if path.len() > 4096 {
-            return Err(format!("{}: path exceeds 4096 characters", param));
+    // Every tool the CLI offers goes through the unified tool engine and its
+    // path policy; one it does not know is not available here.
+    let json_mode = std::env::args().any(|a| a == "--json");
+    let ctx = ftp_client_gui_lib::ai_core::cli_impl::CliToolCtx::new(
+        ftp_client_gui_lib::ai_core::cli_impl::CliEventSink { json_mode },
+        ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
+    );
+    match ftp_client_gui_lib::ai_core::tools::dispatch_tool(&ctx, tool_name, args).await {
+        Ok(v) => Ok(v),
+        Err(ftp_client_gui_lib::ai_core::tools::ToolError::Unknown(_))
+        | Err(ftp_client_gui_lib::ai_core::tools::ToolError::NotMigrated(_)) => {
+            Err(format!("Tool '{}' is not available in CLI mode", tool_name))
         }
-        if path.contains('\0') {
-            return Err(format!("{}: path contains null bytes", param));
-        }
-        let normalized = path.replace('\\', "/");
-        for component in normalized.split('/') {
-            if component == ".." {
-                return Err(format!("{}: path traversal ('..') not allowed", param));
-            }
-        }
-        let resolved = std::fs::canonicalize(path).or_else(|_| {
-            std::path::Path::new(path)
-                .parent()
-                .map(std::fs::canonicalize)
-                .unwrap_or(Err(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    "no parent",
-                )))
-        });
-        if let Ok(canonical) = resolved {
-            let s = canonical.to_string_lossy();
-            if CLI_DENIED_SYSTEM_PREFIXES
-                .iter()
-                .any(|d| path_matches_prefix(&s, d))
-            {
-                return Err(format!("{}: access to system path denied: {}", param, s));
-            }
-            if let Ok(home) = std::env::var("HOME") {
-                for sensitive in CLI_DENIED_HOME_RELATIVE_PREFIXES {
-                    if path_matches_prefix(&s, &format!("{}/{}", home, sensitive)) {
-                        return Err(format!("{}: access to sensitive path denied: {}", param, s));
-                    }
-                }
-            }
-            if path_matches_prefix(&s, "/run/secrets") {
-                return Err(format!("{}: access to system path denied: {}", param, s));
-            }
-        }
-
-        if let Ok(home) = std::env::var("HOME") {
-            for sensitive in CLI_DENIED_HOME_RELATIVE_PREFIXES {
-                let full = format!("{}/{}", home, sensitive);
-                if path_matches_prefix(path, &full) {
-                    return Err(format!(
-                        "{}: access to sensitive path denied: {}",
-                        param, path
-                    ));
-                }
-            }
-        }
-
-        Ok(())
-    };
-
-    // Resolve relative path against cwd
-    let resolve_path = |path: &str| -> String {
-        if std::path::Path::new(path).is_absolute() {
-            path.to_string()
-        } else {
-            std::env::current_dir()
-                .map(|cwd| cwd.join(path).to_string_lossy().to_string())
-                .unwrap_or_else(|_| path.to_string())
-        }
-    };
-
-    // Try dispatch through the unified tool engine (T3 Gate 2 Area A/B/C).
-    // Se il tool non è nel registry canonico, cade nel match legacy sotto.
-    {
-        let json_mode = std::env::args().any(|a| a == "--json");
-        let ctx = ftp_client_gui_lib::ai_core::cli_impl::CliToolCtx::new(
-            ftp_client_gui_lib::ai_core::cli_impl::CliEventSink { json_mode },
-            ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
-        );
-        match ftp_client_gui_lib::ai_core::tools::dispatch_tool(&ctx, tool_name, args).await {
-            Ok(v) => return Ok(v),
-            Err(ftp_client_gui_lib::ai_core::tools::ToolError::Unknown(_))
-            | Err(ftp_client_gui_lib::ai_core::tools::ToolError::NotMigrated(_)) => {
-                // Fallback al match legacy
-            }
-            Err(e) => return Err(e.to_string()),
-        }
-    }
-
-    match tool_name {
-        // KEEP. Fallback if dispatch_tool answers Unknown or NotMigrated.
-        // The dispatcher now owns `hash_file` on the CLI surface; this arm
-        // remains the CLI-shaped implementation if that routing is ever
-        // withdrawn.
-        "hash_file" => {
-            let path = resolve_path(&get_str("path")?);
-            let algorithm = get_str_opt("algorithm").unwrap_or_else(|| "sha256".to_string());
-            validate_path(&path, "path")?;
-            let data = std::fs::read(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-            let hash = match algorithm.to_lowercase().as_str() {
-                "md5" => {
-                    use md5::Digest;
-                    let mut hasher = md5::Md5::new();
-                    hasher.update(&data);
-                    format!("{:x}", hasher.finalize())
-                }
-                "sha256" => {
-                    use sha2::Digest;
-                    format!("{:x}", sha2::Sha256::digest(&data))
-                }
-                "sha512" => {
-                    use sha2::Digest;
-                    format!("{:x}", sha2::Sha512::digest(&data))
-                }
-                "blake3" => blake3::hash(&data).to_hex().to_string(),
-                other => return Err(format!("Unsupported algorithm: {}", other)),
-            };
-            Ok(json!({ "path": path, "algorithm": algorithm, "hash": hash }))
-        }
-
-        // KEEP. Fallback if dispatch_tool answers Unknown or NotMigrated.
-        // The dispatcher now owns `app_info` on the CLI surface (`mode: "cli"`).
-        // This arm remains if that routing is ever withdrawn.
-        "app_info" => {
-            let cwd = std::env::current_dir()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|_| "?".to_string());
-            Ok(json!({
-                "version": env!("CARGO_PKG_VERSION"),
-                "platform": std::env::consts::OS,
-                "arch": std::env::consts::ARCH,
-                "working_directory": cwd,
-                "mode": "cli",
-            }))
-        }
-
-        _ => Err(format!("Tool '{}' is not available in CLI mode", tool_name)),
+        Err(e) => Err(e.to_string()),
     }
 }
 
