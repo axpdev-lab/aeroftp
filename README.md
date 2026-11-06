@@ -262,7 +262,7 @@ AeroFTP bridges server profiles with **15 third-party tools**, bidirectionally (
 
 | Tool | Config / file | Protocols | Credentials |
 |---|---|---|---|
-| **rclone** | `rclone.conf` (INI) | 17 backend types | Full (AES-256-CTR, published key) |
+| **rclone** | `rclone.conf` (INI) | 24 backend types, plus `crypt` and `alias` remotes | Full (AES-256-CTR, published key) |
 | **WinSCP** | `WinSCP.ini` (INI) | SFTP, SCP, FTP, FTPS, WebDAV, S3 | Full (XOR obfuscation) |
 | **FileZilla** | `sitemanager.xml` (XML) | FTP, FTPS, SFTP, S3 | Full (Base64) |
 | **lftp** | `rc` / bookmarks | FTP, FTPS, SFTP, WebDAV | Limited |

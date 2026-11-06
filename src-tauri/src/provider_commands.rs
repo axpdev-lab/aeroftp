@@ -1173,6 +1173,29 @@ pub struct ProviderConnectionParams {
     pub opendrive_default_privacy: Option<String>,
 }
 
+/// The host the backend uses for a cloud API whatever the tab's server field
+/// says, or `None` where the user's server is the endpoint. One list for the
+/// connection and for the liveness probe, which compares endpoints only where
+/// they are the user's.
+fn fixed_api_host(provider_type: ProviderType) -> Option<&'static str> {
+    Some(match provider_type {
+        ProviderType::Mega => "mega.nz",
+        ProviderType::Proton => "drive.proton.me",
+        ProviderType::Internxt => "gateway.internxt.com",
+        ProviderType::KDrive => "api.infomaniak.com",
+        ProviderType::Jottacloud => "jfs.jottacloud.com",
+        ProviderType::DrimeCloud => "app.drime.cloud",
+        ProviderType::FileLu => "filelu.com",
+        ProviderType::Koofr => "app.koofr.net",
+        ProviderType::OpenDrive => "dev.opendrive.com",
+        ProviderType::YandexDisk => "cloud-api.yandex.net",
+        ProviderType::ImageKit => "api.imagekit.io",
+        ProviderType::Uploadcare => "api.uploadcare.com",
+        ProviderType::Cloudinary => "api.cloudinary.com",
+        _ => return None,
+    })
+}
+
 impl ProviderConnectionParams {
     /// Convert to provider configuration
     pub fn to_provider_config(&self) -> Result<ProviderConfig, String> {
@@ -1641,32 +1664,8 @@ impl ProviderConnectionParams {
             }
         }
 
-        let host = if provider_type == ProviderType::Mega {
-            "mega.nz".to_string()
-        } else if provider_type == ProviderType::Proton {
-            "drive.proton.me".to_string()
-        } else if provider_type == ProviderType::Internxt {
-            "gateway.internxt.com".to_string()
-        } else if provider_type == ProviderType::KDrive {
-            "api.infomaniak.com".to_string()
-        } else if provider_type == ProviderType::Jottacloud {
-            "jfs.jottacloud.com".to_string()
-        } else if provider_type == ProviderType::DrimeCloud {
-            "app.drime.cloud".to_string()
-        } else if provider_type == ProviderType::FileLu {
-            "filelu.com".to_string()
-        } else if provider_type == ProviderType::Koofr {
-            "app.koofr.net".to_string()
-        } else if provider_type == ProviderType::OpenDrive {
-            "dev.opendrive.com".to_string()
-        } else if provider_type == ProviderType::YandexDisk {
-            "cloud-api.yandex.net".to_string()
-        } else if provider_type == ProviderType::ImageKit {
-            "api.imagekit.io".to_string()
-        } else if provider_type == ProviderType::Uploadcare {
-            "api.uploadcare.com".to_string()
-        } else if provider_type == ProviderType::Cloudinary {
-            "api.cloudinary.com".to_string()
+        let host = if let Some(host) = fixed_api_host(provider_type) {
+            host.to_string()
         } else if provider_type == ProviderType::Azure {
             // Azure constructs endpoint from account_name if server is empty
             if self.server.is_empty() {
@@ -2018,9 +2017,11 @@ async fn install_connected_provider_with_config(
     // overlay keys must never re-arm onto it. Bump generation + zeroize while
     // still holding the provider lock, so a concurrent re-arm is serialized out.
     state.invalidate_overlay_key_cache();
-    if let Some(config) = config {
-        *state.config.lock().await = Some(config);
-    }
+    // The config always describes the provider in the slot. An install without
+    // one (OAuth, 4shared; `provider_connect` sets its own right after) clears
+    // the previous connection's, which the liveness probe would otherwise
+    // compare against the new provider.
+    *state.config.lock().await = config;
     Ok(())
 }
 
@@ -2713,6 +2714,190 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
     }
 }
 
+/// How long the liveness probe may take, its listing included. A server that
+/// does not answer in time counts as not alive: the switch then falls back to a real
+/// reconnect, whose listing has a spinner and a Cancel, instead of waiting on
+/// a listing nothing can cancel.
+const PROBE_ALIVE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The account a tab expects to find in the provider slot, as the frontend
+/// knows it: its protocol, user, saved profile, endpoint and bucket.
+#[derive(Debug, Default, Clone, Copy)]
+struct ProbeIdentity<'a> {
+    protocol: Option<&'a str>,
+    username: Option<&'a str>,
+    profile_id: Option<&'a str>,
+    host: Option<&'a str>,
+    port: Option<u16>,
+    bucket: Option<&'a str>,
+    /// An S3 tab's custom endpoint and region (`options.endpoint`, `options.region`).
+    endpoint: Option<&'a str>,
+    region: Option<&'a str>,
+}
+
+/// An endpoint as a tab or a config writes it: `[scheme://]host[:port][/path]`.
+/// The scheme and the host compare without case; a path (a WebDAV collection)
+/// is part of the endpoint and compares exactly.
+struct Endpoint<'a> {
+    scheme: Option<String>,
+    host: String,
+    port: Option<u16>,
+    path: &'a str,
+}
+
+fn endpoint_of(text: &str) -> Endpoint<'_> {
+    let text = text.trim();
+    let (scheme, rest) = match text.split_once("://") {
+        Some((scheme, rest)) => (Some(scheme.to_ascii_lowercase()), rest),
+        None => (None, text),
+    };
+    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
+        // An IPv6 literal: `[::1]` or `[::1]:21`.
+        let (host, after) = bracketed.split_once(']').unwrap_or((bracketed, ""));
+        (host, after.strip_prefix(':').and_then(|p| p.parse().ok()))
+    } else {
+        match authority.rsplit_once(':') {
+            Some((host, port)) if !host.contains(':') && port.parse::<u16>().is_ok() => {
+                (host, port.parse().ok())
+            }
+            _ => (authority, None),
+        }
+    };
+    Endpoint {
+        scheme,
+        host: host.to_ascii_lowercase(),
+        port,
+        path: path.trim_end_matches('/'),
+    }
+}
+
+/// Whether the tab's endpoint `expected`, on `port`, is the slot's `actual`
+/// on `actual_port`. A scheme written on one side only does not tell them
+/// apart. Where `url_port_wins` (WebDAV), a port written in the URL is the one
+/// the connection uses; elsewhere a port written into a host must be the
+/// port compared.
+fn same_endpoint(
+    expected: &str,
+    actual: &str,
+    port: u16,
+    actual_port: u16,
+    url_port_wins: bool,
+) -> bool {
+    let (expected, actual) = (endpoint_of(expected), endpoint_of(actual));
+    let schemes_agree = match (&expected.scheme, &actual.scheme) {
+        (Some(a), Some(b)) => a == b,
+        _ => true,
+    };
+    let ports_agree = if url_port_wins {
+        expected.port.unwrap_or(port) == actual.port.unwrap_or(actual_port)
+    } else {
+        port == actual_port
+            && expected.port.is_none_or(|p| p == port)
+            && actual.port.is_none_or(|p| p == actual_port)
+    };
+    schemes_agree && expected.host == actual.host && expected.path == actual.path && ports_agree
+}
+
+/// Whether the slot holds the account `expected` names, judged from the
+/// effective config of the slot and the saved profile recorded when it
+/// connected. Protocol and user alone are not an identity: two servers with
+/// the same user (root, admin, one account on two ports) would pass, and the
+/// tab would act on the other server. So a saved profile must be the same
+/// profile, a connection without one must reach the same endpoint, an omitted
+/// port is the default port and not any port, and an S3 tab's bucket must be
+/// the slot's.
+fn slot_matches_identity(
+    config: &ProviderConfig,
+    slot_profile: Option<&str>,
+    expected: &ProbeIdentity<'_>,
+) -> bool {
+    // Normalize to lowercase alphanumerics so `filen`/`Filen`, `s3`/`S3`,
+    // `googledrive`/`GoogleDrive` all compare equal across the IPC boundary.
+    let norm = |s: &str| -> String {
+        s.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    if let Some(protocol) = expected.protocol {
+        if norm(&format!("{:?}", config.provider_type)) != norm(protocol) {
+            return false;
+        }
+    }
+    if let (Some(expected), Some(actual)) = (expected.username, config.username.as_deref()) {
+        if !expected.is_empty() && !expected.eq_ignore_ascii_case(actual) {
+            return false;
+        }
+    }
+    // An S3 slot keeps its bucket under `bucket`; Azure, kDrive and Cloudinary
+    // keep theirs under other keys, so only a slot that has one is compared.
+    // An S3 tab that names no bucket cannot be shown to be the slot's.
+    match (
+        expected.bucket.filter(|b| !b.is_empty()),
+        config.extra.get("bucket"),
+    ) {
+        (Some(bucket), Some(actual)) if bucket != actual => return false,
+        (None, Some(_)) if config.provider_type == ProviderType::S3 => return false,
+        _ => {}
+    }
+    // An S3 custom endpoint and region, where both sides name them.
+    if let (Some(endpoint), Some(actual)) = (
+        expected.endpoint.map(str::trim).filter(|e| !e.is_empty()),
+        config.extra.get("endpoint"),
+    ) {
+        if !same_endpoint(endpoint, actual, 0, 0, true) {
+            return false;
+        }
+    }
+    if let (Some(region), Some(actual)) = (
+        expected.region.map(str::trim).filter(|r| !r.is_empty()),
+        config.extra.get("region"),
+    ) {
+        if !region.eq_ignore_ascii_case(actual.trim()) {
+            return false;
+        }
+    }
+    let port = expected
+        .port
+        .filter(|port| *port != 0)
+        .unwrap_or_else(|| config.default_port());
+    let host = expected.host.map(str::trim).filter(|h| !h.is_empty());
+    let actual_host = Some(config.host.trim()).filter(|h| !h.is_empty());
+    let url_port_wins = config.provider_type == ProviderType::WebDav;
+    let endpoint_matches = |host: &str, actual: &str| {
+        same_endpoint(host, actual, port, config.effective_port(), url_port_wins)
+    };
+    let endpoint_counts = fixed_api_host(config.provider_type).is_none();
+    let expected_profile = expected.profile_id.filter(|id| !id.is_empty());
+    match (expected_profile, slot_profile.filter(|id| !id.is_empty())) {
+        // The same saved profile, and where both sides name an endpoint, the
+        // same endpoint: an edited profile connected anew is not the server
+        // an older tab of it shows.
+        (Some(expected), Some(actual)) => {
+            expected == actual
+                && (!endpoint_counts
+                    || match (host, actual_host) {
+                        (Some(host), Some(actual)) => endpoint_matches(host, actual),
+                        _ => true,
+                    })
+        }
+        // One side is a saved profile and the other is not: not the same.
+        (Some(_), None) | (None, Some(_)) => false,
+        // Without a profile, the endpoint is the account where it is the
+        // user's; a cloud API account, or one where neither side names a
+        // server, is its protocol and user, checked above.
+        (None, None) => {
+            !endpoint_counts
+                || match (host, actual_host) {
+                    (Some(host), Some(actual)) => endpoint_matches(host, actual),
+                    (None, None) => true,
+                    _ => false,
+                }
+        }
+    }
+}
+
 /// Lightweight liveness probe for the currently connected provider (#128-C).
 ///
 /// Runs a bare `list(".")` on the active session and reports whether it
@@ -2721,50 +2906,68 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
 /// Internxt a fresh TOTP window), which is exactly what the caller wants to
 /// avoid: re-entering an already-connected 2FA account through the 🏠 Home
 /// button must not force a new 2FA code. `Ok(false)` (no provider, not
-/// connected, or the list failed) tells the UI to fall back to the normal
-/// disconnect + reconnect flow.
+/// connected, another account in the slot, a listing that failed or did not
+/// answer within [`PROBE_ALIVE_TIMEOUT`]) tells the UI to fall back to
+/// the normal disconnect + reconnect flow.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_probe_alive(
     state: State<'_, ProviderState>,
     protocol: Option<String>,
     username: Option<String>,
+    profile_id: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
+    bucket: Option<String>,
+    endpoint: Option<String>,
+    region: Option<String>,
 ) -> Result<bool, String> {
-    // The backend keeps only the most-recently-connected provider (single slot).
-    // Confirm that slot still holds THIS account before probing, so a probe can
-    // never make the UI reuse a different account's live session.
-    {
-        let config_lock = state.config.lock().await;
-        let Some(config) = config_lock.as_ref() else {
-            return Ok(false);
-        };
-        // Normalize to lowercase alphanumerics so `filen`/`Filen`, `s3`/`S3`,
-        // `googledrive`/`GoogleDrive` all compare equal across the IPC boundary.
-        let norm = |s: &str| -> String {
-            s.chars()
-                .filter(char::is_ascii_alphanumeric)
-                .flat_map(char::to_lowercase)
-                .collect()
-        };
-        if let Some(expected) = protocol.as_deref() {
-            let actual = format!("{:?}", config.provider_type);
-            if norm(&actual) != norm(expected) {
-                return Ok(false);
-            }
-        }
-        if let (Some(expected), Some(actual)) = (username.as_deref(), config.username.as_deref()) {
-            if !expected.is_empty() && !expected.eq_ignore_ascii_case(actual) {
-                return Ok(false);
-            }
-        }
-    }
-    let mut provider_lock = state.provider.lock().await;
-    let Some(provider) = provider_lock.as_mut() else {
-        return Ok(false);
+    let expected = ProbeIdentity {
+        protocol: protocol.as_deref(),
+        username: username.as_deref(),
+        profile_id: profile_id.as_deref(),
+        host: host.as_deref(),
+        port,
+        bucket: bucket.as_deref(),
+        endpoint: endpoint.as_deref(),
+        region: region.as_deref(),
     };
-    if !provider.is_connected() {
-        return Ok(false);
-    }
-    Ok(provider.list(".").await.is_ok())
+    Ok(probe_alive_inner(&state, &expected, PROBE_ALIVE_TIMEOUT).await)
+}
+
+/// The probe, bounded as a whole by `timeout`: waiting for the provider lock
+/// (a stalled listing may hold it) counts against it as much as the listing.
+async fn probe_alive_inner(
+    state: &ProviderState,
+    expected: &ProbeIdentity<'_>,
+    timeout: Duration,
+) -> bool {
+    let probe = async {
+        // The backend keeps only the most-recently-connected provider (single
+        // slot). Confirm that slot still holds THIS account before probing, so
+        // a probe can never make the UI reuse a different account's live
+        // session. Provider lock first, as connect and disconnect take them.
+        let mut provider_lock = state.provider.lock().await;
+        {
+            let config_lock = state.config.lock().await;
+            let Some(config) = config_lock.as_ref() else {
+                return false;
+            };
+            let slot_profile = state
+                .connected_profile_id
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if !slot_matches_identity(config, slot_profile.as_deref(), expected) {
+                return false;
+            }
+        }
+        let Some(provider) = provider_lock.as_mut() else {
+            return false;
+        };
+        provider.is_connected() && provider.list(".").await.is_ok()
+    };
+    tokio::time::timeout(timeout, probe).await.unwrap_or(false)
 }
 
 /// List files in the specified path.
@@ -17996,6 +18199,528 @@ mod tests {
         let _busy = state.provider.lock().await;
         let _ = locked.send(());
         tokio::time::sleep(held).await;
+    }
+
+    /// The effective config of a live slot on `host:port` for `user`.
+    fn probe_config(host: &str, port: u16, user: &str) -> ProviderConfig {
+        ProviderConfig {
+            name: "slot".to_string(),
+            provider_type: ProviderType::Ftp,
+            host: host.to_string(),
+            port: Some(port),
+            username: Some(user.to_string()),
+            password: None,
+            initial_path: None,
+            extra: HashMap::new(),
+        }
+    }
+
+    fn probe_for(
+        host: &str,
+        port: u16,
+        user: &str,
+        profile_id: Option<&'static str>,
+    ) -> ProbeIdentity<'static> {
+        ProbeIdentity {
+            protocol: Some("ftp"),
+            username: Some(Box::leak(user.to_string().into_boxed_str())),
+            profile_id,
+            host: Some(Box::leak(host.to_string().into_boxed_str())),
+            port: Some(port),
+            bucket: None,
+            endpoint: None,
+            region: None,
+        }
+    }
+
+    // Row 163 live check: two FTP profiles with the same user on two ports of
+    // one host. The probe compared protocol and user only, so switching to one
+    // reused the other's live session and the tab acted on the wrong server.
+    #[test]
+    fn a_probe_for_the_same_user_on_another_endpoint_is_not_alive() {
+        let slot = probe_config("127.0.0.1", 2162, "row163");
+        // Another port, another host, no saved profile on either side.
+        assert!(!slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("127.0.0.1", 2161, "row163", None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("10.0.0.2", 2162, "row163", None)
+        ));
+        // Two saved profiles: the profile decides, whatever the user.
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("127.0.0.1", 2162, "row163", Some("srv_a"))
+        ));
+        // A saved profile against a Quick Connect slot, and the reverse.
+        assert!(!slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("127.0.0.1", 2162, "row163", Some("srv_b"))
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("127.0.0.1", 2162, "row163", None)
+        ));
+        // No endpoint to compare is not a match either.
+        let blind = ProbeIdentity {
+            host: None,
+            ..probe_for("127.0.0.1", 2162, "row163", None)
+        };
+        assert!(!slot_matches_identity(&slot, None, &blind));
+    }
+
+    #[test]
+    fn a_probe_for_the_account_in_the_slot_is_alive() {
+        let slot = probe_config("ftp.example.com", 2162, "row163");
+        assert!(slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("ftp.example.com", 2162, "row163", Some("srv_b"))
+        ));
+        // Quick Connect: the endpoint decides; host case does not.
+        assert!(slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("FTP.Example.com ", 2162, "row163", None)
+        ));
+        // Protocol and user still have to agree.
+        let other_protocol = ProbeIdentity {
+            protocol: Some("sftp"),
+            ..probe_for("ftp.example.com", 2162, "row163", Some("srv_b"))
+        };
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &other_protocol
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("ftp.example.com", 2162, "other", Some("srv_b"))
+        ));
+    }
+
+    // #1514 review: a tab that leaves its port unset means the default port,
+    // not any port, so a slot on another port of the same host is not it.
+    #[test]
+    fn an_unset_port_is_the_default_port_not_any_port() {
+        let unset = |host| ProbeIdentity {
+            port: None,
+            ..probe_for(host, 0, "row163", None)
+        };
+        assert!(!slot_matches_identity(
+            &probe_config("ftp.example.com", 2162, "row163"),
+            None,
+            &unset("ftp.example.com")
+        ));
+        assert!(slot_matches_identity(
+            &probe_config("ftp.example.com", 21, "row163"),
+            None,
+            &unset("ftp.example.com")
+        ));
+        let mut slot_without_port = probe_config("ftp.example.com", 0, "row163");
+        slot_without_port.port = None;
+        assert!(slot_matches_identity(
+            &slot_without_port,
+            None,
+            &unset("ftp.example.com")
+        ));
+        assert!(slot_matches_identity(
+            &slot_without_port,
+            None,
+            &probe_for("ftp.example.com", 21, "row163", None)
+        ));
+    }
+
+    // #1514 review: an edited profile connected anew on another endpoint is
+    // not the server an older tab of the same profile shows.
+    #[test]
+    fn a_saved_profile_on_another_endpoint_is_not_alive() {
+        let slot = probe_config("new.example.com", 21, "row163");
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_a"),
+            &probe_for("old.example.com", 21, "row163", Some("srv_a"))
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_a"),
+            &probe_for("new.example.com", 2121, "row163", Some("srv_a"))
+        ));
+        // A tab or a slot that names no endpoint (a cloud API) keeps the profile.
+        let api_tab = ProbeIdentity {
+            host: None,
+            ..probe_for("", 21, "row163", Some("srv_a"))
+        };
+        assert!(slot_matches_identity(&slot, Some("srv_a"), &api_tab));
+        let mut api_slot = probe_config("", 21, "row163");
+        api_slot.host = String::new();
+        assert!(slot_matches_identity(
+            &api_slot,
+            Some("srv_a"),
+            &probe_for("old.example.com", 21, "row163", Some("srv_a"))
+        ));
+    }
+
+    #[test]
+    fn an_endpoint_compares_its_host_without_case_and_its_path_exactly() {
+        let dav = probe_config("https://Dav.Example.com/remote.php/dav/Files", 443, "u");
+        let tab = |host| probe_for(host, 443, "u", None);
+        assert!(slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com/remote.php/dav/Files/")
+        ));
+        // Another collection, by case only, is another endpoint.
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com/remote.php/dav/files")
+        ));
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("http://dav.example.com/remote.php/dav/Files")
+        ));
+        // A port written into the host is the port; a scheme on one side only
+        // does not tell two endpoints apart.
+        let ftp = probe_config("example.com", 21, "u");
+        assert!(slot_matches_identity(
+            &ftp,
+            None,
+            &probe_for("example.com:21", 21, "u", None)
+        ));
+        assert!(!slot_matches_identity(
+            &ftp,
+            None,
+            &probe_for("example.com:2121", 21, "u", None)
+        ));
+        assert!(slot_matches_identity(
+            &ftp,
+            None,
+            &probe_for("ftp://example.com", 21, "u", None)
+        ));
+        let v6 = probe_config("[::1]", 2161, "u");
+        assert!(slot_matches_identity(
+            &v6,
+            None,
+            &probe_for("[::1]:2161", 2161, "u", None)
+        ));
+        assert!(!slot_matches_identity(
+            &v6,
+            None,
+            &probe_for("[::1]:2162", 2161, "u", None)
+        ));
+    }
+
+    // #1514 review: two S3 tabs on one endpoint with one user differ by bucket.
+    #[test]
+    fn an_s3_tab_is_alive_only_on_its_own_bucket() {
+        let mut slot = probe_config("s3.example.com", 443, "key");
+        slot.provider_type = ProviderType::S3;
+        slot.extra
+            .insert("bucket".to_string(), "photos".to_string());
+        let tab = |bucket| ProbeIdentity {
+            protocol: Some("s3"),
+            bucket: Some(bucket),
+            ..probe_for("s3.example.com", 443, "key", None)
+        };
+        assert!(slot_matches_identity(&slot, None, &tab("photos")));
+        assert!(!slot_matches_identity(&slot, None, &tab("backups")));
+    }
+
+    // #1514 review (CLI): a cloud API's host is the backend's (`mega.nz`), and
+    // a tab may hold another value: the profile and the user decide there, so
+    // the 2FA accounts keep their reuse without a reconnect.
+    #[test]
+    fn a_cloud_api_account_is_its_profile_and_user_not_its_host() {
+        let mut mega = probe_config("mega.nz", 443, "me@example.com");
+        mega.provider_type = ProviderType::Mega;
+        let tab = |host, profile| ProbeIdentity {
+            protocol: Some("mega"),
+            ..probe_for(host, 0, "me@example.com", profile)
+        };
+        assert!(slot_matches_identity(
+            &mega,
+            Some("srv_mega"),
+            &tab("mega", Some("srv_mega"))
+        ));
+        assert!(slot_matches_identity(&mega, None, &tab("", None)));
+        assert!(!slot_matches_identity(
+            &mega,
+            Some("srv_mega"),
+            &tab("mega", Some("srv_other"))
+        ));
+        let other_user = ProbeIdentity {
+            username: Some("you@example.com"),
+            ..tab("mega", None)
+        };
+        assert!(!slot_matches_identity(&mega, None, &other_user));
+    }
+
+    // #1514 review (CLI): Azure keeps its container under `container`, so a
+    // bucket the tab sends is compared only with a slot that has a `bucket`.
+    #[test]
+    fn a_bucket_is_compared_only_with_a_slot_that_has_one() {
+        let mut azure = probe_config("account.blob.core.windows.net", 443, "account");
+        azure.provider_type = ProviderType::Azure;
+        azure
+            .extra
+            .insert("container".to_string(), "photos".to_string());
+        let tab = ProbeIdentity {
+            protocol: Some("azure"),
+            bucket: Some("photos"),
+            ..probe_for(
+                "account.blob.core.windows.net",
+                443,
+                "account",
+                Some("srv_az"),
+            )
+        };
+        assert!(slot_matches_identity(&azure, Some("srv_az"), &tab));
+    }
+
+    // #1514 round 2 (Greptile): a self-hosted server such as Immich is its
+    // endpoint; only the hosts `to_provider_config` fixes are left out.
+    #[test]
+    fn a_self_hosted_server_is_its_endpoint_and_a_fixed_api_host_is_not() {
+        let mut immich = probe_config("https://photos.one.example", 443, "me");
+        immich.provider_type = ProviderType::Immich;
+        let tab = |host| ProbeIdentity {
+            protocol: Some("immich"),
+            ..probe_for(host, 443, "me", None)
+        };
+        assert!(!slot_matches_identity(
+            &immich,
+            None,
+            &tab("https://photos.two.example")
+        ));
+        assert!(slot_matches_identity(
+            &immich,
+            None,
+            &tab("https://photos.one.example")
+        ));
+        for (provider, protocol) in [
+            (ProviderType::Mega, "mega"),
+            (ProviderType::Internxt, "internxt"),
+        ] {
+            let fixed = fixed_api_host(provider).expect("a fixed API host");
+            let mut slot = probe_config(fixed, 443, "me");
+            slot.provider_type = provider;
+            let unsaved = ProbeIdentity {
+                protocol: Some(protocol),
+                host: None,
+                ..probe_for("", 443, "me", None)
+            };
+            assert!(slot_matches_identity(&slot, None, &unsaved), "{protocol}");
+            let typed = ProbeIdentity {
+                protocol: Some(protocol),
+                ..probe_for("whatever the form holds", 443, "me", Some("srv"))
+            };
+            assert!(
+                slot_matches_identity(&slot, Some("srv"), &typed),
+                "{protocol}"
+            );
+        }
+        // Neither side names a server: protocol and user decide.
+        let mut filen = probe_config("", 443, "me");
+        filen.provider_type = ProviderType::Filen;
+        let unsaved = ProbeIdentity {
+            protocol: Some("filen"),
+            host: None,
+            ..probe_for("", 443, "me", None)
+        };
+        assert!(slot_matches_identity(&filen, None, &unsaved));
+    }
+
+    #[test]
+    fn to_provider_config_uses_the_one_list_of_fixed_api_hosts() {
+        assert_eq!(fixed_api_host(ProviderType::Mega), Some("mega.nz"));
+        assert_eq!(fixed_api_host(ProviderType::Immich), None);
+        let src = include_str!("provider_commands.rs");
+        let start = src
+            .find("pub fn to_provider_config(")
+            .expect("to_provider_config");
+        let body = &src[start..start + 40_000];
+        assert!(body.contains("let host = if let Some(host) = fixed_api_host(provider_type) {"));
+        assert!(!body.contains(&format!("\"{}\".to_string()", "mega.nz")));
+    }
+
+    // #1514 round 2 (CodeRabbit): an S3 tab without a bucket, or on another
+    // endpoint or region, is not the slot's account.
+    #[test]
+    fn an_s3_tab_must_name_the_slots_bucket_endpoint_and_region() {
+        let mut slot = probe_config("", 443, "key");
+        slot.provider_type = ProviderType::S3;
+        slot.host = String::new();
+        slot.extra
+            .insert("bucket".to_string(), "photos".to_string());
+        slot.extra.insert(
+            "endpoint".to_string(),
+            "https://minio.one.example:9000".to_string(),
+        );
+        slot.extra
+            .insert("region".to_string(), "eu-west-1".to_string());
+        let tab = |bucket, endpoint, region| ProbeIdentity {
+            protocol: Some("s3"),
+            host: None,
+            bucket,
+            endpoint,
+            region,
+            ..probe_for("", 443, "key", Some("srv_s3"))
+        };
+        let one = Some("https://minio.one.example:9000/");
+        assert!(slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), one, Some("EU-WEST-1"))
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(None, one, None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), Some("https://minio.two.example:9000"), None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), Some("https://minio.one.example:9001"), None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_s3"),
+            &tab(Some("photos"), one, Some("us-east-1"))
+        ));
+    }
+
+    // #1514 round 2 (CodeRabbit): WebDAV connects to the port in its URL.
+    #[test]
+    fn a_webdav_url_port_is_the_port_it_connects_to() {
+        let mut dav = probe_config("https://dav.example.com:8443/dav", 443, "u");
+        dav.provider_type = ProviderType::WebDav;
+        let tab = |host| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com:8443/dav")
+        ));
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com/dav")
+        ));
+        assert!(!slot_matches_identity(
+            &dav,
+            None,
+            &tab("https://dav.example.com:9443/dav")
+        ));
+    }
+
+    // #1514 review: an OAuth or 4shared install carries no config, and the
+    // previous connection's stayed, so the probe compared the new provider
+    // with another server's endpoint.
+    #[tokio::test]
+    async fn an_install_without_a_config_clears_the_previous_one() {
+        let state = probe_state(answering(), Some("srv_b"));
+        install_connected_provider(&state, Box::new(answering()), Some("srv_oauth".to_string()))
+            .await
+            .unwrap();
+        assert!(state.config.lock().await.is_none());
+        let tab = probe_for("127.0.0.1", 2162, "row163", None);
+        assert!(!probe_alive_inner(&state, &tab, Duration::from_secs(5)).await);
+    }
+
+    fn probe_state(provider: StallProvider, profile: Option<&str>) -> ProviderState {
+        let state = stall_state(provider);
+        *state.config.try_lock().unwrap() = Some(probe_config("127.0.0.1", 2162, "row163"));
+        *state.connected_profile_id.lock().unwrap() = profile.map(str::to_string);
+        state
+    }
+
+    fn answering() -> StallProvider {
+        StallProvider {
+            dirs: HashMap::from([(".".to_string(), Vec::new())]),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_probe_lists_only_when_the_slot_holds_the_tabs_profile() {
+        let timeout = Duration::from_secs(5);
+        let state = probe_state(answering(), Some("srv_b"));
+        assert!(
+            probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2162, "row163", Some("srv_b")),
+                timeout
+            )
+            .await
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2161, "row163", Some("srv_a")),
+                timeout
+            )
+            .await
+        );
+    }
+
+    // The probe listing had no deadline and no Cancel: a server that stalled
+    // on it left the switch "connecting" with nothing to click.
+    #[tokio::test(start_paused = true)]
+    async fn a_probe_on_a_stalled_server_ends_not_alive_within_its_timeout() {
+        let timeout = Duration::from_secs(5);
+        // `list(".")` never answers: "." is not among the provider's dirs.
+        let state = probe_state(StallProvider::default(), Some("srv_b"));
+        let started = tokio::time::Instant::now();
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2162, "row163", Some("srv_b")),
+                timeout
+            )
+            .await
+        );
+        assert_eq!(started.elapsed(), timeout);
+        assert_eq!(PROBE_ALIVE_TIMEOUT, timeout);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_probe_behind_a_held_provider_lock_ends_within_its_timeout() {
+        let timeout = Duration::from_secs(5);
+        let state = probe_state(answering(), Some("srv_b"));
+        let (locked, is_locked) = tokio::sync::oneshot::channel();
+        let probe = async {
+            is_locked.await.unwrap();
+            let started = tokio::time::Instant::now();
+            let alive = probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2162, "row163", Some("srv_b")),
+                timeout,
+            )
+            .await;
+            (alive, started.elapsed())
+        };
+        let ((), (alive, waited)) = tokio::join!(
+            hold_provider(&state, Duration::from_secs(600), locked),
+            probe
+        );
+        assert!(!alive);
+        assert_eq!(waited, timeout);
     }
 
     // #960 review M1: the per-read deadline used to include the wait for the
