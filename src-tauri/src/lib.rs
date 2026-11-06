@@ -10907,11 +10907,64 @@ fn detect_desktop_lang() -> String {
     "en".to_string()
 }
 
-/// Set when this process refused to start because it does not own the UI
-/// port. It stays registered as the single instance while its refusal is on
-/// screen, so a second launch is handed to it; that launch must open nothing,
-/// since every window would load the origin another process serves.
-static START_REFUSED: AtomicBool = AtomicBool::new(false);
+/// A second launch: its arguments and its working folder.
+type Launch = (Vec<String>, String);
+
+/// Whether this process owns the UI origin, and the second launch that came
+/// while that was not known yet. A second launch handed to a process that
+/// does not own the origin must open nothing: every window would load the
+/// origin another process serves (Requested 137). One that comes during the
+/// ownership check is kept (the last one) and handled once it ends, so a
+/// double-click at start still opens its file; after a refused start it is
+/// dropped. One lock for both, so a launch cannot slip between the check
+/// ending and the kept launch being taken.
+#[derive(Default)]
+struct SecondLaunchGate {
+    owned: bool,
+    pending: Option<Launch>,
+}
+
+impl SecondLaunchGate {
+    /// A second launch: handle it now if the origin is ours, else keep it.
+    fn offer(&mut self, launch: Launch) -> Option<Launch> {
+        if self.owned {
+            return Some(launch);
+        }
+        log::info!("A second launch came before the UI origin was verified: kept until it is");
+        self.pending = Some(launch);
+        None
+    }
+
+    /// The origin is ours: the launch kept meanwhile is handled now.
+    fn own(&mut self) -> Option<Launch> {
+        self.owned = true;
+        self.pending.take()
+    }
+
+    /// The start was refused: the launch kept meanwhile opens nothing.
+    fn refuse(&mut self) {
+        if self.pending.take().is_some() {
+            log::warn!("A second launch reached a process that refused to start: dropped");
+        }
+    }
+}
+
+static SECOND_LAUNCH_GATE: std::sync::Mutex<SecondLaunchGate> =
+    std::sync::Mutex::new(SecondLaunchGate {
+        owned: false,
+        pending: None,
+    });
+
+fn second_launch_gate() -> std::sync::MutexGuard<'static, SecondLaunchGate> {
+    SECOND_LAUNCH_GATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Whether this process owns the UI origin yet.
+fn ui_origin_owned() -> bool {
+    second_launch_gate().owned
+}
 
 /// What a second launch can open in the running process.
 trait SecondLaunch {
@@ -10941,17 +10994,13 @@ impl SecondLaunch for AppSecondLaunch<'_> {
     }
 }
 
-/// Handles a second launch. A process that refused to start (`refused`) does
-/// not own the UI origin, so it opens nothing (Requested 137). Otherwise the
+/// Handles a second launch once the UI origin is known to be ours (see
+/// [`SecondLaunchGate`]). Otherwise the
 /// OS "Extract here / to folder" verb (Deliverable G) opens only the
 /// dedicated extract window, leaving the main window exactly as the user left
 /// it (possibly hidden); any other launch raises the main window and opens
 /// the paths it names.
-fn handle_second_launch(refused: bool, argv: &[String], cwd: &str, to: &mut impl SecondLaunch) {
-    if refused {
-        log::warn!("A second launch reached a process that refused to start: ignored");
-        return;
-    }
+fn handle_second_launch(argv: &[String], cwd: &str, to: &mut impl SecondLaunch) {
     if let Some((mode, path)) = parse_extract_intent(argv) {
         to.open_extract(&mode, &path);
         return;
@@ -11103,6 +11152,12 @@ fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
 }
 
 fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
+    // A build queued before the origin was known to be ours (a second launch
+    // during the ownership check) must not load it.
+    if !ui_origin_owned() {
+        log::warn!("An extract window was asked for before the UI origin was verified: not opened");
+        return;
+    }
     let payload = serde_json::json!({ "mode": mode, "path": path, "lang": detect_desktop_lang() })
         .to_string();
     let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
@@ -20608,12 +20663,10 @@ pub fn run() {
             // marshals its WebviewWindowBuilder::build; window show/unminimize/focus
             // go through Tauri's main-thread message path. Keep all GTK work off this
             // D-Bus/zbus worker so a second-instance raise cannot poison GLib.
-            handle_second_launch(
-                START_REFUSED.load(Ordering::SeqCst),
-                &argv,
-                &cwd,
-                &mut AppSecondLaunch(app),
-            );
+            let offered = second_launch_gate().offer((argv, cwd));
+            if let Some((argv, cwd)) = offered {
+                handle_second_launch(&argv, &cwd, &mut AppSecondLaunch(app));
+            }
         }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -20693,7 +20746,7 @@ pub fn run() {
                     localhost_security::wait_for_owned_server(port, &localhost_nonce)
                 {
                     log::error!("Cannot start AeroFTP UI: {reason}");
-                    START_REFUSED.store(true, Ordering::SeqCst);
+                    second_launch_gate().refuse();
                     refuse_to_start(app.handle(), &reason);
                     // No window and no error: the event loop has to run for
                     // the refusal's dialog to draw, and its answer ends the
@@ -20702,6 +20755,13 @@ pub fn run() {
                     return Ok(());
                 }
                 log::info!("Verified AeroFTP UI server on 127.0.0.1:{port}");
+            }
+            // The origin is ours from here on: release builds on Linux just
+            // verified it, and the others have no shared origin to check. A
+            // second launch that came during the check is handled now.
+            let kept = second_launch_gate().own();
+            if let Some((argv, cwd)) = kept {
+                handle_second_launch(&argv, &cwd, &mut AppSecondLaunch(app.handle()));
             }
 
             // OS "Extract here / to folder" verb on a COLD launch (no instance was
@@ -27177,44 +27237,99 @@ mod start_refusal_tests {
         }
     }
 
-    // While the refusal is on screen this process is still the single
-    // instance: a second launch ("Extract here", a file to open) must not
-    // open a window on the origin another process serves.
-    #[test]
-    fn a_second_launch_opens_nothing_in_a_process_that_refused_to_start() {
-        let dir = tempfile::tempdir().unwrap();
-        let archive = dir.path().join("a.zip");
+    fn launches(dir: &std::path::Path) -> (Vec<String>, Vec<String>) {
+        let archive = dir.join("a.zip");
         std::fs::write(&archive, b"PK").unwrap();
-        let extract = vec![
-            "aeroftp".to_string(),
-            "--extract-here".to_string(),
-            archive.to_string_lossy().to_string(),
-        ];
-        let open = vec!["aeroftp".to_string(), archive.to_string_lossy().to_string()];
-        for argv in [&extract, &open] {
-            let mut opened = Opened::default();
-            handle_second_launch(true, argv, "", &mut opened);
-            assert!(opened.0.is_empty(), "{argv:?} opened {:?}", opened.0);
-        }
-        // A process that owns its UI handles the same launches as before.
+        let path = archive.to_string_lossy().to_string();
+        (
+            vec![
+                "aeroftp".to_string(),
+                "--extract-here".to_string(),
+                path.clone(),
+            ],
+            vec!["aeroftp".to_string(), path],
+        )
+    }
+
+    // A second launch during the ownership check is kept and handled once the
+    // origin is ours: a double-click at start still opens its file.
+    #[test]
+    fn a_launch_during_the_check_opens_once_the_origin_is_owned() {
+        let dir = tempfile::tempdir().unwrap();
+        let (extract, open) = launches(dir.path());
+        let mut gate = SecondLaunchGate::default();
+        assert!(gate.offer((open.clone(), String::new())).is_none());
+        assert!(
+            gate.offer((extract.clone(), String::new())).is_none(),
+            "the last one is kept"
+        );
+        let kept = gate.own().expect("the kept launch");
         let mut opened = Opened::default();
-        handle_second_launch(false, &extract, "", &mut opened);
+        handle_second_launch(&kept.0, &kept.1, &mut opened);
         assert_eq!(opened.0, ["extract:here"]);
+        // Once owned, a launch is handled at once, and nothing stays kept.
+        assert!(gate.own().is_none());
+        let now = gate
+            .offer((open.clone(), String::new()))
+            .expect("handled now");
         let mut opened = Opened::default();
-        handle_second_launch(false, &open, "", &mut opened);
+        handle_second_launch(&now.0, &now.1, &mut opened);
         assert_eq!(opened.0, ["raise", "deliver:2"]);
-        // The plugin hook reads the flag, and the refused start sets it first.
+    }
+
+    // After a refused start this process never owns the origin: the launch
+    // kept during the check, and any later one, opens nothing.
+    #[test]
+    fn a_launch_to_a_process_that_refused_to_start_opens_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (extract, open) = launches(dir.path());
+        let mut gate = SecondLaunchGate::default();
+        assert!(gate.offer((extract, String::new())).is_none());
+        gate.refuse();
+        assert!(gate.pending.is_none());
+        assert!(gate.offer((open, String::new())).is_none());
+        assert!(!gate.owned);
+    }
+
+    // #1519 review: a launch that arrived during the ownership check queued an
+    // extract window the event loop then built. The hook goes through the
+    // gate, the refusal and the verified check settle it, and the queued
+    // extract build asks it again.
+    #[test]
+    fn every_window_waits_for_the_ui_origin_to_be_owned() {
         let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
-        assert!(src.contains(
-            "handle_second_launch(\n                START_REFUSED.load(Ordering::SeqCst),"
-        ));
-        let check = src
+        let production = &src[..src.find("mod start_refusal_tests").expect("tests")];
+        let hook = production
+            .find("tauri_plugin_single_instance::init(|app, argv, cwd| {")
+            .expect("hook");
+        let offer = production[hook..]
+            .find("second_launch_gate().offer((argv, cwd))")
+            .expect("the hook offers to the gate");
+        assert!(
+            offer
+                < production[hook..]
+                    .find("handle_second_launch(")
+                    .expect("handled")
+        );
+        let check = production
             .find("localhost_security::wait_for_owned_server(port, &localhost_nonce)")
             .expect("ownership check");
-        let refusal = &src[check..check + 900];
-        let flagged = refusal
-            .find("START_REFUSED.store(true, Ordering::SeqCst);")
-            .expect("flag set");
-        assert!(flagged < refusal.find("refuse_to_start(").expect("refusal"));
+        let after = &production[check..];
+        let refuse = after
+            .find("second_launch_gate().refuse();")
+            .expect("refused");
+        let refusal = after
+            .find("refuse_to_start(app.handle(), &reason);")
+            .expect("refusal");
+        let verified = after.find("Verified AeroFTP UI server").expect("verified");
+        let own = after
+            .find("second_launch_gate().own()")
+            .expect("owned once verified");
+        assert!(refuse < refusal && refusal < verified && verified < own);
+        assert_eq!(production.matches(".own()").count(), 1);
+        let build = production
+            .find("fn open_extract_window_on_main(")
+            .expect("queued extract build");
+        assert!(production[build..build + 400].contains("if !ui_origin_owned() {"));
     }
 }
