@@ -1775,7 +1775,7 @@ fn is_rclone_remote_name(name: &str) -> bool {
 
 fn parse_crypt_remote_target(remote_target: &str) -> (String, Option<String>) {
     if let Some((base, subpath)) = remote_target.split_once(':') {
-        let normalized = subpath.trim().trim_start_matches('/');
+        let normalized = subpath.trim_end().trim_start_matches('/');
         let initial_path = if normalized.is_empty() {
             None
         } else {
@@ -1812,7 +1812,7 @@ fn resolve_alias_target(
         if inner.is_empty() {
             return Err(format!("the alias '{}' points at no remote", name.trim()));
         }
-        let sub = sub.trim().trim_start_matches('/');
+        let sub = sub.trim_end().trim_start_matches('/');
         target = if sub.is_empty() {
             inner.to_string()
         } else if inner.ends_with(':') || inner.ends_with('/') {
@@ -1878,7 +1878,7 @@ fn map_alias_remote(
         ));
     }
     let mut mapped = map_remote(name, base_remote, aeroftp_export)?;
-    let alias_has_path = !path.trim().trim_matches('/').is_empty();
+    let alias_has_path = !path.trim_end().trim_matches('/').is_empty();
     // A Drive remote rooted at a folder id (`root_folder_id`, which the profile
     // keeps as its start) reads the alias path under that folder; written as a
     // path it opened at the account root instead.
@@ -1908,9 +1908,11 @@ fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
     // the root too, so a folder under the login one is written `~/docs`, the
     // form the provider resolves against it; `nas:/` is the root, which
     // AeroFTP opens for a start folder of `/` (no start folder is the login
-    // folder).
+    // folder). A space after the `:` is part of the folder rclone opens
+    // (`nas: docs` is ` docs`, measured with rclone v1.75.2); its config
+    // drops only the trailing ones, with the rest of the value.
     if mapped.protocol == "sftp" {
-        let path = path.trim();
+        let path = path.trim_end();
         let kept = path.trim_end_matches('/');
         if kept.starts_with('/') {
             mapped.initial_path = Some(kept.to_string());
@@ -1921,7 +1923,7 @@ fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
         }
         return;
     }
-    let rel = path.trim().trim_matches('/');
+    let rel = path.trim_end().trim_matches('/');
     if rel.is_empty() {
         return;
     }
@@ -2301,7 +2303,7 @@ pub struct RcloneImportWarning {
 /// was folded into `nas`, which then opened in its folder, and disappeared.
 fn is_generated_alias_name(name: &str, base: &str, base_type: &str, path: &str) -> bool {
     let start_folder = sanitize_rclone_remote_name(&format!("{base}-path"));
-    let bucket = path.trim();
+    let bucket = path.trim_end();
     let bucket_backend = matches!(base_type, "s3" | "swift" | "azureblob" | "b2");
     let bucket_alias = (bucket_backend && !bucket.is_empty() && !bucket.contains('/'))
         .then(|| s3_bucket_alias_name(base, bucket))
@@ -10745,7 +10747,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 serde_json::json!({ "bucket": "media " }),
             ),
         ];
-        let (_, conf) = export_to_string(&servers, "swift-auth");
+        let (_, conf) = export_to_string(&servers, "swift-auth-host");
         let sw = section_of(&conf, "sw");
         assert!(
             sw.contains("auth = https://auth.example.test/v3\n"),
@@ -10755,6 +10757,57 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert!(conf.contains("remote = lead: media\n"), "{conf}");
         assert!(!conf.contains("remote = trail:"), "{conf}");
         assert!(conf.contains("cannot hold 'media '"), "{conf}");
+    }
+
+    #[test]
+    fn a_space_after_the_colon_is_part_of_the_folder_rclone_opens() {
+        // rclone v1.75.2 opens ` sp` for `remote = loc: sp` and drops only the
+        // trailing spaces, with the rest of the value.
+        let bucket_of = |result: &RcloneImportResult, name: &str| {
+            imported(result, name)
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        let servers = vec![server_with(
+            "lead",
+            "swift",
+            "https://auth.example.test/v3",
+            443,
+            None,
+            serde_json::json!({ "bucket": " media" }),
+        )];
+        let (_, conf) = export_to_string(&servers, "lead-space-out");
+        let back = import_text(&conf, "lead-space-back");
+        assert_eq!(
+            bucket_of(&back, "lead").as_deref(),
+            Some(" media"),
+            "{conf}"
+        );
+        let foreign = import_text(
+            "[s3r]\ntype = s3\nprovider = AWS\n\n\
+             [pics]\ntype = alias\nremote = s3r: media/2026\n\n\
+             [nas]\ntype = sftp\nhost = nas.example.test\nuser = u\n\n\
+             [docs]\ntype = alias\nremote = nas: docs\n\n\
+             [deep]\ntype = alias\nremote = docs: sub\n",
+            "lead-space-foreign",
+        );
+        assert_eq!(bucket_of(&foreign, "pics").as_deref(), Some(" media"));
+        assert_eq!(
+            imported(&foreign, "pics").initial_path.as_deref(),
+            Some("/2026")
+        );
+        assert_eq!(
+            imported(&foreign, "docs").initial_path.as_deref(),
+            Some("~/ docs")
+        );
+        assert_eq!(
+            imported(&foreign, "deep").initial_path.as_deref(),
+            Some("~/ docs/ sub"),
+            "through an alias chain too"
+        );
     }
 
     #[test]
