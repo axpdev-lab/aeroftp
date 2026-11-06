@@ -390,24 +390,12 @@ fn plan_copy_parts(
 /// and "nobody else can read this" are different questions with different
 /// answers. Do not merge the two predicates.
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
-    let lower = endpoint.trim().to_ascii_lowercase();
-    let stripped = lower
-        .strip_prefix("http://")
-        .or_else(|| lower.strip_prefix("https://"))
-        .unwrap_or(&lower);
-    let host_only = stripped
-        .split('/')
-        .next()
-        .unwrap_or(stripped)
-        .split('@')
-        .next_back()
-        .unwrap_or(stripped);
-    let host = host_only
-        .rsplit_once(':')
-        .filter(|(_, p)| p.chars().all(|c| c.is_ascii_digit()))
-        .map(|(h, _)| h)
-        .unwrap_or(host_only);
-    matches!(host, "127.0.0.1" | "::1" | "[::1]" | "localhost")
+    // The host the request reaches (#1506 Requested 188): a split string kept
+    // `?` and `#`, so a schemeless `evil.com?.local` read as an mDNS name.
+    let Some(host) = crate::util::endpoint::endpoint_host(endpoint) else {
+        return false;
+    };
+    matches!(host.as_str(), "127.0.0.1" | "::1" | "localhost")
         || host.ends_with(".localhost")
         || host.ends_with(".local")
         || host == "local.s3.filen.io"
@@ -9881,6 +9869,33 @@ mod tests {
                 .is_err(),
             "an mDNS host is on a network: cleartext to it needs consent"
         );
+    }
+
+    /// #1506 Requested 188: the certificate predicate keeps its documented
+    /// names (owner decision 2026-11-06) but reads the host with the URL
+    /// parser, so a query, a fragment or userinfo cannot fake one.
+    #[test]
+    fn local_certificate_trust_reads_the_real_host() {
+        for local in [
+            "http://minio.local:9000",
+            "https://nas.local",
+            "gateway.localhost:8443",
+            "https://127.0.0.1:1800",
+            "https://[::1]:1800",
+            "local.s3.filen.io:1800",
+        ] {
+            assert!(is_local_s3_endpoint(local), "{local}");
+        }
+        for public in [
+            "evil.com?.local",
+            "evil.com#.local",
+            "https://evil.com/?x=.local",
+            "https://user@evil.com/a.local",
+            "https://minio.local.evil.com",
+            "https://s3.amazonaws.com",
+        ] {
+            assert!(!is_local_s3_endpoint(public), "{public}");
+        }
     }
 
     #[test]
