@@ -91,10 +91,10 @@ impl ToolCtx for McpToolCtx {
     }
 
     async fn remote_backend(&self, server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
-        Ok(Arc::new(McpRemoteBackend {
-            pool: Arc::clone(&self.pool),
-            server: server_id.to_string(),
-        }))
+        Ok(Arc::new(McpRemoteBackend::new(
+            Arc::clone(&self.pool),
+            server_id.to_string(),
+        )))
     }
 
     fn surface(&self) -> Surfaces {
@@ -155,6 +155,12 @@ fn looks_like_auth_failure(msg: &str) -> bool {
 }
 
 impl McpRemoteBackend {
+    /// A backend for `server` over `pool`: the MCP server's, and the CLI
+    /// agent's over its own process-wide pool.
+    pub(crate) fn new(pool: Arc<ConnectionPool>, server: String) -> Self {
+        Self { pool, server }
+    }
+
     async fn with_provider<T, F>(&self, op: F) -> Result<T, String>
     where
         F: for<'p> FnOnce(

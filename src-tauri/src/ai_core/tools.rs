@@ -3376,6 +3376,17 @@ mod tests {
         assert!(config.join("aeroftp/vault.db").exists());
         renamed.expect("an ordinary folder is renamed");
         assert!(fake.home.join("plain-old/inner").exists());
+        // The absent control: once `~/.config` is readable and holds nothing
+        // protected, a protected child that does not exist does not block it.
+        std::fs::remove_dir_all(config.join("aeroftp")).unwrap();
+        dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": config.display().to_string(), "to": fake.home.join("config-old").display().to_string()}),
+        )
+        .await
+        .expect("a readable folder without a protected child is renamed");
+        assert!(fake.home.join("config-old/other/settings.txt").exists());
     }
 
     // A protected location reached through a symlink is protected at its real

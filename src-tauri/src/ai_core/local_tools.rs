@@ -293,7 +293,9 @@ impl PathPolicy {
         self.check(&entry.to_string_lossy(), "path").is_err()
     }
 
-    fn check(&self, path: &str, param: &str) -> Result<(), String> {
+    /// `validate_path` against this snapshot: the same refusals, without
+    /// resolving the protected locations again.
+    pub(crate) fn check(&self, path: &str, param: &str) -> Result<(), String> {
         if path.len() > 4096 {
             return Err(format!("{}: path exceeds 4096 characters", param));
         }
@@ -1040,7 +1042,13 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
     std::fs::create_dir_all(&destination)
         .map_err(|e| ToolError::Exec(format!("Failed to create destination directory: {}", e)))?;
 
-    fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<u64, String> {
+    // One policy for the whole tree: each entry is checked against it, as
+    // `validate_path` would, without resolving the protected locations again.
+    fn copy_dir_recursive(
+        policy: &PathPolicy,
+        src: &std::path::Path,
+        dst: &std::path::Path,
+    ) -> Result<u64, String> {
         ensure_not_symlink(src, "path")?;
         std::fs::create_dir_all(dst)
             .map_err(|e| format!("Failed to create dir {}: {}", dst.display(), e))?;
@@ -1052,12 +1060,12 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             let src_path = entry.path();
             let dst_path = dst.join(entry.file_name());
             ensure_not_symlink(&src_path, "path")?;
-            validate_path(&src_path.to_string_lossy(), "path")?;
+            policy.check(&src_path.to_string_lossy(), "path")?;
             // Every file the copy writes, not only the destination folder
             // (deep scan item 25).
-            validate_path(&dst_path.to_string_lossy(), "destination")?;
+            policy.check(&dst_path.to_string_lossy(), "destination")?;
             if src_path.is_dir() {
-                count += copy_dir_recursive(&src_path, &dst_path)?;
+                count += copy_dir_recursive(policy, &src_path, &dst_path)?;
             } else {
                 std::fs::copy(&src_path, &dst_path)
                     .map_err(|e| format!("Failed to copy {}: {}", src_path.display(), e))?;
@@ -1100,7 +1108,11 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         );
 
         if src_path.is_dir() {
-            match copy_dir_recursive(src_path, std::path::Path::new(&dest_path_str)) {
+            match copy_dir_recursive(
+                &PathPolicy::current(),
+                src_path,
+                std::path::Path::new(&dest_path_str),
+            ) {
                 Ok(_) => copied.push(filename),
                 Err(e) => errors.push(json!({ "file": filename, "error": e })),
             }

@@ -447,9 +447,11 @@ fn hides_approval_value(key: &str, value: &Value) -> bool {
 }
 
 /// A key naming a secret: a secret word, alone or plural, that ends the key or
-/// a part of it, not one that begins a longer word.
+/// a part of it (`api_token`, `secretKey`, `tokenValue`, `refreshToken`), not
+/// one that begins a longer word (`secretary`). The boundary is read on the
+/// key as written, so a capital letter starts a new part.
 fn is_secret_approval_key(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
+    let lower = key.to_ascii_lowercase();
     [
         "password",
         "passphrase",
@@ -458,16 +460,19 @@ fn is_secret_approval_key(key: &str) -> bool {
         "api_key",
         "apikey",
         "private_key",
+        "privatekey",
     ]
     .iter()
     .any(|secret| {
-        key.match_indices(secret).any(|(at, word)| {
+        // `to_ascii_lowercase` keeps every byte offset, so `lower` and `key`
+        // line up.
+        lower.match_indices(secret).any(|(at, word)| {
             let rest = &key[at + word.len()..];
             let rest = rest.strip_prefix('s').unwrap_or(rest);
             !rest
                 .chars()
                 .next()
-                .is_some_and(|next| next.is_ascii_alphabetic())
+                .is_some_and(|next| next.is_ascii_lowercase())
         })
     })
 }
@@ -870,10 +875,16 @@ fn session_grant_operation<'a>(tool_name: &str, args: &'a Value) -> Option<&'a s
     }
 }
 
-/// Scope of a chat-wide grant: the tool, its context, the saved server the
-/// call names and, where the arguments pick the operation, that operation; no
-/// other argument, so a grant for `local_mkdir` covers the next folder too,
-/// and one for `server_exec ls` on one server does not cover another.
+/// The arguments that pick a saved server or profile: `server` for most
+/// remote tools, `profile` for `aeroftp_benchmark`, both ends of a
+/// cross-profile transfer.
+const SESSION_GRANT_TARGET_KEYS: [&str; 4] = ["server", "profile", "source_server", "dest_server"];
+
+/// Scope of a chat-wide grant: the tool, its context, every saved server or
+/// profile the call names and, where the arguments pick the operation, that
+/// operation; no other argument, so a grant for `local_mkdir` covers the next
+/// folder too, and one for `server_exec ls` or a benchmark on one server does
+/// not cover another.
 fn build_session_scope_key(
     tool_name: &str,
     args: &Value,
@@ -883,7 +894,10 @@ fn build_session_scope_key(
     serde_json::to_string(&json!({
         "tool": tool_name,
         "operation": session_grant_operation(tool_name, args),
-        "server": args.get("server").and_then(Value::as_str),
+        "targets": SESSION_GRANT_TARGET_KEYS
+            .iter()
+            .map(|key| args.get(*key).and_then(Value::as_str))
+            .collect::<Vec<_>>(),
         "context_local_path": context_local_path,
         "remote_context": remote_context,
     }))
@@ -2651,6 +2665,28 @@ mod session_grant_tests {
         };
         assert_eq!(scope("srv-a"), scope("srv-a"));
         assert_ne!(scope("srv-a"), scope("srv-b"));
+        // The benchmark picks its server by `profile`, a cross-profile
+        // transfer by both of its ends.
+        let benchmark = |profile: &str| {
+            build_session_scope_key(
+                "aeroftp_benchmark",
+                &json!({"profile": profile}),
+                None,
+                None,
+            )
+            .unwrap()
+        };
+        assert_ne!(benchmark("srv-a"), benchmark("srv-b"));
+        let transfer = |dest: &str| {
+            build_session_scope_key(
+                "cross_profile_transfer",
+                &json!({"source_server": "srv-a", "dest_server": dest}),
+                None,
+                None,
+            )
+            .unwrap()
+        };
+        assert_ne!(transfer("srv-b"), transfer("srv-c"));
     }
 
     // Deep scan item 30: a chat-wide grant for `sync_control stop` or a
@@ -2973,6 +3009,9 @@ mod approval_tests {
                     "accessToken": "SECRETWORD",
                     "token_value": "SECRETWORD",
                     "passwords": ["SECRETWORD"],
+                    "secretKey": "SECRETWORD",
+                    "tokenValue": "SECRETWORD",
+                    "refreshToken": "SECRETWORD",
                     "secretary": "visible",
                 },
             }),
@@ -2981,6 +3020,9 @@ mod approval_tests {
         assert!(!message.contains("SECRETWORD"), "{message}");
         assert!(message.contains("accessToken: (hidden)"), "{message}");
         assert!(message.contains("passwords: (hidden)"), "{message}");
+        assert!(message.contains("secretKey: (hidden)"), "{message}");
+        assert!(message.contains("tokenValue: (hidden)"), "{message}");
+        assert!(message.contains("refreshToken: (hidden)"), "{message}");
         assert!(message.contains("secretary: visible"), "{message}");
     }
 

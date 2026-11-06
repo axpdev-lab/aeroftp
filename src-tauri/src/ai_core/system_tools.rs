@@ -99,9 +99,11 @@ pub async fn archive_compress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         validate_path(p, "path").map_err(map_str_err)?;
     }
 
+    // One snapshot of the policy for every entry the archive walks.
+    let path_policy = super::local_tools::PathPolicy::current();
     let policy = |path: &std::path::Path| {
         let path = path.to_str().ok_or("Archive path is not valid UTF-8")?;
-        validate_path(path, "path")
+        path_policy.check(path, "path")
     };
     let result = crate::compress_archive_with_policy(
         paths,

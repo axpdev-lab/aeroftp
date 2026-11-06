@@ -101,12 +101,10 @@ fn validate_local_path(path: &str, label: &str) -> Result<(), ToolError> {
     })
 }
 
+/// Every context now provides a backend, so a refusal to give one is a
+/// failure of the call, not a tool missing from this surface.
 fn backend_error(e: String) -> ToolError {
-    if e.contains("remote_backend not wired") {
-        ToolError::NotMigrated("remote_backend".to_string())
-    } else {
-        ToolError::Exec(e)
-    }
+    ToolError::Exec(e)
 }
 
 /// Hard cap per pagina per `aeroftp_list_files` / `aeroftp_search_files`.
@@ -4501,7 +4499,13 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     let suggested_next_command =
         suggest_sync_command(&server, &local_dir, &remote_dir, " --dry-run --json");
 
-    let status = if checksum_errors > 0 || !local_scan.is_complete() || !remote_scan.is_complete() {
+    // A file left out on either side was not compared: also one present only
+    // on the server under a protected local path.
+    let status = if checksum_errors > 0
+        || protected_skipped > 0
+        || !local_scan.is_complete()
+        || !remote_scan.is_complete()
+    {
         "partial"
     } else if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty() {
         "ok"
@@ -8229,6 +8233,47 @@ mod tests {
         assert_eq!(summary["missing_local_count"], 0, "{report}");
         assert_eq!(summary["protected_skipped_count"], 1, "{report}");
         assert_eq!(summary["match_count"], 1, "{report}");
+        assert_eq!(report["status"], "partial", "{report}");
+    }
+
+    /// A protected file only on the server, under a home without `~/.ssh`:
+    /// the local scan met nothing protected and reads as complete, yet that
+    /// file was not compared, so the result is partial, not an all-clear.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn reconcile_is_partial_when_a_server_only_file_is_protected_locally() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::write(home.join("notes.txt"), b"x").unwrap();
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let mut fake = FakeBackend::sample();
+        fake.tree.insert(
+            "/remote".into(),
+            vec![
+                entry("/remote/.ssh", true, 0),
+                entry("/remote/notes.txt", false, 1),
+            ],
+        );
+        fake.tree.insert(
+            "/remote/.ssh".into(),
+            vec![entry("/remote/.ssh/id_fixture", false, 1)],
+        );
+        let report = reconcile(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "s", "local_dir": home.to_string_lossy(), "remote_dir": "/remote"}),
+        )
+        .await;
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let report = report.unwrap();
+        let summary = &report["summary"];
+        assert_eq!(summary["local_scan_incomplete"], false, "{report}");
+        assert_eq!(summary["protected_skipped_count"], 1, "{report}");
+        assert_eq!(summary["missing_local_count"], 0, "{report}");
         assert_eq!(report["status"], "partial", "{report}");
     }
 
