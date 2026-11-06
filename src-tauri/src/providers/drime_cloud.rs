@@ -680,6 +680,8 @@ impl DrimeCloudProvider {
             return Ok(());
         }
         let body = resp.text().await.unwrap_or_default();
+        // Kept as text: this helper has no destination folder to look in,
+        // and the 4xx carries no code for a taken name (#1506 row 164).
         if status.is_client_error() && body.to_ascii_lowercase().contains("already exist") {
             return Err(ProviderError::AlreadyExists(to.to_string()));
         }
@@ -1198,7 +1200,9 @@ impl StorageProvider for DrimeCloudProvider {
             ));
         }
 
-        if status.as_u16() == 401 || body.contains("Unauthenticated") {
+        // 401 decides; Laravel's "Unauthenticated" counts only on a failed
+        // response, never on a 2xx whose body happens to hold the word.
+        if status.as_u16() == 401 || (!status.is_success() && body.contains("Unauthenticated")) {
             return Err(ProviderError::AuthenticationFailed(
                 "Invalid API token. Generate one at app.drime.cloud → Account Settings → Developers".to_string()
             ));
@@ -1662,10 +1666,18 @@ impl StorageProvider for DrimeCloudProvider {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             let body_lower = body.to_lowercase();
-            if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
-                && body_lower.contains("already exists")
-            {
-                return Err(ProviderError::AlreadyExists(resolved));
+            // Laravel words the 422 in the account's locale: a folder of
+            // that name in the parent is what proves the name taken. The
+            // English phrase still counts, for a listing not yet indexed.
+            // #1506 row 164.
+            if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY {
+                let listed = matches!(
+                    self.find_exact_in_folder(&parent_id, dir_name).await,
+                    Ok(Some((_, true, _)))
+                );
+                if listed || body_lower.contains("already exists") {
+                    return Err(ProviderError::AlreadyExists(resolved));
+                }
             }
             return Err(ProviderError::ServerError(format!(
                 "Create directory failed ({}): {}",
@@ -3165,6 +3177,13 @@ mod tests {
                             items.push((id, name, parent, "file".to_string()));
                             ok()
                         }
+                        // A folder create refused as Laravel does in an
+                        // Italian account, whatever the name.
+                        ("POST", "/folders") => (
+                            axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                            r#"{"message":"Il nome è già stato preso.","errors":{"name":["Il nome è già stato preso."]}}"#,
+                        )
+                            .into_response(),
                         _ => (axum::http::StatusCode::BAD_REQUEST, "unexpected").into_response(),
                     }
                 }
@@ -3176,6 +3195,25 @@ mod tests {
         let mut provider = test_provider();
         provider.connected = true;
         (provider, store, changes)
+    }
+
+    /// #1506 row 164: a mkdir refused with a 422 in the account's language
+    /// is AlreadyExists when the parent lists a folder of that name, and
+    /// stays a failure when it does not.
+    #[tokio::test]
+    async fn a_localized_mkdir_refusal_is_already_exists_only_when_the_folder_is_listed() {
+        let (mut provider, _, _) =
+            provider_on_drime_entries(&[(1, "d", "", "folder"), (2, "sub", "1", "folder")]).await;
+        let taken = provider.mkdir("/d/sub").await;
+        assert!(
+            matches!(taken, Err(ProviderError::AlreadyExists(_))),
+            "{taken:?}"
+        );
+        let refused = provider.mkdir("/d/other").await;
+        assert!(
+            matches!(refused, Err(ProviderError::ServerError(_))),
+            "{refused:?}"
+        );
     }
 
     /// Drime's rename and move never overwrite, so the replace behind CLI
