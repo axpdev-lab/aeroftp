@@ -32,13 +32,81 @@ use zeroize::{Zeroize, Zeroizing};
 // swap (default on macOS, optional on Linux with LUKS), this risk is mitigated.
 // TODO: Consider wrapping in a custom MlockedBox<[u8; 32]> if threat model requires it.
 static VAULT_CACHE: Mutex<Option<(PathBuf, [u8; 32])>> = Mutex::new(None);
+
+thread_local! {
+    /// VAULT_CACHE locks this thread holds, for the lock order check.
+    static VAULT_CACHE_HELD: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// [`VAULT_CACHE`] locked through [`lock_vault_cache`], counted per thread so
+/// [`VaultWriteGuard::acquire`] can assert that no path waits for the vault
+/// lock while it holds the cache (lock order).
+struct VaultCacheLock(std::sync::MutexGuard<'static, Option<(PathBuf, [u8; 32])>>);
+
+impl std::ops::Deref for VaultCacheLock {
+    type Target = Option<(PathBuf, [u8; 32])>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for VaultCacheLock {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Drop for VaultCacheLock {
+    fn drop(&mut self) {
+        VAULT_CACHE_HELD.with(|held| held.set(held.get().saturating_sub(1)));
+    }
+}
+
+/// The only way to lock [`VAULT_CACHE`]; `Err` when the mutex is poisoned.
+fn lock_vault_cache() -> Result<VaultCacheLock, ()> {
+    let cache = VAULT_CACHE.lock().map_err(|_| ())?;
+    VAULT_CACHE_HELD.with(|held| held.set(held.get() + 1));
+    Ok(VaultCacheLock(cache))
+}
+
+fn vault_cache_held() -> bool {
+    VAULT_CACHE_HELD.with(|held| held.get() > 0)
+}
 static VAULT_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-// Serializes all vault write operations to prevent concurrent read-modify-write races
+// Serializes vault writes between the threads of one process. Writes between
+// processes (GUI, CLI, MCP) are serialized by `vault.db.lock`; both are held
+// together by a `VaultWriteGuard`.
+//
+// Lock order, outermost first. A path that holds more than one takes them in
+// this order and never the reverse:
+//   1. the first-run init lock file (`acquire_init_lock`)
+//   2. the keyring claim lock (`claim_slot_in`, `release_slot_in`, and the
+//      adoption in `load_passphrase_in`)
+//   3. VAULT_WRITE_LOCK
+//   4. vault.db.lock
+//   5. a source folder's vault.db.lock, file only (`VaultFolderLock`), taken
+//      by the portable copy after the destination's guard
+//   6. VAULT_CACHE: the GUI config update reads it under its guard; no path
+//      waits for a guard while holding it (`VaultWriteGuard::acquire` asserts
+//      it in debug builds, through `lock_vault_cache`)
+// 3 and 4 are only ever taken together, by `VaultWriteGuard::acquire`, within
+// one deadline. While a guard is held nothing reads or writes the keyring
+// (claim, release, passphrase load), derives a master-password key, or calls
+// `open_and_cache` or `clear_cache`: those run before the guard is taken or
+// after it is dropped, and a path that prepared outside the guard reads
+// vault.key again under it. The claim lock asserts the keyring part in debug
+// builds; VAULT_CACHE is only ever locked through `lock_vault_cache`.
 static VAULT_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 pub(crate) const VAULT_FILENAME: &str = "vault.db";
+/// Why an open stopped without writing: vault.key changed under it.
+const VAULT_KEY_CHANGED: &str = "vault.key changed while the vault was being opened; try again";
 pub(crate) const VAULTKEY_FILENAME: &str = "vault.key";
+/// Beside vault.db; never copied or migrated, it only serializes writers.
+const VAULT_LOCK_FILENAME: &str = "vault.db.lock";
+/// How long a writer waits for another process to finish its write.
+const VAULT_LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
 
 // vault.key binary format constants
 const VAULTKEY_MAGIC: &[u8; 8] = b"AEROVKEY";
@@ -176,8 +244,13 @@ enum KeyringSlot {
 impl KeyringSlot {
     /// The keyring account this slot names.
     fn account(&self) -> &str {
+        self.account_or(keyring_account())
+    }
+
+    /// The keyring account this slot names, `default_account` for the default one.
+    fn account_or<'a>(&'a self, default_account: &'a str) -> &'a str {
         match self {
-            KeyringSlot::Default => keyring_account(),
+            KeyringSlot::Default => default_account,
             KeyringSlot::Named(account) => account,
         }
     }
@@ -342,7 +415,12 @@ impl VaultKeyFile {
 
     /// Read vault.key from disk
     fn read() -> Result<Self, CredentialError> {
-        let path = Self::path()?;
+        Self::read_in(&config_dir()?)
+    }
+
+    /// Read the vault.key of the config folder `dir`.
+    fn read_in(dir: &Path) -> Result<Self, CredentialError> {
+        let path = dir.join(VAULTKEY_FILENAME);
         if !path.exists() {
             return Err(CredentialError::VaultNotInitialized);
         }
@@ -350,44 +428,10 @@ impl VaultKeyFile {
         Self::from_bytes(&data)
     }
 
-    /// Write vault.key to disk with secure permissions
-    fn write(&self) -> Result<(), CredentialError> {
-        let path = Self::path()?;
-        let data = self.to_bytes();
-        // Atomic write via temp+rename (with Windows fallback)
-        let tmp_path = path.with_extension("tmp");
-        std::fs::write(&tmp_path, &data)?;
-        if let Ok(f) = std::fs::File::open(&tmp_path) {
-            let _ = f.sync_all();
-        }
-        // Rename temp → target (Windows: retry with remove-first, then direct write fallback)
-        if std::fs::rename(&tmp_path, &path).is_err() {
-            #[cfg(windows)]
-            {
-                let _ = std::fs::remove_file(&path);
-                if std::fs::rename(&tmp_path, &path).is_err() {
-                    std::fs::write(&path, &data)?;
-                    let _ = std::fs::remove_file(&tmp_path);
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                return Err(CredentialError::Io(std::io::Error::other(
-                    "vault.key rename failed",
-                )));
-            }
-        }
-        if let Ok(f) = std::fs::File::open(&path) {
-            let _ = f.sync_all();
-        }
-        #[cfg(unix)]
-        if let Some(parent) = path.parent() {
-            if let Ok(dir) = std::fs::File::open(parent) {
-                let _ = dir.sync_all();
-            }
-        }
-        ensure_secure_permissions(&path)?;
-        Ok(())
+    /// Write vault.key to disk with secure permissions, under the vault lock.
+    /// Write vault.key into the config folder `guard` locks.
+    fn write(&self, guard: &VaultWriteGuard) -> Result<(), CredentialError> {
+        write_atomically(&guard.dir.join(VAULTKEY_FILENAME), &self.to_bytes(), guard)
     }
 
     /// Decrypt passphrase using master password (master mode only)
@@ -514,39 +558,365 @@ impl Drop for HeldLock {
     }
 }
 
-/// Lock `path` exclusively, waiting up to `wait` for another holder. The OS
-/// releases the lock when its holder exits, so a crash leaves nothing stale.
-fn acquire_claim_lock(path: &Path, wait: std::time::Duration) -> Result<ClaimLock, String> {
+enum FileLockError {
+    Open(std::io::Error),
+    Busy,
+    Lock(std::io::Error),
+}
+
+/// Lock `path` exclusively, creating it 0600, waiting up to `wait` for another
+/// holder. The OS releases the lock when its holder exits, so a crash leaves
+/// nothing stale.
+fn lock_file_waiting(path: &Path, wait: std::time::Duration) -> Result<HeldLock, FileLockError> {
     let mut options = std::fs::OpenOptions::new();
     options.create(true).truncate(false).write(true);
     // Nobody else needs to open it.
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-    let file = options
-        .open(path)
-        .map_err(|e| format!("cannot open the keyring lock {}: {}", path.display(), e))?;
+    let file = options.open(path).map_err(FileLockError::Open)?;
     let deadline = std::time::Instant::now() + wait;
     loop {
         match file.try_lock() {
-            Ok(()) => {
-                return Ok(ClaimLock {
-                    _guard: Box::new(HeldLock(file)),
-                })
-            }
+            Ok(()) => return Ok(HeldLock(file)),
             Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
-                std::thread::sleep(std::time::Duration::from_millis(50));
+                std::thread::sleep(std::time::Duration::from_millis(25));
             }
-            Err(std::fs::TryLockError::WouldBlock) => {
-                return Err(format!(
-                    "another AeroFTP process held the keyring lock {} for over {}s",
-                    path.display(),
+            Err(std::fs::TryLockError::WouldBlock) => return Err(FileLockError::Busy),
+            Err(std::fs::TryLockError::Error(e)) => return Err(FileLockError::Lock(e)),
+        }
+    }
+}
+
+/// Exclusive right to write the vault files of one config folder: the
+/// in-process `VAULT_WRITE_LOCK` and the cross-process `vault.db.lock`.
+/// Every writer of vault.db or vault.key takes one before it reads what it is
+/// about to change, so the read is fresh and no other process can write in
+/// between. The writers require it as an argument, so a new caller cannot
+/// skip it. Fields drop in order: the file lock is released before the mutex.
+pub(crate) struct VaultWriteGuard {
+    dir: PathBuf,
+    _file: HeldLock,
+    _thread: std::sync::MutexGuard<'static, ()>,
+}
+
+/// The cross-process lock of another config folder, without this process's
+/// write mutex: a portable copy holds it on the source folder, after taking
+/// the destination's [`VaultWriteGuard`] (lock order 5), so another process
+/// cannot reset or re-initialise the source vault halfway through the copy.
+/// A second guard would wait on the mutex the first one holds.
+pub(crate) struct VaultFolderLock {
+    _file: HeldLock,
+}
+
+impl VaultFolderLock {
+    /// `Ok(None)` when the lock file cannot be created there (a read-only
+    /// source): nothing of this install writes that folder then.
+    pub(crate) fn acquire(dir: &Path) -> Result<Option<Self>, CredentialError> {
+        Self::acquire_waiting(dir, VAULT_LOCK_WAIT)
+    }
+
+    fn acquire_waiting(
+        dir: &Path,
+        wait: std::time::Duration,
+    ) -> Result<Option<Self>, CredentialError> {
+        match lock_file_waiting(&dir.join(VAULT_LOCK_FILENAME), wait) {
+            Ok(file) => Ok(Some(Self { _file: file })),
+            Err(FileLockError::Open(e)) => {
+                warn!("source vault folder not locked ({e}); copying without its lock");
+                Ok(None)
+            }
+            Err(FileLockError::Busy) => Err(CredentialError::Io(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                format!(
+                    "vault busy: another AeroFTP process held the source {} for over {}s",
+                    VAULT_LOCK_FILENAME,
                     wait.as_secs()
-                ))
+                ),
+            ))),
+            Err(FileLockError::Lock(e)) => Err(CredentialError::Io(e)),
+        }
+    }
+}
+
+thread_local! {
+    /// Vault guards this thread holds, for the lock order check.
+    static VAULT_GUARDS_HELD: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
+}
+
+/// Whether this thread holds a vault guard. The keyring claim lock comes
+/// before the vault lock (lock order) and is never taken under it.
+fn vault_guard_held() -> bool {
+    VAULT_GUARDS_HELD.with(|held| held.get() > 0)
+}
+
+impl Drop for VaultWriteGuard {
+    fn drop(&mut self) {
+        VAULT_GUARDS_HELD.with(|held| held.set(held.get().saturating_sub(1)));
+    }
+}
+
+impl VaultWriteGuard {
+    pub(crate) fn acquire(dir: &Path) -> Result<Self, CredentialError> {
+        Self::acquire_waiting(dir, VAULT_LOCK_WAIT)
+    }
+
+    /// A free vault is taken at once. A busy one is waited for through
+    /// [`off_async_worker`], so no writer, whichever path it comes from, holds
+    /// a tokio worker while another process holds the vault.
+    fn acquire_waiting(dir: &Path, wait: std::time::Duration) -> Result<Self, CredentialError> {
+        debug_assert!(
+            !vault_cache_held(),
+            "vault lock waited for while VAULT_CACHE is held (lock order)"
+        );
+        match Self::acquire_within(dir, std::time::Duration::ZERO) {
+            Err(CredentialError::Io(e)) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                off_async_worker(|| Self::acquire_within(dir, wait))
             }
-            Err(std::fs::TryLockError::Error(e)) => {
-                return Err(format!("cannot lock {}: {}", path.display(), e))
+            taken => taken,
+        }
+    }
+
+    /// One deadline covers both locks: time spent waiting for another writer of
+    /// this process is taken from the wait for the file lock, so writes queued
+    /// behind a busy vault each fail after `wait`, not after their sum.
+    fn acquire_within(dir: &Path, wait: std::time::Duration) -> Result<Self, CredentialError> {
+        let deadline = std::time::Instant::now() + wait;
+        let busy = |holder: &str| {
+            CredentialError::Io(std::io::Error::new(
+                std::io::ErrorKind::WouldBlock,
+                format!(
+                    "vault busy: {holder} held {} for over {}s",
+                    VAULT_LOCK_FILENAME,
+                    wait.as_secs()
+                ),
+            ))
+        };
+        let thread = loop {
+            match VAULT_WRITE_LOCK.try_lock() {
+                Ok(thread) => break thread,
+                Err(std::sync::TryLockError::WouldBlock)
+                    if std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                }
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    return Err(busy("another writer of this process"))
+                }
+                Err(std::sync::TryLockError::Poisoned(_)) => {
+                    return Err(CredentialError::Encryption(
+                        "vault write lock poisoned".to_string(),
+                    ))
+                }
+            }
+        };
+        let left = deadline.saturating_duration_since(std::time::Instant::now());
+        let file =
+            lock_file_waiting(&dir.join(VAULT_LOCK_FILENAME), left).map_err(|e| match e {
+                FileLockError::Busy => busy("another AeroFTP process"),
+                FileLockError::Open(e) | FileLockError::Lock(e) => CredentialError::Io(e),
+            })?;
+        let guard = Self {
+            dir: dir.to_path_buf(),
+            _file: file,
+            _thread: thread,
+        };
+        VAULT_GUARDS_HELD.with(|held| held.set(held.get() + 1));
+        guard.remove_orphan_temporaries();
+        Ok(guard)
+    }
+
+    /// A writer that died between writing its temporary and renaming it left
+    /// the temporary behind. Under the lock nobody else is writing one, so
+    /// every name of the writers' exact pattern is an orphan.
+    fn remove_orphan_temporaries(&self) {
+        let Ok(entries) = std::fs::read_dir(&self.dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            if entry.file_name().to_str().is_some_and(is_vault_temporary) {
+                let _ = std::fs::remove_file(entry.path());
             }
         }
+    }
+
+    fn covers(&self, path: &Path) -> Result<(), CredentialError> {
+        if path.parent() == Some(self.dir.as_path()) {
+            Ok(())
+        } else {
+            Err(CredentialError::Io(std::io::Error::other(
+                "vault write outside the locked config folder",
+            )))
+        }
+    }
+}
+
+/// `<vault file>.<pid>.<16 hex>.tmp`: unique per write, so two writers never
+/// share a temporary and vault.key and vault.db never collide.
+fn vault_temporary(path: &Path) -> PathBuf {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let unique = hex::encode(crate::crypto::random_bytes(8));
+    path.with_file_name(format!("{name}.{}.{unique}.tmp", std::process::id()))
+}
+
+/// Run a vault write from async code without holding up a tokio worker while
+/// it waits for another process's `vault.db.lock`: on a multi-threaded runtime
+/// the worker hands its other tasks to the pool for the duration
+/// ([`tokio::task::block_in_place`]). The write itself is not moved or
+/// detached, so a short-lived CLI never exits before a rotated token is
+/// saved. Off a runtime or on a current-thread runtime it runs inline.
+/// Token refreshes inside providers write through this: several processes
+/// refreshing at once is where the lock is contended.
+pub(crate) fn off_async_worker<T>(write: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+            tokio::task::block_in_place(write)
+        }
+        _ => write(),
+    }
+}
+
+/// The lock file or a writer's temporary: files no copy or import carries.
+pub(crate) fn is_vault_lock_or_temporary(name: &str) -> bool {
+    name == VAULT_LOCK_FILENAME || is_vault_temporary(name)
+}
+
+fn is_vault_temporary(name: &str) -> bool {
+    [VAULT_FILENAME, VAULTKEY_FILENAME].iter().any(|base| {
+        name.strip_prefix(base)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .and_then(|rest| rest.strip_suffix(".tmp"))
+            .and_then(|rest| rest.split_once('.'))
+            .is_some_and(|(pid, unique)| {
+                !pid.is_empty()
+                    && pid.bytes().all(|b| b.is_ascii_digit())
+                    && unique.len() == 16
+                    && unique.bytes().all(|b| b.is_ascii_hexdigit())
+            })
+    })
+}
+
+/// Atomic write via a unique temporary and rename, under `guard`, with the
+/// Windows fallback for a destination a concurrent reader holds open.
+fn write_atomically(
+    path: &Path,
+    data: &[u8],
+    guard: &VaultWriteGuard,
+) -> Result<(), CredentialError> {
+    guard.covers(path)?;
+    let tmp_path = vault_temporary(path);
+    let result = write_and_rename(&tmp_path, path, data);
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    result?;
+    // fsync the final file
+    if let Ok(f) = std::fs::File::open(path) {
+        let _ = f.sync_all();
+    }
+    // fsync parent directory (Unix only: Windows doesn't support opening dirs as files)
+    #[cfg(unix)]
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = std::fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+    // The rename above committed the file, and its permissions came with the
+    // temporary: a failure here must not report the write as undone, or a
+    // caller would give back a keyring account vault.key already names.
+    if let Err(e) = secure_vault_file(path) {
+        warn!("vault file written, permissions not reapplied: {e}");
+    }
+    Ok(())
+}
+
+/// [`ensure_secure_permissions`] for a vault file. Tests make it fail for one
+/// file name, to check what a failure before and after the rename does.
+fn secure_vault_file(path: &Path) -> Result<(), CredentialError> {
+    #[cfg(test)]
+    if SECURE_FAILS_FOR.with(|name| {
+        name.borrow()
+            .as_deref()
+            .is_some_and(|name| path.file_name().and_then(|n| n.to_str()) == Some(name))
+    }) {
+        return Err(CredentialError::Io(std::io::Error::other(
+            "permissions refused (test)",
+        )));
+    }
+    ensure_secure_permissions(path)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A vault file name whose permissions [`secure_vault_file`] refuses.
+    static SECURE_FAILS_FOR: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+fn write_and_rename(tmp_path: &Path, path: &Path, data: &[u8]) -> Result<(), CredentialError> {
+    std::fs::write(tmp_path, data)?;
+    // Before the rename, so the file is never visible with wider permissions
+    // and a failure leaves the target as it was.
+    secure_vault_file(tmp_path)?;
+    // fsync temp file before rename
+    if let Ok(f) = std::fs::File::open(tmp_path) {
+        let _ = f.sync_all();
+    }
+    // Rename temp → target. On Windows, rename can fail if the destination is
+    // held open by a concurrent reader (readers take no lock). Fallback: remove
+    // destination first, then retry rename; last resort: direct write.
+    if std::fs::rename(tmp_path, path).is_err() {
+        #[cfg(windows)]
+        {
+            let _ = std::fs::remove_file(path);
+            if std::fs::rename(tmp_path, path).is_err() {
+                // Last resort: direct write (non-atomic but functional)
+                std::fs::write(path, data)?;
+                let _ = std::fs::remove_file(tmp_path);
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            // On Unix rename is atomic even if destination exists: this shouldn't fail
+            return Err(CredentialError::Io(std::io::Error::other(format!(
+                "{} rename failed",
+                path.file_name().unwrap_or_default().to_string_lossy()
+            ))));
+        }
+    }
+    Ok(())
+}
+
+/// Lock `path` exclusively, waiting up to `wait` for another holder. The OS
+/// releases the lock when its holder exits, so a crash leaves nothing stale.
+fn acquire_claim_lock(path: &Path, wait: std::time::Duration) -> Result<ClaimLock, String> {
+    debug_assert!(
+        !vault_guard_held(),
+        "keyring claim lock taken under the vault lock (lock order)"
+    );
+    // A free lock is taken at once; a busy one is waited for off the async
+    // workers, as for the vault lock.
+    let held = match lock_file_waiting(path, std::time::Duration::ZERO) {
+        Err(FileLockError::Busy) => off_async_worker(|| lock_file_waiting(path, wait)),
+        taken => taken,
+    };
+    match held {
+        Ok(held) => Ok(ClaimLock {
+            _guard: Box::new(held),
+        }),
+        Err(FileLockError::Open(e)) => Err(format!(
+            "cannot open the keyring lock {}: {}",
+            path.display(),
+            e
+        )),
+        Err(FileLockError::Busy) => Err(format!(
+            "another AeroFTP process held the keyring lock {} for over {}s",
+            path.display(),
+            wait.as_secs()
+        )),
+        Err(FileLockError::Lock(e)) => Err(format!("cannot lock {}: {}", path.display(), e)),
     }
 }
 
@@ -674,6 +1044,11 @@ fn load_passphrase_in(
 /// account instead and records it in vault.key. The whole claim runs under
 /// the keyring lock; without it the claim fails and the caller keeps the key
 /// on disk, as for a missing keyring.
+///
+/// Against the OS keyring `default_account` is always `keyring_account()`,
+/// THIS scope's account: a Flatpak/Snap must never write the native slot,
+/// which is what corrupted a native vault when a sandboxed install
+/// initialised a fresh vault over the shared slot.
 fn claim_slot_in(
     slots: &dyn PassphraseSlots,
     default_account: &str,
@@ -773,20 +1148,17 @@ fn load_passphrase_from_keyring(
     )
 }
 
-/// [`claim_slot_in`] against the OS keyring, for this install.
-fn claim_keyring_slot(passphrase: &[u8; PASSPHRASE_LEN]) -> Result<KeyringSlot, CredentialError> {
-    // Always within THIS scope's accounts. A Flatpak/Snap must never write the
-    // native slot, which is what corrupted a native vault when a sandboxed
-    // install initialised a fresh vault over the shared slot.
-    claim_slot_in(&OsKeyring, keyring_account(), passphrase)
-}
-
-/// [`release_slot_in`] against the OS keyring, for the account `slot` names.
-fn release_keyring_slot(slot: &KeyringSlot, passphrase: &[u8; PASSPHRASE_LEN]) {
-    release_slot_in(&OsKeyring, slot.account(), passphrase)
-}
-
 // ============ Credential Store ============
+
+/// What [`CredentialStore::migrate_legacy_key_in`] did with a LegacyAuto vault.key.
+enum LegacyKeyMigration {
+    /// vault.key now names a keyring account: the bytes written.
+    Migrated(Vec<u8>),
+    /// vault.key stays on disk (no keyring, vault busy, write failed).
+    Kept,
+    /// vault.key was changed by another process meanwhile; nothing written.
+    Changed,
+}
 
 pub struct CredentialStore {
     vault_path: PathBuf,
@@ -906,6 +1278,24 @@ impl CredentialStore {
     /// Initialize the credential store at app startup.
     /// Returns "OK" if vault is open, "MASTER_PASSWORD_REQUIRED" if locked.
     pub fn init() -> Result<String, CredentialError> {
+        // Once more when vault.key changed under this process while it opened
+        // the vault (another process enabled a master password, reset the
+        // vault): the second attempt reads what is there now.
+        match Self::init_attempt() {
+            Err(error) if Self::is_key_changed(&error) => Self::init_attempt(),
+            other => other,
+        }
+    }
+
+    fn key_changed() -> CredentialError {
+        CredentialError::Encryption(VAULT_KEY_CHANGED.to_string())
+    }
+
+    fn is_key_changed(error: &CredentialError) -> bool {
+        matches!(error, CredentialError::Encryption(message) if message == VAULT_KEY_CHANGED)
+    }
+
+    fn init_attempt() -> Result<String, CredentialError> {
         if !VaultKeyFile::exists() {
             // VER-005: Acquire file lock to prevent concurrent CLI+GUI vault creation
             let lock_path = Self::acquire_init_lock()?;
@@ -947,29 +1337,29 @@ impl CredentialStore {
                 // unavailable; in that case we must NOT fail closed (issue #334
                 // follow-up) but keep the on-disk LegacyAuto key so the vault
                 // still re-opens on every launch.
-                match claim_keyring_slot(passphrase) {
-                    Ok(slot) => {
-                        info!("Migrated on-disk vault.key passphrase to system keyring");
-                        VaultKeyFile {
-                            mode: VaultKeyMode::AutoKeyring { slot },
-                        }
-                        .write()?;
-                    }
-                    Err(e) => {
-                        warn!(
-                            "OS keyring unavailable ({e}); keeping on-disk vault.key (portable/no-keyring mode)"
-                        );
-                    }
-                }
+                let migration = Self::migrate_legacy_key_in(
+                    &OsKeyring,
+                    keyring_account(),
+                    &config_dir()?,
+                    &key_file,
+                    passphrase,
+                )?;
+                // The vault.key this passphrase now opens through.
+                let key_bytes = match migration {
+                    // Another process replaced vault.key (a master password
+                    // enabled, say) while this one waited: `init` opens what is
+                    // there now.
+                    LegacyKeyMigration::Changed => return Err(Self::key_changed()),
+                    LegacyKeyMigration::Migrated(written) => written,
+                    LegacyKeyMigration::Kept => key_file.to_bytes(),
+                };
 
                 let passphrase = Zeroizing::new(*passphrase);
                 let mut vault_key = crate::crypto::derive_from_passphrase(&passphrase[..]);
                 let vault_path = Self::vault_path()?;
 
                 // If vault.db doesn't exist yet (shouldn't happen but be safe), create it
-                if !vault_path.exists() {
-                    Self::create_empty_vault(&vault_path, &vault_key)?;
-                }
+                Self::create_empty_vault_if_absent(&vault_path, &vault_key, Some(&key_bytes))?;
 
                 if Self::totp_secret_with_key(&vault_path, &vault_key)?
                     .as_deref()
@@ -1004,20 +1394,44 @@ impl CredentialStore {
     /// The passphrase is read from the account vault.key names, or from this
     /// install's default account when vault.key names none.
     pub fn verify_auto_keyring() -> Result<(PathBuf, [u8; 32]), CredentialError> {
-        let slot = match VaultKeyFile::read() {
-            Ok(VaultKeyFile {
-                mode: VaultKeyMode::AutoKeyring { slot },
-            }) => slot,
-            _ => KeyringSlot::Default,
+        Self::verify_auto_keyring_in(
+            &OsKeyring,
+            keyring_account(),
+            native_account_for_migration(),
+            &config_dir()?,
+        )
+    }
+
+    /// [`Self::verify_auto_keyring`] for the config folder `dir`, against `slots`.
+    fn verify_auto_keyring_in(
+        slots: &dyn PassphraseSlots,
+        default_account: &str,
+        native_account: Option<&str>,
+        dir: &Path,
+    ) -> Result<(PathBuf, [u8; 32]), CredentialError> {
+        let key_file = VaultKeyFile::read_in(dir).ok();
+        let key_bytes = key_file.as_ref().map(VaultKeyFile::to_bytes);
+        // The passphrase this vault.key opens with. A master-password file
+        // here means another process changed the mode since the caller read
+        // vault.key: the keyring account may still hold the old passphrase,
+        // which would create a database the master key cannot open.
+        let mut passphrase = match key_file.map(|file| file.mode) {
+            Some(VaultKeyMode::AutoKeyring { slot }) => {
+                load_passphrase_in(slots, &slot, default_account, native_account)?
+            }
+            Some(VaultKeyMode::LegacyAuto { passphrase }) => passphrase,
+            Some(VaultKeyMode::Master { .. }) => return Err(Self::key_changed()),
+            None => load_passphrase_in(
+                slots,
+                &KeyringSlot::Default,
+                default_account,
+                native_account,
+            )?,
         };
-        let mut passphrase = load_passphrase_from_keyring(&slot)?;
         let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
         passphrase.zeroize();
-        let vault_path = Self::vault_path()?;
-
-        if !vault_path.exists() {
-            Self::create_empty_vault(&vault_path, &vault_key)?;
-        }
+        let vault_path = dir.join(VAULT_FILENAME);
+        Self::create_empty_vault_if_absent(&vault_path, &vault_key, key_bytes.as_deref())?;
 
         Self::verify_vault_key(&vault_path, &vault_key)?;
         Ok((vault_path, vault_key))
@@ -1049,6 +1463,69 @@ impl CredentialStore {
         Self::open_and_cache(vault_path, vault_key)
     }
 
+    /// Move a LegacyAuto vault.key into a keyring account, best effort. The
+    /// account is claimed before the vault lock (lock order), so vault.key is
+    /// read again under the lock: if another process changed it meanwhile,
+    /// nothing is written and the claim is undone. A lock or write that fails
+    /// keeps the on-disk key, which still opens the vault, and gives the
+    /// account back.
+    fn migrate_legacy_key_in(
+        slots: &dyn PassphraseSlots,
+        default_account: &str,
+        dir: &Path,
+        key_file: &VaultKeyFile,
+        passphrase: &[u8; PASSPHRASE_LEN],
+    ) -> Result<LegacyKeyMigration, CredentialError> {
+        let slot = match claim_slot_in(slots, default_account, passphrase) {
+            Ok(slot) => slot,
+            Err(e) => {
+                warn!(
+                    "OS keyring unavailable ({e}); keeping on-disk vault.key (portable/no-keyring mode)"
+                );
+                return Ok(LegacyKeyMigration::Kept);
+            }
+        };
+        // Runs after the guard is dropped: the release takes the claim lock.
+        let undo = || release_slot_in(slots, slot.account_or(default_account), passphrase);
+        let guard = match VaultWriteGuard::acquire(dir) {
+            Ok(guard) => guard,
+            Err(e) => {
+                undo();
+                warn!("Vault busy ({e}); keeping on-disk vault.key until the next start");
+                return Ok(LegacyKeyMigration::Kept);
+            }
+        };
+        match VaultKeyFile::read_in(dir) {
+            Ok(now) if now.to_bytes() == key_file.to_bytes() => {}
+            Ok(_) => {
+                drop(guard);
+                undo();
+                return Ok(LegacyKeyMigration::Changed);
+            }
+            Err(error) => {
+                drop(guard);
+                undo();
+                return Err(error);
+            }
+        }
+        let migrated = VaultKeyFile {
+            mode: VaultKeyMode::AutoKeyring { slot: slot.clone() },
+        };
+        let written = migrated.write(&guard);
+        drop(guard);
+        match written {
+            Ok(()) => {
+                info!("Migrated on-disk vault.key passphrase to system keyring");
+                Ok(LegacyKeyMigration::Migrated(migrated.to_bytes()))
+            }
+            Err(e) => {
+                undo();
+                warn!("Could not write vault.key ({e}); keeping on-disk vault.key");
+                Ok(LegacyKeyMigration::Kept)
+            }
+        }
+    }
+
     /// First run: generate random passphrase, store it in keyring, create vault.key + vault.db.
     fn first_run_init() -> Result<(), CredentialError> {
         // Ensure config directory exists with secure permissions
@@ -1068,25 +1545,14 @@ impl CredentialStore {
         // persisted. Fall back to an on-disk LegacyAuto key (vault.key is
         // file-permission protected: unix 0600 / Windows ACL) so the portable
         // install is self-contained and profiles actually persist.
-        let key_mode = match claim_keyring_slot(&passphrase) {
-            Ok(slot) => VaultKeyMode::AutoKeyring { slot },
-            Err(e) => {
-                warn!(
-                    "first_run_init: OS keyring unavailable ({e}); using on-disk vault.key fallback (portable/no-keyring mode)"
-                );
-                VaultKeyMode::LegacyAuto { passphrase }
-            }
-        };
-        let key_file = VaultKeyFile { mode: key_mode };
-        key_file.write()?;
-
-        // Derive vault key and create empty vault.db
-        let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
-        let vault_path = dir.join(VAULT_FILENAME);
-        Self::create_empty_vault(&vault_path, &vault_key)?;
-
+        let written = Self::first_run_write_in(&OsKeyring, keyring_account(), &dir, &passphrase);
         // A2-03: Zeroize passphrase after use
         passphrase.zeroize();
+        let Some(vault_key) = written? else {
+            // Another process created the vault: init opens it.
+            return Ok(());
+        };
+        let vault_path = dir.join(VAULT_FILENAME);
 
         // Cache vault key in memory
         Self::open_and_cache(vault_path, vault_key)?;
@@ -1096,6 +1562,74 @@ impl CredentialStore {
 
         info!("Universal credential vault initialized (system keyring mode)");
         Ok(())
+    }
+
+    /// The writes of a first run into the config folder `dir`: claim a keyring
+    /// account in `slots` for `passphrase` (or fall back to an on-disk key),
+    /// then write vault.key and an empty vault.db. Returns the vault key, or
+    /// `None` when another process created vault.key while this one waited (a
+    /// master password set up from the GUI does not take the init lock): then
+    /// nothing is written and the claim is undone.
+    fn first_run_write_in(
+        slots: &dyn PassphraseSlots,
+        default_account: &str,
+        dir: &Path,
+        passphrase: &[u8; PASSPHRASE_LEN],
+    ) -> Result<Option<[u8; 32]>, CredentialError> {
+        let key_mode = match claim_slot_in(slots, default_account, passphrase) {
+            Ok(slot) => VaultKeyMode::AutoKeyring { slot },
+            Err(e) => {
+                warn!(
+                    "first_run_init: OS keyring unavailable ({e}); using on-disk vault.key fallback (portable/no-keyring mode)"
+                );
+                VaultKeyMode::LegacyAuto {
+                    passphrase: *passphrase,
+                }
+            }
+        };
+        // vault.key and vault.db are written under one guard, so no other
+        // process sees the new key beside the old database. It is dropped
+        // before open_and_cache (lock order).
+        let vault_key = crate::crypto::derive_from_passphrase(passphrase);
+        let vault_path = dir.join(VAULT_FILENAME);
+        let claimed_slot = match &key_mode {
+            VaultKeyMode::AutoKeyring { slot } => Some(slot.clone()),
+            _ => None,
+        };
+        let mut key_written = false;
+        let written = VaultWriteGuard::acquire(dir).and_then(|guard| {
+            // A vault.key file, not just any path: a folder there is no vault,
+            // and the write below fails on it.
+            if dir.join(VAULTKEY_FILENAME).is_file() {
+                return Ok(false);
+            }
+            VaultKeyFile { mode: key_mode }.write(&guard)?;
+            key_written = true;
+            Self::create_empty_vault(&vault_path, &vault_key, &guard)?;
+            Ok(true)
+        });
+        // Without vault.key nothing opens with this passphrase: give its keyring
+        // account back (after the guard is gone: the release takes the claim
+        // lock). Once vault.key names the account, the account keeps the
+        // passphrase: the next start reads it and creates the missing vault.db
+        // (verify_auto_keyring).
+        let give_back = || {
+            if let (Some(slot), false) = (&claimed_slot, key_written) {
+                release_slot_in(slots, slot.account_or(default_account), passphrase);
+            }
+        };
+        match written {
+            Ok(true) => Ok(Some(vault_key)),
+            Ok(false) => {
+                give_back();
+                info!("first_run_init: another process created the vault meanwhile");
+                Ok(None)
+            }
+            Err(error) => {
+                give_back();
+                Err(error)
+            }
+        }
     }
 
     /// First run fallback when the system keyring is unavailable: bootstrap directly in master mode.
@@ -1130,18 +1664,25 @@ impl CredentialStore {
         let encrypted_passphrase = crate::crypto::encrypt_aes_gcm(&key, &nonce_arr, &passphrase)
             .map_err(CredentialError::Encryption)?;
 
-        VaultKeyFile {
-            mode: VaultKeyMode::Master {
-                salt: salt_arr,
-                nonce: nonce_arr,
-                encrypted_passphrase,
-            },
-        }
-        .write()?;
-
         let vault_key = crate::crypto::derive_from_passphrase(&passphrase);
         let vault_path = dir.join(VAULT_FILENAME);
-        Self::create_empty_vault(&vault_path, &vault_key)?;
+        {
+            // One guard over both files; dropped before open_and_cache (lock order).
+            let guard = VaultWriteGuard::acquire(&dir)?;
+            if VaultKeyFile::exists() {
+                passphrase.zeroize();
+                return Err(CredentialError::MasterAlreadySet);
+            }
+            VaultKeyFile {
+                mode: VaultKeyMode::Master {
+                    salt: salt_arr,
+                    nonce: nonce_arr,
+                    encrypted_passphrase,
+                },
+            }
+            .write(&guard)?;
+            Self::create_empty_vault(&vault_path, &vault_key, &guard)?;
+        }
         passphrase.zeroize();
         Self::open_and_cache(vault_path, vault_key)?;
         let _ = harden_config_directory();
@@ -1149,8 +1690,49 @@ impl CredentialStore {
         Ok(())
     }
 
+    /// Create vault.db when it does not exist yet. The check runs under the
+    /// lock, so two processes opening a vault together never both create it.
+    /// `key_file` is the vault.key `vault_key` came from (`None`: none was
+    /// readable): if vault.key is another one now (a reset by another process
+    /// that wrote its new key and stopped before its database), nothing is
+    /// created, since that key would not open it, and the caller tries again.
+    fn create_empty_vault_if_absent(
+        path: &Path,
+        vault_key: &[u8; 32],
+        key_file: Option<&[u8]>,
+    ) -> Result<(), CredentialError> {
+        if path.exists() {
+            return Ok(());
+        }
+        let dir = Self::lock_dir(path)?;
+        let guard = VaultWriteGuard::acquire(dir)?;
+        if path.exists() {
+            return Ok(());
+        }
+        if VaultKeyFile::read_in(dir)
+            .ok()
+            .map(|now| now.to_bytes())
+            .as_deref()
+            != key_file
+        {
+            return Err(Self::key_changed());
+        }
+        Self::create_empty_vault(path, vault_key, &guard)
+    }
+
+    /// The config folder holding `path`, whose lock covers it.
+    fn lock_dir(path: &Path) -> Result<&Path, CredentialError> {
+        path.parent().ok_or_else(|| {
+            CredentialError::Io(std::io::Error::other("vault path has no parent folder"))
+        })
+    }
+
     /// Create an empty vault.db with a verification token
-    fn create_empty_vault(path: &Path, vault_key: &[u8; 32]) -> Result<(), CredentialError> {
+    fn create_empty_vault(
+        path: &Path,
+        vault_key: &[u8; 32],
+        guard: &VaultWriteGuard,
+    ) -> Result<(), CredentialError> {
         let verify_nonce = crate::crypto::random_bytes(12);
         let verify_data =
             crate::crypto::encrypt_aes_gcm(vault_key, &verify_nonce, b"aeroftp_vault_v2_ok")
@@ -1163,7 +1745,7 @@ impl CredentialStore {
             entries: HashMap::new(),
         };
 
-        Self::write_vault(path, &vault)?;
+        Self::write_vault(path, &vault, guard)?;
         Ok(())
     }
 
@@ -1181,12 +1763,37 @@ impl CredentialStore {
         Ok(())
     }
 
+    /// A real empty vault at `path` for `vault_key`, with its verification
+    /// token: tests open it with [`Self::from_verified_key`].
+    #[cfg(test)]
+    pub(crate) fn write_test_vault(path: &Path, vault_key: &[u8; 32]) {
+        let guard = VaultWriteGuard::acquire(path.parent().unwrap()).unwrap();
+        Self::create_empty_vault(path, vault_key, &guard).unwrap();
+    }
+
+    /// Refuse a write into a vault `vault_key` does not open: another process
+    /// reset and re-initialised it after this handle cached its key, and an
+    /// entry encrypted with the old key could never be read again. One AES-GCM
+    /// decryption of the 19-byte token with the key already derived; no KDF.
+    fn ensure_vault_opens_with(
+        vault: &VaultFile,
+        vault_key: &[u8; 32],
+    ) -> Result<(), CredentialError> {
+        crate::crypto::decrypt_aes_gcm(vault_key, &vault.verify_nonce, &vault.verify_data)
+            .map(|_| ())
+            .map_err(|_| {
+                CredentialError::Encryption(
+                    "the vault was replaced by another process; open it again".to_string(),
+                )
+            })
+    }
+
     /// Open vault.db and cache the key in memory
     fn open_and_cache(vault_path: PathBuf, mut vault_key: [u8; 32]) -> Result<(), CredentialError> {
         Self::verify_vault_key(&vault_path, &vault_key)?;
 
         // Cache in static
-        if let Ok(mut cache) = VAULT_CACHE.lock() {
+        if let Ok(mut cache) = lock_vault_cache() {
             *cache = Some((vault_path, vault_key));
             VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
@@ -1199,7 +1806,7 @@ impl CredentialStore {
 
     /// Get a store instance from cache (vault must be open)
     pub fn from_cache() -> Option<Self> {
-        let cache = VAULT_CACHE.lock().ok()?;
+        let cache = lock_vault_cache().ok()?;
         let (path, key) = cache.as_ref()?;
         Some(Self {
             vault_path: path.clone(),
@@ -1222,14 +1829,29 @@ impl CredentialStore {
         if !matches!(account, "config_app_settings" | "config_ai_settings") {
             return Err("invalid_args".into());
         }
-        let cache = VAULT_CACHE.lock().map_err(|_| "locked")?;
+        // The guard first, then VAULT_CACHE (lock order): waiting for another
+        // process's vault.db.lock with the cache held would stall every
+        // from_cache of this process for up to VAULT_LOCK_WAIT. The cache is
+        // then held from the generation check through the write.
+        let dir = {
+            let cache = lock_vault_cache().map_err(|_| "locked")?;
+            let (path, _) = cache.as_ref().ok_or("locked")?;
+            Self::lock_dir(path)
+                .map(Path::to_path_buf)
+                .map_err(|_| "action_failed")?
+        };
+        let guard = VaultWriteGuard::acquire(&dir).map_err(|_| "action_failed")?;
+        let cache = lock_vault_cache().map_err(|_| "locked")?;
         let (path, key) = cache.as_ref().ok_or("locked")?;
-        if Self::cache_generation() != generation {
+        if Self::cache_generation() != generation || guard.covers(path).is_err() {
             return Err("gui_scope_changed".into());
         }
-        Self::update_gui_config_with_key(path, key, account, check, mutate)
+        Self::update_gui_config_under(path, key, &guard, account, check, mutate)
     }
 
+    /// [`Self::update_gui_config_under`] with its own guard, for tests that
+    /// pass a vault and key instead of the cached ones.
+    #[cfg(test)]
     fn update_gui_config_with_key(
         path: &Path,
         key: &[u8; 32],
@@ -1237,9 +1859,23 @@ impl CredentialStore {
         check: impl Fn() -> Result<(), String>,
         mutate: impl FnOnce(Option<serde_json::Value>) -> Result<serde_json::Value, String>,
     ) -> Result<serde_json::Value, String> {
-        let _write = VAULT_WRITE_LOCK.lock().map_err(|_| "action_failed")?;
+        let guard = Self::lock_dir(path)
+            .and_then(VaultWriteGuard::acquire)
+            .map_err(|_| "action_failed")?;
+        Self::update_gui_config_under(path, key, &guard, account, check, mutate)
+    }
+
+    fn update_gui_config_under(
+        path: &Path,
+        key: &[u8; 32],
+        guard: &VaultWriteGuard,
+        account: &str,
+        check: impl Fn() -> Result<(), String>,
+        mutate: impl FnOnce(Option<serde_json::Value>) -> Result<serde_json::Value, String>,
+    ) -> Result<serde_json::Value, String> {
         check()?;
         let mut vault = Self::read_vault(path).map_err(|_| "action_failed")?;
+        Self::ensure_vault_opens_with(&vault, key).map_err(|_| "action_failed")?;
         let existing = match vault.entries.get(account) {
             Some(entry) => {
                 let plaintext = Zeroizing::new(
@@ -1259,7 +1895,7 @@ impl CredentialStore {
             .entries
             .insert(account.to_owned(), VaultEntry { nonce, data });
         check()?;
-        Self::write_vault(path, &vault).map_err(|_| "action_failed")?;
+        Self::write_vault(path, &vault, guard).map_err(|_| "action_failed")?;
         Ok(updated)
     }
 
@@ -1272,7 +1908,7 @@ impl CredentialStore {
 
     /// Clear the vault cache (on lock)
     pub fn clear_cache() {
-        if let Ok(mut cache) = VAULT_CACHE.lock() {
+        if let Ok(mut cache) = lock_vault_cache() {
             if let Some((_, ref mut key)) = *cache {
                 // GAP-E01: Zeroize vault key via Zeroize trait (constant-time)
                 key.zeroize();
@@ -1349,7 +1985,7 @@ impl CredentialStore {
     /// A2-08: Cache previously verified vault key material.
     /// Called after TOTP verification succeeds.
     pub(crate) fn cache_vault(vault_path: PathBuf, mut vault_key: [u8; 32]) {
-        if let Ok(mut cache) = VAULT_CACHE.lock() {
+        if let Ok(mut cache) = lock_vault_cache() {
             *cache = Some((vault_path, vault_key));
             VAULT_GENERATION.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         }
@@ -1383,20 +2019,43 @@ impl CredentialStore {
 
     /// Enable master password: encrypt vault.key passphrase with user password
     pub fn enable_master_password(password: &str) -> Result<(), CredentialError> {
+        Self::enable_master_password_in(
+            &OsKeyring,
+            keyring_account(),
+            native_account_for_migration(),
+            &config_dir()?,
+            password,
+        )
+    }
+
+    /// [`Self::enable_master_password`] for the config folder `dir`, against
+    /// `slots`. The keyring read (which may wait for an unlock prompt and take
+    /// the keyring claim lock), the vault check and Argon2 run before the vault
+    /// lock; under the lock vault.key is read again, and if another process
+    /// changed it meanwhile nothing is written.
+    fn enable_master_password_in(
+        slots: &dyn PassphraseSlots,
+        default_account: &str,
+        native_account: Option<&str>,
+        dir: &Path,
+        password: &str,
+    ) -> Result<(), CredentialError> {
         if password.len() < 8 {
             return Err(CredentialError::PasswordTooShort);
         }
 
-        let key_file = VaultKeyFile::read()?;
+        let key_file = VaultKeyFile::read_in(dir)?;
         let passphrase = Zeroizing::new(match &key_file.mode {
             VaultKeyMode::LegacyAuto { passphrase } => *passphrase,
-            VaultKeyMode::AutoKeyring { slot } => load_passphrase_from_keyring(slot)?,
+            VaultKeyMode::AutoKeyring { slot } => {
+                load_passphrase_in(slots, slot, default_account, native_account)?
+            }
             VaultKeyMode::Master { .. } => return Err(CredentialError::MasterAlreadySet),
         });
         // The keyring account may hold another vault's key (overwritten by an
         // earlier version). Encrypting that one under the master password, and
         // then removing it from the keyring, would lock both vaults.
-        let vault_path = Self::vault_path()?;
+        let vault_path = dir.join(VAULT_FILENAME);
         if vault_path.exists() {
             let mut vault_key = crate::crypto::derive_from_passphrase(&passphrase[..]);
             let verified = Self::verify_vault_key(&vault_path, &vault_key);
@@ -1436,12 +2095,22 @@ impl CredentialStore {
                 encrypted_passphrase,
             },
         };
-        new_key_file.write()?;
+        // Held from the second read of vault.key to its write; dropped before
+        // the keyring slot is released (lock order).
+        let guard = VaultWriteGuard::acquire(dir)?;
+        if VaultKeyFile::read_in(dir)?.to_bytes() != key_file.to_bytes() {
+            return Err(CredentialError::Encryption(
+                "vault.key changed while the master password was being enabled; try again"
+                    .to_string(),
+            ));
+        }
+        new_key_file.write(&guard)?;
+        drop(guard);
         // Only an account this vault read its key from is cleared, and only while
         // it still holds that key. A LegacyAuto vault never had one: the default
         // account, if set, belongs to another vault.
         if let VaultKeyMode::AutoKeyring { slot } = &key_file.mode {
-            release_keyring_slot(slot, &passphrase);
+            release_slot_in(slots, slot.account_or(default_account), &passphrase);
         }
 
         info!("Master password enabled: vault.key encrypted");
@@ -1450,7 +2119,17 @@ impl CredentialStore {
 
     /// Disable master password: decrypt passphrase and store in cleartext
     pub fn disable_master_password(password: &str) -> Result<(), CredentialError> {
-        let key_file = VaultKeyFile::read()?;
+        Self::disable_master_password_in(&OsKeyring, keyring_account(), &config_dir()?, password)
+    }
+
+    /// [`Self::disable_master_password`] for the config folder `dir`, against `slots`.
+    fn disable_master_password_in(
+        slots: &dyn PassphraseSlots,
+        default_account: &str,
+        dir: &Path,
+        password: &str,
+    ) -> Result<(), CredentialError> {
+        let key_file = VaultKeyFile::read_in(dir)?;
         let passphrase = Zeroizing::new(match &key_file.mode {
             VaultKeyMode::Master { .. } => key_file.decrypt_passphrase(password)?,
             VaultKeyMode::LegacyAuto { .. } | VaultKeyMode::AutoKeyring { .. } => {
@@ -1467,14 +2146,40 @@ impl CredentialStore {
         // completes (passphrase is file-permission protected: unix 0600 / Win ACL).
         // The default account is taken back only if it is still empty: another
         // vault may have claimed it while this one was in master mode.
-        match claim_keyring_slot(&passphrase) {
-            Ok(slot) => {
-                VaultKeyFile {
-                    mode: VaultKeyMode::AutoKeyring { slot },
-                }
-                .write()?;
-                info!("Master password disabled: vault key moved back to system keyring");
+        // The slot is claimed before the vault lock (lock order), so vault.key
+        // is read again under the lock: if another process changed it
+        // meanwhile, the claim is undone and nothing is written.
+        let claimed = claim_slot_in(slots, default_account, &passphrase);
+        // Undo the claim on every way out that leaves vault.key as it was. It
+        // runs after the guard is dropped: the release takes the claim lock.
+        let undo = |claimed: &Result<KeyringSlot, CredentialError>| {
+            if let Ok(slot) = claimed {
+                release_slot_in(slots, slot.account_or(default_account), &passphrase);
             }
+        };
+        let guard = match VaultWriteGuard::acquire(dir) {
+            Ok(guard) => guard,
+            Err(error) => {
+                undo(&claimed);
+                return Err(error);
+            }
+        };
+        let unchanged = VaultKeyFile::read_in(dir).map(|now| now.to_bytes() == key_file.to_bytes());
+        if !matches!(unchanged, Ok(true)) {
+            drop(guard);
+            undo(&claimed);
+            return Err(unchanged.err().unwrap_or_else(|| {
+                CredentialError::Encryption(
+                    "vault.key changed while the master password was being disabled; try again"
+                        .to_string(),
+                )
+            }));
+        }
+        let written = match &claimed {
+            Ok(slot) => VaultKeyFile {
+                mode: VaultKeyMode::AutoKeyring { slot: slot.clone() },
+            }
+            .write(&guard),
             Err(e) => {
                 warn!(
                     "Master password disable: OS keyring unavailable ({e}); writing on-disk vault.key fallback"
@@ -1484,11 +2189,18 @@ impl CredentialStore {
                         passphrase: *passphrase,
                     },
                 }
-                .write()?;
-                info!(
-                    "Master password disabled: vault key written to on-disk fallback (no keyring)"
-                );
+                .write(&guard)
             }
+        };
+        drop(guard);
+        if let Err(error) = written {
+            undo(&claimed);
+            return Err(error);
+        }
+        if claimed.is_ok() {
+            info!("Master password disabled: vault key moved back to system keyring");
+        } else {
+            info!("Master password disabled: vault key written to on-disk fallback (no keyring)");
         }
         Ok(())
     }
@@ -1502,7 +2214,11 @@ impl CredentialStore {
             return Err(CredentialError::PasswordTooShort);
         }
 
-        let key_file = VaultKeyFile::read()?;
+        // The decryption (Argon2, or a keyring read that may take the keyring
+        // claim lock) and the new Argon2 run before the vault lock; under it
+        // vault.key is read again, and if it changed meanwhile nothing is written.
+        let dir = config_dir()?;
+        let key_file = VaultKeyFile::read_in(&dir)?;
         let passphrase = Zeroizing::new(key_file.decrypt_passphrase(old_password)?);
 
         // Re-encrypt with new password
@@ -1530,7 +2246,14 @@ impl CredentialStore {
                 encrypted_passphrase,
             },
         };
-        new_key_file.write()?;
+        let guard = VaultWriteGuard::acquire(&dir)?;
+        if VaultKeyFile::read_in(&dir)?.to_bytes() != key_file.to_bytes() {
+            return Err(CredentialError::Encryption(
+                "vault.key changed while the master password was being changed; try again"
+                    .to_string(),
+            ));
+        }
+        new_key_file.write(&guard)?;
 
         info!("Master password changed");
         Ok(())
@@ -1672,6 +2395,9 @@ impl CredentialStore {
         let vault_key = VaultKeyFile::path()?;
         let snapshot_dir = dir.join(format!("repair-snapshot-{snapshot_label}"));
         std::fs::create_dir_all(&snapshot_dir)?;
+        // Snapshot and removal of both files are one step for other processes;
+        // the guard is dropped before clear_cache (lock order).
+        let guard = VaultWriteGuard::acquire(&dir)?;
         if vault_db.exists() {
             std::fs::copy(&vault_db, snapshot_dir.join(VAULT_FILENAME))?;
         }
@@ -1685,6 +2411,7 @@ impl CredentialStore {
         if vault_key.exists() {
             std::fs::remove_file(&vault_key)?;
         }
+        drop(guard);
         Self::clear_cache();
         Ok(snapshot_dir)
     }
@@ -1731,17 +2458,17 @@ impl CredentialStore {
 
     /// Shared store implementation
     fn store_entry(&self, account: &str, secret: &str) -> Result<(), CredentialError> {
-        let _lock = VAULT_WRITE_LOCK
-            .lock()
-            .map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
+        // Read under the lock, so a write of another process is never lost.
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
         let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
         let nonce = crate::crypto::random_bytes(12);
         let data = crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
             .map_err(CredentialError::Encryption)?;
         vault
             .entries
             .insert(account.to_string(), VaultEntry { nonce, data });
-        Self::write_vault(&self.vault_path, &vault)?;
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
         info!("Credential stored: {}", account);
         Ok(())
     }
@@ -1790,10 +2517,9 @@ impl CredentialStore {
     /// Delete a credential
     pub fn delete(&self, account: &str) -> Result<(), CredentialError> {
         Self::reject_reserved_account(account)?;
-        let _lock = VAULT_WRITE_LOCK
-            .lock()
-            .map_err(|_| CredentialError::Encryption("vault write lock poisoned".to_string()))?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
         let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
         // Deleting a name with nothing stored under it succeeds as before, but
         // leaves the vault file alone and claims no deletion: the GUI consumes
         // the legacy `config_server_groups`/`config_favorite_servers` blobs on
@@ -1802,7 +2528,7 @@ impl CredentialStore {
             tracing::debug!("Credential delete: nothing stored under {}", account);
             return Ok(());
         }
-        Self::write_vault(&self.vault_path, &vault)?;
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
         info!("Credential deleted: {}", account);
         Ok(())
     }
@@ -1838,51 +2564,15 @@ impl CredentialStore {
         serde_json::from_slice(&data).map_err(|e| CredentialError::Serialization(e.to_string()))
     }
 
-    fn write_vault(path: &Path, vault: &VaultFile) -> Result<(), CredentialError> {
+    fn write_vault(
+        path: &Path,
+        vault: &VaultFile,
+        guard: &VaultWriteGuard,
+    ) -> Result<(), CredentialError> {
         let data = serde_json::to_vec_pretty(vault)
             .map_err(|e| CredentialError::Serialization(e.to_string()))?;
         // A2-01: Atomic write via temp+rename to prevent corruption on crash
-        let tmp_path = path.with_extension("tmp");
-        std::fs::write(&tmp_path, &data)?;
-        // fsync temp file before rename
-        if let Ok(f) = std::fs::File::open(&tmp_path) {
-            let _ = f.sync_all();
-        }
-        // Rename temp → target. On Windows, rename can fail if the destination is
-        // locked by a concurrent read (VAULT_WRITE_LOCK only covers writes, not reads).
-        // Fallback: remove destination first, then retry rename; last resort: direct write.
-        if std::fs::rename(&tmp_path, path).is_err() {
-            #[cfg(windows)]
-            {
-                // Windows: try remove + rename, then fallback to direct overwrite
-                let _ = std::fs::remove_file(path);
-                if std::fs::rename(&tmp_path, path).is_err() {
-                    // Last resort: direct write (non-atomic but functional)
-                    std::fs::write(path, &data)?;
-                    let _ = std::fs::remove_file(&tmp_path);
-                }
-            }
-            #[cfg(not(windows))]
-            {
-                // On Unix rename is atomic even if destination exists: this shouldn't fail
-                return Err(CredentialError::Io(std::io::Error::other(
-                    "vault.db rename failed",
-                )));
-            }
-        }
-        // fsync the final file
-        if let Ok(f) = std::fs::File::open(path) {
-            let _ = f.sync_all();
-        }
-        // fsync parent directory (Unix only: Windows doesn't support opening dirs as files)
-        #[cfg(unix)]
-        if let Some(parent) = path.parent() {
-            if let Ok(dir) = std::fs::File::open(parent) {
-                let _ = dir.sync_all();
-            }
-        }
-        ensure_secure_permissions(path)?;
-        Ok(())
+        write_atomically(path, &data, guard)
     }
 }
 
@@ -2049,11 +2739,7 @@ mod tests {
     fn deleting_an_absent_credential_succeeds_and_leaves_the_vault_file_alone() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("fixture-vault.json");
-        std::fs::write(
-            &path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
-        )
-        .unwrap();
+        CredentialStore::write_test_vault(&path, &[24; 32]);
         let store = CredentialStore::from_verified_key(&path, &[24; 32]);
         store
             .store("kept_fixture", "ARTIFICIAL-TEST-VALUE")
@@ -2077,11 +2763,7 @@ mod tests {
         use serde_json::json;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("fixture-vault.json");
-        std::fs::write(
-            &path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
-        )
-        .unwrap();
+        CredentialStore::write_test_vault(&path, &[24; 32]);
         let store = CredentialStore::from_verified_key(&path, &[24; 32]);
         store
             .store("ai_apikey_fixture", "ARTIFICIAL-TEST-KEY")
@@ -2686,5 +3368,799 @@ mod tests {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod vault_lock_tests {
+    use super::*;
+    use std::time::Duration;
+
+    const KEY: [u8; 32] = [7u8; 32];
+    const CHILD_DIR_ENV: &str = "AEROFTP_VAULT_LOCK_TEST_DIR";
+    const CHILD_INDEX_ENV: &str = "AEROFTP_VAULT_LOCK_TEST_CHILD";
+    const CHILDREN: usize = 4;
+    const KEYS_PER_CHILD: usize = 25;
+
+    fn new_vault(dir: &Path) -> PathBuf {
+        let path = dir.join(VAULT_FILENAME);
+        let guard = VaultWriteGuard::acquire(dir).unwrap();
+        CredentialStore::create_empty_vault(&path, &KEY, &guard).unwrap();
+        path
+    }
+
+    fn leftovers(dir: &Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".tmp"))
+            .collect()
+    }
+
+    /// Several processes write different keys into one vault at once; the
+    /// lock and the fresh read under it keep every write. Before the lock the
+    /// processes shared `vault.tmp` and each rewrote the vault it had read
+    /// earlier, so writes failed or were lost.
+    #[test]
+    fn concurrent_processes_keep_every_write() {
+        if let (Ok(dir), Ok(index)) = (std::env::var(CHILD_DIR_ENV), std::env::var(CHILD_INDEX_ENV))
+        {
+            let store =
+                CredentialStore::from_verified_key(&PathBuf::from(dir).join(VAULT_FILENAME), &KEY);
+            for n in 0..KEYS_PER_CHILD {
+                store
+                    .store(&format!("child{index}_key{n}"), "secret")
+                    .unwrap();
+            }
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = new_vault(dir.path());
+        let exe = std::env::current_exe().unwrap();
+        let children: Vec<_> = (0..CHILDREN)
+            .map(|index| {
+                std::process::Command::new(&exe)
+                    .args([
+                        "--exact",
+                        "credential_store::vault_lock_tests::concurrent_processes_keep_every_write",
+                        "--test-threads=1",
+                    ])
+                    .env(CHILD_DIR_ENV, dir.path())
+                    .env(CHILD_INDEX_ENV, index.to_string())
+                    .stdout(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        for mut child in children {
+            assert!(child.wait().unwrap().success());
+        }
+        let vault = CredentialStore::read_vault(&path).unwrap();
+        for index in 0..CHILDREN {
+            for n in 0..KEYS_PER_CHILD {
+                assert!(
+                    vault.entries.contains_key(&format!("child{index}_key{n}")),
+                    "lost child{index}_key{n}"
+                );
+            }
+        }
+        assert_eq!(vault.entries.len(), CHILDREN * KEYS_PER_CHILD);
+        assert!(leftovers(dir.path()).is_empty());
+    }
+
+    const ACCOUNT: &str = "vault-test-default";
+    const PASSWORD: &str = "master-password-test";
+
+    /// An in-memory keyring. `on_write` runs inside a claim, before the vault
+    /// lock: what another process may do in the meantime.
+    #[derive(Default)]
+    struct FakeKeyring {
+        entries: std::cell::RefCell<HashMap<String, String>>,
+        writes: std::cell::Cell<usize>,
+        on_write: Option<Box<dyn Fn()>>,
+        /// Runs once, at the next read: what another process does while this
+        /// one reads its passphrase.
+        on_read: std::cell::RefCell<Option<Box<dyn Fn()>>>,
+    }
+
+    impl FakeKeyring {
+        fn holds(&self, account: &str) -> Option<String> {
+            self.entries.borrow().get(account).cloned()
+        }
+    }
+
+    impl PassphraseSlots for FakeKeyring {
+        fn read(&self, account: &str) -> SlotContent {
+            let hook = self.on_read.borrow_mut().take();
+            if let Some(hook) = hook {
+                hook();
+            }
+            match self.entries.borrow().get(account) {
+                Some(value) => SlotContent::Holds(Zeroizing::new(value.clone())),
+                None => SlotContent::Empty,
+            }
+        }
+        fn write(&self, account: &str, encoded: &str) -> Result<(), String> {
+            self.writes.set(self.writes.get() + 1);
+            self.entries
+                .borrow_mut()
+                .insert(account.to_string(), encoded.to_string());
+            if let Some(on_write) = &self.on_write {
+                on_write();
+            }
+            Ok(())
+        }
+        fn delete(&self, account: &str) {
+            self.entries.borrow_mut().remove(account);
+        }
+        fn lock(&self) -> Result<ClaimLock, String> {
+            assert!(
+                !vault_guard_held(),
+                "keyring claim lock taken under the vault lock (lock order)"
+            );
+            Ok(ClaimLock {
+                _guard: Box::new(()),
+            })
+        }
+    }
+
+    /// A path a file cannot be renamed onto, on every platform.
+    fn occupy_with_a_folder(path: &Path) {
+        let _ = std::fs::remove_file(path);
+        std::fs::create_dir(path).unwrap();
+        std::fs::write(path.join("keep"), b"x").unwrap();
+    }
+
+    fn write_master_key(dir: &Path, passphrase: &[u8; PASSPHRASE_LEN]) -> Vec<u8> {
+        let salt = [5u8; 32];
+        let nonce = [6u8; 12];
+        let key = crate::crypto::derive_key_strong(PASSWORD, &salt).unwrap();
+        let encrypted_passphrase =
+            crate::crypto::encrypt_aes_gcm(&key, &nonce, passphrase).unwrap();
+        let file = VaultKeyFile {
+            mode: VaultKeyMode::Master {
+                salt,
+                nonce,
+                encrypted_passphrase,
+            },
+        };
+        file.write(&VaultWriteGuard::acquire(dir).unwrap()).unwrap();
+        file.to_bytes()
+    }
+
+    /// First run, vault.key cannot be written: nothing names the claimed
+    /// account, so it is given back.
+    #[test]
+    fn a_first_run_without_vault_key_gives_the_account_back() {
+        let dir = tempfile::tempdir().unwrap();
+        occupy_with_a_folder(&dir.path().join(VAULTKEY_FILENAME));
+        let keyring = FakeKeyring::default();
+        let passphrase = [3u8; PASSPHRASE_LEN];
+        assert!(
+            CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &passphrase)
+                .is_err()
+        );
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+        assert!(!dir.path().join(VAULT_FILENAME).exists());
+    }
+
+    /// First run, vault.key written but vault.db not: the account keeps the
+    /// passphrase vault.key names, and the next start creates vault.db.
+    #[test]
+    fn a_first_run_without_vault_db_keeps_the_account_for_the_next_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault_path = dir.path().join(VAULT_FILENAME);
+        occupy_with_a_folder(&vault_path);
+        let keyring = FakeKeyring::default();
+        let passphrase = [4u8; PASSPHRASE_LEN];
+        assert!(
+            CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &passphrase)
+                .is_err()
+        );
+        assert_eq!(
+            keyring.holds(ACCOUNT).as_deref(),
+            Some(BASE64.encode(passphrase).as_str())
+        );
+        assert!(matches!(
+            VaultKeyFile::read_in(dir.path()).unwrap().mode,
+            VaultKeyMode::AutoKeyring {
+                slot: KeyringSlot::Default
+            }
+        ));
+        // The cause goes away (a full disk freed): the next start recovers.
+        std::fs::remove_dir_all(&vault_path).unwrap();
+        let (path, vault_key) =
+            CredentialStore::verify_auto_keyring_in(&keyring, ACCOUNT, None, dir.path()).unwrap();
+        assert_eq!(path, vault_path);
+        assert_eq!(
+            vault_key,
+            crate::crypto::derive_from_passphrase(&passphrase)
+        );
+        assert!(vault_path.is_file());
+    }
+
+    #[test]
+    fn disabling_the_master_password_keeps_the_claimed_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let passphrase = [8u8; PASSPHRASE_LEN];
+        write_master_key(dir.path(), &passphrase);
+        let keyring = FakeKeyring::default();
+        CredentialStore::disable_master_password_in(&keyring, ACCOUNT, dir.path(), PASSWORD)
+            .unwrap();
+        assert_eq!(
+            keyring.holds(ACCOUNT).as_deref(),
+            Some(BASE64.encode(passphrase).as_str())
+        );
+        assert!(matches!(
+            VaultKeyFile::read_in(dir.path()).unwrap().mode,
+            VaultKeyMode::AutoKeyring { .. }
+        ));
+    }
+
+    /// Another process changes vault.key between the claim and the lock: the
+    /// disable stops, writes nothing and gives the claimed account back.
+    #[test]
+    fn disabling_the_master_password_gives_the_account_back_when_vault_key_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        write_master_key(dir.path(), &[8u8; PASSPHRASE_LEN]);
+        let other_dir = dir.path().to_path_buf();
+        let other = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let other_bytes = other.clone();
+        let keyring = FakeKeyring {
+            on_write: Some(Box::new(move || {
+                *other_bytes.borrow_mut() = write_master_key(&other_dir, &[9u8; PASSPHRASE_LEN]);
+            })),
+            ..FakeKeyring::default()
+        };
+        let err =
+            CredentialStore::disable_master_password_in(&keyring, ACCOUNT, dir.path(), PASSWORD)
+                .unwrap_err();
+        assert!(err.to_string().contains("vault.key changed"), "{err}");
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+        assert_eq!(
+            std::fs::read(dir.path().join(VAULTKEY_FILENAME)).unwrap(),
+            *other.borrow()
+        );
+    }
+
+    /// vault.key cannot be read again under the lock: the disable fails and
+    /// gives the claimed account back.
+    #[test]
+    fn disabling_the_master_password_gives_the_account_back_when_vault_key_is_unreadable() {
+        let dir = tempfile::tempdir().unwrap();
+        write_master_key(dir.path(), &[8u8; PASSPHRASE_LEN]);
+        let key_path = dir.path().join(VAULTKEY_FILENAME);
+        let keyring = FakeKeyring {
+            on_write: Some(Box::new(move || occupy_with_a_folder(&key_path))),
+            ..FakeKeyring::default()
+        };
+        assert!(CredentialStore::disable_master_password_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            PASSWORD
+        )
+        .is_err());
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+    }
+
+    fn write_legacy_key(dir: &Path, passphrase: &[u8; PASSPHRASE_LEN]) -> VaultKeyFile {
+        let file = VaultKeyFile {
+            mode: VaultKeyMode::LegacyAuto {
+                passphrase: *passphrase,
+            },
+        };
+        file.write(&VaultWriteGuard::acquire(dir).unwrap()).unwrap();
+        file
+    }
+
+    #[test]
+    fn the_legacy_key_moves_into_the_claimed_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let passphrase = [10u8; PASSPHRASE_LEN];
+        let read = write_legacy_key(dir.path(), &passphrase);
+        let keyring = FakeKeyring::default();
+        let migration = CredentialStore::migrate_legacy_key_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            &read,
+            &passphrase,
+        )
+        .unwrap();
+        assert!(matches!(migration, LegacyKeyMigration::Migrated(_)));
+        assert_eq!(
+            keyring.holds(ACCOUNT).as_deref(),
+            Some(BASE64.encode(passphrase).as_str())
+        );
+        assert!(matches!(
+            VaultKeyFile::read_in(dir.path()).unwrap().mode,
+            VaultKeyMode::AutoKeyring {
+                slot: KeyringSlot::Default
+            }
+        ));
+    }
+
+    /// A master password enabled by another process while this one waited for
+    /// the lock stays: the migration writes nothing and gives the account back.
+    #[test]
+    fn the_legacy_migration_leaves_a_master_password_set_meanwhile() {
+        let dir = tempfile::tempdir().unwrap();
+        let passphrase = [10u8; PASSPHRASE_LEN];
+        let read = write_legacy_key(dir.path(), &passphrase);
+        let other_dir = dir.path().to_path_buf();
+        let master = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let master_bytes = master.clone();
+        let keyring = FakeKeyring {
+            on_write: Some(Box::new(move || {
+                *master_bytes.borrow_mut() = write_master_key(&other_dir, &passphrase);
+            })),
+            ..FakeKeyring::default()
+        };
+        let migration = CredentialStore::migrate_legacy_key_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            &read,
+            &passphrase,
+        )
+        .unwrap();
+        assert!(matches!(migration, LegacyKeyMigration::Changed));
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+        assert_eq!(
+            std::fs::read(dir.path().join(VAULTKEY_FILENAME)).unwrap(),
+            *master.borrow()
+        );
+    }
+
+    #[test]
+    fn the_legacy_migration_gives_the_account_back_when_vault_key_is_unreadable() {
+        let dir = tempfile::tempdir().unwrap();
+        let passphrase = [10u8; PASSPHRASE_LEN];
+        let read = write_legacy_key(dir.path(), &passphrase);
+        let key_path = dir.path().join(VAULTKEY_FILENAME);
+        let keyring = FakeKeyring {
+            on_write: Some(Box::new(move || occupy_with_a_folder(&key_path))),
+            ..FakeKeyring::default()
+        };
+        assert!(CredentialStore::migrate_legacy_key_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            &read,
+            &passphrase,
+        )
+        .is_err());
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+    }
+
+    /// CR1: writes queued in one process behind a vault another process holds
+    /// each give up after one wait, not after the waits of those before them.
+    #[test]
+    fn queued_writers_share_one_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        let holder = lock_file_waiting(&dir.path().join(VAULT_LOCK_FILENAME), Duration::ZERO)
+            .ok()
+            .unwrap();
+        let wait = Duration::from_millis(300);
+        let started = std::time::Instant::now();
+        let writers: Vec<_> = (0..2)
+            .map(|_| {
+                let dir = dir.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let began = std::time::Instant::now();
+                    let refused = VaultWriteGuard::acquire_waiting(&dir, wait).is_err();
+                    (refused, began.elapsed())
+                })
+            })
+            .collect();
+        for writer in writers {
+            let (refused, took) = writer.join().unwrap();
+            assert!(refused);
+            assert!(took < wait + Duration::from_millis(150), "{took:?}");
+        }
+        assert!(started.elapsed() < wait * 2, "{:?}", started.elapsed());
+        drop(holder);
+    }
+
+    /// CR2: a permission failure after vault.key was renamed into place does
+    /// not undo the first run: the account keeps the passphrase vault.key names.
+    #[test]
+    fn a_permission_failure_after_the_rename_keeps_the_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = FakeKeyring::default();
+        let passphrase = [15u8; PASSPHRASE_LEN];
+        SECURE_FAILS_FOR.with(|name| *name.borrow_mut() = Some(VAULTKEY_FILENAME.to_string()));
+        let written =
+            CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &passphrase);
+        SECURE_FAILS_FOR.with(|name| *name.borrow_mut() = None);
+        assert!(written.unwrap().is_some());
+        assert_eq!(
+            keyring.holds(ACCOUNT).as_deref(),
+            Some(BASE64.encode(passphrase).as_str())
+        );
+        assert!(matches!(
+            VaultKeyFile::read_in(dir.path()).unwrap().mode,
+            VaultKeyMode::AutoKeyring { .. }
+        ));
+    }
+
+    /// F1: a vault another process created while this first run waited (a
+    /// master password set up from the GUI) is left alone.
+    #[test]
+    fn a_first_run_leaves_a_vault_created_meanwhile() {
+        let dir = tempfile::tempdir().unwrap();
+        let existing = write_master_key(dir.path(), &[13u8; PASSPHRASE_LEN]);
+        let keyring = FakeKeyring::default();
+        let written = CredentialStore::first_run_write_in(
+            &keyring,
+            ACCOUNT,
+            dir.path(),
+            &[14u8; PASSPHRASE_LEN],
+        )
+        .unwrap();
+        assert!(written.is_none());
+        assert_eq!(keyring.writes.get(), 1, "the account was claimed");
+        assert_eq!(keyring.holds(ACCOUNT), None);
+        assert_eq!(
+            std::fs::read(dir.path().join(VAULTKEY_FILENAME)).unwrap(),
+            existing
+        );
+        assert!(!dir.path().join(VAULT_FILENAME).exists());
+    }
+
+    #[test]
+    fn enabling_the_master_password_gives_the_account_back_after_the_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = FakeKeyring::default();
+        let passphrase = [11u8; PASSPHRASE_LEN];
+        CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &passphrase)
+            .unwrap()
+            .unwrap();
+        CredentialStore::enable_master_password_in(&keyring, ACCOUNT, None, dir.path(), PASSWORD)
+            .unwrap();
+        assert!(matches!(
+            VaultKeyFile::read_in(dir.path()).unwrap().mode,
+            VaultKeyMode::Master { .. }
+        ));
+        assert_eq!(keyring.holds(ACCOUNT), None);
+    }
+
+    /// CR3: the keyring read and Argon2 run before the vault lock; when
+    /// another process changes vault.key meanwhile, nothing is written and the
+    /// account keeps the passphrase the vault still reads.
+    #[test]
+    fn enabling_the_master_password_writes_nothing_when_vault_key_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = FakeKeyring::default();
+        let passphrase = [11u8; PASSPHRASE_LEN];
+        CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &passphrase)
+            .unwrap()
+            .unwrap();
+        let other_dir = dir.path().to_path_buf();
+        let other = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let other_bytes = other.clone();
+        *keyring.on_read.borrow_mut() = Some(Box::new(move || {
+            *other_bytes.borrow_mut() = write_master_key(&other_dir, &[12u8; PASSPHRASE_LEN]);
+        }));
+        let err = CredentialStore::enable_master_password_in(
+            &keyring,
+            ACCOUNT,
+            None,
+            dir.path(),
+            PASSWORD,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("try again"), "{err}");
+        assert_eq!(
+            std::fs::read(dir.path().join(VAULTKEY_FILENAME)).unwrap(),
+            *other.borrow()
+        );
+        assert_eq!(
+            keyring.holds(ACCOUNT).as_deref(),
+            Some(BASE64.encode(passphrase).as_str())
+        );
+    }
+
+    /// CR4: a handle whose key is stale after another process reset and
+    /// re-initialised the vault cannot write into the new one.
+    #[test]
+    fn a_stale_key_cannot_write_into_a_reinitialised_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(VAULT_FILENAME);
+        CredentialStore::write_test_vault(&path, &[1u8; 32]);
+        let stale = CredentialStore::from_verified_key(&path, &[1u8; 32]);
+        stale.store("before_reset", "old").unwrap();
+        // Another process resets the vault and creates a new one.
+        std::fs::remove_file(&path).unwrap();
+        CredentialStore::write_test_vault(&path, &[2u8; 32]);
+        let fresh = CredentialStore::from_verified_key(&path, &[2u8; 32]);
+        fresh.store("after_reset", "new").unwrap();
+        let before = std::fs::read(&path).unwrap();
+        assert!(stale.store("after_reset", "stale").is_err());
+        assert!(stale.store("another", "stale").is_err());
+        assert!(stale.delete("after_reset").is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(fresh.get("after_reset").unwrap(), "new");
+    }
+
+    /// CR4: the token check costs one AES-GCM decryption with the key already
+    /// derived, no key derivation. Run with `--ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn the_token_check_costs_no_key_derivation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(VAULT_FILENAME);
+        CredentialStore::write_test_vault(&path, &KEY);
+        let vault = CredentialStore::read_vault(&path).unwrap();
+        let rounds = 10_000u32;
+        let started = std::time::Instant::now();
+        for _ in 0..rounds {
+            CredentialStore::ensure_vault_opens_with(&vault, &KEY).unwrap();
+        }
+        let per_check = started.elapsed() / rounds;
+        let started = std::time::Instant::now();
+        let _ = crate::crypto::derive_key_strong(PASSWORD, &[5u8; 32]).unwrap();
+        let argon2 = started.elapsed();
+        println!("token check {per_check:?} per write; one Argon2 (test profile) {argon2:?}");
+    }
+
+    /// A missing vault.db is created only for the vault.key its key came
+    /// from: after another process wrote a new vault.key and stopped before
+    /// its database, the old key creates nothing the new one cannot open.
+    #[test]
+    fn a_missing_database_is_created_only_for_the_key_it_came_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(VAULT_FILENAME);
+        let first = write_legacy_key(dir.path(), &[20u8; PASSPHRASE_LEN]).to_bytes();
+        let second = write_legacy_key(dir.path(), &[21u8; PASSPHRASE_LEN]).to_bytes();
+        let err =
+            CredentialStore::create_empty_vault_if_absent(&path, &KEY, Some(&first)).unwrap_err();
+        assert!(CredentialStore::is_key_changed(&err), "{err}");
+        assert!(!path.exists());
+        assert!(
+            CredentialStore::create_empty_vault_if_absent(&path, &KEY, None).is_err(),
+            "a key file appeared"
+        );
+        CredentialStore::create_empty_vault_if_absent(&path, &KEY, Some(&second)).unwrap();
+        assert!(path.is_file());
+    }
+
+    /// The open of a keyring vault whose vault.db is missing: when vault.key
+    /// is replaced while the passphrase is read, no database is created and
+    /// the open says to try again.
+    #[test]
+    fn opening_creates_no_database_for_a_replaced_vault_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = FakeKeyring::default();
+        let passphrase = [22u8; PASSPHRASE_LEN];
+        CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &passphrase)
+            .unwrap()
+            .unwrap();
+        let vault_path = dir.path().join(VAULT_FILENAME);
+        std::fs::remove_file(&vault_path).unwrap();
+        let other_dir = dir.path().to_path_buf();
+        *keyring.on_read.borrow_mut() = Some(Box::new(move || {
+            write_master_key(&other_dir, &[23u8; PASSPHRASE_LEN]);
+        }));
+        let err = CredentialStore::verify_auto_keyring_in(&keyring, ACCOUNT, None, dir.path())
+            .unwrap_err();
+        assert!(CredentialStore::is_key_changed(&err), "{err}");
+        assert!(!vault_path.exists());
+    }
+
+    /// A keyring open that meets a vault.key changed to another mode opens
+    /// with what that file says: a master-password file stops it (try again,
+    /// nothing created), an on-disk key opens with its own passphrase.
+    #[test]
+    fn opening_follows_the_mode_vault_key_has_now() {
+        let dir = tempfile::tempdir().unwrap();
+        let keyring = FakeKeyring::default();
+        CredentialStore::first_run_write_in(&keyring, ACCOUNT, dir.path(), &[24u8; PASSPHRASE_LEN])
+            .unwrap()
+            .unwrap();
+        let vault_path = dir.path().join(VAULT_FILENAME);
+        std::fs::remove_file(&vault_path).unwrap();
+        write_master_key(dir.path(), &[25u8; PASSPHRASE_LEN]);
+        let err = CredentialStore::verify_auto_keyring_in(&keyring, ACCOUNT, None, dir.path())
+            .unwrap_err();
+        assert!(CredentialStore::is_key_changed(&err), "{err}");
+        assert!(!vault_path.exists());
+
+        let on_disk = [26u8; PASSPHRASE_LEN];
+        write_legacy_key(dir.path(), &on_disk);
+        let (path, vault_key) =
+            CredentialStore::verify_auto_keyring_in(&keyring, ACCOUNT, None, dir.path()).unwrap();
+        assert_eq!(path, vault_path);
+        assert_eq!(vault_key, crate::crypto::derive_from_passphrase(&on_disk));
+    }
+
+    #[test]
+    fn every_write_has_its_own_temporary() {
+        let dir = Path::new("/config");
+        let db = vault_temporary(&dir.join(VAULT_FILENAME));
+        let db_again = vault_temporary(&dir.join(VAULT_FILENAME));
+        let key = vault_temporary(&dir.join(VAULTKEY_FILENAME));
+        assert_ne!(db, db_again);
+        assert_ne!(db, key);
+        for path in [&db, &db_again, &key] {
+            assert_eq!(path.parent(), Some(dir));
+            assert!(is_vault_temporary(
+                path.file_name().unwrap().to_str().unwrap()
+            ));
+        }
+        for other in [
+            "vault.tmp",
+            "vault.db",
+            "vault.db.lock",
+            "vault.db.12.tmp",
+            "vault.db.x1.0123456789abcdef.tmp",
+            "vault.db.12.0123456789abcdeg.tmp",
+            "vault.db.12.0123456789abcdef.tmp.bak",
+            "user_partitions.db.12.0123456789abcdef.tmp",
+        ] {
+            assert!(!is_vault_temporary(other), "{other}");
+        }
+    }
+
+    #[test]
+    fn a_held_lock_makes_a_writer_fail_without_writing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = new_vault(dir.path());
+        let before = std::fs::read(&path).unwrap();
+        // Another holder: a separate open file description, as another process.
+        let holder = lock_file_waiting(&dir.path().join(VAULT_LOCK_FILENAME), Duration::ZERO)
+            .ok()
+            .unwrap();
+        let started = std::time::Instant::now();
+        let err = VaultWriteGuard::acquire_waiting(dir.path(), Duration::from_millis(200))
+            .err()
+            .unwrap();
+        assert!(started.elapsed() >= Duration::from_millis(200));
+        assert!(
+            matches!(&err, CredentialError::Io(e) if e.kind() == std::io::ErrorKind::WouldBlock)
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        drop(holder);
+        // Not ZERO: the in-process mutex shares the deadline, and parallel
+        // tests hold it for a moment.
+        assert!(VaultWriteGuard::acquire_waiting(dir.path(), Duration::from_secs(2)).is_ok());
+    }
+
+    #[test]
+    fn the_lock_removes_orphaned_temporaries_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let orphans = [
+            "vault.db.4242.0123456789abcdef.tmp",
+            "vault.key.7.fedcba9876543210.tmp",
+        ];
+        let kept = ["vault.tmp", "vault.db.x.tmp", "notes.0123456789abcdef.tmp"];
+        for name in orphans.iter().chain(kept.iter()) {
+            std::fs::write(dir.path().join(name), b"x").unwrap();
+        }
+        let _guard = VaultWriteGuard::acquire(dir.path()).unwrap();
+        for name in orphans {
+            assert!(!dir.path().join(name).exists(), "{name}");
+        }
+        for name in kept {
+            assert!(dir.path().join(name).exists(), "{name}");
+        }
+    }
+
+    #[test]
+    fn a_write_outside_the_locked_folder_is_refused() {
+        let locked = tempfile::tempdir().unwrap();
+        let other = tempfile::tempdir().unwrap();
+        let guard = VaultWriteGuard::acquire(locked.path()).unwrap();
+        assert!(write_atomically(&other.path().join(VAULT_FILENAME), b"{}", &guard).is_err());
+        assert!(!other.path().join(VAULT_FILENAME).exists());
+    }
+
+    #[test]
+    fn create_if_absent_keeps_an_existing_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = new_vault(dir.path());
+        let store = CredentialStore::from_verified_key(&path, &KEY);
+        store.store("kept", "value").unwrap();
+        CredentialStore::create_empty_vault_if_absent(&path, &KEY, None).unwrap();
+        assert_eq!(store.get("kept").unwrap(), "value");
+    }
+
+    /// The token refreshes inside providers write the vault through
+    /// `off_async_worker`; a refresh that calls the synchronous write directly
+    /// again fails here.
+    #[test]
+    fn provider_token_refreshes_write_off_the_async_worker() {
+        fn body<'a>(source: &'a str, signature: &str) -> &'a str {
+            let start = source
+                .find(signature)
+                .unwrap_or_else(|| panic!("{signature} not found"));
+            let rest = &source[start..];
+            &rest[..rest.find("\n    }\n").unwrap()]
+        }
+        let oauth = include_str!("providers/oauth2.rs");
+        let refresh = body(oauth, "pub async fn refresh_tokens(");
+        assert!(
+            refresh.contains("off_async_worker("),
+            "oauth2 refresh_tokens"
+        );
+        assert!(
+            !refresh.contains("\n        self.store_tokens("),
+            "oauth2 refresh_tokens"
+        );
+        for (source, signature, inner) in [
+            (
+                include_str!("providers/jottacloud.rs"),
+                "fn persist_refresh_token(&self) {",
+                "persist_refresh_token_now()",
+            ),
+            (
+                include_str!("providers/mega_native.rs"),
+                "fn persist_session(&self) -> Result<(), ProviderError> {",
+                "persist_session_now()",
+            ),
+        ] {
+            let wrapper = body(source, signature);
+            assert!(wrapper.contains("off_async_worker("), "{signature}");
+            assert!(wrapper.contains(inner), "{signature}");
+            assert_eq!(
+                source.matches(inner).count(),
+                1,
+                "{inner} is called only by its wrapper"
+            );
+        }
+        let proton = include_str!("providers/proton_native/vault.rs");
+        assert!(
+            body(proton, "fn save(&self, tokens: &SessionTokens) {").contains("off_async_worker(")
+        );
+    }
+
+    #[test]
+    fn off_async_worker_runs_inline_without_a_multi_thread_runtime() {
+        assert_eq!(off_async_worker(|| 7), 7);
+        let current = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        assert_eq!(current.block_on(async { off_async_worker(|| 8) }), 8);
+    }
+
+    #[test]
+    fn off_async_worker_hands_a_multi_thread_worker_back() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            // With one worker, a write that blocked it in place would starve
+            // this task; block_in_place hands the other task to a new worker.
+            let ticker = tokio::spawn(async {
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                true
+            });
+            let ran = tokio::spawn(async {
+                off_async_worker(|| std::thread::sleep(Duration::from_millis(200)));
+                true
+            });
+            assert!(tokio::time::timeout(Duration::from_millis(150), ticker)
+                .await
+                .expect("the other task ran while the write waited")
+                .unwrap());
+            assert!(ran.await.unwrap());
+        });
+    }
+
+    /// No vault writer may bypass the unique temporaries again.
+    #[test]
+    fn no_shared_temporary_is_left_in_the_vault_code() {
+        let source = include_str!("credential_store.rs");
+        let code = &source[..source.find("#[cfg(test)]\nmod tests").unwrap()];
+        assert!(!code.contains("with_extension(\"tmp\")"));
     }
 }

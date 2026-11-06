@@ -1122,7 +1122,8 @@ impl SessionStore for VaultSession {
     }
 
     fn save(&self, tokens: &SessionTokens) {
-        match open_store() {
+        // Off the async worker: another process may be writing the vault.
+        crate::credential_store::off_async_worker(|| match open_store() {
             Ok(store) => save_refreshed(
                 &VaultKeys {
                     store,
@@ -1135,7 +1136,7 @@ impl SessionStore for VaultSession {
                 tokens,
             ),
             Err(error) => log::warn!("Proton: refreshed session not saved: {error}"),
-        }
+        })
     }
 }
 

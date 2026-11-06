@@ -1376,12 +1376,21 @@ impl S3Provider {
     }
 
     /// The `connect()` bucket probe: ListObjects v1 on the bucket root with an
-    /// explicit empty `prefix=`, asking for a single key when `one_key`.
+    /// explicit empty `prefix=` and `delimiter=/`, asking for a single key when
+    /// `one_key`.
+    ///
+    /// The delimiter keeps the probe to the top level. A server that lists by
+    /// walking a tree, as `rclone serve s3` does (the Filen Desktop S3 bridge
+    /// is one), otherwise walks the whole bucket to answer it, and `max-keys`
+    /// does not stop that walk. On the Filen bridge with a cold folder cache,
+    /// measured 2026-11-05: 7.96 s for `prefix=`, 7.64 s with `max-keys=1`,
+    /// 0.22 s with `delimiter=/`. A top level of folders only answers with
+    /// CommonPrefixes and no key; the probe reads the status, not the keys.
     async fn connect_probe(&self, one_key: bool) -> Result<reqwest::Response, ProviderError> {
         let params: &[(&str, &str)] = if one_key {
-            &[("prefix", ""), ("max-keys", "1")]
+            &[("prefix", ""), ("delimiter", "/"), ("max-keys", "1")]
         } else {
-            &[("prefix", "")]
+            &[("prefix", ""), ("delimiter", "/")]
         };
         self.s3_request(Method::GET, "", Some(params), None).await
     }
@@ -4867,13 +4876,15 @@ impl StorageProvider for S3Provider {
         }
 
         // Connection probe: GET on the bucket root with an explicit empty
-        // `prefix=` query parameter (legacy ListObjects v1).
-        // Per filen-s3 source (FilenCloudDienste/filen-s3 README), the Filen
-        // Desktop S3 server "only supports Prefix parameter" on ListObjects/V2
-        // and rejects list-type=2, max-keys, continuation tokens, and bare
-        // bucket-only requests with "BadRequest: Invalid prefix specified".
-        // Sending `?prefix=` explicitly is universally accepted by AWS, MinIO,
-        // Wasabi, B2, R2, and Filen, and is the most compatible probe.
+        // `prefix=` and `delimiter=/` (legacy ListObjects v1).
+        // Per filen-s3 source (FilenCloudDienste/filen-s3 README), the older
+        // Filen Desktop S3 server accepts Prefix and Delimiter on
+        // ListObjects/V2 and rejects list-type=2, max-keys, continuation
+        // tokens, and bare bucket-only requests with "BadRequest: Invalid
+        // prefix specified". Current Filen Desktop serves S3 with
+        // `rclone serve s3`. `?prefix=&delimiter=/` is accepted by AWS, MinIO,
+        // Wasabi, B2, R2, and both Filen bridges; see `connect_probe` for why
+        // the delimiter matters.
         //
         // Everywhere but Filen the probe first asks for one key. Without
         // `max-keys` the server lists up to 1000 keys of the whole bucket
@@ -4949,7 +4960,7 @@ impl StorageProvider for S3Provider {
                             .s3_request(
                                 Method::GET,
                                 "",
-                                Some(&[("list-type", "2"), ("max-keys", "1")]),
+                                Some(&[("list-type", "2"), ("delimiter", "/"), ("max-keys", "1")]),
                                 None,
                             )
                             .await?;
@@ -15767,6 +15778,11 @@ mod tests {
             "the probe asks for one key: {:?}",
             seen[0].0
         );
+        assert!(
+            seen[0].0.contains("delimiter=%2F") || seen[0].0.contains("delimiter=/"),
+            "the probe stays at the top level: {:?}",
+            seen[0].0
+        );
         assert_eq!(
             seen[0].1, seen[1].1,
             "the listing must reuse the probe's connection, not open a second one"
@@ -15789,6 +15805,58 @@ mod tests {
             "the fallback is the plain probe: {:?}",
             seen[1].0
         );
+        assert!(
+            seen[1].0.contains("delimiter=%2F") || seen[1].0.contains("delimiter=/"),
+            "the plain probe stays at the top level too: {:?}",
+            seen[1].0
+        );
+    }
+
+    /// The Filen bridge gets the plain probe directly, with the delimiter:
+    /// without it `rclone serve s3` walked the whole bucket on every connect
+    /// whose folder cache had expired (7.96 s against 0.22 s, 2026-11-05).
+    #[tokio::test]
+    async fn the_filen_probe_lists_only_the_top_level() {
+        let (addr, queries, server) = s3_recording_queries().await;
+        let mut p = make_provider(Some(&format!("http://{addr}")));
+        p.config.region = "filen".to_string();
+        assert!(p.is_filen_s3_endpoint());
+        let response = p.connect_probe(false).await.expect("probe");
+        assert!(response.status().is_success());
+        server.abort();
+        let queries = queries.lock().unwrap().clone();
+        assert_eq!(queries.len(), 1, "{queries:?}");
+        assert!(queries[0].contains("delimiter=/"), "{}", queries[0]);
+        assert!(!queries[0].contains("max-keys"), "{}", queries[0]);
+        assert!(!queries[0].contains("list-type"), "{}", queries[0]);
+    }
+
+    /// A bucket whose top level holds only folders answers the delimited probe
+    /// with CommonPrefixes and no key. That is a reachable, authorized bucket.
+    #[tokio::test]
+    async fn a_top_level_of_folders_only_connects() {
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult>\
+             <Name>test-bucket</Name><Prefix></Prefix><Delimiter>/</Delimiter>\
+             <MaxKeys>1</MaxKeys><IsTruncated>true</IsTruncated>\
+             <CommonPrefixes><Prefix>photos/</Prefix></CommonPrefixes>\
+             </ListBucketResult>"
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        for filen in [false, true] {
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            if filen {
+                provider.config.region = "filen".to_string();
+            }
+            provider
+                .connect()
+                .await
+                .expect("a folders-only top level connects");
+            assert!(provider.connected);
+        }
+        server.abort();
     }
 
     /// `no_check_bucket` skips the bucket probe, not the confidentiality check.

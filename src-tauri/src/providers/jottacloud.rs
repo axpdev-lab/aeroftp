@@ -454,7 +454,13 @@ impl JottacloudProvider {
 
     /// Persist refresh token + metadata in credential vault for reconnection
     /// without requiring a new single-use login token.
+    /// Persist the rotated chain, off the async worker (see
+    /// [`crate::credential_store::off_async_worker`]).
     fn persist_refresh_token(&self) {
+        crate::credential_store::off_async_worker(|| self.persist_refresh_token_now())
+    }
+
+    fn persist_refresh_token_now(&self) {
         let data = serde_json::json!({
             "refresh_token": self.refresh_token.expose_secret(),
             "token_endpoint": self.token_endpoint,

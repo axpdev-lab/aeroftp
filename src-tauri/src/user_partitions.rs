@@ -3833,16 +3833,56 @@ fn read_credential_owner_aware_inner(
 /// Other keys land in the vault only, which is the correct MUV-3 behaviour for the
 /// generic `store_credential` command. A failed mirror is an error
 /// ([`mirror_into_partition`]).
+///
+/// The account is the one active when the call starts: the vault write may wait
+/// for another process's lock, and an account switched to meanwhile must not
+/// receive this secret.
 pub fn store_active_credential_dual(
     store: &CredentialStore,
     credential_id: &str,
     secret: &str,
 ) -> Result<(), String> {
+    store_credential_dual_as(store, active_user_id_for_write()?, credential_id, secret)
+}
+
+/// The account a GUI save mirrors into, read when the request arrives, before
+/// it is handed to a blocking thread ([`store_credential_dual_as`]).
+pub fn active_user_for_save() -> Result<Option<i64>, String> {
+    active_user_id_for_write()
+}
+
+/// [`store_active_credential_dual`] for `user_id`, the account active when the
+/// request arrived.
+pub fn store_credential_dual_as(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    credential_id: &str,
+    secret: &str,
+) -> Result<(), String> {
+    store_credential_dual_with(
+        store,
+        credential_id,
+        secret,
+        || Ok(user_id),
+        |user_id| mirror_credential_for_user(store, user_id, credential_id, secret),
+    )
+}
+
+/// [`store_active_credential_dual`] with the account lookup and the mirror
+/// passed in: `active_user` runs before the vault write.
+fn store_credential_dual_with(
+    store: &CredentialStore,
+    credential_id: &str,
+    secret: &str,
+    active_user: impl FnOnce() -> Result<Option<i64>, String>,
+    mirror: impl FnOnce(i64) -> Result<(), String>,
+) -> Result<(), String> {
+    let user_id = active_user()?;
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
-    match active_user_id_for_write()? {
-        Some(user_id) => mirror_credential_for_user(store, user_id, credential_id, secret),
+    match user_id {
+        Some(user_id) => mirror(user_id),
         None => Ok(()),
     }
 }
@@ -4021,17 +4061,56 @@ pub fn restore_credential_for_user(
 
 /// Active-user dual delete (GUI): delete from the vault and best-effort from the
 /// active user's partition. Part of an explicit user delete, never a purge.
+/// The account is the one active when the call starts, as for
+/// [`store_active_credential_dual`].
 pub fn delete_active_credential_dual(
     store: &CredentialStore,
     credential_id: &str,
 ) -> Result<(), String> {
+    delete_credential_dual_as(store, active_user_for_delete(credential_id), credential_id)
+}
+
+/// The account a GUI delete removes the mirror from, read when the request
+/// arrives; `None` for keys that are never mirrored.
+pub fn active_user_for_delete(credential_id: &str) -> Option<i64> {
+    muv3_credential_type(credential_id)
+        .is_some()
+        .then(active_user_id_quiet)
+        .flatten()
+}
+
+/// [`delete_active_credential_dual`] for `user_id`, the account active when
+/// the request arrived.
+pub fn delete_credential_dual_as(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    credential_id: &str,
+) -> Result<(), String> {
+    delete_credential_dual_with(
+        store,
+        credential_id,
+        || user_id,
+        |user_id| unmirror_credential_for_user_best_effort(user_id, credential_id),
+    )
+}
+
+/// [`delete_active_credential_dual`] with the account lookup and the unmirror
+/// passed in: `active_user` runs before the vault delete.
+fn delete_credential_dual_with(
+    store: &CredentialStore,
+    credential_id: &str,
+    active_user: impl FnOnce() -> Option<i64>,
+    unmirror: impl FnOnce(i64),
+) -> Result<(), String> {
+    let user_id = muv3_credential_type(credential_id)
+        .is_some()
+        .then(active_user)
+        .flatten();
     store
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"))?;
-    if muv3_credential_type(credential_id).is_some() {
-        if let Some(user_id) = active_user_id_quiet() {
-            unmirror_credential_for_user_best_effort(user_id, credential_id);
-        }
+    if let Some(user_id) = user_id {
+        unmirror(user_id);
     }
     Ok(())
 }
@@ -7133,12 +7212,72 @@ mod tests {
 
     fn throwaway_vault(dir: &std::path::Path) -> CredentialStore {
         let path = dir.join("vault.db");
-        std::fs::write(
-            &path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
+        crate::credential_store::CredentialStore::write_test_vault(&path, &[0x24; 32]);
+        CredentialStore::from_verified_key(&path, &[0x24; 32])
+    }
+
+    /// The account a save or delete mirrors into is read before the vault
+    /// write, which may wait for another process's lock: an account switched to
+    /// during that wait is not the one that receives (or loses) the secret.
+    #[test]
+    fn dual_writes_use_the_account_active_before_the_vault_write() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let active = std::cell::Cell::new(1i64);
+        let mirrored = std::cell::Cell::new(None);
+        store_credential_dual_with(
+            &store,
+            "server_switch",
+            "secret",
+            || {
+                assert!(store.get("server_switch").is_err(), "read after the write");
+                let user = active.get();
+                // The switch lands while the vault write waits.
+                active.set(2);
+                Ok(Some(user))
+            },
+            |user_id| {
+                mirrored.set(Some(user_id));
+                Ok(())
+            },
         )
         .unwrap();
-        CredentialStore::from_verified_key(&path, &[0x24; 32])
+        assert_eq!(store.get("server_switch").unwrap(), "secret");
+        assert_eq!(mirrored.get(), Some(1));
+
+        active.set(1);
+        let unmirrored = std::cell::Cell::new(None);
+        delete_credential_dual_with(
+            &store,
+            "server_switch",
+            || {
+                assert!(store.get("server_switch").is_ok(), "read after the delete");
+                let user = active.get();
+                active.set(2);
+                Some(user)
+            },
+            |user_id| unmirrored.set(Some(user_id)),
+        )
+        .unwrap();
+        assert!(store.get("server_switch").is_err());
+        assert_eq!(unmirrored.get(), Some(1));
+    }
+
+    /// A failed account lookup stops the save before the vault changes.
+    #[test]
+    fn a_failed_account_lookup_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let err = store_credential_dual_with(
+            &store,
+            "server_lookup",
+            "secret",
+            || Err("lookup failed".to_string()),
+            |_| panic!("mirrored without an account"),
+        )
+        .unwrap_err();
+        assert_eq!(err, "lookup failed");
+        assert!(store.get("server_lookup").is_err());
     }
 
     /// #736: the legacy blob follows the active list, and a list that is

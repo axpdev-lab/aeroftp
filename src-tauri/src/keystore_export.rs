@@ -2979,11 +2979,7 @@ mod tests {
     /// verification token, so the minimal shape is enough for these tests.
     fn throwaway_store(dir: &Path, name: &str) -> crate::credential_store::CredentialStore {
         let path = dir.join(name);
-        std::fs::write(
-            &path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
-        )
-        .unwrap();
+        crate::credential_store::CredentialStore::write_test_vault(&path, &VAULT_KEY_736);
         crate::credential_store::CredentialStore::from_verified_key(&path, &VAULT_KEY_736)
     }
 
@@ -3752,11 +3748,7 @@ mod tests {
         let (store, cfg) = machine_with_a_frozen_blob(dir.path());
         set_partition_secret(&store, &cfg, "server_srv_drive", "partition-password");
         let other_path = dir.path().join("other-vault.db");
-        std::fs::write(
-            &other_path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
-        )
-        .unwrap();
+        crate::credential_store::CredentialStore::write_test_vault(&other_path, &[0x17; 32]);
         let other_key =
             crate::credential_store::CredentialStore::from_verified_key(&other_path, &[0x17; 32]);
 
@@ -4396,11 +4388,7 @@ mod tests {
         dir: &Path,
     ) -> (PathBuf, crate::credential_store::CredentialStore) {
         let other_path = dir.join("other-machine-vault.db");
-        std::fs::write(
-            &other_path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
-        )
-        .unwrap();
+        crate::credential_store::CredentialStore::write_test_vault(&other_path, &[0x17; 32]);
         let other =
             crate::credential_store::CredentialStore::from_verified_key(&other_path, &[0x17; 32]);
         let source_cfg = dir.join("source");
@@ -4443,11 +4431,7 @@ mod tests {
         // The backup's partition, made on another machine (another vault key)
         // and exported without a transport sidecar: its keys do not open here.
         let other_path = dir.path().join("other-machine-vault.db");
-        std::fs::write(
-            &other_path,
-            br#"{"version":2,"verify_nonce":[],"verify_data":[],"entries":{}}"#,
-        )
-        .unwrap();
+        crate::credential_store::CredentialStore::write_test_vault(&other_path, &[0x17; 32]);
         let other =
             crate::credential_store::CredentialStore::from_verified_key(&other_path, &[0x17; 32]);
         let source_cfg = dir.path().join("source");

@@ -143,6 +143,11 @@ fn never_copied(src: &Path) -> bool {
     {
         return true;
     }
+    // The vault writers' lock and their unfinished temporaries belong to the
+    // host's own processes, never to the copy.
+    if crate::credential_store::is_vault_lock_or_temporary(name) {
+        return true;
+    }
     // The tree we import here is a config tree the user consented to copy, but a
     // symlink inside it can point anywhere: outside the consented tree (dragging
     // in foreign secrets like ~/.ssh) or at an ancestor, forming a cycle that
@@ -245,6 +250,27 @@ fn copy_missing_root(src: &Path, dst: &Path, copied: &mut usize) -> std::io::Res
 /// Copy the vault files of `src` into `dst` together, or none of them.
 fn copy_vault_unit(src: &Path, dst: &Path, copied: &mut usize) -> std::io::Result<()> {
     // A dangling link counts as present, as it does for the no-clobber rename.
+    if VAULT_FILES
+        .iter()
+        .any(|name| dst.join(name).symlink_metadata().is_ok())
+    {
+        return Ok(());
+    }
+    // No process of this install writes the vault while it is copied in, nor
+    // resets the source vault while it is copied out (the source's lock comes
+    // after the destination's guard: lock order).
+    let _guard = crate::credential_store::VaultWriteGuard::acquire(dst)
+        .map_err(|e| std::io::Error::other(e.to_string()))?;
+    let _source = if src != dst
+        && VAULT_FILES
+            .iter()
+            .any(|name| src.join(name).symlink_metadata().is_ok())
+    {
+        crate::credential_store::VaultFolderLock::acquire(src)
+            .map_err(|e| std::io::Error::other(e.to_string()))?
+    } else {
+        None
+    };
     if VAULT_FILES
         .iter()
         .any(|name| dst.join(name).symlink_metadata().is_ok())
@@ -2334,6 +2360,49 @@ mod tests {
 
     /// The import copies only what is absent and never overwrites an existing
     /// file in the sandbox, so a partially set-up install is preserved.
+    /// The source vault is locked while it is copied out. A copy that meets
+    /// a source held by another writer of this process, or by another process,
+    /// waits for it and then copies; it never deadlocks on its own locks.
+    #[test]
+    fn the_vault_copy_waits_for_a_held_source() {
+        use crate::credential_store::{VaultFolderLock, VaultWriteGuard};
+        for by_this_process in [true, false] {
+            let tmp = tempfile::tempdir().unwrap();
+            let src = tmp.path().join("src");
+            let dst = tmp.path().join("dst");
+            std::fs::create_dir_all(&src).unwrap();
+            std::fs::create_dir_all(&dst).unwrap();
+            std::fs::write(src.join(crate::credential_store::VAULTKEY_FILENAME), b"KEY").unwrap();
+            std::fs::write(src.join(crate::credential_store::VAULT_FILENAME), b"DB").unwrap();
+            // A guard holds the in-process mutex and the source file lock; a
+            // folder lock is what another process's guard looks like here.
+            let held: Box<dyn std::any::Any> = if by_this_process {
+                Box::new(VaultWriteGuard::acquire(&src).unwrap())
+            } else {
+                Box::new(VaultFolderLock::acquire(&src).unwrap().unwrap())
+            };
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (from, to) = (src.clone(), dst.clone());
+            std::thread::spawn(move || {
+                let mut copied = 0;
+                let result = copy_vault_unit(&from, &to, &mut copied).map(|()| copied);
+                let _ = tx.send(result.map_err(|e| e.to_string()));
+            });
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(rx.try_recv().is_err(), "copied while the source was held");
+            drop(held);
+            let copied = rx
+                .recv_timeout(std::time::Duration::from_secs(9))
+                .expect("the copy finished once the source was free")
+                .unwrap();
+            assert_eq!(copied, 2);
+            assert_eq!(
+                std::fs::read(dst.join(crate::credential_store::VAULT_FILENAME)).unwrap(),
+                b"DB"
+            );
+        }
+    }
+
     #[test]
     fn copy_missing_tree_never_overwrites() {
         let tmp = tempfile::tempdir().unwrap();

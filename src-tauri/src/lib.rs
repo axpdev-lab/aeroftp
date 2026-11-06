@@ -17987,8 +17987,17 @@ async fn store_credential(
     // are the four per-profile overlay secret prefixes. OAuth
     // and GitHub tokens stay vault-only on this generic path: they are mirrored
     // by their own type-explicit call-sites (MUV-4/5).
-    user_partitions::store_active_credential_dual(&store, &account, &password)
-        .map_err(|e| format!("Failed to store credential: {}", e))
+    // The vault write may wait for another process's lock: keep it off the
+    // async workers. The account is the one active now, not when the blocking
+    // job runs or its write gets the lock.
+    let user_id = user_partitions::active_user_for_save()
+        .map_err(|e| format!("Failed to store credential: {}", e))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        user_partitions::store_credential_dual_as(&store, user_id, &account, &password)
+    })
+    .await
+    .map_err(|e| format!("Failed to store credential: {}", e))?
+    .map_err(|e| format!("Failed to store credential: {}", e))
 }
 
 #[tauri::command]
@@ -18020,9 +18029,14 @@ async fn delete_credential(webview: tauri::Webview, account: String) -> Result<(
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
     // Dual-delete. Removes from the vault and, for the prefix-classified keys
     // (`server_*`, `ai_apikey_*`), best-effort from the active user's partition.
-    // Not a mass purge (that is MUV-6).
-    user_partitions::delete_active_credential_dual(&store, &account)
-        .map_err(|e| format!("Failed to delete credential: {}", e))
+    // Not a mass purge (that is MUV-6). The account is the one active now.
+    let user_id = user_partitions::active_user_for_delete(&account);
+    tauri::async_runtime::spawn_blocking(move || {
+        user_partitions::delete_credential_dual_as(&store, user_id, &account)
+    })
+    .await
+    .map_err(|e| format!("Failed to delete credential: {}", e))?
+    .map_err(|e| format!("Failed to delete credential: {}", e))
 }
 
 /// Remove EVERY vault secret scoped to a saved profile id, so deleting a profile
