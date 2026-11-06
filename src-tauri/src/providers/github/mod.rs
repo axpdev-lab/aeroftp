@@ -587,7 +587,16 @@ impl GitHubProvider {
                 .await
             {
                 Ok(_) => Ok(()),
-                Err(_) => Err(ProviderError::from(refused)),
+                // Not there: the refusal stands. Any other failure of the
+                // lookup (a timeout, a login) is the caller's to handle, not
+                // hidden behind the refusal (CodeRabbit, #1520).
+                Err(
+                    GitHubError::PathNotFound(_)
+                    | GitHubError::RepoNotFound
+                    | GitHubError::BranchNotFound(_)
+                    | GitHubError::NotFound(_),
+                ) => Err(ProviderError::from(refused)),
+                Err(lookup) => Err(ProviderError::from(lookup)),
             },
             Err(e) => Err(ProviderError::from(e)),
         }
@@ -2012,18 +2021,25 @@ mod tests {
                 } else {
                     "Kontingent für API-Anfragen erschöpft"
                 };
+                // GitHub answers a spent primary quota with 403 or 429.
+                let status = if uri.path().ends_with("/spent429") {
+                    axum::http::StatusCode::TOO_MANY_REQUESTS
+                } else {
+                    axum::http::StatusCode::FORBIDDEN
+                };
                 let mut response = (
-                    axum::http::StatusCode::FORBIDDEN,
+                    status,
                     axum::Json(serde_json::json!({ "message": message })),
                 )
                     .into_response();
-                let remaining = if uri.path().ends_with("/spent") {
-                    Some("0")
-                } else if uri.path().ends_with("/secondary") {
-                    Some("4999")
-                } else {
-                    None
-                };
+                let remaining =
+                    if uri.path().ends_with("/spent") || uri.path().ends_with("/spent429") {
+                        Some("0")
+                    } else if uri.path().ends_with("/secondary") {
+                        Some("4999")
+                    } else {
+                        None
+                    };
                 if let Some(remaining) = remaining {
                     response.headers_mut().insert(
                         "x-ratelimit-remaining",
@@ -2049,6 +2065,17 @@ mod tests {
             .client
             .get_json::<serde_json::Value>(&format!("{base}/refused"))
             .await;
+        // A 429 with the quota spent is the primary limit too (CodeRabbit,
+        // #1520). `execute` directly: the retry wrapper waits on a 429.
+        let spent429_request = provider
+            .client
+            .request(reqwest::Method::GET, &format!("http://{addr}/spent429"));
+        let spent429 = provider.client.execute(spent429_request, None).await;
+        assert!(
+            matches!(spent429, Err(GitHubError::PrimaryRateLimit { .. })),
+            "{:?}",
+            spent429.err()
+        );
         // Quota left and "rate limit" in the message: the secondary limit,
         // retried after a wait (Greptile, #1520). `execute` directly, since
         // `get_json` would sleep for the retry.
@@ -2080,7 +2107,10 @@ mod tests {
         use axum::response::IntoResponse;
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
-        for (appears, expect_ok) in [(true, true), (false, false)] {
+        // The second lookup: the branch is there; it is not (404, the refusal
+        // stands); it fails otherwise (401, that failure reaches the caller,
+        // CodeRabbit #1520).
+        for (second, expect_ok) in [("found", true), ("absent", false), ("unauthorized", false)] {
             let lookups = Arc::new(AtomicUsize::new(0));
             let seen = lookups.clone();
             let app = axum::Router::new().fallback(axum::routing::any(
@@ -2098,12 +2128,19 @@ mod tests {
                         }
                         if uri.path().contains("/branches/") {
                             let n = seen.fetch_add(1, Ordering::SeqCst);
-                            if n > 0 && appears {
+                            if n > 0 && second == "found" {
                                 return axum::Json(serde_json::json!({
                                     "name": "aeroftp/u/main", "protected": false,
                                     "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
                                 }))
                                 .into_response();
+                            }
+                            if n > 0 && second == "unauthorized" {
+                                return (
+                                    axum::http::StatusCode::UNAUTHORIZED,
+                                    axum::Json(serde_json::json!({"message": "Bad credentials"})),
+                                )
+                                    .into_response();
                             }
                         }
                         (
@@ -2131,7 +2168,13 @@ mod tests {
                 )
                 .await;
             server.abort();
-            assert_eq!(outcome.is_ok(), expect_ok, "appears={appears}: {outcome:?}");
+            assert_eq!(outcome.is_ok(), expect_ok, "{second}: {outcome:?}");
+            if second == "unauthorized" {
+                assert!(
+                    matches!(outcome, Err(ProviderError::AuthenticationFailed(_))),
+                    "the lookup's own failure, not the 422: {outcome:?}"
+                );
+            }
             assert_eq!(
                 lookups.load(Ordering::SeqCst),
                 2,
