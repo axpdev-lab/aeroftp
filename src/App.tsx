@@ -1219,7 +1219,6 @@ const App: React.FC = () => {
     salt?: string;
     filenameEncryption?: string;
     directoryNameEncryption?: boolean;
-    initialPath?: string;
   }>(null);
   const rcloneCryptBannerHandledRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1253,7 +1252,6 @@ const App: React.FC = () => {
       directoryNameEncryption: typeof opts.rcloneCryptDirectoryNameEncryption === 'boolean'
         ? (opts.rcloneCryptDirectoryNameEncryption as boolean)
         : true,
-      initialPath: typeof opts.rcloneCryptRemote === 'string' ? (opts.rcloneCryptRemote as string) : undefined,
     });
   }, [isConnected, liveConnectionParams.options, liveConnectionParams.server, liveConnectionParams.protocol, liveConnectionParams.username, rcloneCryptVaultId, rcloneCryptImportBanner]);
   useEffect(() => {
@@ -18749,7 +18747,7 @@ const App: React.FC = () => {
                     setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
                     await activateProviderCryptOverlay(
                       { sessionId: activeSessionId ?? undefined },
-                      bannerOverlayParams(banner),
+                      bannerOverlayParams(banner, currentRemotePath),
                       activeSessionId,
                     );
                     await loadRemoteFiles(undefined, true);
