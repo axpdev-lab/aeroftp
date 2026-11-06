@@ -1691,7 +1691,8 @@ fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
         .options
         .get_or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
     let start = match mapped.protocol.as_str() {
-        "s3" => {
+        // Swift and Azure containers sit where an S3 bucket does.
+        "s3" | "swift" | "azure" => {
             let has_bucket = options
                 .get("bucket")
                 .and_then(|b| b.as_str())
@@ -2560,6 +2561,66 @@ fn swift_auth_url(server: &RcloneExportServer) -> Option<String> {
     )
 }
 
+/// Whether a Swift profile is Blomp: its preset id, or an auth host under
+/// `blomp.com` (the same test the import uses to bring Blomp back).
+fn swift_is_blomp(server: &RcloneExportServer) -> bool {
+    if server.provider_id.as_deref() == Some("blomp") {
+        return true;
+    }
+    swift_auth_url(server)
+        .and_then(|auth| url::Url::parse(&auth).ok())
+        .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|h| h == "blomp.com" || h.ends_with(".blomp.com"))
+}
+
+/// Whether a Swift auth URL names its auth version in the path (`/v1.0`,
+/// `/v2.0`, `/v3`, ...), which is how rclone picks the version when
+/// `auth_version` is unset.
+fn swift_auth_url_has_version(auth: &str) -> bool {
+    url::Url::parse(auth).ok().is_some_and(|u| {
+        u.path_segments().is_some_and(|mut segments| {
+            segments.any(|seg| {
+                seg.strip_prefix('v')
+                    .and_then(|rest| rest.chars().next())
+                    .is_some_and(|c| c.is_ascii_digit())
+            })
+        })
+    })
+}
+
+/// Whether a WebDAV host is a local mount-app bridge (Filen Desktop, MEGAcmd),
+/// whose HTTP/HTTPS protocol is chosen inside that app.
+fn webdav_is_local_bridge(host: &str, port: u32) -> bool {
+    u16::try_from(port).is_ok_and(|port| crate::local_bridge::is_local_bridge_authority(host, port))
+}
+
+/// The scheme of the WebDAV URL written for a host saved without one. A local
+/// mount-app bridge has its protocol chosen in that app, and AeroFTP resolves
+/// it at connect regardless of the scheme saved in the profile (#389); an
+/// offline export cannot probe, so it writes the bridges' default, plain
+/// HTTP, and a note says where to change it. Elsewhere the GUI keeps the
+/// user's choice in `options.webdavScheme` (`tls_mode` after normalization);
+/// without one, port 80 is HTTP and the rest HTTPS.
+fn webdav_export_scheme(
+    host: &str,
+    port: u32,
+    options: Option<&serde_json::Value>,
+) -> &'static str {
+    if webdav_is_local_bridge(host, port) {
+        return "http";
+    }
+    let saved = options
+        .and_then(|o| o.get("webdavScheme").or_else(|| o.get("tls_mode")))
+        .and_then(|v| v.as_str())
+        .map(str::to_ascii_lowercase);
+    match saved.as_deref() {
+        Some("http") => "http",
+        Some("https") => "https",
+        _ if port == 80 => "http",
+        _ => "https",
+    }
+}
+
 /// True when the profile turned TLS certificate verification off. The GUI
 /// stores `verifyCert` as a bool, and normalization can deliver it as
 /// `verify_cert` and as the string "false"; every form is honoured.
@@ -2610,6 +2671,51 @@ fn s3_pinned_bucket(options: Option<&serde_json::Value>) -> Option<&str> {
         .and_then(|v| v.as_str())
         .map(str::trim)
         .filter(|s| !s.is_empty())
+}
+
+/// Write the `alias` remote that opens `remote_name` inside `bucket` (an S3
+/// bucket, or a Swift or Azure container, named by `what` in the comments).
+/// None of these backends has a config key for it, so without the alias the
+/// pinned bucket is lost. Returns the alias name written, or `None` (with a
+/// note) when no name near the wanted one is free.
+fn write_bucket_alias(
+    names: &mut RcloneNamespace,
+    trailing: &mut String,
+    notes: &mut String,
+    remote_name: &str,
+    bucket: &str,
+    what: &str,
+) -> Option<String> {
+    let desired = s3_bucket_alias_name(remote_name, bucket)?;
+    // The alias name is invented by this exporter, so it yields to every
+    // real profile name, including one whose section has not been written yet.
+    match names.claim_generated(&desired) {
+        Some(alias_name) => {
+            if alias_name != desired {
+                trailing.push_str(&format!(
+                    "\n# renamed from '{}': that name is taken by another remote\n",
+                    desired
+                ));
+            }
+            let title = what[..1].to_ascii_uppercase() + &what[1..];
+            trailing.push_str(&format!(
+                "\n# {title}-relative view of '{remote_name}' ({what} '{bucket}').\n\
+                 # AeroFTP writes keys at {what} root; address them\n\
+                 # as `{alias_name}:` or wrap a crypt remote with `remote = {alias_name}:`.\n"
+            ));
+            trailing.push_str(&format!("[{}]\n", alias_name));
+            trailing.push_str("type = alias\n");
+            trailing.push_str(&format!("remote = {}:{}\n", remote_name, bucket));
+            Some(alias_name)
+        }
+        None => {
+            notes.push_str(&format!(
+                "# {} alias for '{}' omitted: no free remote name near '{}'\n",
+                what, remote_name, desired
+            ));
+            None
+        }
+    }
 }
 
 fn s3_bucket_alias_name(remote_name: &str, bucket: &str) -> Option<String> {
@@ -3372,42 +3478,21 @@ pub fn export_rclone(
                 // alias addresses objects bucket-relative, identical to how
                 // the AeroFTP S3 client writes keys (drop-in for crypt/sync).
                 if let Some(bucket) = pinned_bucket {
-                    if let Some(desired) = s3_bucket_alias_name(&remote_name, &bucket) {
-                        // The alias name is invented by this exporter, so it
-                        // yields to every real profile name, including one
-                        // whose section has not been written yet.
-                        match names.claim_generated(&desired) {
-                            Some(alias_name) => {
-                                if alias_name != desired {
-                                    trailing.push_str(&format!(
-                                        "\n# renamed from '{}': that name is taken by another remote\n",
-                                        desired
-                                    ));
-                                }
-                                trailing.push_str(&format!(
-                                    "\n# Bucket-relative view of '{}' (bucket '{}').\n\
-                                     # AeroFTP writes keys at bucket root; address them\n\
-                                     # as `{}:` or wrap a crypt remote with `remote = {}:`.\n",
-                                    remote_name, bucket, alias_name, alias_name
-                                ));
-                                trailing.push_str(&format!("[{}]\n", alias_name));
-                                trailing.push_str("type = alias\n");
-                                trailing
-                                    .push_str(&format!("remote = {}:{}\n", remote_name, bucket));
-                                // A crypt overlay must wrap the alias, not the
-                                // raw s3 remote, and it must wrap the name that
-                                // was actually written.
-                                crypt_base = alias_name;
-                                crypt_base_root = Some(bucket.to_string());
-                            }
-                            None => {
-                                notes.push_str(&format!(
-                                    "# bucket alias for '{}' omitted: no free remote name near '{}'\n",
-                                    remote_name, desired
-                                ));
-                                crypt_folder = Some(bucket.to_string());
-                            }
+                    match write_bucket_alias(
+                        &mut names,
+                        &mut trailing,
+                        &mut notes,
+                        &remote_name,
+                        &bucket,
+                        "bucket",
+                    ) {
+                        // A crypt overlay must wrap the alias, not the raw s3
+                        // remote, and it must wrap the name that was written.
+                        Some(alias_name) => {
+                            crypt_base = alias_name;
+                            crypt_base_root = Some(bucket);
                         }
+                        None => crypt_folder = Some(bucket),
                     }
                 }
             }
@@ -3440,7 +3525,13 @@ pub fn export_rclone(
                 let url = if host.starts_with("http://") || host.starts_with("https://") {
                     format!("{}{}", host, base_path)
                 } else {
-                    let scheme = if server.port == 80 { "http" } else { "https" };
+                    let scheme = webdav_export_scheme(host, server.port, options);
+                    if webdav_is_local_bridge(host, server.port) {
+                        notes.push_str(&format!(
+                            "# '{}': local bridge on plain HTTP, its default; if TLS is on in the bridge app, make the url https:// (self-signed: add override.no_check_certificate = true)\n",
+                            remote_name
+                        ));
+                    }
                     let port_str = if server.port == 443 || server.port == 80 {
                         String::new()
                     } else {
@@ -3694,7 +3785,33 @@ pub fn export_rclone(
                 }
                 if let Some(opts) = options {
                     if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
+                        // rclone's azureblob backend has no `container` key and
+                        // ignores it; it stays for this importer, and the alias
+                        // below is what rclone opens.
                         body.push_str(&format!("container = {}\n", container));
+                    }
+                }
+                // Containers are addressed like S3 buckets (`remote:container`).
+                if let Some(container) = options
+                    .and_then(|o| o.get("bucket"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|c| !c.is_empty())
+                    .map(str::to_string)
+                {
+                    match write_bucket_alias(
+                        &mut names,
+                        &mut trailing,
+                        &mut notes,
+                        &remote_name,
+                        &container,
+                        "container",
+                    ) {
+                        Some(alias_name) => {
+                            crypt_base = alias_name;
+                            crypt_base_root = Some(container);
+                        }
+                        None => crypt_folder = Some(container),
                     }
                 }
             }
@@ -3710,21 +3827,73 @@ pub fn export_rclone(
                     // the password, which fails authentication.
                     body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
+                let blomp = swift_is_blomp(server);
                 if let Some(auth) = swift_auth_url(server) {
+                    let versioned = swift_auth_url_has_version(&auth);
+                    // AeroFTP finds the Keystone version by probing the auth
+                    // root; rclone does not, and refuses an unversioned URL
+                    // ("Can't find AuthVersion in AuthUrl"). Blomp is Keystone
+                    // v2, so its root gets the version AeroFTP ends up dialing.
+                    let auth = if blomp && !versioned {
+                        format!("{}/v2.0", auth.trim_end_matches('/'))
+                    } else {
+                        auth
+                    };
                     body.push_str(&format!("auth = {}\n", auth));
+                    if !blomp && !versioned {
+                        notes.push_str(&format!(
+                            "# '{}': the auth URL names no Keystone version; set `auth_version` (1, 2 or 3) for rclone\n",
+                            remote_name
+                        ));
+                    }
                 }
                 if profile_verify_cert_off(options) {
                     body.push_str(RCLONE_OVERRIDE_NO_CHECK_CERT);
+                }
+                let tenant = options
+                    .and_then(|o| o.get("tenant"))
+                    .and_then(|v| v.as_str())
+                    .filter(|t| !t.trim().is_empty());
+                // Blomp's Keystone v2 tenant is fixed (`auth_keystone_v2`).
+                if let Some(tenant) = tenant.or(blomp.then_some("storage")) {
+                    body.push_str(&format!("tenant = {}\n", tenant));
                 }
                 if let Some(opts) = options {
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         body.push_str(&format!("region = {}\n", region));
                     }
-                    if let Some(tenant) = opts.get("tenant").and_then(|v| v.as_str()) {
-                        body.push_str(&format!("tenant = {}\n", tenant));
-                    }
                     if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
+                        // rclone's swift backend has no `container` key either.
                         body.push_str(&format!("container = {}\n", container));
+                    }
+                }
+                // Blomp lets no one list its containers (403 by design) and
+                // gives each account one, named after the login, which AeroFTP
+                // opens on its own (`discover_container`): that one is pinned.
+                let container = options
+                    .and_then(|o| o.get("bucket"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|c| !c.is_empty())
+                    .map(str::to_string)
+                    .or_else(|| {
+                        (blomp && !server.username.trim().is_empty())
+                            .then(|| server.username.trim().to_string())
+                    });
+                if let Some(container) = container {
+                    match write_bucket_alias(
+                        &mut names,
+                        &mut trailing,
+                        &mut notes,
+                        &remote_name,
+                        &container,
+                        "container",
+                    ) {
+                        Some(alias_name) => {
+                            crypt_base = alias_name;
+                            crypt_base_root = Some(container);
+                        }
+                        None => crypt_folder = Some(container),
                     }
                 }
             }
@@ -9061,12 +9230,26 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             server_with("none", "swift", "", 443, None, serde_json::json!({})),
         ];
         let (outcome, conf) = export_to_string(&servers, "swift-auth");
+        // rclone refuses an auth URL with no version in it, where AeroFTP
+        // probes; Blomp is Keystone v2 under the fixed tenant `storage`.
+        let blomp_section = section_of(&conf, "blomp");
         assert!(
-            section_of(&conf, "blomp").contains("auth = https://authenticate.blomp.com\n"),
+            blomp_section.contains("auth = https://authenticate.blomp.com/v2.0\n"),
+            "{conf}"
+        );
+        assert!(blomp_section.contains("tenant = storage\n"), "{conf}");
+        assert!(
+            section_of(&conf, "bare").contains("auth = https://keystone.example.test\n"),
+            "{conf}"
+        );
+        assert!(!section_of(&conf, "bare").contains("tenant ="), "{conf}");
+        // An unversioned root that is not Blomp cannot be guessed: say so.
+        assert!(
+            conf.contains("'bare': the auth URL names no Keystone version"),
             "{conf}"
         );
         assert!(
-            section_of(&conf, "bare").contains("auth = https://keystone.example.test\n"),
+            !conf.contains("'opt': the auth URL names no Keystone version"),
             "{conf}"
         );
         assert!(
@@ -9308,6 +9491,154 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 .and_then(|o| o.get("bucket"))
                 .and_then(|b| b.as_str()),
             Some("media")
+        );
+    }
+
+    #[test]
+    fn a_pinned_container_reaches_rclone_through_an_alias_and_comes_back_pinned() {
+        // rclone's swift and azureblob backends have no `container` key: the
+        // container a profile opens has to be the path of an alias.
+        let servers = vec![
+            server_with(
+                "blomp",
+                "swift",
+                "https://authenticate.blomp.com",
+                443,
+                Some("blomp"),
+                serde_json::json!({}),
+            ),
+            server_with(
+                "os",
+                "swift",
+                "https://id.example.test/v3",
+                443,
+                None,
+                serde_json::json!({ "bucket": "media" }),
+            ),
+            server_with(
+                "az",
+                "azure",
+                "acct.blob.core.windows.net",
+                443,
+                None,
+                serde_json::json!({ "bucket": "backups" }),
+            ),
+            server_with(
+                "os-root",
+                "swift",
+                "https://id.example.test/v3",
+                443,
+                None,
+                serde_json::json!({}),
+            ),
+        ];
+        let (_, conf) = export_to_string(&servers, "containers");
+        // Blomp's one container is named after the login (`discover_container`).
+        assert!(
+            section_of(&conf, "blomp-alice").contains("type = alias\nremote = blomp:alice\n"),
+            "{conf}"
+        );
+        assert!(
+            section_of(&conf, "os-media").contains("remote = os:media\n"),
+            "{conf}"
+        );
+        assert!(
+            section_of(&conf, "az-backups").contains("remote = az:backups\n"),
+            "{conf}"
+        );
+        // No container pinned, no alias: the remote lists its containers.
+        assert!(!conf.contains("[os-root-"), "{conf}");
+
+        let path = tmp_write(
+            &conf,
+            &format!("aeroftp-test-containers-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).expect("import");
+        std::fs::remove_file(&path).ok();
+        let mut names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        names.sort_unstable();
+        assert_eq!(
+            names,
+            ["az", "blomp", "os", "os-root"],
+            "the container aliases fold back into their profile: {names:?}"
+        );
+        for (name, container) in [("os", "media"), ("az", "backups"), ("blomp", "alice")] {
+            let server = result.servers.iter().find(|s| s.name == name).unwrap();
+            assert_eq!(
+                server
+                    .options
+                    .as_ref()
+                    .and_then(|o| o.get("bucket"))
+                    .and_then(|b| b.as_str()),
+                Some(container),
+                "{name}: {:?}",
+                server.options
+            );
+        }
+    }
+
+    #[test]
+    fn a_local_bridge_is_exported_on_the_scheme_its_app_serves() {
+        let servers = vec![
+            // Filen Desktop's WebDAV bridge: no scheme saved, AeroFTP resolves
+            // it at connect; the export cannot probe and takes plain HTTP.
+            server_with(
+                "filen-bridge",
+                "webdav",
+                "local.webdav.filen.io",
+                1900,
+                Some("filen-desktop-webdav"),
+                serde_json::json!({}),
+            ),
+            // A scheme saved on a bridge profile is not what AeroFTP dials
+            // (it resolves the bridge at connect), so it does not decide.
+            server_with(
+                "filen-saved",
+                "webdav",
+                "local.webdav.filen.io",
+                1900,
+                Some("filen-desktop-webdav"),
+                serde_json::json!({ "webdavScheme": "https" }),
+            ),
+            // Off the bridges, the saved scheme decides.
+            server_with(
+                "lan-http",
+                "webdav",
+                "nas.example.test",
+                8080,
+                None,
+                serde_json::json!({ "webdavScheme": "http" }),
+            ),
+            // A LAN host on the bridge port is not a bridge.
+            server_with(
+                "lan",
+                "webdav",
+                "nas.example.test",
+                1900,
+                None,
+                serde_json::json!({}),
+            ),
+        ];
+        let (_, conf) = export_to_string(&servers, "bridge-scheme");
+        assert!(
+            section_of(&conf, "filen-bridge").contains("url = http://local.webdav.filen.io:1900\n"),
+            "{conf}"
+        );
+        assert!(
+            section_of(&conf, "filen-saved").contains("url = http://local.webdav.filen.io:1900\n"),
+            "{conf}"
+        );
+        assert!(
+            conf.contains("# 'filen-bridge': local bridge on plain HTTP"),
+            "the note says where to switch to TLS:\n{conf}"
+        );
+        assert!(
+            section_of(&conf, "lan-http").contains("url = http://nas.example.test:8080\n"),
+            "{conf}"
+        );
+        assert!(
+            section_of(&conf, "lan").contains("url = https://nas.example.test:1900\n"),
+            "{conf}"
         );
     }
 
