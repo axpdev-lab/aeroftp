@@ -172,6 +172,11 @@ if verb == "filesystem" and sub == "list":
 if verb == "filesystem" and sub == "rename" and args[-1].startswith("fail"):
     print("Error: the name was rejected", file=sys.stderr)
     sys.exit(1)
+# create-folder-exists: the refusal for a name already there, in the words
+# proton-drive 0.9 uses on an Italian account (whatever LANG says).
+if verb == "filesystem" and sub == "create-folder" and pathlib.Path(HERE, "create-folder-exists").exists():
+    print("Esiste già un file o una cartella con quel nome", file=sys.stderr)
+    sys.exit(1)
 if verb == "filesystem" and sub in (
     "upload", "trash", "delete", "rename", "create-folder", "copy", "move"
 ):

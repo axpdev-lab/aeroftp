@@ -140,12 +140,27 @@ pub fn uncertain_items(count: usize, message: &str) -> Vec<BulkTransferOutcome> 
         .collect()
 }
 
+/// Whether a provider with `caps` sends uploads and downloads through its
+/// native bulk: the rule the transfer engine and the GUI apply (a provider
+/// that resumes a transfer keeps its single-file path, which owns the
+/// resume). A caller that admits a bulk on the capability alone takes the
+/// engine's single lease and then gets no bulk: one worker, file after file.
+pub fn bulk_directions(caps: &crate::transfer_dag::TransferCapabilities) -> (bool, bool) {
+    crate::transfer_bulk::bulk_directions(caps)
+}
+
 /// CLI compatibility guard: a single-lease native bulk must reduce process
 /// launches enough to justify replacing the CLI's independent worker lane.
 /// Mixed spellings, isolated directories and large files can otherwise turn
 /// a parallel per-file workload into a slower serial fallback. GUI/sync were
 /// already single-lease and do not need this admission guard.
 pub fn reduces_cli_invocations(items: &[BulkTransferItem], upload: bool, workers: usize) -> bool {
+    let groups = cli_groups(items, upload);
+    groups.len() < items.len() && groups.len() <= items.len().div_ceil(workers.max(1))
+}
+
+/// The groups the transfer engine forms from `items`, as item indices.
+fn cli_groups(items: &[BulkTransferItem], upload: bool) -> Vec<Vec<usize>> {
     let entries: Vec<_> = items
         .iter()
         .enumerate()
@@ -158,10 +173,38 @@ pub fn reduces_cli_invocations(items: &[BulkTransferItem], upload: bool, workers
             modified: None,
         })
         .collect();
-    let groups = crate::transfer_bulk::plan_groups_by_key(&entries, |entry| {
+    crate::transfer_bulk::plan_groups_by_key(&entries, |entry| {
         crate::transfer_bulk::group_key(entry, upload)
-    });
-    groups.len() < items.len() && groups.len() <= items.len().div_ceil(workers.max(1))
+    })
+}
+
+/// Whether the CLI should give up its independent workers for one native
+/// bulk lease: the engine would use the bulk in that direction
+/// ([`bulk_directions`]), it saves launches ([`reduces_cli_invocations`]),
+/// and the provider admits every group the engine will form
+/// (`StorageProvider::bulk_admits`). A group the adapter would refuse runs
+/// file after file on the single lease, slower than the workers it replaced.
+pub async fn cli_bulk_pays(
+    provider: &mut dyn super::StorageProvider,
+    caps: &crate::transfer_dag::TransferCapabilities,
+    items: &[BulkTransferItem],
+    upload: bool,
+    workers: usize,
+) -> bool {
+    let (up, down) = bulk_directions(caps);
+    if !(if upload { up } else { down }) || !reduces_cli_invocations(items, upload, workers) {
+        return false;
+    }
+    for group in cli_groups(items, upload) {
+        if group.len() < 2 {
+            continue;
+        }
+        let members: Vec<BulkTransferItem> = group.iter().map(|&i| items[i].clone()).collect();
+        if !provider.bulk_admits(&members, upload).await {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]

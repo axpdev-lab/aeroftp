@@ -2092,6 +2092,48 @@ async fn a_folder_moved_in_is_walked_and_sent_without_a_listing() {
     assert!(saved.files["album/sub"].is_dir);
 }
 
+/// Row 71 review: a bulk download stages partial files in a folder beside
+/// their destination (MEGAcmd, Proton). Walking a folder that arrived holds
+/// those staging folders out, as the full scan and the watchers do: their
+/// files are never sent as content.
+#[tokio::test]
+async fn a_walked_folder_never_sends_a_download_staging_folder() {
+    let root = tempfile::tempdir().unwrap();
+    let config = pair(root.path());
+    let mut remote = MemRemote::new();
+    std::fs::create_dir_all(root.path().join("album")).unwrap();
+    std::fs::write(root.path().join("album/a.jpg"), b"a").unwrap();
+    for staging in [".aeroftp-mega-bulk-Ab12", ".aeroftp-proton-bulk-Cd34"] {
+        std::fs::create_dir_all(root.path().join("album").join(staging).join("folder")).unwrap();
+        std::fs::write(
+            root.path()
+                .join("album")
+                .join(staging)
+                .join("folder/partial.bin"),
+            b"partial",
+        )
+        .unwrap();
+    }
+    let plan = work(prep(&config, &empty_index(&config), &["album"]));
+    assert_eq!(plan.remote_work(), 2, "the folder and its one file");
+    let (run, saved) = execute(&config, plan, &mut remote, None).await;
+    let (result, _) = done(run);
+    assert!(result.errors.is_empty(), "{:?}", result.errors);
+    let state = remote.state();
+    assert_eq!(
+        state.files.len(),
+        1,
+        "{:?}",
+        state.files.keys().collect::<Vec<_>>()
+    );
+    assert!(state.files.contains_key("/remote/album/a.jpg"));
+    assert!(
+        saved.files.keys().all(|k| !k.contains(".aeroftp-")),
+        "{:?}",
+        saved.files.keys()
+    );
+}
+
 /// A rename moves the remote copy: no upload, no delete, and the baseline
 /// follows it, for a file and for a folder.
 #[cfg(target_os = "linux")]
