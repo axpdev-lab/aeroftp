@@ -10941,7 +10941,9 @@ impl SecondLaunchGate {
         self.pending.take()
     }
 
-    /// The start was refused: the launch kept meanwhile opens nothing.
+    /// The start was refused: the launch kept meanwhile opens nothing. Only
+    /// the Linux ownership check of the fixed UI port refuses a start.
+    #[cfg(target_os = "linux")]
     fn refuse(&mut self) {
         if self.pending.take().is_some() {
             log::warn!("A second launch reached a process that refused to start: dropped");
