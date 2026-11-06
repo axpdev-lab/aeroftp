@@ -1715,7 +1715,7 @@ fn map_alias_remote(
     remote: &RcloneRemote,
     sections: &HashMap<String, RcloneRemote>,
     aeroftp_export: Option<AeroftpExport>,
-) -> Result<MappedProfile, String> {
+) -> Result<(MappedProfile, String), String> {
     let target = remote
         .get("remote")
         .map(|r| r.trim())
@@ -1736,7 +1736,7 @@ fn map_alias_remote(
     }
     let mut mapped = map_remote(name, base_remote, aeroftp_export)?;
     apply_rclone_start_folder(&mut mapped, path);
-    Ok(mapped)
+    Ok((mapped, base.to_string()))
 }
 
 /// Make the folder an alias opens the profile's start: the bucket and the
@@ -1759,23 +1759,18 @@ fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
         .get_or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
     let start = match mapped.protocol.as_str() {
         // Swift and Azure containers sit where an S3 bucket does.
+        // rclone has no bucket key for these backends (a `container` line is
+        // ignored), so the first segment of the path IS the bucket rclone
+        // opens, even when the section names one.
         "s3" | "swift" | "azure" => {
-            let has_bucket = options
-                .get("bucket")
-                .and_then(|b| b.as_str())
-                .is_some_and(|b| !b.is_empty());
-            if has_bucket {
-                rel.to_string()
-            } else {
-                let (bucket, rest) = rel.split_once('/').unwrap_or((rel, ""));
-                if let Some(map) = options.as_object_mut() {
-                    map.insert(
-                        "bucket".into(),
-                        serde_json::Value::String(bucket.to_string()),
-                    );
-                }
-                rest.trim_matches('/').to_string()
+            let (bucket, rest) = rel.split_once('/').unwrap_or((rel, ""));
+            if let Some(map) = options.as_object_mut() {
+                map.insert(
+                    "bucket".into(),
+                    serde_json::Value::String(bucket.to_string()),
+                );
             }
+            rest.trim_matches('/').to_string()
         }
         "webdav" => {
             let base = options
@@ -2190,10 +2185,18 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
             continue;
         }
 
+        // The section holding the OAuth app (`client_id`, `client_secret`):
+        // for an alias, the remote it opens, whose token was mapped.
+        let mut app_section = remote;
         let mapped = if rclone_type == "crypt" {
             map_crypt_remote(name, remote, &sections, aeroftp_export)
         } else if rclone_type == "alias" {
-            map_alias_remote(name, remote, &sections, aeroftp_export)
+            map_alias_remote(name, remote, &sections, aeroftp_export).map(|(mapped, base)| {
+                if let Some(base_remote) = sections.get(&base) {
+                    app_section = base_remote;
+                }
+                mapped
+            })
         } else {
             map_remote(name, remote, aeroftp_export).map(|mut mapped| {
                 if let Some(path) = start_of.get(name.as_str()) {
@@ -2227,7 +2230,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                 // An app with no token yet still belongs to the vault: a later sign-in
                 // on this device needs it.
                 let pick = |k: &str| {
-                    remote
+                    app_section
                         .get(k)
                         .map(|s| s.trim())
                         .filter(|s| !s.is_empty())
@@ -9641,7 +9644,52 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 "{name}: {:?}",
                 server.options
             );
+            // The alias path is the container itself: nothing below it to open.
+            assert_eq!(server.initial_path, None, "{name}");
         }
+    }
+
+    #[test]
+    fn a_foreign_alias_path_names_the_container_even_over_a_container_line() {
+        // rclone ignores `container =` on swift: `os:media/photos` opens the
+        // container `media`, whatever the base section says.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "[os]\ntype = swift\nauth = https://id.example.test/v3\nuser = u\nkey = k\ncontainer = other\n\n\
+             [photos]\ntype = alias\nremote = os:media/photos\n",
+        )
+        .unwrap();
+        let result = import_rclone(&path).expect("import");
+        let server = result.servers.iter().find(|s| s.name == "photos").unwrap();
+        assert_eq!(
+            server
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|b| b.as_str()),
+            Some("media")
+        );
+        assert_eq!(server.initial_path.as_deref(), Some("/photos"));
+    }
+
+    #[test]
+    fn an_alias_over_an_oauth_remote_keeps_the_app_of_the_remote_it_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "[gd]\ntype = drive\nclient_id = my-app\nclient_secret = my-secret\n\
+             token = {\"access_token\":\"a\",\"refresh_token\":\"r\",\"expiry\":\"2030-01-01T00:00:00Z\"}\n\n\
+             [team]\ntype = alias\nremote = gd:Team\n",
+        )
+        .unwrap();
+        let result = import_rclone(&path).unwrap();
+        let id = result_app(&result, "team");
+        let secrets = result.provider_secrets.get(&id).expect("the app");
+        assert_eq!(secrets.oauth_client_id.as_deref(), Some("my-app"));
+        assert_eq!(secrets.oauth_client_secret.as_deref(), Some("my-secret"));
     }
 
     #[test]
