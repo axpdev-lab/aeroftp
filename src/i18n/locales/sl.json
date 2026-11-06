@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "SCP uporabljajte samo za strežnike brez SFTP, na primer usmerjevalnike OpenWrt.",
             "allowScpFallback": "Dovoli nadomestni SCP",
             "allowScpFallbackHint": "Če strežnik nima SFTP, se povezava nadaljuje prek SCP, kot to počne WinSCP.",
-            "discoverScp": "Kopiranje datotek prek SSH za strežnike brez SFTP"
+            "discoverScp": "Kopiranje datotek prek SSH za strežnike brez SFTP",
+            "discoverTigris": "Tigris: globalno porazdeljeno shranjevanje, združljivo s S3, brez stroškov izhodnega prenosa (5 GB brezplačno)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

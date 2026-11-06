@@ -771,6 +771,51 @@ mod tests {
     }
 
     #[test]
+    fn tigris_preset_resolves_static_endpoint_auto_region_and_virtual_host() {
+        // Static endpoint, no template: the manifest default is the only
+        // source, region is the fixed `auto`, addressing is virtual-host.
+        let mut extra = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("tigris"), "");
+        assert_eq!(endpoint.as_deref(), Some("https://t3.storage.dev"));
+        assert_eq!(extra.get("region").map(String::as_str), Some("auto"));
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("false"));
+        assert_eq!(
+            extra.get(S3_ENDPOINT_SOURCE_META_KEY).map(String::as_str),
+            Some("preset")
+        );
+
+        // A profile saved on the legacy host keeps it (the stored endpoint
+        // wins), and still signs with `auto`.
+        let mut legacy = HashMap::new();
+        legacy.insert(
+            "endpoint".to_string(),
+            "https://fly.storage.tigris.dev".to_string(),
+        );
+        let endpoint = apply_s3_profile_defaults(&mut legacy, Some("tigris"), "");
+        assert_eq!(endpoint.as_deref(), Some("https://fly.storage.tigris.dev"));
+        assert_eq!(legacy.get("region").map(String::as_str), Some("auto"));
+
+        // The same legacy host carried only in the profile host field.
+        let mut by_host = HashMap::new();
+        let endpoint =
+            apply_s3_profile_defaults(&mut by_host, Some("tigris"), "fly.storage.tigris.dev");
+        assert_eq!(endpoint.as_deref(), Some("fly.storage.tigris.dev"));
+        assert_eq!(by_host.get("region").map(String::as_str), Some("auto"));
+        assert_eq!(
+            by_host
+                .get(S3_PATH_STYLE_SOURCE_META_KEY)
+                .map(String::as_str),
+            Some("preset")
+        );
+
+        // An explicit addressing choice wins over the preset.
+        let mut explicit = HashMap::new();
+        explicit.insert("path_style".to_string(), "true".to_string());
+        apply_s3_profile_defaults(&mut explicit, Some("tigris"), "");
+        assert_eq!(explicit.get("path_style").map(String::as_str), Some("true"));
+    }
+
+    #[test]
     fn s3_endpoint_carried_in_host_wins_over_the_preset_template() {
         // Cyberduck and restic imports (and older profiles) carry the endpoint
         // only in the profile host. The template used to write
@@ -901,6 +946,9 @@ mod tests {
                 None,
             ),
             ("backblaze", "s3.eu-central-003.backblazeb2.com", None),
+            // Tigris has one global region: nothing to read back from either host.
+            ("tigris", "https://t3.storage.dev", None),
+            ("tigris", "https://fly.storage.tigris.dev", None),
         ] {
             assert_eq!(
                 s3_region_from_endpoint(preset, endpoint).as_deref(),

@@ -34,7 +34,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -3482,7 +3482,14 @@ const App: React.FC = () => {
       return;
     }
 
-    if (protocol && connectionSupportsStorageQuota(protocol as ProviderType, opts)) {
+    const asksBackendForUsage = !!protocol
+      && (connectionSupportsStorageQuota(protocol as ProviderType, opts) || s3PresetReportsUsage(protocol, pid));
+    // An S3 preset that reports usage on request may still refuse it (a key
+    // that cannot read the stats, a gateway without the extension): that
+    // connection then behaves as plain S3, with the cached scan, the manual
+    // cap and the opt-in first scan below, instead of an empty bar.
+    let usageUnavailable = false;
+    if (asksBackendForUsage) {
       try {
         const info = await invoke<{ used: number; total: number; free: number; versioningBytes?: number }>('provider_storage_info');
         // Resolve the target profile against the LIVE connection (never
@@ -3569,11 +3576,14 @@ const App: React.FC = () => {
         }
       } catch (e) {
         console.warn('[StorageQuota] Failed to fetch:', e);
-        if (version === quotaVersionRef.current) {
+        if (s3PresetReportsUsage(protocol, pid) && !connectionSupportsStorageQuota(protocol as ProviderType, opts)) {
+          usageUnavailable = true;
+        } else if (version === quotaVersionRef.current) {
           setStorageQuota(null);
         }
       }
-    } else {
+    }
+    if (!asksBackendForUsage || usageUnavailable) {
       // No-quota backend (FTP/S3/WebDAV): no API `used`. Seed the
       // StatusBar from a previously cached scan (item 4b cache) so a
       // reconnect shows it instantly; never auto-rescan unless the
@@ -3598,7 +3608,12 @@ const App: React.FC = () => {
             ? prof.options.manualTotalBytes
             : opts?.manualTotalBytes;
           const autoScan = !!(prof.options?.autoScanUsedOnConnect || opts?.autoScanUsedOnConnect);
-          const hasScanBaseline = !!q && (q.usedSource === 'scan' || q.used > 0);
+          // After a refused usage call the cached figure may be the one the API
+          // gave before, which is no scan: only a real scan counts as the
+          // baseline there, so the opted-in first scan can still run.
+          const hasScanBaseline = !!q && (usageUnavailable
+            ? q.usedSource === 'scan'
+            : (q.usedSource === 'scan' || q.used > 0));
           if (q && (q.used > 0 || q.total > 0)) {
             const eff = resolveEffectiveQuota(q.used, q.total, manualTotal);
             if (version === quotaVersionRef.current) {
@@ -3955,6 +3970,11 @@ const App: React.FC = () => {
       }, 1500);
       return;
     }
+    // An S3 preset that reports usage on request keeps the figure it read at
+    // connect: adding the uploaded bytes would count an overwrite as new data
+    // and compound with every one, and a read per upload is billed like a
+    // listing. The next connect reads it again.
+    if (s3PresetReportsUsage(protocol, liveConnectionParams.providerId)) return;
     const bytes = info.bytes;
     if (!bytes || bytes <= 0) return;
     // Live StatusBar bump for the connected session (+1 file when a count

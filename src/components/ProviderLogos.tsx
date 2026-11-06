@@ -144,6 +144,17 @@ export const FilebaseLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Tigris: PNG brand mark (dark tile, white T, green spark), rendered as img like Filebase
+export const TigrisLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/tigris.png"
+        alt="Tigris"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Yandex Cloud: blue arrows logo (for S3 Object Storage preset)
 export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -596,6 +607,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'oracle-cloud': OracleCloudLogo,
     'idrive-e2': IDriveLogo,
     'filebase': FilebaseLogo,
+    'tigris': TigrisLogo,
     'nextcloud': NextcloudLogo,
     'koofr': KoofrLogo,
     'opendrive': OpenDriveLogo,

@@ -3657,6 +3657,7 @@
             "discoverCloudflareR2": "Zero-egress S3-compatible storage (10 GB free)",
             "discoverIDriveE2": "S3-compatible hot storage (10 GB free)",
             "discoverFilebase": "Filebase: S3-compatible object storage (5 GB free)",
+            "discoverTigris": "Tigris: globally distributed S3-compatible storage, no egress fees (5 GB free)",
             "discoverWasabi": "Hot cloud storage, no egress fees",
             "discoverStorj": "Decentralized S3-compatible cloud storage",
             "discoverAlibabaOSS": "S3-compatible object storage (China & global)",

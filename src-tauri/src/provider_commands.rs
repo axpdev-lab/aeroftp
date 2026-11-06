@@ -18662,6 +18662,32 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_provider_params_tigris_fetch_resolves_the_static_endpoint() {
+        // Quick Connect Fetch buckets sends the keys and the preset id but no
+        // endpoint and no region, and Tigris has no region select to send. The
+        // static endpoint, the fixed `auto` region and virtual-host addressing
+        // must come from the manifest here, for every caller.
+        let mut params = s3_params(None);
+        params.server = String::new();
+        // The shared helper models a Garage box on port 3900; a preset Fetch
+        // carries no such port.
+        params.port = None;
+        params.provider_id = Some("tigris".to_string());
+        params.region = None;
+        params.endpoint = None;
+        let config = params.to_provider_config().unwrap();
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://t3.storage.dev")
+        );
+        assert_eq!(config.extra.get("region").map(String::as_str), Some("auto"));
+        let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(s3.endpoint.as_deref(), Some("https://t3.storage.dev"));
+        assert_eq!(s3.region, "auto");
+        assert!(!s3.path_style);
+    }
+
+    #[test]
     fn test_s3_provider_params_absent_session_token() {
         let config = s3_params(None).to_provider_config().unwrap();
         assert!(!config.extra.contains_key("session_token"));

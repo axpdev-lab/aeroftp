@@ -848,7 +848,8 @@
             "scpOnlyNote": "Usa SCP solo per i server senza SFTP, ad esempio i router OpenWrt.",
             "allowScpFallback": "Consenti il ripiego su SCP",
             "allowScpFallbackHint": "Se il server non ha SFTP, prosegue con SCP sulla stessa connessione, come fa WinSCP.",
-            "discoverScp": "Copia di file via SSH per i server senza SFTP"
+            "discoverScp": "Copia di file via SSH per i server senza SFTP",
+            "discoverTigris": "Tigris: archiviazione distribuita globalmente compatibile con S3, senza costi di egress (5 GB gratis)"
         },
         "browser": {
             "remote": "Remoto",

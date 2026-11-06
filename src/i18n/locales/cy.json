@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Defnyddiwch SCP dim ond ar gyfer gweinyddion heb SFTP, er enghraifft llwybryddion OpenWrt.",
             "allowScpFallback": "Caniatáu SCP wrth gefn",
             "allowScpFallbackHint": "Os nad oes gan y gweinydd SFTP, parhau dros SCP ar yr un cysylltiad, fel y mae WinSCP yn ei wneud.",
-            "discoverScp": "Copïo ffeiliau dros SSH ar gyfer gweinyddion heb SFTP"
+            "discoverScp": "Copïo ffeiliau dros SSH ar gyfer gweinyddion heb SFTP",
+            "discoverTigris": "Tigris: storfa wedi'i dosbarthu'n fyd-eang sy'n gydnaws ag S3, dim ffioedd all-drosglwyddo data (5 GB am ddim)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

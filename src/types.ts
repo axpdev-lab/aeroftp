@@ -348,6 +348,17 @@ export const connectionSupportsStorageQuota = (
   options?: ProviderOptions | null,
 ): boolean => supportsStorageQuota(type) || isNativeProton(type, options);
 
+/**
+ * S3 presets whose backend reports account usage on request. Tigris answers
+ * `GET /?IncludeStats=true` with the bytes stored (no quota: paid accounts are
+ * unlimited), so the bar shows used bytes alone. Asked when a session opens
+ * and never after a transfer, because the call is billed like a listing.
+ */
+export const s3PresetReportsUsage = (
+  protocol?: string | null,
+  providerId?: string | null,
+): boolean => protocol === "s3" && providerId === "tigris";
+
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
   return [
@@ -830,9 +841,11 @@ export const effectiveManualCap = (
  */
 export const profileHasQuota = (server: {
   protocol?: ProviderType;
+  providerId?: string | null;
   options?: ProviderOptions;
 }): boolean =>
   connectionSupportsStorageQuota((server.protocol || "ftp") as ProviderType, server.options) ||
+  s3PresetReportsUsage(server.protocol, server.providerId) ||
   !!(server.options?.manualTotalBytes && server.options.manualTotalBytes > 0);
 
 // Crypt-overlay kind for a saved profile, or null when the profile has no

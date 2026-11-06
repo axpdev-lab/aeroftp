@@ -24,6 +24,14 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
     if (NATIVE_PROVIDER_PROTOCOLS.has(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
+        // Tigris first, on its domain boundary: a bucket-qualified Tigris host
+        // can carry another vendor's name (backblaze-backups.t3.storage.dev),
+        // which the substring rules below would take for that vendor.
+        // Current t3.storage.dev plus the legacy fly.storage.tigris.dev.
+        const tigrisHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+        for (const domain of ['t3.storage.dev', 'fly.storage.tigris.dev']) {
+            if (tigrisHost === domain || tigrisHost.endsWith('.' + domain)) return 'tigris';
+        }
         if (host.includes('backblaze')) return 'backblaze';
         if (host.includes('r2.cloudflarestorage')) return 'cloudflare-r2';
         if (host.includes('wasabi')) return 'wasabi';

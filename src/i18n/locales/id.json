@@ -2358,7 +2358,8 @@
             "scpOnlyNote": "Gunakan SCP hanya untuk server tanpa SFTP, misalnya router OpenWrt.",
             "allowScpFallback": "Izinkan SCP sebagai cadangan",
             "allowScpFallbackHint": "Jika server tidak memiliki SFTP, lanjutkan melalui SCP pada koneksi yang sama, seperti yang dilakukan WinSCP.",
-            "discoverScp": "Salin file melalui SSH untuk server tanpa SFTP"
+            "discoverScp": "Salin file melalui SSH untuk server tanpa SFTP",
+            "discoverTigris": "Tigris: penyimpanan terdistribusi global yang kompatibel dengan S3, tanpa biaya egress (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

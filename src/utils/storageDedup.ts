@@ -82,6 +82,7 @@ const S3_PRESET_IDS = new Set<string>([
     'filelu-s3',
     'filebase',
     'ibm-cos',
+    'tigris',
 ]);
 
 /** Lowercase, trim, strip scheme + www. + trailing path. */
