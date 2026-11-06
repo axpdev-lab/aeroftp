@@ -500,14 +500,11 @@ impl RemoteBackend for TauriRemoteBackend {
                 }
                 let app_state = app.state::<AppState>();
                 let mut mgr = app_state.ftp_manager.lock().await;
-                let tmp = temp_upload_path();
-                std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-                let result = mgr
-                    .upload_file(tmp.to_str().unwrap_or(""), path)
+                let staged =
+                    crate::ai_core::gui_tools::stage_private_temp("aeroftp_upload_", data)?;
+                mgr.upload_file(staged.path().to_str().unwrap_or(""), path)
                     .await
-                    .map_err(|e| e.to_string());
-                let _ = std::fs::remove_file(&tmp);
-                result
+                    .map_err(|e| e.to_string())
             }
             TauriRemoteBackend::Temp { provider } => {
                 let mut guard = provider.lock().await;
@@ -928,14 +925,6 @@ impl RemoteBackend for TauriRemoteBackend {
     }
 }
 
-fn temp_upload_path() -> std::path::PathBuf {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!("aeroftp_upload_{}_{}", std::process::id(), nonce))
-}
-
 async fn download_provider_bytes(
     p: &mut Box<dyn StorageProvider>,
     path: &str,
@@ -957,15 +946,13 @@ async fn upload_provider_bytes(
     data: &[u8],
     path: &str,
 ) -> Result<(), String> {
-    // Write data to a secure temp file, upload, then clean up.
-    let tmp = temp_upload_path();
-    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    let result = p
-        .upload(tmp.to_str().unwrap_or(""), path, None)
+    // Write data to a private temp file (0600, created new: the name was
+    // predictable and the mode the default before, deep-scan 96), upload,
+    // and let the handle remove it.
+    let staged = crate::ai_core::gui_tools::stage_private_temp("aeroftp_upload_", data)?;
+    p.upload(staged.path().to_str().unwrap_or(""), path, None)
         .await
-        .map_err(|e| e.to_string());
-    let _ = std::fs::remove_file(&tmp);
-    result
+        .map_err(|e| e.to_string())
 }
 
 async fn provider_storage_quota(p: &mut Box<dyn StorageProvider>) -> Result<StorageQuota, String> {

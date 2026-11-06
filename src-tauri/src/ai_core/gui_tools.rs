@@ -974,13 +974,11 @@ pub async fn dispatch_gui_tool(
                 content.replacen(&find, &replace, 1)
             };
 
-            // Write back via temp file + upload
-            let tmp_path = std::env::temp_dir()
-                .join(format!("aeroftp_{}", uuid::Uuid::new_v4()))
-                .to_string_lossy()
-                .to_string();
-            std::fs::write(&tmp_path, &new_content)
-                .map_err(|e| format!("Failed to write temp file: {}", e))?;
+            // Write back via temp file + upload. The file holds the remote
+            // content in clear: it is created private (0600) and new, never
+            // through a name someone else could have placed (deep-scan 90).
+            let staged = stage_private_temp("aeroftp_", new_content.as_bytes())?;
+            let tmp_path = staged.path().to_string_lossy().to_string();
 
             let allow_non_atomic = args
                 .get("allow_non_atomic")
@@ -1040,6 +1038,23 @@ pub async fn dispatch_gui_tool(
         Err(e) if e == tool_name => Err(ToolError::NotMigrated(e)),
         Err(e) => Err(ToolError::Exec(e)),
     }
+}
+
+/// A new private temporary file (0600 where the platform has modes, created
+/// with `O_EXCL`) holding `content`. The file is removed when the returned
+/// handle is dropped. #1506 Requested 186.
+pub(crate) fn stage_private_temp(
+    prefix: &str,
+    content: &[u8],
+) -> Result<tempfile::NamedTempFile, String> {
+    let mut staged = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempfile()
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    std::io::Write::write_all(staged.as_file_mut(), content)
+        .and_then(|()| staged.as_file_mut().sync_all())
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    Ok(staged)
 }
 
 #[cfg(test)]
@@ -1512,5 +1527,22 @@ mod tests {
             "{text}"
         );
         assert_eq!(p.files.get("/t.txt").map(Vec::as_slice), Some(&b"old"[..]));
+    }
+}
+
+/// Deep-scan 90, 96: the staged plaintext is private and goes away with
+/// its handle.
+#[cfg(all(test, unix))]
+mod private_temp_tests {
+    #[test]
+    fn a_staged_temporary_is_private_and_removed_on_drop() {
+        use std::os::unix::fs::PermissionsExt;
+        let staged = super::stage_private_temp("aeroftp_test_", b"secret").unwrap();
+        let path = staged.path().to_path_buf();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "mode {mode:o}");
+        assert_eq!(std::fs::read(&path).unwrap(), b"secret");
+        drop(staged);
+        assert!(!path.exists());
     }
 }

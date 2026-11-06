@@ -11454,10 +11454,15 @@ async fn preview_remote_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
 ) -> Result<String, String> {
-    let temp_path = std::env::temp_dir().join(format!(
-        "aeroftp_preview_{}",
-        chrono::Utc::now().timestamp_millis()
-    ));
+    // The preview lands in clear on disk: in a private folder (0700, a name
+    // no one can predict) rather than at a timestamped name in the shared
+    // temp folder with the default mode (deep-scan 105). The folder goes
+    // away with `preview_dir`.
+    let preview_dir = tempfile::Builder::new()
+        .prefix("aeroftp_preview_")
+        .tempdir()
+        .map_err(|e| format!("Failed to create preview folder: {}", e))?;
+    let temp_path = preview_dir.path().join("content");
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
     // Try provider path first (cloud providers, GitHub, etc.)
