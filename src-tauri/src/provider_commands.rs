@@ -5928,15 +5928,30 @@ async fn folder_is_there_after_failed_mkdir(
     path: &str,
     err: &ProviderError,
 ) -> bool {
-    if matches!(err, ProviderError::AlreadyExists(_)) {
-        return true;
+    // Only a directory of exactly this name lets the upload go on: an
+    // `AlreadyExists` can name a file of that name (MEGA native), a stat can
+    // answer for another letter case (Drime), and a stat that fails says
+    // nothing either way (CodeRabbit, #1520). A stat that does not confirm
+    // it is followed by one listing of the parent.
+    let _ = err;
+    let leaf = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    if let Ok(entry) = provider.stat(path).await {
+        if entry.is_dir && (entry.name.is_empty() || entry.name == leaf) {
+            return true;
+        }
     }
-    match provider.stat(path).await {
-        Ok(entry) => entry.is_dir,
-        Err(ProviderError::NotFound(_)) => false,
-        // A provider that cannot stat this path: ask whether it exists.
-        Err(_) => matches!(provider.exists(path).await, Ok(true)),
-    }
+    let parent = match path.trim_end_matches('/').rsplit_once('/') {
+        Some(("", _)) | None => "/".to_string(),
+        Some((parent, _)) => parent.to_string(),
+    };
+    matches!(
+        provider.list(&parent).await,
+        Ok(entries) if entries.iter().any(|entry| entry.is_dir && entry.name == leaf)
+    )
 }
 
 async fn provider_upload_folder_inner(
@@ -17506,7 +17521,11 @@ mod tests {
             true
         }
         async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-            Ok(Vec::new())
+            Ok(match self.folder {
+                Some(true) => vec![RemoteEntry::directory("up".to_string(), "/up".to_string())],
+                Some(false) => vec![RemoteEntry::file("up".to_string(), "/up".to_string(), 1)],
+                None => Vec::new(),
+            })
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
             Ok("/".to_string())
@@ -17653,11 +17672,34 @@ mod tests {
                 true,
             ),
             (
-                "typed AlreadyExists",
+                "typed AlreadyExists, a folder",
+                ProviderError::AlreadyExists("/up".into()),
+                Some(true),
+                true,
+                true,
+            ),
+            // CodeRabbit (#1520): AlreadyExists for a file of that name is no
+            // folder to upload into, nor is an AlreadyExists nothing confirms.
+            (
+                "typed AlreadyExists, a file",
+                ProviderError::AlreadyExists("/up".into()),
+                Some(false),
+                true,
+                false,
+            ),
+            (
+                "typed AlreadyExists, nothing there",
                 ProviderError::AlreadyExists("/up".into()),
                 None,
                 true,
-                true,
+                false,
+            ),
+            (
+                "no stat, a file of that name",
+                ProviderError::ServerError("Ordner bereits vorhanden".into()),
+                Some(false),
+                false,
+                false,
             ),
             (
                 "no stat, folder there",
