@@ -457,3 +457,51 @@ async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
     assert!(prompt.contains("server: srv-a"), "{prompt}");
     assert!(prompt.contains("path: /keep/me.txt"), "{prompt}");
 }
+
+/// A tool name from the provider with control characters is refused before
+/// anything is printed, so an escape sequence cannot rewrite the prompt, and
+/// the call never reaches dispatch.
+#[tokio::test]
+async fn cli_runner_refuses_a_tool_name_with_control_characters() {
+    assert!(printable_tool_name("remote_list"));
+    assert!(!printable_tool_name("remote_list\u{1b}[2J"));
+    assert!(!printable_tool_name("a\nb"));
+    assert!(!printable_tool_name(""));
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut cfg = config(format!("http://{}", listener.local_addr().unwrap()));
+        cfg.approve_level = parse_approve_level("all");
+        let server = async {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _ = read_request(&mut socket).await;
+            let call = json!({"choices":[{"delta":{"role":"assistant","tool_calls":[{
+                "index":0,"id":"escape-A","type":"function",
+                "function":{"name":"local_list\u{1b}[2J","arguments":"{\"path\":\"/escape-probe\"}"}
+            }]}}]});
+            let done = json!({"choices":[{"delta":{},"finish_reason":"tool_calls"}]});
+            respond(&mut socket, "200 OK", &format!("data: {call}\n\ndata: {done}\n\ndata: [DONE]\n\n")).await;
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_request(&mut socket).await;
+            let messages = request["messages"].as_array().unwrap();
+            assert_eq!(messages[3]["tool_call_id"], "escape-A");
+            assert!(
+                messages[3]["content"].as_str().unwrap().contains("control characters"),
+                "{}",
+                messages[3]
+            );
+            let done = json!({"choices":[{"delta":{"role":"assistant","content":"Refused."},"finish_reason":"stop"}]});
+            respond(&mut socket, "200 OK", &format!("data: {done}\n\ndata: [DONE]\n\n")).await;
+        };
+        let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"list"})).unwrap()];
+        let (result, ()) = tokio::join!(agent_tool_loop(&cfg, &mut messages, false), server);
+        assert_eq!(result.unwrap(), "Refused.");
+    })
+    .await
+    .unwrap();
+    let dispatched = CLI_TOOL_DISPATCHES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .iter()
+        .any(|(_, args)| args["path"] == "/escape-probe");
+    assert!(!dispatched, "the refused call was dispatched");
+}

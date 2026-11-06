@@ -8215,14 +8215,9 @@ async fn extract_archive(
 
     // Determine actual output directory
     let actual_output = if create_subfolder {
-        let archive_stem = std::path::Path::new(&archive_path)
-            .file_stem()
-            .unwrap_or_default()
+        archive_subfolder(std::path::Path::new(&output_dir), &archive_path)
             .to_string_lossy()
-            .to_string();
-        let subfolder =
-            std::path::Path::new(&output_dir).join(safe_extract_folder_name(&archive_stem));
-        subfolder.to_string_lossy().to_string()
+            .to_string()
     } else {
         output_dir.clone()
     };
@@ -8886,12 +8881,7 @@ async fn extract_7z(
 
     // Determine output directory
     let final_output_dir = if create_subfolder {
-        let archive_name = Path::new(&archive_path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "extracted".to_string());
-        Path::new(&output_dir)
-            .join(safe_extract_folder_name(&archive_name))
+        archive_subfolder(Path::new(&output_dir), &archive_path)
             .to_string_lossy()
             .to_string()
     } else {
@@ -9915,9 +9905,7 @@ async fn extract_single_impl(
     let member_name = single_stream_member_name(&archive_name, &codec);
 
     let dest_dir = if create_subfolder {
-        Path::new(&output_dir).join(safe_extract_folder_name(&archive_extract_stem(
-            &archive_name,
-        )))
+        archive_subfolder(Path::new(&output_dir), &archive_path)
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -10141,16 +10129,7 @@ fn tar_final_output(
     use std::path::Path;
     let out = Path::new(output_dir);
     if create_subfolder {
-        let stem = Path::new(archive_path)
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy();
-        let folder_name = if stem.ends_with(".tar") {
-            stem.trim_end_matches(".tar").to_string()
-        } else {
-            stem.to_string()
-        };
-        let subfolder = out.join(safe_extract_folder_name(&folder_name));
+        let subfolder = archive_subfolder(out, archive_path);
         open_archive_output(out, &subfolder)?;
         Ok(subfolder)
     } else {
@@ -10363,11 +10342,7 @@ async fn extract_rar(
     use std::path::Path;
 
     let final_output = if create_subfolder {
-        let archive_name = Path::new(&archive_path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "extracted".to_string());
-        Path::new(&output_dir).join(safe_extract_folder_name(&archive_name))
+        archive_subfolder(Path::new(&output_dir), &archive_path)
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -10656,11 +10631,28 @@ pub(crate) fn safe_extract_folder_name(stem: &str) -> &str {
     }
 }
 
+/// The per-archive subfolder an extraction with `create_subfolder` writes into,
+/// for every extractor (ZIP, 7z, RAR, tar, single stream) and for the AI path
+/// policy that checks it first. One derivation, so the folder checked is the
+/// folder written: the tar extractor stripped `.tar` repeatedly while the check
+/// stripped it once, and `.ssh.tar.tar.gz` passed the check for `.ssh.tar` and
+/// wrote into `.ssh`.
+pub(crate) fn archive_subfolder(
+    output_dir: &std::path::Path,
+    archive_path: &str,
+) -> std::path::PathBuf {
+    let file_name = std::path::Path::new(archive_path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    output_dir.join(safe_extract_folder_name(&archive_extract_stem(&file_name)))
+}
+
 /// Strip the full archive extension from a file name, returning the stem used to
 /// name an "Extract to folder" subfolder. Handles the multi-part tar extensions
 /// (.tar.gz / .tar.xz / .tar.bz2) and the aero* + general single extensions,
 /// falling back to a last-dot strip. Pure: unit-tested.
-pub(crate) fn archive_extract_stem(file_name: &str) -> String {
+fn archive_extract_stem(file_name: &str) -> String {
     let lower = file_name.to_ascii_lowercase();
     for ext in [".tar.gz", ".tar.xz", ".tar.bz2"] {
         if lower.ends_with(ext) {
@@ -22611,7 +22603,32 @@ mod window_size_heal_tests {
 
 #[cfg(test)]
 mod extract_intent_tests {
-    use super::{archive_extract_stem, parse_extract_intent, unique_extract_dir_with};
+    use super::{
+        archive_extract_stem, archive_subfolder, parse_extract_intent, unique_extract_dir_with,
+    };
+
+    /// Every extractor and the AI check take the subfolder from here. The tar
+    /// extractor stripped `.tar` again and again while the check stripped it
+    /// once, so the two named different folders for `.ssh.tar.tar.gz`.
+    #[test]
+    fn every_extractor_names_the_subfolder_the_same_way() {
+        let out = Path::new("/out");
+        for (archive, folder) in [
+            ("/in/photos.zip", "photos"),
+            ("/in/logs.tar.gz", "logs"),
+            ("/in/logs.tgz", "logs"),
+            ("/in/backup.7z", "backup"),
+            ("/in/notes.txt.gz", "notes.txt"),
+            ("/in/.ssh.tar.tar.gz", ".ssh.tar"),
+            ("/in/...zip", "extracted"),
+        ] {
+            assert_eq!(
+                archive_subfolder(out, archive),
+                out.join(folder),
+                "{archive}"
+            );
+        }
+    }
     use std::collections::HashSet;
     use std::path::{Path, PathBuf};
 

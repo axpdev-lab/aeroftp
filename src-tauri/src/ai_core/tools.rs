@@ -2227,6 +2227,58 @@ pub fn find_tool(name: &str) -> Option<&'static ToolDef> {
     TOOL_DEFINITIONS.iter().find(|t| t.name == name)
 }
 
+/// The arguments that pick a saved server or profile.
+const TARGET_PROFILE_KEYS: [&str; 4] = ["server", "source_server", "dest_server", "profile"];
+
+/// Why a call that changes something may not run on the saved server it
+/// names: the name is not exactly a profile's name or id, though it is part of
+/// one or more. The backends match a part of a name, so `lab` acted on
+/// `lab-prod` while the approval said `lab`. A read keeps that convenience; a
+/// change acts only on a server named exactly. `None` when the call reads, when
+/// the name is exact, or when no profile contains it (the backend then reports
+/// it not found). The saved list comes from `creds`, never a connection.
+pub fn inexact_change_target(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Option<String> {
+    let def = find_tool(tool_name)?;
+    if !matches!(def.danger, DangerLevel::Medium | DangerLevel::High) {
+        return None;
+    }
+    let mut profiles = None;
+    for key in TARGET_PROFILE_KEYS {
+        let Some(query) = args.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        if query.trim().is_empty() {
+            continue;
+        }
+        let saved = profiles.get_or_insert_with(|| creds.list_servers().unwrap_or_default());
+        let lower = query.to_lowercase();
+        if saved
+            .iter()
+            .any(|profile| profile.id == query || profile.name.to_lowercase() == lower)
+        {
+            continue;
+        }
+        let candidates: Vec<String> = saved
+            .iter()
+            .filter(|profile| profile.name.to_lowercase().contains(&lower))
+            .map(|profile| format!("'{}' (id {})", profile.name, profile.id))
+            .collect();
+        if candidates.is_empty() {
+            continue;
+        }
+        return Some(format!(
+            "{key} '{query}' is not the exact name or id of a saved server, and a change runs only \
+             on a server named exactly. Matching servers: {}",
+            candidates.join(", ")
+        ));
+    }
+    None
+}
+
 /// Entry point unico. Gate 1 scheletro:
 /// 1. lookup del tool in `TOOL_DEFINITIONS`
 /// 2. validazione surface
@@ -2255,6 +2307,12 @@ pub async fn dispatch_tool(
     })?;
     // M9: a tool of a turn the user already stopped does not start.
     check_cancelled(ctx)?;
+    if let Some(reason) = inexact_change_target(ctx.credentials(), tool_name, args) {
+        return Err(ToolError::InvalidArgs {
+            tool: tool_name.to_string(),
+            reason,
+        });
+    }
     match tool_name {
         // ─── Area A: local_* (T3 Gate 2) ─────────────────────────────
         "local_list" => local_tools::local_list(ctx, args).await,
@@ -2626,6 +2684,82 @@ mod tests {
         sink: NoopSink,
         creds: MockCreds,
         cancel: Option<tokio_util::sync::CancellationToken>,
+    }
+
+    /// Saved servers and nothing else: what a name is resolved against.
+    struct SavedServers(Vec<crate::ai_core::ServerProfile>);
+
+    impl CredentialProvider for SavedServers {
+        fn list_servers(&self) -> Result<Vec<crate::ai_core::ServerProfile>, String> {
+            Ok(self.0.clone())
+        }
+        fn get_credentials(
+            &self,
+            _server_id: &str,
+        ) -> Result<crate::ai_core::ServerCredentials, String> {
+            Err("not in this test".into())
+        }
+        fn get_extra_options(
+            &self,
+            _server_id: &str,
+        ) -> Result<std::collections::HashMap<String, String>, String> {
+            Ok(std::collections::HashMap::new())
+        }
+    }
+
+    fn saved(id: &str, name: &str) -> crate::ai_core::ServerProfile {
+        serde_json::from_value(json!({
+            "id": id, "name": name, "host": "h", "port": 22, "username": "u", "protocol": "sftp"
+        }))
+        .unwrap()
+    }
+
+    // `server: "lab"` resolved to the one profile containing it, `lab-prod`,
+    // while the approval said `lab`: a change now runs only on a server named
+    // exactly, a read still finds it by a part of its name.
+    #[test]
+    fn a_change_runs_only_on_a_server_named_exactly() {
+        let creds = SavedServers(vec![saved("srv_1", "lab-prod"), saved("srv_2", "home")]);
+        for tool in [
+            "remote_delete",
+            "remote_upload",
+            "aeroftp_delete",
+            "aeroftp_upload_file",
+        ] {
+            let reason =
+                inexact_change_target(&creds, tool, &json!({"server": "lab", "path": "/x"}))
+                    .unwrap_or_else(|| panic!("{tool}: a partial name was accepted"));
+            assert!(reason.contains("'lab-prod' (id srv_1)"), "{tool}: {reason}");
+        }
+        for args in [
+            json!({"server": "lab-prod", "path": "/x"}),
+            json!({"server": "LAB-PROD", "path": "/x"}),
+            json!({"server": "srv_1", "path": "/x"}),
+            json!({"server": "nowhere", "path": "/x"}),
+            json!({"path": "/x"}),
+        ] {
+            assert_eq!(
+                inexact_change_target(&creds, "remote_delete", &args),
+                None,
+                "{args}"
+            );
+        }
+        // A read keeps the partial match.
+        assert_eq!(
+            inexact_change_target(
+                &creds,
+                "remote_list",
+                &json!({"server": "lab", "path": "/"})
+            ),
+            None
+        );
+        // Both ends of a transfer are checked.
+        assert!(inexact_change_target(
+            &creds,
+            "cross_profile_transfer",
+            &json!({"source_server": "home", "dest_server": "lab", "source_path": "/a", "dest_path": "/b"})
+        )
+        .is_some());
     }
 
     struct MockCreds;
@@ -3506,6 +3640,20 @@ mod tests {
         std::fs::create_dir_all(&work).unwrap();
         let file = work.join("key.pub");
         std::fs::write(&file, b"public").unwrap();
+        // A backslash is part of a name on Unix, a separator on Windows.
+        let report = work.join("report.txt");
+        std::fs::write(&report, b"r").unwrap();
+        let backslashed = dispatch_tool(
+            &ctx,
+            "local_batch_rename",
+            &json!({"paths": [report.display().to_string()], "mode": "add_prefix", "prefix": "2026\\"}),
+        )
+        .await;
+        assert_eq!(
+            work.join("2026\\report.txt").exists(),
+            !cfg!(windows),
+            "{backslashed:?}"
+        );
         // The absolute prefix names a folder that exists and is writable, so
         // only the refusal keeps the file in place, not a failed rename.
         let elsewhere = fake.home.join("elsewhere");
@@ -3582,21 +3730,25 @@ mod tests {
             .unwrap_err();
         assert!(err.to_string().contains("protected path"), "{err}");
         assert!(!fake.home.join(".ssh").exists());
-        // An archive whose own subfolder would be a protected location.
-        let named = fake.home.join(".ssh.tar.gz");
-        std::fs::write(&named, b"not reached").unwrap();
-        let err = dispatch_tool(
-            &ctx,
-            "archive_decompress",
-            &json!({
-                "archive_path": named.display().to_string(),
-                "output_dir": fake.home.display().to_string(),
-            }),
-        )
-        .await
-        .unwrap_err();
-        assert!(err.to_string().contains(".ssh"), "{err}");
-        assert!(!fake.home.join(".ssh").exists());
+        // An archive whose own subfolder would be a protected location, with
+        // the tar suffix once or repeated: the check and every extractor read
+        // the subfolder through one helper.
+        for name in [".ssh.tar.gz", ".ssh.tgz"] {
+            let named = fake.home.join(name);
+            std::fs::write(&named, b"not reached").unwrap();
+            let err = dispatch_tool(
+                &ctx,
+                "archive_decompress",
+                &json!({
+                    "archive_path": named.display().to_string(),
+                    "output_dir": fake.home.display().to_string(),
+                }),
+            )
+            .await
+            .unwrap_err();
+            assert!(err.to_string().contains(".ssh"), "{name}: {err}");
+            assert!(!fake.home.join(".ssh").exists(), "{name}");
+        }
         // Into its own subfolder the archive extracts as before.
         dispatch_tool(&ctx, "archive_decompress", &args(true))
             .await
@@ -3636,6 +3788,47 @@ mod tests {
         .unwrap_err();
         assert!(err.to_string().contains("protected path"), "{err}");
         assert!(!std::path::Path::new("/aeroftp-root-extraction-must-not-exist.txt").exists());
+    }
+
+    // `.ssh.tar.tar.gz` into the home: the check looked at `.ssh.tar`, the tar
+    // extractor wrote into `.ssh`. Both now name the same folder.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_repeated_tar_suffix_extracts_where_the_check_looked() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        std::fs::remove_dir_all(fake.home.join(".ssh")).unwrap();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let archive = fake.home.join(".ssh.tar.tar.gz");
+        {
+            let gz = flate2::write::GzEncoder::new(
+                std::fs::File::create(&archive).unwrap(),
+                flate2::Compression::default(),
+            );
+            let mut builder = tar::Builder::new(gz);
+            let body = b"planted";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o600);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "authorized_keys", &body[..])
+                .unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+        }
+        dispatch_tool(
+            &ctx,
+            "archive_decompress",
+            &json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": fake.home.display().to_string(),
+                "create_subfolder": true,
+            }),
+        )
+        .await
+        .expect("an ordinary subfolder");
+        assert!(fake.home.join(".ssh.tar/authorized_keys").exists());
+        assert!(!fake.home.join(".ssh").exists());
     }
 
     #[cfg(unix)]

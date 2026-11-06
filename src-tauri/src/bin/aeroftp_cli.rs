@@ -75961,6 +75961,12 @@ fn prompt_tool_approval(tool_name: &str, args: &serde_json::Value) -> bool {
     }
 }
 
+/// Whether a tool name from the provider can be printed: none of its
+/// characters is a control character (an escape sequence included).
+fn printable_tool_name(name: &str) -> bool {
+    !name.is_empty() && !name.chars().any(char::is_control)
+}
+
 /// What the approval prompt shows of a call: the same text as the desktop
 /// approval, so every argument is whole and escaped, a secret is named only,
 /// and a call too long to read in full is refused instead of shown in part.
@@ -76196,6 +76202,20 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         let cfg = self.cfg;
         let is_tty = self.is_tty;
         ftp_client_gui_lib::ai_core::runner::check_cancelled(cancel)?;
+        // Before anything reaches the terminal: a tool name from the provider
+        // with control characters could rewrite the prompt it is printed in.
+        if !printable_tool_name(&tc.name) {
+            return Ok("Tool call refused: the tool name holds control characters.".to_string());
+        }
+        // A change on a saved server named only in part is refused before the
+        // prompt asks, so no approval is given for a server not named.
+        if let Some(reason) = ftp_client_gui_lib::ai_core::tools::inexact_change_target(
+            &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
+            &tc.name,
+            &tc.arguments,
+        ) {
+            return Ok(format!("Error: {reason}"));
+        }
         // Check approval
         let approved = if is_auto_approved(&tc.name, cfg.approve_level) {
             if is_tty {

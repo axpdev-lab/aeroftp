@@ -155,16 +155,10 @@ impl CredentialProvider for VaultCredentialProvider {
     fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Credential vault not open. Unlock the vault first.".to_string())?;
-        let json_str = store
-            .get("config_server_profiles")
-            .map_err(|_| "No saved servers found in vault.".to_string())?;
-        let profiles: Vec<Value> = serde_json::from_str(&json_str)
-            .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
-
-        Ok(profiles
-            .iter()
-            .filter_map(ServerProfile::from_profile_json)
-            .collect())
+        // The active user's servers, the list `find_server_by_name_or_id`
+        // resolves a name against: the legacy blob alone missed every
+        // partitioned profile of a multi-user install.
+        crate::ai_core::cli_impl::active_server_profiles(&store)
     }
 
     fn get_credentials(&self, server_id: &str) -> Result<ServerCredentials, String> {

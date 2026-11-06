@@ -42,6 +42,10 @@ pub struct CodingGitStatusResult {
     pub total: usize,
     pub truncated: bool,
     pub raw: Vec<String>,
+    /// Entries whose path is not UTF-8, staged or conflicted: in no list a
+    /// path is taken from, still counted by the commit guards.
+    pub undecodable_staged: usize,
+    pub undecodable_conflicted: usize,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -264,7 +268,8 @@ pub fn git_commit(req: CodingGitCommitRequest) -> Result<CodingGitCommitResult, 
     let message = validate_commit_message(&req.message)?;
     let before = git_status_for_workspace(&workspace, &[])?;
 
-    if !before.conflicted.is_empty() {
+    // A conflicted or staged path that is not UTF-8 counts here like any other.
+    if !before.conflicted.is_empty() || before.undecodable_conflicted > 0 {
         return Ok(CodingGitCommitResult {
             success: false,
             workspace_root: path_to_string(&workspace.workspace_root),
@@ -280,7 +285,7 @@ pub fn git_commit(req: CodingGitCommitRequest) -> Result<CodingGitCommitResult, 
         });
     }
 
-    if before.staged.is_empty() {
+    if before.staged.is_empty() && before.undecodable_staged == 0 {
         return Ok(CodingGitCommitResult {
             success: false,
             workspace_root: path_to_string(&workspace.workspace_root),
@@ -575,6 +580,8 @@ fn parse_status(
     let mut raw = Vec::new();
     let mut total = 0;
     let mut undecodable = false;
+    let mut undecodable_staged = 0;
+    let mut undecodable_conflicted = 0;
 
     for line in status.lines().filter(|line| !line.is_empty()) {
         if let Some(branch_line) = line.strip_prefix("## ") {
@@ -603,6 +610,11 @@ fn parse_status(
         // `raw` as git printed it, and in no list a path is staged from.
         let Some(path) = unquote_git_path(rest.strip_prefix(' ').unwrap_or(rest)) else {
             undecodable = true;
+            if is_conflicted(index, worktree) {
+                undecodable_conflicted += 1;
+            } else if index != ' ' && index != '?' {
+                undecodable_staged += 1;
+            }
             continue;
         };
         let entry = CodingGitFileStatus {
@@ -651,6 +663,8 @@ fn parse_status(
         total,
         truncated,
         raw,
+        undecodable_staged,
+        undecodable_conflicted,
     }
 }
 
@@ -1070,6 +1084,67 @@ mod tests {
                 "quotepath {quotepath}"
             );
         }
+    }
+
+    /// git with arguments that may not be UTF-8, under the fixture's config.
+    #[cfg(target_os = "linux")]
+    fn run_os(repo: &Path, args: &[&std::ffi::OsStr]) -> std::process::Output {
+        Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .expect("run git")
+    }
+
+    /// A staged or conflicted path that is not UTF-8 is in no list, and the
+    /// commit guards missed it: the only staged change read as nothing to
+    /// commit, and a conflict on it let a dry run report success.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_commit_guards_count_paths_that_are_not_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let raw_name = std::ffi::OsStr::from_bytes(b"\xff.txt");
+        let os = |arg: &str| std::ffi::OsString::from(arg);
+
+        // Only staged change: the commit runs.
+        let dir = init_repo();
+        fs::write(dir.path().join(raw_name), "a\n").expect("write");
+        assert!(run_os(dir.path(), &[&os("add"), &os("-A")])
+            .status
+            .success());
+        let commit = git_commit(CodingGitCommitRequest {
+            workspace_root: path_to_string(dir.path()),
+            message: "add a raw name".to_string(),
+            dry_run: false,
+        })
+        .expect("commit");
+        assert!(commit.committed, "{}", commit.message);
+
+        // A conflict on it, another file staged: the guard refuses.
+        let dir = init_repo();
+        fs::write(dir.path().join(raw_name), "base\n").expect("write");
+        run(dir.path(), &["add", "-A"]);
+        run(dir.path(), &["commit", "-m", "base"]);
+        run(dir.path(), &["checkout", "-q", "-b", "side"]);
+        fs::write(dir.path().join(raw_name), "side\n").expect("write");
+        run(dir.path(), &["commit", "-q", "-am", "side"]);
+        run(dir.path(), &["checkout", "-q", "-"]);
+        fs::write(dir.path().join(raw_name), "main\n").expect("write");
+        run(dir.path(), &["commit", "-q", "-am", "main"]);
+        let merge = run_os(dir.path(), &[&os("merge"), &os("side")]);
+        assert!(!merge.status.success(), "the merge must conflict");
+        fs::write(dir.path().join("other.txt"), "x\n").expect("write");
+        run(dir.path(), &["add", "other.txt"]);
+        let commit = git_commit(CodingGitCommitRequest {
+            workspace_root: path_to_string(dir.path()),
+            message: "with a conflict".to_string(),
+            dry_run: true,
+        })
+        .expect("commit result");
+        assert!(!commit.success);
+        assert!(commit.message.contains("conflicted"), "{}", commit.message);
     }
 
     fn run(repo: &Path, args: &[&str]) {

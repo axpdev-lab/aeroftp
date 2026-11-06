@@ -962,7 +962,12 @@ pub async fn local_batch_rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
         if new_name != filename && !new_name.trim().is_empty() {
             // A generated name is one name in the same folder: a separator,
             // `.` or `..` would move the file elsewhere (deep scan item 24).
-            if new_name.contains(['/', '\\']) || matches!(new_name.trim(), "." | "..") {
+            // A backslash separates only on Windows: on Unix `report\\2026.txt`
+            // is one name of the same folder.
+            if new_name.contains('/')
+                || (cfg!(windows) && new_name.contains('\\'))
+                || matches!(new_name.trim(), "." | "..")
+            {
                 errors.push(json!({
                     "file": filename,
                     "error": format!("The new name '{}' is not a single file name", new_name),

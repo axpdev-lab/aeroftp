@@ -136,31 +136,35 @@ impl EventSink for StdioEventSink {
 /// CLI credential provider: vault cache (if open) → env vars (AEROFTP_HOST/USER/PASS).
 pub struct CliCredentialProvider;
 
+/// The saved servers of the active user, the list every surface resolves a
+/// server name against. AGENT-04: the active user partition (multi-user mode)
+/// first, so discovery matches `profiles --json` and the connect path, then the
+/// global profile list of a single-user install.
+pub(crate) fn active_server_profiles(
+    store: &crate::credential_store::CredentialStore,
+) -> Result<Vec<ServerProfile>, String> {
+    let profiles: Vec<Value> = match crate::user_partitions::cli_list_active_server_profiles(store)
+    {
+        Ok(p) => p,
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
+        Err(_) => match store.get("config_server_profiles") {
+            Ok(json_str) => serde_json::from_str::<Vec<Value>>(&json_str).unwrap_or_default(),
+            Err(_) => return Ok(Vec::new()),
+        },
+    };
+    Ok(profiles
+        .iter()
+        .filter_map(ServerProfile::from_profile_json)
+        .collect())
+}
+
 impl CredentialProvider for CliCredentialProvider {
     fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
-        // Try vault first (may be open from a previous unlock)
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            // AGENT-04: prefer the active user partition (multi-user mode) so agent
-            // discovery matches `profiles --json`, falling back to the global
-            // profile list for single-user installs. Mirrors the connect path.
-            let profiles: Vec<Value> =
-                match crate::user_partitions::cli_list_active_server_profiles(&store) {
-                    Ok(p) => p,
-                    Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
-                    Err(_) => match store.get("config_server_profiles") {
-                        Ok(json_str) => {
-                            serde_json::from_str::<Vec<Value>>(&json_str).unwrap_or_default()
-                        }
-                        Err(_) => return Ok(Vec::new()),
-                    },
-                };
-            return Ok(profiles
-                .iter()
-                .filter_map(ServerProfile::from_profile_json)
-                .collect());
+        // The vault may be open from a previous unlock; without it, no server.
+        match crate::credential_store::CredentialStore::from_cache() {
+            Some(store) => active_server_profiles(&store),
+            None => Ok(Vec::new()),
         }
-        // No vault: return empty
-        Ok(Vec::new())
     }
 
     fn get_credentials(&self, server_id: &str) -> Result<ServerCredentials, String> {

@@ -126,42 +126,16 @@ pub async fn archive_compress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
     }
 }
 
-/// The folders an extraction of `archive_path` may write into: the output
-/// folder itself, or the per-archive subfolder under every name an extractor
-/// gives it (the ZIP, 7z and RAR extractors take the file stem, the tar one
-/// also trims `.tar`, the single-stream one strips the whole extension).
-fn extraction_targets(archive_path: &str, output_dir: &str, create_subfolder: bool) -> Vec<String> {
+/// The folder an extraction of `archive_path` writes into: the output folder
+/// itself, or the per-archive subfolder every extractor derives through
+/// `archive_subfolder`, so the folder checked is the folder written.
+fn extraction_target(archive_path: &str, output_dir: &str, create_subfolder: bool) -> String {
     if !create_subfolder {
-        return vec![output_dir.to_string()];
+        return output_dir.to_string();
     }
-    let path = std::path::Path::new(archive_path);
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let file_stem = path
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let tar_stem = file_stem
-        .strip_suffix(".tar")
-        .unwrap_or(&file_stem)
-        .to_string();
-    let mut targets: Vec<String> = Vec::new();
-    for stem in [
-        file_stem.clone(),
-        tar_stem,
-        crate::archive_extract_stem(&file_name),
-    ] {
-        let target = std::path::Path::new(output_dir)
-            .join(crate::safe_extract_folder_name(&stem))
-            .to_string_lossy()
-            .to_string();
-        if !targets.contains(&target) {
-            targets.push(target);
-        }
-    }
-    targets
+    crate::archive_subfolder(std::path::Path::new(output_dir), archive_path)
+        .to_string_lossy()
+        .to_string()
 }
 
 pub async fn archive_decompress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
@@ -177,20 +151,19 @@ pub async fn archive_decompress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
     validate_path(&archive_path, "archive_path").map_err(map_str_err)?;
     validate_path(&output_dir, "output_dir").map_err(map_str_err)?;
 
-    // Every folder the entries may land in must pass the policy, and must not
-    // be or hold a protected location, existing or not: an extraction creates
+    // The folder the entries land in must pass the policy, and must not be or
+    // hold a protected location, existing or not: an extraction creates
     // the folders its entries name (deep scan item 42: an archive extracted
     // into the home wrote `~/.ssh/authorized_keys`, also on a home without
     // `~/.ssh`). The extraction itself still opens the subfolder through the
     // chosen output folder, so a symlinked subfolder cannot lead it elsewhere.
-    for target in extraction_targets(&archive_path, &output_dir, create_subfolder) {
-        validate_path(&target, "output_dir").map_err(map_str_err)?;
-        if let Some(protected) = protected_location_creatable_within(&target) {
-            return Err(ToolError::Denied(format!(
-                "Refusing to extract into {}: it could create the protected path {}. Extract into a subfolder instead.",
-                target, protected
-            )));
-        }
+    let target = extraction_target(&archive_path, &output_dir, create_subfolder);
+    validate_path(&target, "output_dir").map_err(map_str_err)?;
+    if let Some(protected) = protected_location_creatable_within(&target) {
+        return Err(ToolError::Denied(format!(
+            "Refusing to extract into {}: it could create the protected path {}. Extract into a subfolder instead.",
+            target, protected
+        )));
     }
 
     // Detect format from extension

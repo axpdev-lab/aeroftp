@@ -3339,10 +3339,13 @@ type ScannedRemoteFiles = std::collections::HashMap<String, ScannedRemoteFile>;
 /// folder at the depth cap marks it truncated, as `aeroftp-cli sync-doctor`
 /// and `reconcile` report it: a file never seen would otherwise read as
 /// missing on this side.
+/// The files of a local tree, whether the walk read all of it, and how many
+/// entries the path policy left out. A policy skip is not a read error: the
+/// reports name it apart, and still call the counts partial.
 fn scan_local_files(
     local_path: &std::path::Path,
     exclude: &crate::sync_exclude::ExcludeMatcher,
-) -> (LocalFiles, crate::sync_core::ScanCompleteness) {
+) -> (LocalFiles, crate::sync_core::ScanCompleteness, usize) {
     let relative_of = |path: &std::path::Path| {
         crate::sync::normalize_relative_key(
             &path
@@ -3412,8 +3415,7 @@ fn scan_local_files(
             .map(|d| d.as_secs() as i64);
         files.insert(rel, (metadata.len(), mtime_secs));
     }
-    completeness.list_errors += protected_skipped.get();
-    (files, completeness)
+    (files, completeness, protected_skipped.get())
 }
 
 /// The files under `remote_dir` a sync would read, each path once, and
@@ -3819,7 +3821,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
 
     // Both scans say whether they read the whole tree: counts from a scan
     // that missed part of it are partial, and the report says so.
-    let (local_map, local_scan) = scan_local_files(local_path, &exclude_matchers);
+    let (local_map, local_scan, local_protected) = scan_local_files(local_path, &exclude_matchers);
     let local_files = local_map.len();
     let local_bytes = local_map
         .values()
@@ -3847,17 +3849,19 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         .values()
         .fold(0u64, |sum, file| sum.saturating_add(file.size));
     let scans = [("local", &local_scan), ("remote", &remote_scan)];
-    let scans_complete = scans.iter().all(|(_, scan)| scan.is_complete());
+    let scans_complete = scans.iter().all(|(_, scan)| scan.is_complete()) && local_protected == 0;
 
     let mut checks = vec![
         json!({"name": "local_path_exists", "ok": true, "path": local_dir}),
         json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote_dir}),
     ];
     for (side, scan) in scans {
+        let protected = if side == "local" { local_protected } else { 0 };
         checks.push(json!({
             "name": format!("{side}_scan_complete"),
-            "ok": scan.is_complete(),
+            "ok": scan.is_complete() && protected == 0,
             "errors": scan.list_errors,
+            "protected_skipped": protected,
             "truncated": scan.truncated,
         }));
     }
@@ -3892,6 +3896,12 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             ));
         }
     }
+    if local_protected > 0 {
+        risks.push(format!(
+            "the local scan left out {local_protected} protected entr{} that the path policy keeps from every AI tool; the file counts are partial",
+            if local_protected == 1 { "y" } else { "ies" }
+        ));
+    }
     if local_files == 0 && remote_files == 0 && scans_complete {
         risks.push("both sides are empty; sync will be a no-op".to_string());
     }
@@ -3923,8 +3933,9 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             "delete": delete,
             "track_renames": track_renames,
             "checksum": checksum,
-            "local_scan_incomplete": !local_scan.is_complete(),
+            "local_scan_incomplete": !local_scan.is_complete() || local_protected > 0,
             "local_scan_errors": local_scan.list_errors,
+            "local_protected_skipped": local_protected,
             "local_scan_truncated": local_scan.truncated,
             "remote_scan_incomplete": !remote_scan.is_complete(),
             "remote_scan_errors": remote_scan.list_errors,
@@ -4373,7 +4384,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     // Both scans say whether they read the whole tree: a comparison against
     // a scan that missed part of it is `partial`, not a verdict, since a file
     // never seen reads as missing on that side.
-    let (local_map, local_scan) = scan_local_files(local_path, &exclude_matchers);
+    let (local_map, local_scan, local_protected) = scan_local_files(local_path, &exclude_matchers);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let (remote_map, remote_scan) = scan_remote_files(
         ctx,
@@ -4503,6 +4514,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     // on the server under a protected local path.
     let status = if checksum_errors > 0
         || protected_skipped > 0
+        || local_protected > 0
         || !local_scan.is_complete()
         || !remote_scan.is_complete()
     {
@@ -4519,8 +4531,9 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         "missing_remote_count": missing_remote_g.len(),
         "missing_local_count": missing_local_g.len(),
         "protected_skipped_count": protected_skipped,
-        "local_scan_incomplete": !local_scan.is_complete(),
+        "local_scan_incomplete": !local_scan.is_complete() || local_protected > 0,
         "local_scan_errors": local_scan.list_errors,
+        "local_protected_skipped": local_protected,
         "local_scan_truncated": local_scan.truncated,
         "remote_scan_incomplete": !remote_scan.is_complete(),
         "remote_scan_errors": remote_scan.list_errors,
@@ -4599,9 +4612,10 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, bytes).unwrap();
         }
-        let (files, complete) =
+        let (files, complete, protected) =
             scan_local_files(dir.path(), &crate::sync_exclude::ExcludeMatcher::default());
         assert!(complete.is_complete());
+        assert_eq!(protected, 0);
         assert_eq!(files.len(), 4);
         for (rel, bytes) in entries {
             assert_eq!(files[rel].0, bytes.len() as u64);
@@ -4622,7 +4636,7 @@ mod tests {
         }
         let previous = std::env::var_os("HOME");
         std::env::set_var("HOME", &home);
-        let (files, scan) =
+        let (files, scan, protected) =
             scan_local_files(&home, &crate::sync_exclude::ExcludeMatcher::default());
         match previous {
             Some(value) => std::env::set_var("HOME", value),
@@ -4630,10 +4644,11 @@ mod tests {
         }
         let listed: Vec<&String> = files.keys().collect();
         assert_eq!(listed, vec!["notes.txt"], "{listed:?}");
-        // What it left out makes the scan partial, so nothing protected is
-        // reported missing locally.
-        assert!(!scan.is_complete());
-        assert_eq!(scan.list_errors, 2);
+        // What it left out is counted apart from read errors, so a policy
+        // skip cannot be mistaken for an unreadable folder.
+        assert!(scan.is_complete());
+        assert_eq!(scan.list_errors, 0);
+        assert_eq!(protected, 2);
     }
 
     #[test]
@@ -8234,6 +8249,10 @@ mod tests {
         assert_eq!(summary["protected_skipped_count"], 1, "{report}");
         assert_eq!(summary["match_count"], 1, "{report}");
         assert_eq!(report["status"], "partial", "{report}");
+        // The local skip is reported as such, not as a read error.
+        assert_eq!(summary["local_scan_errors"], 0, "{report}");
+        assert_eq!(summary["local_protected_skipped"], 1, "{report}");
+        assert_eq!(summary["local_scan_incomplete"], true, "{report}");
     }
 
     /// A protected file only on the server, under a home without `~/.ssh`:

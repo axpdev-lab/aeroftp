@@ -467,6 +467,10 @@ fn is_secret_approval_key(key: &str) -> bool {
         "apikey",
         "private_key",
         "privatekey",
+        "credential",
+        "authorization",
+        "cookie",
+        "bearer",
     ]
     .iter()
     .any(|secret| lower.contains(secret))
@@ -475,6 +479,11 @@ fn is_secret_approval_key(key: &str) -> bool {
 /// Arguments that carry a file's content: the chat shows it, the approval
 /// gives its size.
 const CONTENT_APPROVAL_KEYS: [&str; 4] = ["content", "patch", "data", "body"];
+
+/// The tools whose `find` and `replace` are file content, shown by size like
+/// `content`: a secret in them reached the approval window, and a large edit
+/// went past the approval limit and was refused.
+const EDIT_TOOLS: [&str; 3] = ["local_edit", "remote_edit", "aeroftp_edit"];
 
 /// The longest approval message shown. A call whose arguments do not fit is
 /// refused with the reason, never shown in part.
@@ -602,12 +611,15 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
 
     // Every other argument the call carries is part of what is approved:
     // shown whole, a secret by name only, a file's content by its size.
-    let mut shown: std::collections::HashSet<&str> = APPROVAL_DETAIL_KEYS
-        .iter()
-        .chain(["checks", "paths"].iter())
-        .copied()
-        .collect();
-    if tool_name == "gui_run" {
+    // A key counts as shown only where its renderer above drew it: a `paths`
+    // that is not a list was skipped there, and it still picks the handler.
+    let mut shown: std::collections::HashSet<&str> = APPROVAL_DETAIL_KEYS.iter().copied().collect();
+    for key in ["checks", "paths"] {
+        if args.get(key).and_then(Value::as_array).is_some() {
+            shown.insert(key);
+        }
+    }
+    if tool_name == "gui_run" && args.get("names").and_then(Value::as_array).is_some() {
         shown.insert("names");
     }
     if tool_name == "cross_profile_transfer" {
@@ -630,7 +642,9 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
             let key_text: String = key.chars().flat_map(char::escape_debug).collect();
             if hides_approval_value(key, value) {
                 details.push(format!("{key_text}: (hidden)"));
-            } else if CONTENT_APPROVAL_KEYS.contains(&key.as_str()) {
+            } else if CONTENT_APPROVAL_KEYS.contains(&key.as_str())
+                || (EDIT_TOOLS.contains(&tool_name) && matches!(key.as_str(), "find" | "replace"))
+            {
                 let size = value
                     .as_str()
                     .map_or_else(|| value.to_string().len(), str::len);
@@ -2226,6 +2240,15 @@ pub async fn prepare_ai_tool_approval(
             allow_session_grant: false,
         });
     }
+    // A change on a server named only in part is refused before the window
+    // asks, so no approval is given for a server the user did not name.
+    if let Some(reason) = crate::ai_core::tools::inexact_change_target(
+        &crate::ai_core::tauri_impl::VaultCredentialProvider,
+        &tool_name,
+        &args,
+    ) {
+        return Err(reason);
+    }
 
     let remote_context = build_remote_cache_context(&state, &app_state).await;
     let scope_key = build_tool_cache_key(
@@ -3094,6 +3117,35 @@ mod approval_tests {
         requires_backend_write_approval, split_approval_message, ALLOWED_TOOLS,
     };
     use serde_json::json;
+
+    #[test]
+    fn credentials_edit_content_and_odd_paths_are_shown_as_approved() {
+        let settings = build_ai_tool_approval_message(
+            "gui_run",
+            &json!({"intent": "settings_update", "set": {"authorization": "Bearer SECRETWORD", "credentials": "SECRETWORD", "cookie": "SECRETWORD"}}),
+        );
+        assert!(!settings.contains("SECRETWORD"), "{settings}");
+        assert!(settings.contains("authorization: (hidden)"), "{settings}");
+        for tool in ["local_edit", "remote_edit"] {
+            let big = "y".repeat(super::MAX_APPROVAL_MESSAGE_CHARS + 10);
+            let message = super::approval_message_for(
+                tool,
+                &json!({"path": "/w/a.txt", "find": "old SECRETWORD", "replace": big}),
+            )
+            .unwrap_or_else(|e| panic!("{tool}: {e}"));
+            assert!(!message.contains("SECRETWORD"), "{tool}: {message}");
+            assert!(message.contains("find: 14 bytes"), "{tool}: {message}");
+        }
+        // A `paths` that is not a list is shown, since it picks the handler.
+        let details = build_ai_tool_approval_details(
+            "remote_delete",
+            &json!({"server": "s", "path": "/a", "paths": "/b"}),
+        );
+        assert!(
+            details.iter().any(|line| line == "paths: /b"),
+            "{details:?}"
+        );
+    }
 
     #[test]
     fn an_output_limit_is_shown_while_a_token_is_hidden() {
