@@ -508,19 +508,33 @@ pub fn apply_s3_profile_defaults(
                 .then(|| host.to_string())
         });
 
-    let region_source = if extra.contains_key("region") {
-        "profile"
-    } else if let Some(region) = explicit_endpoint
+    // The region the endpoint names wins over a stored one that contradicts
+    // it (#1506 Requested 200): an importer (kopia, restic, mc, aws, rclone)
+    // stores its source's region as given, often us-east-1, and a host that
+    // carries its region in the preset's template signs with that region, as
+    // the same profile made in the form does. A stored region the endpoint
+    // agrees with, or one beside an endpoint the template does not parse,
+    // stays the profile's.
+    let named_region = explicit_endpoint
         .as_deref()
-        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint))
-    {
-        extra.insert("region".to_string(), region);
-        "endpoint"
-    } else {
-        if let Some(default_region) = s3_profile_default_region(provider_id) {
-            extra.insert("region".to_string(), default_region.to_string());
+        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint));
+    let stored_region = extra.get("region").map(|region| region.trim().to_string());
+    let region_source = match (stored_region, named_region) {
+        (Some(stored), Some(named)) if !stored.eq_ignore_ascii_case(&named) => {
+            extra.insert("region".to_string(), named);
+            "endpoint"
         }
-        "preset"
+        (Some(_), _) => "profile",
+        (None, Some(named)) => {
+            extra.insert("region".to_string(), named);
+            "endpoint"
+        }
+        (None, None) => {
+            if let Some(default_region) = s3_profile_default_region(provider_id) {
+                extra.insert("region".to_string(), default_region.to_string());
+            }
+            "preset"
+        }
     };
     extra.insert(
         S3_REGION_SOURCE_META_KEY.to_string(),
@@ -996,6 +1010,84 @@ mod tests {
         let mut extra = HashMap::new();
         apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "cos.example.internal");
         assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
+    }
+
+    /// #1506 Requested 200: an imported region that contradicts the region
+    /// the preset's endpoint template names is replaced by the named one; a
+    /// matching one, or one beside a host the template does not parse, stays.
+    #[test]
+    fn the_region_an_endpoint_names_wins_over_a_contradicting_stored_one() {
+        let resolve = |provider: &str, endpoint: &str, region: Option<&str>| {
+            let mut extra = HashMap::new();
+            extra.insert("endpoint".to_string(), endpoint.to_string());
+            if let Some(region) = region {
+                extra.insert("region".to_string(), region.to_string());
+            }
+            apply_s3_profile_defaults(&mut extra, Some(provider), "");
+            (
+                extra.get("region").cloned(),
+                extra.get(S3_REGION_SOURCE_META_KEY).cloned(),
+            )
+        };
+        let cases = [
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("us-east-1"),
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("eu-central-1"),
+                "eu-central-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("EU-CENTRAL-1"),
+                "EU-CENTRAL-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                None,
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "ibm-cos",
+                "https://s3.us-south.cloud-object-storage.appdomain.cloud",
+                Some("eu-de"),
+                "us-south",
+                "endpoint",
+            ),
+            (
+                "digitalocean-spaces",
+                "https://fra1.digitaloceanspaces.com",
+                Some("us-east-1"),
+                "fra1",
+                "endpoint",
+            ),
+            // A host the template does not produce keeps the stored region.
+            (
+                "wasabi",
+                "https://storage.example.com",
+                Some("us-west-1"),
+                "us-west-1",
+                "profile",
+            ),
+        ];
+        for (provider, endpoint, stored, region, source) in cases {
+            assert_eq!(
+                resolve(provider, endpoint, stored),
+                (Some(region.to_string()), Some(source.to_string())),
+                "{provider} {endpoint} {stored:?}"
+            );
+        }
     }
 
     #[test]
