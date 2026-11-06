@@ -95,11 +95,7 @@ pub async fn mega_df_query() -> Result<(u64, u64, Option<u64>), ProviderError> {
         } else {
             stderr
         };
-        let lower = detail.to_ascii_lowercase();
-        if lower.contains("not logged in")
-            || lower.contains("not logged-in")
-            || lower.contains("login required")
-        {
+        if megacmd_not_logged_in(output.status.code(), &detail) {
             return Err(ProviderError::AuthenticationFailed(format!(
                 "mega-df: {}",
                 detail
@@ -150,17 +146,31 @@ fn mega_abs_path(remote_path: &str) -> String {
     }
 }
 
+/// MEGAcmd's exit status for "needs logging in" (MCMD_NOTLOGGEDIN = -57 in
+/// src/megacmdcommonutils.h, returned positive by the client on every
+/// platform).
+const MCMD_NOTLOGGEDIN_EXIT: i32 = 57;
+
+/// Whether a failed MEGAcmd command says the session is gone: its exit
+/// status decides; the wording is read only when the status says nothing
+/// (an older client, a status of 1). #1506 row 164.
+fn megacmd_not_logged_in(code: Option<i32>, detail: &str) -> bool {
+    if code == Some(MCMD_NOTLOGGEDIN_EXIT) {
+        return true;
+    }
+    let lower = detail.to_ascii_lowercase();
+    lower.contains("not logged in")
+        || lower.contains("not logged-in")
+        || lower.contains("login required")
+}
+
 /// Map a non-success MEGAcmd exit to a typed error: "not logged in" becomes an
 /// auth error (mirrors `mega_df_query`), everything else a server error.
 fn mega_cmd_failure(label: &str, output: &std::process::Output) -> ProviderError {
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let detail = if stderr.is_empty() { stdout } else { stderr };
-    let lower = detail.to_ascii_lowercase();
-    if lower.contains("not logged in")
-        || lower.contains("not logged-in")
-        || lower.contains("login required")
-    {
+    if megacmd_not_logged_in(output.status.code(), &detail) {
         ProviderError::AuthenticationFailed(format!("{}: {}", label, detail))
     } else {
         ProviderError::ServerError(format!("{}: {}", label, detail))
@@ -294,19 +304,19 @@ pub async fn mega_restore_version(
 /// actionable auth error; anything else surfaces verbatim.
 pub(crate) fn classify_mega_webdav_result(
     success: bool,
+    code: Option<i32>,
     combined: &str,
 ) -> Result<(), ProviderError> {
     if success {
         return Ok(());
     }
     let lower = combined.to_ascii_lowercase();
+    // No exit status is documented for "already served": the phrase is
+    // kept, and it counts only with the served URL parsed from the output.
     if lower.contains("already being served at") && parse_mega_webdav_url(combined).is_some() {
         return Ok(());
     }
-    if lower.contains("not logged in")
-        || lower.contains("not logged-in")
-        || lower.contains("login required")
-    {
+    if megacmd_not_logged_in(code, combined) {
         return Err(ProviderError::AuthenticationFailed(
             "MEGAcmd has no active session; run `mega-login <email>` once in the MEGAcmd \
              terminal, then reconnect (the anonymous local-WebDAV bridge carries no MEGA \
@@ -340,7 +350,7 @@ pub async fn ensure_megacmd_webdav_bridge() -> Result<Option<String>, ProviderEr
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout)
     );
-    classify_mega_webdav_result(output.status.success(), &combined)?;
+    classify_mega_webdav_result(output.status.success(), output.status.code(), &combined)?;
     Ok(parse_mega_webdav_url(&combined))
 }
 
@@ -430,7 +440,7 @@ pub async fn mega_webdav_url_query() -> Result<String, ProviderError> {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    classify_mega_webdav_result(output.status.success(), &combined)?;
+    classify_mega_webdav_result(output.status.success(), output.status.code(), &combined)?;
     parse_mega_webdav_url(&combined).ok_or_else(|| {
         ProviderError::ParseError(format!(
             "Could not parse the WebDAV URL from mega-webdav / output: {}",
@@ -639,13 +649,14 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
 
     #[test]
     fn mega_webdav_clean_exit_is_ok() {
-        assert!(classify_mega_webdav_result(true, "").is_ok());
+        assert!(classify_mega_webdav_result(true, None, "").is_ok());
     }
 
     #[test]
     fn mega_webdav_already_served_is_ok() {
         assert!(classify_mega_webdav_result(
             false,
+            None,
             "/: already being served at http://127.0.0.1:4443/"
         )
         .is_ok());
@@ -655,6 +666,7 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
     fn mega_webdav_failure_with_incidental_already_is_not_success() {
         let result = classify_mega_webdav_result(
             false,
+            None,
             "Failed to initialize WebDAV: port 4443 is already allocated",
         );
         assert!(
@@ -665,14 +677,21 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
 
     #[test]
     fn mega_webdav_not_logged_in_is_auth_error() {
-        let err = classify_mega_webdav_result(false, "[err: Not logged in.]").unwrap_err();
+        let err = classify_mega_webdav_result(false, None, "[err: Not logged in.]").unwrap_err();
         assert!(matches!(err, ProviderError::AuthenticationFailed(_)));
         assert!(err.to_string().to_lowercase().contains("mega-login"));
     }
 
     #[test]
     fn mega_webdav_unknown_failure_is_server_error() {
-        let err = classify_mega_webdav_result(false, "some other failure").unwrap_err();
+        // The exit status decides whatever the words: 57 is MCMD_NOTLOGGEDIN.
+        assert!(matches!(
+            classify_mega_webdav_result(false, Some(57), "Sitzung abgelaufen"),
+            Err(ProviderError::AuthenticationFailed(_))
+        ));
+        assert!(megacmd_not_logged_in(Some(57), "Sessione scaduta"));
+        assert!(!megacmd_not_logged_in(Some(53), "Couldn't find /x"));
+        let err = classify_mega_webdav_result(false, None, "some other failure").unwrap_err();
         assert!(matches!(err, ProviderError::ServerError(_)));
     }
 

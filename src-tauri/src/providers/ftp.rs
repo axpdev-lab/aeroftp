@@ -641,6 +641,49 @@ impl FtpProvider {
             || lower.contains("broken pipe")
     }
 
+    /// Whether a failed READ may redial and run once more: a stale session
+    /// ([`Self::is_stale_data_connection_error`]), or a dropped connection
+    /// the OS words in the user's language, known by its code (#1506 row
+    /// 164). Reads only: the code is kept out of the predicate above, which
+    /// must stay as narrow as it is (a Windows abort, os error 10053, would
+    /// otherwise widen it), and the upload resends only after a desync that
+    /// came before the transfer ([`Self::is_desync_before_transfer_error`]).
+    fn read_may_redial(err: &ProviderError) -> bool {
+        if Self::is_stale_data_connection_error(err) {
+            return true;
+        }
+        let message = match err {
+            ProviderError::ServerError(msg)
+            | ProviderError::TransferFailed(msg)
+            | ProviderError::ConnectionFailed(msg)
+            | ProviderError::Other(msg) => msg,
+            _ => return false,
+        };
+        crate::providers::types::os_error_kind(message)
+            .is_some_and(crate::providers::types::os_error_kind_closes_the_session)
+    }
+
+    /// The part of [`Self::is_stale_data_connection_error`] that says the
+    /// session was out of step before anything was sent: a data connection
+    /// still open from an earlier operation (425 / "already open") or a
+    /// control stream suppaftp could not parse. Safe to redial and send
+    /// again. A dropped connection is not in it: it may come after the
+    /// transfer landed.
+    fn is_desync_before_transfer_error(err: &ProviderError) -> bool {
+        let message = match err {
+            ProviderError::ServerError(msg)
+            | ProviderError::TransferFailed(msg)
+            | ProviderError::ConnectionFailed(msg)
+            | ProviderError::Other(msg) => msg,
+            _ => return false,
+        };
+        let lower = message.to_lowercase();
+        lower.contains("data connection is already open")
+            || (lower.contains("425") && lower.contains("data connection"))
+            || lower.contains("invalid syntax")
+            || lower.contains("invalid response")
+    }
+
     /// Only a dead control connection permits retrying navigation. Ordinary
     /// server refusals (including 550) must not pass the broader data predicate.
     async fn closed_control_failure(&self, err: &FtpError) -> bool {
@@ -830,7 +873,7 @@ impl FtpProvider {
                     self.mlsd_broken = true;
                     self.mlsd_supported = false;
 
-                    if Self::is_stale_data_connection_error(&provider_err) {
+                    if Self::read_may_redial(&provider_err) {
                         self.reconnect_after_data_error("MLSD", &base_path, &provider_err)
                             .await?;
                     }
@@ -1399,7 +1442,7 @@ impl FtpProvider {
     async fn list_for_delete(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         match self.list_inner_opts(path, true).await {
             Ok(entries) => Ok(entries),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            Err(err) if Self::read_may_redial(&err) => {
                 self.reconnect_after_data_error("LIST", path, &err).await?;
                 self.list_inner_opts(path, true).await
             }
@@ -1550,7 +1593,7 @@ impl FtpProvider {
         match self.list_inner(path).await {
             Ok(entries) => Ok(entries),
             Err(err)
-                if Self::is_stale_data_connection_error(&err)
+                if Self::read_may_redial(&err)
                     || Self::closed_listing_failure(
                         &err,
                         self.after_final_reply(std::time::Duration::ZERO).await,
@@ -2095,7 +2138,13 @@ impl StorageProvider for FtpProvider {
             .await
         {
             Ok(()) => Ok(()),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            // Only a session that was out of step before the transfer is
+            // dialled again and sent once more. A dropped connection (reset,
+            // broken pipe, in any language) can come after the server stored
+            // the bytes, and a second STOR then replaced the file and could
+            // overwrite a concurrent change (CodeRabbit, #1520): that outcome
+            // is returned as it is.
+            Err(err) if Self::is_desync_before_transfer_error(&err) => {
                 self.reconnect_after_data_error("STOR", remote_path, &err)
                     .await?;
                 self.upload_single(local_path, remote_path, None).await
@@ -2271,7 +2320,7 @@ impl StorageProvider for FtpProvider {
         self.redial_if_a_reply_is_pending().await?;
         match self.stat_inner(path).await {
             Ok(entry) => Ok(entry),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            Err(err) if Self::read_may_redial(&err) => {
                 self.reconnect_after_data_error("STAT", path, &err).await?;
                 self.stat_inner(path).await
             }
@@ -2283,7 +2332,7 @@ impl StorageProvider for FtpProvider {
         self.redial_if_a_reply_is_pending().await?;
         match self.size_inner(path).await {
             Ok(size) => Ok(size),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            Err(err) if Self::read_may_redial(&err) => {
                 self.reconnect_after_data_error("SIZE", path, &err).await?;
                 self.size_inner(path).await
             }
@@ -4612,7 +4661,7 @@ impl FtpProvider {
             .await
         {
             Ok(()) => Ok(()),
-            Err(err) if Self::is_stale_data_connection_error(&err) => {
+            Err(err) if Self::read_may_redial(&err) => {
                 self.reconnect_after_data_error("RETR", remote_path, &err)
                     .await?;
                 let total_size = {
@@ -5816,6 +5865,7 @@ mod restart_contract_tests {
 /// permission refusal, do not qualify.
 pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
     let lower = reply.to_ascii_lowercase();
+    // Kept as text (#1506 row 164): FTP has no reply code finer than the 550 already checked; an empty-listing probe follows.
     lower.contains("not empty") || lower.contains("notempty")
 }
 
@@ -6597,6 +6647,47 @@ MLSD "no-facts-here" @ "/"
     fn test_detects_stale_data_connection_error() {
         let err = ProviderError::ServerError("425 Data connection is already open".to_string());
         assert!(FtpProvider::is_stale_data_connection_error(&err));
+    }
+
+    /// CodeRabbit (#1520): an upload is sent again only after a desync that
+    /// came before the transfer, never after a dropped connection.
+    #[cfg(unix)]
+    #[test]
+    fn an_upload_is_not_sent_again_after_a_dropped_connection() {
+        for dropped in [
+            ProviderError::TransferFailed("Connection reset by peer".into()),
+            ProviderError::TransferFailed("Broken pipe".into()),
+            ProviderError::TransferFailed(format!(
+                "Connessione azzerata dal corrispondente (os error {})",
+                libc::ECONNRESET
+            )),
+        ] {
+            assert!(FtpProvider::read_may_redial(&dropped), "{dropped}");
+            assert!(
+                !FtpProvider::is_desync_before_transfer_error(&dropped),
+                "{dropped}"
+            );
+        }
+        let desync = ProviderError::ServerError("425 Data connection is already open".into());
+        assert!(FtpProvider::is_desync_before_transfer_error(&desync));
+    }
+
+    /// #1506 row 164: a dropped connection in the OS's language is known by
+    /// its code; a refusal with another code is not a dropped connection.
+    #[cfg(unix)]
+    #[test]
+    fn a_dropped_connection_in_any_language_is_known_by_its_os_code() {
+        let reset = ProviderError::TransferFailed(format!(
+            "Connessione azzerata dal corrispondente (os error {})",
+            libc::ECONNRESET
+        ));
+        assert!(FtpProvider::read_may_redial(&reset));
+        let pipe =
+            ProviderError::ConnectionFailed(format!("Pipe interrotta (os error {})", libc::EPIPE));
+        assert!(FtpProvider::read_may_redial(&pipe));
+        let denied =
+            ProviderError::TransferFailed(format!("Permesso negato (os error {})", libc::EACCES));
+        assert!(!FtpProvider::read_may_redial(&denied));
     }
 
     #[test]
@@ -10077,6 +10168,23 @@ pub(crate) mod walk_scope_tests {
         );
         assert_eq!(provider.current_path, "/home");
         assert_eq!(log.lock().unwrap().len(), before + 1, "one redial only");
+    }
+
+    /// Windows CI, #1520: an OS-coded abort (os error 10053) lets a read
+    /// redial, but neither widens the stale predicate nor resends an upload.
+    #[cfg(windows)]
+    #[test]
+    fn a_windows_abort_redials_a_read_but_never_resends_an_upload() {
+        let abort = ProviderError::ConnectionFailed("Connection error: Connessione interrotta dal software del computer host. (os error 10053)".into());
+        assert!(FtpProvider::read_may_redial(&abort));
+        assert!(!FtpProvider::is_stale_data_connection_error(&abort));
+        assert!(!FtpProvider::is_desync_before_transfer_error(&abort));
+        let reset = ProviderError::TransferFailed(
+            "Connessione in corso interrotta forzatamente dall'host remoto. (os error 10054)"
+                .into(),
+        );
+        assert!(FtpProvider::read_may_redial(&reset));
+        assert!(!FtpProvider::is_desync_before_transfer_error(&reset));
     }
 
     #[test]

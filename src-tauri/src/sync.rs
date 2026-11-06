@@ -4617,7 +4617,9 @@ fn classification_text(raw: &str, file_path: Option<&str>) -> String {
 fn sync_error_of_os_kind(kind: std::io::ErrorKind) -> Option<(SyncErrorKind, bool)> {
     use std::io::ErrorKind as K;
     Some(match kind {
-        K::StorageFull | K::QuotaExceeded => (SyncErrorKind::DiskError, false),
+        K::StorageFull => (SyncErrorKind::DiskError, false),
+        // A quota, not a full disk: its own kind (CodeRabbit, #1520).
+        K::QuotaExceeded => (SyncErrorKind::QuotaExceeded, false),
         K::FileTooLarge => (SyncErrorKind::FileTooLarge, false),
         K::PermissionDenied | K::ReadOnlyFilesystem => (SyncErrorKind::PermissionDenied, false),
         K::NotFound => (SyncErrorKind::PathNotFound, false),
@@ -6978,6 +6980,11 @@ mod tests {
                 K::Timeout,
                 true,
             ),
+            (
+                format!("Quota del disco superata (os error {})", libc::EDQUOT),
+                K::QuotaExceeded,
+                false,
+            ),
         ];
         for (message, kind, retryable) in &cases {
             let info = classify_sync_error(message, None);
@@ -7030,6 +7037,32 @@ mod tests {
             crate::providers::types::os_error_kind("/x/(os error 28).txt failed"),
             None
         );
+        // CodeRabbit (#1520): a code-shaped name BEFORE the cause, no path
+        // given: two different codes, none trusted, the text decides.
+        #[cfg(unix)]
+        {
+            let name_first = format!(
+                "report (os error {}) final.txt: Connection reset by peer (os error {})",
+                libc::ENOSPC,
+                libc::ECONNRESET
+            );
+            assert_eq!(crate::providers::types::os_error_kind(&name_first), None);
+            let info = classify_sync_error(&name_first, None);
+            assert_eq!(
+                (info.kind, info.retryable),
+                (K::Network, true),
+                "{name_first}"
+            );
+            // The same code twice is still that code.
+            let twice = format!(
+                "Permesso negato (os error {0}) (os error {0})",
+                libc::EACCES
+            );
+            assert_eq!(
+                crate::providers::types::os_error_kind(&twice),
+                Some(std::io::ErrorKind::PermissionDenied)
+            );
+        }
         // No code, a code that is not a number: the text decides, as before.
         assert_eq!(crate::providers::types::os_error_kind("Disk full"), None);
         assert_eq!(

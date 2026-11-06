@@ -5194,9 +5194,32 @@ fn extract_s3_error(body: &str) -> String {
 
 /// Whether an S3 authentication failure is evidence that the signing clock is
 /// wrong. Kept pure so retry classification cannot be widened unnoticed.
+///
+/// The error `<Code>` decides when the body has one: `RequestTimeTooSkewed`
+/// and `RequestExpired` are the clock, while `ExpiredToken` ("The provided
+/// token has expired") is expired credentials, which a re-signed retry
+/// cannot fix and which the old "expired" match took for skew. The message
+/// is read only when there is no code at all. #1506 row 164.
 fn is_s3_clock_skew_error(error_msg: &str, body: &str) -> bool {
+    let code = body
+        .split("<Code>")
+        .nth(1)
+        .and_then(|rest| rest.split("</Code>").next())
+        .map(str::trim)
+        .filter(|code| !code.is_empty());
     let lower = error_msg.to_lowercase();
-    lower.contains("expired") || body.contains("RequestTimeTooSkewed")
+    match code {
+        Some("RequestTimeTooSkewed" | "RequestExpired") => true,
+        // Tencent COS answers a skewed clock with the generic AccessDenied
+        // and says why in the message (CodeRabbit, #1520).
+        Some("AccessDenied") => {
+            lower.contains("requesttimetooskewed")
+                || lower.contains("time too skewed")
+                || lower.contains("request has expired")
+        }
+        Some(_) => false,
+        None => lower.contains("expired"),
+    }
 }
 
 #[async_trait]
@@ -9520,6 +9543,29 @@ mod tests {
             "<Code>RequestTimeTooSkewed</Code>"
         ));
         assert!(is_s3_clock_skew_error("Request has expired", ""));
+        // The code decides over the message: expired credentials are not a
+        // clock problem, and a skew code holds whatever the message says.
+        assert!(!is_s3_clock_skew_error(
+            "The provided token has expired.",
+            "<Error><Code>ExpiredToken</Code><Message>The provided token has expired.</Message></Error>"
+        ));
+        assert!(is_s3_clock_skew_error(
+            "La richiesta è scaduta",
+            "<Error><Code>RequestExpired</Code><Message>La richiesta è scaduta</Message></Error>"
+        ));
+        assert!(!is_s3_clock_skew_error(
+            "Access Denied",
+            "<Error><Code>AccessDenied</Code><Message>Access Denied</Message></Error>"
+        ));
+        // Tencent COS: AccessDenied with the skew in the message.
+        assert!(is_s3_clock_skew_error(
+            "Request has expired",
+            "<Error><Code>AccessDenied</Code><Message>Request has expired</Message></Error>"
+        ));
+        assert!(is_s3_clock_skew_error(
+            "RequestTimeTooSkewed",
+            "<Error><Code>AccessDenied</Code><Message>RequestTimeTooSkewed</Message></Error>"
+        ));
         assert!(
             !is_s3_clock_skew_error("Connection timeout while reading response", ""),
             "one ordinary timeout has zero clock-skew signals and must not spend a re-sign retry"

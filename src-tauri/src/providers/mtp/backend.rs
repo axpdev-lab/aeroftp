@@ -37,10 +37,25 @@ pub(super) fn checked_object_name(decoded: Option<String>) -> Result<String, Pro
         .ok_or_else(|| ProviderError::ParseError("MTP object name could not be read".into()))
 }
 
+/// HRESULTs for "another program holds the device": E_ACCESSDENIED and the
+/// Win32 ERROR_BUSY (170), ERROR_SHARING_VIOLATION (32) and
+/// ERROR_DEVICE_IN_USE (2404) as HRESULT_FROM_WIN32.
 #[cfg(any(target_os = "windows", test))]
-pub(super) fn native_command_error(context: &str, message: &str) -> ProviderError {
+const BUSY_HRESULTS: [u32; 4] = [0x8007_0005, 0x8007_00AA, 0x8007_0020, 0x8007_0964];
+
+/// A failed WPD call as the user reads it. The HRESULT decides "busy or
+/// access denied": `message()` is Windows' text in the user's language, so
+/// the English words matched only an English Windows. The words remain the
+/// fallback for a call without an HRESULT. #1506 row 164.
+#[cfg(any(target_os = "windows", test))]
+pub(super) fn native_command_error(
+    context: &str,
+    message: &str,
+    hresult: Option<i32>,
+) -> ProviderError {
+    let busy_code = hresult.is_some_and(|code| BUSY_HRESULTS.contains(&(code as u32)));
     let lower = message.to_ascii_lowercase();
-    if lower.contains("access") || lower.contains("denied") || lower.contains("busy") {
+    if busy_code || lower.contains("access") || lower.contains("denied") || lower.contains("busy") {
         ProviderError::ConnectionFailed(format!("{context}: device busy or access denied ({message}). Close other apps using the phone and retry."))
     } else {
         ProviderError::ConnectionFailed(format!("{context}: {message}"))
@@ -760,11 +775,43 @@ mod tests {
         );
     }
 
+    /// #1506 row 164: the HRESULT says "busy" in any language.
+    #[test]
+    fn a_busy_device_is_known_by_its_hresult_in_any_language() {
+        let busy = native_command_error(
+            "opening device",
+            "Accesso negato.",
+            Some(0x8007_0005_u32 as i32),
+        );
+        assert!(
+            matches!(&busy, ProviderError::ConnectionFailed(m) if m.contains("device busy")),
+            "{busy:?}"
+        );
+        let in_use = native_command_error(
+            "opening device",
+            "Die angeforderte Ressource wird verwendet.",
+            Some(0x8007_00AA_u32 as i32),
+        );
+        assert!(
+            matches!(&in_use, ProviderError::ConnectionFailed(m) if m.contains("device busy")),
+            "{in_use:?}"
+        );
+        let other = native_command_error(
+            "opening device",
+            "Elemento non trovato.",
+            Some(0x8007_0490_u32 as i32),
+        );
+        assert!(
+            matches!(&other, ProviderError::ConnectionFailed(m) if !m.contains("device busy")),
+            "{other:?}"
+        );
+    }
+
     #[test]
     fn probe_contract_mtp_native_failures_cannot_prove_absence() {
         for message in ["device removed", "element not found", "access denied"] {
             assert!(!matches!(
-                native_command_error("enumerating storage", message),
+                native_command_error("enumerating storage", message, None),
                 ProviderError::NotFound(_)
             ));
         }

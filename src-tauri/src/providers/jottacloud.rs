@@ -368,10 +368,7 @@ impl JottacloudProvider {
             })?;
         if !resp.status().is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(ProviderError::AuthenticationFailed(format!(
-                "Token exchange failed: {}",
-                sanitize_api_error(&body)
-            )));
+            return Err(token_exchange_refusal(&body));
         }
         let token_resp: TokenResponse = resp.json().await.map_http_err(|e| {
             ProviderError::AuthenticationFailed(format!("Token response parse failed: {}", e))
@@ -1499,17 +1496,9 @@ impl StorageProvider for JottacloudProvider {
 
             // Step 3: Exchange credentials for access token
             // Login tokens are single-use: if already consumed, this returns invalid_grant.
-            let token_resp = self.exchange_token(&token_endpoint, &username, &auth_token).await
-                .map_err(|e| {
-                    let msg = format!("{}", e);
-                    if msg.contains("invalid_grant") || msg.contains("Invalid user credentials") {
-                        ProviderError::AuthenticationFailed(
-                            "Login token expired or already used. Generate a new Personal Login Token at jottacloud.com → Settings → Security.".to_string()
-                        )
-                    } else {
-                        e
-                    }
-                })?;
+            let token_resp = self
+                .exchange_token(&token_endpoint, &username, &auth_token)
+                .await?;
 
             self.username = username;
             self.access_token = SecretString::from(token_resp.access_token.unwrap_or_default());
@@ -3471,8 +3460,53 @@ fn refresh_or_login_token(refresh: Result<bool, ProviderError>) -> Result<bool, 
     }
 }
 
+/// The error a refused token exchange becomes. The OAuth 2.0 `error` code
+/// decides (RFC 6749 section 5.2): `invalid_grant` is a Personal Login Token
+/// already spent or expired, since those tokens are single-use. The
+/// description next to it is the server's prose and is only shown. #1506
+/// row 164.
+fn token_exchange_refusal(body: &str) -> ProviderError {
+    let code = serde_json::from_str::<serde_json::Value>(body)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("error")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        });
+    if code.as_deref() == Some("invalid_grant") {
+        return ProviderError::AuthenticationFailed(
+            "Login token expired or already used. Generate a new Personal Login Token at jottacloud.com → Settings → Security.".to_string(),
+        );
+    }
+    ProviderError::AuthenticationFailed(format!(
+        "Token exchange failed: {}",
+        sanitize_api_error(body)
+    ))
+}
+
 #[cfg(test)]
 mod tests {
+    /// #1506 row 164: the OAuth `error` code decides a spent login token,
+    /// whatever language or wording the description is in.
+    #[test]
+    fn a_spent_login_token_is_read_from_the_oauth_error_code() {
+        let spent = super::token_exchange_refusal(
+            r#"{"error":"invalid_grant","error_description":"Credenziali utente non valide"}"#,
+        );
+        assert!(
+            matches!(&spent, super::ProviderError::AuthenticationFailed(m) if m.starts_with("Login token expired")),
+            "{spent:?}"
+        );
+        let other = super::token_exchange_refusal(
+            r#"{"error":"invalid_client","error_description":"Invalid user credentials"}"#,
+        );
+        assert!(
+            matches!(&other, super::ProviderError::AuthenticationFailed(m) if m.starts_with("Token exchange failed")),
+            "{other:?}"
+        );
+    }
+
     #[test]
     fn sync_namespace_identity_tracks_authenticated_account_and_discovered_mount() {
         let mut provider = test_provider();

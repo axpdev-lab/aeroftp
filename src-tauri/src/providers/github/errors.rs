@@ -372,6 +372,7 @@ pub fn classify_api_error(
                 GitHubError::PrimaryRateLimit { reset_at: 0 }
             } else if message.contains("abuse") || message.contains("secondary") {
                 GitHubError::SecondaryRateLimit { retry_after: 60 }
+            // Kept as text (#1506 row 164): a protected-branch 403 has no code; GitHub's API messages are English.
             } else if message.contains("push") || message.contains("protected") {
                 GitHubError::ProtectedBranch(path_hint.unwrap_or("unknown").to_string())
             } else {
