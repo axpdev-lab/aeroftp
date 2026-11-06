@@ -3475,6 +3475,40 @@ mod tests {
         assert!(fake.home.join("bundle/.ssh/authorized_keys").exists());
     }
 
+    // The filesystem root holds every protected location: `path_matches_prefix`
+    // built `//` for it and found none, so an extraction into `/` passed.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_archive_is_never_extracted_into_the_filesystem_root() {
+        use std::io::Write;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let archive = fake.home.join("root.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        zip.start_file(
+            "aeroftp-root-extraction-must-not-exist.txt",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"x").unwrap();
+        zip.finish().unwrap();
+        let err = dispatch_tool(
+            &ctx,
+            "archive_decompress",
+            &json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": "/",
+                "create_subfolder": false,
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(!std::path::Path::new("/aeroftp-root-extraction-must-not-exist.txt").exists());
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     // The shared test-only env lock must cover the async call using this HOME.

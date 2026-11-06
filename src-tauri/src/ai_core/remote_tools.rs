@@ -3357,14 +3357,26 @@ fn scan_local_files(
     let mut completeness = crate::sync_core::ScanCompleteness::default();
     // A local_dir the policy allows says nothing of what lies below it: a
     // protected file is never listed, sized or read for a checksum.
+    // Each one skipped makes the scan partial, the way a refused remote
+    // listing does: the comparison must not report it missing locally.
     let policy = crate::ai_core::local_tools::PathPolicy::current();
+    let protected_skipped = std::cell::Cell::new(0usize);
     for entry in walkdir::WalkDir::new(local_path)
         .follow_links(false)
         .max_depth(MAX_BFS_DEPTH)
         .into_iter()
         .filter_entry(|e| {
-            e.depth() == 0
-                || (!exclude.is_excluded(&relative_of(e.path())) && !policy.refuses(e.path()))
+            if e.depth() == 0 {
+                return true;
+            }
+            if exclude.is_excluded(&relative_of(e.path())) {
+                return false;
+            }
+            if policy.refuses(e.path()) {
+                protected_skipped.set(protected_skipped.get() + 1);
+                return false;
+            }
+            true
         })
     {
         let entry = match entry {
@@ -3402,6 +3414,7 @@ fn scan_local_files(
             .map(|d| d.as_secs() as i64);
         files.insert(rel, (metadata.len(), mtime_secs));
     }
+    completeness.list_errors += protected_skipped.get();
     (files, completeness)
 }
 
@@ -4596,13 +4609,18 @@ mod tests {
         }
         let previous = std::env::var_os("HOME");
         std::env::set_var("HOME", &home);
-        let (files, _) = scan_local_files(&home, &crate::sync_exclude::ExcludeMatcher::default());
+        let (files, scan) =
+            scan_local_files(&home, &crate::sync_exclude::ExcludeMatcher::default());
         match previous {
             Some(value) => std::env::set_var("HOME", value),
             None => std::env::remove_var("HOME"),
         }
         let listed: Vec<&String> = files.keys().collect();
         assert_eq!(listed, vec!["notes.txt"], "{listed:?}");
+        // What it left out makes the scan partial, so nothing protected is
+        // reported missing locally.
+        assert!(!scan.is_complete());
+        assert_eq!(scan.list_errors, 2);
     }
 
     #[test]

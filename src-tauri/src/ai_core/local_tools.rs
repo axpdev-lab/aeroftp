@@ -72,7 +72,23 @@ fn home_dir_string() -> Option<String> {
 /// Component-aware prefix check. `/bootcamp` non matcha `/boot`,
 /// `/boot/efi` sì. Risolve M-1 finding del Gate 2 audit.
 pub(crate) fn path_matches_prefix(path: &str, prefix: &str) -> bool {
-    path == prefix || path.starts_with(&format!("{}/", prefix))
+    path_below(path, prefix).is_some()
+}
+
+/// What follows `prefix` in `path`, component-aware: `Some("")` for the
+/// prefix itself. A prefix that already ends in a separator (the root `/`) is
+/// not given a second one, so everything absolute lies below `/`: with `//`
+/// the root held nothing, and an extraction into `/` passed the guard.
+fn path_below<'a>(path: &'a str, prefix: &str) -> Option<&'a str> {
+    if path == prefix {
+        return Some("");
+    }
+    let rest = path.strip_prefix(prefix)?;
+    if prefix.ends_with('/') {
+        Some(rest)
+    } else {
+        rest.strip_prefix('/')
+    }
 }
 
 /// System locations no AI tool reads or writes.
@@ -208,9 +224,8 @@ fn carried_into_protected(source: &str, dest: &str) -> Option<String> {
         .into_iter()
         .map(|protected| protected.location)
         .find(|location| {
-            location
-                .strip_prefix(&dest_real)
-                .and_then(|rest| rest.strip_prefix('/'))
+            path_below(location, &dest_real)
+                .filter(|rel| !rel.is_empty())
                 .is_some_and(|rel| may_exist(&std::path::Path::new(source).join(rel)))
         })
 }
@@ -2270,6 +2285,17 @@ mod secval_a_tests {
 #[cfg(test)]
 mod windows_home_denylist_tests {
     use super::*;
+
+    #[test]
+    fn everything_absolute_lies_below_the_root() {
+        assert!(path_matches_prefix("/etc/sudoers", "/"));
+        assert!(path_matches_prefix("/", "/"));
+        assert!(path_matches_prefix("/home/u/.ssh/id", "/home/u/.ssh"));
+        assert!(!path_matches_prefix("/home/u/.sshx", "/home/u/.ssh"));
+        assert!(!path_matches_prefix("/bootcamp", "/boot"));
+        assert_eq!(path_below("/home/u/.ssh", "/"), Some("home/u/.ssh"));
+        assert_eq!(path_below("c:/users/me/.ssh", "c:"), Some("users/me/.ssh"));
+    }
 
     #[test]
     fn a_canonical_windows_path_matches_the_home_prefix() {
