@@ -572,11 +572,23 @@ impl GitHubProvider {
             .await
         {
             Ok(_) => Ok(()),
-            Err(GitHubError::Unprocessable(message))
-                if message.to_lowercase().contains("reference already exists") =>
+            // GitHub refuses a ref that already exists with a 422, which the
+            // client maps to `ApiError { status: 422 }`: the arm that read
+            // "reference already exists" off `Unprocessable` never matched,
+            // and a branch created meanwhile (another device, another tab)
+            // failed the write. The branch is looked up again instead of
+            // reading the message. #1506 row 164.
+            Err(
+                refused @ (GitHubError::Unprocessable(_)
+                | GitHubError::ApiError { status: 422, .. }),
+            ) => match self
+                .client
+                .get_json::<GitHubBranch>(&self.branch_api_url(branch))
+                .await
             {
-                Ok(())
-            }
+                Ok(_) => Ok(()),
+                Err(_) => Err(ProviderError::from(refused)),
+            },
             Err(e) => Err(ProviderError::from(e)),
         }
     }
@@ -1985,6 +1997,74 @@ mod tests {
         assert!(!provider.exists("/missing").await.unwrap());
         assert!(provider.exists("/denied").await.is_err());
         server.abort();
+    }
+
+    /// #1506 row 164: a branch that appears between the lookup and the
+    /// create (422 from git/refs) is found by a second lookup, not by the
+    /// message; a 422 for any other reason still fails.
+    #[tokio::test]
+    async fn a_branch_created_meanwhile_is_found_again_not_read_from_the_refusal() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        for (appears, expect_ok) in [(true, true), (false, false)] {
+            let lookups = Arc::new(AtomicUsize::new(0));
+            let seen = lookups.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let seen = seen.clone();
+                    async move {
+                        if method == axum::http::Method::POST && uri.path().ends_with("/git/refs") {
+                            return (
+                                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                                axum::Json(
+                                    serde_json::json!({"message": "Riferimento già esistente"}),
+                                ),
+                            )
+                                .into_response();
+                        }
+                        if uri.path().contains("/branches/") {
+                            let n = seen.fetch_add(1, Ordering::SeqCst);
+                            if n > 0 && appears {
+                                return axum::Json(serde_json::json!({
+                                    "name": "aeroftp/u/main", "protected": false,
+                                    "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
+                                }))
+                                .into_response();
+                            }
+                        }
+                        (
+                            axum::http::StatusCode::NOT_FOUND,
+                            axum::Json(serde_json::json!({"message": "Not Found"})),
+                        )
+                            .into_response()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut provider = GitHubProvider::new(
+                GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/")))
+                    .unwrap(),
+            )
+            .unwrap();
+            provider.connected = true;
+            provider.client.api_origin_override = Some(format!("http://{addr}"));
+            let outcome = provider
+                .ensure_branch_exists_from_sha(
+                    "aeroftp/u/main",
+                    "0123456789abcdef0123456789abcdef01234567",
+                )
+                .await;
+            server.abort();
+            assert_eq!(outcome.is_ok(), expect_ok, "appears={appears}: {outcome:?}");
+            assert_eq!(
+                lookups.load(Ordering::SeqCst),
+                2,
+                "one lookup before, one after the 422"
+            );
+        }
     }
 
     /// The folder of a search reads as `list` reads it: a relative one from the
