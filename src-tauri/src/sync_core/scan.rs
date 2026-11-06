@@ -2337,7 +2337,13 @@ fn is_transport_level(e: &ProviderError) -> bool {
                 "stream closed",
                 "bad file descriptor",
             ];
-            PATTERNS.iter().any(|p| lower.contains(p))
+            // A translated OS message carries none of these phrases; its
+            // code does (#1506 row 164).
+            let by_code = crate::providers::types::os_error_kind(msg).is_some_and(|kind| {
+                crate::providers::types::os_error_kind_closes_the_session(kind)
+                    || kind == std::io::ErrorKind::ConnectionRefused
+            });
+            by_code || PATTERNS.iter().any(|p| lower.contains(p))
         }
         _ => false,
     }
