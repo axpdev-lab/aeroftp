@@ -52,6 +52,16 @@
  *                        catalog counts as registry-sourced; do not use it when
  *                        the sentence just says "presets"
  *   providers            companies in the logo grid / catalog
+ *   storage_backends     the total, one entry per thing a user stores files on:
+ *                        every company, plus each protocol that is a product of
+ *                        its own (any S3 server, any WebDAV server, ...), plus
+ *                        devices (MTP). The rclone-style figure ("70+ backends"
+ *                        counts products and protocols the same way). FTPS is a
+ *                        mode of FTP and Azure Blob is the company Azure, so
+ *                        neither counts twice. Quote it NEXT TO
+ *                        connection_methods, never added to it: those are the
+ *                        same backends counted once per code path (MEGA is one
+ *                        backend and two methods, MEGAcmd and the native API)
  *   connection_methods   provider-protocol pairs, so a company reachable over
  *                        both WebDAV and S3 counts twice
  *   catalog_services     tiles a user actually sees in Add Services, generic
@@ -84,6 +94,16 @@ const OUT = join(HERE, '..', 'docs', 'PROVIDER-INVENTORY.json');
  */
 const TRANSPORT_PROTOCOL_IDS = ['ftp', 'ftps', 'sftp', 'scp', 'webdav', 's3', 'azure', 'swift'];
 
+/**
+ * Transport protocols that are not a product of their own: FTPS is a mode of
+ * FTP (one backend, as rclone counts it), and `azure` is the Azure company's
+ * own protocol, already counted among the companies.
+ */
+const TRANSPORT_NOT_A_BACKEND = ['ftps', 'azure'];
+
+/** Device protocols: storage that is not a server (portable devices over MTP). */
+const DEVICE_PROTOCOL_IDS = ['mtp'];
+
 const catalogProtocolIds = (): string[] => [
     ...new Set(PROVIDER_CATALOG.flatMap((c) => (c.protocols ?? []).map((p) => p.protocol))),
 ].sort();
@@ -113,6 +133,21 @@ function build() {
 
     const categories = buildDiscoverCategories();
 
+    // A device protocol is counted only while Add Services still offers it, so
+    // dropping MTP from the catalog cannot leave the total claiming it.
+    const offered = new Set<string>(categories.flatMap((c) => c.items.map((i) => i.protocol)));
+    for (const id of DEVICE_PROTOCOL_IDS) {
+        if (!offered.has(id)) throw new Error(`device protocol '${id}' is not in the Add Services catalog`);
+    }
+    const companyIds = new Set(companies.map((c) => c.logoId));
+    for (const id of TRANSPORT_NOT_A_BACKEND.filter((p) => p !== 'ftps')) {
+        if (!companyIds.has(id)) throw new Error(`'${id}' is counted as a company, but no company has that id`);
+    }
+    const protocolBackends = [
+        ...TRANSPORT_PROTOCOL_IDS.filter((p) => !TRANSPORT_NOT_A_BACKEND.includes(p)),
+        ...DEVICE_PROTOCOL_IDS,
+    ];
+
     return {
         schema_version: 1,
         generated_by: 'scripts/gen-provider-inventory.ts',
@@ -125,11 +160,13 @@ function build() {
             connection_forms_generic: generic.length,
             connection_forms_named_without_defaults: blankNamed.length,
             providers: companies.length,
+            storage_backends: companies.length + protocolBackends.length,
             connection_methods: connectionMethods,
             catalog_services: getTotalServiceCount(),
         },
         transport_protocols: TRANSPORT_PROTOCOL_IDS,
         native_integrations: nativeIntegrations,
+        storage_backends_beyond_providers: protocolBackends,
         presets_by_category: Object.fromEntries(
             [...new Set(presets.map((p) => p.category))].sort().map((cat) => [
                 cat,
@@ -170,6 +207,22 @@ if (process.argv.includes('--check')) {
         process.exitCode = 1;
     } else {
         console.log('docs/PROVIDER-INVENTORY.json is current.');
+    }
+    // The totals are quoted as prose, which no generator owns: hold the two
+    // places that state them to the figures just derived.
+    const { storage_backends: backends, connection_methods: methods } = inventory.counts;
+    for (const [file, wanted] of [
+        ['README.md', `**In total: ${backends} storage backends, ${methods} connection methods.**`],
+        ['docs/PROTOCOL-FEATURES.md', `**${backends} storage backends**`],
+        ['README.md', `<strong>${backends} storage backends, ${methods} connection methods</strong>`],
+        ['README.md', `badge/storage%20backends-${backends}-`],
+        ['README.md', `badge/connection%20methods-${methods}-`],
+    ] as const) {
+        const text = readFileSync(join(HERE, '..', file), 'utf8');
+        if (!text.includes(wanted)) {
+            console.error(`${file} does not say "${wanted}": update the totals sentence.`);
+            process.exitCode = 1;
+        }
     }
 } else {
     writeFileSync(OUT, serialised, 'utf8');

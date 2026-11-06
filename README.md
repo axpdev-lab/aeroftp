@@ -7,7 +7,7 @@
 > _Last updated: 2026-10-26_
 
 <p align="center">
-  The modern FTP client that grew into a complete file management platform. Multi-protocol, 7 integrated product modules, 47 languages, one app.
+  The modern FTP client that grew into a complete file management platform. <strong>64 storage backends, 71 connection methods</strong>, 7 integrated product modules, 47 languages, one app.
 </p>
 
 <p align="center">
@@ -24,7 +24,8 @@
 
 <!-- Row 2: App Features -->
 <p align="center">
-  <img src="https://img.shields.io/badge/support-multi--protocol-green" alt="Multi-Protocol Support" />
+  <img src="https://img.shields.io/badge/storage%20backends-64-green" alt="64 Storage Backends" />
+  <img src="https://img.shields.io/badge/connection%20methods-71-green" alt="71 Connection Methods" />
   <img src="https://img.shields.io/badge/AI%20providers-26-ff6600?logo=openai&logoColor=white" alt="AI Providers" />
   <img src="https://img.shields.io/badge/AI%20tools-86-ff6600" alt="AI Tools" />
   <img src="https://img.shields.io/badge/languages-47-orange" alt="Languages" />
@@ -83,11 +84,14 @@ AeroFTP is an FTP client first. Full encryption support with configurable TLS mo
 
 ## Integrations
 
-AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague. The figures below are generated into [`docs/PROVIDER-INVENTORY.json`](docs/PROVIDER-INVENTORY.json) from the catalog and the registry, and CI fails when they drift from the code:
+**In total: 64 storage backends, 71 connection methods.** A storage backend is one thing you keep files on: each of the 57 providers, plus every protocol that is a product of its own (any FTP/FTPS, SFTP, SCP, WebDAV, S3-compatible or OpenStack Swift server) and portable devices over MTP. That is how rclone counts its backends. A connection method is one code path to a backend, so a provider reachable two ways counts twice (MEGA through MEGAcmd and through its native API, Filen natively and through its desktop S3 and WebDAV bridges). The two figures stand side by side; adding them would count every backend twice.
+
+Under the totals, AeroFTP organizes integrations on three tiers, so what you see in the catalog is precise rather than vague. These figures and the totals above are generated into [`docs/PROVIDER-INVENTORY.json`](docs/PROVIDER-INVENTORY.json) from the catalog and the registry, and CI fails when they drift from the code:
 
 1. **Transport protocols (8):** native wire-level support for FTP, FTPS, SFTP, SCP, WebDAV, S3, Azure Blob, OpenStack Swift. SCP reaches SSH servers without SFTP, including OpenWrt routers; SFTP profiles fall back to SCP on the same connection by default (see [SCP support and limits](docs/PROTOCOL-FEATURES.md#scp-ssh-servers-without-sftp)). Plus **portable devices over MTP / WPD** - attached phones, cameras and media players that the OS never assigns a drive letter, saved as profiles keyed to a stable device fingerprint (see [Portable devices](docs/PROTOCOL-FEATURES.md#portable-devices-mtp--wpd)).
 2. **Native provider integrations (26):** dedicated OAuth2 / API key / SDK code paths per provider, so each one's specific features (sharing, native delta sync, server-side copy, large-file chunking, media-CDN transformations) are first-class instead of best-effort. Includes the dedicated **media services** tier (ImageKit, Uploadcare, Cloudinary, Immich, PixelUnion).
 3. **Pre-configured presets (48):** the form arrives already filled in, server URL, port, base path and password-generation deep-link, for a named service on top of the protocols above (S3-compatible endpoints from MEGA S4 to FileLu S5 to MinIO, WebDAV-compatible servers including Nextcloud, TAB.DIGITAL, Felicloud, Seafile, InfiniCLOUD, etc.). A form with nothing pre-filled is not a preset: the two generic ones (Custom S3, WebDAV Server) exist precisely for when no preset applies.
+
 
 <!-- BEGIN PROVIDERS-GRID -->
 

@@ -10,6 +10,7 @@
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
     "providers": 57,
+    "storage_backends": 64,
     "connection_methods": 71,
     "catalog_services": 79
   },
@@ -50,6 +51,15 @@
     "uploadcare",
     "yandexdisk",
     "zohoworkdrive"
+  ],
+  "storage_backends_beyond_providers": [
+    "ftp",
+    "sftp",
+    "scp",
+    "webdav",
+    "s3",
+    "swift",
+    "mtp"
   ],
   "presets_by_category": {
     "ftp": [
