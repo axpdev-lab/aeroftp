@@ -12130,22 +12130,31 @@ async fn run_shared_download_of_known_files(
     overall_pb: Option<ProgressBar>,
     cancelled: Arc<AtomicBool>,
 ) -> Result<SharedDownloadOutcome, Box<dyn StorageProvider>> {
-    let native_bulk_is_useful =
-        ftp_client_gui_lib::providers::bulk::bulk_directions(&runtime.capabilities).1
-            && ftp_client_gui_lib::providers::bulk::reduces_cli_invocations(
-                &files
-                    .iter()
-                    .map(|(remote, local, size)| {
-                        ftp_client_gui_lib::providers::bulk::BulkTransferItem {
-                            local_path: local.clone(),
-                            remote_path: remote.clone(),
-                            size: *size,
-                        }
-                    })
-                    .collect::<Vec<_>>(),
+    let items: Vec<_> = files
+        .iter()
+        .map(
+            |(remote, local, size)| ftp_client_gui_lib::providers::bulk::BulkTransferItem {
+                local_path: local.clone(),
+                remote_path: remote.clone(),
+                size: *size,
+            },
+        )
+        .collect();
+    // The provider is asked about every group: one it would refuse would run
+    // file after file on the bulk's single lease.
+    let native_bulk_is_useful = match runtime.provider_arc.lock().await.as_mut() {
+        Some(provider) => {
+            ftp_client_gui_lib::providers::bulk::cli_bulk_pays(
+                provider.as_mut(),
+                &runtime.capabilities,
+                &items,
                 false,
                 runtime.workers,
-            );
+            )
+            .await
+        }
+        None => false,
+    };
     if !runtime.is_pool_backed() && !native_bulk_is_useful {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.
@@ -12664,9 +12673,31 @@ async fn run_shared_provider_upload_batch(
             | ProviderExecutorSessionModel::SftpConnectionPool { .. }
             | ProviderExecutorSessionModel::FtpConnectionPool { .. }
     );
-    let native_bulk_is_useful = ftp_client_gui_lib::providers::bulk::bulk_directions(&capabilities)
-        .0
-        && native_bulk_upload_pays(files, workers);
+    let items: Vec<_> = files
+        .iter()
+        .map(
+            |(local, remote, size)| ftp_client_gui_lib::providers::bulk::BulkTransferItem {
+                local_path: local.clone(),
+                remote_path: remote.clone(),
+                size: *size,
+            },
+        )
+        .collect();
+    // As for downloads: every group the engine forms must be one the
+    // provider's bulk takes, or the workers stay.
+    let native_bulk_is_useful = match provider_arc.lock().await.as_mut() {
+        Some(provider) => {
+            ftp_client_gui_lib::providers::bulk::cli_bulk_pays(
+                provider.as_mut(),
+                &capabilities,
+                &items,
+                true,
+                workers,
+            )
+            .await
+        }
+        None => false,
+    };
     if !is_pool_backed && !native_bulk_is_useful {
         // Not pool-backed: return the still-connected provider so the
         // caller runs the legacy independent-connection batch.

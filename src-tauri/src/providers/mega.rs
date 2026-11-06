@@ -1024,6 +1024,12 @@ impl StorageProvider for MegaCmdProvider {
         self.bulk_upload(items, progress).await
     }
 
+    /// The adapter's own admission (see `bulk`): one remote folder, new names
+    /// only for uploads, a whole folder of at most 256 files for downloads.
+    async fn bulk_admits(&mut self, items: &[super::bulk::BulkTransferItem], upload: bool) -> bool {
+        self.bulk_admits_group(items, upload).await
+    }
+
     /// Every file of one folder in one folder `mega-get` into private
     /// staging, published file by file on proof (see `bulk`).
     async fn download_bulk(

@@ -323,6 +323,17 @@ struct Admitted {
     local_arg: String,
 }
 
+/// What [`MegaCmdProvider::download_admission`] admitted.
+struct DownloadPlan {
+    remote_folder: String,
+    local_folder: std::path::PathBuf,
+    folder_name: String,
+    /// Planned name → item index.
+    names: HashMap<String, usize>,
+    /// Name → (entries of that name, size) in the folder listing.
+    listed: HashMap<String, (usize, u64)>,
+}
+
 fn not_admitted(items: &[BulkTransferItem]) -> Vec<BulkTransferOutcome> {
     items
         .iter()
@@ -361,23 +372,31 @@ impl MegaCmdProvider {
         ]
     }
 
-    /// The server's rows for one direction, or none when it cannot be asked.
-    async fn transfer_record(&self, downloads: bool) -> Vec<TransferRow> {
+    /// The server's rows for one direction. An error is kept apart from an
+    /// empty record: without the record nothing is known about what the
+    /// server is still doing.
+    async fn transfer_record(&self, downloads: bool) -> Result<Vec<TransferRow>, ProviderError> {
         self.run_mega_cmd("mega-transfers", &Self::transfer_rows_args(downloads))
             .await
             .map(|out| transfer_rows(&out, downloads))
-            .unwrap_or_default()
     }
 
-    /// Cancel `tags`, one at a time, and disarm `owned`: what is left of the
-    /// bulk is settled from here on.
-    async fn cancel_owned(&self, owned: &mut OwnedTransfers, tags: Vec<String>) {
+    /// Cancel `tags`, one at a time. Only when every cancel went through is
+    /// `owned` disarmed and `true` returned; otherwise the guard stays armed,
+    /// so dropping it tries again, and the caller must treat the server as
+    /// possibly still writing.
+    async fn cancel_owned(&self, owned: &mut OwnedTransfers, tags: Vec<String>) -> bool {
+        let mut all = true;
         for tag in tags {
             if let Err(e) = self.run_mega_cmd("mega-transfers", &["-c", &tag]).await {
                 tracing::warn!(target: "mega", "[BULK] cancel of transfer {tag} failed: {e}");
+                all = false;
             }
         }
-        owned.armed = false;
+        if all {
+            owned.armed = false;
+        }
+        all
     }
 
     fn bulk_command(&self, cmd: &str, args: &[String]) -> tokio::process::Command {
@@ -388,19 +407,33 @@ impl MegaCmdProvider {
         command
     }
 
-    /// Several new files of one remote folder in one `mega-put`. Only names
-    /// the folder does not hold yet are admitted: an existing name keeps the
-    /// single-file path and its overwrite rules. A file is Completed only
-    /// when the server's record shows its tag COMPLETED and MEGA lists it
-    /// once at its size. Without a tag and without the file on MEGA it was
-    /// never started (NotAttempted); anything else unproven may be on MEGA
-    /// (Uncertain). The bulk command runs once and is never replayed.
-    pub(super) async fn bulk_upload(
+    /// Whether the bulk takes `items` as one group, with the checks the bulk
+    /// itself runs ([`Self::upload_admission`], [`Self::download_admission`]):
+    /// a caller keeps its independent workers for a group the bulk would hand
+    /// back file by file. An upload counts only if every item is admitted.
+    pub(super) async fn bulk_admits_group(
         &mut self,
         items: &[BulkTransferItem],
-        progress: Option<BulkProgress>,
-    ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
-        let mut outcomes = not_admitted(items);
+        upload: bool,
+    ) -> bool {
+        if upload {
+            self.upload_admission(items)
+                .await
+                .is_some_and(|(_, admitted)| admitted.len() == items.len())
+        } else {
+            self.download_admission(items).await.is_some()
+        }
+    }
+
+    /// The files of `items` one `mega-put` can carry: one remote folder, plain
+    /// names the local file shares, unchanged sources, within the bounds, and
+    /// only names the folder does not hold yet (one listing). `None` when
+    /// fewer than two remain: one file gains nothing from a bulk, and the
+    /// single-file path also shows its progress.
+    async fn upload_admission(
+        &mut self,
+        items: &[BulkTransferItem],
+    ) -> Option<(String, Vec<Admitted>)> {
         let mut admitted: Vec<Admitted> = Vec::new();
         let mut group_parent: Option<String> = None;
         let mut names = HashSet::new();
@@ -441,20 +474,101 @@ impl MegaCmdProvider {
                 local_arg: Self::normalize_local_path_for_cli(&absolute),
             });
         }
-        let Some(parent) = group_parent else {
-            return Ok(outcomes);
-        };
+        let parent = group_parent?;
         // Only new destinations: one listing of the folder before the put.
         let Ok(before) = self.list(&parent).await else {
-            return Ok(outcomes);
+            return None;
         };
         let present = listed_names(&before);
         admitted.retain(|a| !present.contains_key(&a.name));
         if admitted.len() < 2 {
             // One file gains nothing from a bulk; the single-file path also
             // shows its progress.
-            return Ok(outcomes);
+            return None;
         }
+        Some((parent, admitted))
+    }
+
+    /// The plan of one folder `mega-get` for `items`: every file of one remote
+    /// folder into one local folder, plain names that no filesystem folds
+    /// together, within the bounds, and a folder that holds exactly these
+    /// files and no folder (one listing). `None` otherwise.
+    async fn download_admission(&mut self, items: &[BulkTransferItem]) -> Option<DownloadPlan> {
+        if items.len() < 2 || items.len() > MAX_BULK_FILES {
+            return None;
+        }
+        let mut remote_folder: Option<String> = None;
+        let mut local_folder: Option<std::path::PathBuf> = None;
+        let mut names: HashMap<String, usize> = HashMap::new();
+        let mut folded = HashSet::new();
+        let mut bytes = 0u64;
+        for (index, item) in items.iter().enumerate() {
+            let remote = self.resolve_path(&item.remote_path);
+            let (Some(name), Some(parent)) = (plain_bulk_name(&remote), remote_parent(&remote))
+            else {
+                return None;
+            };
+            let absolute = absolute_local_path(&item.local_path)?;
+            let local = Path::new(&absolute);
+            let local_parent = local.parent().map(Path::to_path_buf);
+            bytes = bytes.saturating_add(item.size);
+            if parent == "/"
+                || local.file_name().and_then(|n| n.to_str()) != Some(name)
+                || names.insert(name.to_string(), index).is_some()
+                // Names this filesystem may fold together would land on one
+                // staged file.
+                || !folded.insert(name.to_lowercase())
+                || remote_folder.as_deref().is_some_and(|f| f != parent)
+                || local_folder.is_some() && local_folder != local_parent
+                || local_parent.is_none()
+                || bytes > MAX_BULK_BYTES
+            {
+                return None;
+            }
+            remote_folder = Some(parent.to_string());
+            local_folder = local_parent;
+        }
+        let (Some(remote_folder), Some(local_folder)) = (remote_folder, local_folder) else {
+            return None;
+        };
+        // The folder holds exactly these files: no other file, no folder.
+        let Ok(listing) = self.list(&remote_folder).await else {
+            return None;
+        };
+        let listed = listed_names(&listing);
+        if listing.iter().any(|e| e.is_dir)
+            || listed.len() != names.len()
+            || listed.values().any(|(count, _)| *count != 1)
+            || names.keys().any(|n| !listed.contains_key(n))
+        {
+            return None;
+        }
+        let folder_name = remote_folder.rsplit('/').next().filter(|n| !n.is_empty())?;
+        Some(DownloadPlan {
+            folder_name: folder_name.to_string(),
+            remote_folder,
+            local_folder,
+            names,
+            listed,
+        })
+    }
+
+    /// Several new files of one remote folder in one `mega-put`. Only names
+    /// the folder does not hold yet are admitted: an existing name keeps the
+    /// single-file path and its overwrite rules. A file is Completed only
+    /// when the server's record shows its tag COMPLETED and MEGA lists it
+    /// once at its size. Without a tag and without the file on MEGA it was
+    /// never started (NotAttempted); anything else unproven may be on MEGA
+    /// (Uncertain). The bulk command runs once and is never replayed.
+    pub(super) async fn bulk_upload(
+        &mut self,
+        items: &[BulkTransferItem],
+        progress: Option<BulkProgress>,
+    ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
+        let mut outcomes = not_admitted(items);
+        let Some((parent, admitted)) = self.upload_admission(items).await else {
+            return Ok(outcomes);
+        };
 
         let mut args = vec!["--print-tag-at-start".to_string()];
         args.extend(admitted.iter().map(|a| a.local_arg.clone()));
@@ -496,7 +610,9 @@ impl MegaCmdProvider {
             tracing::warn!(target: "mega", "[BULK] mega-put did not end normally: {e:?}");
         }
 
-        let rows = self.transfer_record(false).await;
+        // Without the record every tag counts as unfinished and is cancelled,
+        // and no file is proven (uncertain).
+        let rows = self.transfer_record(false).await.unwrap_or_default();
         let unfinished = owned.unfinished(&rows);
         self.cancel_owned(&mut owned, unfinished.clone()).await;
         let mut states: HashMap<&str, Option<&str>> = HashMap::new();
@@ -587,64 +703,22 @@ impl MegaCmdProvider {
         progress: Option<BulkProgress>,
     ) -> Result<Vec<BulkTransferOutcome>, ProviderError> {
         let mut outcomes = not_admitted(items);
-        if items.len() < 2 || items.len() > MAX_BULK_FILES {
-            return Ok(outcomes);
-        }
-        let mut remote_folder: Option<String> = None;
-        let mut local_folder: Option<std::path::PathBuf> = None;
-        let mut names: HashMap<String, usize> = HashMap::new();
-        let mut folded = HashSet::new();
-        let mut bytes = 0u64;
-        for (index, item) in items.iter().enumerate() {
-            let remote = self.resolve_path(&item.remote_path);
-            let (Some(name), Some(parent)) = (plain_bulk_name(&remote), remote_parent(&remote))
-            else {
-                return Ok(outcomes);
-            };
-            let Some(absolute) = absolute_local_path(&item.local_path) else {
-                return Ok(outcomes);
-            };
-            let local = Path::new(&absolute);
-            let local_parent = local.parent().map(Path::to_path_buf);
-            bytes = bytes.saturating_add(item.size);
-            if parent == "/"
-                || local.file_name().and_then(|n| n.to_str()) != Some(name)
-                || names.insert(name.to_string(), index).is_some()
-                // Names this filesystem may fold together would land on one
-                // staged file.
-                || !folded.insert(name.to_lowercase())
-                || remote_folder.as_deref().is_some_and(|f| f != parent)
-                || local_folder.is_some() && local_folder != local_parent
-                || local_parent.is_none()
-                || bytes > MAX_BULK_BYTES
-            {
-                return Ok(outcomes);
-            }
-            remote_folder = Some(parent.to_string());
-            local_folder = local_parent;
-        }
-        let (Some(remote_folder), Some(local_folder)) = (remote_folder, local_folder) else {
-            return Ok(outcomes);
-        };
-        // The folder holds exactly these files: no other file, no folder.
-        let Ok(listing) = self.list(&remote_folder).await else {
-            return Ok(outcomes);
-        };
-        let listed = listed_names(&listing);
-        if listing.iter().any(|e| e.is_dir)
-            || listed.len() != names.len()
-            || listed.values().any(|(count, _)| *count != 1)
-            || names.keys().any(|n| !listed.contains_key(n))
-        {
-            return Ok(outcomes);
-        }
-        let Some(folder_name) = remote_folder.rsplit('/').next().filter(|n| !n.is_empty()) else {
+        let Some(DownloadPlan {
+            remote_folder,
+            local_folder,
+            folder_name,
+            names,
+            listed,
+        }) = self.download_admission(items).await
+        else {
             return Ok(outcomes);
         };
 
         tokio::fs::create_dir_all(&local_folder)
             .await
             .map_err(ProviderError::IoError)?;
+        // The prefix is one `is_download_staging_dir_name` knows, so scans and
+        // watchers never take staged files for content.
         let staging = tempfile::Builder::new()
             .prefix(".aeroftp-mega-bulk-")
             .tempdir_in(&local_folder)
@@ -674,9 +748,30 @@ impl MegaCmdProvider {
             tracing::warn!(target: "mega", "[BULK] mega-get did not end normally: {e:?}");
         }
 
-        let rows = self.transfer_record(true).await;
+        // The staging folder goes only once the server is known to have
+        // stopped writing into it: with no record, or a cancel that did not
+        // go through, it stays (hidden from scans and watchers by its prefix)
+        // and every file goes back to the single-file path.
+        let rows = match self.transfer_record(true).await {
+            Ok(rows) => rows,
+            Err(e) => {
+                let kept = staging.keep();
+                tracing::warn!(target: "mega", "[BULK] no transfer record ({e}); staging kept at {}", kept.display());
+                return Ok(not_admitted_after(
+                    items,
+                    "MEGAcmd's transfer record could not be read; nothing published",
+                ));
+            }
+        };
         let unfinished = owned.unfinished(&rows);
-        self.cancel_owned(&mut owned, unfinished).await;
+        if !self.cancel_owned(&mut owned, unfinished).await {
+            let kept = staging.keep();
+            tracing::warn!(target: "mega", "[BULK] a transfer could not be cancelled; staging kept at {}", kept.display());
+            return Ok(not_admitted_after(
+                items,
+                "A MEGAcmd transfer of this bulk could not be cancelled; nothing published",
+            ));
+        }
         // This bulk's rows, by the name under the staged folder. Two rows for
         // one name, or a row of this staging that is not one planned name,
         // and the record cannot be read for this folder: the whole group
@@ -1193,6 +1288,123 @@ mod tests {
             );
             assert!(no_staging_left(local.path()));
         }
+        async fn pays(
+            provider: &mut MegaCmdProvider,
+            items: &[BulkTransferItem],
+            upload: bool,
+        ) -> bool {
+            let caps = provider.transfer_capabilities();
+            crate::providers::bulk::cli_bulk_pays(provider, &caps, items, upload, 4).await
+        }
+
+        /// The CLI gives up its 4 independent workers only for groups the
+        /// bulk takes, asked with the adapter's own admission: a group it
+        /// would refuse would run file after file on the bulk's single lease.
+        #[tokio::test]
+        async fn the_cli_keeps_its_workers_for_a_group_the_bulk_would_refuse() {
+            let (mut provider, dir) = provider_on_bulk_stand_in();
+            let local = tempfile::tempdir().unwrap();
+            // A whole folder: one bulk.
+            let items = downloads(dir.path(), local.path(), &["a.bin", "b.bin", "c.bin"], 8);
+            assert!(pays(&mut provider, &items, false).await);
+            // The folder holds one more file than the selection.
+            let mut listing = read(&dir.path().join("listing.txt"));
+            listing.push_str("----  1  8  15Jan2026  14:30  unselected.bin\n");
+            std::fs::write(dir.path().join("listing.txt"), listing).unwrap();
+            assert!(!pays(&mut provider, &items, false).await);
+            // 300 files: the engine forms groups of 256 and 44, neither the
+            // whole folder.
+            let names: Vec<String> = (0..300).map(|i| format!("f{i:03}.bin")).collect();
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            let many = downloads(dir.path(), local.path(), &names, 8);
+            assert!(!pays(&mut provider, &many, false).await);
+            assert_eq!(
+                read(&dir.path().join("get.log")),
+                "",
+                "admission fetched nothing"
+            );
+
+            // Uploads: new names are one bulk; one name already there is not.
+            std::fs::write(dir.path().join("listing.txt"), b"").unwrap();
+            let up = tempfile::tempdir().unwrap();
+            let files = uploads(up.path(), &["n1.bin", "n2.bin", "n3.bin"]);
+            assert!(pays(&mut provider, &files, true).await);
+            std::fs::write(
+                dir.path().join("listing.txt"),
+                b"----  1  6  15Jan2026  14:30  n2.bin\n",
+            )
+            .unwrap();
+            assert!(!pays(&mut provider, &files, true).await);
+            assert_eq!(
+                read(&dir.path().join("put.log")),
+                "",
+                "admission sent nothing"
+            );
+        }
+
+        /// An admitted group whose transfer then fails for one file still
+        /// hands that file to the single-file path, as before admission
+        /// existed; the others are published.
+        #[tokio::test]
+        async fn an_admitted_group_that_fails_midway_goes_back_file_by_file() {
+            let (mut provider, dir) = provider_on_bulk_stand_in();
+            std::fs::write(dir.path().join("get-fail-b.bin"), b"").unwrap();
+            let local = tempfile::tempdir().unwrap();
+            let items = downloads(dir.path(), local.path(), &["a.bin", "b.bin", "c.bin"], 8);
+            assert!(pays(&mut provider, &items, false).await);
+            let outcomes = provider.bulk_download(&items, None).await.unwrap();
+            assert!(
+                matches!(outcomes[0], BulkTransferOutcome::Completed),
+                "{outcomes:?}"
+            );
+            assert!(
+                crate::providers::bulk::goes_back_to_single_file(&outcomes[1]),
+                "{outcomes:?}"
+            );
+            assert!(
+                matches!(outcomes[2], BulkTransferOutcome::Completed),
+                "{outcomes:?}"
+            );
+        }
+
+        fn staging_left(local: &Path) -> bool {
+            !no_staging_left(local)
+        }
+
+        /// The server's record cannot be read after the get, or one of the
+        /// bulk's unfinished transfers cannot be cancelled: the server may
+        /// still write into staging, so the staging folder stays (hidden from
+        /// scans by its prefix), nothing is published and every file goes
+        /// back to the single-file path.
+        #[tokio::test]
+        async fn staging_stays_while_the_server_may_still_write() {
+            for marker in ["transfers-fail", "cancel-fail"] {
+                let (mut provider, dir) = provider_on_bulk_stand_in();
+                std::fs::write(dir.path().join(marker), b"").unwrap();
+                if marker == "cancel-fail" {
+                    std::fs::write(dir.path().join("get-active"), b"").unwrap();
+                }
+                let local = tempfile::tempdir().unwrap();
+                let items = downloads(dir.path(), local.path(), &["a.bin", "b.bin"], 8);
+                let outcomes = provider.bulk_download(&items, None).await.unwrap();
+                assert!(
+                    outcomes
+                        .iter()
+                        .all(|o| matches!(o, BulkTransferOutcome::NotAttempted(_))),
+                    "{marker}: {outcomes:?}"
+                );
+                assert!(
+                    items.iter().all(|i| !Path::new(&i.local_path).exists()),
+                    "{marker}"
+                );
+                assert!(staging_left(local.path()), "{marker}: staging removed");
+                if marker == "cancel-fail" {
+                    let cancelled = read(&dir.path().join("cancel.log"));
+                    assert!(cancelled.lines().count() >= 3, "{cancelled}");
+                }
+            }
+        }
+
         fn replay(dir: &Path) {
             let real = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("tests/fixtures/megacmd_real");

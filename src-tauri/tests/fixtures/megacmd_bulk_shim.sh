@@ -15,10 +15,11 @@
 #   <staging>/<folder> and records `N|STATE|<destination>` in down-rows.txt,
 #   with a row for the folder itself first. get-fail-<name>: FAILED, no
 #   file; get-cut-<name>: the row's path is cut, as a narrow display would;
-#   get-dup: the first file has two rows; get-hang: rows stay ACTIVE and
-#   the get waits.
+#   get-dup: the first file has two rows; get-active: rows stay ACTIVE;
+#   get-hang: rows stay ACTIVE and the get waits.
 # - mega-transfers -c TAG appends TAG to cancel.log (-a appends "-a"); any
-#   other call prints the table of the direction asked for.
+#   other call prints the table of the direction asked for. transfers-fail
+#   makes the table fail; cancel-fail makes every -c fail after logging it.
 # - replay (a file holding the path of tests/fixtures/megacmd_real): the
 #   commands print what MEGAcmd 2.6.0.2 printed on a real account, with the
 #   placeholders replaced by the paths of this call. mega-put prints
@@ -92,7 +93,7 @@ case "$(basename "$0")" in
             exit 0
         fi
         state=COMPLETED
-        [ -f "$here/get-hang" ] && state=ACTIVE
+        { [ -f "$here/get-hang" ] || [ -f "$here/get-active" ]; } && state=ACTIVE
         next_tag
         echo "$tag|$state|$dest" >> "$here/down-rows.txt"
         first=1
@@ -118,7 +119,15 @@ case "$(basename "$0")" in
     mega-transfers)
         if [ "$1" = "-c" ]; then
             echo "$2" >> "$here/cancel.log"
+            if [ -f "$here/cancel-fail" ]; then
+                echo "Transfer not found" >&2
+                exit 2
+            fi
             exit 0
+        fi
+        if [ -f "$here/transfers-fail" ]; then
+            echo "Unable to connect to service" >&2
+            exit 2
         fi
         for arg in "$@"; do
             [ "$arg" = "-a" ] && echo "-a" >> "$here/cancel.log"

@@ -1537,6 +1537,16 @@ pub trait StorageProvider: Send + Sync {
         Err(ProviderError::NotSupported("bulk download".to_string()))
     }
 
+    /// Whether the native bulk would carry `items` as one group in that
+    /// direction rather than hand them back to the single-file path, which a
+    /// single-lease bulk runs one file after another. Answered with the
+    /// adapter's own admission, so the two cannot disagree; the default takes
+    /// every group of a bulk-capable provider. The CLI asks before it gives up
+    /// its independent workers ([`bulk::cli_bulk_pays`]).
+    async fn bulk_admits(&mut self, _items: &[bulk::BulkTransferItem], _upload: bool) -> bool {
+        true
+    }
+
     /// Create a directory
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError>;
 
