@@ -73,11 +73,13 @@ export const local = (name: string, dir = LOCAL, size = 40): LocalFile =>
   ({ name, path: `${dir}/${name}`, size, modified: null, is_dir: false });
 export const folder = <T extends LocalFile | RemoteFile>(entry: T): T => ({ ...entry, size: 0, is_dir: true });
 
+type BreakerVerdict = { isFatal: boolean; retryable: boolean; shouldPause: boolean };
+
 /** The part of App's circuit breaker the transfers call. */
 export type Breaker = {
   reset: () => void;
   recordSuccess: () => void;
-  recordFailure: (error: string) => { isFatal: boolean; retryable: boolean; shouldPause: boolean };
+  recordFailure: (error: string) => BreakerVerdict | Promise<BreakerVerdict>;
   stateRef: { current: string };
   pauseReasonRef: { current: unknown };
   tripErrorKindRef: { current: unknown };

@@ -13766,7 +13766,7 @@ const App: React.FC = () => {
               }
               // A folder with failed files is not sent again, nor counted
               // toward the pause: its command has retried each file.
-              const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+              const result = error instanceof FolderTransferFailedError ? null : await circuitBreaker.recordFailure(String(error));
               if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
                 transferQueue.failTransfer(item.id, String(error));
                 notify.error(t('toast.uploadFailed'), String(error));
@@ -13981,7 +13981,7 @@ const App: React.FC = () => {
               transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
-            const result = circuitBreaker.recordFailure(String(error));
+            const result = await circuitBreaker.recordFailure(String(error));
             if (result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.uploadFailed'), String(error));
@@ -14237,7 +14237,7 @@ const App: React.FC = () => {
             }
             // A folder with failed files is not downloaded again, nor counted
             // toward the pause: its command has retried each file.
-            const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+            const result = error instanceof FolderTransferFailedError ? null : await circuitBreaker.recordFailure(String(error));
             if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.downloadFailed'), String(error));
