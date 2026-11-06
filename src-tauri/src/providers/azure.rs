@@ -486,14 +486,25 @@ impl AzureProvider {
         Ok(())
     }
 
-    /// Build the full blob URL
+    /// Build the full blob URL, with the blob name percent-encoded once per
+    /// segment (a `/` stays a separator). The raw name used to go on the wire:
+    /// a `#` cut the URL short, a `?` started the query and a literal `%41`
+    /// was read as `A`, so a request (a delete included) could reach another
+    /// blob. Shared Key signs `Url::path()` of this URL, which is the same
+    /// encoded path the server receives; the service SAS signs the decoded
+    /// name, as the spec asks (`create_share_link`).
     fn blob_url(&self, blob_path: &str) -> String {
         let endpoint = self.config.blob_endpoint();
         let path = blob_path.trim_start_matches('/');
         if path.is_empty() {
             format!("{}/{}", endpoint, self.config.container)
         } else {
-            format!("{}/{}/{}", endpoint, self.config.container, path)
+            let encoded = path
+                .split('/')
+                .map(|segment| urlencoding::encode(segment).into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            format!("{}/{}/{}", endpoint, self.config.container, encoded)
         }
     }
 
@@ -3933,6 +3944,63 @@ Time:2026-01-01</Message>
         assert_eq!(
             p.blob_url("/leading-slash/file"),
             "https://myacc.blob.core.windows.net/mycontainer/leading-slash/file"
+        );
+    }
+
+    /// #1506 Requested 167, Azure side: a name with `#`, `?`, `%`, a space or
+    /// a non-ASCII character reaches the wire encoded once, and Shared Key
+    /// signs the same path the server receives.
+    #[test]
+    fn blob_url_encodes_the_blob_name_once_and_shared_key_signs_it() {
+        let p = AzureProvider::new(test_config());
+        let url = p.blob_url("dir with space/a#b?c%41 \u{e9}+&.txt");
+        assert_eq!(
+            url,
+            "https://myacc.blob.core.windows.net/mycontainer/dir%20with%20space/a%23b%3Fc%2541%20%C3%A9%2B%26.txt"
+        );
+        let parsed = url::Url::parse(&url).unwrap();
+        assert_eq!(
+            parsed.query(),
+            None,
+            "a `?` in the name must not start a query"
+        );
+        assert_eq!(
+            parsed.fragment(),
+            None,
+            "a `#` in the name must not cut the URL"
+        );
+        let to_sign = p
+            .string_to_sign("DELETE", &url, &signed_headers(&[]), 0)
+            .unwrap();
+        assert!(
+            to_sign.ends_with(&format!("/myacc{}", parsed.path())),
+            "{to_sign}"
+        );
+        assert!(!to_sign.contains("%25%"), "encoded twice: {to_sign}");
+    }
+
+    /// The SAS share URL carries the encoded name; the plain names of the
+    /// existing tests are unchanged.
+    #[tokio::test]
+    async fn share_link_url_carries_the_encoded_blob_name() {
+        let mut p = AzureProvider::new(test_config());
+        let link = p
+            .create_share_link(
+                "/a#b %41.txt",
+                ShareLinkOptions {
+                    expires_in_secs: Some(3600),
+                    password: None,
+                    permissions: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(
+            link.url.starts_with(
+                "https://myacc.blob.core.windows.net/mycontainer/a%23b%20%2541.txt?sp=r&"
+            ),
+            "{}",
+            link.url
         );
     }
 

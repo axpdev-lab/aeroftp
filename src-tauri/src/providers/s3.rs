@@ -106,6 +106,33 @@ fn encode_s3_key_path(key: &str) -> String {
         .join("/")
 }
 
+/// The SigV4 canonical URI of a request path as it travels on the wire.
+///
+/// `path` is `Url::path()` of a URL built by `build_url`, so every segment is
+/// already percent-encoded once. S3 wants the canonical URI encoded exactly
+/// once, the same bytes the server receives, so each segment is decoded to
+/// bytes and encoded again: an already-encoded `a%20b` stays `a%20b` instead
+/// of turning into `a%2520b`. Decoding to bytes (not to UTF-8) keeps a key
+/// with an escaped invalid UTF-8 byte stable too. Both signers, the
+/// Authorization header and the presigned URL, must go through this one
+/// function: the presigner once had its own copy that encoded twice.
+fn sigv4_canonical_uri(path: &str) -> String {
+    if path.is_empty() || path == "/" {
+        return "/".to_string();
+    }
+    path.split('/')
+        .map(|segment| {
+            if segment.is_empty() {
+                String::new()
+            } else {
+                urlencoding::encode_binary(&urlencoding::decode_binary(segment.as_bytes()))
+                    .into_owned()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// Decode a listed S3 `<Key>` for endpoints that return keys already percent-
 /// encoded. Filen's S3 bridge does this (issue #196); AWS/MinIO/Wasabi return
 /// `<Key>` verbatim, so `filen_decode` is false there and the key is untouched.
@@ -538,6 +565,10 @@ pub struct S3Provider {
     /// Clock offset in seconds to compensate for local system clock skew.
     /// Auto-detected from the server's Date header on time-related auth errors.
     clock_offset_secs: i64,
+    /// Test-only fixed signing clock, so a documented SigV4 vector can be
+    /// reproduced byte for byte.
+    #[cfg(test)]
+    fixed_now: Option<DateTime<Utc>>,
     /// Override for multipart upload part size (default: 5 MB)
     upload_chunk_override: Option<usize>,
     /// Number of concurrent Range streams for multi-thread download (1 = disabled).
@@ -842,6 +873,8 @@ impl S3Provider {
             #[cfg(test)]
             baseline_test_path: None,
             clock_offset_secs: 0,
+            #[cfg(test)]
+            fixed_now: None,
             upload_chunk_override: None,
             download_time: Default::default(),
             multi_thread_streams: 1,
@@ -1221,6 +1254,10 @@ impl S3Provider {
 
     /// Returns the current UTC time adjusted for any detected clock skew.
     fn now_adjusted(&self) -> DateTime<Utc> {
+        #[cfg(test)]
+        if let Some(now) = self.fixed_now {
+            return now;
+        }
         Utc::now() + chrono::Duration::seconds(self.clock_offset_secs)
     }
 
@@ -1542,6 +1579,21 @@ impl S3Provider {
                     || (self.config.region == "filen" && is_local_s3_endpoint(ep))
             })
             .unwrap_or(false)
+    }
+
+    /// Whether the `<Key>`s of this Filen listing are URL-encoded, and so are
+    /// decoded once. Every Filen listing asks for `encoding-type=url`; the
+    /// answer says whether it was honoured, the AWS rule:
+    /// - the Desktop rclone bridge (gofakes3 `listBucket`, since 2024-12)
+    ///   encodes keys and echoes `<EncodingType>url</EncodingType>` when
+    ///   asked, and lists literal keys otherwise;
+    /// - the Node filen-s3 server ignores the parameter and lists literal keys
+    ///   (`responses.ts` `listObjectsV2`), with no echo.
+    ///
+    /// Decoding a literal key such as `report%20final.txt` turned it into
+    /// another name, so a delete or download could reach another object.
+    fn filen_listing_is_encoded(&self, xml: &str) -> bool {
+        self.is_filen_s3_endpoint() && xml.contains("<EncodingType>url</EncodingType>")
     }
 
     /// Refuse an `http://` endpoint that leaves this machine, unless the profile
@@ -2389,26 +2441,8 @@ impl S3Provider {
             }
         }
 
-        // URI-encode each path segment individually (H-10: SigV4 requires encoded segments)
-        // parsed.path() returns already-percent-encoded path, so decode first to avoid double-encoding
-        // (e.g. "File%20Name.pdf" → decode → "File Name.pdf" → encode → "File%20Name.pdf")
-        let canonical_path = if path.is_empty() || path == "/" {
-            "/".to_string()
-        } else {
-            let encoded_segments: Vec<String> = path
-                .split('/')
-                .map(|segment| {
-                    if segment.is_empty() {
-                        String::new()
-                    } else {
-                        let decoded = urlencoding::decode(segment)
-                            .unwrap_or(std::borrow::Cow::Borrowed(segment));
-                        urlencoding::encode(&decoded).into_owned()
-                    }
-                })
-                .collect();
-            encoded_segments.join("/")
-        };
+        // H-10: SigV4 wants each segment encoded once; `path` already is.
+        let canonical_path = sigv4_canonical_uri(path);
 
         let canonical_request = format!(
             "{}\n{}\n{}\n{}\n{}\n{}",
@@ -2800,7 +2834,7 @@ impl S3Provider {
         // for "my folder"), unlike AWS-standard which returns them verbatim.
         // Decode here so RemoteEntry holds the logical name and downstream `build_url`
         // re-encodes consistently. Reported in #196 (Filen S3 tree shows `%20`).
-        let filen_decode = self.is_filen_s3_endpoint();
+        let filen_decode = self.filen_listing_is_encoded(xml_str);
         let repair_mojibake = self.is_filelu_s3_endpoint();
 
         let mut reader = Reader::from_str(xml_str);
@@ -5042,6 +5076,7 @@ impl S3Provider {
                 .text()
                 .await
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let page_encoded = filen_decode && self.filen_listing_is_encoded(&xml_str);
 
             // Parse keys and next token using quick-xml
             let mut reader = Reader::from_str(&xml_str);
@@ -5109,7 +5144,7 @@ impl S3Provider {
                                     all_keys.push(repair_double_utf8_key(
                                         filen_decode_listed_key(
                                             std::mem::take(&mut current_key),
-                                            filen_decode,
+                                            page_encoded,
                                         ),
                                         repair_mojibake,
                                     ));
@@ -5446,10 +5481,14 @@ impl StorageProvider for S3Provider {
         loop {
             let mut params: Vec<(&str, &str)> = if filen_dialect {
                 // Filen always returns all results in one shot, no pagination.
+                // Plus `encoding-type=url` (below): see `filen_listing_is_encoded`.
                 vec![("delimiter", "/"), ("prefix", &prefix_with_slash)]
             } else {
                 vec![("list-type", "2"), ("delimiter", "/"), ("max-keys", "1000")]
             };
+            if filen_dialect {
+                params.push(("encoding-type", "url"));
+            }
 
             if !filen_dialect && !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));
@@ -5508,6 +5547,7 @@ impl StorageProvider for S3Provider {
                 }
                 status => {
                     let body = response.text().await.unwrap_or_default();
+
                     // Extract error message from XML if present
                     let error_msg = if body.contains("<Message>") {
                         body.split("<Message>")
@@ -6651,22 +6691,11 @@ impl StorageProvider for S3Provider {
         let host = parsed.host_str().unwrap_or("");
         let raw_path = parsed.path();
 
-        // M-13: URI-encode each path segment for the canonical URI
-        let canonical_path = if raw_path.is_empty() || raw_path == "/" {
-            "/".to_string()
-        } else {
-            let encoded_segments: Vec<String> = raw_path
-                .split('/')
-                .map(|segment| {
-                    if segment.is_empty() {
-                        String::new()
-                    } else {
-                        urlencoding::encode(segment).into_owned()
-                    }
-                })
-                .collect();
-            encoded_segments.join("/")
-        };
+        // M-13: the canonical URI is the wire path encoded once. `raw_path` is
+        // already encoded by `build_url`; encoding it again signed `a%2520b`
+        // while the URL carried `a%20b` (SignatureDoesNotMatch on every key
+        // with a space, `+`, `%`, `&` or a non-ASCII character).
+        let canonical_path = sigv4_canonical_uri(raw_path);
 
         // Build canonical query string. SigV4 requires the query parameters to
         // appear in alphabetical order in the canonical request; the same string
@@ -6743,6 +6772,10 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
+        // Filen's bridge lists `<Key>` percent-encoded, as `parse_listing_of`
+        // knows: a found key must hold the logical name, or acting on it
+        // encodes it a second time (`my%20file` requested as `my%2520file`).
+        let filen_decode = self.is_filen_s3_endpoint();
         let prefix = self.prefix_of(path);
         let prefix_with_slash = if prefix.is_empty() {
             String::new()
@@ -6764,6 +6797,12 @@ impl StorageProvider for S3Provider {
 
             if !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));
+            }
+            // Ask for the encoding the decode above expects, as
+            // `list_keys_for_prefix` does: recent rclone bridges list literal
+            // keys otherwise, and decoding a literal `a%20b` names another key.
+            if filen_decode {
+                params.push(("encoding-type", "url"));
             }
 
             let token_str: String;
@@ -6788,6 +6827,7 @@ impl StorageProvider for S3Provider {
                 .text()
                 .await
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let page_encoded = self.filen_listing_is_encoded(&xml_str);
 
             // Parse keys, sizes, and filter by pattern using quick-xml
             let mut find_reader = Reader::from_str(&xml_str);
@@ -6867,7 +6907,9 @@ impl StorageProvider for S3Provider {
                         let tn = e.name().as_ref().to_string();
                         match tn.as_str() {
                             "Contents" => {
-                                if let Some(ref key) = find_key {
+                                if let Some(ref raw_key) = find_key {
+                                    let key =
+                                        &filen_decode_listed_key(raw_key.clone(), page_encoded);
                                     if !key.ends_with('/') {
                                         let name = key.rsplit('/').next().unwrap_or(key);
                                         if super::matches_find_pattern(name, pattern) {
@@ -7384,6 +7426,9 @@ impl StorageProvider for S3Provider {
             return Err(ProviderError::NotConnected);
         }
 
+        // Same `<Key>` dialect as `find`: compare the logical name.
+        let filen_decode = self.is_filen_s3_endpoint();
+
         let key = path.trim_start_matches('/');
         let mut all_versions = Vec::new();
         let mut key_marker: Option<String> = None;
@@ -7392,6 +7437,9 @@ impl StorageProvider for S3Provider {
 
         loop {
             let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", key)];
+            if filen_decode {
+                params.push(("encoding-type", "url"));
+            }
 
             let km_str: String;
             let vm_str: String;
@@ -7422,6 +7470,7 @@ impl StorageProvider for S3Provider {
                 .text()
                 .await
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+            let page_encoded = self.filen_listing_is_encoded(&xml_str);
 
             debug!("S3 ListObjectVersions response, {} bytes", xml_str.len());
 
@@ -7567,7 +7616,9 @@ impl StorageProvider for S3Provider {
                                 // version to restore with a CopyObject, which cannot
                                 // read it (C4).
                                 if let Some(ref vk) = v_key {
-                                    if vk == key && !v_soft_deleted {
+                                    if filen_decode_listed_key(vk.clone(), page_encoded) == key
+                                        && !v_soft_deleted
+                                    {
                                         let version_id = v_version_id
                                             .as_ref()
                                             .map(|v| v.trim().to_string())
@@ -10478,6 +10529,156 @@ mod tests {
         );
     }
 
+    /// A double for Filen's bridge: every listing names the object
+    /// `dir/my file+1%.txt` percent-encoded, as the bridge does; every other
+    /// request is recorded with its raw wire path.
+    async fn filen_encoded_listing_double() -> (
+        S3Provider,
+        Arc<std::sync::Mutex<Vec<(String, String)>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let seen: Arc<std::sync::Mutex<Vec<(String, String)>>> = Default::default();
+        let log = seen.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let log = log.clone();
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let listed = "dir/my%20file%2B1%25.txt";
+                    if method == "GET" && (query.contains("list-type") || query.contains("versions")) {
+                        // `find` and `list_versions` decode, which is right
+                        // only if the bridge was asked to encode the keys.
+                        assert!(query.contains("encoding-type=url"), "{query}");
+                    }
+                    let (status, body) = if method == "GET" && query.contains("versions") {
+                        (200, format!(
+                            "<ListVersionsResult><EncodingType>url</EncodingType><IsTruncated>false</IsTruncated><Version><Key>{listed}</Key>\
+                             <VersionId>v1</VersionId><IsLatest>true</IsLatest><Size>3</Size>\
+                             <LastModified>2026-11-06T00:00:00.000Z</LastModified></Version></ListVersionsResult>"
+                        ))
+                    } else if method == "GET" && path == "/test-bucket/" {
+                        (200, format!(
+                            "<ListBucketResult><EncodingType>url</EncodingType><IsTruncated>false</IsTruncated><Contents><Key>{listed}</Key>\
+                             <Size>3</Size><LastModified>2026-11-06T00:00:00.000Z</LastModified></Contents>\
+                             </ListBucketResult>"
+                        ))
+                    } else {
+                        log.lock().unwrap().push((method.clone(), path));
+                        (if method == "DELETE" { 204 } else { 200 }, String::new())
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .header("content-length", body.len().to_string())
+                        .body(axum::body::Body::from(body))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+        provider.config.region = "filen".into();
+        assert!(provider.is_filen_s3_endpoint());
+        (provider, seen, server)
+    }
+
+    /// #1506 Requested 167, Filen side: `find` used the listed `<Key>` as is,
+    /// so a found `my file` read `my%20file` and acting on it requested
+    /// `my%2520file`. The found entry holds the logical name, and a delete of
+    /// it puts the name on the wire encoded once.
+    #[tokio::test]
+    async fn filen_find_returns_the_logical_key_and_acts_on_it_encoded_once() {
+        let (mut provider, seen, server) = filen_encoded_listing_double().await;
+        let found = provider.find("/", "*.txt").await.expect("find failed");
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].path, "/dir/my file+1%.txt");
+        assert_eq!(found[0].name, "my file+1%.txt");
+        provider
+            .delete(&found[0].path)
+            .await
+            .expect("delete failed");
+        server.abort();
+        let requests = seen.lock().unwrap().clone();
+        assert!(requests.iter().any(|(m, _)| m == "DELETE"), "{requests:?}");
+        for (method, path) in &requests {
+            assert_eq!(path, "/test-bucket/dir/my%20file%2B1%25.txt", "{method}");
+        }
+    }
+
+    /// CodeRabbit on #1515: `list` on Filen decoded every key, so a literal
+    /// `report%20final.txt` (listed as is by rclone without the parameter, and
+    /// by the Node filen-s3 server always) read as `report final.txt`, and a
+    /// delete could reach another object. `list` now asks for
+    /// `encoding-type=url` and decodes only what the server says it encoded.
+    #[tokio::test]
+    async fn filen_list_asks_for_encoded_keys_and_keeps_literal_ones_literal() {
+        for echo in [true, false] {
+            let seen: Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+            let log = seen.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let log = log.clone();
+                    async move {
+                        log.lock().unwrap().push(req.uri().query().unwrap_or("").to_string());
+                        let (encoding, key) = if echo {
+                            ("<EncodingType>url</EncodingType>", "report%2520final.txt")
+                        } else {
+                            ("", "report%20final.txt")
+                        };
+                        let body = format!(
+                            "<ListBucketResult>{encoding}<IsTruncated>false</IsTruncated><Contents><Key>{key}</Key>\
+                             <Size>3</Size></Contents></ListBucketResult>"
+                        );
+                        axum::http::Response::builder()
+                            .status(200)
+                            .body(axum::body::Body::from(body))
+                            .unwrap()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move {
+                axum::serve(listener, app).await.unwrap();
+            });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            provider.config.region = "filen".into();
+            let entries = provider.list("/").await.expect("list failed");
+            server.abort();
+            assert!(
+                seen.lock()
+                    .unwrap()
+                    .iter()
+                    .all(|q| q.contains("encoding-type=url")),
+                "{:?}",
+                seen.lock().unwrap()
+            );
+            // The object is literally named `report%20final.txt` both times.
+            assert_eq!(entries.len(), 1, "{entries:?}");
+            assert_eq!(entries[0].name, "report%20final.txt", "echo={echo}");
+        }
+    }
+
+    /// Same dialect in `list_versions`: the listed key is compared with the
+    /// logical one, so the versions of `my file` are found on Filen.
+    #[tokio::test]
+    async fn filen_list_versions_matches_the_logical_key() {
+        let (mut provider, _seen, server) = filen_encoded_listing_double().await;
+        let versions = provider
+            .list_versions("/dir/my file+1%.txt")
+            .await
+            .expect("list_versions failed");
+        server.abort();
+        assert_eq!(versions.len(), 1, "{versions:?}");
+        assert_eq!(versions[0].id, "v1");
+    }
+
     #[test]
     fn test_build_url_custom_virtual_hosted_endpoint() {
         let provider = S3Provider::new(S3Config {
@@ -10955,7 +11156,13 @@ mod tests {
                             format!("<Contents><Key>{}</Key><Size>2</Size></Contents>", quick_xml::escape::escape(&listed))
                         }
                     } else { String::new() };
-                    body = format!("<ListBucketResult><IsTruncated>false</IsTruncated>{contents}</ListBucketResult>");
+                    // rclone's bridge echoes the encoding it was asked for.
+                    let echo = if url.query_pairs().any(|(k, v)| k == "encoding-type" && v == "url") {
+                        "<EncodingType>url</EncodingType>"
+                    } else {
+                        ""
+                    };
+                    body = format!("<ListBucketResult>{echo}<IsTruncated>false</IsTruncated>{contents}</ListBucketResult>");
                 } else if method == Method::HEAD && source {
                     if r.fetch_add(1, Ordering::SeqCst) < 3 { status = 404; }
                 } else if method == Method::PUT && copy.is_some() {
@@ -13615,6 +13822,231 @@ mod tests {
 
     /// Long-term IAM credentials (no session token) must NOT emit the header,
     /// keeping the canonical request and signature identical to legacy behavior.
+    // ---- SigV4 encoding class (#1506 Requested 167) ----
+    //
+    // AWS documents two S3 SigV4 examples with fixed keys and a fixed date
+    // (S3 API reference, "Signature Calculations for the Authorization Header"
+    // and "Authenticating Requests: Using Query Parameters"). Reproducing their
+    // signatures byte for byte proves the canonical request, not only that it
+    // is self-consistent.
+    const AWS_DOC_ACCESS_KEY: &str = "AKIAIOSFODNN7EXAMPLE";
+    const AWS_DOC_SECRET_KEY: &str = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
+    const EMPTY_PAYLOAD_SHA256: &str =
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
+    fn aws_doc_provider(path_style: bool) -> S3Provider {
+        let mut provider = S3Provider::new(S3Config {
+            endpoint: Some("https://s3.amazonaws.com".to_string()),
+            region: "us-east-1".to_string(),
+            access_key_id: AWS_DOC_ACCESS_KEY.to_string(),
+            secret_access_key: secrecy::SecretString::from(AWS_DOC_SECRET_KEY.to_string()),
+            session_token: None,
+            role_arn: None,
+            role_external_id: None,
+            role_session_name: None,
+            role_duration_seconds: None,
+            role_mfa_serial: None,
+            role_mfa_token_code: None,
+            bucket: "examplebucket".to_string(),
+            prefix: None,
+            path_style,
+            storage_class: None,
+            sse_mode: None,
+            sse_kms_key_id: None,
+            verify_cert: true,
+            allow_cleartext_endpoint: false,
+            skip_dir_markers: false,
+            filen_desktop_bridge: false,
+        })
+        .expect("Failed to create S3Provider");
+        provider.fixed_now = Some(
+            DateTime::parse_from_rfc3339("2013-05-24T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+        );
+        provider
+    }
+
+    /// An independent SigV4 signer for the tests: the canonical URI is the
+    /// path exactly as it is on the wire, which is what an S3 server signs.
+    fn reference_sigv4(
+        method: &str,
+        wire_path: &str,
+        canonical_query: &str,
+        canonical_headers: &[(&str, &str)],
+        payload: &str,
+    ) -> String {
+        use hmac::{Hmac, Mac};
+        use sha2::{Digest, Sha256};
+        fn mac(key: &[u8], data: &str) -> Vec<u8> {
+            let mut m = Hmac::<Sha256>::new_from_slice(key).unwrap();
+            m.update(data.as_bytes());
+            m.finalize().into_bytes().to_vec()
+        }
+        let headers: String = canonical_headers
+            .iter()
+            .map(|(k, v)| format!("{k}:{v}\n"))
+            .collect();
+        let signed: Vec<&str> = canonical_headers.iter().map(|(k, _)| *k).collect();
+        let request = format!(
+            "{method}\n{wire_path}\n{canonical_query}\n{headers}\n{}\n{payload}",
+            signed.join(";")
+        );
+        let to_sign = format!(
+            "AWS4-HMAC-SHA256\n20130524T000000Z\n20130524/us-east-1/s3/aws4_request\n{}",
+            hex::encode(Sha256::digest(request.as_bytes()))
+        );
+        let key = mac(
+            &mac(
+                &mac(
+                    &mac(format!("AWS4{AWS_DOC_SECRET_KEY}").as_bytes(), "20130524"),
+                    "us-east-1",
+                ),
+                "s3",
+            ),
+            "aws4_request",
+        );
+        hex::encode(mac(&key, &to_sign))
+    }
+
+    /// Keys that broke the presigner: each one has a byte the canonical URI
+    /// must carry as exactly one `%XX` escape.
+    const ENCODING_CLASS_KEYS: &[&str] = &[
+        "a b.txt",
+        "a+b.txt",
+        "100%.txt",
+        "a&b=c.txt",
+        "dir with space/r\u{e9}sum\u{e9} \u{fc}.txt",
+        "emoji \u{1F600}.txt",
+        "literal%20escape.txt",
+    ];
+
+    #[test]
+    fn sigv4_canonical_uri_encodes_a_wire_path_exactly_once() {
+        assert_eq!(sigv4_canonical_uri(""), "/");
+        assert_eq!(sigv4_canonical_uri("/"), "/");
+        assert_eq!(sigv4_canonical_uri("/test.txt"), "/test.txt");
+        for key in ENCODING_CLASS_KEYS {
+            let wire = format!("/bucket/{}", encode_s3_key_path(key));
+            assert_eq!(sigv4_canonical_uri(&wire), wire, "{key}");
+            assert!(
+                !sigv4_canonical_uri(&wire).contains("%25") || key.contains('%'),
+                "{key}"
+            );
+        }
+        // An escaped byte that is not valid UTF-8 survives unchanged.
+        assert_eq!(sigv4_canonical_uri("/b/%FF.bin"), "/b/%FF.bin");
+    }
+
+    #[test]
+    fn sign_request_matches_the_aws_documented_get_object_example() {
+        let provider = aws_doc_provider(false);
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("range".to_string(), "bytes=0-9".to_string());
+        let auth = provider
+            .sign_request(
+                "GET",
+                "https://examplebucket.s3.amazonaws.com/test.txt",
+                &mut headers,
+                EMPTY_PAYLOAD_SHA256,
+            )
+            .expect("sign_request failed");
+        assert!(
+            auth.ends_with(
+                "Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41"
+            ),
+            "{auth}"
+        );
+    }
+
+    #[tokio::test]
+    async fn share_link_matches_the_aws_documented_presign_example() {
+        let mut provider = aws_doc_provider(false);
+        let link = provider
+            .create_share_link(
+                "/test.txt",
+                ShareLinkOptions {
+                    expires_in_secs: Some(86400),
+                    password: None,
+                    permissions: None,
+                },
+            )
+            .await
+            .expect("presign failed");
+        assert_eq!(
+            link.url,
+            "https://examplebucket.s3.amazonaws.com/test.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256\
+             &X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request\
+             &X-Amz-Date=20130524T000000Z&X-Amz-Expires=86400&X-Amz-SignedHeaders=host\
+             &X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404"
+        );
+    }
+
+    /// The presigned URL of a key with a space, `+`, `%`, `&` or a non-ASCII
+    /// character must carry the signature a server computes over the path it
+    /// receives. The presigner used to sign `a%2520b` for a URL with `a%20b`.
+    #[tokio::test]
+    async fn share_link_signs_the_path_it_puts_on_the_wire() {
+        for path_style in [false, true] {
+            let mut provider = aws_doc_provider(path_style);
+            for key in ENCODING_CLASS_KEYS {
+                let link = provider
+                    .create_share_link(
+                        &format!("/{key}"),
+                        ShareLinkOptions {
+                            expires_in_secs: Some(3600),
+                            password: None,
+                            permissions: None,
+                        },
+                    )
+                    .await
+                    .expect("presign failed");
+                let (unsigned, signature) = link.url.rsplit_once("&X-Amz-Signature=").unwrap();
+                let parsed = url::Url::parse(unsigned).unwrap();
+                let expected = reference_sigv4(
+                    "GET",
+                    parsed.path(),
+                    parsed.query().unwrap(),
+                    &[("host", parsed.host_str().unwrap())],
+                    "UNSIGNED-PAYLOAD",
+                );
+                assert_eq!(signature, expected, "path_style={path_style} key={key:?}");
+            }
+        }
+    }
+
+    /// Same check for the Authorization header signer, on the URLs
+    /// `build_url` produces for the same keys.
+    #[test]
+    fn sign_request_signs_the_path_it_puts_on_the_wire() {
+        for path_style in [false, true] {
+            let provider = aws_doc_provider(path_style);
+            for key in ENCODING_CLASS_KEYS {
+                let url = provider.build_url(key);
+                let parsed = url::Url::parse(&url).unwrap();
+                let mut headers = std::collections::HashMap::new();
+                let auth = provider
+                    .sign_request("GET", &url, &mut headers, EMPTY_PAYLOAD_SHA256)
+                    .expect("sign_request failed");
+                let expected = reference_sigv4(
+                    "GET",
+                    parsed.path(),
+                    "",
+                    &[
+                        ("host", parsed.host_str().unwrap()),
+                        ("x-amz-content-sha256", EMPTY_PAYLOAD_SHA256),
+                        ("x-amz-date", "20130524T000000Z"),
+                    ],
+                    EMPTY_PAYLOAD_SHA256,
+                );
+                assert!(
+                    auth.ends_with(&format!("Signature={expected}")),
+                    "path_style={path_style} key={key:?}: {auth}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn sign_request_omits_session_token_when_absent() {
         let provider = make_provider_with_token(None);
@@ -13903,6 +14335,7 @@ mod tests {
         let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ListBucketResult>
   <Name>b</Name>
+  <EncodingType>url</EncodingType>
   <Prefix></Prefix>
   <Delimiter>/</Delimiter>
   <CommonPrefixes><Prefix>my%20folder/</Prefix></CommonPrefixes>
@@ -13923,6 +14356,20 @@ mod tests {
         assert_eq!(file.name, "foto vacanze.jpg");
         assert_eq!(file.path, "/foto vacanze.jpg");
         assert_eq!(file.size, 1024);
+
+        // #1506 Requested 167: without the echo the keys are literal (rclone
+        // not asked, or the Node filen-s3 server), so a file really named
+        // `foto%20vacanze.jpg` keeps its name instead of turning into another.
+        let literal = xml.replace("  <EncodingType>url</EncodingType>\n", "");
+        assert!(!literal.contains("EncodingType"));
+        let (entries, _) = provider
+            .parse_list_response(&literal, false)
+            .expect("parse");
+        let file = entries.iter().find(|e| !e.is_dir).expect("file entry");
+        assert_eq!(file.name, "foto%20vacanze.jpg");
+        assert_eq!(file.path, "/foto%20vacanze.jpg");
+        let dir = entries.iter().find(|e| e.is_dir).expect("dir entry");
+        assert_eq!(dir.name, "my%20folder");
     }
 
     /// The delta planner repeats the multipart threshold as its own floor so it
