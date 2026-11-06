@@ -2359,7 +2359,8 @@
             "allowScpFallback": "SCPへのフォールバックを許可",
             "allowScpFallbackHint": "サーバーにSFTPがない場合、WinSCPと同様に同じ接続のままSCPで続行します。",
             "discoverScp": "SFTPのないサーバー向けのSSH経由ファイルコピー",
-            "discoverTigris": "Tigris: グローバル分散型の S3 互換ストレージ、エグレス料金なし（5 GB 無料）"
+            "discoverTigris": "Tigris: グローバル分散型の S3 互換ストレージ、エグレス料金なし（5 GB 無料）",
+            "discoverFastly": "Fastly Object Storage: 12リージョンで利用できるS3互換ストレージ (5 GB無料)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

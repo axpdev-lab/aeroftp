@@ -2359,7 +2359,8 @@
             "allowScpFallback": "SCP 대체 허용",
             "allowScpFallbackHint": "서버에 SFTP가 없으면 WinSCP처럼 같은 연결에서 SCP로 계속합니다.",
             "discoverScp": "SFTP가 없는 서버를 위한 SSH 파일 복사",
-            "discoverTigris": "Tigris: 전 세계에 분산된 S3 호환 스토리지, 송신 데이터 요금 없음 (5 GB 무료)"
+            "discoverTigris": "Tigris: 전 세계에 분산된 S3 호환 스토리지, 송신 데이터 요금 없음 (5 GB 무료)",
+            "discoverFastly": "Fastly Object Storage: 12개 리전의 S3 호환 스토리지 (5 GB 무료)"
         },
         "shortcuts": {
             "title": "단축키",

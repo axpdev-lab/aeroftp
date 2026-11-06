@@ -2359,7 +2359,8 @@
             "allowScpFallback": "Tillåt SCP som reserv",
             "allowScpFallbackHint": "Om servern saknar SFTP fortsätter anslutningen via SCP, som WinSCP gör.",
             "discoverScp": "Filkopiering via SSH för servrar utan SFTP",
-            "discoverTigris": "Tigris: globalt distribuerad S3-kompatibel lagring, utan avgifter för utgående data (5 GB gratis)"
+            "discoverTigris": "Tigris: globalt distribuerad S3-kompatibel lagring, utan avgifter för utgående data (5 GB gratis)",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

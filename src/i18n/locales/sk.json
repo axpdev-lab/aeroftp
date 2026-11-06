@@ -2359,7 +2359,8 @@
             "allowScpFallback": "Povoliť záložné SCP",
             "allowScpFallbackHint": "Ak server nemá SFTP, pripojenie pokračuje cez SCP, ako to robí WinSCP.",
             "discoverScp": "Kopírovanie súborov cez SSH pre servery bez SFTP",
-            "discoverTigris": "Tigris: globálne distribuované úložisko kompatibilné s S3, bez poplatkov za odchádzajúce dáta (5 GB zadarmo)"
+            "discoverTigris": "Tigris: globálne distribuované úložisko kompatibilné s S3, bez poplatkov za odchádzajúce dáta (5 GB zadarmo)",
+            "discoverFastly": "Fastly Object Storage: úložisko kompatibilné s S3 v 12 regiónoch (5 GB zadarmo)"
         },
         "shortcuts": {
             "title": "Klávesové skratky",

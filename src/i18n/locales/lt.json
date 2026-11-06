@@ -2359,7 +2359,8 @@
             "allowScpFallback": "Leisti atsarginį SCP",
             "allowScpFallbackHint": "Jei serveris neturi SFTP, ryšys tęsiamas per SCP, kaip tai daro WinSCP.",
             "discoverScp": "Failų kopijavimas per SSH serveriams be SFTP",
-            "discoverTigris": "Tigris: pasauliniu mastu paskirstyta su S3 suderinama saugykla, be išeinančio srauto mokesčių (5 GB nemokamai)"
+            "discoverTigris": "Tigris: pasauliniu mastu paskirstyta su S3 suderinama saugykla, be išeinančio srauto mokesčių (5 GB nemokamai)",
+            "discoverFastly": "Fastly Object Storage: su S3 suderinama saugykla 12 regionų (5 GB nemokamai)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

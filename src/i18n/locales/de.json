@@ -2359,7 +2359,8 @@
             "allowScpFallback": "SCP als Ausweichlösung erlauben",
             "allowScpFallbackHint": "Hat der Server kein SFTP, geht es über SCP auf derselben Verbindung weiter, wie bei WinSCP.",
             "discoverScp": "Dateikopie über SSH für Server ohne SFTP",
-            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)"
+            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

@@ -2359,7 +2359,8 @@
             "allowScpFallback": "Dopusti SCP kao zamjenu",
             "allowScpFallbackHint": "Ako poslužitelj nema SFTP, nastavlja se preko SCP-a na istoj vezi, kao što to radi WinSCP.",
             "discoverScp": "Kopiranje datoteka preko SSH-a za poslužitelje bez SFTP-a",
-            "discoverTigris": "Tigris: globalno distribuirana pohrana kompatibilna sa S3, bez naknada za izlazni promet (5 GB besplatno)"
+            "discoverTigris": "Tigris: globalno distribuirana pohrana kompatibilna sa S3, bez naknada za izlazni promet (5 GB besplatno)",
+            "discoverFastly": "Fastly Object Storage: pohrana kompatibilna sa S3 u 12 regija (5 GB besplatno)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

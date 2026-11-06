@@ -2359,7 +2359,8 @@
             "allowScpFallback": "SCP ফলব্যাকের অনুমতি দিন",
             "allowScpFallbackHint": "সার্ভারে SFTP না থাকলে, WinSCP-এর মতো একই সংযোগে SCP দিয়ে চালিয়ে যান।",
             "discoverScp": "SFTP ছাড়া সার্ভারের জন্য SSH-এর মাধ্যমে ফাইল কপি",
-            "discoverTigris": "Tigris: বিশ্বব্যাপী বিতরিত S3-সামঞ্জস্যপূর্ণ স্টোরেজ, ডেটা বহির্গমনে কোনো ফি নেই (5 GB বিনামূল্যে)"
+            "discoverTigris": "Tigris: বিশ্বব্যাপী বিতরিত S3-সামঞ্জস্যপূর্ণ স্টোরেজ, ডেটা বহির্গমনে কোনো ফি নেই (5 GB বিনামূল্যে)",
+            "discoverFastly": "Fastly Object Storage: ১২টি অঞ্চলে S3-সামঞ্জস্যপূর্ণ স্টোরেজ (৫ GB বিনামূল্যে)"
         },
         "shortcuts": {
             "title": "কীবোর্ড শর্টকাট",

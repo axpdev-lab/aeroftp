@@ -2359,7 +2359,8 @@
             "allowScpFallback": "Salli SCP-varatoiminto",
             "allowScpFallbackHint": "Jos palvelimella ei ole SFTP:tä, jatketaan SCP:llä samassa yhteydessä, kuten WinSCP tekee.",
             "discoverScp": "Tiedostojen kopiointi SSH:n kautta palvelimille, joissa ei ole SFTP:tä",
-            "discoverTigris": "Tigris: maailmanlaajuisesti hajautettu S3-yhteensopiva tallennustila, ei lähtevän liikenteen maksuja (5 GB ilmaiseksi)"
+            "discoverTigris": "Tigris: maailmanlaajuisesti hajautettu S3-yhteensopiva tallennustila, ei lähtevän liikenteen maksuja (5 GB ilmaiseksi)",
+            "discoverFastly": "Fastly Object Storage: S3-yhteensopiva tallennustila 12 alueella (5 GB ilmaiseksi)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
