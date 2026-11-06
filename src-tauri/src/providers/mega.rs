@@ -1329,8 +1329,12 @@ impl StorageProvider for MegaCmdProvider {
             Ok(out) => out,
             Err(e) => {
                 let err_msg = e.to_string();
-                // If already exported, remove old link and re-export
-                if err_msg.contains("already exported") {
+                // If already exported, remove old link and re-export. The
+                // typed AlreadyExists (exit status 64, MCMD_EXISTS) decides
+                // first; the phrase stays for a client that exits otherwise.
+                if matches!(e, ProviderError::AlreadyExists(_))
+                    || err_msg.contains("already exported")
+                {
                     tracing::info!(target: "mega", "Link already exported, re-exporting: {}", abs_path);
                     let _ = self
                         .run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path])
