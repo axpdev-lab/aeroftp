@@ -106,6 +106,31 @@ fn encode_s3_key_path(key: &str) -> String {
         .join("/")
 }
 
+/// Refuse a request whose path the URL parser rewrote. S3 allows a key with
+/// `.` or `..` segments (`a/../b.txt`), but URL parsing removes dot segments,
+/// `%2e%2e` included (WHATWG), so the request and its signature would address
+/// `b.txt`, or in path-style even another bucket: a GET or a delete on the
+/// wrong object, accepted by the server. No URL form keeps such a segment, so
+/// the operation is refused with the key named instead (#1506 Requested 189).
+/// Batch deletes carry keys in the XML body and copy sources in a header, which
+/// are not rewritten.
+fn refuse_rewritten_path(url: &str, parsed: &url::Url) -> Result<(), ProviderError> {
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let built = after_scheme.find('/').map_or("/", |i| &after_scheme[i..]);
+    let built = built.split(['?', '#']).next().unwrap_or(built);
+    let built = if built.is_empty() { "/" } else { built };
+    if built == parsed.path() {
+        return Ok(());
+    }
+    Err(ProviderError::InvalidPath(format!(
+        "S3 cannot address '{}': a '.' or '..' segment in an object name is \
+         rewritten by every HTTP client, so the request would reach '{}' instead. \
+         Rename the object with a tool that sends raw paths, or work on its folder.",
+        urlencoding::decode(built).unwrap_or(std::borrow::Cow::Borrowed(built)),
+        urlencoding::decode(parsed.path()).unwrap_or(std::borrow::Cow::Borrowed(parsed.path()))
+    )))
+}
+
 /// Decode a listed S3 `<Key>` for endpoints that return keys already percent-
 /// encoded. Filen's S3 bridge does this (issue #196); AWS/MinIO/Wasabi return
 /// `<Key>` verbatim, so `filen_decode` is false there and the key is untouched.
@@ -2335,6 +2360,7 @@ impl S3Provider {
         // Parse URL to get host and path
         let parsed =
             url::Url::parse(url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        refuse_rewritten_path(url, &parsed)?;
 
         let host = parsed.host_str().unwrap_or("");
         let path = parsed.path();
@@ -6621,6 +6647,7 @@ impl StorageProvider for S3Provider {
         self.validate_request_url_confidentiality(&url)?;
         let parsed =
             url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        refuse_rewritten_path(&url, &parsed)?;
 
         let host = parsed.host_str().unwrap_or("");
         let raw_path = parsed.path();
@@ -9895,6 +9922,45 @@ mod tests {
             "https://s3.amazonaws.com",
         ] {
             assert!(!is_local_s3_endpoint(public), "{public}");
+        }
+    }
+
+    /// #1506 Requested 189: a key with `.` or `..` segments is refused before
+    /// signing, on both signers, instead of reaching another object (another
+    /// bucket in path-style). Ordinary names, dots inside a name included,
+    /// still sign.
+    #[tokio::test]
+    async fn dot_segment_keys_are_refused_not_rewritten() {
+        for path_style in [true, false] {
+            let mut provider = make_provider(Some("https://s3.example.com"));
+            provider.config.path_style = path_style;
+            for key in ["a/../b.txt", "../other/x", "./x", "dir/./y", "dir/.."] {
+                let url = provider.build_url(key);
+                let mut headers = std::collections::HashMap::new();
+                let signed =
+                    provider.sign_request("DELETE", &url, &mut headers, "UNSIGNED-PAYLOAD");
+                assert!(
+                    matches!(signed, Err(ProviderError::InvalidPath(ref m)) if m.contains("'.' or '..'")),
+                    "path_style={path_style} key={key}: {signed:?}"
+                );
+                let link = provider
+                    .create_share_link(&format!("/{key}"), ShareLinkOptions::default())
+                    .await;
+                assert!(
+                    matches!(link, Err(ProviderError::InvalidPath(_))),
+                    "path_style={path_style} key={key}: {link:?}"
+                );
+            }
+            for key in ["a.b/c..d.txt", "...", "dir/.hidden", "x/..y/z", "a b/c"] {
+                let url = provider.build_url(key);
+                let mut headers = std::collections::HashMap::new();
+                assert!(
+                    provider
+                        .sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD")
+                        .is_ok(),
+                    "path_style={path_style} key={key}"
+                );
+            }
         }
     }
 
