@@ -15,8 +15,14 @@ import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, normLan
 import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
+/** The production takeover helper, run with the same refs and setters as the slice that calls it. */
+const RELEASE = app.slice(app.indexOf('  const releaseRemoteNavigation = useLatestCallback('), app.indexOf('  /** Puts the active session tab aside'));
+
 async function execute<T>(source: string, context: Record<string, unknown>, suffix: string): Promise<T> {
     context = { ownership: undefined, navigationOverlayLogId: null, settleNavigationOverlayLog: vi.fn(), assertOverlayActivationCurrent, ...context };
+    if (source.includes('releaseRemoteNavigation()') && !('releaseRemoteNavigation' in context)) {
+        context.releaseRemoteNavigation = await execute(RELEASE, { ...context, useLatestCallback: (fn: unknown) => fn, releaseRemoteNavigation: null }, 'return releaseRemoteNavigation;');
+    }
     const { code } = await transformWithOxc(source, 'crypt-connect-landing.ts');
     return new Function(...Object.keys(context), `return (async () => { ${code}\n${suffix} })();`)(...Object.values(context));
 }

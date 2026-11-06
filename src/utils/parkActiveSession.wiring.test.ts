@@ -79,6 +79,8 @@ function calls(commands: ReadonlySet<string>, source: string = APP): Call[] {
 const TEARDOWN = new Set(['provider_disconnect', 'disconnect_ftp']);
 const CONNECT = new Set(['provider_connect', 'connect_ftp']);
 const PARK = 'parkActiveSession();';
+/** The last park on a path: a takeover outside a connect phase parks through `takeOverActiveSession`. */
+const lastPark = (path: string) => Math.max(path.lastIndexOf(PARK), path.lastIndexOf('takeOverActiveSession();'));
 const HOST_KEY_CHECK = 'checkSftpHostKey(';
 
 /** Connects that replace the live connection with a new one: they park first. */
@@ -111,7 +113,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
             .filter(c => PARKING.includes(c.context))
             .filter(c => {
                 const path = pathTo(c);
-                const park = path.lastIndexOf(PARK);
+                const park = lastPark(path);
                 return park < 0 || path.lastIndexOf(HOST_KEY_CHECK) > park;
             })
             .map(c => `App.tsx:${c.line} ${c.command} in ${c.context}`);
@@ -122,7 +124,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
     it('parks before every connect of those paths, so a Cancel never leaves a tab connected', () => {
         const unparked = calls(CONNECT)
             .filter(c => PARKING.includes(c.context))
-            .filter(c => pathTo(c).lastIndexOf(PARK) < 0)
+            .filter(c => lastPark(pathTo(c)) < 0)
             .map(c => `App.tsx:${c.line} ${c.command} in ${c.context}`);
         expect(calls(CONNECT).filter(c => PARKING.includes(c.context)).length).toBeGreaterThanOrEqual(4);
         expect(unparked).toEqual([]);
@@ -147,7 +149,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(start).toBeGreaterThan(-1);
         // "+" changes no backend, so a portable device tab stays (going back
         // reuses the live device session).
-        expect(body).toContain('parkActiveSession(true);');
+        expect(body).toContain('takeOverActiveSession(true);');
         expect(body).not.toContain('setSessions(');
         expect(body).not.toContain('setActiveSessionId(');
     });
@@ -171,19 +173,18 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(body).toContain('const fromParked = activeSessionId === null;');
         // The refused host key, a cancelled scope, the two cancel branches and
         // the failure branch.
-        expect(body.split('backToParked();').length - 1).toBe(5);
+        expect(body.split('leaveNothingActive();').length - 1).toBe(5);
         // A cancelled scope (the card's Cancel, the controller's Stop) throws
-        // from the catch before the branches: it parks the tab first, while
-        // the switch still owns the phase, then rethrows.
+        // from the catch before the branches: it leaves nothing active first,
+        // while the switch still owns the phase, then rethrows.
         const scoped = body.slice(body.indexOf('try { connectScope.assert(); } catch (cancelled) {'));
-        expect(scoped.indexOf('backToParked();')).toBeGreaterThan(-1);
-        expect(scoped.indexOf('backToParked();')).toBeLessThan(scoped.indexOf('throw cancelled;'));
-        expect(scoped.slice(0, scoped.indexOf('throw cancelled;'))).toContain('fromParked && phaseVersion === remoteConnectPhaseVersionRef.current');
-        // Back to parked means nothing active and a disconnected workspace, so
-        // the next click on the tab passes the "already active" return and
-        // reconnects again.
-        const back = body.slice(body.indexOf('const backToParked = () => {'), body.indexOf('\n    };', body.indexOf('const backToParked = () => {')));
-        expect(back).toContain('if (!fromParked) return;');
+        expect(scoped.indexOf('leaveNothingActive();')).toBeGreaterThan(-1);
+        expect(scoped.indexOf('leaveNothingActive();')).toBeLessThan(scoped.indexOf('throw cancelled;'));
+        expect(scoped.slice(0, scoped.indexOf('throw cancelled;'))).toContain('if (phaseVersion === remoteConnectPhaseVersionRef.current) {');
+        // Nothing active means a disconnected workspace too, so the next click
+        // on the tab passes the "already active" return and reconnects again.
+        const back = body.slice(body.indexOf('const leaveNothingActive = () => {'), body.indexOf('\n    };', body.indexOf('const leaveNothingActive = () => {')));
+        expect(back).not.toContain('fromParked');
         expect(back).toContain('setActiveSessionId(null);');
         expect(back).toContain('setIsConnected(false);');
         expect(body.indexOf('if (activeSessionId === sessionId) {')).toBeLessThan(body.indexOf('const fromParked'));
@@ -270,8 +271,10 @@ describe('a connect parks the live tab before it ends the connection', () => {
         // nothing active.
         const start = APP.indexOf('  const switchSession = async');
         const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
-        expect(body).toContain('if (!accepted) { backToParked(); return; }');
-        expect(body.indexOf('const backToParked')).toBeLessThan(body.indexOf('checkSftpHostKey('));
+        // Refused before anything of the current tab changes: a live tab
+        // stays as it was, a parked one stays parked.
+        expect(body).toContain('if (!accepted) { if (fromParked) leaveNothingActive(); return; }');
+        expect(body.indexOf('const leaveNothingActive')).toBeLessThan(body.indexOf('checkSftpHostKey('));
     });
 
     it('keeps the parked tabs when a portable device opens, closes or is unplugged', () => {
@@ -301,7 +304,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
             .filter(c => PARKING.includes(c.context))
             .filter(c => {
                 const path = pathTo(c);
-                const park = path.lastIndexOf(PARK);
+                const park = lastPark(path);
                 const branch = path.lastIndexOf('setLoading(true);', park);
                 const between = path.slice(Math.max(branch, 0), park);
                 return between.includes('setIsSyncNavigation(false)') || between.includes('setSyncBasePaths(null)');
@@ -327,7 +330,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
         }
         expect(MY_SERVERS).toContain('    onParkActiveSession,\n}: MyServersPanelProps)');
         expect(INTRO_HUB).toContain('onParkActiveSession={onParkActiveSession}');
-        expect(APP).toContain('onParkActiveSession={parkActiveSession}');
+        expect(APP).toContain('onParkActiveSession={takeOverActiveSession}');
     });
 });
 
