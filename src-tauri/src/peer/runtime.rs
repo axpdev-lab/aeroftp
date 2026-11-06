@@ -561,9 +561,12 @@ impl PeerRuntime {
 
         // Custody + continuity records (CLI publish precedent: custody after
         // ready). Failing to custody the key would strand the drive -> error.
+        // The account that started the share, captured before the wait above:
+        // another one may be active by now.
         if key_is_fresh {
-            crate::user_partitions::gui_peer_drive_store(
+            crate::user_partitions::gui_peer_drive_store_as(
                 app,
+                user_id,
                 &published.namespace_id,
                 "publisher",
                 &content_key,
@@ -1382,5 +1385,30 @@ mod tests {
         stopped.sort();
         assert_eq!(stopped, vec!["ns-a".to_string(), "ns-b".to_string()]);
         assert!(runtime.live_share_namespaces().await.is_empty());
+    }
+
+    // Deep scan item 46: the key of a new share was custodied under whichever
+    // account was active when publication completed, after a wait the account
+    // can change in. It goes to the account that started the share.
+    #[test]
+    fn a_published_drive_key_goes_to_the_account_that_started_the_share() {
+        let src = include_str!("runtime.rs");
+        let production = &src[..src.find("#[cfg(test)]").expect("tests")];
+        let start = production
+            .find("pub async fn start_share(")
+            .expect("start_share");
+        let body = &production[start..];
+        let wait = body
+            .find("PUBLISH_READY_TIMEOUT_SECS")
+            .expect("the publication wait");
+        let custody = body
+            .find("gui_peer_drive_store_as(")
+            .expect("custody under an explicit account");
+        assert!(wait < custody);
+        assert!(body[custody..custody + 120].contains("user_id,"));
+        let start_share = &body[..body[1..]
+            .find("\n    pub ")
+            .map_or(body.len(), |end| end + 1)];
+        assert!(!start_share.contains("gui_peer_drive_store("));
     }
 }

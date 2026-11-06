@@ -6052,18 +6052,36 @@ pub fn gui_peer_drive_store(
     role: &str,
     content_key: &[u8],
 ) -> Result<i64, String> {
-    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     init_or_migrate(app)?;
     let conn = open_or_init(app)?;
     let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
+    gui_peer_drive_store_as(app, user.id, namespace_id, role, content_key)
+}
+
+/// [`gui_peer_drive_store`] for the account `user_id`, whichever is active now.
+/// A share publication waits for its drive to be ready, and the account can
+/// change meanwhile: the key goes to the account that started the share, never
+/// to the one active when publication completes (deep scan item 46). An
+/// account locked behind its passphrase meanwhile refuses (`USER_LOCKED`), so
+/// the key is never filed under the wrong account.
+pub fn gui_peer_drive_store_as(
+    app: &AppHandle,
+    user_id: i64,
+    namespace_id: &str,
+    role: &str,
+    content_key: &[u8],
+) -> Result<i64, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
+    init_or_migrate(app)?;
+    let conn = open_or_init(app)?;
     let mut root_key = store.derive_user_partition_wrapping_key();
     let root_secret = user_crypto::secret_key_from_bytes(&root_key);
-    let result = with_user_dek(&conn, &root_secret, user.id, |_uid, dek| {
-        crate::peer_identity::store_drive(&conn, user.id, dek, namespace_id, role, content_key)
+    let result = with_user_dek(&conn, &root_secret, user_id, |_uid, dek| {
+        crate::peer_identity::store_drive(&conn, user_id, dek, namespace_id, role, content_key)
     });
     root_key.zeroize();
     result?;
-    Ok(user.id)
+    Ok(user_id)
 }
 
 /// GUI: the active user's drives as `(namespace_id, role)`. Public: no DEK.
