@@ -514,6 +514,37 @@ pub fn migrate_legacy_rclone_crypt_on_load(
     notes
 }
 
+/// Issue #230: an imported Filen CLI API key lives in the vault under
+/// `filen_api_key_<id>`, never in the saved profile's options, which reach the
+/// renderer and the profile store; the one-time startup migration does not run
+/// again, so the import moves it. The key leaves the options either way, and
+/// `hasStoredFilenApiKey` is set only once `store_secret` succeeded. The GUI
+/// import and `import rclone --apply` both call this, so neither can keep it.
+pub fn move_imported_filen_api_key(
+    server: &mut Value,
+    mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some(key) = server
+        .get_mut("options")
+        .and_then(|o| o.as_object_mut())
+        .and_then(|o| o.remove("filen_api_key"))
+    else {
+        return Ok(());
+    };
+    let key = zeroize::Zeroizing::new(key.as_str().map(str::trim).unwrap_or("").to_string());
+    let id = server
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if key.is_empty() || id.is_empty() {
+        return Ok(());
+    }
+    store_secret(&format!("filen_api_key_{id}"), &key)?;
+    server["hasStoredFilenApiKey"] = Value::Bool(true);
+    Ok(())
+}
+
 /// Turn the legacy import options into the binding used by Quick Connect and
 /// My Servers. Secrets leave the options before the preview crosses IPC.
 pub fn materialize_imported_crypt_overlay(
@@ -644,38 +675,18 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                     .map_err(|e| e.to_string())
             })?;
         }
-        // Issue #230: the Filen CLI API key lives in the vault under
-        // `filen_api_key_<id>`, never in the saved profile's options, which
-        // reach the renderer and the profile store. The one-time startup
-        // migration does not run again, so an imported key is moved here.
         for server in &mut servers {
-            let Some(key) = server
-                .get_mut("options")
-                .and_then(|o| o.as_object_mut())
-                .and_then(|o| o.remove("filen_api_key"))
-            else {
-                continue;
-            };
-            let key = key.as_str().map(str::trim).unwrap_or("").to_string();
             let id = server
                 .get("id")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
-            if key.is_empty() || id.is_empty() {
-                continue;
-            }
-            let stored = store.as_ref().is_some_and(|store| {
-                crate::user_partitions::store_active_credential_dual(
-                    store,
-                    &format!("filen_api_key_{id}"),
-                    &key,
-                )
-                .is_ok()
+            let moved = move_imported_filen_api_key(server, |key, secret| {
+                let store = store.as_ref().ok_or("the credential vault is locked")?;
+                crate::user_partitions::store_active_credential_dual(store, key, secret)
+                    .map_err(|e| e.to_string())
             });
-            if stored {
-                server["hasStoredFilenApiKey"] = Value::Bool(true);
-            } else {
+            if moved.is_err() {
                 secret_failures.push((
                     id,
                     "its Filen API key was not stored (unlock the vault and import again, or add the key in the profile)".to_string(),
@@ -1810,6 +1821,50 @@ mod tests {
     use super::*;
 
     #[test]
+    fn an_imported_filen_key_moves_to_the_vault_and_leaves_the_options() {
+        // Issue #230, through the rclone import itself: the window and the
+        // saved profile never carry the key.
+        let obscured = crate::rclone_import::obscure_password("FILEN-KEY-1").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            format!("[f]\ntype = filen\nemail = a@example.test\napi_key = {obscured}\n"),
+        )
+        .unwrap();
+        let result = crate::rclone_import::import_rclone(&conf).unwrap();
+        let value = serde_json::to_value(&result).unwrap();
+        let mut server = value["servers"][0].clone();
+        assert_eq!(
+            server
+                .pointer("/options/filen_api_key")
+                .and_then(|v| v.as_str()),
+            Some("FILEN-KEY-1")
+        );
+        let id = server["id"].as_str().unwrap().to_string();
+
+        let mut vault = HashMap::new();
+        move_imported_filen_api_key(&mut server, |k, v| {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(vault[&format!("filen_api_key_{id}")], "FILEN-KEY-1");
+        assert!(server.pointer("/options/filen_api_key").is_none());
+        assert_eq!(server["hasStoredFilenApiKey"], true);
+        assert!(!server.to_string().contains("FILEN-KEY-1"));
+
+        // A failed write still takes the key out of the options, and does not
+        // claim it was stored.
+        let mut server = value["servers"][0].clone();
+        let err = move_imported_filen_api_key(&mut server, |_, _| Err("locked".into()));
+        assert!(err.is_err());
+        assert!(server.pointer("/options/filen_api_key").is_none());
+        assert!(server.get("hasStoredFilenApiKey").is_none());
+        assert!(!server.to_string().contains("FILEN-KEY-1"));
+    }
+
+    #[test]
     fn private_export_options_never_come_from_the_caller() {
         let entry = json!({
             "id": "x",
@@ -2616,6 +2671,45 @@ mod tests {
                 ]),
                 "{source}"
             );
+        }
+    }
+
+    #[tokio::test]
+    async fn caller_supplied_private_options_never_reach_the_exported_file() {
+        // Only the backend writes `__aeroftp_*`, from the vault. Sent by the
+        // window, a token and app keys went into a file that reports no
+        // credentials. Both credential settings, with no vault to inject from.
+        let servers = json!([{
+            "id": "gd-id", "name": "gd", "host": "www.googleapis.com", "port": 443,
+            "username": "u", "protocol": "googledrive",
+            "options": {
+                "__aeroftp_oauth_token": "{\"access_token\":\"CALLER-TOKEN\"}",
+                "__aeroftp_oauth_client_id": "CALLER-APP",
+                "__aeroftp_oauth_client_secret": "CALLER-SECRET"
+            }
+        }])
+        .to_string();
+        for include_credentials in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("rclone.conf");
+            export_bridge_profiles(
+                "rclone",
+                &servers,
+                include_credentials,
+                &path.to_string_lossy(),
+                None,
+                |_| None,
+            )
+            .await
+            .unwrap();
+            let conf = std::fs::read_to_string(&path).unwrap();
+            assert!(conf.contains("type = drive"), "{conf}");
+            for secret in ["CALLER-TOKEN", "CALLER-APP", "CALLER-SECRET"] {
+                assert!(
+                    !conf.contains(secret),
+                    "include_credentials={include_credentials}: {secret} in\n{conf}"
+                );
+            }
         }
     }
 

@@ -666,13 +666,20 @@ fn rclone_bool(value: &str) -> Option<bool> {
     }
 }
 
+/// The longest `key_file` an expansion may produce: Linux's `PATH_MAX`. A
+/// longer path names no file on any platform AeroFTP runs on.
+const MAX_RCLONE_KEY_PATH_BYTES: usize = 4096;
+
 /// A `key_file` path as rclone opens it: environment variables expanded
 /// (`${HOME}`, `$HOME`, unset ones empty, as Go's `os.ExpandEnv`), with
 /// `RCLONE_CONFIG_DIR` the folder of the file being read, which rclone sets
 /// for its own config. A leading `~` is left to the key loader, which expands
 /// it. Kept literal, `${HOME}/.ssh/id_ed25519` named no file and the profile
 /// stopped signing in.
-fn expand_rclone_path(path: &str, config_dir: Option<&Path>) -> String {
+/// `None` when the result would pass [`MAX_RCLONE_KEY_PATH_BYTES`]: the
+/// length is checked before each piece is added, so `${PATH}` repeated a
+/// million times stops at the cap instead of allocating hundreds of MB.
+fn expand_rclone_path(path: &str, config_dir: Option<&Path>) -> Option<String> {
     let lookup = |name: &str| -> String {
         if name == "RCLONE_CONFIG_DIR" {
             if let Some(dir) = config_dir {
@@ -682,34 +689,37 @@ fn expand_rclone_path(path: &str, config_dir: Option<&Path>) -> String {
         std::env::var(name).unwrap_or_default()
     };
     let is_name = |c: char| c == '_' || c.is_ascii_alphanumeric();
-    let mut out = String::with_capacity(path.len());
+    let mut out = String::with_capacity(path.len().min(MAX_RCLONE_KEY_PATH_BYTES));
+    let push = |out: &mut String, piece: &str| -> Option<()> {
+        (out.len() + piece.len() <= MAX_RCLONE_KEY_PATH_BYTES).then(|| out.push_str(piece))
+    };
     let mut rest = path;
     while let Some(at) = rest.find('$') {
-        out.push_str(&rest[..at]);
+        push(&mut out, &rest[..at])?;
         let after = &rest[at + 1..];
         if let Some(braced) = after.strip_prefix('{') {
             match braced.find('}') {
                 Some(end) => {
-                    out.push_str(&lookup(&braced[..end]));
+                    push(&mut out, &lookup(&braced[..end]))?;
                     rest = &braced[end + 1..];
                 }
                 None => {
-                    out.push_str(&rest[at..]);
+                    push(&mut out, &rest[at..])?;
                     rest = "";
                 }
             }
         } else {
             let end = after.find(|c: char| !is_name(c)).unwrap_or(after.len());
             if end == 0 {
-                out.push('$');
+                push(&mut out, "$")?;
             } else {
-                out.push_str(&lookup(&after[..end]));
+                push(&mut out, &lookup(&after[..end]))?;
             }
             rest = &after[end..];
         }
     }
-    out.push_str(rest);
-    out
+    push(&mut out, rest)?;
+    Some(out)
 }
 
 /// The folder `${RCLONE_CONFIG_DIR}` names for the file at `config_path`,
@@ -728,14 +738,22 @@ fn rclone_config_dir(config_path: &Path) -> Option<std::path::PathBuf> {
 fn expand_rclone_key_files(
     sections: &mut HashMap<String, RcloneRemote>,
     config_dir: Option<&Path>,
-) {
-    for remote in sections.values_mut() {
+) -> Result<(), String> {
+    for (name, remote) in sections.iter_mut() {
         if let Some(key_file) = remote.get_mut("key_file") {
             if key_file.contains('$') {
-                *key_file = expand_rclone_path(key_file, config_dir);
+                *key_file = expand_rclone_path(key_file, config_dir).ok_or_else(|| {
+                    format!(
+                        "the key_file of '{}' expands past {} bytes, which names no file; \
+                         check its environment variables",
+                        name.replace(['\n', '\r'], " "),
+                        MAX_RCLONE_KEY_PATH_BYTES
+                    )
+                })?;
             }
         }
     }
+    Ok(())
 }
 
 /// Convert a single rclone remote to an AeroFTP profile.
@@ -2315,11 +2333,13 @@ fn check_rclone_expansion(sections: &HashMap<String, RcloneRemote>) -> Result<()
                 current.get("type").map(|t| t.trim()),
                 Some("alias") | Some("crypt")
             );
+            // `remote = base` with no colon opens the whole of `base`, as
+            // `parse_crypt_remote_target` reads it, so it copies `base` too.
             let Some(base) = wraps
                 .then(|| current.get("remote"))
                 .flatten()
-                .and_then(|r| r.trim().split_once(':'))
-                .map(|(base, _)| base.trim())
+                .map(|r| r.trim())
+                .map(|r| r.split_once(':').map_or(r, |(base, _)| base).trim())
             else {
                 break;
             };
@@ -2387,7 +2407,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     };
 
     let mut sections = parse_rclone_conf(&content);
-    expand_rclone_key_files(&mut sections, rclone_config_dir(config_path).as_deref());
+    expand_rclone_key_files(&mut sections, rclone_config_dir(config_path).as_deref())?;
     check_rclone_expansion(&sections)?;
     let aeroftp_export = aeroftp_export_header(&content);
     let total_remotes = sections.len();
@@ -3500,19 +3520,25 @@ impl RcloneNamespace {
     /// rclone 1.75.2 against a local FTP listener, 2026-11-06). A name whose
     /// dot-prefix is a section, or will be one (a profile still to write), is
     /// the descendant; a name that is the dot-prefix of a section already
-    /// written would become the ancestor.
-    fn dotted_kin(&self, candidate: &str) -> bool {
+    /// written would become the ancestor. `above_reserved` also counts the
+    /// profiles still to write as descendants, for a name that must not push
+    /// one aside: an overlay or generated `vault` written before the profile
+    /// `vault.team` turned that profile into `vault-team`, which commands
+    /// using `vault.team:` no longer address.
+    fn dotted_kin(&self, candidate: &str, above_reserved: bool) -> bool {
         let ancestor_taken = candidate.match_indices('.').any(|(i, _)| {
             let prefix = &candidate[..i];
             self.used.contains(prefix) || self.reserved.contains(prefix)
         });
         let below = format!("{candidate}.");
-        ancestor_taken || self.used.iter().any(|u| u.starts_with(&below))
+        ancestor_taken
+            || self.used.iter().any(|u| u.starts_with(&below))
+            || (above_reserved && self.reserved.iter().any(|r| r.starts_with(&below)))
     }
 
     /// A name the operator wrote by hand: taken exactly, or not at all.
     fn claim_exact(&mut self, name: &str) -> bool {
-        if self.used.contains(name) || self.reserved.contains(name) || self.dotted_kin(name) {
+        if self.used.contains(name) || self.reserved.contains(name) || self.dotted_kin(name, true) {
             return false;
         }
         self.used.insert(name.to_string());
@@ -3526,19 +3552,22 @@ impl RcloneNamespace {
     }
 
     fn claim(&mut self, base: &str, avoid_reserved: bool) -> Option<String> {
+        // A descendant gives up its dots: a suffix alone keeps it under the
+        // same ancestor (`Lab.x-2` still reads `[Lab]`). The undotted name is
+        // one this exporter invents, so it steps aside for every profile name:
+        // taken as it was, `Lab.x` became `Lab-x` and the real `Lab-x` moved
+        // to `Lab-x-2`, where existing commands no longer find it.
+        let undotted;
+        let (base, avoid_reserved) = if self.dotted_kin(base, avoid_reserved) {
+            undotted = base.replace('.', "-");
+            (undotted.as_str(), true)
+        } else {
+            (base, avoid_reserved)
+        };
         let free = |me: &Self, candidate: &str| {
             !me.used.contains(candidate)
                 && !(avoid_reserved && me.reserved.contains(candidate))
-                && !me.dotted_kin(candidate)
-        };
-        // A descendant gives up its dots: a suffix alone keeps it under the
-        // same ancestor (`Lab.x-2` still reads `[Lab]`).
-        let undotted;
-        let base = if self.dotted_kin(base) {
-            undotted = base.replace('.', "-");
-            undotted.as_str()
-        } else {
-            base
+                && !me.dotted_kin(candidate, avoid_reserved)
         };
         if free(self, base) {
             self.used.insert(base.to_string());
@@ -10152,6 +10181,53 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     }
 
     #[test]
+    fn a_dotted_name_never_takes_another_profile_name() {
+        // `Lab.x` gives up its dot, but `Lab-x` is a real profile: taken as it
+        // was, the real one moved to `Lab-x-2`.
+        let lab = |name: &str, host: &str| {
+            server_with(name, "ftp", host, 21, None, serde_json::json!({}))
+        };
+        let servers = vec![
+            lab("Lab", "lab.test"),
+            lab("Lab.x", "dotted.test"),
+            lab("Lab-x", "real.test"),
+        ];
+        let (_, conf) = export_to_string(&servers, "dotted-reserved");
+        assert!(
+            section_of(&conf, "Lab-x").contains("host = real.test"),
+            "{conf}"
+        );
+        assert!(
+            !section_of(&conf, "Lab-x").contains("dotted.test"),
+            "{conf}"
+        );
+        assert!(conf.contains("host = dotted.test"), "{conf}");
+
+        // An overlay name may not become the ancestor of a profile written
+        // later: `vault` before `vault.team` renamed that profile.
+        let servers = vec![
+            export_server(
+                "nas",
+                "ftp",
+                Some(serde_json::json!({
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptOverlayName": "vault",
+                    "rcloneCryptPassword": "topsecret",
+                })),
+            ),
+            export_server("vault.team", "ftp", None),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "dotted-overlay");
+        assert!(conf.contains("[vault.team]\ntype = ftp"), "{conf}");
+        assert!(!conf.contains("[vault]\n"), "{conf}");
+        assert!(
+            outcome.skipped.iter().any(|s| s.name == "nas"),
+            "{:?}",
+            outcome.skipped
+        );
+    }
+
+    #[test]
     fn no_exported_section_reads_another_through_a_dotted_name() {
         // Codex review RCB-01: rclone reads a key `[Lab.x]` lacks from
         // `[Lab]`, so the child logged in to its own host with the parent's
@@ -10307,6 +10383,36 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         let secrets = result.provider_secrets.get(&id).expect("the app");
         assert_eq!(secrets.oauth_client_id.as_deref(), Some("APP_A"));
         assert_eq!(secrets.oauth_client_secret.as_deref(), Some("SECRET_A"));
+    }
+
+    #[test]
+    fn a_key_file_that_expands_past_path_max_refuses_the_import() {
+        let key = "${RCLONE_CONFIG_DIR}".repeat(1000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            format!("[nas]\ntype = sftp\nhost = nas.example.test\nuser = u\nkey_file = {key}\n"),
+        )
+        .unwrap();
+        let err = import_rclone(&path).err().expect("refused");
+        assert!(err.contains("key_file of 'nas' expands past"), "{err}");
+    }
+
+    #[test]
+    fn crypt_remotes_without_a_colon_count_against_the_expansion_budget() {
+        // `remote = base` opens all of `base`, so each crypt copies its secret.
+        let secret = "k".repeat(1024 * 1024);
+        let mut conf =
+            format!("[base]\ntype = s3\nprovider = AWS\nsecret_access_key = {secret}\n\n");
+        for i in 0..70 {
+            conf.push_str(&format!("[c{i}]\ntype = crypt\nremote = base\n\n"));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(&path, conf).unwrap();
+        let err = import_rclone(&path).err().expect("refused");
+        assert!(err.contains("expands to more than"), "{err}");
     }
 
     #[test]
@@ -10868,18 +10974,34 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         let dir = Path::new("/etc/rclone");
         let path = std::env::var("PATH").unwrap_or_default();
         assert_eq!(
-            expand_rclone_path("${RCLONE_CONFIG_DIR}/id_ed25519", Some(dir)),
-            "/etc/rclone/id_ed25519"
+            expand_rclone_path("${RCLONE_CONFIG_DIR}/id_ed25519", Some(dir)).as_deref(),
+            Some("/etc/rclone/id_ed25519")
         );
-        assert_eq!(expand_rclone_path("$PATH/k", None), format!("{path}/k"));
-        assert_eq!(expand_rclone_path("${PATH}-k", None), format!("{path}-k"));
         assert_eq!(
-            expand_rclone_path("/k/${AEROFTP_TEST_NEVER_SET_VAR}/x", None),
-            "/k//x",
+            expand_rclone_path("$PATH/k", None),
+            Some(format!("{path}/k"))
+        );
+        assert_eq!(
+            expand_rclone_path("${PATH}-k", None),
+            Some(format!("{path}-k"))
+        );
+        assert_eq!(
+            expand_rclone_path("/k/${AEROFTP_TEST_NEVER_SET_VAR}/x", None).as_deref(),
+            Some("/k//x"),
             "an unset variable is empty, as in Go's os.ExpandEnv"
         );
-        assert_eq!(expand_rclone_path("~/.ssh/id $ x", None), "~/.ssh/id $ x");
-        assert_eq!(expand_rclone_path("/k/${open", None), "/k/${open");
+        assert_eq!(
+            expand_rclone_path("~/.ssh/id $ x", None).as_deref(),
+            Some("~/.ssh/id $ x")
+        );
+        assert_eq!(
+            expand_rclone_path("/k/${open", None).as_deref(),
+            Some("/k/${open")
+        );
+        // A key path past PATH_MAX stops at the cap instead of allocating:
+        // `${RCLONE_CONFIG_DIR}` a thousand times over a 12-byte folder.
+        let long = "${RCLONE_CONFIG_DIR}".repeat(1000);
+        assert_eq!(expand_rclone_path(&long, Some(dir)), None);
         // A bare file name, as the CLI passes `rclone.conf`: the folder is the
         // current one, not the empty parent that made `/id_ed25519`.
         assert_eq!(

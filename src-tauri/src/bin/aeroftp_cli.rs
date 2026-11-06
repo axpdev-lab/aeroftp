@@ -42125,9 +42125,15 @@ fn imported_server_profile(
         "options": server.options,
         "providerId": server.provider_id,
     });
+    let mut store_secret = store_secret;
     ftp_client_gui_lib::bridge_commands::materialize_imported_crypt_overlay(
         &mut profile,
-        store_secret,
+        &mut store_secret,
+    )?;
+    // In the vault, not in the saved options (issue #230), as the GUI does.
+    ftp_client_gui_lib::bridge_commands::move_imported_filen_api_key(
+        &mut profile,
+        &mut store_secret,
     )?;
     Ok(profile)
 }
@@ -69512,6 +69518,46 @@ mod hashsum_digest_tests {
             vault[&format!("aerocrypt_overlay_salt_{}", server.id)],
             "hD1lB5uyIChoDFqhaHOsUg"
         );
+    }
+
+    /// `import rclone --apply` keeps an imported Filen CLI API key out of the
+    /// saved profile and writes it with the profile's other secrets, under
+    /// `filen_api_key_<id>` (issue #230), as the GUI import does.
+    #[test]
+    fn rclone_apply_moves_a_filen_api_key_into_the_vault() {
+        use ftp_client_gui_lib::rclone_import::{export_rclone, import_rclone, RcloneExportServer};
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("rclone.conf");
+        let server = RcloneExportServer {
+            id: "f-id".into(),
+            name: "f".into(),
+            host: String::new(),
+            port: 0,
+            username: "a@example.test".into(),
+            protocol: Some("filen".into()),
+            options: Some(serde_json::json!({ "filen_api_key": "FILEN-KEY-2" })),
+            provider_id: None,
+        };
+        export_rclone(&[server], &std::collections::HashMap::new(), &conf).unwrap();
+        let result = import_rclone(&conf).unwrap();
+        let server = result
+            .servers
+            .iter()
+            .find(|s| s.name == "f")
+            .expect("imported");
+        let mut vault = std::collections::HashMap::new();
+        let profile = imported_server_profile(server, |k, v| {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            vault[&format!("filen_api_key_{}", server.id)],
+            "FILEN-KEY-2"
+        );
+        assert!(profile.pointer("/options/filen_api_key").is_none());
+        assert_eq!(profile["hasStoredFilenApiKey"], true);
+        assert!(!profile.to_string().contains("FILEN-KEY-2"));
     }
 
     /// What `crypt set-form` writes: the forms given, recorded on an enabled

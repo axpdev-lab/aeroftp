@@ -20,7 +20,8 @@ use tokio::sync::Mutex as TokioMutex;
 use super::listing::{Entry, Kind, Meta};
 use super::session::ScpSession;
 use crate::providers::sftp::{
-    format_permissions, resolve_remote_path, ssh_login, SharedSshHandle, SshHandler,
+    format_permissions, resolve_remote_path, resolve_start_dir, ssh_login, SharedSshHandle,
+    SshHandler,
 };
 use crate::providers::shell_quote::shell_quote;
 use crate::providers::{
@@ -132,12 +133,7 @@ impl ScpProvider {
         } else {
             "/".to_string()
         };
-        self.current_dir = match &self.config.initial_path {
-            Some(initial) if !initial.is_empty() => {
-                resolve_remote_path(&self.home_dir, &self.home_dir, initial)
-            }
-            _ => self.home_dir.clone(),
-        };
+        self.current_dir = resolve_start_dir(&self.home_dir, self.config.initial_path.as_deref());
         tracing::info!(
             "SCP: {} ({}) ready, home {}",
             self.config.host,
