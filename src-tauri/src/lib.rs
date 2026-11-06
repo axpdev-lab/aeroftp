@@ -3524,10 +3524,22 @@ async fn connect_ftp_inner(
     };
 
     match cancel_token.as_ref() {
-        Some(token) => tokio::select! {
-            res = do_connect => res,
-            _ = token.cancelled() => Err(provider_commands::CONNECT_CANCELLED.to_string()),
-        },
+        Some(token) => {
+            let outcome = tokio::select! {
+                res = do_connect => res,
+                _ = token.cancelled() => Err(provider_commands::CONNECT_CANCELLED.to_string()),
+            };
+            if outcome
+                .as_ref()
+                .is_err_and(|e| e == provider_commands::CONNECT_CANCELLED)
+            {
+                // A login cut short leaves a half-open stream the manager would
+                // still report as connected. Closing it costs no QUIT wait: the
+                // manager knows the login was abandoned.
+                let _ = ftp_manager.disconnect().await;
+            }
+            outcome
+        }
         None => do_connect.await,
     }
 }

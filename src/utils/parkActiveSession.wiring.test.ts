@@ -152,22 +152,44 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(body).not.toContain('setActiveSessionId(');
     });
 
-    it('shows a clicked parked tab connected once it reconnects, and parked again if it does not', () => {
+    it('shows a clicked parked tab connected while it reconnects, and parked again if it does not', () => {
         // The tab bar calls switchSession directly: with the workspace marked
         // disconnected by the park, the tab reconnected behind a panel that
-        // still read as disconnected. Marked connected before the reconnect, a
-        // failed one left a dead tab active, which a click no longer retried.
+        // still read as disconnected, and a stalled listing had no Cancel in
+        // sight. A failed reconnect must not leave a dead tab active, which a
+        // click would no longer retry.
         const start = APP.indexOf('  const switchSession = async');
         const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
-        const success = body.indexOf("setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));");
+        const activate = body.indexOf('setActiveSessionId(sessionId);');
         const connected = body.indexOf('setIsConnected(true);');
-        expect(success).toBeGreaterThan(-1);
-        expect(connected).toBeGreaterThan(success);
-        expect(body.slice(body.indexOf('setActiveSessionId(sessionId);'), success)).toContain('await ');
+        expect(activate).toBeGreaterThan(-1);
+        expect(connected).toBeGreaterThan(activate);
+        expect(body.slice(activate, connected)).not.toContain('await ');
         expect(body).toContain('const fromParked = activeSessionId === null;');
         // The refused host key, the two cancel branches and the failure branch.
         expect(body.split('backToParked();').length - 1).toBe(4);
+        // Back to parked means nothing active and a disconnected workspace, so
+        // the next click on the tab passes the "already active" return and
+        // reconnects again.
+        const back = body.slice(body.indexOf('const backToParked = () => {'), body.indexOf('\n    };', body.indexOf('const backToParked = () => {')));
+        expect(back).toContain('if (!fromParked) return;');
+        expect(back).toContain('setActiveSessionId(null);');
+        expect(back).toContain('setIsConnected(false);');
+        expect(body.indexOf('if (activeSessionId === sessionId) {')).toBeLessThan(body.indexOf('const fromParked'));
         expect(APP).toContain('onTabClick={switchSession}');
+    });
+
+    it('ends every device tab when a switch to another server replaces the backend', () => {
+        // Kept among the others, a device tab outlived the switch that ended
+        // its session, and a click on it disconnected the server just reached.
+        const start = APP.indexOf('  const switchSession = async');
+        const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
+        const drop = body.indexOf("if (targetSession.connectionParams?.protocol !== 'mtp'");
+        expect(drop).toBeGreaterThan(body.indexOf('checkSftpHostKey('));
+        expect(drop).toBeLessThan(body.indexOf('setActiveSessionId(sessionId);'));
+        const branch = body.slice(drop, body.indexOf('\n    }\n', drop));
+        expect(branch).toContain("setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));");
+        expect(branch).toContain('setActivePortableDeviceId(null);');
     });
 
     it('keeps a parked tab parked when its host key is refused', () => {
@@ -216,6 +238,14 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(early).toEqual([]);
     });
 
+    it('parks when the connection form hands over an OAuth session it already connected', () => {
+        const start = APP.indexOf('  const connectToFtpImpl = async (');
+        const at = APP.indexOf('    if (isOAuth) {\n', start);
+        const branch = APP.slice(at, APP.indexOf('setIsConnected(true);', at));
+        expect(at).toBeGreaterThan(start);
+        expect(branch).toContain(PARK);
+    });
+
     it('parks before an OAuth or 4shared connect replaces the backend in My Servers', () => {
         for (const run of ['scopedCancellable(doOAuthConnect)', 'scopedCancellable(doFourSharedConnect)']) {
             const at = MY_SERVERS.indexOf(run);
@@ -253,10 +283,13 @@ describe('parkActiveSession', () => {
     const park = async (activeSessionId: string | null, keepDeviceTab?: boolean) => {
         const ctx: Record<string, unknown> = {
             ...state, activeSessionId, useLatestCallback: (fn: unknown) => fn, mtpGvfsMountPathRef: { current: '/run/user/gvfs/mtp' },
+            quotaVersionRef: { current: 4 }, quotaConnectionRef: { current: 9 },
         };
         const fn = await runSlice<(keep?: boolean) => void>('  const parkActiveSession = useLatestCallback(', '  /** Shared open path', 'parkActiveSession', ctx);
         fn(keepDeviceTab);
-        return ctx as Record<string, ReturnType<typeof vi.fn>> & { mtpGvfsMountPathRef: { current: string | null } };
+        return ctx as Record<string, ReturnType<typeof vi.fn>> & {
+            mtpGvfsMountPathRef: { current: string | null }; quotaVersionRef: { current: number }; quotaConnectionRef: { current: number };
+        };
     };
     const applyAll = (setSessions: ReturnType<typeof vi.fn>, tabs: { id: string; status: string; connectionParams?: { protocol: string } }[]) =>
         setSessions.mock.calls.reduce((prev, [update]) => (update as (p: typeof tabs) => typeof tabs)(prev), tabs);
@@ -284,8 +317,14 @@ describe('parkActiveSession', () => {
         // next connection lists; the cached tab keeps them (asserted above).
         expect(ctx.setRemoteFiles).toHaveBeenCalledWith([]);
         expect(ctx.setSelectedRemoteFiles).toHaveBeenCalledWith(new Set());
-        // Search results of the parked session would list over the next one.
+        // Search results of the parked session would list over the next one,
+        // and its query would filter the next listing.
         expect(ctx.setRemoteSearchResults).toHaveBeenCalledWith(null);
+        expect(ctx.setRemoteSearchQuery).toHaveBeenCalledWith('');
+        // A quota fetch or scan of the parked session cannot land on the next.
+        expect(ctx.quotaVersionRef.current).toBe(5);
+        expect(ctx.quotaConnectionRef.current).toBe(10);
+        expect(ctx.setStorageQuota).toHaveBeenCalledWith(null);
     });
 
     it('drops a portable device tab and its unplug watch when a connect replaces the backend', async () => {

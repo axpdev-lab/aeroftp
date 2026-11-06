@@ -4870,11 +4870,17 @@ const App: React.FC = () => {
       mtpGvfsMountPathRef.current = null;
     }
     // The remote panel stops showing the parked session's files while the next
-    // connection lists: they live on in the cached tab and come back with it,
-    // and so do search results.
+    // connection lists: they live on in the cached tab and come back with it.
+    // Search results and the query that filters the panel go with them.
     setRemoteFiles([]);
     setSelectedRemoteFiles(new Set());
     setRemoteSearchResults(null);
+    setRemoteSearchQuery('');
+    // A quota fetch or scan of the parked session must not land on, or scan,
+    // the provider that replaces it (as switchSession does).
+    quotaVersionRef.current++;
+    quotaConnectionRef.current++;
+    setStorageQuota(null);
     setActiveSessionId(null);
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
@@ -5120,6 +5126,8 @@ const App: React.FC = () => {
     await openMtpSessionFromLiveDevice(device);
   }, [openMtpSessionFromLiveDevice]);
 
+  /** A portable device went away: closes it, ends its tab, and disconnects the
+   *  provider only when the device owns it. */
   const handlePortableDeviceClosed = useCallback((deviceId: string) => {
     setActivePortableDeviceId((prev) => (prev === deviceId ? null : prev));
     mtpGvfsMountPathRef.current = null;
@@ -8141,7 +8149,9 @@ const App: React.FC = () => {
 
     if (isOAuth) {
       // OAuth provider is already connected via OAuthConnect/FourSharedConnect component
-      // Just switch to file manager view
+      // Just switch to file manager view. The component replaced the backend,
+      // so the live tab is put aside first.
+      parkActiveSession();
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
@@ -8822,6 +8832,8 @@ const App: React.FC = () => {
 
   useFaviconDetection(sessions, activeSessionId, handleFaviconDetected);
 
+  /** Makes `sessionId` the active tab and reconnects it, showing its cached
+   *  view at once; a failed reconnect of a parked tab leaves it parked. */
   const switchSession = async (sessionId: string, connectScope = new ConnectScope()) => {
     connectScope.assert();
     // Find the target session from current sessions state
@@ -8856,6 +8868,18 @@ const App: React.FC = () => {
     // Same reason as the disconnect path: the scan belongs to the session being
     // left behind, not to the one being switched to.
     closeAeroSyncForTornDownSession();
+
+    // Switching to another server replaces the backend, which ends a portable
+    // device session: its tab cannot be reconnected from a click (it needs the
+    // live device), so every device tab goes, with its unplug watch, as at a
+    // connect park. Left in place, a click on it would disconnect this server
+    // before the device connect is refused.
+    if (targetSession.connectionParams?.protocol !== 'mtp'
+      && sessions.some(s => s.connectionParams?.protocol === 'mtp')) {
+      setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
+      setActivePortableDeviceId(null);
+      mtpGvfsMountPathRef.current = null;
+    }
 
     // Capture current state values before any async operations
     const capturedRemoteFiles = [...remoteFiles];
@@ -8892,6 +8916,11 @@ const App: React.FC = () => {
     setOverlayDecrypting(false);
     setActiveSessionId(sessionId);
     setShowRemotePanel(true); // Exit AeroFile mode when switching to a connection tab
+    // The tab bar calls here directly, and a parked tab left the workspace
+    // marked disconnected: shown from here on, the remote panel and its Cancel
+    // are there while the reconnect lists. A failed or cancelled reconnect of a
+    // parked tab goes back to parked (backToParked).
+    setIsConnected(true);
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting
@@ -9218,10 +9247,6 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
-      // A tab parked by "+" or by a connect over it left the workspace marked
-      // disconnected: the tab bar calls here directly, so the workspace reads as
-      // connected again only once the reconnect has succeeded.
-      setIsConnected(true);
       activityLog.updateEntry(reconnectLogId, {
         status: 'success',
         // Honest wording: a live-slot reuse never reconnected (#128-C), so don't
@@ -9373,6 +9398,8 @@ const App: React.FC = () => {
     await disconnectFromFtp('close-all');
   };
 
+  /** The "+" new tab: parks the live tab, keeping a device tab, and opens a
+   *  fresh connection form. */
   const handleNewTabFromSavedServer = () => {
     parkActiveSession(true);
     // Reset connection form for a fresh "new server" experience
@@ -10046,6 +10073,8 @@ const App: React.FC = () => {
     setAeroVaultOverlaySession(null);
   };
 
+  /** Unwinds a cancelled connect: drops its backend, keeps the tabs it found
+   *  (parked) and removes the ones it added, then returns to My Servers. */
   const abortConnectAfterCancel = async (owns: () => boolean, phaseVersion: number) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;

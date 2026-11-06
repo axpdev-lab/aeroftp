@@ -1521,10 +1521,12 @@ impl FtpProvider {
 struct AbandonGuard(Option<Arc<AtomicBool>>);
 
 impl AbandonGuard {
+    /// Arm the guard on a session's flag, before the command's first request.
     fn arm(flag: &Arc<AtomicBool>) -> Self {
         Self(Some(Arc::clone(flag)))
     }
 
+    /// The command came back: dropping the guard now marks nothing.
     fn disarm(mut self) {
         self.0 = None;
     }
@@ -1541,6 +1543,7 @@ impl Drop for AbandonGuard {
 /// The bodies of the commands that track `abandoned_command`: the trait
 /// methods of the same name wrap them in an [`AbandonGuard`].
 impl FtpProvider {
+    /// The body of `list`: the listing, redialed once on a stale data connection.
     async fn list_command(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         Self::refuse_line_breaks("listing", path)?;
         self.redial_if_a_reply_is_pending().await?;
@@ -1560,6 +1563,7 @@ impl FtpProvider {
         }
     }
 
+    /// The body of `pwd`: the working directory, redialed once on a closed control connection.
     async fn pwd_command(&mut self) -> Result<String, ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
         let mut outcome = self.stream_mut()?.pwd().await;
@@ -1579,6 +1583,7 @@ impl FtpProvider {
         Ok(path)
     }
 
+    /// The body of `cd`: change directory, then record the server's own path.
     async fn cd_command(&mut self, path: &str) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
         let mut outcome = self.stream_mut()?.cwd(path).await;
@@ -1600,6 +1605,7 @@ impl FtpProvider {
         Ok(())
     }
 
+    /// The body of `cd_up`: the parent directory, then record the server's own path.
     async fn cd_up_command(&mut self) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
@@ -4189,20 +4195,33 @@ impl FtpProvider {
     /// A `CWD` that fails is reported rather than swallowed: the alternative is
     /// a session whose directory is not the one the caller believes, which is
     /// the class this exists to close.
+    ///
+    /// It runs inside the recovery of any command, upload included, so a
+    /// recovery dropped during its `CWD` or `PWD` marks the fresh session as
+    /// [`Self::abandoned_command`] like a dropped listing.
     async fn restore_working_directory(&mut self, previous: &str) -> Result<(), ProviderError> {
         if previous == self.current_path {
             return Ok(());
         }
-        let stream = self.stream_mut()?;
-        stream
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let Ok(stream) = self.stream_mut() else {
+            guard.disarm();
+            return Err(ProviderError::NotConnected);
+        };
+        let changed = stream
             .cwd(previous)
             .await
-            .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+            .map_err(|e| ProviderError::InvalidPath(e.to_string()));
+        if let Err(err) = changed {
+            guard.disarm();
+            return Err(err);
+        }
         self.current_path = stream
             .pwd()
             .await
             .unwrap_or_else(|_| previous.to_string())
             .replace('\\', "/");
+        guard.disarm();
         Ok(())
     }
 
@@ -4831,6 +4850,9 @@ impl FtpProvider {
         path: &str,
         wanted: Option<&str>,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        // Public, so it can be called without `checksum`: it needs the G54
+        // entry check of its own (a leftover or an abandoned reply).
+        self.redial_if_a_reply_is_pending().await?;
         if !self.hash.any() {
             return Err(ProviderError::Other(
                 "Server does not support hash commands".to_string(),
@@ -10232,6 +10254,7 @@ mod abandoned_command_tests {
             .any(|line| line.to_uppercase().starts_with(command))
     }
 
+    /// A listing dropped while the server sits on PASV disconnects at once, with no QUIT.
     #[tokio::test]
     async fn a_cancelled_listing_is_closed_at_once_without_quit() {
         let (port, log) = server(Passive::Silent).await;
@@ -10260,6 +10283,7 @@ mod abandoned_command_tests {
         assert!(!sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 
+    /// Commands that came back leave nothing marked: the disconnect still sends QUIT.
     #[tokio::test]
     async fn a_disconnect_after_finished_commands_still_says_goodbye() {
         let (port, log) = server(Passive::Answered).await;
@@ -10271,6 +10295,7 @@ mod abandoned_command_tests {
         assert!(sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
     }
 
+    /// After an abandoned listing whose reply comes late, the next command redials instead of reading it.
     #[tokio::test]
     async fn the_next_command_after_an_abandoned_one_redials_instead_of_reading_its_late_reply() {
         let (port, log) = server(Passive::Late).await;

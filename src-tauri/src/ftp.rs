@@ -95,7 +95,8 @@ pub struct FtpManager {
     password: Option<SecretString>, // Stored for auto-reconnect, zeroized on drop
     timeouts: FtpTimeoutConfig,
     /// The login was given up before its reply came: `connect_ftp` drops the
-    /// login future on a Cancel, after `connect` already kept the stream. The
+    /// login future on a Cancel (during `USER`/`PASS` or the `PWD` that ends
+    /// it), after `connect` already kept the stream. The
     /// control channel is then out of step, so `disconnect` sends no QUIT,
     /// whose reply could be the one the login was waiting for.
     abandoned_command: bool,
@@ -192,17 +193,28 @@ impl FtpManager {
 
         info!("Logging in as {}", username);
 
+        // Tracked through the PWD that ends the login: `connect_ftp` can drop
+        // the future during either request.
         self.abandoned_command = true;
-        let outcome = stream.login(username, password).await;
-        self.abandoned_command = false;
-        outcome.map_err(|e| FtpManagerError::OperationFailed(format!("Login failed: {}", e)))?;
+        if let Err(e) = stream.login(username, password).await {
+            // A refusal is a reply: the channel is in step.
+            self.abandoned_command = false;
+            return Err(FtpManagerError::OperationFailed(format!("Login failed: {}", e)).into());
+        }
 
         self.username = Some(username.to_string());
         self.password = Some(SecretString::from(password.to_string())); // Store for auto-reconnect
         info!("Successfully logged in as {}", username);
 
-        // Get current working directory after login
-        self.current_path = self.pwd().await.unwrap_or_else(|_| "/".to_string());
+        // Get current working directory after login. Only an answer settles
+        // the channel: a PWD that timed out may still be answered later.
+        match self.pwd().await {
+            Ok(path) => {
+                self.current_path = path;
+                self.abandoned_command = false;
+            }
+            Err(_) => self.current_path = "/".to_string(),
+        }
 
         Ok(())
     }
@@ -1477,9 +1489,10 @@ mod abandoned_login_tests {
     use tokio::net::TcpListener;
 
     /// A server that greets, logs every command line and answers each one,
-    /// except `USER` when `silent_on_user` is set. It keeps reading, so a QUIT
-    /// sent afterwards would still reach the log.
-    async fn server(silent_on_user: bool) -> (u16, Arc<Mutex<Vec<String>>>) {
+    /// except `silent_on` (a command name, or "" for none), which it never
+    /// answers. It keeps reading, so a QUIT sent afterwards would still reach
+    /// the log.
+    async fn server(silent_on: &'static str) -> (u16, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let log = Arc::new(Mutex::new(Vec::new()));
@@ -1496,8 +1509,10 @@ mod abandoned_login_tests {
                     while let Ok(Some(line)) = lines.next_line().await {
                         log.lock().unwrap().push(line.clone());
                         let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+                        if cmd == silent_on {
+                            continue;
+                        }
                         let reply = match cmd.as_str() {
-                            "USER" if silent_on_user => continue,
                             "USER" => "331 password please\r\n",
                             "PASS" => "230 logged in\r\n",
                             "PWD" => "257 \"/\" is current\r\n",
@@ -1521,33 +1536,37 @@ mod abandoned_login_tests {
             .any(|line| line.to_uppercase().starts_with(command))
     }
 
+    /// A login dropped during USER or its closing PWD disconnects at once, with no QUIT.
     #[tokio::test]
     async fn a_cancelled_login_is_closed_at_once_without_quit() {
-        let (port, log) = server(true).await;
-        let mut manager = FtpManager::new();
-        manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
         // What a Cancel of `connect_ftp` does: the login future is dropped
-        // while it waits for the reply to USER.
-        tokio::select! {
-            _ = manager.login("u", "p") => panic!("the server never answers USER"),
-            _ = tokio::time::sleep(Duration::from_millis(300)) => {}
-        }
-        assert!(sent(&log, "USER"), "{:?}", log.lock().unwrap());
+        // while it waits, for the reply to USER or to the PWD that ends it.
+        for silent in ["USER", "PWD"] {
+            let (port, log) = server(silent).await;
+            let mut manager = FtpManager::new();
+            manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
+            tokio::select! {
+                _ = manager.login("u", "p") => panic!("the server never answers {silent}"),
+                _ = tokio::time::sleep(Duration::from_millis(300)) => {}
+            }
+            assert!(sent(&log, silent), "{:?}", log.lock().unwrap());
 
-        let started = Instant::now();
-        manager.disconnect().await.unwrap();
-        let took = started.elapsed();
-        assert!(
-            took < Duration::from_secs(1),
-            "the disconnect took {took:?}"
-        );
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(!sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
+            let started = Instant::now();
+            manager.disconnect().await.unwrap();
+            let took = started.elapsed();
+            assert!(
+                took < Duration::from_secs(1),
+                "{silent}: the disconnect took {took:?}"
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            assert!(!sent(&log, "QUIT"), "{silent}: {:?}", log.lock().unwrap());
+        }
     }
 
+    /// A login that came back leaves nothing marked: the disconnect still sends QUIT.
     #[tokio::test]
     async fn a_disconnect_after_a_login_still_says_goodbye() {
-        let (port, log) = server(false).await;
+        let (port, log) = server("").await;
         let mut manager = FtpManager::new();
         manager.connect(&format!("127.0.0.1:{port}")).await.unwrap();
         manager.login("u", "p").await.unwrap();
