@@ -14,7 +14,11 @@ import { getConnectionPreset } from '../providers/connectionManifest';
 
 interface RelaxationRule {
     key: string;
+    /** Other spellings the connection loader reads as the same option. */
+    aliases?: string[];
     unsafe: Array<string | boolean>;
+    /** Stored in the safe state when leaving the option out is not safe on its own. */
+    safe?: string | boolean;
     loopbackExempt: boolean;
 }
 
@@ -59,18 +63,27 @@ export const endpointStaysOnThisMachine = (endpoint: string): boolean => {
     return octets.length === 4 && octets[0] === '127' && octets.every(o => /^\d{1,3}$/.test(o));
 };
 
-/** The relaxing options of a profile. An S3 profile reaches `options.endpoint`, every other one its `host`. */
+const spellings = (rule: RelaxationRule): string[] => [rule.key, ...(rule.aliases ?? [])];
+
+/**
+ * The relaxing options of a profile. The loopback exemption holds only when
+ * every address the profile names (its `host` and its `options.endpoint`)
+ * stays on this machine, and every spelling the connection loader reads counts.
+ */
 export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[] => {
     const options = profile.options;
     if (!options || typeof options !== 'object') return [];
     const presetDefaults = profile.providerId ? getConnectionPreset(profile.providerId)?.defaults : undefined;
-    const endpoint = typeof options.endpoint === 'string' && options.endpoint.trim() ? options.endpoint : profile.host ?? '';
-    const onLoopback = endpointStaysOnThisMachine(endpoint);
+    const addresses = [profile.host, options.endpoint]
+        .filter((a): a is string => typeof a === 'string' && a.trim() !== '');
+    const onLoopback = addresses.length > 0 && addresses.every(endpointStaysOnThisMachine);
     const found: Relaxation[] = [];
     for (const rule of rules) {
-        if (!(rule.key in options)) continue;
-        const actual = options[rule.key];
-        if (!rule.unsafe.some(u => matches(actual, u))) continue;
+        const actual = spellings(rule)
+            .filter(key => key in options)
+            .map(key => options[key])
+            .find(value => rule.unsafe.some(u => matches(value, u)));
+        if (actual === undefined) continue;
         if (presetDefaults && rule.key in presetDefaults) continue;
         if (rule.loopbackExempt && onLoopback) continue;
         found.push({ key: rule.key, value: typeof actual === 'string' ? actual : String(actual) });
@@ -80,12 +93,17 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
 
 /**
  * A copy of `profile` with every relaxing option whose key is not in `keep`
- * removed (an absent option is the safe default for each), and the keys removed.
+ * brought to its safe state (every spelling removed, the rule's `safe` value
+ * stored where it has one), and the keys reset.
  */
 export const makeSafe = <T extends ProfileSecurityInput>(profile: T, keep: readonly string[] = []): { profile: T; removed: string[] } => {
     const removed = securityRelaxations(profile).map(r => r.key).filter(key => !keep.includes(key));
     if (removed.length === 0 || !profile.options) return { profile, removed: [] };
     const options = { ...profile.options };
-    for (const key of removed) delete options[key];
+    for (const key of removed) {
+        const rule = rules.find(r => r.key === key)!;
+        for (const spelling of spellings(rule)) delete options[spelling];
+        if (rule.safe !== undefined) options[rule.key] = rule.safe;
+    }
     return { profile: { ...profile, options }, removed };
 };

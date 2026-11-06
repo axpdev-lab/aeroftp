@@ -35,6 +35,15 @@ describe('makeSafe', () => {
         expect(profile.options.verifyCert).toBe(false);
     });
 
+    it('removes every spelling and stores the safe scheme where leaving it out is not safe', () => {
+        const snake = makeSafe({ host: 'dav.example.com', options: { verify_cert: false } });
+        expect(snake.removed).toEqual(['verifyCert']);
+        expect(snake.profile.options).toEqual({});
+        const port80 = makeSafe({ host: 'dav.example.com', options: { webdavScheme: 'http', tls_mode: 'HTTP' } });
+        expect(port80.removed).toEqual(['webdavScheme']);
+        expect(port80.profile.options).toEqual({ webdavScheme: 'https' });
+    });
+
     it('returns the same profile when nothing relaxes a check', () => {
         const profile = { host: 'files.example.com', options: { timeout: 30 } };
         expect(makeSafe(profile)).toEqual({ profile, removed: [] });

@@ -20,9 +20,31 @@ use std::sync::LazyLock;
 #[serde(rename_all = "camelCase")]
 struct RelaxationRule {
     key: String,
+    /// Other spellings the frontend reader matches; the backend matches every
+    /// spelling the connection loader reads, through
+    /// `canonicalize_profile_option_key`, and a test checks the two agree.
+    #[serde(default)]
+    aliases: Vec<String>,
     #[serde(rename = "unsafe")]
     unsafe_values: Vec<Value>,
+    /// The value the safe state stores, when leaving the option out is not
+    /// safe on its own (a WebDAV host on port 80 picks HTTP without a scheme).
+    #[serde(default)]
+    safe: Option<Value>,
     loopback_exempt: bool,
+}
+
+impl RelaxationRule {
+    /// Whether `option_key` is a spelling of this rule's option, as the
+    /// connection loader reads it (`verifyCert` and `verify_cert` alike).
+    fn names(&self, option_key: &str) -> bool {
+        crate::profile_loader::canonicalize_profile_option_key(option_key)
+            == crate::profile_loader::canonicalize_profile_option_key(&self.key)
+    }
+}
+
+fn rule(key: &str) -> Option<&'static RelaxationRule> {
+    table().relaxations.iter().find(|rule| rule.key == key)
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,8 +87,11 @@ fn shown(value: &Value) -> String {
 }
 
 /// The relaxing options of a profile given by its parts: the host it connects
-/// to, its preset id and its saved options. An S3 profile reaches
-/// `options.endpoint`, every other one its `host`.
+/// to, its preset id and its saved options. The loopback exemption holds only
+/// when every address the profile names stays on this machine, its `host` and
+/// its `options.endpoint` alike: a loopback endpoint beside a remote host
+/// exempts nothing, since WebDAV, FTP and SFTP connect to the host (Greptile
+/// on #1506 Requested 198). Every spelling the connection loader reads counts.
 pub fn security_relaxations_of(
     host: &str,
     provider_id: Option<&str>,
@@ -76,20 +101,25 @@ pub fn security_relaxations_of(
         return Vec::new();
     };
     let preset = provider_id.and_then(crate::connection_manifest::preset);
-    let target = options
-        .get("endpoint")
-        .and_then(Value::as_str)
-        .filter(|endpoint| !endpoint.trim().is_empty())
-        .unwrap_or(host);
-    let on_loopback = crate::util::endpoint_stays_on_this_machine(target);
+    let addresses: Vec<&str> = [Some(host), options.get("endpoint").and_then(Value::as_str)]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .collect();
+    let on_loopback = !addresses.is_empty()
+        && addresses
+            .iter()
+            .all(|address| crate::util::endpoint_stays_on_this_machine(address));
     table()
         .relaxations
         .iter()
         .filter_map(|rule| {
-            let actual = options.get(&rule.key)?;
-            if !rule.unsafe_values.iter().any(|u| value_matches(actual, u)) {
-                return None;
-            }
+            let actual = options
+                .iter()
+                .filter(|(key, _)| rule.names(key))
+                .map(|(_, value)| value)
+                .find(|value| rule.unsafe_values.iter().any(|u| value_matches(value, u)))?;
             if preset.is_some_and(|preset| preset.defaults.contains_key(&rule.key)) {
                 return None;
             }
@@ -151,9 +181,10 @@ pub fn security_relaxations(profile: &Value) -> Vec<Relaxation> {
     )
 }
 
-/// Bring `options` to its safe state: every relaxing option found by
-/// [`security_relaxations_of`] whose key is not in `keep` is removed (an absent
-/// option is the safe default for each of them). Returns the keys removed.
+/// Bring `options` to its safe state: for every relaxing option found by
+/// [`security_relaxations_of`] whose key is not in `keep`, every spelling of it
+/// is removed, and the rule's `safe` value is stored where leaving it out is
+/// not safe on its own. Returns the keys reset.
 pub fn make_options_safe(
     options: &mut Option<Value>,
     relaxations: &[Relaxation],
@@ -165,7 +196,18 @@ pub fn make_options_safe(
     relaxations
         .iter()
         .filter(|relaxation| !keep.contains(&relaxation.key))
-        .filter_map(|relaxation| map.remove(&relaxation.key).map(|_| relaxation.key.clone()))
+        .filter_map(|relaxation| {
+            let rule = rule(&relaxation.key)?;
+            let spellings: Vec<String> =
+                map.keys().filter(|key| rule.names(key)).cloned().collect();
+            for spelling in &spellings {
+                map.remove(spelling);
+            }
+            if let Some(safe) = &rule.safe {
+                map.insert(rule.key.clone(), safe.clone());
+            }
+            (!spellings.is_empty()).then(|| relaxation.key.clone())
+        })
         .collect()
 }
 
@@ -252,6 +294,48 @@ mod tests {
                 value: "true".into()
             }]
         );
+    }
+
+    /// Every alias the frontend reader matches is a spelling the loader reads
+    /// as the same option, and the snake_case form of each key is listed, so
+    /// the two readers cannot drift apart.
+    #[test]
+    fn the_frontend_aliases_are_the_spellings_the_loader_reads() {
+        for rule in &table().relaxations {
+            let canonical = crate::profile_loader::canonicalize_profile_option_key(&rule.key);
+            assert!(
+                rule.aliases.contains(&canonical) || canonical == rule.key,
+                "{}",
+                rule.key
+            );
+            for alias in &rule.aliases {
+                assert!(rule.names(alias), "{} -> {alias}", rule.key);
+            }
+        }
+    }
+
+    /// Greptile on #1506 Requested 198: the snake_case spelling, an unused
+    /// loopback endpoint and a WebDAV reset on port 80 were all ways around
+    /// the reset.
+    #[test]
+    fn spellings_unused_endpoints_and_port_80_do_not_bypass_the_reset() {
+        let mut snake = json!({"host": "dav.example.com", "options": {"verify_cert": false}});
+        assert_eq!(security_relaxations(&snake)[0].key, "verifyCert");
+        assert_eq!(make_profile_safe(&mut snake, &[]), vec!["verifyCert"]);
+        assert_eq!(snake["options"], json!({}));
+
+        let decoy = json!({
+            "host": "dav.example.com",
+            "options": {"verifyCert": false, "endpoint": "http://127.0.0.1"}
+        });
+        assert_eq!(security_relaxations(&decoy).len(), 1);
+
+        let mut port_80 = json!({
+            "host": "dav.example.com", "port": 80, "protocol": "webdav",
+            "options": {"webdavScheme": "http", "tls_mode": "HTTP"}
+        });
+        assert_eq!(make_profile_safe(&mut port_80, &[]), vec!["webdavScheme"]);
+        assert_eq!(port_80["options"], json!({"webdavScheme": "https"}));
     }
 
     #[test]
