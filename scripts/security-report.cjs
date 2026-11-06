@@ -185,7 +185,9 @@ function runOsvScanner(ignoreInfo) {
 // osv-scanner reports one record per lockfile, so a crate pinned at the same
 // version in several lockfiles (the app, the peer-l0 spike, the test helpers)
 // comes back once per file. A finding is one package version and one
-// advisory: count it once and list the lockfiles it was seen in.
+// advisory: count it once and list the lockfiles it was seen in. A git
+// submodule comes back with no version and its commit instead, so the commit
+// is part of the key and stands in for the version in the table.
 function collectOsvFindings(parsed, ignored) {
   const byKey = new Map();
   for (const result of parsed?.results || []) {
@@ -194,14 +196,14 @@ function collectOsvFindings(parsed, ignored) {
     const source = result.source?.path ? path.relative(ROOT, path.resolve(ROOT, result.source.path)) || result.source.path : '';
     for (const pkg of result.packages || []) {
       for (const vuln of pkg.vulnerabilities || []) {
-        const key = [pkg.package?.ecosystem, pkg.package?.name, pkg.package?.version, vuln.id].join('\u0000');
+        const key = [pkg.package?.ecosystem, pkg.package?.name, pkg.package?.version, pkg.package?.commit, vuln.id].join('\u0000');
         let finding = byKey.get(key);
         if (!finding) {
           const aliases = new Set([vuln.id, ...(vuln.aliases || [])]);
           finding = {
             ecosystem: pkg.package?.ecosystem,
             package: pkg.package?.name,
-            version: pkg.package?.version,
+            version: pkg.package?.version || pkg.package?.commit,
             id: vuln.id,
             aliases: vuln.aliases || [],
             summary: vuln.summary,

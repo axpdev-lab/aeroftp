@@ -40,6 +40,18 @@ test('a different version or a different advisory stays a separate finding', () 
   assert.deepEqual(open.map((f) => `${f.version} ${f.id}`).sort(), ['1.2.1 RUSTSEC-X', '1.2.1 RUSTSEC-Y', '1.2.2 RUSTSEC-X']);
 });
 
+test('a versionless package is one finding per commit', () => {
+  const sub = (commit) => ({ package: { commit }, vulnerabilities: [vuln('OSV-2026-1')] });
+  const parsed = {
+    results: [
+      { source: { path: ROOT }, packages: [sub('aaaa'), sub('bbbb')] },
+      { source: { path: ROOT }, packages: [sub('aaaa')] },
+    ],
+  };
+  const { open } = collectOsvFindings(parsed, new Set());
+  assert.deepEqual(open.map((f) => f.version).sort(), ['aaaa', 'bbbb']);
+});
+
 test('an ignore that matches an alias suppresses the finding', () => {
   const parsed = { results: [lockfile('Cargo.lock', [pkg('glib', '0.18.5', [vuln('GHSA-wrw7-89jp-8q8g', ['RUSTSEC-2024-0429'])])])] };
   const { open, suppressed } = collectOsvFindings(parsed, new Set(['RUSTSEC-2024-0429']));
