@@ -282,43 +282,25 @@ async fn list_mounted_volumes_linux() -> Result<Vec<VolumeInfo>, String> {
 
     // Pre-load volume labels from /dev/disk/by-label/
     let label_map = build_label_map();
+    // Inside a snap this is the snap's own mount table, see `snap_shares_mount`.
+    let snap_home = in_snap().then(|| std::env::var("SNAP_REAL_HOME").unwrap_or_default());
 
     let mut volumes = Vec::new();
 
-    for line in content.lines() {
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() < 4 {
-            continue;
-        }
-
-        let device = parts[0];
-        let mount_point_raw = parts[1];
-        let mount_point = &unescape_octal(mount_point_raw);
-        let fs_type = parts[2];
-
-        // Skip pseudo-filesystems
-        if PSEUDO_FS_TYPES.contains(&fs_type) {
-            continue;
-        }
-
-        // Skip system mount points
-        if should_skip_mount_point(mount_point) {
-            continue;
-        }
-
+    for (device, mount_point, fs_type) in listed_mounts(&content, snap_home.as_deref()) {
         // Get disk space via statvfs(2)
-        let (total_bytes, free_bytes) = get_disk_space(mount_point);
+        let (total_bytes, free_bytes) = get_disk_space(&mount_point);
 
         // Determine volume type
-        let volume_type = classify_volume(mount_point, fs_type);
+        let volume_type = classify_volume(&mount_point, fs_type);
         let is_ejectable = volume_type == "removable" || volume_type == "network";
 
         // Determine volume name
-        let name = resolve_volume_name(device, mount_point, &label_map);
+        let name = resolve_volume_name(device, &mount_point, &label_map);
 
         volumes.push(VolumeInfo {
             name,
-            mount_point: mount_point.to_string(),
+            mount_point,
             volume_type,
             total_bytes,
             free_bytes,
@@ -358,6 +340,75 @@ async fn list_mounted_volumes_linux() -> Result<Vec<VolumeInfo>, String> {
 
     info!("Detected {} mounted volumes", volumes.len());
     Ok(volumes)
+}
+
+/// The mounts of a `/proc/mounts` table that are volumes, as (device, mount
+/// point, filesystem type). `snap_home` is the user's real home when the
+/// table is a snap's own: then only the mounts it shares with the host count,
+/// each mount point once.
+#[cfg(target_os = "linux")]
+fn listed_mounts<'a>(content: &'a str, snap_home: Option<&str>) -> Vec<(&'a str, String, &'a str)> {
+    let mut seen = std::collections::HashSet::new();
+    let mut listed = Vec::new();
+    for line in content.lines() {
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let (device, fs_type) = (parts[0], parts[2]);
+        let mount_point = unescape_octal(parts[1]);
+
+        // Skip pseudo-filesystems
+        if PSEUDO_FS_TYPES.contains(&fs_type) {
+            continue;
+        }
+
+        // Skip system mount points
+        if should_skip_mount_point(&mount_point) {
+            continue;
+        }
+        if let Some(home) = snap_home {
+            if !snap_shares_mount(&mount_point, fs_type, home) || !seen.insert(mount_point.clone())
+            {
+                continue;
+            }
+        }
+        listed.push((device, mount_point, fs_type));
+    }
+    listed
+}
+
+/// Whether a mount in a snap's mount table is one of the host's that the snap
+/// sees at the host's own path, and so a volume the user can open.
+///
+/// Under strict confinement `/proc/mounts` is the snap's mount namespace: the
+/// base snap at `/`, its runtime bind mounts (`/etc`, `/home`, `/usr/lib/modules`,
+/// `/usr/lib/firmware`, `/var/lib/snapd`, fonts, the `/snap` squashfs images), and
+/// the whole host again under `/var/lib/snapd/hostfs`, which listed the host's
+/// EFI partition and every volume twice. The host mounts the snap shares at the
+/// same path are the removable-media ones (`/media`, `/run/media`, `/mnt`) and a
+/// network or FUSE mount the user made in their real home (`SNAP_REAL_HOME`).
+#[cfg(target_os = "linux")]
+fn snap_shares_mount(mount_point: &str, fs_type: &str, real_home: &str) -> bool {
+    if mount_point.starts_with("/var/lib/snapd/") || mount_point.starts_with("/snap/") {
+        return false;
+    }
+    if ["/media/", "/run/media/", "/mnt/"]
+        .iter()
+        .any(|prefix| mount_point.starts_with(prefix))
+    {
+        return true;
+    }
+    let real_home = real_home.trim_end_matches('/');
+    // A FUSE mount reports `fuse` (pCloud Drive) or `fuse.<name>` (rclone,
+    // sshfs); `fuseblk` is a block device and comes under the paths above.
+    let user_mount =
+        NETWORK_FS_TYPES.contains(&fs_type) || fs_type == "fuse" || fs_type.starts_with("fuse.");
+    user_mount
+        && !real_home.is_empty()
+        && mount_point
+            .strip_prefix(real_home)
+            .is_some_and(|rest| rest.starts_with('/'))
 }
 
 /// Get the current user's UID (for GVFS path).
@@ -1240,7 +1291,12 @@ pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, Stri
             .map_err(|e| format!("Partition list task failed: {e}"))?;
     }
     let output = std::process::Command::new("lsblk")
-        .args(["-J", "-b", "-o", "NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINT"])
+        .args([
+            "-J",
+            "-b",
+            "-o",
+            "NAME,SIZE,TYPE,FSTYPE,LABEL,MOUNTPOINT,PARTTYPE",
+        ])
         .output()
         .map_err(|e| format!("Failed to run lsblk: {}", e))?;
 
@@ -1290,11 +1346,20 @@ pub async fn list_unmounted_partitions() -> Result<Vec<UnmountedPartition>, Stri
             part["fstype"].as_str().unwrap_or(""),
             size,
             part["label"].as_str().unwrap_or(""),
+            part["parttype"].as_str().unwrap_or(""),
         ));
     }
 
     info!("Detected {} unmounted partitions", partitions.len());
     Ok(partitions)
+}
+
+/// Whether `part_type` (lsblk `PARTTYPE`, UDisks `Partition.Type`) names an EFI
+/// system partition: the GPT type GUID, or the MBR type `0xef`.
+#[cfg(target_os = "linux")]
+fn is_efi_system_partition(part_type: &str) -> bool {
+    let part_type = part_type.trim().to_ascii_lowercase();
+    part_type == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" || part_type == "0xef"
 }
 
 /// The sidebar row of an unmounted partition, unless it is one a user has no
@@ -1305,6 +1370,7 @@ fn listable_partition(
     fs_type: &str,
     size: u64,
     label: &str,
+    part_type: &str,
 ) -> Option<UnmountedPartition> {
     // Skip partitions with no filesystem (MSR, unformatted)
     if fs_type.is_empty() {
@@ -1316,8 +1382,9 @@ fn listable_partition(
         return None;
     }
 
-    // Skip small vfat partitions (EFI/boot, typically < 1GB)
-    if fs_type == "vfat" && size < 1_073_741_824 {
+    // Skip the EFI system partition by its type. A size rule (vfat under
+    // 1 GB) also hid every small FAT stick a user plugs in.
+    if is_efi_system_partition(part_type) {
         return None;
     }
 
@@ -1453,11 +1520,20 @@ mod udisks {
                     &string_of(block, "IdType"),
                     size,
                     &string_of(block, "IdLabel"),
+                    &partition_type(interfaces),
                 )
             })
             .collect();
         found.sort_by(|a, b| a.device.cmp(&b.device));
         found
+    }
+
+    /// The partition table type of an object (GPT GUID or MBR `0x..`), if any.
+    fn partition_type(interfaces: &Interfaces) -> String {
+        interfaces
+            .get(PARTITION)
+            .map(|partition| string_of(partition, "Type"))
+            .unwrap_or_default()
     }
 
     pub(super) fn unmounted_partitions() -> Result<Vec<UnmountedPartition>, String> {
@@ -1585,6 +1661,15 @@ mod udisks {
             ])
         }
 
+        /// The same object with its partition table type set.
+        fn with_type(mut object: Interfaces, part_type: &str) -> Interfaces {
+            object
+                .get_mut(PARTITION)
+                .unwrap()
+                .insert("Type".to_string(), owned(Value::from(part_type)));
+            object
+        }
+
         fn path(name: &str) -> OwnedObjectPath {
             OwnedObjectPath::try_from(format!("/org/freedesktop/UDisks2/block_devices/{name}"))
                 .unwrap()
@@ -1616,7 +1701,17 @@ mod udisks {
                 ),
                 (
                     path("sda5"),
-                    object("/dev/sda5", "vfat", GB / 2, "", false, false),
+                    with_type(
+                        object("/dev/sda5", "vfat", GB / 2, "", false, false),
+                        "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+                    ),
+                ),
+                (
+                    path("sdc1"),
+                    with_type(
+                        object("/dev/sdc1", "vfat", GB / 4, "STICK", false, false),
+                        "0x0c",
+                    ),
                 ),
                 (
                     path("sda6"),
@@ -1641,11 +1736,14 @@ mod udisks {
                     )
                 })
                 .collect();
+            // The EFI system partition goes by its type; a small FAT stick,
+            // which the old vfat-under-1-GB rule hid, is listed.
             assert_eq!(
                 rows,
                 [
                     ("sda2", "/dev/sda2", "ext4", 2 * GB),
                     ("Data", "/dev/sdb1", "ntfs", 5 * GB),
+                    ("STICK", "/dev/sdc1", "vfat", GB / 4),
                 ]
             );
         }
@@ -3752,5 +3850,206 @@ mod instant_offset_tests {
         assert_eq!(instant(&props.modified), secs(meta.modified()));
         assert_eq!(instant(&props.accessed), secs(meta.accessed()));
         assert_eq!(instant(&props.created), secs(meta.created()));
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod volume_table_tests {
+    use super::*;
+
+    /// A snap's `/proc/mounts`, captured on L1 from inside aeroftp 4.2.5 (rev
+    /// 230, `mount-observe` connected) with `snap run --shell aeroftp`. Of its
+    /// 1090 lines, 1003 of the 1006 `squashfs` images and the Docker and
+    /// `/run/credentials` lines are left out; all are dropped by the filters
+    /// anyway. The old list showed 33 entries from it: the runtime binds, the
+    /// host again under `/var/lib/snapd/hostfs` (its EFI partition among them),
+    /// and the one external disk twice.
+    const SNAP_TABLE: &str = r#"none / tmpfs rw,relatime,inode64 0 0
+/dev/nvme2n1p2 /usr/lib/modules ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /usr/lib/firmware ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /usr/src ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /usr/local/share/fonts ext4 ro,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /usr/share/fonts ext4 ro,relatime,errors=remount-ro 0 0
+tmpfs /usr/lib/x86_64-linux-gnu tmpfs rw,relatime,mode=755,inode64 0 0
+tmpfs /usr/lib/x86_64-linux-gnu/libproxy tmpfs rw,relatime,mode=755,inode64 0 0
+tmpfs /usr/share tmpfs rw,relatime,mode=755,inode64 0 0
+/dev/nvme2n1p2 /usr/share/fonts ext4 ro,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /var/snap ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /var/snap/firefox/common/host-hunspell ext4 ro,noexec,noatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /var/lib/snapd ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /var/lib/snapd/hostfs ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /var/lib/snapd/hostfs ext4 rw,relatime,errors=remount-ro 0 0
+tmpfs /var/lib/snapd/hostfs/run tmpfs rw,nosuid,nodev,noexec,relatime,size=6421940k,mode=755,inode64 0 0
+tmpfs /var/lib/snapd/hostfs/run/snapd/ns tmpfs rw,nosuid,nodev,noexec,relatime,size=6421940k,mode=755,inode64 0 0
+tmpfs /var/lib/snapd/hostfs/run/user/1002 tmpfs rw,nosuid,nodev,relatime,size=6421936k,nr_inodes=1605484,mode=700,uid=1002,gid=1002,inode64 0 0
+gvfsd-fuse /var/lib/snapd/hostfs/run/user/1002/gvfs fuse.gvfsd-fuse rw,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+tmpfs /var/lib/snapd/hostfs/tmp tmpfs rw,nosuid,nodev,nr_inodes=1048576,inode64,usrquota 0 0
+pCloud.AppImage /var/lib/snapd/hostfs/tmp/.mount_pCloudMEcHBI fuse.pCloud.AppImage ro,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+pCloud.AppImage /var/lib/snapd/hostfs/tmp/.mount_pCloudcLpoDN fuse.pCloud.AppImage ro,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+/dev/nvme0n1p2 /var/lib/snapd/hostfs/media/axpdev/DATI_EVO1 fuseblk rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,blksize=4096 0 0
+/dev/nvme2n1p2 /var/lib/snapd/hostfs/var/snap/firefox/common/host-hunspell ext4 ro,noexec,noatime,errors=remount-ro 0 0
+/dev/nvme1n1p1 /var/lib/snapd/hostfs/boot/efi vfat rw,relatime,fmask=0077,dmask=0077,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro 0 0
+pCloud.fs /var/lib/snapd/hostfs/home/axpdev/pCloudDrive fuse rw,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+/dev/nvme2n1p2 /var/tmp ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /var/log ext4 rw,relatime,errors=remount-ro 0 0
+udev /dev devtmpfs rw,nosuid,relatime,size=32009580k,nr_inodes=8002395,mode=755,inode64 0 0
+devpts /dev/pts devpts rw,nosuid,noexec,relatime,gid=5,mode=600,ptmxmode=000 0 0
+devpts /dev/pts devpts rw,relatime,gid=5,mode=620,ptmxmode=666 0 0
+tmpfs /dev/shm tmpfs rw,nosuid,nodev,inode64,usrquota 0 0
+mqueue /dev/mqueue mqueue rw,nosuid,nodev,noexec,relatime 0 0
+hugetlbfs /dev/hugepages hugetlbfs rw,nosuid,nodev,relatime,pagesize=2M 0 0
+devpts /dev/ptmx devpts rw,relatime,gid=5,mode=620,ptmxmode=666 0 0
+/dev/nvme2n1p2 /etc ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /home ext4 rw,relatime,errors=remount-ro 0 0
+pCloud.fs /home/axpdev/pCloudDrive fuse rw,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+/dev/nvme2n1p2 /root ext4 rw,relatime,errors=remount-ro 0 0
+proc /proc proc rw,nosuid,nodev,noexec,relatime 0 0
+systemd-1 /proc/sys/fs/binfmt_misc autofs rw,relatime,fd=40,pgrp=1,timeout=0,minproto=5,maxproto=5,direct,pipe_ino=12528 0 0
+binfmt_misc /proc/sys/fs/binfmt_misc binfmt_misc rw,nosuid,nodev,noexec,relatime 0 0
+sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0
+securityfs /sys/kernel/security securityfs rw,nosuid,nodev,noexec,relatime 0 0
+cgroup2 /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot,memory_hugetlb_accounting 0 0
+none /sys/fs/pstore pstore rw,nosuid,nodev,noexec,relatime 0 0
+efivarfs /sys/firmware/efi/efivars efivarfs rw,nosuid,nodev,noexec,relatime 0 0
+bpf /sys/fs/bpf bpf rw,nosuid,nodev,noexec,relatime,mode=700 0 0
+tracefs /sys/kernel/tracing tracefs rw,nosuid,nodev,noexec,relatime 0 0
+debugfs /sys/kernel/debug debugfs rw,nosuid,nodev,noexec,relatime 0 0
+configfs /sys/kernel/config configfs rw,nosuid,nodev,noexec,relatime 0 0
+fusectl /sys/fs/fuse/connections fusectl rw,nosuid,nodev,noexec,relatime 0 0
+tmpfs /tmp tmpfs rw,nosuid,nodev,nr_inodes=1048576,inode64,usrquota 0 0
+pCloud.AppImage /tmp/.mount_pCloudMEcHBI fuse.pCloud.AppImage ro,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+pCloud.AppImage /tmp/.mount_pCloudcLpoDN fuse.pCloud.AppImage ro,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+tmpfs /tmp tmpfs rw,nosuid,nodev,nr_inodes=1048576,inode64,usrquota 0 0
+tmpfs /tmp/.X11-unix tmpfs ro,nr_inodes=1048576,inode64,usrquota 0 0
+tmpfs /run tmpfs rw,nosuid,nodev,noexec,relatime,size=6421940k,mode=755,inode64 0 0
+tmpfs /run/snapd/ns tmpfs rw,nosuid,nodev,noexec,relatime,size=6421940k,mode=755,inode64 0 0
+tmpfs /run/user/1002 tmpfs rw,nosuid,nodev,relatime,size=6421936k,nr_inodes=1605484,mode=700,uid=1002,gid=1002,inode64 0 0
+gvfsd-fuse /run/user/1002/gvfs fuse.gvfsd-fuse rw,nosuid,nodev,relatime,user_id=1002,group_id=1002 0 0
+tmpfs /run/netns tmpfs rw,nosuid,nodev,noexec,relatime,size=6421940k,mode=755,inode64 0 0
+/dev/nvme2n1p2 /media ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme0n1p2 /media/axpdev/DATI_EVO1 fuseblk rw,relatime,user_id=0,group_id=0,default_permissions,allow_other,blksize=4096 0 0
+/dev/nvme2n1p2 /mnt ext4 rw,relatime,errors=remount-ro 0 0
+/dev/nvme2n1p2 /snap ext4 rw,relatime,errors=remount-ro 0 0
+tmpfs /snap/aeroftp/230 tmpfs rw,relatime,mode=755,inode64 0 0
+tmpfs /snap/aeroftp/230/gnome-platform/usr/lib/x86_64-linux-gnu tmpfs rw,relatime,mode=755,inode64 0 0
+/dev/loop20 /boot squashfs ro,nodev,relatime,errors=continue,threads=single 0 0
+/dev/loop20 /host squashfs ro,nodev,relatime,errors=continue,threads=single 0 0
+/dev/loop20 /meta squashfs ro,nodev,relatime,errors=continue,threads=single 0 0
+"#;
+
+    fn points(listed: &[(&str, String, &str)]) -> Vec<String> {
+        listed.iter().map(|(_, point, _)| point.clone()).collect()
+    }
+
+    #[test]
+    fn a_snap_lists_only_the_host_mounts_it_shares_each_once() {
+        let listed = listed_mounts(SNAP_TABLE, Some("/home/axpdev"));
+        assert_eq!(
+            listed,
+            [
+                ("pCloud.fs", "/home/axpdev/pCloudDrive".to_string(), "fuse"),
+                (
+                    "/dev/nvme0n1p2",
+                    "/media/axpdev/DATI_EVO1".to_string(),
+                    "fuseblk"
+                ),
+            ]
+        );
+        // The disk is still the ejectable removable volume it was.
+        assert_eq!(
+            classify_volume("/media/axpdev/DATI_EVO1", "fuseblk"),
+            "removable"
+        );
+    }
+
+    #[test]
+    fn read_as_a_host_table_the_snap_table_shows_what_the_snap_listed() {
+        // Without the snap filter the same table lists the runtime binds, the
+        // host's EFI partition and the hostfs copies: the reported defect.
+        let listed = points(&listed_mounts(SNAP_TABLE, None));
+        for runtime in [
+            "/etc",
+            "/home",
+            "/root",
+            "/usr/lib/modules",
+            "/usr/lib/firmware",
+            "/usr/share/fonts",
+            "/var/lib/snapd",
+            "/var/lib/snapd/hostfs",
+            "/media",
+            "/mnt",
+            "/snap",
+        ] {
+            assert!(
+                listed.iter().any(|p| p == runtime),
+                "{runtime} in {listed:?}"
+            );
+        }
+        for copy in [
+            "/var/lib/snapd/hostfs/boot/efi",
+            "/var/lib/snapd/hostfs/media/axpdev/DATI_EVO1",
+            "/var/lib/snapd/hostfs/home/axpdev/pCloudDrive",
+        ] {
+            assert!(listed.iter().any(|p| p == copy), "{copy} in {listed:?}");
+        }
+    }
+
+    #[test]
+    fn a_snap_keeps_no_home_mount_but_a_users_network_or_fuse_mount() {
+        // A bind of the home partition is not a volume; an sshfs or rclone
+        // mount the user made there is. Nothing outside the real home counts.
+        assert!(!snap_shares_mount("/home/u/data", "ext4", "/home/u"));
+        assert!(snap_shares_mount("/home/u/box", "fuse.sshfs", "/home/u/"));
+        assert!(snap_shares_mount("/home/u/pCloudDrive", "fuse", "/home/u"));
+        assert!(!snap_shares_mount("/home/u/disk", "fuseblk", "/home/u"));
+        assert!(!snap_shares_mount(
+            "/home/user2/box",
+            "fuse.sshfs",
+            "/home/u"
+        ));
+        assert!(!snap_shares_mount("/home/u2/box", "fuse.rclone", "/home/u"));
+        assert!(!snap_shares_mount("/home/u/box", "fuse.rclone", ""));
+        assert!(snap_shares_mount("/run/media/u/DISK", "ext4", "/home/u"));
+        assert!(!snap_shares_mount(
+            "/var/lib/snapd/hostfs/mnt/x",
+            "nfs4",
+            "/home/u"
+        ));
+    }
+
+    #[test]
+    fn a_host_table_is_listed_as_before() {
+        let host = "\
+/dev/nvme0n1p2 / ext4 rw,relatime 0 0
+/dev/nvme0n1p1 /boot/efi vfat rw 0 0
+/dev/loop3 /snap/core22/2045 squashfs ro 0 0
+tmpfs /run tmpfs rw 0 0
+/dev/sdb1 /media/u/STICK vfat rw 0 0
+/dev/sdb1 /media/u/STICK vfat rw 0 0
+";
+        assert_eq!(
+            points(&listed_mounts(host, None)),
+            ["/", "/media/u/STICK", "/media/u/STICK"]
+        );
+    }
+
+    #[test]
+    fn the_efi_system_partition_goes_by_type_not_by_size() {
+        const MB: u64 = 1 << 20;
+        for efi in [
+            "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+            "C12A7328-F81F-11D2-BA4B-00A0C93EC93B",
+            "0xef",
+        ] {
+            assert!(
+                listable_partition("sda1", "vfat", 512 * MB, "", efi).is_none(),
+                "{efi}"
+            );
+        }
+        // A 256 MB FAT stick and a GPT basic-data FAT partition are listed.
+        for stick in ["0x0c", "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7", ""] {
+            let row = listable_partition("sdc1", "vfat", 256 * MB, "STICK", stick);
+            assert_eq!(row.map(|r| r.name), Some("STICK".to_string()), "{stick}");
+        }
     }
 }

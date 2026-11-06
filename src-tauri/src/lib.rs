@@ -10907,6 +10907,123 @@ fn detect_desktop_lang() -> String {
     "en".to_string()
 }
 
+/// Set when this process refused to start because it does not own the UI
+/// port. It stays registered as the single instance while its refusal is on
+/// screen, so a second launch is handed to it; that launch must open nothing,
+/// since every window would load the origin another process serves.
+static START_REFUSED: AtomicBool = AtomicBool::new(false);
+
+/// What a second launch can open in the running process.
+trait SecondLaunch {
+    fn open_extract(&mut self, mode: &str, path: &str);
+    fn raise_main(&mut self);
+    fn deliver(&mut self, argv: &[String], cwd: &str);
+}
+
+/// The running app, as a second launch reaches it.
+struct AppSecondLaunch<'a>(&'a AppHandle);
+
+impl SecondLaunch for AppSecondLaunch<'_> {
+    fn open_extract(&mut self, mode: &str, path: &str) {
+        open_extract_window(self.0, mode, path);
+    }
+    fn raise_main(&mut self) {
+        open_request::raise_main_window(self.0);
+    }
+    fn deliver(&mut self, argv: &[String], cwd: &str) {
+        // Every openable path: an associated format, or "Open with AeroFTP"
+        // on any other file, which opens in AeroFile (#347). A relative path
+        // is the second instance's, read against its folder.
+        open_request::deliver(
+            self.0,
+            open_request::from_argv(argv, (!cwd.is_empty()).then(|| std::path::Path::new(cwd))),
+        );
+    }
+}
+
+/// Handles a second launch. A process that refused to start (`refused`) does
+/// not own the UI origin, so it opens nothing (Requested 137). Otherwise the
+/// OS "Extract here / to folder" verb (Deliverable G) opens only the
+/// dedicated extract window, leaving the main window exactly as the user left
+/// it (possibly hidden); any other launch raises the main window and opens
+/// the paths it names.
+fn handle_second_launch(refused: bool, argv: &[String], cwd: &str, to: &mut impl SecondLaunch) {
+    if refused {
+        log::warn!("A second launch reached a process that refused to start: ignored");
+        return;
+    }
+    if let Some((mode, path)) = parse_extract_intent(argv) {
+        to.open_extract(&mode, &path);
+        return;
+    }
+    to.raise_main();
+    to.deliver(argv, cwd);
+}
+
+/// How long a refusal to start may wait for its answer before the process
+/// ends anyway: without a display, or with a dialog GTK could not show,
+/// nothing else would end it.
+#[cfg(target_os = "linux")]
+const REFUSAL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Ends the process once `deadline` has passed, whatever the main thread is
+/// waiting on. `end` is `std::process::exit` outside the tests.
+#[cfg(target_os = "linux")]
+fn end_after(
+    deadline: std::time::Duration,
+    end: impl FnOnce() + Send + 'static,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        std::thread::sleep(deadline);
+        log::error!("AeroFTP could not start and its refusal was not answered: exiting");
+        end();
+    })
+}
+
+/// Tells the user why AeroFTP cannot start, and ends the process once they
+/// have read it.
+///
+/// This runs in `setup`, on the main thread, before any window. It used
+/// `blocking_show`, which builds the dialog through the main thread and then
+/// blocks that same thread waiting for the answer: GTK never ran again, so
+/// the dialog was mapped but never painted (a black window) and the process
+/// never ended, in every package (Requested 137, seen with the snap next to
+/// the .deb). The dialog is now shown without blocking, `setup` returns
+/// without a window so the event loop can draw it, and its answer ends the
+/// process. The same text also goes out as a desktop notification, and
+/// [`REFUSAL_DEADLINE`] ends the process if the dialog is never answered.
+#[cfg(target_os = "linux")]
+fn refuse_to_start(app: &tauri::AppHandle, reason: &str) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(error) = app
+        .notification()
+        .builder()
+        .title("AeroFTP cannot start")
+        .body(reason)
+        .show()
+    {
+        log::warn!("The start refusal notification failed: {error}");
+    }
+    end_after(REFUSAL_DEADLINE, || std::process::exit(1));
+    app.dialog()
+        .message(format!("AeroFTP cannot start safely. {reason}"))
+        .title("AeroFTP UI port unavailable")
+        .kind(MessageDialogKind::Error)
+        .buttons(MessageDialogButtons::Ok)
+        .show(refusal_answered(|| std::process::exit(1)));
+}
+
+/// What the refusal's dialog does with its answer: whatever the button, the
+/// process ends. `end` is `std::process::exit` outside the tests.
+#[cfg(target_os = "linux")]
+fn refusal_answered(end: impl FnOnce() + Send + 'static) -> impl FnOnce(bool) + Send + 'static {
+    move |_| {
+        log::info!("The start refusal was answered: exiting");
+        end();
+    }
+}
+
 /// URL of one of the app's own HTML pages for a secondary window. Release
 /// builds on Linux serve the frontend from the local server on 14321, like the
 /// main window; elsewhere the page comes from the bundled assets.
@@ -20491,24 +20608,11 @@ pub fn run() {
             // marshals its WebviewWindowBuilder::build; window show/unminimize/focus
             // go through Tauri's main-thread message path. Keep all GTK work off this
             // D-Bus/zbus worker so a second-instance raise cannot poison GLib.
-            // OS "Extract here / to folder" verb (Deliverable G): open the dedicated
-            // extract window WITHOUT raising or booting the main app, then stop. The
-            // main window must stay exactly as the user left it (possibly hidden).
-            if let Some((mode, path)) = parse_extract_intent(&argv) {
-                open_extract_window(app, &mode, &path);
-                return;
-            }
-            // When a second instance is launched, show and focus the existing window
-            open_request::raise_main_window(app);
-            // Every openable path: an associated format, or "Open with AeroFTP"
-            // on any other file, which opens in AeroFile (#347). A relative path
-            // is the second instance's, read against its folder.
-            open_request::deliver(
-                app,
-                open_request::from_argv(
-                    &argv,
-                    (!cwd.is_empty()).then(|| std::path::Path::new(&cwd)),
-                ),
+            handle_second_launch(
+                START_REFUSED.load(Ordering::SeqCst),
+                &argv,
+                &cwd,
+                &mut AppSecondLaunch(app),
             );
         }))
         .plugin(
@@ -20588,15 +20692,14 @@ pub fn run() {
                 if let Err(reason) =
                     localhost_security::wait_for_owned_server(port, &localhost_nonce)
                 {
-                    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
                     log::error!("Cannot start AeroFTP UI: {reason}");
-                    app.dialog()
-                        .message(format!("AeroFTP cannot start safely. {reason}"))
-                        .title("AeroFTP UI port unavailable")
-                        .kind(MessageDialogKind::Error)
-                        .buttons(MessageDialogButtons::Ok)
-                        .blocking_show();
-                    return Err(reason.into());
+                    START_REFUSED.store(true, Ordering::SeqCst);
+                    refuse_to_start(app.handle(), &reason);
+                    // No window and no error: the event loop has to run for
+                    // the refusal's dialog to draw, and its answer ends the
+                    // process. An error here would end it before the user
+                    // could read why.
+                    return Ok(());
                 }
                 log::info!("Verified AeroFTP UI server on 127.0.0.1:{port}");
             }
@@ -26999,5 +27102,119 @@ mod legacy_ftp_walk_tests {
         let planned = outcome.expect("case-distinct names on a case-sensitive destination");
         assert_eq!(planned.entries.len(), 2);
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod start_refusal_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn an_unanswered_refusal_ends_the_process_once_its_deadline_passes() {
+        let (ended, was_ended) = std::sync::mpsc::channel();
+        let started = Instant::now();
+        end_after(Duration::from_millis(50), move || ended.send(()).unwrap());
+        was_ended
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the refusal ended the process");
+        assert!(started.elapsed() >= Duration::from_millis(50));
+        assert_eq!(REFUSAL_DEADLINE, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn an_answered_refusal_ends_the_process_whatever_the_button() {
+        for button in [true, false] {
+            let (ended, was_ended) = std::sync::mpsc::channel();
+            refusal_answered(move || ended.send(()).unwrap())(button);
+            was_ended
+                .recv_timeout(Duration::from_secs(1))
+                .expect("the answer ended the process");
+        }
+    }
+
+    // Requested 137: `blocking_show` on the main thread, in `setup`, blocked
+    // the GTK loop that had to draw the dialog: a black window and a process
+    // that never ended. The refusal shows its dialog without blocking, after
+    // the notification and the deadline, and `setup` returns without a window
+    // so the loop runs.
+    #[test]
+    fn a_refused_start_does_not_block_the_loop_that_draws_its_dialog() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+        let start = src.find("fn refuse_to_start(").expect("refuse_to_start");
+        let body = &src[start..start + src[start..].find("\n}\n").expect("end of fn")];
+        let notified = body.find(".notification()").expect("notification");
+        let bounded = body.find("end_after(REFUSAL_DEADLINE").expect("deadline");
+        let shown = body
+            .find(".show(refusal_answered(")
+            .expect("a dialog shown without blocking");
+        assert!(notified < bounded && bounded < shown);
+        assert!(!body.contains(".blocking_show"));
+        let check = src
+            .find("localhost_security::wait_for_owned_server(port, &localhost_nonce)")
+            .expect("ownership check");
+        let refusal = &src[check..check + 900];
+        let refused = refusal
+            .find("refuse_to_start(app.handle(), &reason);")
+            .expect("refusal");
+        assert!(refusal[refused..].contains("return Ok(());"));
+        assert!(!refusal.contains("return Err(reason.into());"));
+    }
+
+    /// Records what a second launch opened.
+    #[derive(Default)]
+    struct Opened(Vec<String>);
+
+    impl SecondLaunch for Opened {
+        fn open_extract(&mut self, mode: &str, _path: &str) {
+            self.0.push(format!("extract:{mode}"));
+        }
+        fn raise_main(&mut self) {
+            self.0.push("raise".to_string());
+        }
+        fn deliver(&mut self, argv: &[String], _cwd: &str) {
+            self.0.push(format!("deliver:{}", argv.len()));
+        }
+    }
+
+    // While the refusal is on screen this process is still the single
+    // instance: a second launch ("Extract here", a file to open) must not
+    // open a window on the origin another process serves.
+    #[test]
+    fn a_second_launch_opens_nothing_in_a_process_that_refused_to_start() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("a.zip");
+        std::fs::write(&archive, b"PK").unwrap();
+        let extract = vec![
+            "aeroftp".to_string(),
+            "--extract-here".to_string(),
+            archive.to_string_lossy().to_string(),
+        ];
+        let open = vec!["aeroftp".to_string(), archive.to_string_lossy().to_string()];
+        for argv in [&extract, &open] {
+            let mut opened = Opened::default();
+            handle_second_launch(true, argv, "", &mut opened);
+            assert!(opened.0.is_empty(), "{argv:?} opened {:?}", opened.0);
+        }
+        // A process that owns its UI handles the same launches as before.
+        let mut opened = Opened::default();
+        handle_second_launch(false, &extract, "", &mut opened);
+        assert_eq!(opened.0, ["extract:here"]);
+        let mut opened = Opened::default();
+        handle_second_launch(false, &open, "", &mut opened);
+        assert_eq!(opened.0, ["raise", "deliver:2"]);
+        // The plugin hook reads the flag, and the refused start sets it first.
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+        assert!(src.contains(
+            "handle_second_launch(\n                START_REFUSED.load(Ordering::SeqCst),"
+        ));
+        let check = src
+            .find("localhost_security::wait_for_owned_server(port, &localhost_nonce)")
+            .expect("ownership check");
+        let refusal = &src[check..check + 900];
+        let flagged = refusal
+            .find("START_REFUSED.store(true, Ordering::SeqCst);")
+            .expect("flag set");
+        assert!(flagged < refusal.find("refuse_to_start(").expect("refusal"));
     }
 }
