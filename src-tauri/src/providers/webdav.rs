@@ -2500,12 +2500,14 @@ impl WebDavProvider {
         // row 164. When the capabilities cannot be read, a password is tried
         // once all the same (a 403 for another reason refuses again), and a
         // refusal that stands then says the lookup failed (CodeRabbit, #1520).
-        let mut capability_failure: Option<String> = None;
+        // The lookup's own error is not repeated: a transport error names the
+        // URL, and an installation path can hold a token (CodeRabbit, #1520).
+        let mut capability_unreadable = false;
         let password_needed = status == StatusCode::FORBIDDEN
             && match self.nextcloud_link_password_enforced(&base).await {
                 Ok(enforced) => enforced,
-                Err(e) => {
-                    capability_failure = Some(e.to_string());
+                Err(_) => {
+                    capability_unreadable = true;
                     true
                 }
             };
@@ -2530,14 +2532,21 @@ impl WebDavProvider {
                 .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
             if !status2.is_success() {
-                let lookup = capability_failure
-                    .as_deref()
-                    .map(|e| format!(" (the sharing capabilities could not be read: {e})"))
-                    .unwrap_or_default();
+                let lookup = if capability_unreadable {
+                    " (the sharing capabilities could not be read)"
+                } else {
+                    ""
+                };
+                // A server may echo the form, password included: it is masked
+                // before the body reaches the error (CodeRabbit, #1520).
+                let encoded = urlencoding::encode(&password).into_owned();
+                let shown = text2
+                    .replace(&password, "[password]")
+                    .replace(&encoded, "[password]");
                 return Err(ProviderError::ServerError(format!(
                     "OCS share failed: HTTP {} - {}{}",
                     status2,
-                    &text2[..text2.floor_char_boundary(200)],
+                    &shown[..shown.floor_char_boundary(200)],
                     lookup
                 )));
             }
@@ -6773,6 +6782,54 @@ mod tests {
             .password
             .is_some());
         assert_eq!(posts, vec![false, true]);
+    }
+
+    /// CodeRabbit (#1520): a refused retry names neither the generated
+    /// password (echoed back by the server) nor a token in the server path.
+    #[tokio::test]
+    async fn a_refused_share_names_no_password_and_no_path_token() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}/tok-SECRET1234", listener.local_addr().unwrap());
+        let sent = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+        let seen = sent.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    if req.uri().path().ends_with("/cloud/capabilities") {
+                        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, String::new());
+                    }
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16)
+                        .await
+                        .unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    *seen.lock().unwrap() = body.clone();
+                    (
+                        axum::http::StatusCode::FORBIDDEN,
+                        format!("refused: {body}"),
+                    )
+                }
+            }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        let err = provider
+            .nextcloud_create_share("/report.pdf", ShareLinkOptions::default())
+            .await
+            .expect_err("refused twice")
+            .to_string();
+        server.abort();
+        let form = sent.lock().unwrap().clone();
+        let password = form
+            .split("&password=")
+            .nth(1)
+            .map(|p| urlencoding::decode(p).unwrap().into_owned())
+            .expect("the retry carried a password");
+        assert!(!err.contains(&password), "{err}");
+        assert!(!err.contains(&*urlencoding::encode(&password)), "{err}");
+        assert!(!err.contains("SECRET1234"), "{err}");
+        assert!(err.contains("could not be read"), "{err}");
     }
 
     /// Without the capability a 403 is the answer: no second POST.
