@@ -876,15 +876,27 @@ fn session_grant_operation<'a>(tool_name: &str, args: &'a Value) -> Option<&'a s
 }
 
 /// The arguments that pick a saved server or profile: `server` for most
-/// remote tools, `profile` for `aeroftp_benchmark`, both ends of a
-/// cross-profile transfer.
-const SESSION_GRANT_TARGET_KEYS: [&str; 4] = ["server", "profile", "source_server", "dest_server"];
+/// remote tools, `profile` for `aeroftp_benchmark`, `profile_id` for a
+/// `gui_run` connect, both ends of a cross-profile transfer.
+const SESSION_GRANT_TARGET_KEYS: [&str; 5] = [
+    "server",
+    "profile",
+    "profile_id",
+    "source_server",
+    "dest_server",
+];
+
+/// The arguments that pick what a tool does: `gui_run`'s `intent`, the
+/// `action` of `remote_trash`, `remote_versions` and `sync_control`, the
+/// `mode` of the dedupe tools and of a batch rename. A grant for listing the
+/// trash does not empty it, and one for a refresh does not change Settings.
+const SESSION_GRANT_SELECTOR_KEYS: [&str; 4] = ["intent", "action", "operation", "mode"];
 
 /// Scope of a chat-wide grant: the tool, its context, every saved server or
-/// profile the call names and, where the arguments pick the operation, that
-/// operation; no other argument, so a grant for `local_mkdir` covers the next
-/// folder too, and one for `server_exec ls` or a benchmark on one server does
-/// not cover another.
+/// profile the call names and every argument that picks the operation; no
+/// other argument, so a grant for `local_mkdir` covers the next folder too,
+/// and one for `server_exec ls` or a benchmark on one server does not cover
+/// another, nor one for a trash listing the emptying of the trash.
 fn build_session_scope_key(
     tool_name: &str,
     args: &Value,
@@ -895,6 +907,10 @@ fn build_session_scope_key(
         "tool": tool_name,
         "operation": session_grant_operation(tool_name, args),
         "targets": SESSION_GRANT_TARGET_KEYS
+            .iter()
+            .map(|key| args.get(*key).and_then(Value::as_str))
+            .collect::<Vec<_>>(),
+        "selectors": SESSION_GRANT_SELECTOR_KEYS
             .iter()
             .map(|key| args.get(*key).and_then(Value::as_str))
             .collect::<Vec<_>>(),
@@ -2687,6 +2703,50 @@ mod session_grant_tests {
             .unwrap()
         };
         assert_ne!(transfer("srv-b"), transfer("srv-c"));
+        // A `gui_run` connect picks its profile by `profile_id`.
+        let connect = |profile_id: &str| {
+            build_session_scope_key(
+                "gui_run",
+                &json!({"intent": "connect", "profile_id": profile_id}),
+                None,
+                None,
+            )
+            .unwrap()
+        };
+        assert_ne!(connect("srv-a"), connect("srv-b"));
+    }
+
+    // A chat-wide grant for one operation of a tool does not cover another
+    // the arguments pick: a refresh does not change Settings, a trash listing
+    // does not empty the trash, a dedupe listing does not delete.
+    #[test]
+    fn a_chat_wide_grant_covers_only_the_operation_its_arguments_picked() {
+        let scope = |tool: &str, args: Value| {
+            build_session_scope_key(tool, &args, Some("/work"), None).unwrap()
+        };
+        assert_ne!(
+            scope("gui_run", json!({"intent": "refresh"})),
+            scope("gui_run", json!({"intent": "settings_update"}))
+        );
+        assert_ne!(
+            scope("remote_trash", json!({"server": "srv-a", "action": "list"})),
+            scope(
+                "remote_trash",
+                json!({"server": "srv-a", "action": "empty"})
+            )
+        );
+        assert_ne!(
+            scope("remote_dedupe", json!({"server": "srv-a", "mode": "list"})),
+            scope(
+                "remote_dedupe",
+                json!({"server": "srv-a", "mode": "newest"})
+            )
+        );
+        // Arguments that pick nothing still share the grant.
+        assert_eq!(
+            scope("local_mkdir", json!({"path": "/work/a"})),
+            scope("local_mkdir", json!({"path": "/work/b"}))
+        );
     }
 
     // Deep scan item 30: a chat-wide grant for `sync_control stop` or a
