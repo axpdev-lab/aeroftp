@@ -16,6 +16,7 @@ pub mod event_sink;
 mod ftp_manager_provider;
 pub mod local_tools;
 pub mod mcp_impl;
+pub(crate) mod pinned_source;
 pub mod remote_backend;
 pub mod remote_tools;
 pub mod runner;

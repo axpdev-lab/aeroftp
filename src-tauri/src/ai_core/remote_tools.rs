@@ -9,6 +9,7 @@
 
 use serde_json::{json, Value};
 
+use crate::ai_core::pinned_source::PinnedSource;
 use crate::ai_core::remote_backend::RemoteBackend;
 use crate::ai_core::tools::{ToolCtx, ToolError};
 use crate::dedupe::{self, SimilarityMode};
@@ -799,9 +800,19 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     }
     if native_guard {
         let staged;
-        let local = if let Some(local) = get_str_opt(args, "local_path") {
-            validate_local_path(&local, "local_path")?;
-            local
+        let pinned = match get_str_opt(args, "local_path") {
+            Some(local) => {
+                validate_local_path(&local, "local_path")?;
+                Some(PinnedSource::pin(
+                    &local,
+                    "local_path",
+                    validate_local_path,
+                )?)
+            }
+            None => None,
+        };
+        let local = if let Some(source) = &pinned {
+            source.path().to_string()
         } else if let Some(content) = get_str_opt(args, "content") {
             staged = tempfile::NamedTempFile::new().map_err(|e| ToolError::Exec(e.to_string()))?;
             std::fs::write(staged.path(), content.as_bytes())
@@ -819,8 +830,9 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             .map_err(ToolError::Exec)?
         {
             true => {
-                if get_str_opt(args, "local_path").is_some() {
-                    Ok(local_file_uploaded(&server, &local, &remote_path))
+                if let Some(source) = &pinned {
+                    source.verify_unchanged()?;
+                    Ok(local_file_uploaded(&server, source, &remote_path))
                 } else {
                     Ok(
                         json!({"server":server,"remote_path":remote_path,"uploaded":true,"bytes":get_str_opt(args,"content").map_or(0,|content|content.len())}),
@@ -832,11 +844,13 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     }
     if let Some(local_path) = get_str_opt(args, "local_path") {
         validate_local_path(&local_path, "local_path")?;
+        let source = PinnedSource::pin(&local_path, "local_path", validate_local_path)?;
         backend
-            .upload(&local_path, &remote_path)
+            .upload(source.path(), &remote_path)
             .await
             .map_err(ToolError::Exec)?;
-        Ok(local_file_uploaded(&server, &local_path, &remote_path))
+        source.verify_unchanged()?;
+        Ok(local_file_uploaded(&server, &source, &remote_path))
     } else if let Some(content) = get_str_opt(args, "content") {
         backend
             .upload_from_bytes(content.as_bytes(), &remote_path)
@@ -868,14 +882,14 @@ fn no_clobber_skipped(server: &str, remote_path: &str) -> Value {
     })
 }
 
-/// The result `upload_file` reports when a local file reached the server.
-fn local_file_uploaded(server: &str, local_path: &str, remote_path: &str) -> Value {
-    let bytes = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+/// The result `upload_file` reports when a local file reached the server:
+/// the size of the file the policy checked and the upload sent.
+fn local_file_uploaded(server: &str, source: &PinnedSource, remote_path: &str) -> Value {
     json!({
         "server": server,
         "remote_path": remote_path,
         "uploaded": true,
-        "bytes": bytes,
+        "bytes": source.size(),
     })
 }
 
@@ -1190,23 +1204,37 @@ async fn run_bulk_uploads(
             tally,
         )
         .await;
+        // Each source is pinned right before its write (deep scan item 27):
+        // one the policy refuses now, or that changed since the plan, fails
+        // alone, and the rest still travel together.
+        let mut pending_sources = Vec::with_capacity(pending.len());
+        for (index, member) in pending {
+            match PinnedSource::pin(&member.local_path, "local_path", validate_local_path) {
+                Ok(source) => pending_sources.push((index, member, source)),
+                Err(error) => {
+                    tally.record(index, Err(error));
+                }
+            }
+        }
+        let pending = pending_sources;
         if pending.len() < 2 {
             // Its checks are settled: only the write is left.
-            for (index, member) in pending {
+            for (index, member, source) in pending {
                 crate::ai_core::tools::check_cancelled(ctx)?;
                 tally.pace(ctx).await?;
-                let outcome = backend
-                    .upload(&member.local_path, &member.remote_path)
-                    .await
-                    .map(|()| local_file_uploaded(server, &member.local_path, &member.remote_path))
-                    .map_err(ToolError::Exec);
+                let outcome = match backend.upload(source.path(), &member.remote_path).await {
+                    Ok(()) => source
+                        .verify_unchanged()
+                        .map(|()| local_file_uploaded(server, &source, &member.remote_path)),
+                    Err(error) => Err(ToolError::Exec(error)),
+                };
                 tally.record(index, outcome);
             }
             continue;
         }
         let items: Vec<BulkTransferItem> = pending
             .iter()
-            .map(|(_, m)| bulk_item(&m.local_path, &m.remote_path, m.size))
+            .map(|(_, m, source)| bulk_item(source.path(), &m.remote_path, source.size()))
             .collect();
         tally.pace(ctx).await?;
         // A bulk carries the whole group, so Stop does not wait for it: the
@@ -1225,7 +1253,7 @@ async fn run_bulk_uploads(
             // connection can change under a batch): one `upload_file` per
             // item from here on, each with its own checks again.
             native = false;
-            let indices: Vec<usize> = pending.iter().map(|(index, _)| *index).collect();
+            let indices: Vec<usize> = pending.iter().map(|(index, ..)| *index).collect();
             upload_each(ctx, &item_args, &indices, tally).await?;
             continue;
         };
@@ -1247,11 +1275,11 @@ async fn run_bulk_uploads(
                 if error_goes_back_to_single_file(&crate::providers::ProviderError::TransferFailed(
                     error.clone(),
                 )) {
-                    let indices: Vec<usize> = pending.iter().map(|(index, _)| *index).collect();
+                    let indices: Vec<usize> = pending.iter().map(|(index, ..)| *index).collect();
                     upload_each(ctx, &item_args, &indices, tally).await?;
                 } else {
                     let safe_error = crate::providers::sanitize_api_error(&error);
-                    for (index, _) in pending {
+                    for (index, ..) in pending {
                         tally.record(index, Err(ToolError::Exec(safe_error.clone())));
                     }
                 }
@@ -1259,7 +1287,7 @@ async fn run_bulk_uploads(
             }
         };
         let mut single_file = Vec::new();
-        for ((index, member), outcome) in pending.into_iter().zip(outcomes) {
+        for ((index, member, source), outcome) in pending.into_iter().zip(outcomes) {
             // The settlement classifies a failure; the provider's own words
             // say what it was. MCP sanitizes every provider error it hands an
             // agent, and a bulk outcome arrives raw, so it is sanitized here.
@@ -1271,11 +1299,9 @@ async fn run_bulk_uploads(
                 BulkSettlement::Done => {
                     tally.record(
                         index,
-                        Ok(local_file_uploaded(
-                            server,
-                            &member.local_path,
-                            &member.remote_path,
-                        )),
+                        source
+                            .verify_unchanged()
+                            .map(|()| local_file_uploaded(server, &source, &member.remote_path)),
                     );
                 }
                 BulkSettlement::SingleFile => single_file.push(index),
@@ -5212,6 +5238,48 @@ mod tests {
         let plain = test_ctx(Arc::clone(&backend));
         let report = upload_many(&plain, &args).await.unwrap();
         assert_eq!(report["summary"]["processed"], 2);
+    }
+
+    /// Deep scan item 27: the policy checked one file and the backend opened
+    /// the path again. The upload reports the size of the file it pinned,
+    /// and a source replaced while the upload ran is an error that names it,
+    /// not a success.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_upload_whose_source_is_replaced_meanwhile_is_not_reported_as_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("report.pdf");
+        std::fs::write(&local, b"checked").unwrap();
+        let path = local.to_string_lossy().to_string();
+        let args = json!({"server": "srv", "local_path": path, "remote_path": "/root/report.pdf"});
+
+        let plain = Arc::new(FakeBackend {
+            upload_succeeds: true,
+            ..FakeBackend::sample()
+        });
+        let done = upload_file(&test_ctx(Arc::clone(&plain)), &args)
+            .await
+            .unwrap();
+        assert_eq!(done["bytes"], 7, "{done}");
+
+        let swap_from = dir.path().join("swap.bin");
+        let swap_to = local.clone();
+        let swapping = Arc::new(FakeBackend {
+            upload_succeeds: true,
+            on_upload: Some(Arc::new(move || {
+                std::fs::write(&swap_from, b"checked").unwrap();
+                std::fs::rename(&swap_from, &swap_to).unwrap();
+            })),
+            ..FakeBackend::sample()
+        });
+        let err = upload_file(&test_ctx(Arc::clone(&swapping)), &args)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("changed during the upload"),
+            "{err}"
+        );
+        assert!(err.to_string().contains(&path), "{err}");
     }
 
     /// Local files named as their remote leaves under `/root`, the shape a

@@ -1,4 +1,5 @@
 use crate::ai_core::local_tools::{get_str_opt, resolve_local_path, validate_path};
+use crate::ai_core::pinned_source::PinnedSource;
 use crate::ai_core::tools::ToolError;
 use crate::ai_tools::{
     create_temp_provider, download_from_provider, emit_tool_progress, find_server_by_name_or_id,
@@ -720,6 +721,17 @@ pub async fn dispatch_gui_tool(
                 }
 
                 let display_name = rel_path.clone();
+                // The file the policy approves is the file sent (deep scan
+                // item 27): pinned before the upload, checked again after.
+                let source = match PinnedSource::pin(local_path, "path", |path, label| {
+                    validate_path(path, label).map_err(ToolError::Denied)
+                }) {
+                    Ok(source) => source,
+                    Err(e) => {
+                        errors.push(json!({ "file": display_name, "error": e.to_string() }));
+                        continue;
+                    }
+                };
                 emit_tool_progress(
                     &app,
                     "upload_files",
@@ -735,18 +747,20 @@ pub async fn dispatch_gui_tool(
                         None => return Err("No active provider connection".into()),
                     };
                     provider
-                        .upload(local_path, &remote_path, None)
+                        .upload(source.path(), &remote_path, None)
                         .await
                         .map_err(|e| e.to_string())
                 } else if has_ftp(&app_state).await {
                     let mut manager = app_state.ftp_manager.lock().await;
                     manager
-                        .upload_file(local_path, &remote_path)
+                        .upload_file(source.path(), &remote_path)
                         .await
                         .map_err(|e| e.to_string())
                 } else {
                     Err("Not connected to any server".to_string())
                 };
+                let result =
+                    result.and_then(|()| source.verify_unchanged().map_err(|e| e.to_string()));
 
                 match result {
                     Ok(_) => uploaded.push(display_name),
