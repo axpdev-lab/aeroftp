@@ -38,15 +38,25 @@ Proton CLI mode does not claim byte-offset resume. After interruption or a proce
 
 A hard process or power failure can leave unpublished temporary data, as distinct from a valid destination. General crash recovery, journal replay and stale-part cleanup across all providers belong to the separate transfer-resilience audit.
 
-## Other wrappers
+## MEGAcmd adapter
 
-MEGAcmd accepts multiple upload sources, but arbitrary selected downloads are not represented by its one-source `get` syntax. Its background daemon also outlives an individual wrapper client. Bulk capabilities remain disabled until owned transfer tags, per-file terminal proof and tag-scoped cancellation are implemented and verified. Killing a wrapper process does not by itself prove cancellation of daemon work.
+The MEGAcmd server, not the `mega-put` or `mega-get` client, runs the transfers, and it outlives the client: killing the client cancels nothing. A bulk therefore owns its transfers by their tags, proves each file from the server's record of terminal states, and cancels what it owns when it is dropped.
+
+Uploads run one `mega-put --print-tag-at-start` with several sources into one remote folder. Each source prints `Upload started: Tag = N. Source = <path>`; the tag is bound to the item by the exact source path. Only names the folder does not hold yet are admitted, after one listing of the folder; an existing name keeps the single-file path and its overwrite rules. A file is completed when `mega-transfers --show-completed` shows its tag COMPLETED and a second listing shows the file once at its planned size. Without a tag and without the file on MEGA it was never started and goes back to the single-file path. A FAILED or CANCELLED tag with no file is a failure. Anything else unproven is uncertain, including a completed tag whose listed size differs, and is never replayed. Only TAG and STATE are read for uploads, so a path in the table cannot be misread.
+
+Downloads run one folder `mega-get` into a private staging folder beside the destination, and only when the remote folder holds exactly the planned files and no subfolder: a folder get never brings a file the caller did not select. `mega-get` has no tag option, but each file of a folder get has its own row in `mega-transfers`, whose destination path, the last column, is under the unique staging folder. Rows are split at most once per column before it, so a `|` in a path stays in the path, and paths are printed up to 4096 characters. Paths are compared with `\` and `/` as one separator, without a `\\?\` verbatim prefix and with the drive letter in either case, the same way for upload sources; Windows-shaped paths are covered by unit tests, and a live Windows run is not verified yet. A row whose path is cut never matches a staged file, so it proves nothing. Two rows for one staged name, or a row under the staging that is not a planned name, send the whole group back to the single-file path. A file is published by renaming it into place when its row is COMPLETED and the staged file has the size MEGA listed; any other file goes back to the single-file path, since it was only ever written into staging.
+
+After the command, transfers of the bulk that are not finished are cancelled with `mega-transfers -c TAG`, one tag at a time, before the staging folder is removed. A bulk dropped while it runs (a cancelled future, an early return) does the same from its drop handler, off the async workers and with a short timeout per command. `-a` is never used: other transfers of the same server are not the bulk's, and MEGAsync is a separate engine that never appears there.
+
+MEGA has no content hash a client can read back, so the proof of a file is its terminal state in the server's record and the size MEGA lists. That record lives only in the server's memory: after a MEGAcmd server restart nothing is proven, and an upload is then uncertain, a download back on the single-file path. MEGA also recognizes content it already stores and completes such an upload without sending it; timing comparisons therefore use fresh bytes.
+
+## Other wrappers
 
 Filen Desktop S3 and WebDAV are persistent local HTTP gateways. They do not incur Proton's per-file program startup, and the protocols do not provide a generic multi-file upload request. Their performance must be measured through connection reuse, concurrency and request overhead. An upload acknowledgement from a write-back cache is measured separately from native-API cloud visibility and independent cloud readback.
 
 ## Validation
 
-The focused tests cover bounded grouping, old capability snapshots, independent per-file events and accounting, partial failure without replay, malformed native summaries, source changes, selected UID binding, staging aliases and owned-child cleanup on cancellation. A shim-backed sync integration verifies that 200 planned uploads use one native command. Native Windows and the full cross-platform build remain PR CI responsibilities.
+The focused tests cover bounded grouping, old capability snapshots, independent per-file events and accounting, partial failure without replay, malformed native summaries, source changes, selected UID binding, staging aliases and owned-child cleanup on cancellation. A shim-backed sync integration verifies that 200 planned uploads use one native command. The MEGAcmd adapter is tested against a stand-in MEGAcmd: one `mega-put` for a folder of new files, each file settled on its own proof (an existing name, a source never started, a failure, a wrong listed size), one folder `get` published file by file, a failed and a cut row sent back, an ambiguous record sending the whole group back, a folder holding more than the selection never fetched, and a dropped bulk cancelling exactly its own tags. Native Windows and the full cross-platform build remain PR CI responsibilities.
 
 ### Controlled Proton comparison, 20 October 2026
 
@@ -91,7 +101,7 @@ These are single whole-command samples with setup included, a debug wrapper buil
 
 ### MEGAcmd and Filen follow-up
 
-The PR records their independent live comparisons separately. They do not become bulk-capable as a consequence of Proton's result. MEGAcmd native multi-source upload/folder download is compared with four direct per-file workers, not represented as an implemented MEGAcmd adapter. Filen gateway comparisons include per-process isolated password-vault startup for AeroFTP, persistent credential configuration for rclone, and independent native API cloud readback; they cannot be relabeled as measurements of the Filen desktop GUI.
+The PR records their independent live comparisons separately. They do not become bulk-capable as a consequence of Proton's result. MEGAcmd native multi-source upload/folder download is compared with four direct per-file workers and with the adapter above. Filen gateway comparisons include per-process isolated password-vault startup for AeroFTP, persistent credential configuration for rclone, and independent native API cloud readback; they cannot be relabeled as measurements of the Filen desktop GUI.
 
 Filen S3 requires gateway-compatible rclone settings: no directory markers, no bucket creation check and no post-PUT HEAD. The latter changes what upload acknowledgement proves, so independent full cloud readback remains required. Native API visibility waits include polling, authentication and listing overhead; they are observed upper bounds, not an exact internal cache flush duration.
 
