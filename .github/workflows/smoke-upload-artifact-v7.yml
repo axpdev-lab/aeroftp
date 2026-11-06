@@ -46,6 +46,14 @@ jobs:
         run: |
           set -euo pipefail
           fail=0
+          # The loop below checks only what was downloaded, so a runner whose
+          # artifact never arrived would pass unseen. Same list as the matrix.
+          for os in ubuntu-22.04 ubuntu-24.04 windows-latest macos-latest; do
+            if [ ! -d "downloaded/smoke-$os" ]; then
+              echo "FAIL: artifact smoke-$os missing"
+              fail=1
+            fi
+          done
           for d in downloaded/smoke-*; do
             echo "=== $d ==="
             ls -la "$d"
