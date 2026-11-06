@@ -22,26 +22,17 @@
 /// unless `no_check_certificate` is set), and whether an `http://` S3 endpoint
 /// needs the profile's explicit cleartext consent.
 pub fn endpoint_stays_on_this_machine(endpoint: &str) -> bool {
-    let without_scheme = endpoint
-        .strip_prefix("https://")
-        .or_else(|| endpoint.strip_prefix("http://"))
-        .unwrap_or(endpoint);
-    let authority = without_scheme.split('/').next().unwrap_or(without_scheme);
-    // Drop any userinfo (`user:pass@host`).
-    let hostport = authority.rsplit('@').next().unwrap_or(authority);
-    // IPv6 literals are bracketed: `[::1]:1800`.
-    let host = if let Some(rest) = hostport.strip_prefix('[') {
-        rest.split(']').next().unwrap_or(rest)
-    } else {
-        hostport.split(':').next().unwrap_or(hostport)
+    // The host the request reaches, from the URL parser (#1506 Requested 188):
+    // splitting the text took `http://evil.com#@127.0.0.1` and
+    // `http://evil.com\@127.0.0.1` for loopback, so an `http://` S3 endpoint
+    // on another machine skipped its cleartext consent.
+    let Some(host) = endpoint_host(endpoint) else {
+        return false;
     };
-    let host = host.to_ascii_lowercase();
     host == "localhost"
-        || host == "::1"
         || host
-            .parse::<std::net::Ipv4Addr>()
-            .map(|ip| ip.is_loopback())
-            .unwrap_or(false)
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// The host of an endpoint as the HTTP stack will connect to it, lowercase and
@@ -161,6 +152,23 @@ mod tests {
         assert!(!endpoint_stays_on_this_machine(
             "https://s3.example.com/localhost"
         ));
+    }
+
+    /// The host is the one the URL parser reaches, so text after `#`, `?` or a
+    /// backslash cannot pose as the userinfo of a loopback address.
+    #[test]
+    fn a_loopback_address_after_a_fragment_or_backslash_is_not_the_host() {
+        for endpoint in [
+            "http://evil.com#@127.0.0.1",
+            "http://evil.com?@127.0.0.1",
+            "http://evil.com\\@127.0.0.1:9000",
+            "http://localhost.evil.com",
+            "evil.com#@localhost",
+        ] {
+            assert!(!endpoint_stays_on_this_machine(endpoint), "{endpoint}");
+        }
+        assert!(endpoint_stays_on_this_machine("user:pw@127.0.0.1:9000"));
+        assert!(endpoint_stays_on_this_machine("http://LOCALHOST:9000"));
     }
 
     /// The boundary against the other "local" predicate. An mDNS name is on a

@@ -1,0 +1,35 @@
+{
+  "_doc": [
+    "Saved-profile options that turn off a check the connection would otherwise make. One table, read by the backend (src-tauri/src/profile_security.rs) and by the frontend (src/utils/profileSecurity.ts); both test against the cases below. #1506 Requested 188 and 198.",
+    "An import (an .aeroftp backup, a keystore restore, a third-party config) brings each of these in its safe state, which is the option left out, unless the user keeps it on purpose. CLI strict mode refuses a profile that carries one.",
+    "A relaxed value is not reported when the profile's preset declares a default for the same key (the preset owns that setting: Blomp's cleartext storage, the Filen Desktop S3 bridge's certificate, the local WebDAV bridges' scheme), or, for an entry marked loopbackExempt, when the profile reaches a loopback host (the bytes never leave this machine).",
+    "unsafe lists the values that relax the check. A boolean option counts as relaxed whether it is stored as a JSON boolean or as the string the providers read; webdavScheme compares case-insensitively."
+  ],
+  "relaxations": [
+    { "key": "verifyCert", "unsafe": [false, "false"], "loopbackExempt": true },
+    { "key": "allowCleartextEndpoint", "unsafe": [true, "true"], "loopbackExempt": true },
+    { "key": "allowCleartextStorage", "unsafe": [true, "true"], "loopbackExempt": true },
+    { "key": "webdavScheme", "unsafe": ["http"], "loopbackExempt": true },
+    { "key": "trustPasvAddress", "unsafe": [true, "true"], "loopbackExempt": false },
+    { "key": "trustUnknownHosts", "unsafe": [true, "true"], "loopbackExempt": false }
+  ],
+  "cases": [
+    { "name": "a clean FTP profile", "profile": { "host": "ftp.example.com", "protocol": "ftp", "options": { "tlsMode": "explicit" } }, "relaxed": [] },
+    { "name": "no options at all", "profile": { "host": "ftp.example.com", "protocol": "ftp" }, "relaxed": [] },
+    { "name": "certificate check off", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "verifyCert": false } }, "relaxed": ["verifyCert"] },
+    { "name": "certificate check off, as a string", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "verifyCert": "false" } }, "relaxed": ["verifyCert"] },
+    { "name": "certificate check on", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "verifyCert": true } }, "relaxed": [] },
+    { "name": "PASV address and unknown host keys", "profile": { "host": "files.example.com", "protocol": "ftp", "options": { "trustPasvAddress": true, "trustUnknownHosts": "true" } }, "relaxed": ["trustPasvAddress", "trustUnknownHosts"] },
+    { "name": "PASV trust stays relaxed on loopback", "profile": { "host": "127.0.0.1", "protocol": "ftp", "options": { "trustPasvAddress": true } }, "relaxed": ["trustPasvAddress"] },
+    { "name": "plain WebDAV to a remote host", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "webdavScheme": "HTTP" } }, "relaxed": ["webdavScheme"] },
+    { "name": "plain WebDAV on loopback", "profile": { "host": "localhost", "port": 8080, "protocol": "webdav", "options": { "webdavScheme": "http", "verifyCert": false } }, "relaxed": [] },
+    { "name": "S3 cleartext to a remote endpoint", "profile": { "host": "", "protocol": "s3", "options": { "endpoint": "http://minio.example.com:9000", "allowCleartextEndpoint": true } }, "relaxed": ["allowCleartextEndpoint"] },
+    { "name": "S3 cleartext on a loopback endpoint", "profile": { "host": "", "protocol": "s3", "options": { "endpoint": "http://127.0.0.1:9000", "allowCleartextEndpoint": true } }, "relaxed": [] },
+    { "name": "a fragment cannot pose as loopback", "profile": { "host": "", "protocol": "s3", "options": { "endpoint": "http://evil.example#@127.0.0.1", "allowCleartextEndpoint": true } }, "relaxed": ["allowCleartextEndpoint"] },
+    { "name": "Blomp keeps its cleartext storage", "profile": { "host": "authenticate.blomp.com", "protocol": "swift", "providerId": "blomp", "options": { "allowCleartextStorage": true } }, "relaxed": [] },
+    { "name": "Filen Desktop S3 keeps its certificate default", "profile": { "host": "", "protocol": "s3", "providerId": "filen-desktop-s3", "options": { "endpoint": "https://local.s3.filen.io:1700", "verifyCert": false } }, "relaxed": [] },
+    { "name": "MEGAcmd WebDAV keeps its scheme", "profile": { "host": "127.0.0.1", "protocol": "webdav", "providerId": "megacmd-webdav", "options": { "webdavScheme": "http" } }, "relaxed": [] },
+    { "name": "a preset does not cover another key", "profile": { "host": "authenticate.blomp.com", "protocol": "swift", "providerId": "blomp", "options": { "allowCleartextStorage": true, "verifyCert": false } }, "relaxed": ["verifyCert"] },
+    { "name": "plain FTP is information, not a relaxation", "profile": { "host": "ftp.example.com", "protocol": "ftp", "options": { "tlsMode": "none" } }, "relaxed": [] }
+  ]
+}

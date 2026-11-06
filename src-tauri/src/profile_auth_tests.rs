@@ -464,7 +464,13 @@ async fn import_over(
     dry_run: bool,
 ) -> Result<crate::profile_import_plan::ProfileImportReport, String> {
     if dry_run {
-        return crate::preview_server_profiles(&file, &password, mode, list);
+        return crate::preview_server_profiles(
+            &file,
+            &password,
+            mode,
+            &crate::profile_security::RelaxationPolicy::KeepAll,
+            list,
+        );
     }
     let user = match user {
         Some(user) => user,
@@ -474,7 +480,14 @@ async fn import_over(
         *stored = list.to_vec();
         true
     })?;
-    crate::import_server_profiles_with_mode(file, password, mode, user).await
+    crate::import_server_profiles_with_mode(
+        file,
+        password,
+        mode,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
+        user,
+    )
+    .await
 }
 
 /// Durable profile-auth secrets through copy, export, purge and every import
@@ -783,6 +796,7 @@ async fn durable_profile_auth_lifecycle(
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Duplicate,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
         other_id,
     )
     .await
@@ -1283,6 +1297,7 @@ async fn durable_profile_auth_lifecycle(
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Overwrite,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
         active_id,
     )
     .await
@@ -1594,6 +1609,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         file.to_string_lossy().into_owned(),
         "native-fixture-export-password".into(),
         crate::profile_import_plan::ExistingProfileMode::Skip,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
         selected_id,
     )
     .await

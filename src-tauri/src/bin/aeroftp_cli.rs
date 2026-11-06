@@ -3814,6 +3814,12 @@ enum Commands {
         /// keyring.
         #[arg(long)]
         dry_run: bool,
+        /// Keep the options of the file that turn a security check off
+        /// (certificate or host-key checking, the PASV address, cleartext
+        /// consent). Without it each comes in its safe state and is listed.
+        /// Refused in --strict mode.
+        #[arg(long = "keep-insecure-options")]
+        keep_insecure_options: bool,
         #[arg(
             long = "on-existing",
             value_enum,
@@ -5238,6 +5244,11 @@ enum ImportCommands {
         /// untouched. Issue #214.
         #[arg(long)]
         apply: bool,
+        /// With --apply, keep the remotes' options that turn a security check
+        /// off (certificate checking, cleartext endpoints). Without it each is
+        /// stored in its safe state and listed. Refused in --strict mode.
+        #[arg(long = "keep-insecure-options")]
+        keep_insecure_options: bool,
     },
     /// Import sessions from WinSCP configuration file
     Winscp {
@@ -5340,6 +5351,12 @@ enum ImportCommands {
         /// skipped, touch nothing
         #[arg(long)]
         dry_run: bool,
+        /// Keep the options of the file that turn a security check off
+        /// (certificate or host-key checking, the PASV address, cleartext
+        /// consent). Without it each comes in its safe state and is listed.
+        /// Refused in --strict mode.
+        #[arg(long = "keep-insecure-options")]
+        keep_insecure_options: bool,
         #[arg(
             long = "on-existing",
             value_enum,
@@ -7626,6 +7643,38 @@ fn aeroftp_strict_env() -> bool {
     strict_env_truthy(std::env::var("AEROFTP_STRICT").ok().as_deref())
 }
 
+/// Set once at startup when the run is in strict mode, for the paths that load
+/// a saved profile long after the flags were checked (the agent's server
+/// connections among them).
+static STRICT_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// In strict mode, the refusal for a saved profile whose options turn a
+/// security check off (#1506 Requested 198): the flags that do the same are
+/// refused before the run, a profile option must not be the way around them.
+fn strict_profile_refusal(profile: &serde_json::Value) -> Option<String> {
+    if !STRICT_MODE.load(std::sync::atomic::Ordering::Relaxed) {
+        return None;
+    }
+    strict_profile_violation(profile)
+}
+
+/// The strict-mode message for `profile`, or `None` when it relaxes nothing.
+fn strict_profile_violation(profile: &serde_json::Value) -> Option<String> {
+    let relaxations = ftp_client_gui_lib::profile_security::security_relaxations(profile);
+    if relaxations.is_empty() {
+        return None;
+    }
+    let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let options = relaxations
+        .iter()
+        .map(|r| format!("{}={}", r.key, r.value))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "strict mode (--strict / AEROFTP_STRICT) refuses the saved profile \"{name}\": its options turn a security check off ({options}). Turn them off in the profile, or drop --strict to run without the safety gate."
+    ))
+}
+
 /// Strict-mode guard (security-audit rec: `--strict` / `AEROFTP_STRICT=1`).
 ///
 /// Returns the list of *safety-relaxing* flags present on this invocation.
@@ -7658,6 +7707,26 @@ fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
     }
     if cli.aimd_disable {
         bad.push("--aimd-disable (disables backpressure; can hammer the backend)");
+    }
+    let keeps_insecure_options = match &cli.command {
+        Commands::ProfileImport {
+            keep_insecure_options,
+            ..
+        } => *keep_insecure_options,
+        Commands::Import { command } => matches!(
+            command,
+            ImportCommands::Aeroftp {
+                keep_insecure_options: true,
+                ..
+            } | ImportCommands::Rclone {
+                keep_insecure_options: true,
+                ..
+            }
+        ),
+        _ => false,
+    };
+    if keeps_insecure_options {
+        bad.push("--keep-insecure-options (imports options that turn a security check off)");
     }
     // Agent approval gate: anything above the read-only `safe` tier
     // auto-approves write/destructive tools, which is exactly the gate the
@@ -30102,6 +30171,9 @@ async fn create_and_connect_for_agent(
     // AGENT-03: apply provider-specific options (S3 bucket/region/endpoint, Azure
     // container, ...) exactly like the normal CLI profile path, instead of
     // connecting with an empty option set.
+    if let Some(refusal) = strict_profile_refusal(matched) {
+        return Err(refusal);
+    }
     let mut extra: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     apply_profile_options(&mut extra, matched);
     let provider_id_opt = matched
@@ -31495,6 +31567,10 @@ fn profile_value_to_provider_config(
     let (mut extra, resolved_host) =
         ftp_client_gui_lib::profile_loader::profile_connection_extra(profile, provider_type, &host);
     host = resolved_host;
+    if let Some(refusal) = strict_profile_refusal(profile) {
+        print_error(format, &refusal, 5);
+        return Err(5);
+    }
     // Bind Jottacloud to its per-profile refresh chain, the key the GUI
     // writes. Unbound, the CLI rotated the legacy singleton while the GUI
     // rotated `jottacloud_refresh_<id>`: two live chains on one station,
@@ -41966,12 +42042,19 @@ fn rclone_import_json(
             "profilesAppended": summary.profiles_appended,
             "profilesRenamed": summary.profiles_renamed,
             "oauthAppWarnings": summary.oauth_app_warnings,
+            "security": summary.security,
         });
     }
     redacted
 }
 
-async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &Cli) -> i32 {
+async fn cmd_import_rclone(
+    path: Option<String>,
+    json: bool,
+    apply: bool,
+    keep_insecure_options: bool,
+    cli: &Cli,
+) -> i32 {
     use ftp_client_gui_lib::rclone_import;
 
     let config_path = match path {
@@ -42029,7 +42112,7 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
             // previous CLI behaviour.
             let mut applied_summary: Option<RcloneApplySummary> = None;
             if apply {
-                match apply_rclone_import_to_vault(cli, &result).await {
+                match apply_rclone_import_to_vault(cli, &result, keep_insecure_options).await {
                     Ok(summary) => applied_summary = Some(summary),
                     Err(err) => {
                         if json {
@@ -42067,7 +42150,12 @@ async fn cmd_import_rclone(path: Option<String>, json: bool, apply: bool, cli: &
                         summary.jotta_refresh_stored,
                     );
                     print_profile_renames(&summary.profiles_renamed);
+                    print_import_security_notice(&summary.security, false);
                 } else {
+                    print_import_security_notice(
+                        &rclone_import_security(&result, keep_insecure_options),
+                        true,
+                    );
                     println!(
                         "Dry-run: re-run with --apply to write profiles + OAuth tokens into the vault."
                     );
@@ -42099,6 +42187,47 @@ struct RcloneApplySummary {
     profiles_renamed: Vec<ftp_client_gui_lib::util::profile_name::RenamedProfile>,
     /// One line per profile whose OAuth app was not kept.
     oauth_app_warnings: Vec<String>,
+    /// The security-relaxing options of the stored remotes: reset to their
+    /// safe state, or kept with --keep-insecure-options (#1506 Requested 198).
+    security: Vec<ftp_client_gui_lib::profile_import_plan::ImportedSecurity>,
+}
+
+/// What `import rclone` does with each remote's security-relaxing options:
+/// the dry run lists what --apply would reset or keep.
+fn rclone_import_security(
+    result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+    keep_insecure_options: bool,
+) -> Vec<ftp_client_gui_lib::profile_import_plan::ImportedSecurity> {
+    use ftp_client_gui_lib::profile_security::security_relaxations_of;
+    result
+        .servers
+        .iter()
+        .enumerate()
+        .filter_map(|(file_index, server)| {
+            let relaxations = security_relaxations_of(
+                &server.host,
+                server.provider_id.as_deref(),
+                server.options.as_ref(),
+            );
+            if relaxations.is_empty() {
+                return None;
+            }
+            let (kept, reset) = if keep_insecure_options {
+                (relaxations, Vec::new())
+            } else {
+                (Vec::new(), relaxations)
+            };
+            Some(ftp_client_gui_lib::profile_import_plan::ImportedSecurity {
+                file_index,
+                name: ftp_client_gui_lib::profile_import_plan::display_name(
+                    &server.name,
+                    &server.host,
+                ),
+                reset,
+                kept,
+            })
+        })
+        .collect()
 }
 
 /// Map a saved-server protocol identifier to the `OAuthProvider` slug used
@@ -42155,6 +42284,7 @@ fn imported_server_profile(
 async fn apply_rclone_import_to_vault(
     cli: &Cli,
     result: &ftp_client_gui_lib::rclone_import::RcloneImportResult,
+    keep_insecure_options: bool,
 ) -> Result<RcloneApplySummary, String> {
     use ftp_client_gui_lib::profile_import_plan::SecretWrite;
     let store = open_vault(cli)?;
@@ -42189,6 +42319,7 @@ async fn apply_rclone_import_to_vault(
                 profiles_appended: 0,
                 profiles_renamed: Vec::new(),
                 oauth_app_warnings: Vec::new(),
+                security: Vec::new(),
             };
             // Ids are minted per parse, so one is held only if the list took it since.
             // It then keeps its secrets, as a skipped `.aeroftp` profile does.
@@ -42197,6 +42328,10 @@ async fn apply_rclone_import_to_vault(
                     .iter()
                     .any(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
             };
+            summary.security = rclone_import_security(result, keep_insecure_options)
+                .into_iter()
+                .filter(|entry| !held(&result.servers[entry.file_index].id))
+                .collect();
             let mut writes = Vec::new();
             for server in result.servers.iter().filter(|s| !held(&s.id)) {
                 if let Some(ref cred) = server.credential {
@@ -42249,11 +42384,16 @@ async fn apply_rclone_import_to_vault(
                 if held(&server.id) {
                     continue;
                 }
-                let profile = imported_server_profile(server, |key, secret| {
+                let mut profile = imported_server_profile(server, |key, secret| {
                     writes.push(SecretWrite::new(key.to_string(), None, secret));
                     Ok(())
                 })
                 .map_err(|e| format!("vault write failed for {}: {}", server.id, e))?;
+                // A third-party config is untrusted: its relaxing options are
+                // stored in their safe state unless the user kept them.
+                if !keep_insecure_options {
+                    ftp_client_gui_lib::profile_security::make_profile_safe(&mut profile, &[]);
+                }
                 additions.push(profile);
                 summary.profiles_appended += 1;
             }
@@ -43570,10 +43710,19 @@ async fn cmd_profile_import(
     password_stdin: bool,
     json: bool,
     dry_run: bool,
+    keep_insecure_options: bool,
     on_existing: ExistingProfileArg,
     format: OutputFormat,
 ) -> i32 {
     use ftp_client_gui_lib::profile_import_plan::{display_name, lay_import_over, ImportOutcome};
+    use ftp_client_gui_lib::profile_security::RelaxationPolicy;
+    // An imported file is untrusted: its security-relaxing options come in
+    // safe unless the user asked to keep them (#1506 Requested 198).
+    let policy = if keep_insecure_options {
+        RelaxationPolicy::KeepAll
+    } else {
+        RelaxationPolicy::ResetAll
+    };
     use ftp_client_gui_lib::util::profile_name::unique_profile_names;
     use zeroize::Zeroize;
 
@@ -43671,6 +43820,7 @@ async fn cmd_profile_import(
             input,
             &password,
             on_existing.into_inner(),
+            &policy,
             &current,
         )
     } else {
@@ -43678,6 +43828,7 @@ async fn cmd_profile_import(
             input.to_string(),
             password.clone(),
             on_existing.into_inner(),
+            &policy,
             user_id,
         )
         .await
@@ -43770,6 +43921,7 @@ async fn cmd_profile_import(
                     "renamed": renamed,
                     "jotta_chains": jotta,
                     "target_changed": report.target_changed,
+                    "security": report.security,
                     "metadata": metadata,
                 })
             );
@@ -43789,6 +43941,7 @@ async fn cmd_profile_import(
             }
             print_jotta_chain_notice(&jotta, true);
             print_target_changed_notice(&report.target_changed);
+            print_import_security_notice(&report.security, true);
             eprintln!(
                 "Would add {}, overwrite {}, duplicate {}, skip {} (already present){} from {input}",
                 added.len(),
@@ -43838,6 +43991,9 @@ async fn cmd_profile_import(
                 // Profiles the overwrite refused because the file points them at
                 // another server; they are also in the skipped count.
                 "target_changed": report.target_changed,
+                // Security-relaxing options of the file: reset to their safe
+                // state, or kept with --keep-insecure-options.
+                "security": report.security,
                 "total_in_file": report.total_in_file,
                 "metadata": metadata,
             })
@@ -43868,6 +44024,7 @@ async fn cmd_profile_import(
             );
         }
         print_target_changed_notice(&report.target_changed);
+        print_import_security_notice(&report.security, false);
     }
     0
 }
@@ -43892,6 +44049,37 @@ fn print_target_changed_notice(names: &[String]) {
         eprintln!(
             "Warning: \"{name}\" was not overwritten: the file points it at another server, and its stored passwords and tokens must not go there. Use --on-existing duplicate to add the file's copy, or delete the profile first."
         );
+    }
+}
+
+/// One line per imported profile that carried a security-relaxing option:
+/// which came in safe (the check is on again) and which were kept on purpose.
+fn print_import_security_notice(
+    found: &[ftp_client_gui_lib::profile_import_plan::ImportedSecurity],
+    dry_run: bool,
+) {
+    let keys = |list: &[ftp_client_gui_lib::profile_security::Relaxation]| {
+        list.iter()
+            .map(|r| format!("{}={}", r.key, r.value))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let verb = if dry_run { "would be reset" } else { "reset" };
+    for entry in found {
+        if !entry.reset.is_empty() {
+            eprintln!(
+                "Security: \"{}\" {verb} to the safe default: {} (pass --keep-insecure-options to keep them)",
+                entry.name,
+                keys(&entry.reset)
+            );
+        }
+        if !entry.kept.is_empty() {
+            eprintln!(
+                "Warning: \"{}\" keeps options that turn a security check off: {}",
+                entry.name,
+                keys(&entry.kept)
+            );
+        }
     }
 }
 
@@ -77628,6 +77816,7 @@ async fn main() {
     // or unlocks the vault. Fails closed (exit 5, invalid usage) so an
     // unattended/agent run can never silently downgrade its own safety.
     if cli.strict || aeroftp_strict_env() {
+        STRICT_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
         let violations = strict_mode_violations(&cli);
         if !violations.is_empty() {
             let detail = violations.join("\n  - ");
@@ -80529,6 +80718,7 @@ async fn main() {
             password,
             password_stdin,
             dry_run,
+            keep_insecure_options,
             on_existing,
         } => {
             cmd_profile_import(
@@ -80538,6 +80728,7 @@ async fn main() {
                 *password_stdin,
                 json_output,
                 *dry_run,
+                *keep_insecure_options,
                 *on_existing,
                 format,
             )
@@ -81240,8 +81431,19 @@ async fn main() {
             JobCommands::Cancel { id } => cmd_jobs_cancel(id, format).await,
         },
         Commands::Import { command } => match command {
-            ImportCommands::Rclone { path, apply } => {
-                cmd_import_rclone(path.clone(), json_output, *apply, &cli).await
+            ImportCommands::Rclone {
+                path,
+                apply,
+                keep_insecure_options,
+            } => {
+                cmd_import_rclone(
+                    path.clone(),
+                    json_output,
+                    *apply,
+                    *keep_insecure_options,
+                    &cli,
+                )
+                .await
             }
             ImportCommands::Winscp { path } => cmd_import_winscp(path.clone(), json_output).await,
             ImportCommands::Filezilla { path } => {
@@ -81293,6 +81495,7 @@ async fn main() {
                 password,
                 password_stdin,
                 dry_run,
+                keep_insecure_options,
                 on_existing,
             } => {
                 cmd_profile_import(
@@ -81302,6 +81505,7 @@ async fn main() {
                     *password_stdin,
                     json_output,
                     *dry_run,
+                    *keep_insecure_options,
                     *on_existing,
                     format,
                 )
@@ -85274,6 +85478,73 @@ mod tests {
                 "expected exactly one violation for a single relaxation flag"
             );
         }
+    }
+
+    /// #1506 Requested 198: every import that can keep a relaxing option has
+    /// the same flag, and strict mode refuses it on each.
+    #[test]
+    fn strict_refuses_keep_insecure_options_on_every_import() {
+        let commands = [
+            Commands::ProfileImport {
+                input: "backup.aeroftp".into(),
+                password: None,
+                password_stdin: false,
+                dry_run: false,
+                keep_insecure_options: true,
+                on_existing: ExistingProfileArg::Skip,
+            },
+            Commands::Import {
+                command: ImportCommands::Aeroftp {
+                    input: "backup.aeroftp".into(),
+                    password: None,
+                    password_stdin: false,
+                    dry_run: true,
+                    keep_insecure_options: true,
+                    on_existing: ExistingProfileArg::Skip,
+                },
+            },
+            Commands::Import {
+                command: ImportCommands::Rclone {
+                    path: None,
+                    apply: true,
+                    keep_insecure_options: true,
+                },
+            },
+        ];
+        for command in commands {
+            let mut cli = test_cli();
+            cli.command = command;
+            let violations = strict_mode_violations(&cli);
+            assert_eq!(violations.len(), 1, "{violations:?}");
+            assert!(violations[0].starts_with("--keep-insecure-options"));
+        }
+        let mut cli = test_cli();
+        cli.command = Commands::Import {
+            command: ImportCommands::Rclone {
+                path: None,
+                apply: true,
+                keep_insecure_options: false,
+            },
+        };
+        assert!(strict_mode_violations(&cli).is_empty());
+    }
+
+    /// A saved profile is refused for the option that relaxes a check, named
+    /// in the message, and a clean one passes.
+    #[test]
+    fn strict_refuses_a_saved_profile_that_turns_a_check_off() {
+        let relaxed = serde_json::json!({
+            "name": "lab", "host": "files.example.com", "protocol": "sftp",
+            "options": {"trustUnknownHosts": true}
+        });
+        let message = strict_profile_violation(&relaxed).expect("refused");
+        assert!(message.contains("\"lab\""), "{message}");
+        assert!(message.contains("trustUnknownHosts=true"), "{message}");
+        let clean = serde_json::json!({
+            "name": "ok", "host": "files.example.com", "protocol": "ftp",
+            "options": {"tlsMode": "explicit"}
+        });
+        assert!(strict_profile_violation(&clean).is_none());
     }
 
     #[test]

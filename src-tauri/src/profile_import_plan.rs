@@ -437,6 +437,24 @@ pub struct ProfileImportReport {
     pub total_in_file: usize,
     /// The file's public envelope metadata.
     pub metadata: serde_json::Value,
+    /// The stored (or, on a preview, to be stored) profiles that carried a
+    /// security-relaxing option ([`crate::profile_security`]): which ones came
+    /// in their safe state and which were kept because the caller asked.
+    pub security: Vec<ImportedSecurity>,
+}
+
+/// The security-relaxing options of one imported profile.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedSecurity {
+    /// The profile's place in the file, the key a kept option is given by.
+    pub file_index: usize,
+    /// Its name (see [`display_name`]).
+    pub name: String,
+    /// Options removed, so the check they turned off is on again.
+    pub reset: Vec<crate::profile_security::Relaxation>,
+    /// Options kept on purpose.
+    pub kept: Vec<crate::profile_security::Relaxation>,
 }
 
 /// A new profile id in the frontend's `srv_<millis>_<9 chars>` shape.
@@ -509,7 +527,7 @@ fn stored_sas_applies(
 /// A bucket or a container is not here: it is a place on the same server, for
 /// the same account, over the same connection ([`stored_sas_applies`] is the one
 /// secret bound to it).
-const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 13] = [
+const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 15] = [
     "endpoint",
     "region",
     "accountId",
@@ -523,6 +541,17 @@ const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 13] = [
     "verifyCert",
     "allowCleartextEndpoint",
     "allowCleartextStorage",
+    "trustPasvAddress",
+    "trustUnknownHosts",
+];
+
+/// Guarded options whose default, when left out, is off: a stored `false`
+/// reads as the absence it means.
+const OPTIONS_OFF_WHEN_ABSENT: [&str; 4] = [
+    "allowCleartextEndpoint",
+    "allowCleartextStorage",
+    "trustPasvAddress",
+    "trustUnknownHosts",
 ];
 
 /// Whether a stored secret may go where `b` connects, having been saved for
@@ -576,6 +605,14 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         |p: &serde_json::Value, key: &str| match present(p.get("options").and_then(|o| o.get(key)))
         {
             serde_json::Value::Bool(true) if key == "verifyCert" => serde_json::Value::Null,
+            serde_json::Value::Bool(false) if OPTIONS_OFF_WHEN_ABSENT.contains(&key) => {
+                serde_json::Value::Null
+            }
+            serde_json::Value::String(s)
+                if OPTIONS_OFF_WHEN_ABSENT.contains(&key) && s.eq_ignore_ascii_case("false") =>
+            {
+                serde_json::Value::Null
+            }
             value => value,
         };
     host(a) == host(b)

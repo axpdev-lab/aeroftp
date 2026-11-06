@@ -273,6 +273,7 @@ pub mod proc_stats;
 pub mod profile_auth_state;
 pub mod profile_export;
 pub mod profile_import_plan;
+pub mod profile_security;
 mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
 // consent, and they share the predicate with the S3 provider rather than
@@ -18903,8 +18904,12 @@ async fn import_server_profiles(
     file_path: String,
     password: String,
     existing: Option<profile_import_plan::ExistingProfileMode>,
+    keep_relaxed: Option<Vec<profile_security::KeptRelaxation>>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     only_main_window(webview.label(), "import_server_profiles")?;
+    // A security-relaxing option of the file comes in safe unless the user
+    // ticked it in the preview (#1506 Requested 198).
+    let policy = profile_security::RelaxationPolicy::Keep(keep_relaxed.unwrap_or_default());
     // Argon2id and blocking vault, lock and database work, off the async workers
     // like the keystore commands (AUDIT 2026-05-11 M1).
     tokio::task::spawn_blocking(move || {
@@ -18913,10 +18918,47 @@ async fn import_server_profiles(
         let user = user_partitions::cli_get_active_user(&store)
             .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
             .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
-        import_server_profiles_blocking(file_path, password, existing.unwrap_or_default(), user.id)
+        import_server_profiles_blocking(
+            file_path,
+            password,
+            existing.unwrap_or_default(),
+            &policy,
+            user.id,
+        )
     })
     .await
     .map_err(|e| format!("Import task failed: {e}"))?
+}
+
+/// GUI My Servers > Import, before the import: what the file would do to the
+/// active user's list, with the security-relaxing options it carries, so the
+/// user can choose which to keep. Nothing is written.
+#[tauri::command]
+async fn preview_server_import(
+    webview: tauri::Webview,
+    file_path: String,
+    password: String,
+    existing: Option<profile_import_plan::ExistingProfileMode>,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    only_main_window(webview.label(), "preview_server_import")?;
+    tokio::task::spawn_blocking(move || {
+        let store =
+            credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
+        let user = user_partitions::cli_get_active_user(&store)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
+            .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
+        let (current, _) = user_partitions::cli_read_active_profiles_at_revision(&store, user.id)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
+        preview_server_profiles(
+            &file_path,
+            &password,
+            existing.unwrap_or_default(),
+            &profile_security::RelaxationPolicy::ResetAll,
+            &current,
+        )
+    })
+    .await
+    .map_err(|e| format!("Import preview task failed: {e}"))?
 }
 
 /// Without an unlocked vault neither the list nor the secrets can be reached,
@@ -18936,6 +18978,9 @@ struct PreparedImport {
     provider_secrets: std::collections::HashMap<String, profile_export::ProviderSecrets>,
     plan: Vec<profile_import_plan::PlannedProfile>,
     target_changed: Vec<String>,
+    /// The security-relaxing options found per planned profile, and what the
+    /// policy did with them.
+    security: Vec<profile_import_plan::ImportedSecurity>,
 }
 
 impl PreparedImport {
@@ -18960,6 +19005,7 @@ fn prepare_import(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     current: &[serde_json::Value],
 ) -> PreparedImport {
     use profile_import_plan::{ImportCandidate, ImportOutcome};
@@ -18982,6 +19028,34 @@ fn prepare_import(
         profile_import_plan::new_profile_id,
     );
     drop(candidates);
+
+    // An imported file is untrusted: an option that turns a check off (TLS
+    // certificate, SSH host key, PASV address, cleartext consent) comes in its
+    // safe state unless the policy keeps it (#1506 Requested 198). Done before
+    // the target comparison, so an overwrite is judged on what will be stored.
+    let mut security = Vec::new();
+    for planned in plan.iter().filter(|p| p.outcome != ImportOutcome::Skipped) {
+        let server = &mut servers[planned.index];
+        let relaxations = profile_security::security_relaxations_of(
+            &server.host,
+            server.provider_id.as_deref(),
+            server.options.as_ref(),
+        );
+        if relaxations.is_empty() {
+            continue;
+        }
+        let keep = policy.kept_keys(planned.index, &relaxations);
+        let removed = profile_security::make_options_safe(&mut server.options, &relaxations, &keep);
+        let (reset, kept) = relaxations
+            .into_iter()
+            .partition(|relaxation| removed.contains(&relaxation.key));
+        security.push(profile_import_plan::ImportedSecurity {
+            file_index: planned.index,
+            name: profile_import_plan::display_name(&server.name, &server.host),
+            reset,
+            kept,
+        });
+    }
 
     let mut target_changed = Vec::new();
     for planned in plan
@@ -19030,6 +19104,7 @@ fn prepare_import(
         provider_secrets,
         plan,
         target_changed,
+        security,
     }
 }
 
@@ -19059,6 +19134,17 @@ fn import_report(
         target_changed: prepared.target_changed.clone(),
         total_in_file: prepared.servers.len(),
         metadata,
+        security: prepared
+            .security
+            .iter()
+            .filter(|found| {
+                prepared
+                    .plan
+                    .iter()
+                    .any(|p| p.index == found.file_index && p.outcome != ImportOutcome::Skipped)
+            })
+            .cloned()
+            .collect(),
     };
     for planned in &prepared.plan {
         let server = &prepared.servers[planned.index];
@@ -19095,6 +19181,7 @@ fn import_report(
         }
         let mut profile = redact_imported_server(server, &restored);
         profile["importOutcome"] = serde_json::json!(planned.outcome);
+        profile["fileIndex"] = serde_json::json!(planned.index);
         report.servers.push(profile);
     }
     report
@@ -19106,12 +19193,13 @@ pub fn preview_server_profiles(
     file_path: &str,
     password: &str,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     current: &[serde_json::Value],
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     let (servers, provider_secrets, metadata) =
         profile_export::import_profiles(std::path::Path::new(file_path), password)
             .map_err(|e| e.to_string())?;
-    let prepared = prepare_import(&servers, &provider_secrets, mode, current);
+    let prepared = prepare_import(&servers, &provider_secrets, mode, policy, current);
     Ok(import_report(
         &prepared,
         &[],
@@ -19151,15 +19239,17 @@ pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
-    import_server_profiles_blocking(file_path, password, mode, user)
+    import_server_profiles_blocking(file_path, password, mode, policy, user)
 }
 
 fn import_server_profiles_blocking(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     let (servers, provider_secrets, metadata) =
@@ -19189,7 +19279,7 @@ fn import_server_profiles_blocking(
                     format!("{IMPORT_NEEDS_PARTITION}: {e}")
                 }
             })?;
-        let prepared = prepare_import(&servers, &provider_secrets, mode, &current);
+        let prepared = prepare_import(&servers, &provider_secrets, mode, policy, &current);
         let stored = prepared.stored();
         if stored.is_empty() {
             return Ok(import_report(
@@ -20278,6 +20368,136 @@ async fn mount_open_quick(id: String) -> Result<(), String> {
 pub fn install_crypto_provider() -> bool {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     rustls::crypto::CryptoProvider::get_default().is_some()
+}
+
+#[cfg(test)]
+mod import_security_tests {
+    use super::*;
+    use profile_import_plan::{ExistingProfileMode, ImportOutcome};
+    use profile_security::{KeptRelaxation, RelaxationPolicy};
+    use serde_json::json;
+
+    fn relaxed(id: &str) -> profile_export::ServerProfileExport {
+        profile_export::ServerProfileExport {
+            id: id.into(),
+            name: format!("{id} name"),
+            host: "files.example.com".into(),
+            port: 21,
+            username: "user".into(),
+            protocol: Some("ftp".into()),
+            options: Some(json!({"trustPasvAddress": true, "verifyCert": false, "timeout": 30})),
+            ..Default::default()
+        }
+    }
+
+    fn plan(
+        servers: &[profile_export::ServerProfileExport],
+        mode: ExistingProfileMode,
+        policy: &RelaxationPolicy,
+        current: &[serde_json::Value],
+    ) -> PreparedImport {
+        prepare_import(servers, &Default::default(), mode, policy, current)
+    }
+
+    /// #1506 Requested 198: a backup is untrusted input, so an option that
+    /// turns a check off comes in safe unless the user keeps it, per profile
+    /// and per key.
+    #[test]
+    fn an_import_brings_relaxing_options_in_safe_unless_kept() {
+        let servers = vec![relaxed("srv_a"), relaxed("srv_b")];
+
+        let reset = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        for server in &reset.servers {
+            assert_eq!(server.options, Some(json!({"timeout": 30})));
+        }
+        assert_eq!(reset.security.len(), 2);
+        for entry in &reset.security {
+            assert!(entry.kept.is_empty());
+            let keys: Vec<&str> = entry.reset.iter().map(|r| r.key.as_str()).collect();
+            assert_eq!(keys, ["verifyCert", "trustPasvAddress"]);
+        }
+
+        let keep_one = RelaxationPolicy::Keep(vec![KeptRelaxation {
+            file_index: 1,
+            key: "trustPasvAddress".into(),
+        }]);
+        let partial = plan(&servers, ExistingProfileMode::Skip, &keep_one, &[]);
+        assert_eq!(partial.servers[0].options, Some(json!({"timeout": 30})));
+        assert_eq!(
+            partial.servers[1].options,
+            Some(json!({"trustPasvAddress": true, "timeout": 30}))
+        );
+        assert_eq!(partial.security[1].kept.len(), 1);
+
+        let all = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::KeepAll,
+            &[],
+        );
+        assert_eq!(all.servers[0].options, servers[0].options);
+        assert!(all.security.iter().all(|e| e.reset.is_empty()));
+    }
+
+    #[test]
+    fn a_skipped_profile_is_not_reported_or_changed() {
+        let current = vec![
+            json!({"id": "srv_a", "host": "files.example.com", "port": 21, "username": "user"}),
+        ];
+        let servers = vec![relaxed("srv_a"), relaxed("srv_b")];
+        let prepared = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.servers[0].options, servers[0].options);
+        let report = import_report(
+            &prepared,
+            &[],
+            SharedImportSecrets::default(),
+            current.clone(),
+            Vec::new(),
+            serde_json::Value::Null,
+        );
+        let indices: Vec<usize> = report.security.iter().map(|e| e.file_index).collect();
+        assert_eq!(indices, [1]);
+        assert_eq!(report.servers[0]["fileIndex"], json!(1));
+    }
+
+    /// The reset happens before the overwrite's target check: the safe copy
+    /// overwrites as before, while a kept PASV trust is a weaker connection
+    /// the stored secrets were not saved for, so that overwrite is refused.
+    #[test]
+    fn an_overwrite_is_judged_on_the_options_it_stores() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"timeout": 30}
+        })];
+        let servers = vec![relaxed("srv_a")];
+        let safe = plan(
+            &servers,
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(safe.plan[0].outcome, ImportOutcome::Overwritten);
+        assert!(safe.target_changed.is_empty());
+        let kept = plan(
+            &servers,
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::KeepAll,
+            &current,
+        );
+        assert_eq!(kept.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(kept.target_changed, ["srv_a name"]);
+    }
 }
 
 #[cfg(test)]
@@ -21990,6 +22210,7 @@ pub fn run() {
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,
+            preview_server_import,
             // Generic profile bridge (12 expansion sources)
             bridge_commands::detect_bridge_config,
             bridge_commands::bridge_source_meta,
