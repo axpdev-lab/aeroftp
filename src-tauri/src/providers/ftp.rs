@@ -636,9 +636,13 @@ impl FtpProvider {
             // syntax", so this stays narrowly the parser-desync signature.
             || lower.contains("invalid syntax")
             || lower.contains("invalid response")
-            // A dropped/idle control connection: reconnect and retry.
+            // A dropped/idle control connection: reconnect and retry. The OS
+            // words it in the user's language; its code does not change
+            // (#1506 row 164).
             || lower.contains("connection reset")
             || lower.contains("broken pipe")
+            || crate::providers::types::os_error_kind(message)
+                .is_some_and(crate::providers::types::os_error_kind_closes_the_session)
     }
 
     /// Only a dead control connection permits retrying navigation. Ordinary
@@ -6597,6 +6601,24 @@ MLSD "no-facts-here" @ "/"
     fn test_detects_stale_data_connection_error() {
         let err = ProviderError::ServerError("425 Data connection is already open".to_string());
         assert!(FtpProvider::is_stale_data_connection_error(&err));
+    }
+
+    /// #1506 row 164: a dropped connection in the OS's language is known by
+    /// its code; a refusal with another code is not a dropped connection.
+    #[cfg(unix)]
+    #[test]
+    fn a_dropped_connection_in_any_language_is_known_by_its_os_code() {
+        let reset = ProviderError::TransferFailed(format!(
+            "Connessione azzerata dal corrispondente (os error {})",
+            libc::ECONNRESET
+        ));
+        assert!(FtpProvider::is_stale_data_connection_error(&reset));
+        let pipe =
+            ProviderError::ConnectionFailed(format!("Pipe interrotta (os error {})", libc::EPIPE));
+        assert!(FtpProvider::is_stale_data_connection_error(&pipe));
+        let denied =
+            ProviderError::TransferFailed(format!("Permesso negato (os error {})", libc::EACCES));
+        assert!(!FtpProvider::is_stale_data_connection_error(&denied));
     }
 
     #[test]
