@@ -207,6 +207,20 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(overlay).not.toContain('remoteFiles');
     });
 
+    it('keeps the disconnect cleanup off the overlay of a parked tab being reconnected', () => {
+        // A parked tab reads as disconnected until its reconnect succeeds, and
+        // switchSession restores its crypt overlay before that: the cleanup
+        // effects keyed on the disconnected state would clear it underneath.
+        for (const vault of ['rcloneCryptVaultId', 'aeroCryptVaultId']) {
+            const guard = `if (isConnected || !${vault} || activeSessionId) return;`;
+            const at = APP.indexOf(guard);
+            expect(at, vault).toBeGreaterThan(-1);
+            const effect = APP.slice(at, APP.indexOf('}, [', at) + 80);
+            expect(effect, vault).toContain("invoke('provider_clear_crypt_overlay', { full: true })");
+            expect(effect, vault).toContain(`}, [isConnected, ${vault}, activeSessionId]);`);
+        }
+    });
+
     it('keeps a parked tab parked when its host key is refused', () => {
         // The card and Active Sessions mark the workspace connected before they
         // call switchSession: a refused key must not leave it connected with

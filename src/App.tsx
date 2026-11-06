@@ -1222,13 +1222,15 @@ const App: React.FC = () => {
   }>(null);
   const rcloneCryptBannerHandledRef = useRef<string | null>(null);
   useEffect(() => {
-    if (isConnected || !rcloneCryptVaultId) return;
+    // A tab being reconnected (active, not yet connected) restores its own
+    // overlay: this disconnect cleanup must not clear it under the reconnect.
+    if (isConnected || !rcloneCryptVaultId || activeSessionId) return;
     setRcloneCryptVaultId(null);
     setCryptOverlayOwner(null);
     void invoke('provider_clear_crypt_overlay', { full: true }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
-  }, [isConnected, rcloneCryptVaultId]);
+  }, [isConnected, rcloneCryptVaultId, activeSessionId]);
   useEffect(() => {
     if (!isConnected || rcloneCryptVaultId || rcloneCryptImportBanner) return;
     const opts = (liveConnectionParams.options ?? {}) as Record<string, unknown>;
@@ -1331,13 +1333,15 @@ const App: React.FC = () => {
   // stuck empty.
   const overlaySuppressedRef = useRef(false);
   useEffect(() => {
-    if (isConnected || !aeroCryptVaultId) return;
+    // A tab being reconnected (active, not yet connected) restores its own
+    // overlay: this disconnect cleanup must not clear it under the reconnect.
+    if (isConnected || !aeroCryptVaultId || activeSessionId) return;
     setAeroCryptVaultId(null);
     setCryptOverlayOwner(null);
     void invoke('provider_clear_crypt_overlay', { full: true }).catch(() => {
       // Best effort cleanup: backend may already be cleared.
     });
-  }, [isConnected, aeroCryptVaultId]);
+  }, [isConnected, aeroCryptVaultId, activeSessionId]);
 
   useEffect(() => {
     let cancelled = false;
