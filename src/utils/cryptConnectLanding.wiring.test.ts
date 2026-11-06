@@ -11,7 +11,7 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { connectLandsOutsideOverlay, isLoginRelativeScope, isWithinCryptScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
+import { connectLandsOutsideOverlay, isLoginRelativeScope, isWithinCryptScope, placeUnderLoginFolder, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
 import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
@@ -250,7 +250,7 @@ describe('crypt overlay deferred connect unlock', () => {
         const start = app.indexOf('const getProfileOverlayHint = async (');
         const end = app.indexOf('// Open and Create from', start);
         if (start < 0 || end < 0) throw new Error('profile overlay hint block not found in App.tsx');
-        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt') => execute(app.slice(start, end), {
+        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt', loginFolder: string | null = '/home/alice') => execute(app.slice(start, end), {
             landingPath,
             loadSavedServerProfiles: async () => [{
                 id: 'srv_1',
@@ -262,19 +262,32 @@ describe('crypt overlay deferred connect unlock', () => {
             resolveUsernameTemplate,
             connectLandsOutsideOverlay,
             isLoginRelativeScope,
+            placeUnderLoginFolder,
+            invoke: async (command: string) => {
+                if (command !== 'provider_login_folder') throw new Error(`unexpected ${command}`);
+                if (!loginFolder) throw new Error('not reported');
+                return loginFolder;
+            },
         }, "return getProfileOverlayHint('srv_1', landingPath);");
 
         await expect(hintFor()).resolves.toMatchObject({ opensOutside: true });
         await expect(hintFor('/Crypt')).resolves.toMatchObject({ opensOutside: false });
         await expect(hintFor('/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', opensOutside: true });
-        // An SFTP crypt imported from `nas:docs`: no anchor until the session
-        // resolves `~/docs`, so the panel opens where the connect landed.
-        await expect(hintFor(undefined, '~/docs', '~/docs')).resolves.toMatchObject({ anchor: null, opensOutside: false });
+        // An SFTP crypt imported from `nas:docs`: `~/docs` is placed under the
+        // login folder the session reports, landing and anchor alike.
+        await expect(hintFor(undefined, '~/docs', '~/docs')).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false, loginFolder: '/home/alice' });
+        await expect(hintFor(undefined, '~', '~/docs')).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: true });
+        await expect(hintFor('/home/alice/docs/sub', '/', '~/docs')).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false });
+        // Not reported: no anchor, and the connect unlocks (fail closed).
+        await expect(hintFor(undefined, '~/docs', '~/docs', null)).resolves.toMatchObject({ anchor: null, opensOutside: false, loginFolder: null });
+        // Nothing under the login folder asks the session for it.
+        await expect(hintFor(undefined, '/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', loginFolder: null });
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, resolvedRemoteDir)');
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');
         expect(app).toContain('savedOverlayHint ? savedOauthInitialPath : undefined');
-        expect(app).toContain("overlayHint ? resolvedSavedInitialPath || '/' : undefined");
+        expect(app).toContain("overlayHint ? placeUnderLoginFolder(resolvedSavedInitialPath, overlayHint.loginFolder) || '/' : undefined");
+        expect(app).toContain("overlayHint ? placeUnderLoginFolder(resolvedRemoteDir, overlayHint.loginFolder) || '/' : undefined");
     });
 });
 

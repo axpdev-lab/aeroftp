@@ -214,7 +214,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { isLoginRelativeScope, knownCryptScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -6289,6 +6289,14 @@ const App: React.FC = () => {
   // (regardless of whether a password/keyfile is stored). Used to surface the
   // LT2b locked affordance when auto-unlock never arms, including the case where
   // there is no stored unlock factor so the suppress-listing path does not run.
+  // A binding scope under the login folder, placed where the live session
+  // reports it; '' from knownCryptScope (every path inside) when it cannot.
+  const placeLoginRelativeScope = async (scope: string | null | undefined): Promise<string | null> => (
+    isLoginRelativeScope(scope)
+      ? placeUnderLoginFolder(scope, await invoke<string>('provider_login_folder').catch(() => ''))
+      : scope ?? null
+  );
+
   const getEnabledProfileOverlay = async (
     savedServerId?: string,
   ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
@@ -6314,7 +6322,7 @@ const App: React.FC = () => {
   const getProfileOverlayHint = async (
     savedServerId?: string,
     landingPath?: string | null,
-  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean } | null> => {
+  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean; loginFolder: string | null } | null> => {
     if (!savedServerId) return null;
     try {
       const profiles = await loadSavedServerProfiles();
@@ -6326,20 +6334,29 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      const initialPath = landingPath === undefined
+      const configuredLanding = landingPath === undefined
         ? profileInitialPath
         : resolveUsernameTemplate(landingPath, profile.username);
       const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const scope = remoteScope || profileInitialPath || '';
+      const configuredScope = remoteScope || profileInitialPath || '';
+      // `~/docs` (the rclone import of an SFTP `nas:docs`) names a folder only
+      // the session knows: it is placed under the login folder the connection
+      // reports, as the backend anchors the overlay.
+      const loginFolder = isLoginRelativeScope(configuredScope) || isLoginRelativeScope(configuredLanding)
+        ? await invoke<string>('provider_login_folder').catch(() => '') || null
+        : null;
+      const scope = placeUnderLoginFolder(configuredScope, loginFolder) || '';
+      const initialPath = placeUnderLoginFolder(configuredLanding, loginFolder);
       return {
         kind: binding.kind,
-        // A login-relative scope has no anchor before the session resolves
-        // it: the panel opens where the connect landed.
+        // A scope still under the login folder (the session did not report
+        // it) has no anchor: the panel opens where the connect landed.
         anchor: scope && scope !== '/' && !isLoginRelativeScope(scope) ? scope : null,
         // Remote Path is the opening. An empty Overlays Path means that
         // folder is the encrypted one. A root, or any parent of the island,
         // opens in plaintext and must not point the panel at the island.
         opensOutside: connectLandsOutsideOverlay(initialPath, scope),
+        loginFolder,
       };
     } catch {
       return null;
@@ -6468,9 +6485,11 @@ const App: React.FC = () => {
       // connect flash the scramble/reveal on a plain server's real filenames,
       // because pendingOverlayUnlock fires for every saved profile, not just
       // overlay ones.
+      const badgeScope = knownCryptScope(await placeLoginRelativeScope(binding.remoteScope));
+      assertOverlayActivationCurrent(ownership);
       setCryptOverlayOwner({ savedServerId, sessionId: null });
       // Show the path-bar badge immediately (grey) for the whole decrypt window.
-      markSessionOverlayKind({ savedServerId }, binding.kind, knownCryptScope(binding.remoteScope));
+      markSessionOverlayKind({ savedServerId }, binding.kind, badgeScope);
       setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
@@ -6596,7 +6615,7 @@ const App: React.FC = () => {
               kind: binding.kind,
               reason: refusalFor(overlayRefusalRef.current, savedId),
             };
-            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, knownCryptScope(binding.remoteScope));
+            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, knownCryptScope(await placeLoginRelativeScope(binding.remoteScope)));
           }
         } catch {
           // best-effort: fall through as plain if the profile re-read fails
@@ -8602,7 +8621,7 @@ const App: React.FC = () => {
           quickConnectDirs.localDir || currentLocalPath,
           overlayHint && !overlayHint.opensOutside ? [] : files,
           undefined,
-          overlayHint ? resolvedRemoteDir || '/' : undefined
+          overlayHint ? placeUnderLoginFolder(resolvedRemoteDir, overlayHint.loginFolder) || '/' : undefined
         );
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -19398,7 +19417,7 @@ const App: React.FC = () => {
                       resolvedLocalPath2,
                       overlayHint && !overlayHint.opensOutside ? [] : files,
                       undefined,
-                      overlayHint ? resolvedSavedInitialPath || '/' : undefined
+                      overlayHint ? placeUnderLoginFolder(resolvedSavedInitialPath, overlayHint.loginFolder) || '/' : undefined
                     ));
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);

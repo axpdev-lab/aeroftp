@@ -3588,6 +3588,21 @@ pub(crate) async fn resolve_home_scope(
     }))
 }
 
+/// The login folder of a connection, as [`resolve_home_scope`] reads it, for
+/// the window to place a `~` Remote Path or Overlays Path, which only the
+/// session knows. An overlay in the slot is looked through: its own `cd` reads
+/// `~` as a plaintext name below its anchor.
+pub(crate) async fn login_folder(provider: &mut dyn StorageProvider) -> Result<String, String> {
+    if provider.as_any_mut().is::<CryptOverlayProvider>() {
+        let overlay = provider
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .expect("checked above");
+        return Box::pin(login_folder(&mut *overlay.inner)).await;
+    }
+    Ok(resolve_home_scope(provider, "~").await?.unwrap_or_default())
+}
+
 /// A scope under the login folder: `~` or `~/...`, never `~docs`.
 pub(crate) fn is_login_relative_scope(scope: &str) -> bool {
     scope == "~" || scope.starts_with("~/")
@@ -6123,6 +6138,7 @@ pub(crate) mod tests {
             );
         }
         assert_eq!(mem.pwd().await.unwrap(), "/srv");
+        assert_eq!(login_folder(&mut mem).await.unwrap(), MEM_HOME);
 
         let inner: Box<dyn StorageProvider> = Box::new(MemProvider::new());
         let binding = OverlayUnlockParams {
@@ -6160,6 +6176,11 @@ pub(crate) mod tests {
             .downcast_mut::<CryptOverlayProvider>()
             .unwrap();
         assert_eq!(overlay.scope, "/home/mem/docs");
+        // Looked through the overlay, whose own `cd` would read `~` as a name.
+        assert_eq!(
+            login_folder(&mut **slot.as_mut().unwrap()).await.unwrap(),
+            MEM_HOME
+        );
     }
 
     #[tokio::test]

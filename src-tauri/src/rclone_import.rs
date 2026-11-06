@@ -10985,14 +10985,18 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             expand_rclone_path("${RCLONE_CONFIG_DIR}/id_ed25519", Some(dir)).as_deref(),
             Some("/etc/rclone/id_ed25519")
         );
-        assert_eq!(
-            expand_rclone_path("$PATH/k", None),
-            Some(format!("{path}/k"))
-        );
-        assert_eq!(
-            expand_rclone_path("${PATH}-k", None),
-            Some(format!("{path}-k"))
-        );
+        // A host PATH near the cap expands past it; the cap itself is pinned
+        // by the long case below, whatever the host.
+        if path.len() + 2 <= MAX_RCLONE_KEY_PATH_BYTES {
+            assert_eq!(
+                expand_rclone_path("$PATH/k", None),
+                Some(format!("{path}/k"))
+            );
+            assert_eq!(
+                expand_rclone_path("${PATH}-k", None),
+                Some(format!("{path}-k"))
+            );
+        }
         assert_eq!(
             expand_rclone_path("/k/${AEROFTP_TEST_NEVER_SET_VAR}/x", None).as_deref(),
             Some("/k//x"),

@@ -40,6 +40,17 @@ export const isLoginRelativeScope = (s?: string | null): boolean =>
   s === '~' || !!s?.startsWith('~/');
 
 /**
+ * A login-relative path placed under the login folder the session reported
+ * (`provider_login_folder`), as the backend places it; any other path, or no
+ * login folder, comes back as given.
+ */
+export const placeUnderLoginFolder = (path: string | null | undefined, loginFolder: string | null | undefined): string | null => {
+  if (!path || !loginFolder || !isLoginRelativeScope(path)) return path ?? null;
+  const rest = path === '~' ? '' : path.slice(2);
+  return rest ? `${loginFolder.replace(/\/+$/, '')}/${rest}` : loginFolder;
+};
+
+/**
  * A binding's scope as the app can read it before the session resolves it:
  * a login-relative scope reads as '' (the whole remote), so every path counts
  * as inside until the applied anchor replaces it (fail closed).

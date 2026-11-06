@@ -22199,6 +22199,7 @@ pub fn run() {
             provider_commands::provider_lock_crypt_overlay,
             provider_commands::provider_rearm_cached_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
+            provider_commands::provider_login_folder,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,

@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { isLoginRelativeScope, knownCryptScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -182,6 +182,15 @@ describe('a scope under the login folder', () => {
   it('is `~` or `~/...`, never a literal `~docs` or an absolute path', () => {
     for (const scope of ['~', '~/docs', '~/ docs']) expect(isLoginRelativeScope(scope)).toBe(true);
     for (const scope of ['~docs', '/~/docs', '/docs', '', null, undefined]) expect(isLoginRelativeScope(scope)).toBe(false);
+  });
+  it('is placed under the login folder the session reports, as the backend places it', () => {
+    expect(placeUnderLoginFolder('~/ docs', '/home/u')).toBe('/home/u/ docs');
+    expect(placeUnderLoginFolder('~', '/home/u/')).toBe('/home/u/');
+    expect(placeUnderLoginFolder('~/docs', '/')).toBe('/docs');
+    expect(placeUnderLoginFolder('~/docs', null)).toBe('~/docs');
+    expect(placeUnderLoginFolder('/docs', '/home/u')).toBe('/docs');
+    expect(placeUnderLoginFolder('~docs', '/home/u')).toBe('~docs');
+    expect(placeUnderLoginFolder(undefined, '/home/u')).toBeNull();
   });
   it('reads as the whole remote until the session resolves it', () => {
     expect(knownCryptScope('~/docs')).toBe('');
