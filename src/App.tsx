@@ -522,6 +522,7 @@ import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
+import { probeAliveArgs } from './utils/probeAliveArgs';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -8332,15 +8333,13 @@ const App: React.FC = () => {
           return (p.savedServerId && effectiveParams.savedServerId)
             ? p.savedServerId === effectiveParams.savedServerId
             : (p.username || '') === (effectiveParams.username || '')
-            && (p.server || '') === (effectiveParams.server || '');
+            && (p.server || '') === (effectiveParams.server || '')
+            && (p.port || null) === (effectiveParams.port || null);
         });
         if (reusable) {
           let alive = false;
           try {
-            alive = await invoke<boolean>('provider_probe_alive', {
-              protocol,
-              username: effectiveParams.username || null,
-            });
+            alive = await invoke<boolean>('provider_probe_alive', probeAliveArgs(reusable.connectionParams, protocol));
           } catch { alive = false; }
           if (alive) {
             logger.debug('[connectToFtp] #128-C: backend session still alive, reusing tab without reconnect (no 2FA)');
@@ -8989,17 +8988,16 @@ const App: React.FC = () => {
       // STILL holds alive (the only open session after 🏠 Home, or the tab that
       // currently owns the slot) must not disconnect + log in again, which for
       // Filen / MEGA / Internxt would force a fresh 2FA code. Probe the live
-      // slot (identity-checked against this exact protocol + account); if it is
-      // still alive, just re-list in place. When another tab has since displaced
-      // the slot, or the link dropped, the probe returns false and we fall
-      // through to the normal reconnect, so tab-to-tab switching is unchanged.
+      // slot (identity-checked against this tab's saved profile, or its host
+      // and port, besides protocol and user); if it is still alive, just
+      // re-list in place. When another tab has since displaced the slot, the
+      // link dropped, or the probe did not answer within its few seconds, it
+      // returns false and we fall through to the normal reconnect, whose
+      // listing can be cancelled, so tab-to-tab switching is unchanged.
       let stillAlive = false;
       if (!targetSession.cryptOverlay) {
         try {
-          stillAlive = await connectScope.step(() => invoke<boolean>('provider_probe_alive', {
-            protocol: protocol ?? null,
-            username: targetSession.connectionParams?.username || null,
-          }));
+          stillAlive = await connectScope.step(() => invoke<boolean>('provider_probe_alive', probeAliveArgs(targetSession.connectionParams, protocol)));
         } catch { connectScope.assert();
           stillAlive = false;
         }

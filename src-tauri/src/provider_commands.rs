@@ -2713,6 +2713,71 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
     }
 }
 
+/// How long the liveness probe may take, its listing included. A server that
+/// does not answer in time counts as not alive: the switch then falls back to a real
+/// reconnect, whose listing has a spinner and a Cancel, instead of waiting on
+/// a listing nothing can cancel.
+const PROBE_ALIVE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The account a tab expects to find in the provider slot, as the frontend
+/// knows it: its protocol, user, saved profile and endpoint.
+#[derive(Debug, Default, Clone, Copy)]
+struct ProbeIdentity<'a> {
+    protocol: Option<&'a str>,
+    username: Option<&'a str>,
+    profile_id: Option<&'a str>,
+    host: Option<&'a str>,
+    port: Option<u16>,
+}
+
+/// Whether the slot holds the account `expected` names, judged from the
+/// effective config of the slot and the saved profile recorded when it
+/// connected. Protocol and user alone are not an identity: two servers with
+/// the same user (root, admin, one account on two ports) would pass, and the
+/// tab would act on the other server. So a saved profile must be the same
+/// profile, and a connection without one must reach the same host and port.
+fn slot_matches_identity(
+    config: &ProviderConfig,
+    slot_profile: Option<&str>,
+    expected: &ProbeIdentity<'_>,
+) -> bool {
+    // Normalize to lowercase alphanumerics so `filen`/`Filen`, `s3`/`S3`,
+    // `googledrive`/`GoogleDrive` all compare equal across the IPC boundary.
+    let norm = |s: &str| -> String {
+        s.chars()
+            .filter(char::is_ascii_alphanumeric)
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    if let Some(protocol) = expected.protocol {
+        if norm(&format!("{:?}", config.provider_type)) != norm(protocol) {
+            return false;
+        }
+    }
+    if let (Some(expected), Some(actual)) = (expected.username, config.username.as_deref()) {
+        if !expected.is_empty() && !expected.eq_ignore_ascii_case(actual) {
+            return false;
+        }
+    }
+    let expected_profile = expected.profile_id.filter(|id| !id.is_empty());
+    match (expected_profile, slot_profile.filter(|id| !id.is_empty())) {
+        (Some(expected), Some(actual)) => return expected == actual,
+        // One side is a saved profile and the other is not: not the same.
+        (Some(_), None) | (None, Some(_)) => return false,
+        (None, None) => {}
+    }
+    let Some(host) = expected.host.map(str::trim).filter(|h| !h.is_empty()) else {
+        return false;
+    };
+    if !host.eq_ignore_ascii_case(config.host.trim()) {
+        return false;
+    }
+    expected
+        .port
+        .filter(|port| *port != 0)
+        .is_none_or(|port| port == config.effective_port())
+}
+
 /// Lightweight liveness probe for the currently connected provider (#128-C).
 ///
 /// Runs a bare `list(".")` on the active session and reports whether it
@@ -2721,50 +2786,61 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
 /// Internxt a fresh TOTP window), which is exactly what the caller wants to
 /// avoid: re-entering an already-connected 2FA account through the 🏠 Home
 /// button must not force a new 2FA code. `Ok(false)` (no provider, not
-/// connected, or the list failed) tells the UI to fall back to the normal
-/// disconnect + reconnect flow.
+/// connected, another account in the slot, a listing that failed or did not
+/// answer within [`PROBE_ALIVE_TIMEOUT`]) tells the UI to fall back to
+/// the normal disconnect + reconnect flow.
 #[tauri::command]
 pub async fn provider_probe_alive(
     state: State<'_, ProviderState>,
     protocol: Option<String>,
     username: Option<String>,
+    profile_id: Option<String>,
+    host: Option<String>,
+    port: Option<u16>,
 ) -> Result<bool, String> {
-    // The backend keeps only the most-recently-connected provider (single slot).
-    // Confirm that slot still holds THIS account before probing, so a probe can
-    // never make the UI reuse a different account's live session.
-    {
-        let config_lock = state.config.lock().await;
-        let Some(config) = config_lock.as_ref() else {
-            return Ok(false);
-        };
-        // Normalize to lowercase alphanumerics so `filen`/`Filen`, `s3`/`S3`,
-        // `googledrive`/`GoogleDrive` all compare equal across the IPC boundary.
-        let norm = |s: &str| -> String {
-            s.chars()
-                .filter(char::is_ascii_alphanumeric)
-                .flat_map(char::to_lowercase)
-                .collect()
-        };
-        if let Some(expected) = protocol.as_deref() {
-            let actual = format!("{:?}", config.provider_type);
-            if norm(&actual) != norm(expected) {
-                return Ok(false);
-            }
-        }
-        if let (Some(expected), Some(actual)) = (username.as_deref(), config.username.as_deref()) {
-            if !expected.is_empty() && !expected.eq_ignore_ascii_case(actual) {
-                return Ok(false);
-            }
-        }
-    }
-    let mut provider_lock = state.provider.lock().await;
-    let Some(provider) = provider_lock.as_mut() else {
-        return Ok(false);
+    let expected = ProbeIdentity {
+        protocol: protocol.as_deref(),
+        username: username.as_deref(),
+        profile_id: profile_id.as_deref(),
+        host: host.as_deref(),
+        port,
     };
-    if !provider.is_connected() {
-        return Ok(false);
-    }
-    Ok(provider.list(".").await.is_ok())
+    Ok(probe_alive_inner(&state, &expected, PROBE_ALIVE_TIMEOUT).await)
+}
+
+/// The probe, bounded as a whole by `timeout`: waiting for the provider lock
+/// (a stalled listing may hold it) counts against it as much as the listing.
+async fn probe_alive_inner(
+    state: &ProviderState,
+    expected: &ProbeIdentity<'_>,
+    timeout: Duration,
+) -> bool {
+    let probe = async {
+        // The backend keeps only the most-recently-connected provider (single
+        // slot). Confirm that slot still holds THIS account before probing, so
+        // a probe can never make the UI reuse a different account's live
+        // session. Provider lock first, as connect and disconnect take them.
+        let mut provider_lock = state.provider.lock().await;
+        {
+            let config_lock = state.config.lock().await;
+            let Some(config) = config_lock.as_ref() else {
+                return false;
+            };
+            let slot_profile = state
+                .connected_profile_id
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if !slot_matches_identity(config, slot_profile.as_deref(), expected) {
+                return false;
+            }
+        }
+        let Some(provider) = provider_lock.as_mut() else {
+            return false;
+        };
+        provider.is_connected() && provider.list(".").await.is_ok()
+    };
+    tokio::time::timeout(timeout, probe).await.unwrap_or(false)
 }
 
 /// List files in the specified path.
@@ -17996,6 +18072,193 @@ mod tests {
         let _busy = state.provider.lock().await;
         let _ = locked.send(());
         tokio::time::sleep(held).await;
+    }
+
+    /// The effective config of a live slot on `host:port` for `user`.
+    fn probe_config(host: &str, port: u16, user: &str) -> ProviderConfig {
+        ProviderConfig {
+            name: "slot".to_string(),
+            provider_type: ProviderType::Ftp,
+            host: host.to_string(),
+            port: Some(port),
+            username: Some(user.to_string()),
+            password: None,
+            initial_path: None,
+            extra: HashMap::new(),
+        }
+    }
+
+    fn probe_for(
+        host: &str,
+        port: u16,
+        user: &str,
+        profile_id: Option<&'static str>,
+    ) -> ProbeIdentity<'static> {
+        ProbeIdentity {
+            protocol: Some("ftp"),
+            username: Some(Box::leak(user.to_string().into_boxed_str())),
+            profile_id,
+            host: Some(Box::leak(host.to_string().into_boxed_str())),
+            port: Some(port),
+        }
+    }
+
+    // Row 163 live check: two FTP profiles with the same user on two ports of
+    // one host. The probe compared protocol and user only, so switching to one
+    // reused the other's live session and the tab acted on the wrong server.
+    #[test]
+    fn a_probe_for_the_same_user_on_another_endpoint_is_not_alive() {
+        let slot = probe_config("127.0.0.1", 2162, "row163");
+        // Another port, another host, no saved profile on either side.
+        assert!(!slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("127.0.0.1", 2161, "row163", None)
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("10.0.0.2", 2162, "row163", None)
+        ));
+        // Two saved profiles: the profile decides, whatever the user.
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("127.0.0.1", 2162, "row163", Some("srv_a"))
+        ));
+        // A saved profile against a Quick Connect slot, and the reverse.
+        assert!(!slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("127.0.0.1", 2162, "row163", Some("srv_b"))
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("127.0.0.1", 2162, "row163", None)
+        ));
+        // No endpoint to compare is not a match either.
+        let blind = ProbeIdentity {
+            host: None,
+            ..probe_for("127.0.0.1", 2162, "row163", None)
+        };
+        assert!(!slot_matches_identity(&slot, None, &blind));
+    }
+
+    #[test]
+    fn a_probe_for_the_account_in_the_slot_is_alive() {
+        let slot = probe_config("ftp.example.com", 2162, "row163");
+        assert!(slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("ftp.example.com", 2162, "row163", Some("srv_b"))
+        ));
+        // Quick Connect: the endpoint decides; host case and an unset port do not.
+        assert!(slot_matches_identity(
+            &slot,
+            None,
+            &probe_for("FTP.Example.com ", 2162, "row163", None)
+        ));
+        let default_port = ProbeIdentity {
+            port: None,
+            ..probe_for("ftp.example.com", 0, "row163", None)
+        };
+        assert!(slot_matches_identity(&slot, None, &default_port));
+        // Protocol and user still have to agree.
+        let other_protocol = ProbeIdentity {
+            protocol: Some("sftp"),
+            ..probe_for("ftp.example.com", 2162, "row163", Some("srv_b"))
+        };
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &other_protocol
+        ));
+        assert!(!slot_matches_identity(
+            &slot,
+            Some("srv_b"),
+            &probe_for("ftp.example.com", 2162, "other", Some("srv_b"))
+        ));
+    }
+
+    fn probe_state(provider: StallProvider, profile: Option<&str>) -> ProviderState {
+        let state = stall_state(provider);
+        *state.config.try_lock().unwrap() = Some(probe_config("127.0.0.1", 2162, "row163"));
+        *state.connected_profile_id.lock().unwrap() = profile.map(str::to_string);
+        state
+    }
+
+    fn answering() -> StallProvider {
+        StallProvider {
+            dirs: HashMap::from([(".".to_string(), Vec::new())]),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_probe_lists_only_when_the_slot_holds_the_tabs_profile() {
+        let timeout = Duration::from_secs(5);
+        let state = probe_state(answering(), Some("srv_b"));
+        assert!(
+            probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2162, "row163", Some("srv_b")),
+                timeout
+            )
+            .await
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2161, "row163", Some("srv_a")),
+                timeout
+            )
+            .await
+        );
+    }
+
+    // The probe listing had no deadline and no Cancel: a server that stalled
+    // on it left the switch "connecting" with nothing to click.
+    #[tokio::test(start_paused = true)]
+    async fn a_probe_on_a_stalled_server_ends_not_alive_within_its_timeout() {
+        let timeout = Duration::from_secs(5);
+        // `list(".")` never answers: "." is not among the provider's dirs.
+        let state = probe_state(StallProvider::default(), Some("srv_b"));
+        let started = tokio::time::Instant::now();
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2162, "row163", Some("srv_b")),
+                timeout
+            )
+            .await
+        );
+        assert_eq!(started.elapsed(), timeout);
+        assert_eq!(PROBE_ALIVE_TIMEOUT, timeout);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_probe_behind_a_held_provider_lock_ends_within_its_timeout() {
+        let timeout = Duration::from_secs(5);
+        let state = probe_state(answering(), Some("srv_b"));
+        let (locked, is_locked) = tokio::sync::oneshot::channel();
+        let probe = async {
+            is_locked.await.unwrap();
+            let started = tokio::time::Instant::now();
+            let alive = probe_alive_inner(
+                &state,
+                &probe_for("127.0.0.1", 2162, "row163", Some("srv_b")),
+                timeout,
+            )
+            .await;
+            (alive, started.elapsed())
+        };
+        let ((), (alive, waited)) = tokio::join!(
+            hold_provider(&state, Duration::from_secs(600), locked),
+            probe
+        );
+        assert!(!alive);
+        assert_eq!(waited, timeout);
     }
 
     // #960 review M1: the per-read deadline used to include the wait for the
