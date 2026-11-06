@@ -1107,6 +1107,29 @@ pub(crate) mod temp_claim {
 
     #[cfg(all(test, target_os = "linux"))]
     mod tests {
+        /// Deep-scan 37: a link standing at the final name is replaced by the
+        /// commit, and its target keeps its content.
+        #[cfg(unix)]
+        #[tokio::test]
+        async fn a_commit_replaces_a_link_at_the_name_and_leaves_its_target() {
+            let dir = tempfile::tempdir().unwrap();
+            let victim = dir.path().join("victim.txt");
+            std::fs::write(&victim, b"precious").unwrap();
+            let name = dir.path().join("download.bin");
+            std::os::unix::fs::symlink(&victim, &name).unwrap();
+            let mut file = super::AtomicFile::new(name.to_str().unwrap())
+                .await
+                .unwrap();
+            file.write_all(b"downloaded").await.unwrap();
+            file.commit().await.unwrap();
+            assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+            assert!(!std::fs::symlink_metadata(&name)
+                .unwrap()
+                .file_type()
+                .is_symlink());
+            assert_eq!(std::fs::read(&name).unwrap(), b"downloaded");
+        }
+
         use super::*;
 
         /// What the name holds when a leftover link is removed is looked at
