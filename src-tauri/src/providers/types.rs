@@ -544,58 +544,19 @@ impl WebDavConfig {
     /// know to default to HTTP on non-standard ports. The decision is based
     /// purely on the host string: no DNS lookup, no IP stack heuristic.
     pub(crate) fn is_local_or_filen_host(host: &str) -> bool {
-        let h = host
-            .trim()
-            .trim_start_matches("http://")
-            .trim_start_matches("https://")
-            .trim_start_matches('[');
-        // Strip user info, brackets, and port. We intentionally do not use
-        // `url::Url::parse` because raw `host:port` isn't a valid URL.
-        let host_only = h
-            .split('@')
-            .next_back()
-            .unwrap_or(h)
-            .split('/')
-            .next()
-            .unwrap_or(h);
-        let host_only = host_only.trim_end_matches(']');
-        let host_only = match host_only.rsplit_once(':') {
-            Some((before, after)) if after.chars().all(|c| c.is_ascii_digit()) => before,
-            _ => host_only,
+        // The host the request reaches, never a split string: `10.example.com`
+        // and `192.168.1.1.attacker.com` used to count as private here and get
+        // plain HTTP with Basic credentials on a public network (#1506
+        // Requested 188).
+        let Some(host) = crate::util::endpoint::endpoint_host(host) else {
+            return false;
         };
-        let lower = host_only.to_ascii_lowercase();
-        if lower == "localhost"
-            || lower == "127.0.0.1"
-            || lower == "::1"
-            || lower.ends_with(".localhost")
-            || lower.ends_with(".local")
-            || lower == "local.webdav.filen.io"
-            || lower == "local.s3.filen.io"
-        {
-            return true;
-        }
-        // RFC 1918 / link-local IPv4: 10/8, 172.16/12, 192.168/16, 169.254/16
-        if let Some(first) = lower.split('.').next().and_then(|s| s.parse::<u8>().ok()) {
-            if first == 10 {
-                return true;
-            }
-            let parts: Vec<u8> = lower
-                .split('.')
-                .filter_map(|s| s.parse::<u8>().ok())
-                .collect();
-            if parts.len() == 4 {
-                if parts[0] == 192 && parts[1] == 168 {
-                    return true;
-                }
-                if parts[0] == 169 && parts[1] == 254 {
-                    return true;
-                }
-                if parts[0] == 172 && (16..=31).contains(&parts[1]) {
-                    return true;
-                }
-            }
-        }
-        false
+        host == "localhost"
+            || host.ends_with(".localhost")
+            || host.ends_with(".local")
+            || host == "local.webdav.filen.io"
+            || host == "local.s3.filen.io"
+            || crate::util::endpoint::host_is_private_ip(&host)
     }
 }
 
@@ -643,6 +604,28 @@ mod webdav_config_tests {
         assert_eq!(cfg.url, "http://10.0.0.5:1900");
         let cfg = build("172.20.10.1", Some(8443), None);
         assert_eq!(cfg.url, "http://172.20.10.1:8443");
+    }
+
+    /// #1506 Requested 188: a public name that only looks private gets HTTPS,
+    /// never plain HTTP with Basic credentials.
+    #[test]
+    fn auto_picks_https_for_hosts_that_only_look_private() {
+        for host in [
+            "10.example.com",
+            "192.168.1.1.attacker.com",
+            "172.20.0.1.x.com",
+            "169.254.1.1.evil.net",
+            "evil.com?.local",
+            "127.evil.com",
+        ] {
+            let cfg = build(host, Some(8080), None);
+            assert!(cfg.url.starts_with("https://"), "{host}: {}", cfg.url);
+        }
+        // A link-local and an IPv6 loopback literal stay local.
+        assert!(build("169.254.10.20", Some(8080), None)
+            .url
+            .starts_with("http://"));
+        assert!(build("[::1]", Some(1900), None).url.starts_with("http://"));
     }
 
     #[test]
@@ -1148,11 +1131,14 @@ fn infer_s3_endpoint_scheme(host: &str, port: Option<u16>) -> &'static str {
 }
 
 fn is_loopback_host(host: &str) -> bool {
-    let host = host
-        .trim_matches('[')
-        .trim_matches(']')
-        .to_ascii_lowercase();
-    host == "localhost" || host == "::1" || host.starts_with("127.")
+    // On the parsed address: `127.evil.com` is not loopback (#1506 Requested 188).
+    let Some(host) = crate::util::endpoint::endpoint_host(host) else {
+        return false;
+    };
+    host == "localhost"
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 /// SFTP-specific configuration
