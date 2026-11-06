@@ -75,6 +75,118 @@ pub(crate) fn path_matches_prefix(path: &str, prefix: &str) -> bool {
     path == prefix || path.starts_with(&format!("{}/", prefix))
 }
 
+/// System locations no AI tool reads or writes.
+const SYSTEM_DENIED: [&str; 9] = [
+    "/proc",
+    "/sys",
+    "/dev",
+    "/boot",
+    "/root",
+    "/etc/shadow",
+    "/etc/passwd",
+    "/etc/ssh",
+    "/etc/sudoers",
+];
+
+/// Locations under the user's home no AI tool reads or writes.
+const HOME_DENIED: [&str; 8] = [
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".kube",
+    ".config/gcloud",
+    ".docker",
+    ".config/aeroftp",
+    ".vault-token",
+];
+
+/// The user's home as given and as resolved, in comparable form: HOME can
+/// sit behind a symlink (`/home -> /var/home`), and a canonical path would
+/// then never match the spelling HOME gives. `home_dir_string` falls back to
+/// USERPROFILE: on Windows HOME is usually unset. Empty without a home.
+fn home_spellings() -> Vec<String> {
+    let Some(home) = home_dir_string() else {
+        return Vec::new();
+    };
+    let mut homes = vec![comparable_path(&home, cfg!(windows))];
+    if let Ok(real) = std::fs::canonicalize(&home) {
+        let real = comparable_path(&real.to_string_lossy(), cfg!(windows));
+        if !homes.contains(&real) {
+            homes.push(real);
+        }
+    }
+    homes
+}
+
+/// The canonical, comparable form of `path`, following symlinks and with a
+/// tail that does not exist yet re-appended (see `resolve_existing_prefix`).
+fn canonical_comparable(path: &str) -> Option<String> {
+    resolve_existing_prefix(std::path::Path::new(path))
+        .map(|real| comparable_path(&real.to_string_lossy(), cfg!(windows)))
+}
+
+/// Whether `path` is one no recursive delete, trash, move or rename may take:
+/// the filesystem root, the user's home or one of its ancestors, compared on
+/// the real path. A spelling check let `$HOME/.` through (deep scan item 23).
+pub(crate) fn is_dangerous_root(path: &str) -> bool {
+    let Some(real) = canonical_comparable(path) else {
+        return true;
+    };
+    if real == "/" || real.ends_with(":/") || real.is_empty() {
+        return true;
+    }
+    home_spellings()
+        .iter()
+        .any(|home| path_matches_prefix(home, &real))
+}
+
+/// The first protected location (system or home) that exists inside `root`:
+/// what a recursive delete, trash, move or rename of `root` would take with
+/// it, though `root` itself passes the policy (deep scan item 22: deleting
+/// `~/.config` took `~/.config/aeroftp`).
+pub(crate) fn protected_location_within(root: &str) -> Option<String> {
+    let real = canonical_comparable(root)?;
+    let homes = home_spellings();
+    let home_locations = homes
+        .iter()
+        .flat_map(|home| HOME_DENIED.iter().map(move |rel| format!("{home}/{rel}")));
+    SYSTEM_DENIED
+        .iter()
+        .map(|location| location.to_string())
+        .chain(home_locations)
+        .chain(std::iter::once("/run/secrets".to_string()))
+        .map(|location| comparable_path(&location, cfg!(windows)))
+        .find(|location| {
+            location != &real
+                && path_matches_prefix(location, &real)
+                && std::path::Path::new(location).exists()
+        })
+}
+
+/// Whether the policy refuses an entry met while walking a tree, so a
+/// recursive reader skips it (and, for a folder, everything under it): the
+/// root passing the policy says nothing about what lies below (deep scan
+/// items 20, 21, 26).
+pub(crate) fn walk_refuses(entry: &std::path::Path) -> bool {
+    validate_path(&entry.to_string_lossy(), "path").is_err()
+}
+
+/// Why a move, rename or trash of `source` is refused, if it is: a root no
+/// recursive operation may take, or a folder holding a protected location.
+fn takes_protected(source: &str) -> Option<String> {
+    if is_dangerous_root(source) {
+        return Some(format!("{source}: refusing to move away a dangerous path"));
+    }
+    if std::path::Path::new(source).is_dir() {
+        if let Some(protected) = protected_location_within(source) {
+            return Some(format!(
+                "{source}: it contains the protected path {protected}"
+            ));
+        }
+    }
+    None
+}
+
 /// Path validation con deny-list sistema. Ricalca `ai_tools::validate_path`
 /// usando matching component-aware (vedi `path_matches_prefix`) per evitare
 /// false positive su prefissi parziali (es. `/bootcamp` vs `/boot`).
@@ -103,44 +215,15 @@ pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
     };
     let s = comparable_path(&canonical.to_string_lossy(), cfg!(windows));
     let normalized = comparable_path(&normalized, cfg!(windows));
-    let denied = [
-        "/proc",
-        "/sys",
-        "/dev",
-        "/boot",
-        "/root",
-        "/etc/shadow",
-        "/etc/passwd",
-        "/etc/ssh",
-        "/etc/sudoers",
-    ];
-    if denied.iter().any(|d| path_matches_prefix(&s, d)) {
+    if SYSTEM_DENIED.iter().any(|d| path_matches_prefix(&s, d)) {
         return Err(format!("{}: access to system path denied: {}", param, s));
     }
     // `home_dir_string` falls back to USERPROFILE: on Windows HOME is usually
     // unset, and reading HOME alone skipped the whole home denylist there.
-    if let Some(home) = home_dir_string() {
-        let home_denied = [
-            ".ssh",
-            ".gnupg",
-            ".aws",
-            ".kube",
-            ".config/gcloud",
-            ".docker",
-            ".config/aeroftp",
-            ".vault-token",
-        ];
-        // HOME as given and as resolved: HOME can itself sit behind a symlink
-        // (`/home -> /var/home`), and the canonical path would then never match.
-        let mut homes = vec![comparable_path(&home, cfg!(windows))];
-        if let Ok(real) = std::fs::canonicalize(&home) {
-            let real = comparable_path(&real.to_string_lossy(), cfg!(windows));
-            if !homes.contains(&real) {
-                homes.push(real);
-            }
-        }
+    {
+        let homes = home_spellings();
         for h in &homes {
-            for sensitive in &home_denied {
+            for sensitive in &HOME_DENIED {
                 let prefix = comparable_path(&format!("{}/{}", h, sensitive), cfg!(windows));
                 if path_matches_prefix(&s, &prefix) || path_matches_prefix(&normalized, &prefix) {
                     return Err(format!("{}: access to sensitive path denied: {}", param, s));
@@ -517,17 +600,7 @@ pub async fn local_delete(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
     let path = resolve_local_path(&get_str(args, "path")?, ctx.context_local_path());
     validate_path(&path, "path").map_err(map_str_err)?;
 
-    let home_dir = std::env::var("HOME")
-        .or_else(|_| std::env::var("USERPROFILE"))
-        .unwrap_or_default();
-    let normalized = path.trim_end_matches('/').trim_end_matches('\\');
-    if normalized.is_empty()
-        || normalized == "/"
-        || normalized == "~"
-        || normalized == "."
-        || normalized == ".."
-        || normalized == home_dir
-    {
+    if is_dangerous_root(&path) {
         return Err(ToolError::Denied(format!(
             "Refusing to delete dangerous path: {}",
             path
@@ -536,6 +609,14 @@ pub async fn local_delete(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
 
     let meta =
         std::fs::metadata(&path).map_err(|e| ToolError::Exec(format!("Path not found: {}", e)))?;
+    if meta.is_dir() {
+        if let Some(protected) = protected_location_within(&path) {
+            return Err(ToolError::Denied(format!(
+                "Refusing to delete {}: it contains the protected path {}",
+                path, protected
+            )));
+        }
+    }
     let removed = if meta.is_dir() {
         std::fs::remove_dir_all(&path)
             .map_err(|e| ToolError::Exec(format!("Failed to delete directory: {}", e)))
@@ -559,6 +640,9 @@ pub async fn local_rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, Tool
     let to = resolve_local_path(&get_str(args, "to")?, base);
     validate_path(&from, "from").map_err(map_str_err)?;
     validate_path(&to, "to").map_err(map_str_err)?;
+    if let Some(reason) = takes_protected(&from) {
+        return Err(ToolError::Denied(reason));
+    }
 
     std::fs::rename(&from, &to).map_err(|e| ToolError::Exec(format!("Failed to rename: {}", e)))?;
     tags_follow_move(ctx, &from, &to);
@@ -594,11 +678,21 @@ pub async fn local_move_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             errors.push(json!({ "file": source, "error": e }));
             continue;
         }
+        if let Some(reason) = takes_protected(source) {
+            errors.push(json!({ "file": source, "error": reason }));
+            continue;
+        }
         let filename = std::path::Path::new(source)
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".to_string());
         let dest_path = format!("{}/{}", destination.trim_end_matches('/'), filename);
+        // The destination folder passing says nothing of the child the move
+        // writes (deep scan item 25: a folder named `.ssh` into the home).
+        if let Err(e) = validate_path(&dest_path, "destination") {
+            errors.push(json!({ "file": source, "error": e }));
+            continue;
+        }
 
         progress(
             ctx,
@@ -721,8 +815,21 @@ pub async fn local_batch_rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
         };
 
         if new_name != filename && !new_name.trim().is_empty() {
+            // A generated name is one name in the same folder: a separator,
+            // `.` or `..` would move the file elsewhere (deep scan item 24).
+            if new_name.contains(['/', '\\']) || matches!(new_name.trim(), "." | "..") {
+                errors.push(json!({
+                    "file": filename,
+                    "error": format!("The new name '{}' is not a single file name", new_name),
+                }));
+                continue;
+            }
             let parent = src_path.parent().unwrap_or(std::path::Path::new("/"));
             let dest = parent.join(&new_name).to_string_lossy().to_string();
+            if let Err(e) = validate_path(&dest, "destination") {
+                errors.push(json!({ "file": filename, "error": e }));
+                continue;
+            }
             renames.push((source.clone(), dest));
         }
     }
@@ -823,6 +930,9 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             let dst_path = dst.join(entry.file_name());
             ensure_not_symlink(&src_path, "path")?;
             validate_path(&src_path.to_string_lossy(), "path")?;
+            // Every file the copy writes, not only the destination folder
+            // (deep scan item 25).
+            validate_path(&dst_path.to_string_lossy(), "destination")?;
             if src_path.is_dir() {
                 count += copy_dir_recursive(&src_path, &dst_path)?;
             } else {
@@ -853,6 +963,10 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| "file".to_string());
         let dest_path_str = format!("{}/{}", destination.trim_end_matches('/'), filename);
+        if let Err(e) = validate_path(&dest_path_str, "destination") {
+            errors.push(json!({ "file": filename, "error": e }));
+            continue;
+        }
 
         progress(
             ctx,
@@ -902,6 +1016,10 @@ pub async fn local_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
     for (idx, path) in paths.iter().enumerate() {
         if let Err(e) = validate_path(path, "path") {
             errors.push(json!({ "file": path, "error": e }));
+            continue;
+        }
+        if let Some(reason) = takes_protected(path) {
+            errors.push(json!({ "file": path, "error": reason }));
             continue;
         }
         let filename = std::path::Path::new(path)
@@ -1250,6 +1368,8 @@ pub async fn local_grep(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolE
         for entry in walkdir::WalkDir::new(&path_for_grep)
             .follow_links(false)
             .into_iter()
+            // A protected folder below the root is never read (deep scan item 26).
+            .filter_entry(|entry| entry.depth() == 0 || !walk_refuses(entry.path()))
         {
             if matches.len() >= max_results {
                 break;

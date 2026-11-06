@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use super::local_tools::{get_str, get_str_opt, resolve_local_path, validate_path};
+use super::local_tools::{
+    get_str, get_str_opt, protected_location_within, resolve_local_path, validate_path,
+};
 use super::tools::{ToolCtx, ToolError};
 use serde_json::{json, Value};
 
@@ -134,6 +136,34 @@ pub async fn archive_decompress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
 
     validate_path(&archive_path, "archive_path").map_err(map_str_err)?;
     validate_path(&output_dir, "output_dir").map_err(map_str_err)?;
+
+    // The folder the entries land in, decided here so the policy sees it: the
+    // archive's own subfolder, or the output folder itself. The extraction is
+    // confined to that folder, so it must neither be protected nor hold a
+    // protected location an entry could write into (deep scan item 42: an
+    // archive extracted into the home wrote `~/.ssh/authorized_keys`).
+    let target = if create_subfolder {
+        let file_name = std::path::Path::new(&archive_path)
+            .file_name()
+            .map(|name| name.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let stem = crate::archive_extract_stem(&file_name);
+        std::path::Path::new(&output_dir)
+            .join(crate::safe_extract_folder_name(&stem))
+            .to_string_lossy()
+            .to_string()
+    } else {
+        output_dir.clone()
+    };
+    validate_path(&target, "output_dir").map_err(map_str_err)?;
+    if let Some(protected) = protected_location_within(&target) {
+        return Err(ToolError::Denied(format!(
+            "Refusing to extract into {}: it contains the protected path {}. Extract into a subfolder instead.",
+            target, protected
+        )));
+    }
+    let create_subfolder = false;
+    let output_dir = target;
 
     // Detect format from extension
     let lower = archive_path.to_lowercase();

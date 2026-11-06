@@ -10658,7 +10658,7 @@ pub(crate) fn safe_extract_folder_name(stem: &str) -> &str {
 /// name an "Extract to folder" subfolder. Handles the multi-part tar extensions
 /// (.tar.gz / .tar.xz / .tar.bz2) and the aero* + general single extensions,
 /// falling back to a last-dot strip. Pure: unit-tested.
-fn archive_extract_stem(file_name: &str) -> String {
+pub(crate) fn archive_extract_stem(file_name: &str) -> String {
     let lower = file_name.to_ascii_lowercase();
     for ext in [".tar.gz", ".tar.xz", ".tar.bz2"] {
         if lower.ends_with(ext) {

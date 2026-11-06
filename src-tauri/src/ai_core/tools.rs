@@ -3125,6 +3125,231 @@ mod tests {
     #[cfg(unix)]
     requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_tarbz2, "tar.bz2");
 
+    /// A fake home with the protected locations the deep scan named, each
+    /// holding a secret line, and an ordinary file beside them. HOME points at
+    /// it until the returned guard drops; the caller holds the env lock.
+    struct FakeHome {
+        _dir: tempfile::TempDir,
+        home: std::path::PathBuf,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl Drop for FakeHome {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(home) => std::env::set_var("HOME", home),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+    }
+
+    fn fake_home() -> FakeHome {
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap().join("home");
+        for (rel, body) in [
+            (".ssh/id_fixture", "-----BEGIN PRIVATE KEY----- SECRETWORD"),
+            (".aws/credentials", "aws_secret_access_key = SECRETWORD"),
+            (".docker/config.json", "{\"auths\": \"SECRETWORD\"}"),
+            (".config/aeroftp/vault.db", "SECRETWORD"),
+            (".config/other/settings.txt", "ordinary SECRETWORD"),
+            (
+                "notes.txt",
+                "ordinary SECRETWORD -----BEGIN PRIVATE KEY-----",
+            ),
+        ] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        FakeHome {
+            _dir: dir,
+            home,
+            previous,
+        }
+    }
+
+    fn mentions_protected(value: &Value) -> bool {
+        let text = value.to_string();
+        [
+            ".ssh",
+            ".aws",
+            ".docker",
+            "aeroftp/vault.db",
+            "id_fixture",
+            "credentials",
+        ]
+        .iter()
+        .any(|name| text.contains(name))
+    }
+
+    // Deep scan items 20, 21, 26 (read-only tier): the policy checked the root
+    // of a recursive read, and what lay below went to the AI provider.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn recursive_readers_never_read_a_protected_location_below_their_root() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let home = fake.home.to_string_lossy().to_string();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let indexed = dispatch_tool(&ctx, "rag_index", &json!({"path": home, "recursive": true}))
+            .await
+            .unwrap();
+        assert!(indexed.to_string().contains("notes.txt"), "{indexed}");
+        assert!(!mentions_protected(&indexed), "rag_index: {indexed}");
+        let searched = dispatch_tool(
+            &ctx,
+            "rag_search",
+            &json!({"path": home, "query": "SECRETWORD"}),
+        )
+        .await
+        .unwrap();
+        assert!(searched.to_string().contains("notes.txt"), "{searched}");
+        assert!(!mentions_protected(&searched), "rag_search: {searched}");
+        let grepped = dispatch_tool(
+            &ctx,
+            "local_grep",
+            &json!({"path": home, "pattern": "PRIVATE KEY"}),
+        )
+        .await
+        .unwrap();
+        assert!(grepped.to_string().contains("notes.txt"), "{grepped}");
+        assert!(!mentions_protected(&grepped), "local_grep: {grepped}");
+    }
+
+    // Deep scan items 22, 23: `$HOME/.` passed the spelling check and emptied
+    // the home; deleting `~/.config` took `~/.config/aeroftp` with it.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_delete_never_takes_the_home_or_a_protected_location_inside_a_folder() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let link = fake.home.parent().unwrap().join("home-link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&fake.home, &link).unwrap();
+        let mut roots = vec![
+            format!("{}/.", fake.home.display()),
+            format!("{}/", fake.home.display()),
+            fake.home.parent().unwrap().display().to_string(),
+        ];
+        if cfg!(unix) {
+            roots.push(link.display().to_string());
+        }
+        for root in roots {
+            let err = dispatch_tool(&ctx, "local_delete", &json!({"path": root}))
+                .await
+                .unwrap_err();
+            assert!(err.to_string().contains("dangerous path"), "{root}: {err}");
+            assert!(
+                fake.home.join("notes.txt").exists(),
+                "{root} deleted the home"
+            );
+        }
+        let config = fake.home.join(".config").display().to_string();
+        let err = dispatch_tool(&ctx, "local_delete", &json!({"path": config}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(fake.home.join(".config/aeroftp/vault.db").exists());
+        // A folder holding nothing protected is deleted as before.
+        let other = fake.home.join(".config/other").display().to_string();
+        dispatch_tool(&ctx, "local_delete", &json!({"path": other}))
+            .await
+            .expect("an ordinary folder");
+        assert!(!fake.home.join(".config/other").exists());
+        // Moving or trashing a folder that holds a protected location is
+        // refused the same way.
+        let away = fake.home.join("away").display().to_string();
+        let moved = dispatch_tool(
+            &ctx,
+            "local_move_files",
+            &json!({"paths": [config], "destination": away}),
+        )
+        .await
+        .unwrap();
+        assert!(moved.to_string().contains("protected path"), "{moved}");
+        assert!(fake.home.join(".config/aeroftp/vault.db").exists());
+    }
+
+    // Deep scan items 24, 25: a generated name or a copied child landed in a
+    // protected location though the folders passed.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn renames_and_copies_check_every_path_they_write() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let work = fake.home.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let file = work.join("key.pub");
+        std::fs::write(&file, b"public").unwrap();
+        for prefix in ["../.ssh/", "/tmp/elsewhere/"] {
+            let renamed = dispatch_tool(
+                &ctx,
+                "local_batch_rename",
+                &json!({"paths": [file.display().to_string()], "mode": "add_prefix", "prefix": prefix}),
+            )
+            .await;
+            let text = format!("{renamed:?}");
+            assert!(file.exists(), "{prefix}: the file moved ({text})");
+            assert!(!fake.home.join(".ssh/key.pub").exists(), "{prefix}");
+        }
+        let source = fake.home.join("staging/.ssh");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("authorized_keys"), b"attacker").unwrap();
+        let copied = dispatch_tool(
+            &ctx,
+            "local_copy_files",
+            &json!({"paths": [source.display().to_string()], "destination": fake.home.display().to_string()}),
+        )
+        .await
+        .unwrap();
+        assert!(
+            copied.to_string().contains("sensitive path denied"),
+            "{copied}"
+        );
+        assert!(!fake.home.join(".ssh/authorized_keys").exists());
+    }
+
+    // Deep scan item 42: an archive extracted into the home wrote
+    // `~/.ssh/authorized_keys`; the output folder alone was checked.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_archive_never_extracts_into_a_folder_holding_a_protected_location() {
+        use std::io::Write;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let archive = fake.home.join("bundle.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        zip.start_file(
+            ".ssh/authorized_keys",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"attacker").unwrap();
+        zip.finish().unwrap();
+        let args = |subfolder: bool| {
+            json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": fake.home.display().to_string(),
+                "create_subfolder": subfolder,
+            })
+        };
+        let err = dispatch_tool(&ctx, "archive_decompress", &args(false))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(!fake.home.join(".ssh/authorized_keys").exists());
+        // Into its own subfolder the archive extracts as before.
+        dispatch_tool(&ctx, "archive_decompress", &args(true))
+            .await
+            .expect("a subfolder holds nothing protected");
+        assert!(fake.home.join("bundle/.ssh/authorized_keys").exists());
+    }
+
     #[tokio::test]
     // The shared test-only env lock must cover the async call using this HOME.
     #[allow(clippy::await_holding_lock)]

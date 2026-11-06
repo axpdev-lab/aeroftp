@@ -13,7 +13,7 @@
 
 use serde_json::{json, Value};
 
-use super::local_tools::{get_str, get_str_opt, resolve_local_path, validate_path};
+use super::local_tools::{get_str, get_str_opt, resolve_local_path, validate_path, walk_refuses};
 use super::tools::{ToolCtx, ToolError};
 
 fn map_str_err(e: String) -> ToolError {
@@ -93,6 +93,11 @@ pub async fn rag_index(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                     return;
                 }
                 let entry_path = entry.path();
+                // The root passing the policy says nothing of what lies below:
+                // a protected file or folder is never read (deep scan items 20, 21).
+                if walk_refuses(&entry_path) {
+                    continue;
+                }
                 let meta = match entry.metadata() {
                     Ok(m) => m,
                     Err(_) => continue,
@@ -224,6 +229,11 @@ pub async fn rag_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
                     return;
                 }
                 let entry_path = entry.path();
+                // The root passing the policy says nothing of what lies below:
+                // a protected file or folder is never read (deep scan items 20, 21).
+                if walk_refuses(&entry_path) {
+                    continue;
+                }
                 let meta = match entry.metadata() {
                     Ok(m) => m,
                     Err(_) => continue,
