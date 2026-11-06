@@ -352,6 +352,27 @@ fn takes_protected(source: &str) -> Option<String> {
 /// Path validation con deny-list sistema. Ricalca `ai_tools::validate_path`
 /// usando matching component-aware (vedi `path_matches_prefix`) per evitare
 /// false positive su prefissi parziali (es. `/bootcamp` vs `/boot`).
+/// What a test runs at each folder a recursive copy enters.
+#[cfg(test)]
+pub(crate) type CopyFolderHook = Box<dyn Fn(&std::path::Path)>;
+
+#[cfg(test)]
+thread_local! {
+    /// Called with each folder a recursive copy enters: a test changes the
+    /// filesystem there, the way another process could while the copy runs.
+    pub(crate) static COPY_FOLDER_HOOK: std::cell::RefCell<Option<CopyFolderHook>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn copy_folder_entered(folder: &std::path::Path) {
+    COPY_FOLDER_HOOK.with(|hook| {
+        if let Some(hook) = hook.borrow().as_ref() {
+            hook(folder);
+        }
+    });
+}
+
 pub(crate) fn validate_path(path: &str, param: &str) -> Result<(), String> {
     PathPolicy::current().check(path, param)
 }
@@ -1042,16 +1063,16 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
     std::fs::create_dir_all(&destination)
         .map_err(|e| ToolError::Exec(format!("Failed to create destination directory: {}", e)))?;
 
-    // One policy for the whole tree: each entry is checked against it, as
-    // `validate_path` would, without resolving the protected locations again.
-    fn copy_dir_recursive(
-        policy: &PathPolicy,
-        src: &std::path::Path,
-        dst: &std::path::Path,
-    ) -> Result<u64, String> {
+    // The protected locations are read again at every folder the copy enters,
+    // so `~/.ssh` retargeted while the copy runs is seen from the next folder
+    // on; within one folder its entries share that reading.
+    fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<u64, String> {
         ensure_not_symlink(src, "path")?;
         std::fs::create_dir_all(dst)
             .map_err(|e| format!("Failed to create dir {}: {}", dst.display(), e))?;
+        #[cfg(test)]
+        copy_folder_entered(dst);
+        let policy = PathPolicy::current();
         let mut count = 0u64;
         for entry in std::fs::read_dir(src)
             .map_err(|e| format!("Failed to read dir {}: {}", src.display(), e))?
@@ -1065,7 +1086,7 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
             // (deep scan item 25).
             policy.check(&dst_path.to_string_lossy(), "destination")?;
             if src_path.is_dir() {
-                count += copy_dir_recursive(policy, &src_path, &dst_path)?;
+                count += copy_dir_recursive(&src_path, &dst_path)?;
             } else {
                 std::fs::copy(&src_path, &dst_path)
                     .map_err(|e| format!("Failed to copy {}: {}", src_path.display(), e))?;
@@ -1108,11 +1129,7 @@ pub async fn local_copy_files(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         );
 
         if src_path.is_dir() {
-            match copy_dir_recursive(
-                &PathPolicy::current(),
-                src_path,
-                std::path::Path::new(&dest_path_str),
-            ) {
+            match copy_dir_recursive(src_path, std::path::Path::new(&dest_path_str)) {
                 Ok(_) => copied.push(filename),
                 Err(e) => errors.push(json!({ "file": filename, "error": e })),
             }

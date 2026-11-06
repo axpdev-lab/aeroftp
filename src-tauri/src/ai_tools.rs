@@ -446,12 +446,18 @@ fn hides_approval_value(key: &str, value: &Value) -> bool {
     is_secret_approval_key(key) && !matches!(value, Value::Number(_) | Value::Bool(_) | Value::Null)
 }
 
-/// A key naming a secret: a secret word, alone or plural, that ends the key or
-/// a part of it (`api_token`, `secretKey`, `tokenValue`, `refreshToken`), not
-/// one that begins a longer word (`secretary`). The boundary is read on the
-/// key as written, so a capital letter starts a new part.
+/// Words that hold a secret word without naming a secret.
+const NOT_SECRET_WORDS: [&str; 3] = ["secretary", "secretariat", "tokeniz"];
+
+/// A key naming a secret: it holds a secret word anywhere, in any case and in
+/// any compound (`api_token`, `secretKey`, `secretkey`, `tokenvalue`), unless
+/// that word is part of one that names none (`secretary`, `tokenizer`). Fail
+/// closed: an unknown compound is hidden.
 fn is_secret_approval_key(key: &str) -> bool {
-    let lower = key.to_ascii_lowercase();
+    let mut lower = key.to_ascii_lowercase();
+    for word in NOT_SECRET_WORDS {
+        lower = lower.replace(word, "_");
+    }
     [
         "password",
         "passphrase",
@@ -463,18 +469,7 @@ fn is_secret_approval_key(key: &str) -> bool {
         "privatekey",
     ]
     .iter()
-    .any(|secret| {
-        // `to_ascii_lowercase` keeps every byte offset, so `lower` and `key`
-        // line up.
-        lower.match_indices(secret).any(|(at, word)| {
-            let rest = &key[at + word.len()..];
-            let rest = rest.strip_prefix('s').unwrap_or(rest);
-            !rest
-                .chars()
-                .next()
-                .is_some_and(|next| next.is_ascii_lowercase())
-        })
-    })
+    .any(|secret| lower.contains(secret))
 }
 
 /// Arguments that carry a file's content: the chat shows it, the approval
@@ -560,6 +555,26 @@ fn build_ai_tool_approval_details(tool_name: &str, args: &Value) -> Vec<String> 
     if let Some(checks) = args.get("checks").and_then(|value| value.as_array()) {
         let all: Vec<String> = checks.iter().map(format_approval_value).collect();
         details.push(format!("checks: {}", all.join(", ")));
+    }
+
+    // Every file a patch writes, by the parser the apply runs: the chat
+    // preview stops at a few files and lines, and the content stays size-only.
+    if tool_name == "coding_apply_patch" {
+        if let Some(patch) = args.get("patch").and_then(Value::as_str) {
+            match crate::coding_patches::patch_targets(patch) {
+                Ok(targets) => {
+                    details.push(format!("patch targets: {} file(s)", targets.len()));
+                    for (path, change) in targets {
+                        let path: String = path.chars().flat_map(char::escape_debug).collect();
+                        details.push(format!("patch target: {path} ({change})"));
+                    }
+                }
+                Err(reason) => {
+                    let reason: String = reason.chars().flat_map(char::escape_debug).collect();
+                    details.push(format!("patch targets: unreadable ({reason})"));
+                }
+            }
+        }
     }
 
     // Every path the call acts on, not a preview of the first few.
@@ -914,6 +929,10 @@ fn build_session_scope_key(
             .iter()
             .map(|key| args.get(*key).and_then(Value::as_str))
             .collect::<Vec<_>>(),
+        // A GUI action is what its arguments say, for every intent: the area
+        // and values of a settings update, the profile of a connect, the
+        // names of a selection. A grant covers the same action again only.
+        "gui_action": (tool_name == "gui_run").then_some(args),
         "context_local_path": context_local_path,
         "remote_context": remote_context,
     }))
@@ -2742,6 +2761,25 @@ mod session_grant_tests {
                 json!({"server": "srv-a", "mode": "newest"})
             )
         );
+        // A settings update covers the same update again only.
+        let update = |area: &str, set: Value| {
+            scope(
+                "gui_run",
+                json!({"intent": "settings_update", "area": area, "set": set}),
+            )
+        };
+        assert_eq!(
+            update("ai", json!({"model": "a"})),
+            update("ai", json!({"model": "a"}))
+        );
+        assert_ne!(
+            update("ai", json!({"model": "a"})),
+            update("ai", json!({"model": "b"}))
+        );
+        assert_ne!(
+            update("ai", json!({"model": "a"})),
+            update("general", json!({"model": "a"}))
+        );
         // Arguments that pick nothing still share the grant.
         assert_eq!(
             scope("local_mkdir", json!({"path": "/work/a"})),
@@ -3072,6 +3110,9 @@ mod approval_tests {
                     "secretKey": "SECRETWORD",
                     "tokenValue": "SECRETWORD",
                     "refreshToken": "SECRETWORD",
+                    "secretkey": "SECRETWORD",
+                    "tokenvalue": "SECRETWORD",
+                    "tokenizer": "bpe",
                     "secretary": "visible",
                 },
             }),
@@ -3083,6 +3124,17 @@ mod approval_tests {
         assert!(message.contains("secretKey: (hidden)"), "{message}");
         assert!(message.contains("tokenValue: (hidden)"), "{message}");
         assert!(message.contains("refreshToken: (hidden)"), "{message}");
+        assert!(message.contains("secretkey: (hidden)"), "{message}");
+        assert!(message.contains("tokenvalue: (hidden)"), "{message}");
+        assert!(message.contains("tokenizer: bpe"), "{message}");
+        // The same rule at the top level of the arguments.
+        let top = build_ai_tool_approval_message(
+            "gui_run",
+            &json!({"intent": "settings_update", "secretkey": "SECRETWORD", "max_tokens": 4096}),
+        );
+        assert!(!top.contains("SECRETWORD"), "{top}");
+        assert!(top.contains("secretkey: (hidden)"), "{top}");
+        assert!(top.contains("max_tokens: 4096"), "{top}");
         assert!(message.contains("secretary: visible"), "{message}");
     }
 
@@ -3297,6 +3349,42 @@ mod approval_tests {
         assert!(requires_backend_write_approval("coding_diagnostics", &args));
         assert!(requires_backend_write_approval("coding_run_checks", &args));
         assert!(requires_backend_write_approval("coding_verify", &args));
+    }
+
+    // The native approval of a patch gave the workspace and the size only, and
+    // the chat preview stops at a few files: every file the patch writes is
+    // named, the content stays size-only.
+    #[test]
+    fn a_patch_approval_names_every_file_the_patch_writes() {
+        let mut patch = String::new();
+        for index in 1..=15 {
+            patch.push_str(&format!(
+                "--- a/src/f{index:02}.txt\n+++ b/src/f{index:02}.txt\n@@ -1 +1 @@\n-old\n+PATCHBODY{index:02}\n"
+            ));
+        }
+        patch.push_str("--- a/src/gone.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-bye\n");
+        let details = build_ai_tool_approval_details(
+            "coding_apply_patch",
+            &json!({"workspace_root": "/work", "patch": patch}),
+        );
+        let text = details.join("\n");
+        assert!(text.contains("patch targets: 16 file(s)"), "{text}");
+        for index in 1..=15 {
+            let name = format!("f{index:02}.txt");
+            assert!(
+                details.iter().any(|line| line.starts_with("patch target: ")
+                    && line.contains(&name)
+                    && line.ends_with("(modified)")),
+                "{name}: {text}"
+            );
+        }
+        assert!(
+            details
+                .iter()
+                .any(|line| line.contains("gone.txt") && line.ends_with("(deleted)")),
+            "{text}"
+        );
+        assert!(!text.contains("PATCHBODY"), "{text}");
     }
 
     // Deep scan item 29: the message cut a command at 160 characters while

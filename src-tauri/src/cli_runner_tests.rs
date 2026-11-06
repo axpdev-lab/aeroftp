@@ -405,3 +405,48 @@ async fn cli_tty_step_limit_returns_failure_after_streamed_answer() {
         tokio::join!(client,server);
     }).await.unwrap();
 }
+
+/// The remote tools of the CLI agent now reach the saved server, so a
+/// `remote_delete` must still stop at its approval: denied at the default
+/// level and at `high`, which leaves deletes to the user, without the call
+/// reaching any backend. The prompt that would ask names the server.
+#[tokio::test]
+async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
+    for level in [0, parse_approve_level("high")] {
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let mut cfg = config(format!("http://{}", listener.local_addr().unwrap()));
+            cfg.approve_level = level;
+            let server = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let _ = read_request(&mut socket).await;
+                let call = json!({"choices":[{"delta":{"role":"assistant","tool_calls":[{
+                    "index":0,"id":"delete-A","type":"function",
+                    "function":{"name":"remote_delete","arguments":"{\"server\":\"srv-a\",\"path\":\"/keep/me.txt\"}"}
+                }]}}]});
+                let done = json!({"choices":[{"delta":{},"finish_reason":"tool_calls"}]});
+                respond(&mut socket, "200 OK", &format!("data: {call}\n\ndata: {done}\n\ndata: [DONE]\n\n")).await;
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let request = read_request(&mut socket).await;
+                let messages = request["messages"].as_array().unwrap();
+                assert_eq!(messages[3]["tool_call_id"], "delete-A");
+                assert_eq!(messages[3]["content"], "Tool call denied by user.", "level {level}");
+                let done = json!({"choices":[{"delta":{"role":"assistant","content":"Not deleted."},"finish_reason":"stop"}]});
+                respond(&mut socket, "200 OK", &format!("data: {done}\n\ndata: [DONE]\n\n")).await;
+            };
+            let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"delete it"})).unwrap()];
+            let (result, ()) = tokio::join!(agent_tool_loop(&cfg, &mut messages, false), server);
+            assert_eq!(result.unwrap(), "Not deleted.", "level {level}");
+        })
+        .await
+        .unwrap();
+    }
+    let prompt = approval_prompt_lines(
+        "remote_delete",
+        &json!({"server": "srv-a", "path": "/keep/me.txt"}),
+    )
+    .unwrap()
+    .join("\n");
+    assert!(prompt.contains("server: srv-a"), "{prompt}");
+    assert!(prompt.contains("path: /keep/me.txt"), "{prompt}");
+}

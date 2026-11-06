@@ -16,6 +16,19 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
 }
 
 /// Expand a local directory for AeroAgent upload, keeping its top-level name.
+/// A remote name `sync_preview` can compare: one plain path component, so it
+/// names an entry of the local folder and nothing outside it.
+fn preview_remote_name(name: &str) -> Result<(), String> {
+    let mut parts = std::path::Path::new(name).components();
+    match (parts.next(), parts.next()) {
+        (Some(std::path::Component::Normal(_)), None) if !name.contains(['/', '\\']) => Ok(()),
+        _ => Err(format!(
+            "The server listed an entry that is not a single file name, so it cannot be compared: {}",
+            name.chars().flat_map(char::escape_debug).collect::<String>()
+        )),
+    }
+}
+
 /// The files directly in `local_path` that `sync_preview` compares, with
 /// their sizes, and how many entries the policy left out: a protected entry
 /// is neither listed nor sized.
@@ -913,6 +926,13 @@ pub async fn dispatch_gui_tool(
                 return Err("Not connected to any server".to_string());
             };
 
+            // A listed name is compared as an entry of `local_path`: an absolute
+            // name or one with a separator would make `join` leave that folder,
+            // and a protected path there could hide the entry.
+            for name in remote_files.keys() {
+                preview_remote_name(name)?;
+            }
+
             // Compare
             let mut only_local: Vec<Value> = Vec::new();
             let mut only_remote: Vec<Value> = Vec::new();
@@ -1079,6 +1099,18 @@ pub async fn dispatch_gui_tool(
 mod tests {
     use super::publish_remote_edit;
     use crate::providers::edit_replace_tests::EditFake;
+
+    /// A listed name that is absolute, holds a separator or is `..` would make
+    /// the comparison leave the local folder.
+    #[test]
+    fn a_sync_preview_refuses_a_remote_name_that_is_not_one_file_name() {
+        for name in ["/home/u/.ssh/id", "../up", "a/b", "a\\b", "..", "."] {
+            assert!(super::preview_remote_name(name).is_err(), "{name}");
+        }
+        for name in ["notes.txt", ".hidden", "with space"] {
+            assert!(super::preview_remote_name(name).is_ok(), "{name}");
+        }
+    }
 
     /// `sync_preview` of the home listed the protected files directly in it
     /// with their sizes; it now leaves them out and counts them.

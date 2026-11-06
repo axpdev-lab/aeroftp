@@ -126,6 +126,23 @@ pub fn preview_coding_patch(req: ApplyCodingPatchRequest) -> Result<CodingPatchR
     })
 }
 
+/// Every file a patch touches, in patch order, with what it does to it:
+/// `created`, `deleted` or `modified`. Read by the same parser the apply runs,
+/// so the approval names exactly the files the patch would write.
+pub(crate) fn patch_targets(patch: &str) -> Result<Vec<(String, &'static str)>, String> {
+    Ok(parse_unified_diff(patch)?
+        .into_iter()
+        .map(|file| {
+            let change = match (&file.old_path, &file.new_path) {
+                (None, Some(_)) => "created",
+                (Some(_), None) => "deleted",
+                _ => "modified",
+            };
+            (file.target_path, change)
+        })
+        .collect())
+}
+
 fn parse_unified_diff(patch: &str) -> Result<Vec<FilePatch>, String> {
     if patch.trim().is_empty() {
         return Err("Patch is empty".to_string());

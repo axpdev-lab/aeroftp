@@ -3306,6 +3306,55 @@ mod tests {
         assert!(fake.home.join(".config/aeroftp/vault.db").exists());
     }
 
+    // `~/.ssh` retargeted while a recursive copy runs: the copy reads the
+    // protected locations again at the next folder, so it does not write
+    // under the new target. Before, one reading for the whole tree missed it.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_recursive_copy_sees_a_protected_folder_retargeted_meanwhile() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let keys = fake.home.join("keys");
+        std::fs::rename(fake.home.join(".ssh"), &keys).unwrap();
+        std::os::unix::fs::symlink(&keys, fake.home.join(".ssh")).unwrap();
+        let source = fake.home.join("src");
+        std::fs::create_dir_all(source.join("inner")).unwrap();
+        std::fs::write(source.join("inner/planted.txt"), b"planted").unwrap();
+        let dest = fake.home.join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let link = fake.home.join(".ssh");
+        let copied_root = dest.join("src");
+        let retargeted = std::rc::Rc::new(std::cell::Cell::new(false));
+        let flag = std::rc::Rc::clone(&retargeted);
+        let target = copied_root.clone();
+        super::local_tools::COPY_FOLDER_HOOK.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |folder: &std::path::Path| {
+                if folder == target && !flag.get() {
+                    flag.set(true);
+                    std::fs::remove_file(&link).unwrap();
+                    std::os::unix::fs::symlink(&target, &link).unwrap();
+                }
+            }));
+        });
+        let outcome = dispatch_tool(
+            &ctx,
+            "local_copy_files",
+            &json!({"paths": [source.display().to_string()], "destination": dest.display().to_string()}),
+        )
+        .await;
+        super::local_tools::COPY_FOLDER_HOOK.with(|hook| *hook.borrow_mut() = None);
+        assert!(
+            retargeted.get(),
+            "the copy never entered {}",
+            copied_root.display()
+        );
+        let text = format!("{outcome:?}");
+        assert!(text.contains("sensitive path denied"), "{text}");
+        assert!(!copied_root.join("inner/planted.txt").exists());
+    }
+
     // A move or rename carries what the folder holds: a staged `.config`
     // moved into a home without one would create `~/.config/aeroftp`.
     #[tokio::test]
