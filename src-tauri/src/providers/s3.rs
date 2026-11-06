@@ -5058,6 +5058,10 @@ impl StorageProvider for S3Provider {
         loop {
             let mut params: Vec<(&str, &str)> = if filen_dialect {
                 // Filen always returns all results in one shot, no pagination.
+                // No `encoding-type` here, unlike `find`: the strict filen-s3
+                // server takes only `prefix` and `delimiter`, and this is the
+                // listing every Filen session needs. `parse_listing_of`
+                // decodes as before (#196).
                 vec![("delimiter", "/"), ("prefix", &prefix_with_slash)]
             } else {
                 vec![("list-type", "2"), ("delimiter", "/"), ("max-keys", "1000")]
@@ -6369,6 +6373,12 @@ impl StorageProvider for S3Provider {
             if !prefix_with_slash.is_empty() {
                 params.push(("prefix", &prefix_with_slash));
             }
+            // Ask for the encoding the decode above expects, as
+            // `list_keys_for_prefix` does: recent rclone bridges list literal
+            // keys otherwise, and decoding a literal `a%20b` names another key.
+            if filen_decode {
+                params.push(("encoding-type", "url"));
+            }
 
             let token_str: String;
             if let Some(ref token) = continuation_token {
@@ -6992,6 +7002,9 @@ impl StorageProvider for S3Provider {
 
         loop {
             let mut params: Vec<(&str, &str)> = vec![("versions", ""), ("prefix", key)];
+            if filen_decode {
+                params.push(("encoding-type", "url"));
+            }
 
             let km_str: String;
             let vm_str: String;
@@ -10000,6 +10013,11 @@ mod tests {
                     let path = req.uri().path().to_string();
                     let query = req.uri().query().unwrap_or("").to_string();
                     let listed = "dir/my%20file%2B1%25.txt";
+                    if method == "GET" && (query.contains("list-type") || query.contains("versions")) {
+                        // `find` and `list_versions` decode, which is right
+                        // only if the bridge was asked to encode the keys.
+                        assert!(query.contains("encoding-type=url"), "{query}");
+                    }
                     let (status, body) = if method == "GET" && query.contains("versions") {
                         (200, format!(
                             "<ListVersionsResult><IsTruncated>false</IsTruncated><Version><Key>{listed}</Key>\
