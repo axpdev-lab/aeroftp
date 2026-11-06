@@ -140,6 +140,15 @@ pub fn uncertain_items(count: usize, message: &str) -> Vec<BulkTransferOutcome> 
         .collect()
 }
 
+/// Whether a provider with `caps` sends uploads and downloads through its
+/// native bulk: the rule the transfer engine and the GUI apply (a provider
+/// that resumes a transfer keeps its single-file path, which owns the
+/// resume). A caller that admits a bulk on the capability alone takes the
+/// engine's single lease and then gets no bulk: one worker, file after file.
+pub fn bulk_directions(caps: &crate::transfer_dag::TransferCapabilities) -> (bool, bool) {
+    crate::transfer_bulk::bulk_directions(caps)
+}
+
 /// CLI compatibility guard: a single-lease native bulk must reduce process
 /// launches enough to justify replacing the CLI's independent worker lane.
 /// Mixed spellings, isolated directories and large files can otherwise turn
