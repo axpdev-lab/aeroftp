@@ -2186,6 +2186,7 @@ impl StorageProvider for DrimeCloudProvider {
             available_permissions: vec!["view".into(), "edit".into()],
             supports_list_links: true,
             supports_revoke: true,
+            max_expiration_secs: None,
         }
     }
 

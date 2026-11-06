@@ -106,6 +106,9 @@ fn encode_s3_key_path(key: &str) -> String {
         .join("/")
 }
 
+/// The longest validity SigV4 allows a presigned URL: seven days.
+const SIGV4_MAX_PRESIGN_SECS: u64 = 604_800;
+
 /// The SigV4 canonical URI of a request path as it travels on the wire.
 ///
 /// `path` is `Url::path()` of a URL built by `build_url`, so every segment is
@@ -6621,6 +6624,7 @@ impl StorageProvider for S3Provider {
             supports_password: false,
             supports_permissions: false,
             available_permissions: vec![],
+            max_expiration_secs: Some(SIGV4_MAX_PRESIGN_SECS),
             ..Default::default()
         }
     }
@@ -6649,15 +6653,14 @@ impl StorageProvider for S3Provider {
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
-        // MEGA S4 presigned URLs have a maximum expiration of 7 days (604800 seconds)
-        // Tigris documents 90 days, but its own engineering blog (2026-07-14)
-        // says one week: clamp at 7 days until a live probe settles it (C5).
-        let max_expires = if self.is_mega_s4_endpoint() || self.is_tigris_endpoint() {
-            604800_u64
-        } else {
-            u64::MAX
-        };
-        let expires = options.expires_in_secs.unwrap_or(3600).min(max_expires);
+        // SigV4 caps X-Amz-Expires at seven days for every S3 service (AWS
+        // answers AuthorizationQueryParametersError above it; R2, B2, MinIO,
+        // MEGA S4 and Tigris state the same limit). Asking for more used to
+        // build a link that was dead at once on AWS, or clamped without a word.
+        let expires = options
+            .expires_in_secs
+            .unwrap_or(3600)
+            .min(SIGV4_MAX_PRESIGN_SECS);
 
         let now: DateTime<Utc> = self.now_adjusted();
         let date_stamp = now.format("%Y%m%d").to_string();
@@ -6742,10 +6745,13 @@ impl StorageProvider for S3Provider {
         let k_signing = hmac_sha256(&k_service, b"aws4_request");
         let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
 
+        // The real expiry, so the caller shows when the link stops working.
+        let expires_at = (now + chrono::Duration::seconds(expires as i64))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         Ok(ShareLinkResult {
             url: format!("{}?{}&X-Amz-Signature={}", url, query_params, signature),
             password: None,
-            expires_at: None,
+            expires_at: Some(expires_at),
         })
     }
 
@@ -13180,9 +13186,11 @@ mod tests {
             )
             .await
             .expect("presign");
+        // Every S3 endpoint is capped at the SigV4 limit (#1506 Requested
+        // 174): AWS refuses more, and Fastly answered 403 to an 8-day link.
         assert!(
-            link.url.contains("X-Amz-Expires=7776000&"),
-            "other endpoints keep their own limit: {}",
+            link.url.contains("X-Amz-Expires=604800&"),
+            "other endpoints are capped at seven days too: {}",
             link.url
         );
     }
@@ -13957,6 +13965,47 @@ mod tests {
     /// The presigned URL of a key with a space, `+`, `%`, `&` or a non-ASCII
     /// character must carry the signature a server computes over the path it
     /// receives. The presigner used to sign `a%2520b` for a URL with `a%20b`.
+    /// #1506 Requested 174: every S3 preset caps a presigned link at the SigV4
+    /// limit, says so in its capabilities, and reports the real expiry.
+    #[tokio::test]
+    async fn share_link_is_capped_at_seven_days_and_reports_its_expiry() {
+        let mut provider = aws_doc_provider(false);
+        assert_eq!(
+            provider.share_link_capabilities().max_expiration_secs,
+            Some(604_800)
+        );
+        for (asked, granted) in [
+            (3600_u64, 3600_u64),
+            (604_800, 604_800),
+            (2_592_000, 604_800),
+        ] {
+            let link = provider
+                .create_share_link(
+                    "/test.txt",
+                    ShareLinkOptions {
+                        expires_in_secs: Some(asked),
+                        password: None,
+                        permissions: None,
+                    },
+                )
+                .await
+                .expect("presign failed");
+            assert!(
+                link.url.contains(&format!("&X-Amz-Expires={granted}&")),
+                "{asked}: {}",
+                link.url
+            );
+            let expires_at = DateTime::parse_from_rfc3339(link.expires_at.as_deref().unwrap())
+                .unwrap()
+                .with_timezone(&Utc);
+            assert_eq!(
+                (expires_at - provider.now_adjusted()).num_seconds(),
+                granted as i64,
+                "{asked}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn share_link_signs_the_path_it_puts_on_the_wire() {
         for path_style in [false, true] {

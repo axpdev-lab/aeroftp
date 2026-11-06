@@ -13,7 +13,7 @@ import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { getUiLocale } from '../utils/formatters';
 import { copyText } from '../utils/clipboard';
-import { loadShareLinkCapabilities, NO_SHARE_LINK_CAPABILITIES, type ShareLinkCapabilities } from '../utils/shareLinkCapabilities';
+import { expirationChoicesWithin, loadShareLinkCapabilities, NO_SHARE_LINK_CAPABILITIES, type ShareLinkCapabilities } from '../utils/shareLinkCapabilities';
 
 /** Backend response from provider_create_share_link */
 interface ShareLinkResult {
@@ -435,7 +435,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                         >
                           {t('shareLinkModal.expirationNever')}
                         </button>
-                        {EXPIRATION_PRESETS.map(preset => (
+                        {expirationChoicesWithin(EXPIRATION_PRESETS, caps).map(preset => (
                           <button
                             key={preset.value}
                             onClick={() => setOptExpiration(preset.value)}

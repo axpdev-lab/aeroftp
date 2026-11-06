@@ -1671,6 +1671,7 @@ impl StorageProvider for YandexDiskProvider {
             available_permissions: vec![],
             supports_list_links: true,
             supports_revoke: true,
+            max_expiration_secs: None,
         }
     }
 

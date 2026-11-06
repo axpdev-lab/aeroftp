@@ -2330,6 +2330,7 @@ impl StorageProvider for ProtonCliProvider {
             available_permissions: vec!["view".into(), "edit".into()],
             supports_list_links: false,
             supports_revoke: false,
+            max_expiration_secs: None,
         }
     }
 
