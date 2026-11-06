@@ -253,6 +253,18 @@ pub async fn vault_v2_extract_entry(
     Ok(dest_path)
 }
 
+/// The entry names a v2 extraction must refuse: anything that is not a plain
+/// relative path of normal components once joined under the destination
+/// (`..`, `.`, a root, a drive prefix, a backslash or a NUL). A directory
+/// entry's trailing `/` is not a component.
+fn names_outside_the_destination<'a>(names: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    names
+        .filter(|name| {
+            crate::readable_vault::validate_rel_path(name.trim_end_matches('/')).is_err()
+        })
+        .collect()
+}
+
 /// Extract every entry of an opened v2 `vault` into `dest`, rebuilding the directory
 /// tree. The `aerovault` crate's v2 `extract`/`extract_all` write each file under its
 /// `file_name()` only, so nested files all collapse into the destination root, and
@@ -267,6 +279,18 @@ pub async fn vault_v2_extract_entry(
 /// refused before anything is written, naming the files in the way.
 pub(crate) fn extract_all_v2_tree(vault: &Vault, dest: &std::path::Path) -> Result<u32, String> {
     let entries = vault.list().map_err(|e| e.to_string())?;
+    // Every name is joined under `dest`, and the directories are created
+    // before the crate's own name check runs on the files: a vault naming an
+    // entry `../x`, `/etc/x` or `a\..\b` would create or write outside the
+    // destination. The names are checked first, and one unsafe name refuses
+    // the whole extraction before anything is written (deep-scan 18).
+    let unsafe_names = names_outside_the_destination(entries.iter().map(|e| e.name.as_str()));
+    if !unsafe_names.is_empty() {
+        return Err(format!(
+            "Nothing was extracted: the vault names entries outside the destination: {}",
+            unsafe_names[..unsafe_names.len().min(5)].join(", ")
+        ));
+    }
     let existing: Vec<&str> = entries
         .iter()
         .filter(|e| !e.is_dir && std::fs::symlink_metadata(dest.join(&e.name)).is_ok())
@@ -1240,6 +1264,34 @@ pub async fn vault_v2_add_directory_core(
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 18: the names of a crafted or corrupt vault are checked
+    /// before any directory is created, and one unsafe name refuses all.
+    #[test]
+    fn vault_entry_names_outside_the_destination_are_refused() {
+        let names = [
+            "a.txt",
+            "d/",
+            "d/b.txt",
+            "../escape",
+            "d/../../escape",
+            "/etc/passwd",
+            "a\\..\\b",
+            "./a",
+            "",
+        ];
+        assert_eq!(
+            super::names_outside_the_destination(names.iter().copied()),
+            vec![
+                "../escape",
+                "d/../../escape",
+                "/etc/passwd",
+                "a\\..\\b",
+                "./a",
+                ""
+            ]
+        );
+    }
+
     use std::fs;
     use std::path::Path;
 
