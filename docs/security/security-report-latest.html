@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>AeroFTP Security Report - 2026-06-21</title>
+<title>AeroFTP Security Report - 2026-11-06</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   :root {
@@ -59,16 +59,16 @@
 <div class="wrap">
   <h1>AeroFTP Security Report</h1>
   <div class="meta">
-    Frontend version: <strong>4.0.7</strong> ·
-    Backend (src-tauri) version: <strong>4.0.7</strong> ·
-    Generated: 2026-06-21T23:07:06.986Z ·
+    Frontend version: <strong>4.2.6</strong> ·
+    Backend (src-tauri) version: <strong>4.2.6</strong> ·
+    Generated: 2026-11-06T09:53:24.474Z ·
     Host: axpnet-ThinkPad linux-x64
   </div>
 
   <div class="summary all-clean">
     <div>
       <div class="label">No open vulnerabilities</div>
-      <div class="muted">28 additional advisory(ies) suppressed via documented audit.toml rationale</div>
+      <div class="muted">29 additional advisory(ies) suppressed via documented audit.toml rationale</div>
     </div>
   </div>
 
@@ -98,75 +98,27 @@
         <header>
           <h2>osv-scanner <span class="muted">(Google OSV DB - includes RustSec, GHSA, CVE)</span></h2>
           <span class="badge badge-ok">
-            0 open · 28 suppressed
+            0 open · 29 suppressed
           </span>
         </header>
         <p class="ok">No open findings. All known advisories in scope are documented in the audit.toml suppression list with written rationales.</p>
-        <details><summary>Suppressed via <a href="../../src-tauri/.cargo/audit.toml">src-tauri/.cargo/audit.toml</a> (28) - documented rationale required</summary>
+        <details><summary>Suppressed via <a href="../../src-tauri/.cargo/audit.toml">src-tauri/.cargo/audit.toml</a> (29) - documented rationale required</summary>
               <table><thead><tr><th>Ecosystem</th><th>Package</th><th>ID</th><th>CVSS</th><th>Fixed in</th><th>Summary</th></tr></thead><tbody>
       <tr class="sev-info">
         <td>crates.io</td>
-        <td>atk <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0413" target="_blank" rel="noopener">RUSTSEC-2024-0413</a></td>
+        <td>atomic-polyfill <span class="muted">1.0.3</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2023-0089" target="_blank" rel="noopener">RUSTSEC-2023-0089</a></td>
         <td>unknown</td>
         <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
+        <td>atomic-polyfill is unmaintained</td>
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>
-        <td>atk-sys <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0416" target="_blank" rel="noopener">RUSTSEC-2024-0416</a></td>
+        <td>crypto-bigint <span class="muted">0.5.5</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0387" target="_blank" rel="noopener">RUSTSEC-2026-0387</a></td>
         <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>fxhash <span class="muted">0.2.1</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2025-0057" target="_blank" rel="noopener">RUSTSEC-2025-0057</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>fxhash - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>gdk <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0412" target="_blank" rel="noopener">RUSTSEC-2024-0412</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>gdk-sys <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0418" target="_blank" rel="noopener">RUSTSEC-2024-0418</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>gdkwayland-sys <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0411" target="_blank" rel="noopener">RUSTSEC-2024-0411</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>gdkx11 <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0417" target="_blank" rel="noopener">RUSTSEC-2024-0417</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>gdkx11-sys <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0414" target="_blank" rel="noopener">RUSTSEC-2024-0414</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
+        <td>0.7.6</td>
+        <td>Multiple timing variability issues in operations intended to be constant-time</td>
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>
@@ -186,30 +138,6 @@
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>
-        <td>gtk <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0415" target="_blank" rel="noopener">RUSTSEC-2024-0415</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>gtk-sys <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0420" target="_blank" rel="noopener">RUSTSEC-2024-0420</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>gtk3-macros <span class="muted">0.18.2</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0419" target="_blank" rel="noopener">RUSTSEC-2024-0419</a></td>
-        <td>unknown</td>
-        <td></td>
-        <td>gtk-rs GTK3 bindings - no longer maintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
         <td>instant <span class="muted">0.1.13</span></td>
         <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0384" target="_blank" rel="noopener">RUSTSEC-2024-0384</a></td>
         <td>unknown</td>
@@ -218,7 +146,23 @@
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>
-        <td>proc-macro-error <span class="muted">1.0.4</span></td>
+        <td>lru <span class="muted">0.7.8</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0253" target="_blank" rel="noopener">RUSTSEC-2026-0253</a></td>
+        <td>unknown</td>
+        <td>0.18.2</td>
+        <td>Potential use-after-free due to lack of panic safety in `LruCache::pop()`</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>paste <span class="muted">1.0.15</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0436" target="_blank" rel="noopener">RUSTSEC-2024-0436</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>paste - no longer maintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>proc-macro-error <span class="muted">0.4.12</span></td>
         <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0370" target="_blank" rel="noopener">RUSTSEC-2024-0370</a></td>
         <td>unknown</td>
         <td></td>
@@ -226,27 +170,11 @@
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>
-        <td>proc-macro-error2 <span class="muted">2.0.1</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0173" target="_blank" rel="noopener">RUSTSEC-2026-0173</a></td>
+        <td>proc-macro-error <span class="muted">1.0.4</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0370" target="_blank" rel="noopener">RUSTSEC-2024-0370</a></td>
         <td>unknown</td>
         <td></td>
-        <td>proc-macro-error2 is unmaintained</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>rand <span class="muted">0.7.3</span></td>
-        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0097" target="_blank" rel="noopener">RUSTSEC-2026-0097</a></td>
-        <td>unknown</td>
-        <td>0.8.6</td>
-        <td>Rand is unsound with a custom logger using `rand::rng()`</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>rand <span class="muted">0.7.3</span></td>
-        <td><a href="https://osv.dev/vulnerability/GHSA-cq8v-f236-94qc" target="_blank" rel="noopener">GHSA-cq8v-f236-94qc</a></td>
-        <td>unknown</td>
-        <td>0.9.3</td>
-        <td>Rand is unsound with a custom logger using rand::rng()</td>
+        <td>proc-macro-error is unmaintained</td>
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>
@@ -271,22 +199,6 @@
         <td>CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:H</td>
         <td>2.11.1</td>
         <td>Tauri has an Origin Confusion Issue that Allows Remote Pages to Invoke Local-Only IPC Commands</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>tough <span class="muted">0.21.0</span></td>
-        <td><a href="https://osv.dev/vulnerability/GHSA-4v58-8p28-2rq3" target="_blank" rel="noopener">GHSA-4v58-8p28-2rq3</a></td>
-        <td>CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:L</td>
-        <td>0.22.0</td>
-        <td>awslabs/tough is Missing Delegated Metadata Validation</td>
-      </tr>
-      <tr class="sev-info">
-        <td>crates.io</td>
-        <td>tough <span class="muted">0.21.0</span></td>
-        <td><a href="https://osv.dev/vulnerability/GHSA-8m7c-8m39-rv4x" target="_blank" rel="noopener">GHSA-8m7c-8m39-rv4x</a></td>
-        <td>CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:N/I:H/A:N</td>
-        <td>0.22.0</td>
-        <td>awslabs/tough Delegated Roles have a Signature Threshold Bypass</td>
       </tr>
       <tr class="sev-info">
         <td>crates.io</td>
@@ -327,6 +239,102 @@
         <td>unknown</td>
         <td></td>
         <td>`unic-ucd-version` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zbus_names <span class="muted">3.0.0</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0371" target="_blank" rel="noopener">RUSTSEC-2026-0371</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zbus_names` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zbus_names <span class="muted">4.3.4</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0371" target="_blank" rel="noopener">RUSTSEC-2026-0371</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zbus_names` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zvariant <span class="muted">4.2.0</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0370" target="_blank" rel="noopener">RUSTSEC-2026-0370</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zvariant` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zvariant <span class="muted">5.15.0</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0370" target="_blank" rel="noopener">RUSTSEC-2026-0370</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zvariant` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zvariant_derive <span class="muted">4.2.0</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0372" target="_blank" rel="noopener">RUSTSEC-2026-0372</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zvariant_derive` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zvariant_derive <span class="muted">5.15.0</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0372" target="_blank" rel="noopener">RUSTSEC-2026-0372</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zvariant_derive` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>atomic-polyfill <span class="muted">1.0.3</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2023-0089" target="_blank" rel="noopener">RUSTSEC-2023-0089</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>atomic-polyfill is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>paste <span class="muted">1.0.15</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0436" target="_blank" rel="noopener">RUSTSEC-2024-0436</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>paste - no longer maintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>proc-macro-error <span class="muted">0.4.12</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2024-0370" target="_blank" rel="noopener">RUSTSEC-2024-0370</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>proc-macro-error is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zbus_names <span class="muted">4.3.4</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0371" target="_blank" rel="noopener">RUSTSEC-2026-0371</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zbus_names` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zvariant <span class="muted">5.13.1</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0370" target="_blank" rel="noopener">RUSTSEC-2026-0370</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zvariant` is unmaintained</td>
+      </tr>
+      <tr class="sev-info">
+        <td>crates.io</td>
+        <td>zvariant_derive <span class="muted">5.13.1</span></td>
+        <td><a href="https://osv.dev/vulnerability/RUSTSEC-2026-0372" target="_blank" rel="noopener">RUSTSEC-2026-0372</a></td>
+        <td>unknown</td>
+        <td></td>
+        <td>`zvariant_derive` is unmaintained</td>
       </tr></tbody></table>
             </details>
       </section>
