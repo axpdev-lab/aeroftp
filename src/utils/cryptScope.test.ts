@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -185,7 +185,8 @@ describe('a scope under the login folder', () => {
   });
   it('is placed under the login folder the session reports, as the backend places it', () => {
     expect(placeUnderLoginFolder('~/ docs', '/home/u')).toBe('/home/u/ docs');
-    expect(placeUnderLoginFolder('~', '/home/u/')).toBe('/home/u/');
+    expect(placeUnderLoginFolder('~', '/home/u/')).toBe('/home/u');
+    expect(placeUnderLoginFolder('~', '/')).toBe('/');
     expect(placeUnderLoginFolder('~/docs', '/')).toBe('/docs');
     expect(placeUnderLoginFolder('~/docs', null)).toBe('~/docs');
     expect(placeUnderLoginFolder('/docs', '/home/u')).toBe('/docs');
@@ -208,5 +209,26 @@ describe('a scope under the login folder', () => {
     expect(connectLandsOutsideOverlay('~/docs', '~/docs')).toBe(false);
     expect(connectLandsOutsideOverlay('~/docs/sub', '~/docs')).toBe(false);
     expect(connectLandsOutsideOverlay('~', '~/docs')).toBe(true);
+  });
+});
+
+// The anchor, the badge and restored transfers read one folder: an empty
+// Overlays Path is the Remote Path, `~/vault` included.
+describe('profileOverlayScope', () => {
+  const overlay = { enabled: true, kind: 'rclone-crypt' as const };
+  it('falls back to the Remote Path, the username template resolved', () => {
+    expect(profileOverlayScope({ username: 'u', initialPath: '~/vault', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('~/vault');
+    expect(profileOverlayScope({ username: 'u', initialPath: '/data', aeroCryptOverlay: { ...overlay, remoteScope: '/{username}/enc' } })).toBe('/u/enc');
+    expect(profileOverlayScope({ username: 'u', initialPath: '/{username}', aeroCryptOverlay: overlay })).toBe('/u');
+    expect(profileOverlayScope({ username: 'u', aeroCryptOverlay: overlay })).toBe('');
+  });
+});
+
+import app from '../App.tsx?raw';
+
+describe('overlay badge scope', () => {
+  it('is the effective scope, placed under the login folder, on both badge sites', () => {
+    expect(app.match(/knownCryptScope\(await placeLoginRelativeScope\(profileOverlayScope\(profile\)\)\)/g)).toHaveLength(2);
+    expect(app).not.toMatch(/binding\.remoteScope \|\| (profile\.)?initialPath/);
   });
 });

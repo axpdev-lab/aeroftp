@@ -214,7 +214,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -6306,7 +6306,7 @@ const App: React.FC = () => {
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
       if (!profile || !binding?.enabled) return null;
-      const scope = binding.remoteScope || profile.initialPath || '';
+      const scope = profileOverlayScope(profile);
       return { kind: binding.kind, anchor: scope && scope !== '/' && !isLoginRelativeScope(scope) ? scope : null };
     } catch {
       return null;
@@ -6337,8 +6337,7 @@ const App: React.FC = () => {
       const configuredLanding = landingPath === undefined
         ? profileInitialPath
         : resolveUsernameTemplate(landingPath, profile.username);
-      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const configuredScope = remoteScope || profileInitialPath || '';
+      const configuredScope = profileOverlayScope(profile);
       // `~/docs` (the rclone import of an SFTP `nas:docs`) names a folder only
       // the session knows: it is placed under the login folder the connection
       // reports, as the backend anchors the overlay.
@@ -6402,7 +6401,7 @@ const App: React.FC = () => {
           ...profileOverlayApplyParams({
             binding,
             savedServerId,
-            overlayScope: binding.remoteScope || profile.initialPath || '',
+            overlayScope: profileOverlayScope(profile),
             password: typed.password,
             salt: typed.salt || storedSalt,
             keyfilePath: typed.keyfilePath || storedKeyfile,
@@ -6485,7 +6484,7 @@ const App: React.FC = () => {
       // connect flash the scramble/reveal on a plain server's real filenames,
       // because pendingOverlayUnlock fires for every saved profile, not just
       // overlay ones.
-      const badgeScope = knownCryptScope(await placeLoginRelativeScope(binding.remoteScope));
+      const badgeScope = knownCryptScope(await placeLoginRelativeScope(profileOverlayScope(profile)));
       assertOverlayActivationCurrent(ownership);
       setCryptOverlayOwner({ savedServerId, sessionId: null });
       // Show the path-bar badge immediately (grey) for the whole decrypt window.
@@ -6501,9 +6500,7 @@ const App: React.FC = () => {
       // Filen reset pwd to "/" on connect and never cd when they merely list a
       // folder, so after applying we explicitly move the wrapped provider to the
       // plaintext anchor.
-      const initialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const overlayScope = remoteScope || initialPath || '';
+      const overlayScope = profileOverlayScope(profile);
 
       try {
         await invoke('provider_arm_crypt_capability', ownership ? { expectedGeneration: ownership.generation } : undefined);
@@ -6609,13 +6606,13 @@ const App: React.FC = () => {
           const profiles = await loadSavedServerProfiles();
           const profile = profiles.find((p) => p.id === savedId);
           const binding = profile?.aeroCryptOverlay;
-          if (binding?.enabled) {
+          if (profile && binding?.enabled) {
             locked = {
               savedServerId: savedId,
               kind: binding.kind,
               reason: refusalFor(overlayRefusalRef.current, savedId),
             };
-            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, knownCryptScope(await placeLoginRelativeScope(binding.remoteScope)));
+            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, knownCryptScope(await placeLoginRelativeScope(profileOverlayScope(profile))));
           }
         } catch {
           // best-effort: fall through as plain if the profile re-read fails

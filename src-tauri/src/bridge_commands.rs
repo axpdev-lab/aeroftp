@@ -537,8 +537,12 @@ pub fn move_imported_filen_api_key(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
-    if key.is_empty() || id.is_empty() {
+    if key.is_empty() {
         return Ok(());
+    }
+    // Already out of the options: dropped without a word, it was lost.
+    if id.is_empty() {
+        return Err("the imported profile has no id to store it under".to_string());
     }
     store_secret(&format!("filen_api_key_{id}"), &key)?;
     server["hasStoredFilenApiKey"] = Value::Bool(true);
@@ -686,10 +690,12 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                 crate::user_partitions::store_active_credential_dual(store, key, secret)
                     .map_err(|e| e.to_string())
             });
-            if moved.is_err() {
+            // The error names the vault failure, never the key, which is
+            // only ever passed as the value.
+            if let Err(e) = moved {
                 secret_failures.push((
                     id,
-                    "its Filen API key was not stored (unlock the vault and import again, or add the key in the profile)".to_string(),
+                    format!("its Filen API key was not stored: {e} (unlock the vault and import again, or add the key in the profile)"),
                 ));
             }
         }
@@ -1862,6 +1868,14 @@ mod tests {
         assert!(server.pointer("/options/filen_api_key").is_none());
         assert!(server.get("hasStoredFilenApiKey").is_none());
         assert!(!server.to_string().contains("FILEN-KEY-1"));
+
+        // A profile with no id has nowhere to keep it: said, not dropped.
+        let mut server = value["servers"][0].clone();
+        server.as_object_mut().unwrap().remove("id");
+        let err = move_imported_filen_api_key(&mut server, |_, _| Ok(())).unwrap_err();
+        assert!(err.contains("no id"), "{err}");
+        assert!(server.pointer("/options/filen_api_key").is_none());
+        assert!(server.get("hasStoredFilenApiKey").is_none());
     }
 
     #[test]

@@ -47,7 +47,8 @@ export const isLoginRelativeScope = (s?: string | null): boolean =>
 export const placeUnderLoginFolder = (path: string | null | undefined, loginFolder: string | null | undefined): string | null => {
   if (!path || !loginFolder || !isLoginRelativeScope(path)) return path ?? null;
   const rest = path === '~' ? '' : path.slice(2);
-  return rest ? `${loginFolder.replace(/\/+$/, '')}/${rest}` : loginFolder;
+  const base = loginFolder.replace(/\/+$/, '');
+  return rest ? `${base}/${rest}` : base || '/';
 };
 
 /**
@@ -123,6 +124,17 @@ export const resolveBoundCryptScope = (
   session: { cryptOverlay?: { remoteScope?: string } | null; cryptOverlayScope?: string | null } | null | undefined,
 ): string => normCryptScope(session?.cryptOverlay?.remoteScope ?? session?.cryptOverlayScope ?? '');
 
+/**
+ * The folder a profile's overlay is bound to: its Overlays Path, or its
+ * Remote Path when the binding names none, with the `{username}` template
+ * resolved. The one place that fallback lives, so the anchor, the badge and
+ * restored transfers read the same folder.
+ */
+export const profileOverlayScope = (
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+): string => resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username)
+  || resolveUsernameTemplate(profile.initialPath, profile.username) || '';
+
 /** A restored path outside the encrypted island is ordinary plaintext. Unknown
  * relative paths fail closed; the persisted absolute remote path retains the
  * plaintext anchor even when its encrypted tail is opaque.
@@ -130,8 +142,7 @@ export const resolveBoundCryptScope = (
 export const restoredTransferCryptScope = (
   profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
 ): string | undefined => profile.aeroCryptOverlay?.enabled
-  ? knownCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
-    || resolveUsernameTemplate(profile.initialPath, profile.username) || '')
+  ? knownCryptScope(profileOverlayScope(profile))
   : undefined;
 
 export const restoredTransferRequiresOverlay = (

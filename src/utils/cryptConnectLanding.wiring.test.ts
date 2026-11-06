@@ -11,7 +11,7 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { connectLandsOutsideOverlay, isLoginRelativeScope, isWithinCryptScope, placeUnderLoginFolder, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
+import { connectLandsOutsideOverlay, isLoginRelativeScope, isWithinCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
 import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
@@ -263,6 +263,7 @@ describe('crypt overlay deferred connect unlock', () => {
             connectLandsOutsideOverlay,
             isLoginRelativeScope,
             placeUnderLoginFolder,
+            profileOverlayScope,
             invoke: async (command: string) => {
                 if (command !== 'provider_login_folder') throw new Error(`unexpected ${command}`);
                 if (!loginFolder) throw new Error('not reported');

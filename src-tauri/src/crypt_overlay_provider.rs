@@ -3581,10 +3581,12 @@ pub(crate) async fn resolve_home_scope(
     let home = provider.pwd().await;
     let _ = provider.cd(&back).await;
     let home = home.map_err(unresolved)?;
+    // The window places a path the same way (`placeUnderLoginFolder`).
+    let home = home.trim_end_matches('/');
     Ok(Some(if rest.is_empty() {
-        home
+        if home.is_empty() { "/" } else { home }.to_string()
     } else {
-        format!("{}/{rest}", home.trim_end_matches('/'))
+        format!("{home}/{rest}")
     }))
 }
 
