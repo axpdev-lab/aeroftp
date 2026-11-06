@@ -2007,17 +2007,27 @@ mod tests {
         use axum::response::IntoResponse;
         let app =
             axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+                let message = if uri.path().ends_with("/secondary") {
+                    "You have exceeded a secondary rate limit"
+                } else {
+                    "Kontingent für API-Anfragen erschöpft"
+                };
                 let mut response = (
                     axum::http::StatusCode::FORBIDDEN,
-                    axum::Json(
-                        serde_json::json!({"message": "Kontingent für API-Anfragen erschöpft"}),
-                    ),
+                    axum::Json(serde_json::json!({ "message": message })),
                 )
                     .into_response();
-                if uri.path().ends_with("/spent") {
+                let remaining = if uri.path().ends_with("/spent") {
+                    Some("0")
+                } else if uri.path().ends_with("/secondary") {
+                    Some("4999")
+                } else {
+                    None
+                };
+                if let Some(remaining) = remaining {
                     response.headers_mut().insert(
                         "x-ratelimit-remaining",
-                        axum::http::HeaderValue::from_static("0"),
+                        axum::http::HeaderValue::from_static(remaining),
                     );
                 }
                 response
@@ -2039,7 +2049,19 @@ mod tests {
             .client
             .get_json::<serde_json::Value>(&format!("{base}/refused"))
             .await;
+        // Quota left and "rate limit" in the message: the secondary limit,
+        // retried after a wait (Greptile, #1520). `execute` directly, since
+        // `get_json` would sleep for the retry.
+        let secondary_request = provider
+            .client
+            .request(reqwest::Method::GET, &format!("http://{addr}/secondary"));
+        let secondary = provider.client.execute(secondary_request, None).await;
         server.abort();
+        assert!(
+            matches!(secondary, Err(GitHubError::SecondaryRateLimit { .. })),
+            "{:?}",
+            secondary.err()
+        );
         assert!(
             matches!(spent, Err(GitHubError::PrimaryRateLimit { .. })),
             "{spent:?}"
