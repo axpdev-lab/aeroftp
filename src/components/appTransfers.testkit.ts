@@ -14,7 +14,13 @@ import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } fr
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErrorClassifier';
 import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import { withTransferRun } from '../utils/transferRun';
-import { createFileBatchDispatcher, rearmedOnUserAction, updateTransferStatus } from './transferQueueActions';
+import {
+  cancelTransfer as cancelTransferRow,
+  createFileBatchDispatcher,
+  rearmedOnUserAction,
+  retryAllFailed as retryAllFailedRows,
+  updateTransferStatus,
+} from './transferQueueActions';
 import type { TransferItem } from './TransferQueue';
 import { INITIAL_SCANNING_STATE } from './ScanningToast';
 
@@ -67,11 +73,13 @@ export const local = (name: string, dir = LOCAL, size = 40): LocalFile =>
   ({ name, path: `${dir}/${name}`, size, modified: null, is_dir: false });
 export const folder = <T extends LocalFile | RemoteFile>(entry: T): T => ({ ...entry, size: 0, is_dir: true });
 
+type BreakerVerdict = { isFatal: boolean; retryable: boolean; shouldPause: boolean };
+
 /** The part of App's circuit breaker the transfers call. */
 export type Breaker = {
   reset: () => void;
   recordSuccess: () => void;
-  recordFailure: (error: string) => { isFatal: boolean; retryable: boolean; shouldPause: boolean };
+  recordFailure: (error: string) => BreakerVerdict | Promise<BreakerVerdict>;
   stateRef: { current: string };
   pauseReasonRef: { current: unknown };
   tripErrorKindRef: { current: unknown };
@@ -159,7 +167,7 @@ export function fixture(options: Options = {}) {
     queueItemsRef.current = updateTransferStatus(queueItemsRef.current, id, status, undefined, error);
   };
   const reopen = (id: string) => {
-    queueItemsRef.current = queueItemsRef.current.map(item => (item.id === id ? { ...item, status: 'pending', error: undefined } : item));
+    queueItemsRef.current = queueItemsRef.current.map(item => (item.id === id ? { ...item, status: 'pending', error: undefined, cancelled: undefined } : item));
   };
   const transferQueue = {
     addItem: vi.fn(() => {
@@ -170,12 +178,13 @@ export function fixture(options: Options = {}) {
     startTransfer: vi.fn((id: string) => settle(id, 'transferring')),
     completeTransfer: vi.fn((id: string) => settle(id, 'completed')),
     failTransfer: vi.fn((id: string, error: string) => settle(id, 'error', error)),
+    cancelTransfer: vi.fn((id: string, label: string) => {
+      queueItemsRef.current = cancelTransferRow(queueItemsRef.current, id, label);
+    }),
     retryItem: vi.fn(reopen),
     // The queue's own filter: a failed row, not a stopped one.
     retryAllFailed: vi.fn(() => {
-      const ids = queueItemsRef.current
-        .filter(item => item.status === 'error' && item.error && !item.error.includes('cancelled') && !item.error.includes('Stopped by user'))
-        .map(item => item.id);
+      const { ids } = retryAllFailedRows(queueItemsRef.current);
       ids.forEach(reopen);
       return ids;
     }),

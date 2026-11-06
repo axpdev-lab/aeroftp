@@ -4612,11 +4612,44 @@ fn classification_text(raw: &str, file_path: Option<&str>) -> String {
         .join(" ")
 }
 
+/// The sync error kind of an OS error kind, where the kind says enough. The
+/// rest (`Other`, `InvalidData`, ...) is left to the message.
+fn sync_error_of_os_kind(kind: std::io::ErrorKind) -> Option<(SyncErrorKind, bool)> {
+    use std::io::ErrorKind as K;
+    Some(match kind {
+        K::StorageFull | K::QuotaExceeded => (SyncErrorKind::DiskError, false),
+        K::FileTooLarge => (SyncErrorKind::FileTooLarge, false),
+        K::PermissionDenied | K::ReadOnlyFilesystem => (SyncErrorKind::PermissionDenied, false),
+        K::NotFound => (SyncErrorKind::PathNotFound, false),
+        K::TimedOut => (SyncErrorKind::Timeout, true),
+        K::ResourceBusy => (SyncErrorKind::FileLocked, true),
+        K::ConnectionRefused
+        | K::HostUnreachable
+        | K::NetworkUnreachable
+        | K::NetworkDown
+        | K::AddrNotAvailable => (SyncErrorKind::Network, true),
+        k if crate::providers::types::os_error_kind_closes_the_session(k) => {
+            (SyncErrorKind::Network, true)
+        }
+        _ => return None,
+    })
+}
+
 /// Classify a raw error message into a structured SyncErrorInfo
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
     let lower = classification_text(raw, file_path);
 
-    let (kind, retryable) = if lower.contains("timeout") || lower.contains("timed out") {
+    // An OS error is classified by its code before any text: the text is the
+    // OS's own, in the user's language, and a full disk on an Italian Windows
+    // ("Spazio su disco insufficiente. (os error 112)") fell to Unknown,
+    // retryable, so it never stopped the batch. #1506 row 164.
+    // Read from the text with the caller's path removed: a file name can
+    // hold "(os error N)" too.
+    let by_os_code = crate::providers::types::os_error_kind(&lower).and_then(sync_error_of_os_kind);
+
+    let (kind, retryable) = if let Some(classified) = by_os_code {
+        classified
+    } else if lower.contains("timeout") || lower.contains("timed out") {
         (SyncErrorKind::Timeout, true)
     } else if lower.contains("rate limit")
         || lower.contains("too many requests")
@@ -6848,6 +6881,163 @@ mod narrow_tests {
 
 #[cfg(test)]
 mod tests {
+    /// #1506 row 164: an OS error is classified by its code, in any language.
+    /// The text before "(os error N)" is the operating system's, translated
+    /// (Windows always, glibc once GTK has set the locale), and the English
+    /// needles missed it: a full disk was Unknown and retryable, so it never
+    /// stopped the batch; a reset connection was not a closed session, so no
+    /// reconnect; a refusal on a path named "not found" read as an absence.
+    /// The codes below are the platform's own, as std maps them.
+    #[test]
+    fn an_os_error_is_classified_by_its_code_in_any_language() {
+        use crate::providers::types::{
+            is_session_closed_error_message, message_names_a_missing_path,
+        };
+        use SyncErrorKind as K;
+        #[cfg(windows)]
+        let cases: Vec<(String, SyncErrorKind, bool)> = vec![
+            (
+                "Spazio su disco insufficiente. (os error 112)".into(),
+                K::DiskError,
+                false,
+            ),
+            (
+                "Es ist nicht genügend Speicherplatz auf dem Datenträger verfügbar. (os error 112)"
+                    .into(),
+                K::DiskError,
+                false,
+            ),
+            (
+                "Upload failed: /not found/a.txt: Accesso negato. (os error 5)".into(),
+                K::PermissionDenied,
+                false,
+            ),
+            (
+                "Impossibile trovare il percorso specificato. (os error 3)".into(),
+                K::PathNotFound,
+                false,
+            ),
+            (
+                "Connessione in corso interrotta forzatamente dall'host remoto. (os error 10054)"
+                    .into(),
+                K::Network,
+                true,
+            ),
+            (
+                "Tiempo de espera de la operación agotado (os error 10060)".into(),
+                K::Timeout,
+                true,
+            ),
+        ];
+        #[cfg(unix)]
+        let cases: Vec<(String, SyncErrorKind, bool)> = vec![
+            (
+                format!("Spazio esaurito sul device (os error {})", libc::ENOSPC),
+                K::DiskError,
+                false,
+            ),
+            (
+                format!(
+                    "Auf dem Gerät ist kein Speicherplatz mehr verfügbar (os error {})",
+                    libc::ENOSPC
+                ),
+                K::DiskError,
+                false,
+            ),
+            (
+                format!(
+                    "Upload failed: /not found/a.txt: Permesso negato (os error {})",
+                    libc::EACCES
+                ),
+                K::PermissionDenied,
+                false,
+            ),
+            (
+                format!(
+                    "Datei oder Verzeichnis nicht gefunden (os error {})",
+                    libc::ENOENT
+                ),
+                K::PathNotFound,
+                false,
+            ),
+            (
+                format!(
+                    "Connessione azzerata dal corrispondente (os error {})",
+                    libc::ECONNRESET
+                ),
+                K::Network,
+                true,
+            ),
+            (
+                format!("Pipe interrotta (os error {})", libc::EPIPE),
+                K::Network,
+                true,
+            ),
+            (
+                format!("Connessione scaduta (os error {})", libc::ETIMEDOUT),
+                K::Timeout,
+                true,
+            ),
+        ];
+        for (message, kind, retryable) in &cases {
+            let info = classify_sync_error(message, None);
+            assert_eq!(
+                (info.kind, info.retryable),
+                (kind.clone(), *retryable),
+                "{message}"
+            );
+            assert_eq!(
+                message_names_a_missing_path(message),
+                *kind == K::PathNotFound,
+                "missing path: {message}"
+            );
+            if *kind == K::Network {
+                assert!(
+                    is_session_closed_error_message(message),
+                    "session closed: {message}"
+                );
+            }
+        }
+        // A code inside a file name is not the error's code (Greptile, #1517):
+        // the reset stays a lost connection, not a full disk.
+        #[cfg(unix)]
+        {
+            let reset_on_a_named_file = format!(
+                "Connection reset by peer (os error {}) (while downloading /reports/(os error {}).txt)",
+                libc::ECONNRESET,
+                libc::ENOSPC
+            );
+            let info =
+                classify_sync_error(&reset_on_a_named_file, Some("/reports/(os error 28).txt"));
+            assert_eq!(
+                (info.kind, info.retryable),
+                (K::Network, true),
+                "{reset_on_a_named_file}"
+            );
+            let no_path_given = format!(
+                "Connection reset by peer (os error {}) (while downloading /reports/x (os error {}) y.txt)",
+                libc::ECONNRESET,
+                libc::ENOSPC
+            );
+            let info = classify_sync_error(&no_path_given, None);
+            assert_eq!(
+                (info.kind, info.retryable),
+                (K::Network, true),
+                "{no_path_given}"
+            );
+        }
+        assert_eq!(
+            crate::providers::types::os_error_kind("/x/(os error 28).txt failed"),
+            None
+        );
+        // No code, a code that is not a number: the text decides, as before.
+        assert_eq!(crate::providers::types::os_error_kind("Disk full"), None);
+        assert_eq!(
+            crate::providers::types::os_error_kind("x (os error abc)"),
+            None
+        );
+    }
+
     /// Requested 125 at the classifier: the same file and the same remote date
     /// are identical only with a record of our own upload.
     #[test]

@@ -54,7 +54,12 @@ export interface TransferQueueJournalDto {
     entries: TransferQueueJournalEntryDto[];
 }
 
-/** True when the error message is a user cancel (matches TransferQueue retry filter). */
+/**
+ * True when a backend error is a cancel: the Rust transfer layer's own English
+ * text ("Transfer cancelled"), read by the catch blocks that turn a stopped
+ * batch's error into a cancelled row. A queue row is never classified by its
+ * text: a stopped row carries `cancelled` (see `cancelTransfer`).
+ */
 export function isCancelledTransferError(error: string | undefined): boolean {
     if (!error) return false;
     const lower = error.toLowerCase();
@@ -62,13 +67,14 @@ export function isCancelledTransferError(error: string | undefined): boolean {
 }
 
 /**
- * Map UI TransferStatus (+ optional error) to journal QueueItemStatus.
+ * Map UI TransferStatus (+ the row's cancel marker) to journal QueueItemStatus.
  * staged|pending -> pending; transferring -> in_progress; completed -> completed;
- * error that looks cancelled -> cancelled; other error -> failed.
+ * error the user stopped -> cancelled; other error -> failed. The error text is
+ * not read: it is translated (row 140).
  */
 export function mapUiStatusToJournalStatus(
     status: TransferStatus,
-    error?: string,
+    cancelled?: boolean,
 ): JournalStatus {
     switch (status) {
         case 'staged':
@@ -79,7 +85,7 @@ export function mapUiStatusToJournalStatus(
         case 'completed':
             return 'completed';
         case 'error':
-            return isCancelledTransferError(error) ? 'cancelled' : 'failed';
+            return cancelled ? 'cancelled' : 'failed';
         default:
             return 'pending';
     }
@@ -129,6 +135,25 @@ export function isPermanentTransferError(error: string | undefined | null): bool
     return PERMANENT_ERROR_MARKERS.some((marker) => unwrapped.startsWith(marker));
 }
 
+const NO_LABELS: ReadonlySet<string> = new Set();
+
+/**
+ * Reading only: a journal written before rows carried `cancelled` saved a
+ * row stopped in a language other than English as `failed`, with the
+ * translated label as its error (the old check looked for "cancel" in the
+ * text). Such an entry is a cancel when its error is exactly the label of
+ * some language (`legacyCancelLabels`, every locale's
+ * `transfer.cancelledByUser`). Nothing written now depends on this: the
+ * status comes from the marker.
+ */
+export function isLegacyCancelledEntry(
+    entry: Pick<TransferQueueJournalEntryDto, 'status' | 'last_error'>,
+    legacyCancelLabels: ReadonlySet<string>,
+): boolean {
+    if (entry.status !== 'failed' || !entry.last_error) return false;
+    return legacyCancelLabels.has(entry.last_error.trim());
+}
+
 /**
  * Whether a journal entry comes back after a restart. A failure the next
  * attempt cannot fix stays out: measured on 2026-09-22, an upload into the
@@ -137,8 +162,10 @@ export function isPermanentTransferError(error: string | undefined | null): bool
  */
 export function isRestorableJournalEntry(
     entry: Pick<TransferQueueJournalEntryDto, 'status' | 'last_error'>,
+    legacyCancelLabels: ReadonlySet<string> = NO_LABELS,
 ): boolean {
     if (!isRestorableJournalStatus(entry.status)) return false;
+    if (isLegacyCancelledEntry(entry, legacyCancelLabels)) return false;
     return !(entry.status === 'failed' && isPermanentTransferError(entry.last_error));
 }
 
@@ -167,7 +194,7 @@ export function buildJournalEntries(
     for (const item of items) {
         const desc = descriptors.get(item.id);
         if (!desc) continue;
-        const status = mapUiStatusToJournalStatus(item.status, item.error);
+        const status = mapUiStatusToJournalStatus(item.status, item.cancelled);
         const entry: TransferQueueJournalEntryDto = {
             id: item.id,
             direction: desc.direction,

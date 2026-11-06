@@ -2421,6 +2421,39 @@ impl WebDavProvider {
         })
     }
 
+    /// Whether this Nextcloud requires a password on public links: the
+    /// `files_sharing.public.password.enforced` capability, which
+    /// apps/files_sharing/lib/Capabilities.php publishes at
+    /// `/ocs/v1.php/cloud/capabilities`. A server without the entry does not
+    /// enforce one.
+    async fn nextcloud_link_password_enforced(&self, base: &str) -> Result<bool, ProviderError> {
+        let url = format!("{}/ocs/v1.php/cloud/capabilities", base);
+        let resp: reqwest::Response = self
+            .request_url(Method::GET, &url)
+            .header("OCS-APIREQUEST", "true")
+            .header("Accept", "application/json")
+            .send()
+            .await
+            .map_err(send_error)?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(ProviderError::ServerError(format!(
+                "OCS capabilities: HTTP {}",
+                status
+            )));
+        }
+        let text = resp
+            .text()
+            .await
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let json: serde_json::Value = serde_json::from_str(&text)
+            .map_err(|e| ProviderError::ParseError(format!("ocs json: {}", e)))?;
+        Ok(json
+            .pointer("/ocs/data/capabilities/files_sharing/public/password/enforced")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false))
+    }
+
     /// OCS: Create a public share link for a file/folder.
     /// If the Nextcloud instance enforces passwords on share links (HTTP 403),
     /// retries automatically with a generated password and returns "url\npassword".
@@ -2460,8 +2493,17 @@ impl WebDavProvider {
             .await
             .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        // If server requires password on share links (403), retry with auto-generated password
-        if status == StatusCode::FORBIDDEN && text.contains("password") {
+        // A server that requires a password on public links refuses the
+        // share with 403. Whether that is the reason comes from its
+        // capabilities, not from the message, which is translated (German
+        // "Passwörter sind ... erforderlich" carries no "password"). #1506
+        // row 164. Without the capabilities the refusal stands.
+        if status == StatusCode::FORBIDDEN
+            && self
+                .nextcloud_link_password_enforced(&base)
+                .await
+                .unwrap_or(false)
+        {
             let password = Self::generate_share_password();
             let form_with_pw = format!("{}&password={}", form_body, urlencoding::encode(&password));
 
@@ -6625,6 +6667,94 @@ mod tests {
         server.abort();
         outcome.expect("connect");
         assert_eq!(provider.current_path, "/remote.php/dav/files/user/reports ");
+    }
+
+    /// A Nextcloud with `password.enforced` refusing a link share without a
+    /// password, in German, and answering a second POST with one.
+    async fn serve_share_refusal(
+        enforced: bool,
+    ) -> (
+        String,
+        std::sync::Arc<std::sync::Mutex<Vec<bool>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let posts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = posts.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let path = req.uri().path().to_string();
+                    let method = req.method().clone();
+                    let body = axum::body::to_bytes(req.into_body(), 1 << 16).await.unwrap();
+                    let body = String::from_utf8_lossy(&body).to_string();
+                    if method == axum::http::Method::GET && path == "/ocs/v1.php/cloud/capabilities" {
+                        let caps = format!(
+                            r#"{{"ocs":{{"data":{{"capabilities":{{"files_sharing":{{"public":{{"enabled":true,"password":{{"enforced":{enforced}}}}}}}}}}}}}}}"#
+                        );
+                        return (axum::http::StatusCode::OK, caps);
+                    }
+                    if method == axum::http::Method::POST
+                        && path == "/ocs/v2.php/apps/files_sharing/api/v1/shares"
+                    {
+                        let with_password = body.contains("&password=");
+                        seen.lock().unwrap().push(with_password);
+                        if with_password {
+                            return (
+                                axum::http::StatusCode::OK,
+                                r#"{"ocs":{"data":{"url":"https://cloud.example.test/s/abc"}}}"#.to_string(),
+                            );
+                        }
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            r#"{"ocs":{"meta":{"status":"failure","statuscode":403,"message":"Passwörter sind für Link- und E-Mail-Freigaben erforderlich"}}}"#.to_string(),
+                        );
+                    }
+                    (axum::http::StatusCode::NOT_FOUND, String::new())
+                }
+            },
+        ));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (base, posts, server)
+    }
+
+    /// #1506 row 164: the retry with a generated password follows the
+    /// server's `password.enforced` capability, not the 403 text, which is
+    /// translated: a German refusal has no "password" in it, and the old
+    /// check returned the refusal instead of the link.
+    #[tokio::test]
+    async fn an_enforced_link_password_is_read_from_the_capabilities() {
+        let (base, posts, server) = serve_share_refusal(true).await;
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        let outcome = provider
+            .nextcloud_create_share("/report.pdf", ShareLinkOptions::default())
+            .await;
+        let posts = posts.lock().unwrap().clone();
+        server.abort();
+        let link = outcome.expect("the retry with a password gets the link");
+        assert_eq!(link.url, "https://cloud.example.test/s/abc");
+        assert!(link.password.is_some());
+        assert_eq!(posts, vec![false, true]);
+    }
+
+    /// Without the capability a 403 is the answer: no second POST.
+    #[tokio::test]
+    async fn a_refusal_without_an_enforced_password_is_not_retried() {
+        let (base, posts, server) = serve_share_refusal(false).await;
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        let outcome = provider
+            .nextcloud_create_share("/report.pdf", ShareLinkOptions::default())
+            .await;
+        let posts = posts.lock().unwrap().clone();
+        server.abort();
+        assert!(outcome.is_err());
+        assert_eq!(posts, vec![false]);
     }
 
     fn test_config(url: &str) -> WebDavConfig {
