@@ -1503,10 +1503,13 @@ impl StorageProvider for MegaCmdProvider {
         // Neither path improves on the legacy upload() that already
         // runs mega-put through the streaming path. Comment recorded
         // here so future reviewers don't re-litigate the decision.
-        super::TransferOptimizationHints {
-            supports_resume_download: true,
-            ..Default::default()
-        }
+        //
+        // No download resume either: `download` removes an existing target
+        // and runs `mega-get` without `--resume`, so an interrupted download
+        // starts over. Claiming resume kept the native bulk off downloads
+        // (a resuming provider keeps its single-file path) and told agents
+        // something the code does not do.
+        super::TransferOptimizationHints::default()
     }
 }
 
@@ -2245,6 +2248,26 @@ mod tests {
             connection_mode: MegaConnectionMode::MegaCmd,
         };
         MegaCmdProvider::new(config)
+    }
+
+    /// The MEGAcmd adapter does not resume a download: `download` removes an
+    /// existing target before `mega-get`, which runs without `--resume`. Its
+    /// hints say so, and so the native bulk carries both directions.
+    #[test]
+    fn megacmd_claims_no_download_resume_and_bulks_both_ways() {
+        let provider = test_provider();
+        let hints = provider.transfer_optimization_hints();
+        assert!(!hints.supports_resume_download);
+        assert!(!hints.supports_resume_upload);
+        let source = include_str!("mega.rs");
+        let download = &source[source.find("    async fn download(").unwrap()..];
+        let download = &download[..download.find("    async fn download_to_bytes(").unwrap()];
+        assert!(download.contains("std::fs::remove_file(l)"));
+        assert!(!download.contains("--resume\""));
+        assert_eq!(
+            crate::providers::bulk::bulk_directions(&provider.transfer_capabilities()),
+            (true, true)
+        );
     }
 
     #[test]
