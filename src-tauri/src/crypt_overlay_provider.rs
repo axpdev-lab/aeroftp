@@ -3574,6 +3574,11 @@ pub(crate) async fn resolve_home_scope(
         return Ok(None);
     }
     let rest = scope.strip_prefix("~/").unwrap_or("");
+    if rest.split('/').any(|segment| segment == "..") {
+        return Err(format!(
+            "the overlay folder {scope} leaves the login folder"
+        ));
+    }
     let unresolved =
         |e: ProviderError| format!("the overlay folder {scope} could not be resolved: {e}");
     let back = provider.pwd().await.map_err(unresolved)?;
@@ -3581,6 +3586,12 @@ pub(crate) async fn resolve_home_scope(
     let home = provider.pwd().await;
     let _ = provider.cd(&back).await;
     let home = home.map_err(unresolved)?;
+    // A server with no login folder may open `~` as a folder of that name.
+    if home == "~" || home.ends_with("/~") {
+        return Err(format!(
+            "the overlay folder {scope} could not be resolved: this server has no login folder"
+        ));
+    }
     // The window places a path the same way (`placeUnderLoginFolder`).
     let home = home.trim_end_matches('/');
     Ok(Some(if rest.is_empty() {
@@ -3603,6 +3614,44 @@ pub(crate) async fn login_folder(provider: &mut dyn StorageProvider) -> Result<S
         return Box::pin(login_folder(&mut *overlay.inner)).await;
     }
     Ok(resolve_home_scope(provider, "~").await?.unwrap_or_default())
+}
+
+/// A connect's start folder as one absolute folder, asked right after the
+/// connect, before anything moves the session. A relative one (`docs`) is
+/// where the connect opened it on a provider that honours `initial_path`
+/// (SFTP under the login folder, FTP from the login folder), which is the
+/// current folder; a provider that ignores it (Filen) is still at its root,
+/// and the folder is below the root. Listed again as given, `docs` resolved
+/// against the folder already open. `~` and `~/...` are placed under the login
+/// folder; an absolute folder comes back as given.
+pub(crate) async fn place_start_folder(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<String, String> {
+    if path.is_empty() || path.starts_with('/') {
+        return Ok(path.to_string());
+    }
+    if provider.as_any_mut().is::<CryptOverlayProvider>() {
+        let overlay = provider
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .expect("checked above");
+        return Box::pin(place_start_folder(&mut *overlay.inner, path)).await;
+    }
+    if is_login_relative_scope(path) {
+        return Ok(resolve_home_scope(provider, path)
+            .await?
+            .unwrap_or_else(|| path.to_string()));
+    }
+    let current = provider
+        .pwd()
+        .await
+        .map_err(|e| format!("the start folder {path} could not be placed: {e}"))?;
+    Ok(match current.trim_end_matches('/') {
+        "" if path == "." => "/".to_string(),
+        "" => format!("/{path}"),
+        _ => current,
+    })
 }
 
 /// A scope under the login folder: `~` or `~/...`, never `~docs`.
@@ -5281,6 +5330,9 @@ pub(crate) mod tests {
         /// finds by the path they had.
         trash: Mutex<Vec<String>>,
         identity_calls: Mutex<Vec<String>>,
+        /// Open `~` as a folder of that name, as a server with no login
+        /// folder does.
+        literal_tilde: bool,
     }
 
     impl MemProvider {
@@ -5301,6 +5353,7 @@ pub(crate) mod tests {
                 purge_live: false,
                 trash: Mutex::new(Vec::new()),
                 identity_calls: Mutex::new(Vec::new()),
+                literal_tilde: false,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -5314,6 +5367,10 @@ pub(crate) mod tests {
                 return p.to_string();
             }
             // A login folder, as SFTP has: `~` and `~/x` resolve under it.
+            if self.literal_tilde && (p == "~" || p.starts_with("~/")) {
+                let cwd = self.cwd.lock().unwrap();
+                return format!("{}/{}", cwd.trim_end_matches('/'), p);
+            }
             if p == "~" {
                 return MEM_HOME.to_string();
             }
@@ -6141,6 +6198,13 @@ pub(crate) mod tests {
         }
         assert_eq!(mem.pwd().await.unwrap(), "/srv");
         assert_eq!(login_folder(&mut mem).await.unwrap(), MEM_HOME);
+        assert!(resolve_home_scope(&mut mem, "~/../etc").await.is_err());
+        // A server that opens `~` as a plain folder has no login folder.
+        let mut literal = MemProvider::new();
+        literal.cd("/srv").await.unwrap();
+        literal.literal_tilde = true;
+        assert!(resolve_home_scope(&mut literal, "~/docs").await.is_err());
+        assert_eq!(literal.pwd().await.unwrap(), "/srv");
 
         let inner: Box<dyn StorageProvider> = Box::new(MemProvider::new());
         let binding = OverlayUnlockParams {
@@ -7614,6 +7678,38 @@ pub(crate) mod tests {
 
         let plain = serde_json::json!({ "initialPath": "/data" });
         assert_eq!(aerocloud_overlay_profile(&plain), plain);
+    }
+
+    /// `docs` is opened once: where the connect put a provider that honours a
+    /// start folder, below the root of one that stayed there.
+    #[tokio::test]
+    async fn a_relative_start_folder_is_the_folder_the_connect_opened() {
+        let mut mem = MemProvider::new();
+        mem.cd("/home/mem/docs").await.unwrap();
+        assert_eq!(
+            place_start_folder(&mut mem, "docs").await.unwrap(),
+            "/home/mem/docs"
+        );
+        let mut at_root = MemProvider::new();
+        assert_eq!(
+            place_start_folder(&mut at_root, "docs").await.unwrap(),
+            "/docs"
+        );
+        assert_eq!(
+            place_start_folder(&mut at_root, " docs").await.unwrap(),
+            "/ docs"
+        );
+        assert_eq!(place_start_folder(&mut at_root, ".").await.unwrap(), "/");
+        assert_eq!(
+            place_start_folder(&mut at_root, "~/docs").await.unwrap(),
+            "/home/mem/docs"
+        );
+        assert_eq!(
+            place_start_folder(&mut at_root, "/srv").await.unwrap(),
+            "/srv"
+        );
+        assert_eq!(place_start_folder(&mut at_root, "").await.unwrap(), "");
+        assert_eq!(at_root.pwd().await.unwrap(), "/");
     }
 
     /// The import binds `nas:docs` at `~/docs`, which the session resolves and

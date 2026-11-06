@@ -2727,6 +2727,22 @@ pub async fn provider_login_folder(state: State<'_, ProviderState>) -> Result<St
     crate::crypt_overlay_provider::login_folder(&mut **provider).await
 }
 
+/// The connect's start folder as the absolute folder it opened, for the
+/// window to list once: a relative `docs` listed as given resolved against
+/// the folder the connect had already opened (`docs/docs`). See
+/// [`crate::crypt_overlay_provider::place_start_folder`].
+#[tauri::command]
+pub async fn provider_start_folder(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    crate::crypt_overlay_provider::place_start_folder(&mut **provider, &path).await
+}
+
 /// How long the liveness probe may take, its listing included. A server that
 /// does not answer in time counts as not alive: the switch then falls back to a real
 /// reconnect, whose listing has a spinner and a Cancel, instead of waiting on

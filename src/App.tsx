@@ -6289,6 +6289,17 @@ const App: React.FC = () => {
   // (regardless of whether a password/keyfile is stored). Used to surface the
   // LT2b locked affordance when auto-unlock never arms, including the case where
   // there is no stored unlock factor so the suppress-listing path does not run.
+  // A start folder given relative (`docs`) or under the login folder
+  // (`~/docs`), as the absolute folder the connect opened: listed again as
+  // given, `docs` resolved against the folder already open and listed
+  // `docs/docs`. Absolute folders come back as given, and so does any folder
+  // the session cannot place.
+  const placeStartFolder = async (path: string | null | undefined): Promise<string | null> => (
+    path && !path.startsWith('/')
+      ? await invoke<string>('provider_start_folder', { path }).catch(() => path)
+      : path ?? null
+  );
+
   // A binding scope under the login folder, placed where the live session
   // reports it; '' from knownCryptScope (every path inside) when it cannot.
   const placeLoginRelativeScope = async (scope: string | null | undefined): Promise<string | null> => (
@@ -8542,11 +8553,14 @@ const App: React.FC = () => {
         // Listing a path need not change a provider's cwd (for example Filen).
         // An outside-scope landing must also survive Refresh at path:null.
         const overlaySavedId = effectiveParams.savedServerId;
-        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
+        // A relative or `~` start folder, as one absolute folder, before
+        // anything lists it (the connect may have opened it already).
+        const startFolder = await placeStartFolder(resolvedRemoteDir);
+        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, startFolder) : null;
         logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
         const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
-          path: overlayHint?.opensOutside ? resolvedRemoteDir || '/' : resolvedRemoteDir || null
-        }), listingReason(resolvedRemoteDir));
+          path: overlayHint?.opensOutside ? startFolder || '/' : startFolder || null
+        }), listingReason(startFolder));
         logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
@@ -8618,7 +8632,7 @@ const App: React.FC = () => {
           quickConnectDirs.localDir || currentLocalPath,
           overlayHint && !overlayHint.opensOutside ? [] : files,
           undefined,
-          overlayHint ? placeUnderLoginFolder(resolvedRemoteDir, overlayHint.loginFolder) || '/' : undefined
+          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined
         );
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -19362,10 +19376,11 @@ const App: React.FC = () => {
                     // initialPath (e.g. `/remote.php/dav/files/{username}/`) does
                     // not reach the backend with the placeholder unresolved.
                     const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
-                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
+                    const startFolder = await connectScope.step(() => placeStartFolder(resolvedSavedInitialPath));
+                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId, startFolder));
                     const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
-                      path: overlayHint?.opensOutside ? resolvedSavedInitialPath || '/' : resolvedSavedInitialPath || null
-                    }), listingReason(resolvedSavedInitialPath)));
+                      path: overlayHint?.opensOutside ? startFolder || '/' : startFolder || null
+                    }), listingReason(startFolder)));
 
                     const files = response.files.map(f => ({
                       name: f.name,
@@ -19414,7 +19429,7 @@ const App: React.FC = () => {
                       resolvedLocalPath2,
                       overlayHint && !overlayHint.opensOutside ? [] : files,
                       undefined,
-                      overlayHint ? placeUnderLoginFolder(resolvedSavedInitialPath, overlayHint.loginFolder) || '/' : undefined
+                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || '/' : undefined
                     ));
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);

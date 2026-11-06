@@ -191,6 +191,8 @@ describe('a scope under the login folder', () => {
     expect(placeUnderLoginFolder('~/docs', null)).toBe('~/docs');
     expect(placeUnderLoginFolder('/docs', '/home/u')).toBe('/docs');
     expect(placeUnderLoginFolder('~docs', '/home/u')).toBe('~docs');
+    expect(placeUnderLoginFolder('~/../etc', '/home/u')).toBe('~/../etc');
+    expect(placeUnderLoginFolder('~/a/../../etc', '/home/u')).toBe('~/a/../../etc');
     expect(placeUnderLoginFolder(undefined, '/home/u')).toBeNull();
   });
   it('reads as the whole remote until the session resolves it', () => {
