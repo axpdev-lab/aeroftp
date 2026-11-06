@@ -1622,20 +1622,27 @@ impl StorageProvider for ProtonCliProvider {
             )));
         }
 
-        let listed = self
-            .run_cli(&["filesystem", "list", "/", "-j"], META_TIMEOUT_SECS)
-            .await?;
-        let _roots = parse_list_json(&listed, "/")?;
-
-        if let Ok(info) = self
+        // One launch when the session is good: `info /my-files` proves the
+        // login and names the account, the identity AeroCloud keeps sync
+        // state apart by. Every launch costs a second or more of start-up, so
+        // the root listing runs only when that fails, for the error to show.
+        match self
             .run_cli(
                 &["filesystem", "info", "/my-files", "-j"],
                 META_TIMEOUT_SECS,
             )
             .await
         {
-            if let Some(email) = extract_email(&info) {
-                self.account_email = Some(email);
+            Ok(info) => {
+                if let Some(email) = extract_email(&info) {
+                    self.account_email = Some(email);
+                }
+            }
+            Err(_) => {
+                let listed = self
+                    .run_cli(&["filesystem", "list", "/", "-j"], META_TIMEOUT_SECS)
+                    .await?;
+                let _roots = parse_list_json(&listed, "/")?;
             }
         }
 
@@ -1939,12 +1946,36 @@ impl StorageProvider for ProtonCliProvider {
         let parent = parent_of(&abs);
         ensure_parent_writable(&parent)?;
         let name = basename(&abs);
-        self.run_cli(
-            &["filesystem", "create-folder", &parent, "--", &name],
-            META_TIMEOUT_SECS,
-        )
-        .await?;
-        Ok(())
+        match self
+            .run_cli(
+                &["filesystem", "create-folder", &parent, "--", &name],
+                META_TIMEOUT_SECS,
+            )
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(ProviderError::AlreadyExists(message)) => {
+                Err(ProviderError::AlreadyExists(message))
+            }
+            // The CLI words its refusal in the account's language ("Esiste già
+            // un file o una cartella con quel nome" on an Italian account, also
+            // with LANG=C), so the message cannot say the folder is there: one
+            // listing of the parent does. Unanswered, the refusal sent the
+            // caller up the whole path creating every ancestor again, a launch
+            // each.
+            Err(error) => {
+                let present = self.list(&parent).await.ok().is_some_and(|entries| {
+                    entries
+                        .iter()
+                        .any(|entry| entry.is_dir && entry.name == name)
+                });
+                Err(if present {
+                    ProviderError::AlreadyExists(abs)
+                } else {
+                    error
+                })
+            }
+        }
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -3806,6 +3837,68 @@ mod cli_sequence_tests {
         let dir = std::env::temp_dir().join(format!("proton_shim_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    fn launched(dir: &Path) -> Vec<String> {
+        read_argv(dir)
+            .iter()
+            .map(|argv| argv.get(1).cloned().unwrap_or_default())
+            .collect()
+    }
+
+    /// Row 71: every proton-drive launch costs a second or more of start-up.
+    /// A good session connects with exactly one (`info /my-files`, which also
+    /// names the account); the root listing runs only when that fails.
+    #[tokio::test]
+    async fn a_good_session_connects_with_one_launch() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        let mut p = provider(&shim);
+        p.connected = false;
+        p.connect().await.unwrap();
+        assert_eq!(
+            read_argv(&dir),
+            [["filesystem", "info", "/my-files", "-j"]
+                .map(String::from)
+                .to_vec()]
+        );
+
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(dir.join("existing.json"), "[]").unwrap();
+        let mut p = provider(&shim);
+        p.connected = false;
+        p.connect().await.unwrap();
+        assert_eq!(launched(&dir), ["info", "list"]);
+    }
+
+    /// Row 71: proton-drive refuses an existing folder in the account's
+    /// language, which no message match can read. One listing of the parent
+    /// answers it, so `put -r` into an existing folder costs two launches, not
+    /// the three of a walk that created every ancestor again.
+    #[tokio::test]
+    async fn an_existing_folder_refused_in_another_language_costs_one_listing() {
+        let dir = workdir();
+        let shim = link_shim(&dir);
+        std::fs::write(dir.join("create-folder-exists"), b"").unwrap();
+        std::fs::write(
+            dir.join("my-files_root.json"),
+            r#"[{"name":{"ok":true,"value":"dest"},"uid":"U1","type":"folder"}]"#,
+        )
+        .unwrap();
+        let mut p = provider(&shim);
+        let err = p.mkdir("/my-files/root/dest").await.unwrap_err();
+        assert!(matches!(err, ProviderError::AlreadyExists(_)), "{err:?}");
+        assert_eq!(launched(&dir), ["create-folder", "list"]);
+
+        // Not there (or a file of that name): the refusal stays what it was.
+        std::fs::write(
+            dir.join("my-files_root.json"),
+            r#"[{"name":{"ok":true,"value":"dest"},"uid":"U1","type":"file"}]"#,
+        )
+        .unwrap();
+        let err = p.mkdir("/my-files/root/dest").await.unwrap_err();
+        assert!(!matches!(err, ProviderError::AlreadyExists(_)), "{err:?}");
     }
 
     fn verbs<'a>(argv: &'a [Vec<String>], sub: &str) -> Vec<&'a Vec<String>> {
