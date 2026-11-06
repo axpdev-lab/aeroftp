@@ -27,6 +27,15 @@ pub(crate) fn wait_for_owned_server(port: u16, nonce: &str) -> Result<(), String
     }
 }
 
+/// What the user reads when another AeroFTP holds the UI port.
+fn another_aeroftp_message(port: u16) -> String {
+    format!(
+        "Another AeroFTP is already running from a different installation (for example a .deb or \
+         AppImage next to the snap), and both serve their window from 127.0.0.1:{port}. Close the \
+         other AeroFTP, then start this one again."
+    )
+}
+
 fn verify_owned_response(stream: &mut TcpStream, port: u16, nonce: &str) -> Result<(), String> {
     stream
         .set_read_timeout(Some(Duration::from_millis(500)))
@@ -60,11 +69,16 @@ fn verify_owned_response(stream: &mut TcpStream, port: u16, nonce: &str) -> Resu
     let mut lines = header_text.split("\r\n");
     let status = lines.next().unwrap_or_default();
     let mut has_nonce = false;
+    let mut other_nonce = false;
     let mut content_length = None;
     for line in lines {
         if let Some((name, value)) = line.split_once(':') {
-            if name.eq_ignore_ascii_case("X-AeroFTP-UI-Nonce") && value.trim() == nonce {
-                has_nonce = true;
+            if name.eq_ignore_ascii_case("X-AeroFTP-UI-Nonce") {
+                if value.trim() == nonce {
+                    has_nonce = true;
+                } else {
+                    other_nonce = true;
+                }
             }
             if name.eq_ignore_ascii_case("Content-Length") {
                 content_length = value.trim().parse::<usize>().ok();
@@ -72,6 +86,14 @@ fn verify_owned_response(stream: &mut TcpStream, port: u16, nonce: &str) -> Resu
         }
     }
     if !(status.starts_with("HTTP/1.1 200 ") || status.starts_with("HTTP/1.0 200 ")) || !has_nonce {
+        // A server that answers with this header and another nonce is, most
+        // likely, AeroFTP from another installation (the .deb or AppImage next
+        // to the snap, Requested 137): each serves its window from this port.
+        // It is named as such so the user knows what to close; the server is
+        // still not trusted.
+        if other_nonce && !has_nonce {
+            return Err(another_aeroftp_message(port));
+        }
         return Err(format!(
             "Port 127.0.0.1:{port} is occupied by another process, so AeroFTP cannot safely load its UI"
         ));
@@ -123,6 +145,47 @@ mod tests {
                 .unwrap();
         });
         assert!(wait_for_owned_server(port, "private-startup-nonce").is_ok());
+        server.join().unwrap();
+    }
+
+    // Requested 137: the .deb's server answers the snap's probe with its own
+    // nonce. The refusal names the other AeroFTP instead of "another process".
+    #[test]
+    fn another_aeroftps_server_is_named_as_such_and_still_refused() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 512];
+            let read = stream.read(&mut request).unwrap();
+            assert!(read > 0, "the probe sent no request");
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nX-AeroFTP-UI-Nonce: the-other-instance\r\nContent-Length: 4\r\n\r\nbody")
+                .unwrap();
+        });
+        let refusal = wait_for_owned_server(port, "private-startup-nonce").unwrap_err();
+        assert!(
+            refusal.starts_with("Another AeroFTP is already running"),
+            "{refusal}"
+        );
+        assert!(refusal.contains(&format!("127.0.0.1:{port}")), "{refusal}");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn a_server_without_our_header_is_another_process() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0; 512];
+            let _ = stream.read(&mut request).unwrap();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .unwrap();
+        });
+        let refusal = wait_for_owned_server(port, "private-startup-nonce").unwrap_err();
+        assert!(refusal.contains("occupied by another process"), "{refusal}");
         server.join().unwrap();
     }
 

@@ -74,8 +74,12 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "ceph" => "custom-s3",
         "arvancloud" => "custom-s3",
         "huaweiobs" | "obs" => "custom-s3",
-        "tencentcos" | "cos" => "custom-s3",
-        "alicloud" | "oss" => "custom-s3",
+        // rclone's tokens for presets AeroFTP has: the export writes
+        // `Alibaba`, `TencentCOS` and `GCS`, so mapping them to custom S3 made
+        // every such profile come back without its preset.
+        "tencentcos" | "cos" => "tencent-cos",
+        "alibaba" | "alicloud" | "oss" => "alibaba-oss",
+        "gcs" => "google-cloud-storage",
         "ibmcos" | "ibm-cos" | "ibm" => "ibm-cos",
         "ionos" => "ionos-s3",
         "petabox" => "custom-s3",
@@ -1077,13 +1081,15 @@ impl ExportReport for BridgeExportOutcome {
 }
 
 impl ExportReport for crate::rclone_import::RcloneExportOutcome {
+    /// Reports profiles, as every other exporter does: the remotes count
+    /// (`exported`) also holds the aliases and crypt overlays they write.
     fn into_export_parts(self) -> (usize, Vec<(String, String)>) {
         let refused = self
             .skipped
             .into_iter()
             .map(|s| (s.name, s.reason))
             .collect();
-        (self.exported, refused)
+        (self.profiles, refused)
     }
 }
 

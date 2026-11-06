@@ -12,8 +12,9 @@
  */
 
 import { useRef, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { SyncErrorKind } from '../types';
-import { classifyErrorFast, FATAL_ERROR_KINDS, PER_FILE_ERROR_KINDS, RECONNECT_ERROR_KINDS } from '../utils/transferErrorClassifier';
+import { classifyTransferFailure, FATAL_ERROR_KINDS, PER_FILE_ERROR_KINDS, RECONNECT_ERROR_KINDS } from '../utils/transferErrorClassifier';
 
 export type CircuitBreakerState = 'closed' | 'open' | 'half_open';
 export type PauseReason = 'consecutive_errors' | 'fatal_error' | 'reconnecting';
@@ -60,9 +61,10 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
     tripErrorKindRef.current = null;
   }, []);
 
-  /** Record a failed transfer: classifies error and decides whether to trip */
-  const recordFailure = useCallback((errorMessage: string): RecordFailureResult => {
-    const { kind, retryable } = classifyErrorFast(errorMessage);
+  /** Record a failed transfer: classifies error and decides whether to trip.
+   *  The classification is the backend's (see `classifyTransferFailure`). */
+  const recordFailure = useCallback(async (errorMessage: string): Promise<RecordFailureResult> => {
+    const { kind, retryable } = await classifyTransferFailure(errorMessage, invoke);
 
     // Fatal errors: immediate trip, no retry possible
     if (FATAL_ERROR_KINDS.has(kind)) {

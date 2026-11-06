@@ -42,6 +42,7 @@ const item = (
     type: extra?.type ?? 'download',
     status,
     error: extra?.error,
+    cancelled: extra?.cancelled,
     restored: extra?.restored,
 });
 
@@ -59,14 +60,12 @@ describe('mapUiStatusToJournalStatus', () => {
         expect(mapUiStatusToJournalStatus('completed')).toBe('completed');
     });
 
-    it('maps cancelled-looking errors to cancelled', () => {
-        expect(mapUiStatusToJournalStatus('error', 'Stopped by user')).toBe('cancelled');
-        expect(mapUiStatusToJournalStatus('error', 'Transfer cancelled')).toBe('cancelled');
-        expect(mapUiStatusToJournalStatus('error', 'Cancelled by user')).toBe('cancelled');
+    it('maps a row the user stopped to cancelled', () => {
+        expect(mapUiStatusToJournalStatus('error', true)).toBe('cancelled');
     });
 
     it('maps other errors to failed', () => {
-        expect(mapUiStatusToJournalStatus('error', 'Permission denied')).toBe('failed');
+        expect(mapUiStatusToJournalStatus('error', false)).toBe('failed');
         expect(mapUiStatusToJournalStatus('error')).toBe('failed');
     });
 });
@@ -133,14 +132,19 @@ describe('buildJournalEntries', () => {
         expect(descriptors.has('gone')).toBe(false);
     });
 
-    it('maps cancelled stop message on error items', () => {
-        const descriptors = new Map([['c1', desc()]]);
+    it('saves a row the user stopped as cancelled, whatever its label says', () => {
+        const descriptors = new Map([['c1', desc()], ['f1', desc()]]);
         const entries = buildJournalEntries(
-            [item('c1', 'error', { error: 'Stopped by user' })],
+            [
+                item('c1', 'error', { error: 'Stopped by user', cancelled: true }),
+                // A failure whose text mentions a cancel is still a failure.
+                item('f1', 'error', { error: 'Server cancelled the upload' }),
+            ],
             descriptors,
         );
         expect(entries[0].status).toBe('cancelled');
         expect(entries[0].last_error).toBe('Stopped by user');
+        expect(entries[1].status).toBe('failed');
     });
 });
 
