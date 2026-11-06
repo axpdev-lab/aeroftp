@@ -765,7 +765,8 @@
             },
             "stagedCount": "Подготвени: {count}",
             "pendingCount": "На чекање: {count}",
-            "failedCount": "Неуспешни: {count}"
+            "failedCount": "Неуспешни: {count}",
+            "queuedForAnotherServer": "Не е започнато: овој пренос беше во редица за друг сервер. Вратете се на јазичето на тој сервер, па обидете се повторно."
         },
         "settings": {
             "title": "Поставки",

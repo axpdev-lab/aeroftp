@@ -765,7 +765,8 @@
             },
             "stagedCount": "Đã chuẩn bị: {count}",
             "pendingCount": "Đang chờ: {count}",
-            "failedCount": "Thất bại: {count}"
+            "failedCount": "Thất bại: {count}",
+            "queuedForAnotherServer": "Chưa bắt đầu: lượt truyền này được xếp hàng cho một máy chủ khác. Hãy quay lại tab của máy chủ đó, rồi thử lại."
         },
         "settings": {
             "title": "Cài đặt",

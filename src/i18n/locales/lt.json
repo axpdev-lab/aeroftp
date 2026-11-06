@@ -765,7 +765,8 @@
             },
             "stagedCount": "Paruošta: {count}",
             "pendingCount": "Laukia: {count}",
-            "failedCount": "Nepavyko: {count}"
+            "failedCount": "Nepavyko: {count}",
+            "queuedForAnotherServer": "Nepaleista: šis perkėlimas buvo įtrauktas į eilę kitam serveriui. Grįžkite į to serverio kortelę ir bandykite dar kartą."
         },
         "settings": {
             "title": "Nustatymai",

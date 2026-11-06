@@ -11133,6 +11133,26 @@ const App: React.FC = () => {
 
   const { isLiveOnProfile, waitForLiveProfile } = useResumeProfileGuard(isConnected, sessions, activeSessionId);
 
+  // Whether the server a transfer was queued for is the live one now.
+  const liveServerIs = useLatestCallback((queuedFor: ConnectionParams) =>
+    isConnected && isSameConnection(liveConnectionParams, queuedFor));
+
+  /** A queued transfer's Start or Retry, bound to the server it was queued
+   *  for. The callback ran on whatever backend was live when the user
+   *  clicked, so after a tab switch a staged or failed upload went to the
+   *  other server (deep scan item 6). It now fails with the reason instead,
+   *  and runs again once that server is live. */
+  const boundToQueuedServer = useLatestCallback((id: string, run: () => unknown): (() => Promise<void>) => {
+    const queuedFor = { ...liveConnectionParams };
+    return async () => {
+      if (!liveServerIs(queuedFor)) {
+        transferQueue.failTransfer(id, t('transfer.queuedForAnotherServer'));
+        return;
+      }
+      await run();
+    };
+  });
+
   const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay = restoredTransferRequiresOverlay(profile, profile.initialPath || '/')): Promise<boolean> => {
     const protocol = (profile.protocol || 'ftp') as ProviderType;
 
@@ -13385,8 +13405,8 @@ const App: React.FC = () => {
     // A Start of staged rows or a Retry clears a Stop left from an earlier
     // transfer when the user acts; a Stop during this run still holds.
     const cancelFlags = { batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef };
-    for (const id of batchIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id)));
-    for (const id of singleIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id)));
+    for (const id of batchIds) retryCallbacksRef.current.set(id, boundToQueuedServer(id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id))));
+    for (const id of singleIds) retryCallbacksRef.current.set(id, boundToQueuedServer(id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id))));
     if (staged) {
       result.staged = true;
       return result;
@@ -13551,7 +13571,7 @@ const App: React.FC = () => {
             size,
             is_folder: !!file?.is_dir,
           });
-          retryCallbacksRef.current.set(id, async () => {
+          retryCallbacksRef.current.set(id, boundToQueuedServer(id, async () => {
             transferQueue.startTransfer(id);
             try {
               await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
@@ -13567,7 +13587,7 @@ const App: React.FC = () => {
                 notify.error(t('toast.uploadFailed'), String(error));
               }
             }
-          });
+          }));
           return { id, filePath, fileName, file };
         });
 
@@ -13896,7 +13916,7 @@ const App: React.FC = () => {
           size: 0,
           is_folder: false,
         });
-        retryCallbacksRef.current.set(id, async () => {
+        retryCallbacksRef.current.set(id, boundToQueuedServer(id, async () => {
           transferQueue.startTransfer(id);
           try {
             await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw');
@@ -13912,7 +13932,7 @@ const App: React.FC = () => {
               notify.error(t('toast.uploadFailed'), String(error));
             }
           }
-        });
+        }));
         return { id, filePath, fileName };
       });
 
@@ -14115,7 +14135,7 @@ const App: React.FC = () => {
           size: file.size || 0,
           is_folder: !!file.is_dir,
         });
-        retryCallbacksRef.current.set(id, async () => {
+        retryCallbacksRef.current.set(id, boundToQueuedServer(id, async () => {
           transferQueue.startTransfer(id);
           try {
             await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw');
@@ -14131,7 +14151,7 @@ const App: React.FC = () => {
               notify.error(t('toast.downloadFailed'), String(error));
             }
           }
-        });
+        }));
         return { id, file };
       });
 

@@ -765,7 +765,8 @@
             },
             "stagedCount": "Klaargezet: {count}",
             "pendingCount": "{count} in wachtrij",
-            "failedCount": "Mislukt: {count}"
+            "failedCount": "Mislukt: {count}",
+            "queuedForAnotherServer": "Niet gestart: deze overdracht stond in de wachtrij voor een andere server. Schakel terug naar het tabblad van die server en probeer het opnieuw."
         },
         "settings": {
             "title": "Instellingen",

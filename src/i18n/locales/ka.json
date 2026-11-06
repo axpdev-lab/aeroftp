@@ -765,7 +765,8 @@
             },
             "stagedCount": "მომზადებული: {count}",
             "pendingCount": "მოლოდინში: {count}",
-            "failedCount": "ვერ მოხერხდა: {count}"
+            "failedCount": "ვერ მოხერხდა: {count}",
+            "queuedForAnotherServer": "არ დაწყებულა: ეს გადაცემა სხვა სერვერისთვის იყო რიგში. დაბრუნდით ამ სერვერის ჩანართზე და სცადეთ ხელახლა."
         },
         "settings": {
             "title": "პარამეტრები",

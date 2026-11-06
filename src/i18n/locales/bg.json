@@ -765,7 +765,8 @@
             },
             "stagedCount": "Подготвени: {count}",
             "pendingCount": "Изчакващи: {count}",
-            "failedCount": "Неуспешни: {count}"
+            "failedCount": "Неуспешни: {count}",
+            "queuedForAnotherServer": "Не е стартиран: този трансфер е бил в опашката за друг сървър. Върнете се в раздела на този сървър и опитайте отново."
         },
         "settings": {
             "title": "Настройки",

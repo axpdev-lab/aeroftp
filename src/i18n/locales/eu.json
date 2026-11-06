@@ -765,7 +765,8 @@
             },
             "stagedCount": "Prestatuta: {count}",
             "pendingCount": "Zain: {count}",
-            "failedCount": "Huts eginda: {count}"
+            "failedCount": "Huts eginda: {count}",
+            "queuedForAnotherServer": "Ez da hasi: transferentzia hau beste zerbitzari baterako ilaran zegoen. Itzuli zerbitzari horren fitxara eta saiatu berriro."
         },
         "settings": {
             "title": "Ezarpenak",

@@ -765,7 +765,8 @@
             },
             "stagedCount": "Wedi'u llwyfannu: {count}",
             "pendingCount": "Yn aros: {count}",
-            "failedCount": "Wedi methu: {count}"
+            "failedCount": "Wedi methu: {count}",
+            "queuedForAnotherServer": "Heb ddechrau: roedd y trosglwyddiad hwn wedi'i ciwio ar gyfer gweinydd arall. Newidiwch yn ôl i dab y gweinydd hwnnw, yna ceisiwch eto."
         },
         "settings": {
             "title": "Gosodiadau",

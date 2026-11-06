@@ -5139,7 +5139,8 @@
             },
             "stagedCount": "{count} staged",
             "pendingCount": "{count} Pending",
-            "failedCount": "{count} Failed"
+            "failedCount": "{count} Failed",
+            "queuedForAnotherServer": "Not started: this transfer was queued for another server. Switch back to that server's tab, then retry."
         },
         "scanning": {
             "deleting": "Deleting",

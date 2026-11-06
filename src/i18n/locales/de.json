@@ -765,7 +765,8 @@
             },
             "stagedCount": "Vorgemerkt: {count}",
             "pendingCount": "Ausstehend: {count}",
-            "failedCount": "Fehlgeschlagen: {count}"
+            "failedCount": "Fehlgeschlagen: {count}",
+            "queuedForAnotherServer": "Nicht gestartet: Diese Übertragung war für einen anderen Server eingereiht. Wechseln Sie zurück zum Tab dieses Servers und versuchen Sie es erneut."
         },
         "settings": {
             "title": "Einstellungen",

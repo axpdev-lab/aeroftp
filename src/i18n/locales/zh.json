@@ -765,7 +765,8 @@
             },
             "stagedCount": "{count} 个已暂存",
             "pendingCount": "{count} 个等待中",
-            "failedCount": "{count} 个失败"
+            "failedCount": "{count} 个失败",
+            "queuedForAnotherServer": "未开始：此传输已排入另一台服务器的队列。请切换回该服务器的标签页，然后重试。"
         },
         "settings": {
             "title": "设置",

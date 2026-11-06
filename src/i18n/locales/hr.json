@@ -765,7 +765,8 @@
             },
             "stagedCount": "Pripremljeno: {count}",
             "pendingCount": "Na čekanju: {count}",
-            "failedCount": "Neuspjelo: {count}"
+            "failedCount": "Neuspjelo: {count}",
+            "queuedForAnotherServer": "Nije pokrenuto: ovaj prijenos bio je u redu za drugi poslužitelj. Vratite se na karticu tog poslužitelja, a zatim pokušajte ponovno."
         },
         "settings": {
             "title": "Postavke",

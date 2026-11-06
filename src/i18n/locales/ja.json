@@ -765,7 +765,8 @@
             },
             "stagedCount": "{count} 件ステージ済み",
             "pendingCount": "{count} 件保留中",
-            "failedCount": "{count} 件失敗"
+            "failedCount": "{count} 件失敗",
+            "queuedForAnotherServer": "開始されませんでした: この転送は別のサーバー用にキューに入っていました。そのサーバーのタブに戻ってから、再試行してください。"
         },
         "settings": {
             "title": "設定",

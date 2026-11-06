@@ -765,7 +765,8 @@
             },
             "stagedCount": "Préparés : {count}",
             "pendingCount": "En attente : {count}",
-            "failedCount": "Échecs : {count}"
+            "failedCount": "Échecs : {count}",
+            "queuedForAnotherServer": "Non démarré : ce transfert était en file d'attente pour un autre serveur. Revenez à l'onglet de ce serveur, puis réessayez."
         },
         "settings": {
             "title": "Paramètres",

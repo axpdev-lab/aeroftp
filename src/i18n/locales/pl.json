@@ -765,7 +765,8 @@
             },
             "stagedCount": "Przygotowane: {count}",
             "pendingCount": "Oczekujące: {count}",
-            "failedCount": "Nieudane: {count}"
+            "failedCount": "Nieudane: {count}",
+            "queuedForAnotherServer": "Nie rozpoczęto: ten transfer był w kolejce dla innego serwera. Wróć do karty tego serwera, a następnie spróbuj ponownie."
         },
         "settings": {
             "title": "Ustawienia",

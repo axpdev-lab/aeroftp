@@ -765,7 +765,8 @@
             },
             "stagedCount": "Klargjort: {count}",
             "pendingCount": "Ventende: {count}",
-            "failedCount": "Mislykket: {count}"
+            "failedCount": "Mislykket: {count}",
+            "queuedForAnotherServer": "Ikke startet: denne overføringen sto i kø for en annen server. Bytt tilbake til den serverens fane, og prøv på nytt."
         },
         "settings": {
             "title": "Innstillinger",

@@ -765,7 +765,8 @@
             },
             "stagedCount": "Ettevalmistatud: {count}",
             "pendingCount": "Ootel: {count}",
-            "failedCount": "Ebaõnnestunud: {count}"
+            "failedCount": "Ebaõnnestunud: {count}",
+            "queuedForAnotherServer": "Pole alustatud: see ülekanne oli järjekorras teise serveri jaoks. Minge tagasi selle serveri vahelehele ja proovige uuesti."
         },
         "settings": {
             "title": "Seaded",

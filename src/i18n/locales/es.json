@@ -765,7 +765,8 @@
             },
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendientes: {count}",
-            "failedCount": "Fallidos: {count}"
+            "failedCount": "Fallidos: {count}",
+            "queuedForAnotherServer": "No iniciada: esta transferencia estaba en cola para otro servidor. Vuelva a la pestaña de ese servidor y reinténtelo."
         },
         "settings": {
             "title": "Configuración",

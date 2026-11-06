@@ -8,6 +8,7 @@ import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import { useTranslation } from '../../i18n';
 import { DiffPreview } from './DiffPreview';
 import { copyText } from '../../utils/clipboard';
+import { applyToEditorBuffer, readEditorBuffer } from '../../utils/editorBuffer';
 
 // SEC: Command denylist matching backend ai_tools.rs DENIED_COMMAND_PATTERNS
 // Prevents destructive commands from being dispatched to PTY via "Run in Terminal"
@@ -37,6 +38,8 @@ interface CodeBlockActionsProps {
     language: string;
     editorFilePath?: string;
     editorFileName?: string;
+    /** The open file lives on a server: its path names no local file. */
+    editorFileIsRemote?: boolean;
 }
 
 export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
@@ -44,6 +47,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
     language,
     editorFilePath,
     editorFileName,
+    editorFileIsRemote = false,
 }) => {
     const [copied, setCopied] = useState(false);
     const [copyError, setCopyError] = useState(false);
@@ -68,7 +72,17 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
 
     const handleApplyToFile = useCallback(async () => {
         try {
-            if (editorFilePath) {
+            if (editorFilePath && editorFileIsRemote) {
+                // A remote file's path names no local file: writing it through
+                // the local filesystem overwrote whatever local file had the same
+                // path (deep scan item 9). The code goes into the editor's buffer,
+                // left unsaved; the editor's save uploads it to its own server.
+                if (!applyToEditorBuffer({ path: editorFilePath, isRemote: true }, code)) {
+                    throw new Error('The remote file is not open in the editor');
+                }
+                setApplied(true);
+                setTimeout(() => setApplied(false), 2000);
+            } else if (editorFilePath) {
                 // Write to the currently open file in editor
                 await writeTextFile(editorFilePath, code);
                 // Notify Monaco editor to reload
@@ -97,7 +111,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
             setApplyError(true);
             setTimeout(() => setApplyError(false), 2000);
         }
-    }, [code, language, editorFilePath]);
+    }, [code, language, editorFilePath, editorFileIsRemote]);
 
     const handleRunClick = useCallback(() => {
         if (confirmRun) {
@@ -127,6 +141,19 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
             setDiffOriginal(null);
             return;
         }
+        if (editorFileIsRemote) {
+            // The original of a remote file is the editor's buffer, never a
+            // local file that happens to share its path.
+            const original = readEditorBuffer({ path: editorFilePath, isRemote: true });
+            if (original === null) {
+                setApplyError(true);
+                setTimeout(() => setApplyError(false), 2000);
+                return;
+            }
+            setDiffOriginal(original);
+            setShowDiff(true);
+            return;
+        }
         try {
             const original = await readTextFile(editorFilePath);
             setDiffOriginal(original);
@@ -136,7 +163,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
             setDiffOriginal('');
             setShowDiff(true);
         }
-    }, [editorFilePath, showDiff]);
+    }, [editorFilePath, editorFileIsRemote, showDiff]);
 
     const handleDiffApply = useCallback(async () => {
         await handleApplyToFile();

@@ -765,7 +765,8 @@
             },
             "stagedCount": "स्टेज किए गए: {count}",
             "pendingCount": "लंबित: {count}",
-            "failedCount": "विफल: {count}"
+            "failedCount": "विफल: {count}",
+            "queuedForAnotherServer": "शुरू नहीं हुआ: यह ट्रांसफ़र किसी दूसरे सर्वर के लिए कतार में था। उस सर्वर के टैब पर वापस जाएँ, फिर दोबारा कोशिश करें।"
         },
         "settings": {
             "title": "सेटिंग्स",

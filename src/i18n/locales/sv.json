@@ -765,7 +765,8 @@
             },
             "stagedCount": "Förberedda: {count}",
             "pendingCount": "Väntande: {count}",
-            "failedCount": "Misslyckade: {count}"
+            "failedCount": "Misslyckade: {count}",
+            "queuedForAnotherServer": "Inte startad: den här överföringen stod i kö för en annan server. Växla tillbaka till den serverns flik och försök igen."
         },
         "settings": {
             "title": "Inställningar",

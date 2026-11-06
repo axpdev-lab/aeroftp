@@ -42,6 +42,7 @@ interface ChatMessageRowProps {
     isExecutingPlan: boolean;
     editorFilePath?: string;
     editorFileName?: string;
+    editorFileIsRemote?: boolean;
     onToggleExpand: (id: string, expand: boolean) => void;
     onCopy: (message: Message) => void;
     onFork: (id: string) => void;
@@ -76,6 +77,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
     isExecutingPlan,
     editorFilePath,
     editorFileName,
+    editorFileIsRemote,
     onToggleExpand,
     onCopy,
     onFork,
@@ -142,6 +144,7 @@ const ChatMessageRowImpl: React.FC<ChatMessageRowProps> = ({
                             isStreaming={isStreamingRow}
                             editorFilePath={editorFilePath}
                             editorFileName={editorFileName}
+                            editorFileIsRemote={editorFileIsRemote}
                         />
                         {codingPlan && (
                             <CodingPlanArtifactCard plan={codingPlan} />
@@ -273,7 +276,8 @@ function rowsEqual(prev: ChatMessageRowProps, next: ChatMessageRowProps): boolea
         prev.ct === next.ct &&
         prev.t === next.t &&
         prev.editorFilePath === next.editorFilePath &&
-        prev.editorFileName === next.editorFileName
+        prev.editorFileName === next.editorFileName &&
+        prev.editorFileIsRemote === next.editorFileIsRemote
     );
 }
 

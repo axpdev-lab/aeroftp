@@ -765,7 +765,8 @@
             },
             "stagedCount": "Preparats: {count}",
             "pendingCount": "Pendents: {count}",
-            "failedCount": "Fallits: {count}"
+            "failedCount": "Fallits: {count}",
+            "queuedForAnotherServer": "No s'ha iniciat: aquesta transferència estava a la cua per a un altre servidor. Torneu a la pestanya d'aquest servidor i torneu-ho a provar."
         },
         "settings": {
             "title": "Configuració",

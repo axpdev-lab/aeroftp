@@ -765,7 +765,8 @@
             },
             "stagedCount": "Pregătite: {count}",
             "pendingCount": "În așteptare: {count}",
-            "failedCount": "Eșuate: {count}"
+            "failedCount": "Eșuate: {count}",
+            "queuedForAnotherServer": "Neîncepută: acest transfer era în coadă pentru alt server. Reveniți la fila acelui server, apoi încercați din nou."
         },
         "settings": {
             "title": "Setări",

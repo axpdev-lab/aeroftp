@@ -765,7 +765,8 @@
             },
             "stagedCount": "{count}개 준비됨",
             "pendingCount": "{count}개 대기 중",
-            "failedCount": "{count}개 실패"
+            "failedCount": "{count}개 실패",
+            "queuedForAnotherServer": "시작되지 않음: 이 전송은 다른 서버용으로 대기열에 있었습니다. 해당 서버의 탭으로 돌아간 다음 다시 시도하세요."
         },
         "settings": {
             "title": "설정",

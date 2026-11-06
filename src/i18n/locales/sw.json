@@ -765,7 +765,8 @@
             },
             "stagedCount": "Zilizoandaliwa: {count}",
             "pendingCount": "Zinazosubiri: {count}",
-            "failedCount": "Zilizoshindwa: {count}"
+            "failedCount": "Zilizoshindwa: {count}",
+            "queuedForAnotherServer": "Haijaanza: uhamishaji huu uliwekwa kwenye foleni kwa seva nyingine. Rudi kwenye kichupo cha seva hiyo, kisha jaribu tena."
         },
         "settings": {
             "title": "Mipangilio",

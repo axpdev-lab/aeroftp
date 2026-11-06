@@ -765,7 +765,8 @@
             },
             "stagedCount": "Припремљено: {count}",
             "pendingCount": "На чекању: {count}",
-            "failedCount": "Неуспешно: {count}"
+            "failedCount": "Неуспешно: {count}",
+            "queuedForAnotherServer": "Није покренуто: овај пренос је био у реду за други сервер. Вратите се на картицу тог сервера, па покушајте поново."
         },
         "settings": {
             "title": "Подешавања",

@@ -765,7 +765,8 @@
             },
             "stagedCount": "Előkészítve: {count}",
             "pendingCount": "Függőben: {count}",
-            "failedCount": "Sikertelen: {count}"
+            "failedCount": "Sikertelen: {count}",
+            "queuedForAnotherServer": "Nem indult el: ez az átvitel egy másik szerverhez volt sorba állítva. Váltson vissza az adott szerver lapjára, majd próbálja újra."
         },
         "settings": {
             "title": "Beállítások",

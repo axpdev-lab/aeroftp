@@ -765,7 +765,8 @@
             },
             "stagedCount": "Նախապատրաստված՝ {count}",
             "pendingCount": "Սպասող՝ {count}",
-            "failedCount": "Ձախողված՝ {count}"
+            "failedCount": "Ձախողված՝ {count}",
+            "queuedForAnotherServer": "Չի սկսվել․ այս փոխանցումը հերթագրված էր մեկ այլ սերվերի համար։ Վերադարձեք այդ սերվերի ներդիր և կրկին փորձեք։"
         },
         "settings": {
             "title": "Կարգավորումներ",

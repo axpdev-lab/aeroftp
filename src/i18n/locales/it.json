@@ -1241,7 +1241,8 @@
             },
             "stagedCount": "In preparazione: {count}",
             "pendingCount": "In attesa: {count}",
-            "failedCount": "Non riusciti: {count}"
+            "failedCount": "Non riusciti: {count}",
+            "queuedForAnotherServer": "Non avviato: questo trasferimento era in coda per un altro server. Torna alla scheda di quel server, poi riprova."
         },
         "scanning": {
             "deleting": "Eliminazione",

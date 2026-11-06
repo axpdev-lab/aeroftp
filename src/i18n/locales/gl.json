@@ -765,7 +765,8 @@
             },
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendentes: {count}",
-            "failedCount": "Fallidos: {count}"
+            "failedCount": "Fallidos: {count}",
+            "queuedForAnotherServer": "Non iniciada: esta transferencia estaba na cola para outro servidor. Volve á lapela dese servidor e téntao de novo."
         },
         "settings": {
             "title": "Axustes",

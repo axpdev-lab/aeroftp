@@ -765,7 +765,8 @@
             },
             "stagedCount": "Sagatavoti: {count}",
             "pendingCount": "Gaida: {count}",
-            "failedCount": "Neizdevās: {count}"
+            "failedCount": "Neizdevās: {count}",
+            "queuedForAnotherServer": "Nav sākts: šī pārsūtīšana bija ievietota rindā citam serverim. Atgriezieties šī servera cilnē un mēģiniet vēlreiz."
         },
         "settings": {
             "title": "Iestatījumi",

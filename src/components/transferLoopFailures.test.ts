@@ -64,6 +64,8 @@ async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<t
     batchCancelledRef: f.batchCancelledRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
     invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
     transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
+    // One server for the whole run (the server check is pinned in wrongTarget.wiring.test.ts).
+    boundToQueuedServer: (_id: string, run: () => unknown) => async () => { await run(); },
     uploadFile: f.uploadFile, notify: f.notify, checkOverwrite: f.checkOverwrite,
     humanLog: f.humanLog, isCancelledTransferError,
     joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,

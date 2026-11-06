@@ -765,7 +765,8 @@
             },
             "stagedCount": "Naka-stage: {count}",
             "pendingCount": "Naghihintay: {count}",
-            "failedCount": "Nabigo: {count}"
+            "failedCount": "Nabigo: {count}",
+            "queuedForAnotherServer": "Hindi nasimulan: ang paglilipat na ito ay naka-queue para sa ibang server. Bumalik sa tab ng server na iyon, pagkatapos ay subukan muli."
         },
         "settings": {
             "title": "Mga Setting",

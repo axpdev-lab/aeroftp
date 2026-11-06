@@ -765,7 +765,8 @@
             },
             "stagedCount": "Hazırlanan: {count}",
             "pendingCount": "Bekleyen: {count}",
-            "failedCount": "Başarısız: {count}"
+            "failedCount": "Başarısız: {count}",
+            "queuedForAnotherServer": "Başlatılmadı: bu aktarım başka bir sunucu için kuyruğa alınmıştı. O sunucunun sekmesine geri dönün, ardından yeniden deneyin."
         },
         "settings": {
             "title": "Ayarlar",

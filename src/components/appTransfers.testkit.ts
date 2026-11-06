@@ -218,6 +218,9 @@ export function fixture(options: Options = {}) {
     },
     RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
     retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
+    // One server for the whole run: a queued Start or Retry always finds it
+    // live (the server check itself is pinned in wrongTarget.wiring.test.ts).
+    boundToQueuedServer: (_id: string, run: () => unknown) => async () => { await run(); },
     fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, folderTransferFailure, FolderTransferFailedError,
     isCancelledTransferError, createFileBatchDispatcher, rearmedOnUserAction,
     joinRemotePath: (dir: string, name: string) => `${dir}${dir.endsWith('/') ? '' : '/'}${name}`,

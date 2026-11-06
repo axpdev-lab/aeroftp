@@ -765,7 +765,8 @@
             },
             "stagedCount": "Připraveno: {count}",
             "pendingCount": "Čekající: {count}",
-            "failedCount": "Selhalo: {count}"
+            "failedCount": "Selhalo: {count}",
+            "queuedForAnotherServer": "Nespuštěno: tento přenos byl zařazen do fronty pro jiný server. Přepněte zpět na kartu tohoto serveru a zkuste to znovu."
         },
         "settings": {
             "title": "Nastavení",

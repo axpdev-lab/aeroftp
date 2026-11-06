@@ -765,7 +765,8 @@
             },
             "stagedCount": "Valmisteltu: {count}",
             "pendingCount": "Odottaa: {count}",
-            "failedCount": "Epäonnistui: {count}"
+            "failedCount": "Epäonnistui: {count}",
+            "queuedForAnotherServer": "Ei käynnistetty: tämä siirto oli jonossa toiselle palvelimelle. Palaa kyseisen palvelimen välilehteen ja yritä uudelleen."
         },
         "settings": {
             "title": "Asetukset",

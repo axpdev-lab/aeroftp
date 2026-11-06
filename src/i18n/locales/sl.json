@@ -765,7 +765,8 @@
             },
             "stagedCount": "Pripravljeno: {count}",
             "pendingCount": "V čakanju: {count}",
-            "failedCount": "Neuspešno: {count}"
+            "failedCount": "Neuspešno: {count}",
+            "queuedForAnotherServer": "Ni zagnano: ta prenos je bil v čakalni vrsti za drug strežnik. Vrnite se na zavihek tistega strežnika in poskusite znova."
         },
         "settings": {
             "title": "Nastavitve",

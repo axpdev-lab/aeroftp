@@ -93,6 +93,8 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     circuitBreaker: { reset: vi.fn() }, retryCallbacksRef: { current: new Map() }, queueItemsRef, transferQueue,
     recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), fileBatchCommand, keepsSingleFilePath,
     folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
+    // One server for the whole run (the server check is pinned in wrongTarget.wiring.test.ts).
+    boundToQueuedServer: (_id: string, run: () => unknown) => async () => { await run(); },
     joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,
     settings: { autoStartTransfers: true }, fileExistsAction: options.policy || 'skip',
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,

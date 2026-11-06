@@ -765,7 +765,8 @@
             },
             "stagedCount": "Подготовлено: {count}",
             "pendingCount": "В ожидании: {count}",
-            "failedCount": "С ошибкой: {count}"
+            "failedCount": "С ошибкой: {count}",
+            "queuedForAnotherServer": "Не запущено: эта передача стояла в очереди для другого сервера. Вернитесь на вкладку этого сервера и повторите попытку."
         },
         "settings": {
             "title": "Настройки",

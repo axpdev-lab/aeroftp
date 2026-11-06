@@ -765,7 +765,8 @@
             },
             "stagedCount": "Disediakan: {count}",
             "pendingCount": "Menunggu: {count}",
-            "failedCount": "Gagal: {count}"
+            "failedCount": "Gagal: {count}",
+            "queuedForAnotherServer": "Belum dimulakan: pemindahan ini telah disusun dalam baris gilir untuk pelayan lain. Tukar kembali ke tab pelayan itu, kemudian cuba lagi."
         },
         "settings": {
             "title": "Tetapan",

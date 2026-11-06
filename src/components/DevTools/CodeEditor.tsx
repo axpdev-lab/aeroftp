@@ -7,6 +7,7 @@ import { useTranslation } from '../../i18n';
 import Editor, { OnMount } from '@monaco-editor/react';
 import { Save, X, RotateCcw, FileCode } from 'lucide-react';
 import { PreviewFile, getFileLanguage } from './types';
+import { EDITOR_APPLY_EVENT, EDITOR_READ_EVENT, type EditorApplyDetail, type EditorBufferTarget, type EditorReadDetail } from '../../utils/editorBuffer';
 
 // Monaco AMD loader is pre-configured and warmed up in main.tsx
 
@@ -447,6 +448,35 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         window.addEventListener('editor-reload', handleReload);
         return () => window.removeEventListener('editor-reload', handleReload);
     }, [file]);
+
+    // A code block applied to the open file: it goes into the buffer, left
+    // unsaved, so the editor's own save writes it where the file lives (on its
+    // server for a remote file), never to a local file with the same path.
+    useEffect(() => {
+        const matches = (target: EditorBufferTarget) =>
+            !!file && target.isRemote === !!file.isRemote
+            && editorPathsMatch(target.path, file.path || file.name, !!file.isRemote);
+        const handleApply = (e: Event) => {
+            const detail = (e as CustomEvent<EditorApplyDetail>).detail;
+            const editor = editorRef.current;
+            if (!editor || !matches(detail)) return;
+            editor.setValue(detail.content);
+            setHasChanges(detail.content !== originalContent);
+            detail.accept();
+        };
+        const handleRead = (e: Event) => {
+            const detail = (e as CustomEvent<EditorReadDetail>).detail;
+            const editor = editorRef.current;
+            if (!editor || !matches(detail)) return;
+            detail.reply(editor.getValue());
+        };
+        window.addEventListener(EDITOR_APPLY_EVENT, handleApply);
+        window.addEventListener(EDITOR_READ_EVENT, handleRead);
+        return () => {
+            window.removeEventListener(EDITOR_APPLY_EVENT, handleApply);
+            window.removeEventListener(EDITOR_READ_EVENT, handleRead);
+        };
+    }, [file, originalContent]);
 
     const handleChange = (value: string | undefined) => {
         if (value !== undefined && value !== originalContent) {
