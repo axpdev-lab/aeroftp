@@ -3584,8 +3584,12 @@ pub(crate) async fn resolve_home_scope(
     let back = provider.pwd().await.map_err(unresolved)?;
     provider.cd("~").await.map_err(unresolved)?;
     let home = provider.pwd().await;
-    let _ = provider.cd(&back).await;
+    let restored = provider.cd(&back).await;
     let home = home.map_err(unresolved)?;
+    // Left in the login folder, every later relative path would land there.
+    restored.map_err(|e| {
+        format!("the overlay folder {scope} was resolved, but the session could not return to {back}: {e}")
+    })?;
     // A server with no login folder may open `~` as a folder of that name.
     if home == "~" || home.ends_with("/~") {
         return Err(format!(
@@ -5333,6 +5337,8 @@ pub(crate) mod tests {
         /// Open `~` as a folder of that name, as a server with no login
         /// folder does.
         literal_tilde: bool,
+        /// `cd` into this folder fails, as on a folder removed meanwhile.
+        refuse_cd: Option<&'static str>,
     }
 
     impl MemProvider {
@@ -5354,6 +5360,7 @@ pub(crate) mod tests {
                 trash: Mutex::new(Vec::new()),
                 identity_calls: Mutex::new(Vec::new()),
                 literal_tilde: false,
+                refuse_cd: None,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -5546,6 +5553,9 @@ pub(crate) mod tests {
         }
         async fn cd(&mut self, p: &str) -> Result<(), ProviderError> {
             let resolved = self.resolve(p);
+            if self.refuse_cd == Some(resolved.as_str()) {
+                return Err(ProviderError::NotFound(resolved));
+            }
             *self.cwd.lock().unwrap() = resolved;
             Ok(())
         }
@@ -6205,6 +6215,12 @@ pub(crate) mod tests {
         literal.literal_tilde = true;
         assert!(resolve_home_scope(&mut literal, "~/docs").await.is_err());
         assert_eq!(literal.pwd().await.unwrap(), "/srv");
+        // A session that cannot go back says so instead of staying at home.
+        let mut stuck = MemProvider::new();
+        stuck.cd("/srv").await.unwrap();
+        stuck.refuse_cd = Some("/srv");
+        let err = resolve_home_scope(&mut stuck, "~/docs").await.unwrap_err();
+        assert!(err.contains("could not return to /srv"), "{err}");
 
         let inner: Box<dyn StorageProvider> = Box::new(MemProvider::new());
         let binding = OverlayUnlockParams {
