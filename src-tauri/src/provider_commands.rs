@@ -17437,6 +17437,18 @@ mod tests {
                 true,
                 false,
             ),
+            // GitHub has no folders: mkdir PUTs a `.gitkeep`, refused (422)
+            // when it is there, and `stat` answers a directory from the
+            // Contents API.
+            (
+                "GitHub, existing folder",
+                ProviderError::ServerError(
+                    "422 Unprocessable Entity: \"sha\" wasn't supplied".into(),
+                ),
+                Some(true),
+                true,
+                true,
+            ),
             (
                 "typed AlreadyExists",
                 ProviderError::AlreadyExists("/up".into()),
