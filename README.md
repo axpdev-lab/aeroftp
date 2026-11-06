@@ -897,12 +897,16 @@ GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
     <td align="center">
       <a href="https://www.coderabbit.ai"><img src="icons/coderabbit.png" alt="CodeRabbit" height="48" /></a>
     </td>
+    <td align="center">
+      <a href="https://www.greptile.com/?utm_source=oss_badge&utm_medium=readme&utm_campaign=greptile_for_open_source"><img src="icons/greptile.png" alt="Greptile" height="48" /></a>
+    </td>
   </tr>
   <tr>
     <td align="center"><sub>Aikido Security</sub></td>
     <td align="center"><sub>Snyk</sub></td>
     <td align="center"><sub>Socket.dev</sub></td>
     <td align="center"><sub>CodeRabbit</sub></td>
+    <td align="center"><sub>Greptile</sub></td>
   </tr>
 </table>
 
