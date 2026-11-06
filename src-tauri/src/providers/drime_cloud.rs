@@ -3197,6 +3197,46 @@ mod tests {
         (provider, store, changes)
     }
 
+    /// #1506 row 164 (Greptile, #1520): the connection check decides by 401.
+    /// A 2xx whose body happens to hold "Unauthenticated" (here, the user's
+    /// display name) connects; a 401 is a bad token.
+    #[tokio::test]
+    async fn the_connection_check_is_decided_by_the_status_not_the_word() {
+        use axum::response::IntoResponse;
+        for (status, body, connects) in [
+            (
+                axum::http::StatusCode::OK,
+                r#"{"user":{"id":7,"display_name":"Unauthenticated Ursula"}}"#,
+                true,
+            ),
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                r#"{"message":"Unauthenticated."}"#,
+                false,
+            ),
+        ] {
+            let app = axum::Router::new().fallback(axum::routing::any(move || async move {
+                (status, body).into_response()
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            TEST_API_BASE.with(|base| *base.borrow_mut() = Some(format!("http://{addr}")));
+            let mut provider = test_provider();
+            let outcome = provider.connect().await;
+            server.abort();
+            if connects {
+                outcome.expect("a 2xx connects whatever its body says");
+                assert_eq!(provider.user_id, Some(7));
+            } else {
+                assert!(
+                    matches!(outcome, Err(ProviderError::AuthenticationFailed(_))),
+                    "{outcome:?}"
+                );
+            }
+        }
+    }
+
     /// #1506 row 164: a mkdir refused with a 422 in the account's language
     /// is AlreadyExists when the parent lists a folder of that name, and
     /// stays a failure when it does not.

@@ -1801,6 +1801,41 @@ mod tests {
         );
     }
 
+    /// #1506 row 164 (Greptile, #1520): an export refused with exit 64
+    /// (MCMD_EXISTS) in words no phrase knows removes the old link and
+    /// returns the new one.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_share_link_refused_as_existing_by_exit_status_is_made_again() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("mega-export");
+        std::fs::write(
+            &script,
+            concat!(
+                "#!/bin/sh\n",
+                "d=$(dirname \"$0\")\n",
+                "echo \"$1\" >> \"$d/calls.log\"\n",
+                "if [ \"$1\" = -d ]; then rm -f \"$d/exported\"; exit 0; fi\n",
+                "if [ -e \"$d/exported\" ]; then echo 'Ya existe un enlace' >&2; exit 64; fi\n",
+                "touch \"$d/exported\"\n",
+                "echo \"Exported $2: https://mega.nz/file/AbC#key\"\n",
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.path().join("exported"), b"").unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let link = provider
+            .create_share_link("/doc.pdf", ShareLinkOptions::default())
+            .await
+            .expect("re-exported");
+        assert_eq!(link.url, "https://mega.nz/file/AbC#key");
+        let calls = std::fs::read_to_string(dir.path().join("calls.log")).unwrap();
+        assert_eq!(calls.lines().collect::<Vec<_>>(), ["-a", "-d", "-a"]);
+    }
+
     /// #1506 row 164: MEGAcmd's exit status classifies before its text. A
     /// stand-in exits with each code and a message that would mislead the
     /// text checks (a quoted path, wording no needle knows).
