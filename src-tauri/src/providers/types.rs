@@ -326,21 +326,27 @@ impl ProviderConfig {
     pub fn effective_port(&self) -> u16 {
         self.port
             .filter(|port| *port != 0)
-            .or_else(|| {
-                let id = self.extra.get("provider_id").or_else(|| {
-                    self.extra
-                        .get(crate::profile_loader::S3_PROVIDER_ID_META_KEY)
-                })?;
-                let spec = crate::connection_manifest::provider_spec(self.provider_type)?;
-                let preset = crate::connection_manifest::preset(id)
-                    .filter(|preset| preset.protocol == spec.token)?;
-                preset
-                    .defaults
-                    .get("port")?
-                    .as_u64()
-                    .and_then(|port| u16::try_from(port).ok())
-            })
-            .unwrap_or_else(|| self.provider_type.default_port())
+            .unwrap_or_else(|| self.default_port())
+    }
+
+    /// The port used when none is set: the provider preset's, else the
+    /// protocol's.
+    pub fn default_port(&self) -> u16 {
+        let preset_port = || {
+            let id = self.extra.get("provider_id").or_else(|| {
+                self.extra
+                    .get(crate::profile_loader::S3_PROVIDER_ID_META_KEY)
+            })?;
+            let spec = crate::connection_manifest::provider_spec(self.provider_type)?;
+            let preset = crate::connection_manifest::preset(id)
+                .filter(|preset| preset.protocol == spec.token)?;
+            preset
+                .defaults
+                .get("port")?
+                .as_u64()
+                .and_then(|port| u16::try_from(port).ok())
+        };
+        preset_port().unwrap_or_else(|| self.provider_type.default_port())
     }
 }
 
