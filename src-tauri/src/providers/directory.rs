@@ -289,6 +289,39 @@ impl DirectoryProvider {
         self.contained(&fs)
     }
 
+    /// Open `src`, the resolved path of `vpath`, for reading, without the
+    /// window that lay between the containment check and the open
+    /// (deep-scan 50): a link at the final name is refused by the open itself
+    /// (`O_NOFOLLOW` on unix), and `vpath` resolved again afterwards must
+    /// still be inside the root and name the file that was opened, so a
+    /// folder swapped for a link in between is caught.
+    async fn open_contained(
+        &self,
+        vpath: &str,
+        src: &Path,
+    ) -> Result<tokio::fs::File, ProviderError> {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW);
+        let file = options.open(src).await.map_err(ProviderError::IoError)?;
+        // A link swap is a local folder's threat; an MTP device under gvfs
+        // has no links, and its FUSE inode numbers are not guaranteed to
+        // hold across opens.
+        if self.identity != DirectoryIdentity::Local {
+            return Ok(file);
+        }
+        let opened = file.metadata().await.map_err(ProviderError::IoError)?;
+        let again = self.resolve_existing(vpath)?;
+        let named = std::fs::metadata(&again).map_err(ProviderError::IoError)?;
+        if !same_file(src, &again, &opened, &named) {
+            return Err(ProviderError::InvalidPath(format!(
+                "{vpath} changed while it was being opened"
+            )));
+        }
+        Ok(file)
+    }
+
     /// The entry a mutation acts on: its folder must exist inside the root,
     /// and the leaf is the entry itself, not what it points to. Deleting or
     /// renaming `/alias` acts on the link, and leaves the file it names
@@ -584,9 +617,7 @@ impl StorageProvider for DirectoryProvider {
             }
         }
         let total = meta.len();
-        let mut reader = tokio::fs::File::open(&src)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let mut reader = self.open_contained(&vpath, &src).await?;
         if let Some(parent) = Path::new(local_path).parent() {
             if !parent.as_os_str().is_empty() {
                 tokio::fs::create_dir_all(parent)
@@ -641,9 +672,7 @@ impl StorageProvider for DirectoryProvider {
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
         let vpath = self.virtual_path(path)?;
         let src = self.resolve_existing(&vpath)?;
-        let mut file = tokio::fs::File::open(&src)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let mut file = self.open_contained(&vpath, &src).await?;
         let meta = file.metadata().await.map_err(ProviderError::IoError)?;
         if meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
@@ -688,9 +717,16 @@ impl StorageProvider for DirectoryProvider {
                 max_bytes as f64 / 1_048_576.0,
             )));
         }
-        let data = tokio::fs::read(&src)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let mut data = Vec::new();
+        {
+            use tokio::io::AsyncReadExt;
+            self.open_contained(&vpath, &src)
+                .await?
+                .take(max_bytes.saturating_add(1))
+                .read_to_end(&mut data)
+                .await
+                .map_err(ProviderError::IoError)?;
+        }
         if data.len() as u64 > max_bytes {
             return Err(ProviderError::TransferFailed(format!(
                 "{vpath} exceeded the {:.0} MB in-memory cap (stream to disk instead).",
@@ -744,9 +780,29 @@ impl StorageProvider for DirectoryProvider {
                 .await
                 .map_err(ProviderError::IoError)?;
         }
-        let mut writer = tokio::fs::File::create(&dest)
-            .await
-            .map_err(ProviderError::IoError)?;
+        // `File::create` followed a link planted at the name after
+        // `resolve_for_create` checked it, and truncated the file it points
+        // to (deep-scan 51). A link already at the name and inside the root is
+        // written through to the file it names, as before: that file is
+        // resolved here and opened itself. The open refuses a link at the
+        // name (`O_NOFOLLOW` on unix), and the folder the file is in must
+        // still resolve inside the root.
+        let dest = if dest
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            self.contained(&dest)?
+        } else {
+            dest
+        };
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW);
+        let mut writer = options.open(&dest).await.map_err(ProviderError::IoError)?;
+        if let Some(parent) = dest.parent() {
+            self.contained(parent)?;
+        }
         let mut buf = vec![0u8; 1024 * 1024];
         let mut done: u64 = 0;
         loop {
@@ -1248,6 +1304,83 @@ fn same_file(
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 50, 51: a link at the name is refused by the open itself,
+    /// for a read and for an upload, and its target is left alone.
+    /// Deep-scan 51, through the provider: an upload to a link inside the
+    /// root writes the file it names and keeps the link, and an upload to a
+    /// link that leaves the root is refused and leaves its target alone.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_upload_writes_through_an_inside_link_and_refuses_an_escaping_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(root.join("target.txt"), b"old").unwrap();
+        std::os::unix::fs::symlink(root.join("target.txt"), root.join("in.txt")).unwrap();
+        std::fs::write(outside.join("secret.txt"), b"secret").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("out.txt")).unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"new").unwrap();
+
+        let mut provider = super::DirectoryProvider::local(root.clone());
+        provider.connect().await.unwrap();
+        provider
+            .upload(src.to_str().unwrap(), "/in.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(root.join("target.txt")).unwrap(), b"new");
+        assert!(std::fs::symlink_metadata(root.join("in.txt"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+
+        assert!(provider
+            .upload(src.to_str().unwrap(), "/out.txt", None)
+            .await
+            .is_err());
+        assert_eq!(
+            std::fs::read(outside.join("secret.txt")).unwrap(),
+            b"secret"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_link_planted_at_the_name_is_refused_by_the_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"secret").unwrap();
+        let link = dir.path().join("link.txt");
+        std::os::unix::fs::symlink(&src, &link).unwrap();
+        // The containment check resolved `link.txt` to `src.txt` (inside),
+        // then the open is handed the link: the open refuses it.
+        let mut options = tokio::fs::OpenOptions::new();
+        options.read(true);
+        options.custom_flags(libc::O_NOFOLLOW);
+        assert!(options.open(&link).await.is_err());
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        options.custom_flags(libc::O_NOFOLLOW);
+        assert!(options.open(&link).await.is_err());
+        assert_eq!(
+            std::fs::read(&src).unwrap(),
+            b"secret",
+            "the target is untouched"
+        );
+
+        // A link inside the root still reads: the provider opens the path
+        // it resolved, which is the link's target, and finds it unchanged.
+        let mut provider = super::DirectoryProvider::local(dir.path().to_path_buf());
+        provider.connect().await.unwrap();
+        assert_eq!(
+            provider.download_to_bytes("/link.txt").await.unwrap(),
+            b"secret"
+        );
+        assert_eq!(provider.read_range("/src.txt", 1, 3).await.unwrap(), b"ecr");
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn probe_contract_directory_cannot_hide_an_unreadable_item() {
