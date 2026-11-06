@@ -370,6 +370,25 @@ fn update_meta_count(entries: &[(String, Vec<u8>)]) -> AeroVaultMeta {
     }
 }
 
+/// Create the temporary of a vault write as a new file. Its name is
+/// predictable (`<vault>.tmp`), and `File::create` follows a link standing
+/// there, so the encrypted vault overwrote whatever the link pointed to
+/// (deep-scan 15). Whatever is at the name (a stale temporary, or a link,
+/// which `remove_file` removes without following) is removed, and the file
+/// is created with `create_new`, which refuses a link at the name: one that
+/// reappears in between makes the write fail instead of following it.
+fn create_fresh_temp(tmp_path: &std::path::Path) -> std::io::Result<File> {
+    match std::fs::remove_file(tmp_path) {
+        Ok(()) => {}
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+        Err(err) => return Err(err),
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(tmp_path)
+}
+
 /// Write vault from entries + metadata
 fn write_vault(
     vault_path: &str,
@@ -380,7 +399,7 @@ fn write_vault(
     let tmp_path = crate::util::temp_name::sibling(std::path::Path::new(vault_path), ".tmp");
 
     let file =
-        File::create(&tmp_path).map_err(|e| format!("Failed to create temp vault: {}", e))?;
+        create_fresh_temp(&tmp_path).map_err(|e| format!("Failed to create temp vault: {}", e))?;
     let mut zip = ZipWriter::new(file);
     let aes_opts = || base_options().with_aes_encryption(zip::AesMode::Aes256, pwd.expose_secret());
 
@@ -416,6 +435,27 @@ fn write_vault(
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 15: a link at the vault's temporary name is removed, not
+    /// followed: its target keeps its content.
+    #[cfg(unix)]
+    #[test]
+    fn the_temporary_of_a_vault_write_never_follows_a_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let victim = dir.path().join("victim.txt");
+        std::fs::write(&victim, b"precious").unwrap();
+        let tmp = dir.path().join("v.aerovault.tmp");
+        std::os::unix::fs::symlink(&victim, &tmp).unwrap();
+        let mut file = super::create_fresh_temp(&tmp).unwrap();
+        std::io::Write::write_all(&mut file, b"vault bytes").unwrap();
+        drop(file);
+        assert_eq!(std::fs::read(&victim).unwrap(), b"precious");
+        assert!(!std::fs::symlink_metadata(&tmp)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"vault bytes");
+    }
+
     use super::read_zip_entry_bounded;
 
     // A v1 vault entry that ends before its declared size is refused: add,

@@ -959,6 +959,18 @@ pub async fn vault_v2_sync_apply(
             continue;
         }
 
+        // The name is checked, but the folders it goes through are on disk:
+        // one of them being a link to elsewhere carried the extraction
+        // outside the local folder (deep-scan 17).
+        if let Some(link) = first_link_under(&local_dir_canonical, name) {
+            errors.push(format!(
+                "Not extracted: '{}' goes through the link {}",
+                name,
+                link.display()
+            ));
+            skipped_count += 1;
+            continue;
+        }
         let dest = local_dir_canonical.join(name);
         if let Some(parent) = dest.parent() {
             if !parent.exists() {
@@ -993,6 +1005,23 @@ pub async fn vault_v2_sync_apply(
 // ============================================================================
 // Helpers: Path Validation
 // ============================================================================
+
+/// The first existing entry on the way from `root` to `root/rel` (the last
+/// one included) that is a link, or None. Entries not there yet are
+/// created by the extraction as real folders, so the walk stops at the
+/// first missing one.
+fn first_link_under(root: &std::path::Path, rel: &str) -> Option<std::path::PathBuf> {
+    let mut at = root.to_path_buf();
+    for part in std::path::Path::new(rel).components() {
+        at.push(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) if meta.file_type().is_symlink() => return Some(at),
+            Ok(_) => {}
+            Err(_) => return None,
+        }
+    }
+    None
+}
 
 /// Validate a relative path for vault entry safety.
 /// Rejects path traversal, absolute paths, null bytes, and Windows drive letters.
@@ -1264,6 +1293,28 @@ pub async fn vault_v2_add_directory_core(
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 17: a folder on the way that is a link stops the entry.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_on_the_way_to_a_vault_entry_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("local");
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("linked")).unwrap();
+        std::os::unix::fs::symlink(outside.join("f"), root.join("docs/f.txt")).unwrap();
+        assert_eq!(super::first_link_under(&root, "docs/new/a.txt"), None);
+        assert_eq!(
+            super::first_link_under(&root, "linked/a.txt"),
+            Some(root.join("linked"))
+        );
+        assert_eq!(
+            super::first_link_under(&root, "docs/f.txt"),
+            Some(root.join("docs/f.txt"))
+        );
+    }
+
     /// Deep-scan 18: the names of a crafted or corrupt vault are checked
     /// before any directory is created, and one unsafe name refuses all.
     #[test]
