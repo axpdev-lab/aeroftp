@@ -3271,6 +3271,98 @@ mod tests {
         .unwrap();
         assert!(moved.to_string().contains("protected path"), "{moved}");
         assert!(fake.home.join(".config/aeroftp/vault.db").exists());
+        // Renaming one, alone or in a batch, and trashing one or the home are
+        // refused the same way.
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": config, "to": fake.home.join("config-old").display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(renamed.to_string().contains("protected path"), "{renamed}");
+        let batch = dispatch_tool(
+            &ctx,
+            "local_batch_rename",
+            &json!({"paths": [config], "mode": "add_suffix", "suffix": "-old"}),
+        )
+        .await;
+        assert!(format!("{batch:?}").contains("protected path"), "{batch:?}");
+        for path in [config.clone(), fake.home.display().to_string()] {
+            let trashed = dispatch_tool(&ctx, "local_trash", &json!({"paths": [path]}))
+                .await
+                .unwrap();
+            assert!(
+                trashed.to_string().contains("protected path")
+                    || trashed.to_string().contains("dangerous path"),
+                "{trashed}"
+            );
+        }
+        assert!(fake.home.join(".config/aeroftp/vault.db").exists());
+    }
+
+    // A move or rename carries what the folder holds: a staged `.config`
+    // moved into a home without one would create `~/.config/aeroftp`.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_move_never_creates_a_protected_location_from_what_it_carries() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        std::fs::remove_dir_all(fake.home.join(".config")).unwrap();
+        let staged = fake.home.join("staging/.config");
+        std::fs::create_dir_all(staged.join("aeroftp")).unwrap();
+        std::fs::write(staged.join("aeroftp/vault.db"), b"planted").unwrap();
+        let moved = dispatch_tool(
+            &ctx,
+            "local_move_files",
+            &json!({"paths": [staged.display().to_string()], "destination": fake.home.display().to_string()}),
+        )
+        .await
+        .unwrap();
+        assert!(moved.to_string().contains("protected path"), "{moved}");
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": staged.display().to_string(), "to": fake.home.join(".config").display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(renamed.to_string().contains("protected path"), "{renamed}");
+        assert!(!fake.home.join(".config").exists());
+        assert!(staged.join("aeroftp/vault.db").exists());
+    }
+
+    // A protected location reached through a symlink is protected at its real
+    // path too: `~/.config -> /data/config`.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_protected_location_behind_a_symlink_is_protected_at_its_real_path() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let real = fake.home.parent().unwrap().join("data/config");
+        std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+        std::fs::rename(fake.home.join(".config"), &real).unwrap();
+        std::os::unix::fs::symlink(&real, fake.home.join(".config")).unwrap();
+        let read = dispatch_tool(
+            &ctx,
+            "local_read",
+            &json!({"path": real.join("aeroftp/vault.db").display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(read.to_string().contains("sensitive path denied"), "{read}");
+        let deleted = dispatch_tool(
+            &ctx,
+            "local_delete",
+            &json!({"path": real.display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(deleted.to_string().contains("protected path"), "{deleted}");
+        assert!(real.join("aeroftp/vault.db").exists());
     }
 
     // Deep scan items 24, 25: a generated name or a copied child landed in a
