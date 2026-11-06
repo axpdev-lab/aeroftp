@@ -927,7 +927,7 @@ export const PROVIDERS: ProviderConfig[] = [
         fields: [
             { ...COMMON_FIELDS.accessKeyId, helpText: 'Fastly control panel → Object Storage → Access keys → Access key ID' },
             { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown once when the access key is created' },
-            { ...COMMON_FIELDS.bucket, helpText: 'Fastly control panel → Object Storage → Buckets → Bucket name. A bucket lives in one region: pick the region it was created in.' },
+            { ...COMMON_FIELDS.bucket, helpText: 'Fastly control panel → Object Storage → Buckets → Bucket name. A bucket lives in one region: pick the region it was created in. Listing counts as a billed request, so AeroCloud scans a pair at most every 30 minutes.' },
             {
                 key: 'region',
                 label: 'Region',

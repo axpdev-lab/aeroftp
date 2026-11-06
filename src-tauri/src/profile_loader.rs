@@ -771,6 +771,45 @@ mod tests {
     }
 
     #[test]
+    fn fastly_preset_resolves_region_path_style_and_endpoint() {
+        // Fastly Object Storage: the endpoint is `https://{region}.object.fastlystorage.app`,
+        // path-style only, Frankfurt by default. Explicit profile values win
+        // over the preset, and `us-east` stays a different host from `us-east-1`.
+        let mut extra = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("fastly"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://eu-central-1.object.fastlystorage.app")
+        );
+        assert_eq!(
+            extra.get("region").map(String::as_str),
+            Some("eu-central-1")
+        );
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("true"));
+
+        let mut explicit = HashMap::new();
+        explicit.insert("region".to_string(), "us-east".to_string());
+        explicit.insert("path_style".to_string(), "false".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("fastly"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://us-east.object.fastlystorage.app")
+        );
+        assert_eq!(
+            explicit.get("path_style").map(String::as_str),
+            Some("false")
+        );
+
+        // The alias used by imports resolves to the same preset.
+        let mut aliased = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut aliased, Some("fastly-object-storage"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://eu-central-1.object.fastlystorage.app")
+        );
+    }
+
+    #[test]
     fn tigris_preset_resolves_static_endpoint_auto_region_and_virtual_host() {
         // Static endpoint, no template: the manifest default is the only
         // source, region is the fixed `auto`, addressing is virtual-host.
@@ -949,6 +988,39 @@ mod tests {
             // Tigris has one global region: nothing to read back from either host.
             ("tigris", "https://t3.storage.dev", None),
             ("tigris", "https://fly.storage.tigris.dev", None),
+            // Fastly: the region is the first host label. The original regions
+            // have no -1 and must not be read as the -1 ones (or the other way
+            // round). Same table as s3ProfileLocation.test.ts.
+            (
+                "fastly",
+                "https://us-east.object.fastlystorage.app",
+                Some("us-east"),
+            ),
+            (
+                "fastly",
+                "https://us-east-1.object.fastlystorage.app",
+                Some("us-east-1"),
+            ),
+            (
+                "fastly",
+                "https://eu-central.object.fastlystorage.app",
+                Some("eu-central"),
+            ),
+            (
+                "fastly",
+                "eu-central-1.object.fastlystorage.app",
+                Some("eu-central-1"),
+            ),
+            (
+                "fastly",
+                "https://JP-CENTRAL-1.object.fastlystorage.app:443",
+                Some("jp-central-1"),
+            ),
+            (
+                "fastly",
+                "https://bucket.eu-west-1.object.fastlystorage.app",
+                None,
+            ),
         ] {
             assert_eq!(
                 s3_region_from_endpoint(preset, endpoint).as_deref(),
