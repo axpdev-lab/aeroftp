@@ -19,7 +19,16 @@
 #   the get waits.
 # - mega-transfers -c TAG appends TAG to cancel.log (-a appends "-a"); any
 #   other call prints the table of the direction asked for.
+# - replay (a file holding the path of tests/fixtures/megacmd_real): the
+#   commands print what MEGAcmd 2.6.0.2 printed on a real account, with the
+#   placeholders replaced by the paths of this call. mega-put prints
+#   put.stdout (<STAGE>/up becomes the folder of its first source) and lists
+#   its sources; mega-transfers prints transfers-uploads.txt, or the download
+#   table mega-get wrote from transfers-downloads.txt (<STAGE>/stage becomes
+#   its staging folder); mega-get writes the files of listing.txt.
 here=$(dirname "$0")
+real=""
+[ -f "$here/replay" ] && real=$(cat "$here/replay")
 next_tag() {
     tag=$(( $(cat "$here/tagseq" 2>/dev/null || echo 100) + 1 ))
     echo "$tag" > "$here/tagseq"
@@ -37,6 +46,16 @@ case "$(basename "$0")" in
     mega-put)
         echo "$*" >> "$here/put.log"
         shift
+        if [ -n "$real" ]; then
+            srcdir=$(dirname "$1")
+            sed "s#<STAGE>/up#$srcdir#g" "$real/put.stdout"
+            while [ $# -gt 1 ]; do
+                size=$(wc -c < "$1" | tr -d ' ')
+                echo "----  1  $size  15Jan2026  14:30  $(basename "$1")" >> "$here/listing.txt"
+                shift
+            done
+            exit 0
+        fi
         state=COMPLETED
         [ -f "$here/put-hang" ] && state=ACTIVE
         while [ $# -gt 1 ]; do
@@ -64,6 +83,14 @@ case "$(basename "$0")" in
         folder=$(basename "$1")
         dest="$2/$folder"
         mkdir -p "$dest"
+        if [ -n "$real" ]; then
+            while read -r flags vers size date time name; do
+                head -c "$size" /dev/zero > "$dest/$name"
+            done < "$here/listing.txt"
+            sed "s#<STAGE>/stage#$2#g" "$real/transfers-downloads.txt" > "$here/replay-down.txt"
+            sed "s#<STAGE>/stage#$2#g" "$real/get.stdout"
+            exit 0
+        fi
         state=COMPLETED
         [ -f "$here/get-hang" ] && state=ACTIVE
         next_tag
@@ -96,6 +123,13 @@ case "$(basename "$0")" in
         for arg in "$@"; do
             [ "$arg" = "-a" ] && echo "-a" >> "$here/cancel.log"
         done
+        if [ -n "$real" ]; then
+            case " $* " in
+                *" --only-uploads "*) cat "$real/transfers-uploads.txt" ;;
+                *" --only-downloads "*) cat "$here/replay-down.txt" 2>/dev/null ;;
+            esac
+            exit 0
+        fi
         echo ' ...  Showing first 1000 transfers ...'
         case " $* " in
             *" --only-uploads "*)

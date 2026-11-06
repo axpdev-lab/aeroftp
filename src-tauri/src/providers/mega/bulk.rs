@@ -1193,5 +1193,57 @@ mod tests {
             );
             assert!(no_staging_left(local.path()));
         }
+        fn replay(dir: &Path) {
+            let real = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/megacmd_real");
+            std::fs::write(dir.join("replay"), real.to_string_lossy().as_bytes()).unwrap();
+        }
+
+        /// What MEGAcmd 2.6.0.2 printed for a two-file upload on a real
+        /// account, replayed: the start lines and the record are read as they
+        /// came, and both files are proven.
+        #[tokio::test]
+        async fn a_replayed_real_upload_is_proven_file_by_file() {
+            let (mut provider, dir) = provider_on_bulk_stand_in();
+            replay(dir.path());
+            std::fs::write(dir.path().join("listing.txt"), b"").unwrap();
+            let local = tempfile::tempdir().unwrap();
+            let items = uploads(local.path(), &["cap-a.bin", "cap-b.bin"]);
+            let outcomes = provider.bulk_upload(&items, None).await.unwrap();
+            assert!(
+                outcomes
+                    .iter()
+                    .all(|o| matches!(o, BulkTransferOutcome::Completed)),
+                "{outcomes:?}"
+            );
+            assert_eq!(read(&dir.path().join("cancel.log")), "");
+        }
+
+        /// What MEGAcmd 2.6.0.2 printed for a 20-file folder get on a real
+        /// account, replayed: the folder row, the 20 file rows among other
+        /// transfers of the history, all proven and published.
+        #[tokio::test]
+        async fn a_replayed_real_folder_download_is_proven_file_by_file() {
+            let (mut provider, dir) = provider_on_bulk_stand_in();
+            replay(dir.path());
+            let local = tempfile::tempdir().unwrap();
+            let names: Vec<String> = (0..20).map(|i| format!("f{i:04}.bin")).collect();
+            let names: Vec<&str> = names.iter().map(String::as_str).collect();
+            let mut items = downloads(dir.path(), local.path(), &names, 16);
+            for item in &mut items {
+                item.remote_path = item.remote_path.replace("/folder/", "/wm-aero2-B-r0/");
+            }
+            let outcomes = provider.bulk_download(&items, None).await.unwrap();
+            assert!(
+                outcomes
+                    .iter()
+                    .all(|o| matches!(o, BulkTransferOutcome::Completed)),
+                "{outcomes:?}"
+            );
+            for item in &items {
+                assert_eq!(std::fs::metadata(&item.local_path).unwrap().len(), 16);
+            }
+            assert!(no_staging_left(local.path()));
+        }
     }
 }
