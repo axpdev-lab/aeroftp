@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
 import breakerHook from '../hooks/useCircuitBreaker.ts?raw';
-import { classifyErrorFast, classifyTransferFailure, FATAL_ERROR_KINDS } from './transferErrorClassifier';
+import { classifyErrorFast, classifyTransferFailure, FATAL_ERROR_KINDS, serialRunner } from './transferErrorClassifier';
 
 // Italian Windows, full disk: what the backend's `classify_sync_error`
 // answers for it (pinned there by `an_os_error_is_classified_by_its_code_in_any_language`).
@@ -45,5 +45,23 @@ describe('the breaker uses it', () => {
         const calls = [...app.matchAll(/(await )?circuitBreaker\.recordFailure\(/g)];
         expect(calls.length).toBe(3);
         expect(calls.filter(([, awaited]) => !awaited)).toEqual([]);
+    });
+});
+
+describe('serialRunner', () => {
+    it('settles tasks in the order they were handed over, a slow first one included', async () => {
+        const inOrder = serialRunner();
+        const settled: string[] = [];
+        const slow = inOrder(() => new Promise<void>(resolve => setTimeout(() => { settled.push('first'); resolve(); }, 30)));
+        const fast = inOrder(async () => { settled.push('second'); });
+        await Promise.all([slow, fast]);
+        expect(settled).toEqual(['first', 'second']);
+    });
+
+    it('goes on after a task that fails', async () => {
+        const inOrder = serialRunner();
+        const failed = inOrder(async () => { throw new Error('boom'); });
+        await expect(failed).rejects.toThrow('boom');
+        expect(await inOrder(async () => 'next')).toBe('next');
     });
 });
