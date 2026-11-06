@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} stigli su s drugom prilagođenom OAuth aplikacijom od one koju ovaj uređaj ima za tog pružatelja. Spremljena aplikacija je zadržana, pa se ponovno prijavite ako se ti profili prestanu povezivati.",
             "importTargetChanged": "{names} nisu prepisani: datoteka ih usmjerava na drugi poslužitelj, a njihove spremljene lozinke i tokeni ne smiju ići tamo. Uvezite s Dupliciraj da dodate kopiju iz datoteke ili prvo izbrišite profil.",
             "importSharedSecretsFailed": "{names} su uvezeni, ali zajednička tajna ili sesija iz datoteke nije mogla biti spremljena. Ponovno se prijavite u te profile ako se ne povežu.",
-            "keystoreDatabasesFailed": "Uvoz je završen, ali ove baze podataka nije bilo moguće vratiti i zadržavaju svoj sadržaj: {names}."
+            "keystoreDatabasesFailed": "Uvoz je završen, ali ove baze podataka nije bilo moguće vratiti i zadržavaju svoj sadržaj: {names}.",
+            "importSecurityTitle": "Sigurnosne postavke u ovoj sigurnosnoj kopiji",
+            "importSecurityHelp": "Ove opcije isključuju sigurnosnu provjeru. Svaka se uvozi u sigurnom stanju osim ako je ne označite da ostane kakva je u datoteci.",
+            "importSecurityVerifyCert": "Provjera certifikata isključena",
+            "importSecurityCleartextEndpoint": "Dopuštena nešifrirana S3 krajnja točka",
+            "importSecurityCleartextStorage": "Dopuštena nešifrirana adresa pohrane",
+            "importSecurityPlainHttp": "Obični HTTP umjesto HTTPS-a",
+            "importSecurityPasvAddress": "Podatkovna veza na adresu koju navodi poslužitelj (PASV)",
+            "importSecurityUnknownHostKeys": "Prihvaćeni nepoznati SSH ključevi poslužitelja"
         },
         "devtools": {
             "title": "AeroTools",

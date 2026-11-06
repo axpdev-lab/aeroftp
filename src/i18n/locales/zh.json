@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} 导入时带有与此设备上该提供商已有的不同的自定义 OAuth 应用。已保留设备上存储的应用，如果这些配置文件无法连接，请重新登录。",
             "importTargetChanged": "{names} 未被覆盖：该文件会让它们指向另一台服务器，而它们已保存的密码和令牌不能发送到那里。请使用“复制”导入以添加文件中的副本，或先删除该配置文件。",
             "importSharedSecretsFailed": "{names} 已导入，但文件中的共享密钥或会话无法保存。如果这些配置文件无法连接，请重新登录。",
-            "keystoreDatabasesFailed": "导入已完成，但未能恢复以下数据库，它们保留原有内容：{names}。"
+            "keystoreDatabasesFailed": "导入已完成，但未能恢复以下数据库，它们保留原有内容：{names}。",
+            "importSecurityTitle": "此备份中的安全设置",
+            "importSecurityHelp": "这些选项会关闭某项安全检查。除非勾选以保持文件中的原样，否则每项都会以安全状态导入。",
+            "importSecurityVerifyCert": "证书检查已关闭",
+            "importSecurityCleartextEndpoint": "允许未加密的 S3 端点",
+            "importSecurityCleartextStorage": "允许未加密的存储地址",
+            "importSecurityPlainHttp": "使用普通 HTTP 而非 HTTPS",
+            "importSecurityPasvAddress": "连接到服务器指定地址的数据连接 (PASV)",
+            "importSecurityUnknownHostKeys": "接受未知的 SSH 主机密钥"
         },
         "devtools": {
             "title": "AeroTools",

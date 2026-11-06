@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} a szolgáltatóhoz ezen az eszközön megadottól eltérő egyéni OAuth-alkalmazással érkezett. A tárolt alkalmazás megmaradt, ezért jelentkezzen be újra, ha ezek a profilok nem tudnak csatlakozni.",
             "importTargetChanged": "{names} nem lettek felülírva: a fájl egy másik szerverre irányítja őket, és a mentett jelszavaik és tokenjeik nem kerülhetnek oda. Importáljon a Duplikálás opcióval a fájlból származó másolat hozzáadásához, vagy előbb törölje a profilt.",
             "importSharedSecretsFailed": "A(z) {names} importálva lett, de a fájlból egy megosztott titkot vagy munkamenetet nem sikerült tárolni. Jelentkezzen be újra ezekbe a profilokba, ha nem csatlakoznak.",
-            "keystoreDatabasesFailed": "Az importálás befejeződött, de ezeket az adatbázisokat nem sikerült visszaállítani, így megtartják a korábbi tartalmukat: {names}."
+            "keystoreDatabasesFailed": "Az importálás befejeződött, de ezeket az adatbázisokat nem sikerült visszaállítani, így megtartják a korábbi tartalmukat: {names}.",
+            "importSecurityTitle": "Biztonsági beállítások ebben a mentésben",
+            "importSecurityHelp": "Ezek a beállítások kikapcsolnak egy biztonsági ellenőrzést. Mindegyik biztonságos állapotban kerül importálásra, hacsak nem jelöli be, hogy a fájlban szereplő módon maradjon.",
+            "importSecurityVerifyCert": "Tanúsítvány-ellenőrzés kikapcsolva",
+            "importSecurityCleartextEndpoint": "Titkosítatlan S3 végpont engedélyezve",
+            "importSecurityCleartextStorage": "Titkosítatlan tárolási cím engedélyezve",
+            "importSecurityPlainHttp": "Sima HTTP HTTPS helyett",
+            "importSecurityPasvAddress": "Adatkapcsolat a kiszolgáló által megadott címre (PASV)",
+            "importSecurityUnknownHostKeys": "Ismeretlen SSH gazdakulcsok elfogadva"
         },
         "devtools": {
             "title": "AeroTools",

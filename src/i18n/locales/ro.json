@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} au venit cu o aplicație OAuth personalizată diferită de cea pe care acest dispozitiv o are pentru furnizorul respectiv. Aplicația stocată a fost păstrată, așa că autentificați-vă din nou dacă aceste profiluri nu se mai conectează.",
             "importTargetChanged": "{names} nu au fost suprascrise: fișierul le îndreaptă către alt server, iar parolele și token-urile lor salvate nu trebuie să ajungă acolo. Importați cu Duplicați pentru a adăuga copia din fișier sau ștergeți mai întâi profilul.",
             "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează.",
-            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}."
+            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}.",
+            "importSecurityTitle": "Setări de securitate în această copie de rezervă",
+            "importSecurityHelp": "Aceste opțiuni dezactivează o verificare de securitate. Fiecare se importă în starea sigură, dacă nu o bifați pentru a o păstra așa cum este în fișier.",
+            "importSecurityVerifyCert": "Verificarea certificatului este dezactivată",
+            "importSecurityCleartextEndpoint": "Punct final S3 necriptat permis",
+            "importSecurityCleartextStorage": "Adresă de stocare necriptată permisă",
+            "importSecurityPlainHttp": "HTTP simplu în loc de HTTPS",
+            "importSecurityPasvAddress": "Conexiune de date la adresa indicată de server (PASV)",
+            "importSecurityUnknownHostKeys": "Chei de gazdă SSH necunoscute acceptate"
         },
         "devtools": {
             "title": "AeroTools",

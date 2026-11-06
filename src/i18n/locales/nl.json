@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} kwamen mee met een andere aangepaste OAuth-app dan die dit apparaat voor die provider heeft. De opgeslagen app is behouden, dus log opnieuw in als deze profielen niet meer verbinden.",
             "importTargetChanged": "{names} zijn niet overschreven: het bestand laat ze naar een andere server wijzen, en hun opgeslagen wachtwoorden en tokens mogen daar niet naartoe. Importeer met Dupliceren om de kopie uit het bestand toe te voegen, of verwijder eerst het profiel.",
             "importSharedSecretsFailed": "{names} zijn geïmporteerd, maar een gedeeld geheim of een sessie uit het bestand kon niet worden opgeslagen. Meld u opnieuw aan bij deze profielen als ze geen verbinding maken.",
-            "keystoreDatabasesFailed": "De import is voltooid, maar deze databases konden niet worden hersteld en behouden hun inhoud: {names}."
+            "keystoreDatabasesFailed": "De import is voltooid, maar deze databases konden niet worden hersteld en behouden hun inhoud: {names}.",
+            "importSecurityTitle": "Beveiligingsinstellingen in deze back-up",
+            "importSecurityHelp": "Deze opties schakelen een beveiligingscontrole uit. Elke optie wordt in de veilige staat geïmporteerd, tenzij u die aanvinkt om hem te behouden zoals in het bestand.",
+            "importSecurityVerifyCert": "Certificaatcontrole uitgeschakeld",
+            "importSecurityCleartextEndpoint": "Niet-versleuteld S3-eindpunt toegestaan",
+            "importSecurityCleartextStorage": "Niet-versleuteld opslagadres toegestaan",
+            "importSecurityPlainHttp": "Gewoon HTTP in plaats van HTTPS",
+            "importSecurityPasvAddress": "Dataverbinding naar het adres dat de server opgeeft (PASV)",
+            "importSecurityUnknownHostKeys": "Onbekende SSH-hostsleutels geaccepteerd"
         },
         "devtools": {
             "title": "AeroTools",

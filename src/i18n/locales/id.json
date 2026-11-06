@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} datang dengan aplikasi OAuth kustom yang berbeda dari yang dimiliki perangkat ini untuk penyedia tersebut. Aplikasi yang tersimpan dipertahankan, jadi masuk lagi jika profil ini berhenti terhubung.",
             "importTargetChanged": "{names} tidak ditimpa: berkas mengarahkannya ke server lain, dan kata sandi serta token tersimpannya tidak boleh dikirim ke sana. Impor dengan Duplikat untuk menambahkan salinan dari berkas, atau hapus profil terlebih dahulu.",
             "importSharedSecretsFailed": "{names} berhasil diimpor, tetapi rahasia bersama atau sesi dari file tidak dapat disimpan. Masuk lagi ke profil ini jika tidak terhubung.",
-            "keystoreDatabasesFailed": "Impor selesai, tetapi basis data ini tidak dapat dipulihkan dan tetap berisi data sebelumnya: {names}."
+            "keystoreDatabasesFailed": "Impor selesai, tetapi basis data ini tidak dapat dipulihkan dan tetap berisi data sebelumnya: {names}.",
+            "importSecurityTitle": "Pengaturan keamanan dalam cadangan ini",
+            "importSecurityHelp": "Opsi ini mematikan pemeriksaan keamanan. Masing-masing diimpor dalam keadaan aman kecuali Anda mencentangnya untuk mempertahankannya seperti di file.",
+            "importSecurityVerifyCert": "Pemeriksaan sertifikat dimatikan",
+            "importSecurityCleartextEndpoint": "Endpoint S3 tanpa enkripsi diizinkan",
+            "importSecurityCleartextStorage": "Alamat penyimpanan tanpa enkripsi diizinkan",
+            "importSecurityPlainHttp": "HTTP biasa, bukan HTTPS",
+            "importSecurityPasvAddress": "Koneksi data ke alamat yang disebutkan server (PASV)",
+            "importSecurityUnknownHostKeys": "Kunci host SSH tidak dikenal diterima"
         },
         "devtools": {
             "title": "AeroTools",

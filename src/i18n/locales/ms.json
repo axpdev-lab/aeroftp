@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} datang dengan apl OAuth tersuai yang berbeza daripada yang ada pada peranti ini untuk penyedia itu. Apl yang disimpan dikekalkan, jadi log masuk semula jika profil ini tidak lagi bersambung.",
             "importTargetChanged": "{names} tidak ditimpa: fail itu mengarahkannya ke pelayan lain, dan kata laluan serta token yang disimpan tidak boleh dihantar ke sana. Import dengan Gandakan untuk menambah salinan daripada fail, atau padam profil dahulu.",
             "importSharedSecretsFailed": "{names} telah diimport, tetapi rahsia kongsi atau sesi daripada fail tidak dapat disimpan. Log masuk semula ke profil ini jika tidak dapat disambungkan.",
-            "keystoreDatabasesFailed": "Import selesai, tetapi pangkalan data ini tidak dapat dipulihkan dan kekal dengan kandungan asalnya: {names}."
+            "keystoreDatabasesFailed": "Import selesai, tetapi pangkalan data ini tidak dapat dipulihkan dan kekal dengan kandungan asalnya: {names}.",
+            "importSecurityTitle": "Tetapan keselamatan dalam sandaran ini",
+            "importSecurityHelp": "Pilihan ini mematikan pemeriksaan keselamatan. Setiap satu diimport dalam keadaan selamat melainkan anda menandainya untuk dikekalkan seperti dalam fail.",
+            "importSecurityVerifyCert": "Pemeriksaan sijil dimatikan",
+            "importSecurityCleartextEndpoint": "Titik akhir S3 tanpa penyulitan dibenarkan",
+            "importSecurityCleartextStorage": "Alamat storan tanpa penyulitan dibenarkan",
+            "importSecurityPlainHttp": "HTTP biasa dan bukannya HTTPS",
+            "importSecurityPasvAddress": "Sambungan data ke alamat yang dinyatakan oleh pelayan (PASV)",
+            "importSecurityUnknownHostKeys": "Kunci hos SSH tidak dikenali diterima"
         },
         "devtools": {
             "title": "AeroTools",

@@ -105,10 +105,17 @@ describe('ExportImportDialog .aeroftp import', () => {
         await openImport(onProfilesStored, onClose);
         await runImport('overwrite');
 
+        // A preview first (nothing to review here), then the import.
+        expect(invoke).toHaveBeenCalledWith('preview_server_import', {
+            filePath: '/backups/servers.aeroftp',
+            password: 'backup-password',
+            existing: 'overwrite',
+        });
         expect(invoke).toHaveBeenCalledWith('import_server_profiles', {
             filePath: '/backups/servers.aeroftp',
             password: 'backup-password',
             existing: 'overwrite',
+            keepRelaxed: [],
         });
         // The backend stored it: the host only shows the list it returned.
         expect(onProfilesStored).toHaveBeenCalledWith([{ id: 'srv_a', name: 'Restored' }, { id: 'srv_copy', name: 'Jotta (1)' }]);
@@ -127,11 +134,45 @@ describe('ExportImportDialog .aeroftp import', () => {
         await act(async () => {
             field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         });
-        expect(invoke).toHaveBeenCalledTimes(1);
+        expect(invoke).toHaveBeenCalledTimes(2);
         await act(async () => {
             vi.advanceTimersByTime(5000);
         });
         expect(onClose).not.toHaveBeenCalled();
+    });
+
+    // #1506 Requested 198: options that turn a security check off are shown
+    // before anything is stored, unticked, and only the ticked ones are kept.
+    it('reviews the security-relaxing options before importing and keeps only the ticked ones', async () => {
+        const report = {
+            servers: [{ id: 'srv_a', name: 'Lab', host: 'files.example', port: 21, username: 'u', importOutcome: 'added' }],
+            stored: [{ id: 'srv_a', name: 'Lab' }],
+            skipped: [], similar: 0, jottaChains: [], oauthAppsKept: [], sharedSecretsFailed: [], targetChanged: [],
+            totalInFile: 1, metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: false },
+            security: [{
+                fileIndex: 0,
+                name: 'Lab',
+                reset: [{ key: 'verifyCert', value: 'false' }, { key: 'trustPasvAddress', value: 'true' }],
+                kept: [],
+            }],
+        };
+        vi.mocked(invoke).mockResolvedValue(report);
+        await openImport(vi.fn(), vi.fn());
+        await runImport('skip');
+        expect(invoke).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(invoke).mock.calls[0][0]).toBe('preview_server_import');
+        expect(host.querySelector('[data-testid="import-security-review"]')?.textContent)
+            .toContain('settings.importSecurityPasvAddress');
+        const keep = host.querySelector<HTMLInputElement>('[data-testid="import-security-keep-0:trustPasvAddress"]')!;
+        expect(keep.checked).toBe(false);
+        await click(keep);
+        await click(button(b => b.textContent === 'settings.importServers'));
+        expect(invoke).toHaveBeenLastCalledWith('import_server_profiles', {
+            filePath: '/backups/servers.aeroftp',
+            password: 'backup-password',
+            existing: 'skip',
+            keepRelaxed: [{ fileIndex: 0, key: 'trustPasvAddress' }],
+        });
     });
 
     it('does not hand the host the list of an account switched away from during the import', async () => {
@@ -209,6 +250,7 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(host.querySelector('[data-testid="import-existing-skip"]')?.getAttribute('aria-checked')).toBe('true');
         await runImport('skip');
         expect(vi.mocked(invoke).mock.calls[0][1]).toMatchObject({ existing: 'skip' });
+        expect(vi.mocked(invoke).mock.calls[1][1]).toMatchObject({ existing: 'skip', keepRelaxed: [] });
         expect(host.textContent).toContain('settings.duplicatesSkippedCount {"count":1}');
         expect(host.querySelector('[data-testid="import-warning"]')).toBeNull();
         // Done: neither a second click nor Enter imports the same file again.
@@ -217,7 +259,7 @@ describe('ExportImportDialog .aeroftp import', () => {
         await act(async () => {
             field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
         });
-        expect(invoke).toHaveBeenCalledTimes(1);
+        expect(invoke).toHaveBeenCalledTimes(2);
         await act(async () => {
             vi.advanceTimersByTime(3000);
         });

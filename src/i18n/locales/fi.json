@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} tuli mukana eri mukautetun OAuth-sovelluksen kanssa kuin mikä tällä laitteella on kyseiselle palveluntarjoajalle. Tallennettu sovellus säilytettiin, joten kirjaudu uudelleen, jos nämä profiilit lakkaavat yhdistämästä.",
             "importTargetChanged": "{names} ei korvattu: tiedosto ohjaa ne toiselle palvelimelle, eikä niiden tallennettuja salasanoja ja tokeneita saa lähettää sinne. Tuo Monista-valinnalla lisätäksesi tiedoston kopion tai poista profiili ensin.",
             "importSharedSecretsFailed": "{names} tuotiin, mutta tiedoston jaettua salaisuutta tai istuntoa ei voitu tallentaa. Kirjaudu näihin profiileihin uudelleen, jos ne eivät yhdistä.",
-            "keystoreDatabasesFailed": "Tuonti valmistui, mutta näitä tietokantoja ei voitu palauttaa, ja ne säilyttävät aiemman sisältönsä: {names}."
+            "keystoreDatabasesFailed": "Tuonti valmistui, mutta näitä tietokantoja ei voitu palauttaa, ja ne säilyttävät aiemman sisältönsä: {names}.",
+            "importSecurityTitle": "Tämän varmuuskopion suojausasetukset",
+            "importSecurityHelp": "Nämä asetukset poistavat suojaustarkistuksen käytöstä. Jokainen tuodaan turvallisessa tilassa, ellet valitse sitä säilyttääksesi sen tiedoston mukaisena.",
+            "importSecurityVerifyCert": "Varmenteen tarkistus poistettu käytöstä",
+            "importSecurityCleartextEndpoint": "Salaamaton S3-päätepiste sallittu",
+            "importSecurityCleartextStorage": "Salaamaton tallennusosoite sallittu",
+            "importSecurityPlainHttp": "Pelkkä HTTP HTTPS:n sijaan",
+            "importSecurityPasvAddress": "Tietoyhteys palvelimen ilmoittamaan osoitteeseen (PASV)",
+            "importSecurityUnknownHostKeys": "Tuntemattomat SSH-isäntäavaimet hyväksytty"
         },
         "devtools": {
             "title": "AeroTools",

@@ -21,6 +21,7 @@ import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetect
 import { announceStoredServerProfiles } from '../utils/serverProfileStore';
 import { accountChangeGeneration } from '../utils/userPartitions';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
+import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
 
 interface ExportImportDialogProps {
     servers: ServerProfile[];
@@ -82,6 +83,9 @@ interface ImportResult {
     sharedSecretsFailed: string[];
     // Profiles an Overwrite refused: the file points them at another server.
     targetChanged: string[];
+    // Stored profiles whose options turned a security check off: what came in
+    // safe and what was kept (#1506 Requested 198).
+    security: ImportedSecurity[];
     metadata: {
         exportDate: string;
         aeroftpVersion: string;
@@ -124,6 +128,15 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // path is held here, then the decryption password is requested. Null
     // until a file has been selected.
     const [importFilePath, setImportFilePath] = useState<string | null>(null);
+    // The file's security-relaxing options, once previewed, and the ones the
+    // user ticked to keep (`keptRelaxationId`). Any other choice of file or
+    // mode previews again.
+    const [securityReview, setSecurityReview] = useState<ImportedSecurity[] | null>(null);
+    const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
+    useEffect(() => {
+        setSecurityReview(null);
+        setKeptRelaxed(new Set());
+    }, [importFilePath, existingMode]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -293,11 +306,30 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setError(null);
         setImportWarning(null);
         try {
+            // A file whose options turn a security check off is shown first:
+            // each comes in safe unless ticked, then Import runs for real.
+            if (securityReview === null) {
+                const preview = await invoke<ImportResult>('preview_server_import', {
+                    filePath,
+                    password,
+                    existing: existingMode,
+                });
+                if ((preview.security ?? []).length > 0) {
+                    setSecurityReview(preview.security);
+                    setKeptRelaxed(new Set());
+                    return;
+                }
+            }
+            const keepRelaxed = (securityReview ?? []).flatMap(entry =>
+                [...entry.reset, ...entry.kept]
+                    .filter(r => keptRelaxed.has(keptRelaxationId(entry.fileIndex, r.key)))
+                    .map(r => ({ fileIndex: entry.fileIndex, key: r.key })));
             const accountBefore = accountChangeGeneration();
             const result = await invoke<ImportResult>('import_server_profiles', {
                 filePath,
                 password,
                 existing: existingMode,
+                keepRelaxed,
             });
 
             // The backend compared the file with the active user's profiles,
@@ -844,6 +876,17 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                         </div>
                                         <p className="text-xs text-gray-500 dark:text-gray-400">{t(EXISTING_PROFILE_MODES.find(o => o.mode === existingMode)!.hint)}</p>
                                     </div>
+                                    {securityReview && (
+                                        <ImportSecurityReview
+                                            entries={securityReview}
+                                            kept={keptRelaxed}
+                                            onToggle={id => setKeptRelaxed(prev => {
+                                                const next = new Set(prev);
+                                                if (next.has(id)) next.delete(id); else next.add(id);
+                                                return next;
+                                            })}
+                                        />
+                                    )}
                                 </>
                             )}
 

@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names}은(는) 이 기기에 있는 해당 제공업체용 앱과 다른 사용자 지정 OAuth 앱과 함께 가져와졌습니다. 저장된 앱을 유지했으므로 이 프로필이 연결되지 않으면 다시 로그인하세요.",
             "importTargetChanged": "{names}은(는) 덮어쓰지 않았습니다. 파일이 이 프로필들을 다른 서버로 연결하며, 저장된 비밀번호와 토큰은 그곳으로 보내면 안 되기 때문입니다. 파일의 사본을 추가하려면 복제로 가져오거나, 먼저 프로필을 삭제하세요.",
             "importSharedSecretsFailed": "{names}을(를) 가져왔지만 파일의 공유 비밀 또는 세션을 저장하지 못했습니다. 연결되지 않으면 이 프로필에 다시 로그인하세요.",
-            "keystoreDatabasesFailed": "가져오기는 완료되었지만 다음 데이터베이스는 복원하지 못했고 기존 내용이 그대로 유지됩니다: {names}."
+            "keystoreDatabasesFailed": "가져오기는 완료되었지만 다음 데이터베이스는 복원하지 못했고 기존 내용이 그대로 유지됩니다: {names}.",
+            "importSecurityTitle": "이 백업의 보안 설정",
+            "importSecurityHelp": "이 옵션들은 보안 검사를 끕니다. 체크하지 않으면 각 항목은 안전한 상태로 가져오며, 체크하면 파일에 있는 그대로 유지합니다.",
+            "importSecurityVerifyCert": "인증서 검사 꺼짐",
+            "importSecurityCleartextEndpoint": "암호화되지 않은 S3 엔드포인트 허용",
+            "importSecurityCleartextStorage": "암호화되지 않은 스토리지 주소 허용",
+            "importSecurityPlainHttp": "HTTPS 대신 일반 HTTP",
+            "importSecurityPasvAddress": "서버가 지정한 주소로 데이터 연결 (PASV)",
+            "importSecurityUnknownHostKeys": "알 수 없는 SSH 호스트 키 허용"
         },
         "devtools": {
             "title": "AeroTools",

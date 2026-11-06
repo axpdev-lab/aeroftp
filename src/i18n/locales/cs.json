@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} přišly s jinou vlastní aplikací OAuth, než jakou má toto zařízení pro daného poskytovatele. Uložená aplikace byla zachována, takže se přihlaste znovu, pokud se tyto profily přestanou připojovat.",
             "importTargetChanged": "{names} nebyly přepsány: soubor je nasměruje na jiný server a jejich uložená hesla a tokeny tam nesmí jít. Importujte s volbou Duplikovat pro přidání kopie ze souboru, nebo nejprve profil smažte.",
             "importSharedSecretsFailed": "{names} byly importovány, ale sdílené tajemství nebo relaci ze souboru se nepodařilo uložit. Pokud se tyto profily nepřipojí, přihlaste se do nich znovu.",
-            "keystoreDatabasesFailed": "Import skončil, ale tyto databáze se nepodařilo obnovit a ponechaly si původní obsah: {names}."
+            "keystoreDatabasesFailed": "Import skončil, ale tyto databáze se nepodařilo obnovit a ponechaly si původní obsah: {names}.",
+            "importSecurityTitle": "Nastavení zabezpečení v této záloze",
+            "importSecurityHelp": "Tyto možnosti vypínají bezpečnostní kontrolu. Každá se importuje v bezpečném stavu, pokud ji nezaškrtnete a neponecháte ji tak, jak je v souboru.",
+            "importSecurityVerifyCert": "Kontrola certifikátu je vypnutá",
+            "importSecurityCleartextEndpoint": "Povolen nešifrovaný koncový bod S3",
+            "importSecurityCleartextStorage": "Povolena nešifrovaná adresa úložiště",
+            "importSecurityPlainHttp": "Prosté HTTP místo HTTPS",
+            "importSecurityPasvAddress": "Datové spojení na adresu, kterou uvede server (PASV)",
+            "importSecurityUnknownHostKeys": "Přijímány neznámé klíče hostitele SSH"
         },
         "devtools": {
             "title": "AeroTools",

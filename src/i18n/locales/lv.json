@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} atnāca ar citu pielāgotu OAuth lietotni nekā tā, kas šai ierīcei ir šim pakalpojumu sniedzējam. Saglabātā lietotne tika paturēta, tāpēc piesakieties vēlreiz, ja šie profili pārstāj savienoties.",
             "importTargetChanged": "{names} netika pārrakstīti: fails tos virza uz citu serveri, un to saglabātās paroles un pilnvaras nedrīkst nonākt tur. Importējiet ar Dublēt, lai pievienotu kopiju no faila, vai vispirms dzēsiet profilu.",
             "importSharedSecretsFailed": "{names} tika importēti, taču no faila nevarēja saglabāt kopīgu noslēpumu vai sesiju. Ja šie profili neizveido savienojumu, pierakstieties tajos vēlreiz.",
-            "keystoreDatabasesFailed": "Importēšana ir pabeigta, bet šīs datubāzes neizdevās atjaunot, un tajās saglabājies iepriekšējais saturs: {names}."
+            "keystoreDatabasesFailed": "Importēšana ir pabeigta, bet šīs datubāzes neizdevās atjaunot, un tajās saglabājies iepriekšējais saturs: {names}.",
+            "importSecurityTitle": "Drošības iestatījumi šajā dublējumā",
+            "importSecurityHelp": "Šīs opcijas izslēdz drošības pārbaudi. Katra tiek importēta drošā stāvoklī, ja vien to neatzīmējat, lai paturētu, kā tas ir failā.",
+            "importSecurityVerifyCert": "Sertifikāta pārbaude izslēgta",
+            "importSecurityCleartextEndpoint": "Atļauts nešifrēts S3 galapunkts",
+            "importSecurityCleartextStorage": "Atļauta nešifrēta krātuves adrese",
+            "importSecurityPlainHttp": "Parasts HTTP HTTPS vietā",
+            "importSecurityPasvAddress": "Datu savienojums ar adresi, ko norāda serveris (PASV)",
+            "importSecurityUnknownHostKeys": "Pieņemtas nezināmas SSH resursdatora atslēgas"
         },
         "devtools": {
             "title": "AeroTools",

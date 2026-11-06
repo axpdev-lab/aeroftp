@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació emmagatzemada: torni a iniciar la sessió si aquests perfils deixen de connectar-se.",
             "importTargetChanged": "{names} no s'han sobreescrit: el fitxer els fa apuntar a un altre servidor, i les contrasenyes i els tokens desats no hi han d'anar. Importi amb Duplica per afegir la còpia del fitxer, o elimini primer el perfil.",
             "importSharedSecretsFailed": "S'ha importat {names}, però no s'ha pogut desar un secret compartit o una sessió del fitxer. Torni a iniciar la sessió en aquests perfils si no es connecten.",
-            "keystoreDatabasesFailed": "La importació ha acabat, però no s'han pogut restaurar aquestes bases de dades i conserven el que contenien: {names}."
+            "keystoreDatabasesFailed": "La importació ha acabat, però no s'han pogut restaurar aquestes bases de dades i conserven el que contenien: {names}.",
+            "importSecurityTitle": "Configuració de seguretat d'aquesta còpia",
+            "importSecurityHelp": "Aquestes opcions desactiven una comprovació de seguretat. Cadascuna s'importa en estat segur, tret que la marqueu per mantenir-la tal com és al fitxer.",
+            "importSecurityVerifyCert": "Comprovació del certificat desactivada",
+            "importSecurityCleartextEndpoint": "Punt final S3 sense xifrar permès",
+            "importSecurityCleartextStorage": "Adreça d'emmagatzematge sense xifrar permesa",
+            "importSecurityPlainHttp": "HTTP simple en lloc d'HTTPS",
+            "importSecurityPasvAddress": "Connexió de dades a l'adreça que indica el servidor (PASV)",
+            "importSecurityUnknownHostKeys": "Claus d'amfitrió SSH desconegudes acceptades"
         },
         "devtools": {
             "title": "AeroTools",

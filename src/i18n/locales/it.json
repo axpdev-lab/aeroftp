@@ -1859,7 +1859,15 @@
             "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta: accedi di nuovo se questi profili smettono di connettersi.",
             "importTargetChanged": "{names} non sono stati sovrascritti: il file li fa puntare a un altro server, e le password e i token memorizzati non devono arrivarci. Importa con Duplica per aggiungere la copia dal file, oppure elimina prima il profilo.",
             "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono.",
-            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}."
+            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}.",
+            "importSecurityTitle": "Impostazioni di sicurezza in questo backup",
+            "importSecurityHelp": "Queste opzioni disattivano un controllo di sicurezza. Ognuna viene importata nello stato sicuro, a meno che tu non la spunti per mantenerla com'è nel file.",
+            "importSecurityVerifyCert": "Controllo del certificato disattivato",
+            "importSecurityCleartextEndpoint": "Endpoint S3 non cifrato consentito",
+            "importSecurityCleartextStorage": "Indirizzo di archiviazione non cifrato consentito",
+            "importSecurityPlainHttp": "HTTP semplice invece di HTTPS",
+            "importSecurityPasvAddress": "Connessione dati all'indirizzo indicato dal server (PASV)",
+            "importSecurityUnknownHostKeys": "Chiavi host SSH sconosciute accettate"
         },
         "appearance": {
             "patternCross": "Croce",

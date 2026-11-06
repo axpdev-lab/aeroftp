@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} zilikuja na programu maalum ya OAuth tofauti na ile ambayo kifaa hiki kina kwa mtoa huduma huyo. Programu iliyohifadhiwa ilibaki, kwa hivyo ingia tena ikiwa wasifu huu utaacha kuunganisha.",
             "importTargetChanged": "{names} hazikuandikwa upya: faili inazielekeza kwenye seva nyingine, na nywila na tokeni zilizohifadhiwa hazipaswi kwenda huko. Leta kwa Nakili ili kuongeza nakala kutoka kwenye faili, au futa wasifu kwanza.",
             "importSharedSecretsFailed": "{names} zimeletwa, lakini siri iliyoshirikiwa au kipindi kutoka kwenye faili hakikuweza kuhifadhiwa. Ingia tena kwenye wasifu hizi ikiwa hazitaunganishwa.",
-            "keystoreDatabasesFailed": "Uingizaji umekamilika, lakini hifadhidata hizi hazikuweza kurejeshwa na zinabaki na kilichokuwemo: {names}."
+            "keystoreDatabasesFailed": "Uingizaji umekamilika, lakini hifadhidata hizi hazikuweza kurejeshwa na zinabaki na kilichokuwemo: {names}.",
+            "importSecurityTitle": "Mipangilio ya usalama katika nakala hii",
+            "importSecurityHelp": "Chaguo hizi huzima ukaguzi wa usalama. Kila moja huingizwa katika hali salama isipokuwa uitiki ili ibaki kama ilivyo kwenye faili.",
+            "importSecurityVerifyCert": "Ukaguzi wa cheti umezimwa",
+            "importSecurityCleartextEndpoint": "Kiishio cha S3 kisichosimbwa kinaruhusiwa",
+            "importSecurityCleartextStorage": "Anwani ya hifadhi isiyosimbwa inaruhusiwa",
+            "importSecurityPlainHttp": "HTTP ya kawaida badala ya HTTPS",
+            "importSecurityPasvAddress": "Muunganisho wa data kwa anwani inayotajwa na seva (PASV)",
+            "importSecurityUnknownHostKeys": "Funguo za mwenyeji wa SSH zisizojulikana zimekubaliwa"
         },
         "devtools": {
             "title": "AeroTools",

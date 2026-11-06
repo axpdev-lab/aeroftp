@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} chegaron cunha app OAuth personalizada distinta da que este dispositivo ten para ese provedor. Conservouse a app almacenada, así que inicia sesión de novo se estes perfís deixan de conectarse.",
             "importTargetChanged": "{names} non se sobrescribiron: o ficheiro apúntaos a outro servidor, e os seus contrasinais e tokens gardados non deben ir alí. Importa con Duplicar para engadir a copia do ficheiro, ou elimina primeiro o perfil.",
             "importSharedSecretsFailed": "Importouse {names}, pero non se puido gardar un segredo compartido ou unha sesión do ficheiro. Volve iniciar sesión nestes perfís se non se conectan.",
-            "keystoreDatabasesFailed": "A importación rematou, pero non se puideron restaurar estas bases de datos e conservan o que tiñan: {names}."
+            "keystoreDatabasesFailed": "A importación rematou, pero non se puideron restaurar estas bases de datos e conservan o que tiñan: {names}.",
+            "importSecurityTitle": "Axustes de seguridade desta copia",
+            "importSecurityHelp": "Estas opcións desactivan unha comprobación de seguridade. Cada unha impórtase no seu estado seguro, salvo que a marques para mantela tal como está no ficheiro.",
+            "importSecurityVerifyCert": "Comprobación do certificado desactivada",
+            "importSecurityCleartextEndpoint": "Punto final S3 sen cifrar permitido",
+            "importSecurityCleartextStorage": "Enderezo de almacenamento sen cifrar permitido",
+            "importSecurityPlainHttp": "HTTP simple en lugar de HTTPS",
+            "importSecurityPasvAddress": "Conexión de datos ao enderezo que indica o servidor (PASV)",
+            "importSecurityUnknownHostKeys": "Claves de host SSH descoñecidas aceptadas"
         },
         "devtools": {
             "title": "AeroTools",

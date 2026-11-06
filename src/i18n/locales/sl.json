@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} so prišli z drugačno aplikacijo OAuth po meri, kot jo ima ta naprava za tega ponudnika. Shranjena aplikacija je bila ohranjena, zato se znova prijavite, če se ti profili prenehajo povezovati.",
             "importTargetChanged": "{names} niso bili prepisani: datoteka jih usmerja na drug strežnik, njihova shranjena gesla in žetoni pa tja ne smejo. Uvozite z Podvoji, da dodate kopijo iz datoteke, ali pa najprej izbrišite profil.",
             "importSharedSecretsFailed": "{names} so bili uvoženi, vendar skupne skrivnosti ali seje iz datoteke ni bilo mogoče shraniti. Če se ti profili ne povežejo, se vanje znova prijavite.",
-            "keystoreDatabasesFailed": "Uvoz je končan, vendar teh podatkovnih zbirk ni bilo mogoče obnoviti in ohranjajo prejšnjo vsebino: {names}."
+            "keystoreDatabasesFailed": "Uvoz je končan, vendar teh podatkovnih zbirk ni bilo mogoče obnoviti in ohranjajo prejšnjo vsebino: {names}.",
+            "importSecurityTitle": "Varnostne nastavitve v tej varnostni kopiji",
+            "importSecurityHelp": "Te možnosti izklopijo varnostno preverjanje. Vsaka se uvozi v varnem stanju, razen če jo označite, da ostane, kot je v datoteki.",
+            "importSecurityVerifyCert": "Preverjanje potrdila izklopljeno",
+            "importSecurityCleartextEndpoint": "Dovoljena nešifrirana končna točka S3",
+            "importSecurityCleartextStorage": "Dovoljen nešifriran naslov shrambe",
+            "importSecurityPlainHttp": "Navaden HTTP namesto HTTPS",
+            "importSecurityPasvAddress": "Podatkovna povezava na naslov, ki ga navede strežnik (PASV)",
+            "importSecurityUnknownHostKeys": "Sprejeti neznani ključi gostitelja SSH"
         },
         "devtools": {
             "title": "AeroTools",

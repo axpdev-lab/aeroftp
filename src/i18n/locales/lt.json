@@ -1375,7 +1375,15 @@
             "importOauthAppKept": "{names} atkeliavo su kita pasirinktine OAuth programa nei ta, kurią šis įrenginys turi tam teikėjui. Išsaugota programa buvo palikta, todėl prisijunkite iš naujo, jei šie profiliai nustos jungtis.",
             "importTargetChanged": "{names} nebuvo perrašyti: failas nukreipia juos į kitą serverį, o jų išsaugoti slaptažodžiai ir žetonai neturi ten patekti. Importuokite su Dubliuoti, kad pridėtumėte failo kopiją, arba pirmiausia ištrinkite profilį.",
             "importSharedSecretsFailed": "{names} importuoti, bet nepavyko išsaugoti bendros paslapties ar seanso iš failo. Jei šie profiliai neprisijungia, prisijunkite prie jų iš naujo.",
-            "keystoreDatabasesFailed": "Importavimas baigtas, bet šių duomenų bazių nepavyko atkurti, todėl jose išliko ankstesnis turinys: {names}."
+            "keystoreDatabasesFailed": "Importavimas baigtas, bet šių duomenų bazių nepavyko atkurti, todėl jose išliko ankstesnis turinys: {names}.",
+            "importSecurityTitle": "Šios atsarginės kopijos saugumo nustatymai",
+            "importSecurityHelp": "Šios parinktys išjungia saugumo patikrą. Kiekviena importuojama saugios būsenos, nebent pažymėsite ją, kad liktų tokia, kokia yra faile.",
+            "importSecurityVerifyCert": "Sertifikato patikra išjungta",
+            "importSecurityCleartextEndpoint": "Leidžiamas nešifruotas S3 galinis taškas",
+            "importSecurityCleartextStorage": "Leidžiamas nešifruotas saugyklos adresas",
+            "importSecurityPlainHttp": "Paprastas HTTP vietoj HTTPS",
+            "importSecurityPasvAddress": "Duomenų ryšys su serverio nurodytu adresu (PASV)",
+            "importSecurityUnknownHostKeys": "Priimami nežinomi SSH pagrindinio kompiuterio raktai"
         },
         "devtools": {
             "title": "AeroTools",
