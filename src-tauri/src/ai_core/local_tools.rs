@@ -914,17 +914,22 @@ pub async fn local_batch_rename(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
                 } else if case_sensitive {
                     filename.replace(&find, &replace_with)
                 } else {
-                    let lower_find = find.to_lowercase();
-                    let lower_name = filename.to_lowercase();
-                    let mut result = String::new();
-                    let mut start = 0;
-                    while let Some(pos) = lower_name[start..].find(&lower_find) {
-                        result.push_str(&filename[start..start + pos]);
-                        result.push_str(&replace_with);
-                        start += pos + find.len();
+                    // Matched on the name itself: offsets found in a lowercased
+                    // copy do not hold in the name when lowercasing changes a
+                    // character's length (`İ` is two bytes, `i̇` three), and
+                    // slicing there panicked or cut the wrong text.
+                    match regex::RegexBuilder::new(&regex::escape(&find))
+                        .case_insensitive(true)
+                        .build()
+                    {
+                        Ok(pattern) => pattern
+                            .replace_all(&filename, regex::NoExpand(&replace_with))
+                            .into_owned(),
+                        Err(error) => {
+                            errors.push(json!({ "file": filename, "error": error.to_string() }));
+                            continue;
+                        }
                     }
-                    result.push_str(&filename[start..]);
-                    result
                 }
             }
             "add_prefix" => {

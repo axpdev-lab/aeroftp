@@ -16,17 +16,17 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
 }
 
 /// Expand a local directory for AeroAgent upload, keeping its top-level name.
-/// A remote name `sync_preview` can compare: one plain path component, so it
-/// names an entry of the local folder and nothing outside it.
-fn preview_remote_name(name: &str) -> Result<(), String> {
+/// Whether `sync_preview` can compare a remote name with the local folder:
+/// one plain path component under this platform's rules, so it names an entry
+/// of that folder and nothing outside it. A backslash is a separator only on
+/// Windows; on Unix `report\\2026.txt` is an ordinary name.
+fn preview_remote_name_comparable(name: &str) -> bool {
     let mut parts = std::path::Path::new(name).components();
-    match (parts.next(), parts.next()) {
-        (Some(std::path::Component::Normal(_)), None) if !name.contains(['/', '\\']) => Ok(()),
-        _ => Err(format!(
-            "The server listed an entry that is not a single file name, so it cannot be compared: {}",
-            name.chars().flat_map(char::escape_debug).collect::<String>()
-        )),
-    }
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    ) && !name.contains('/')
+        && !(cfg!(windows) && name.contains('\\'))
 }
 
 /// The files directly in `local_path` that `sync_preview` compares, with
@@ -894,7 +894,7 @@ pub async fn dispatch_gui_tool(
             let (local_files, protected_local) = list_preview_local_files(&local_path, &policy)?;
 
             // Collect remote files
-            let remote_files: std::collections::HashMap<String, u64> = if has_provider(&state).await
+            let mut remote_files: std::collections::HashMap<String, u64> = if has_provider(&state).await
             {
                 let mut provider = state.provider.lock().await;
                 let provider = match provider.as_mut() {
@@ -928,10 +928,15 @@ pub async fn dispatch_gui_tool(
 
             // A listed name is compared as an entry of `local_path`: an absolute
             // name or one with a separator would make `join` leave that folder,
-            // and a protected path there could hide the entry.
-            for name in remote_files.keys() {
-                preview_remote_name(name)?;
-            }
+            // and a protected path there could hide the entry. Such a name is
+            // reported as not compared, and the rest of the folder still is.
+            let mut not_compared: Vec<String> = remote_files
+                .keys()
+                .filter(|name| !preview_remote_name_comparable(name))
+                .map(|name| name.chars().flat_map(char::escape_debug).collect())
+                .collect();
+            not_compared.sort();
+            remote_files.retain(|name, _| preview_remote_name_comparable(name));
 
             // Compare
             let mut only_local: Vec<Value> = Vec::new();
@@ -981,7 +986,9 @@ pub async fn dispatch_gui_tool(
                 "only_remote": only_remote,
                 "size_different": size_diff,
                 "protected_skipped": protected_skipped,
+                "not_compared": not_compared,
                 "synced": protected_skipped == 0
+                    && not_compared.is_empty()
                     && only_local.is_empty()
                     && only_remote.is_empty()
                     && size_diff.is_empty(),
@@ -1103,13 +1110,18 @@ mod tests {
     /// A listed name that is absolute, holds a separator or is `..` would make
     /// the comparison leave the local folder.
     #[test]
-    fn a_sync_preview_refuses_a_remote_name_that_is_not_one_file_name() {
-        for name in ["/home/u/.ssh/id", "../up", "a/b", "a\\b", "..", "."] {
-            assert!(super::preview_remote_name(name).is_err(), "{name}");
+    fn a_sync_preview_compares_only_names_of_one_component() {
+        for name in ["/home/u/.ssh/id", "../up", "a/b", "..", "."] {
+            assert!(!super::preview_remote_name_comparable(name), "{name}");
         }
-        for name in ["notes.txt", ".hidden", "with space"] {
-            assert!(super::preview_remote_name(name).is_ok(), "{name}");
+        for name in ["notes.txt", ".hidden", "with space", "caf\u{e9}.txt"] {
+            assert!(super::preview_remote_name_comparable(name), "{name}");
         }
+        // A backslash separates only on Windows.
+        assert_eq!(
+            super::preview_remote_name_comparable("report\\2026.txt"),
+            !cfg!(windows)
+        );
     }
 
     /// `sync_preview` of the home listed the protected files directly in it

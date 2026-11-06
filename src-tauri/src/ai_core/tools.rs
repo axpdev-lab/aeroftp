@@ -3355,6 +3355,30 @@ mod tests {
         assert!(!copied_root.join("inner/planted.txt").exists());
     }
 
+    // A case-insensitive find and replace matched in a lowercased copy and
+    // sliced the name at its offsets: `İ` grows when lowercased, so the cut
+    // fell elsewhere or inside a character.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_case_insensitive_rename_keeps_multibyte_names_whole() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let work = fake.home.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let file = work.join("\u{130}STANBUL-x.txt");
+        std::fs::write(&file, b"x").unwrap();
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_batch_rename",
+            &json!({"paths": [file.display().to_string()], "mode": "find_replace", "find": "-X", "replace": "-y"}),
+        )
+        .await
+        .unwrap();
+        assert!(work.join("\u{130}STANBUL-y.txt").exists(), "{renamed}");
+        assert!(!file.exists(), "{renamed}");
+    }
+
     // A move or rename carries what the folder holds: a staged `.config`
     // moved into a home without one would create `~/.config/aeroftp`.
     #[tokio::test]

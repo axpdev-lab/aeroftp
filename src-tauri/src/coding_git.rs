@@ -589,7 +589,10 @@ fn parse_status(
         let mut chars = line.chars();
         let index = chars.next().unwrap_or(' ');
         let worktree = chars.next().unwrap_or(' ');
-        let path = line[3..].to_string();
+        // After the two status characters and their separator, counted as
+        // characters, never bytes.
+        let rest = chars.as_str();
+        let path = rest.strip_prefix(' ').unwrap_or(rest).to_string();
         let entry = CodingGitFileStatus {
             path,
             index_status: index.to_string(),
@@ -875,15 +878,12 @@ fn truncate_chars(value: &str, max_bytes: usize) -> (String, bool) {
         return (value.to_string(), false);
     }
 
-    let mut end = 0;
-    for (idx, _) in value.char_indices() {
-        if idx > max_bytes {
-            break;
-        }
-        end = idx;
-    }
-    if end == 0 {
-        end = max_bytes.min(value.len());
+    // The longest prefix of whole characters within `max_bytes`. The fallback
+    // cut at `max_bytes` itself, inside a character when the first one was
+    // longer than the limit, and panicked.
+    let mut end = max_bytes.min(value.len());
+    while !value.is_char_boundary(end) {
+        end -= 1;
     }
     (value[..end].to_string(), true)
 }
@@ -896,6 +896,27 @@ fn path_to_string(path: &Path) -> String {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn a_diff_is_cut_between_characters_whatever_the_limit() {
+        assert_eq!(truncate_chars("\u{e9}t\u{e9}", 1), (String::new(), true));
+        assert_eq!(truncate_chars("a\u{e9}b", 2), ("a".to_string(), true));
+        assert_eq!(truncate_chars("a\u{e9}b", 3), ("a\u{e9}".to_string(), true));
+        assert_eq!(truncate_chars("abc", 3), ("abc".to_string(), false));
+    }
+
+    #[test]
+    fn a_status_path_is_read_after_the_two_status_characters() {
+        let status = parse_status(
+            "?? citt\u{e0}.txt\n M \u{e9}t\u{e9}/a.txt\n",
+            "/w".into(),
+            "/w".into(),
+            None,
+        );
+        let raw = serde_json::to_string(&status).unwrap();
+        assert!(raw.contains("citt\u{e0}.txt"), "{raw}");
+        assert!(raw.contains("\u{e9}t\u{e9}/a.txt"), "{raw}");
+    }
 
     fn run(repo: &Path, args: &[&str]) {
         let output = Command::new("git")

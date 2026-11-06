@@ -200,18 +200,22 @@ fn parse_unified_diff(patch: &str) -> Result<Vec<FilePatch>, String> {
                 if line.is_empty() {
                     return Err("Malformed hunk line".to_string());
                 }
-                let (prefix, content) = line.split_at(1);
+                // The prefix is one character, not one byte: a line opening
+                // with a multibyte character split inside it and panicked.
+                let mut chars = line.chars();
+                let prefix = chars.next().unwrap_or(' ');
+                let content = chars.as_str();
                 match prefix {
-                    " " => {
+                    ' ' => {
                         old_seen += 1;
                         new_seen += 1;
                         hunk_lines.push(HunkLine::Context(content.to_string()));
                     }
-                    "-" => {
+                    '-' => {
                         old_seen += 1;
                         hunk_lines.push(HunkLine::Remove(content.to_string()));
                     }
-                    "+" => {
+                    '+' => {
                         new_seen += 1;
                         hunk_lines.push(HunkLine::Add(content.to_string()));
                     }
@@ -762,6 +766,16 @@ fn diag(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A hunk line opening with a multibyte character is malformed, and the
+    /// parser says so instead of panicking inside the character: the
+    /// approval reads the patch before it is applied.
+    #[test]
+    fn a_hunk_line_opening_with_a_multibyte_character_is_refused() {
+        let patch = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n\u{e9}\n";
+        let err = patch_targets(patch).unwrap_err();
+        assert!(err.contains("Malformed hunk line"), "{err}");
+    }
 
     fn request(root: &Path, patch: &str, dry_run: bool) -> ApplyCodingPatchRequest {
         ApplyCodingPatchRequest {
