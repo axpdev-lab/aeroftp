@@ -38,8 +38,10 @@ impl RelaxationRule {
     /// Whether `option_key` is a spelling of this rule's option, as the
     /// connection loader reads it (`verifyCert` and `verify_cert` alike).
     fn names(&self, option_key: &str) -> bool {
-        crate::profile_loader::canonicalize_profile_option_key(option_key)
-            == crate::profile_loader::canonicalize_profile_option_key(&self.key)
+        option_key == self.key
+            || self.aliases.iter().any(|alias| alias == option_key)
+            || crate::profile_loader::canonicalize_profile_option_key(option_key)
+                == crate::profile_loader::canonicalize_profile_option_key(&self.key)
     }
 }
 
