@@ -17,8 +17,8 @@ interface RelaxationRule {
     /** Other spellings the connection loader reads as the same option. */
     aliases?: string[];
     unsafe: Array<string | boolean>;
-    /** Stored in the safe state when leaving the option out is not safe on its own. */
-    safe?: string | boolean;
+    /** Stored explicitly in the safe state, so no preset default or auto rule brings the relaxed value back. */
+    safe: string | boolean;
     loopbackExempt: boolean;
 }
 
@@ -32,8 +32,13 @@ export interface Relaxation {
 export interface ProfileSecurityInput {
     host?: string;
     providerId?: string;
+    protocol?: string;
     options?: Record<string, unknown> | null;
 }
+
+/** The rule a WebDAV host's `http://` prefix belongs to. */
+const WEBDAV_SCHEME_KEY = 'webdavScheme';
+const hostIsPlainHttp = (host: string | undefined): boolean => /^\s*http:\/\//i.test(host ?? '');
 
 const rules = (table as unknown as { relaxations: RelaxationRule[] }).relaxations;
 
@@ -82,8 +87,7 @@ const endpointHost = (endpoint: string): string | undefined => {
  * stays on this machine, and every spelling the connection loader reads counts.
  */
 export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[] => {
-    const options = profile.options;
-    if (!options || typeof options !== 'object') return [];
+    const options: Record<string, unknown> = profile.options && typeof profile.options === 'object' ? profile.options : {};
     const presetDefaults = profile.providerId ? getConnectionPreset(profile.providerId)?.defaults : undefined;
     const addresses = [profile.host, options.endpoint]
         .filter((a): a is string => typeof a === 'string' && a.trim() !== '');
@@ -96,33 +100,44 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
         .filter((h): h is string => !!h);
     const presetOwnsTheAddress = !!presetDefaults && addresses.every(address =>
         endpointStaysOnThisMachine(address) || presetHosts.includes(endpointHost(address) ?? ''));
+    const exempt = (rule: RelaxationRule) =>
+        (presetOwnsTheAddress && !!presetDefaults && rule.key in presetDefaults) || (rule.loopbackExempt && onLoopback);
     const found: Relaxation[] = [];
     for (const rule of rules) {
+        if (exempt(rule)) continue;
         const actual = spellings(rule)
             .filter(key => key in options)
             .map(key => options[key])
             .find(value => rule.unsafe.some(u => matches(value, u)));
         if (actual === undefined) continue;
-        if (presetOwnsTheAddress && presetDefaults && rule.key in presetDefaults) continue;
-        if (rule.loopbackExempt && onLoopback) continue;
         found.push({ key: rule.key, value: typeof actual === 'string' ? actual : String(actual) });
+    }
+    // A WebDAV host written as http:// is plain HTTP whatever the scheme
+    // option says: the host prefix wins when the connection is built.
+    const webdavRule = rules.find(r => r.key === WEBDAV_SCHEME_KEY);
+    if (profile.protocol?.toLowerCase() === 'webdav' && hostIsPlainHttp(profile.host)
+        && !found.some(r => r.key === WEBDAV_SCHEME_KEY) && webdavRule && !exempt(webdavRule)) {
+        found.push({ key: WEBDAV_SCHEME_KEY, value: 'http (host)' });
     }
     return found;
 };
 
 /**
  * A copy of `profile` with every relaxing option whose key is not in `keep`
- * brought to its safe state (every spelling removed, the rule's `safe` value
- * stored where it has one), and the keys reset.
+ * brought to its safe state (every spelling removed, the rule's safe value
+ * stored explicitly, a WebDAV host's `http://` prefix made `https://`), and the
+ * keys reset.
  */
 export const makeSafe = <T extends ProfileSecurityInput>(profile: T, keep: readonly string[] = []): { profile: T; removed: string[] } => {
     const removed = securityRelaxations(profile).map(r => r.key).filter(key => !keep.includes(key));
-    if (removed.length === 0 || !profile.options) return { profile, removed: [] };
-    const options = { ...profile.options };
+    if (removed.length === 0) return { profile, removed: [] };
+    const options = { ...(profile.options ?? {}) };
+    let host = profile.host;
     for (const key of removed) {
         const rule = rules.find(r => r.key === key)!;
         for (const spelling of spellings(rule)) delete options[spelling];
-        if (rule.safe !== undefined) options[rule.key] = rule.safe;
+        options[rule.key] = rule.safe;
+        if (rule.key === WEBDAV_SCHEME_KEY && hostIsPlainHttp(host)) host = host!.trim().replace(/^http:\/\//i, 'https://');
     }
-    return { profile: { ...profile, options }, removed };
+    return { profile: { ...profile, host, options }, removed };
 };

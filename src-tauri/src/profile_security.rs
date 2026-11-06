@@ -27,10 +27,10 @@ struct RelaxationRule {
     aliases: Vec<String>,
     #[serde(rename = "unsafe")]
     unsafe_values: Vec<Value>,
-    /// The value the safe state stores, when leaving the option out is not
-    /// safe on its own (a WebDAV host on port 80 picks HTTP without a scheme).
-    #[serde(default)]
-    safe: Option<Value>,
+    /// The value the safe state stores explicitly, so neither a preset default
+    /// nor an auto rule (a WebDAV host on port 80 picks HTTP without a scheme)
+    /// can bring the relaxed value back when the connection is built.
+    safe: Value,
     loopback_exempt: bool,
 }
 
@@ -89,19 +89,22 @@ fn shown(value: &Value) -> String {
 }
 
 /// The relaxing options of a profile given by its parts: the host it connects
-/// to, its preset id and its saved options. The loopback exemption holds only
-/// when every address the profile names stays on this machine, its `host` and
-/// its `options.endpoint` alike: a loopback endpoint beside a remote host
-/// exempts nothing, since WebDAV, FTP and SFTP connect to the host (Greptile
-/// on #1506 Requested 198). Every spelling the connection loader reads counts.
+/// to, its preset id, its protocol and its saved options. The loopback
+/// exemption holds only when every address the profile names stays on this
+/// machine, its `host` and its `options.endpoint` alike: a loopback endpoint
+/// beside a remote host exempts nothing, since WebDAV, FTP and SFTP connect to
+/// the host (Greptile on #1506 Requested 198). Every spelling the connection
+/// loader reads counts, and a WebDAV host written as `http://...` is plain
+/// HTTP whatever the scheme option says, since the host prefix wins in
+/// `WebDavConfig`.
 pub fn security_relaxations_of(
     host: &str,
     provider_id: Option<&str>,
+    protocol: Option<&str>,
     options: Option<&Value>,
 ) -> Vec<Relaxation> {
-    let Some(options) = options.and_then(Value::as_object) else {
-        return Vec::new();
-    };
+    let empty = serde_json::Map::new();
+    let options = options.and_then(Value::as_object).unwrap_or(&empty);
     let preset = provider_id.and_then(crate::connection_manifest::preset);
     let addresses: Vec<&str> = [Some(host), options.get("endpoint").and_then(Value::as_str)]
         .into_iter()
@@ -129,29 +132,50 @@ pub fn security_relaxations_of(
                     .is_some_and(|host| own.contains(&host))
         })
     });
-    table()
+    let exempt = |rule: &RelaxationRule| {
+        (preset_owns_the_address
+            && preset.is_some_and(|preset| preset.defaults.contains_key(&rule.key)))
+            || (rule.loopback_exempt && on_loopback)
+    };
+    let mut found: Vec<Relaxation> = table()
         .relaxations
         .iter()
+        .filter(|rule| !exempt(rule))
         .filter_map(|rule| {
             let actual = options
                 .iter()
                 .filter(|(key, _)| rule.names(key))
                 .map(|(_, value)| value)
                 .find(|value| rule.unsafe_values.iter().any(|u| value_matches(value, u)))?;
-            if preset_owns_the_address
-                && preset.is_some_and(|preset| preset.defaults.contains_key(&rule.key))
-            {
-                return None;
-            }
-            if rule.loopback_exempt && on_loopback {
-                return None;
-            }
             Some(Relaxation {
                 key: rule.key.clone(),
                 value: shown(actual),
             })
         })
-        .collect()
+        .collect();
+    let webdav = protocol
+        .and_then(crate::connection_manifest::connection_spec)
+        .is_some_and(|spec| spec.token == "webdav");
+    if webdav
+        && host_is_plain_http(host)
+        && !found.iter().any(|r| r.key == WEBDAV_SCHEME_KEY)
+        && rule(WEBDAV_SCHEME_KEY).is_some_and(|rule| !exempt(rule))
+    {
+        found.push(Relaxation {
+            key: WEBDAV_SCHEME_KEY.to_string(),
+            value: "http (host)".to_string(),
+        });
+    }
+    found
+}
+
+/// The rule a WebDAV host's `http://` prefix belongs to.
+const WEBDAV_SCHEME_KEY: &str = "webdavScheme";
+
+fn host_is_plain_http(host: &str) -> bool {
+    host.trim()
+        .get(..7)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("http://"))
 }
 
 /// One relaxing option the user chose to keep on an import: the profile's
@@ -192,58 +216,92 @@ impl RelaxationPolicy {
 }
 
 /// [`security_relaxations_of`] for a profile stored as JSON (`host`,
-/// `providerId`, `options`).
+/// `providerId`, `protocol`, `options`).
 pub fn security_relaxations(profile: &Value) -> Vec<Relaxation> {
     security_relaxations_of(
         profile.get("host").and_then(Value::as_str).unwrap_or(""),
         profile.get("providerId").and_then(Value::as_str),
+        profile.get("protocol").and_then(Value::as_str),
         profile.get("options"),
     )
 }
 
-/// Bring `options` to its safe state: for every relaxing option found by
-/// [`security_relaxations_of`] whose key is not in `keep`, every spelling of it
-/// is removed, and the rule's `safe` value is stored where leaving it out is
-/// not safe on its own. Returns the keys reset.
-pub fn make_options_safe(
+/// Bring a profile's host and options to their safe state: for every relaxing
+/// option found by [`security_relaxations_of`] whose key is not in `keep`,
+/// every spelling of it is removed and the rule's safe value is stored
+/// explicitly, so a preset default cannot bring the relaxed value back when
+/// the connection is built (Greptile on #1506 Requested 198); a WebDAV host's
+/// `http://` prefix becomes `https://`. Returns the keys reset.
+pub fn make_parts_safe(
+    host: &mut String,
     options: &mut Option<Value>,
     relaxations: &[Relaxation],
     keep: &[String],
 ) -> Vec<String> {
+    let reset: Vec<&Relaxation> = relaxations
+        .iter()
+        .filter(|relaxation| !keep.contains(&relaxation.key))
+        .collect();
+    if reset.is_empty() {
+        return Vec::new();
+    }
+    if !options.as_ref().is_some_and(Value::is_object) {
+        *options = Some(Value::Object(serde_json::Map::new()));
+    }
     let Some(map) = options.as_mut().and_then(Value::as_object_mut) else {
         return Vec::new();
     };
-    relaxations
-        .iter()
-        .filter(|relaxation| !keep.contains(&relaxation.key))
-        .filter_map(|relaxation| {
-            let rule = rule(&relaxation.key)?;
-            let spellings: Vec<String> =
-                map.keys().filter(|key| rule.names(key)).cloned().collect();
-            for spelling in &spellings {
-                map.remove(spelling);
-            }
-            if let Some(safe) = &rule.safe {
-                map.insert(rule.key.clone(), safe.clone());
-            }
-            (!spellings.is_empty()).then(|| relaxation.key.clone())
-        })
-        .collect()
+    let mut keys = Vec::new();
+    for relaxation in reset {
+        let Some(rule) = rule(&relaxation.key) else {
+            continue;
+        };
+        let spellings: Vec<String> = map.keys().filter(|key| rule.names(key)).cloned().collect();
+        for spelling in &spellings {
+            map.remove(spelling);
+        }
+        map.insert(rule.key.clone(), rule.safe.clone());
+        if rule.key == WEBDAV_SCHEME_KEY && host_is_plain_http(host) {
+            *host = format!("https://{}", &host.trim()[7..]);
+        }
+        if !keys.contains(&rule.key) {
+            keys.push(rule.key.clone());
+        }
+    }
+    keys
 }
 
-/// [`make_options_safe`] for a profile stored as JSON. Returns the keys
-/// removed.
+/// [`make_parts_safe`] for a profile stored as JSON. Returns the keys reset.
 pub fn make_profile_safe(profile: &mut Value, keep: &[String]) -> Vec<String> {
     let relaxations = security_relaxations(profile);
     let Some(object) = profile.as_object_mut() else {
         return Vec::new();
     };
+    let mut host = object
+        .get("host")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     let mut options = object.remove("options");
-    let removed = make_options_safe(&mut options, &relaxations, keep);
+    let reset = make_parts_safe(&mut host, &mut options, &relaxations, keep);
     if let Some(options) = options {
         object.insert("options".to_string(), options);
     }
-    removed
+    if object.contains_key("host") || !host.is_empty() {
+        object.insert("host".to_string(), Value::String(host));
+    }
+    reset
+}
+
+/// The relaxations of `incoming` that `existing` does not already carry with
+/// the same value: an overwrite that keeps a setting the user already has
+/// imports nothing new (Greptile on #1506 Requested 198).
+pub fn new_relaxations(incoming: Vec<Relaxation>, existing: &Value) -> Vec<Relaxation> {
+    let already = security_relaxations(existing);
+    incoming
+        .into_iter()
+        .filter(|relaxation| !already.contains(relaxation))
+        .collect()
 }
 
 #[cfg(test)]
@@ -305,7 +363,7 @@ mod tests {
         assert_eq!(removed, vec!["verifyCert", "trustUnknownHosts"]);
         assert_eq!(
             profile["options"],
-            json!({"trustPasvAddress": true, "timeout": 30})
+            json!({"trustPasvAddress": true, "timeout": 30, "verifyCert": true, "trustUnknownHosts": false})
         );
         assert_eq!(
             security_relaxations(&profile),
@@ -342,7 +400,7 @@ mod tests {
         let mut snake = json!({"host": "dav.example.com", "options": {"verify_cert": false}});
         assert_eq!(security_relaxations(&snake)[0].key, "verifyCert");
         assert_eq!(make_profile_safe(&mut snake, &[]), vec!["verifyCert"]);
-        assert_eq!(snake["options"], json!({}));
+        assert_eq!(snake["options"], json!({"verifyCert": true}));
 
         let decoy = json!({
             "host": "dav.example.com",
@@ -356,6 +414,143 @@ mod tests {
         });
         assert_eq!(make_profile_safe(&mut port_80, &[]), vec!["webdavScheme"]);
         assert_eq!(port_80["options"], json!({"webdavScheme": "https"}));
+    }
+
+    /// The class rule for #1506 Requested 198 (Greptile round 1): a reset is
+    /// proven by the connection config the providers build, not by the saved
+    /// options. One relaxed profile per rule goes through the reset, then
+    /// `profile_connection_extra`, then the provider's own config, including
+    /// a preset default that would come back and a WebDAV host prefix.
+    #[test]
+    fn every_reset_holds_in_the_effective_connection_config() {
+        use crate::providers::swift::SwiftConfig;
+        use crate::providers::{
+            FtpConfig, ProviderConfig, ProviderType, S3Config, SftpConfig, WebDavConfig,
+        };
+        fn effective(profile: &Value, provider_type: ProviderType) -> ProviderConfig {
+            let host = profile.get("host").and_then(Value::as_str).unwrap_or("");
+            let (extra, host) =
+                crate::profile_loader::profile_connection_extra(profile, provider_type, host);
+            ProviderConfig {
+                name: "probe".into(),
+                provider_type,
+                host,
+                port: profile
+                    .get("port")
+                    .and_then(Value::as_u64)
+                    .and_then(|port| u16::try_from(port).ok()),
+                username: Some("user".into()),
+                password: Some("secret".into()),
+                initial_path: None,
+                extra,
+            }
+        }
+        let safe = |mut profile: Value| {
+            assert!(!security_relaxations(&profile).is_empty(), "{profile}");
+            make_profile_safe(&mut profile, &[]);
+            assert!(security_relaxations(&profile).is_empty(), "{profile}");
+            profile
+        };
+
+        let dav = safe(
+            json!({"host": "dav.example.com", "port": 443, "protocol": "webdav",
+            "options": {"verifyCert": false}}),
+        );
+        assert!(
+            WebDavConfig::from_provider_config(&effective(&dav, ProviderType::WebDav))
+                .unwrap()
+                .verify_cert
+        );
+        // The Filen Desktop S3 preset declares verifyCert=false: the profile's
+        // explicit true has to beat it once the address is not the bridge.
+        let filen = safe(
+            json!({"host": "", "protocol": "s3", "providerId": "filen-desktop-s3",
+            "options": {"endpoint": "https://s3.attacker.example", "bucket": "b", "verifyCert": false}}),
+        );
+        assert!(
+            S3Config::from_provider_config(&effective(&filen, ProviderType::S3))
+                .unwrap()
+                .verify_cert
+        );
+        let s3 = safe(json!({"host": "", "protocol": "s3",
+            "options": {"endpoint": "http://minio.example.com:9000", "bucket": "b", "allowCleartextEndpoint": true}}));
+        assert!(
+            !S3Config::from_provider_config(&effective(&s3, ProviderType::S3))
+                .unwrap()
+                .allow_cleartext_endpoint
+        );
+        let blomp = safe(
+            json!({"host": "https://keystone.attacker.example", "protocol": "swift",
+            "providerId": "blomp", "options": {"allowCleartextStorage": true}}),
+        );
+        assert!(
+            !SwiftConfig::from_provider_config(&effective(&blomp, ProviderType::Swift))
+                .unwrap()
+                .allow_cleartext_storage_endpoint
+        );
+        let port_80 = safe(
+            json!({"host": "dav.example.com", "port": 80, "protocol": "webdav",
+            "options": {"webdavScheme": "http"}}),
+        );
+        assert!(
+            WebDavConfig::from_provider_config(&effective(&port_80, ProviderType::WebDav))
+                .unwrap()
+                .url
+                .starts_with("https://")
+        );
+        let prefixed = safe(
+            json!({"host": "http://dav.example.com:8080", "protocol": "webdav",
+            "options": {"webdavScheme": "https"}}),
+        );
+        assert!(
+            WebDavConfig::from_provider_config(&effective(&prefixed, ProviderType::WebDav))
+                .unwrap()
+                .url
+                .starts_with("https://")
+        );
+        let ftp = safe(json!({"host": "ftp.example.com", "protocol": "ftp",
+            "options": {"trustPasvAddress": true}}));
+        assert!(
+            !FtpConfig::from_provider_config(&effective(&ftp, ProviderType::Ftp))
+                .unwrap()
+                .trust_pasv_address
+        );
+        let sftp = safe(json!({"host": "sftp.example.com", "protocol": "sftp",
+            "options": {"trustUnknownHosts": true}}));
+        assert!(
+            !SftpConfig::from_provider_config(&effective(&sftp, ProviderType::Sftp))
+                .unwrap()
+                .trust_unknown_hosts
+        );
+
+        // Every rule of the table has a case above.
+        let covered = [
+            "verifyCert",
+            "allowCleartextEndpoint",
+            "allowCleartextStorage",
+            "webdavScheme",
+            "trustPasvAddress",
+            "trustUnknownHosts",
+        ];
+        for rule in &table().relaxations {
+            assert!(
+                covered.contains(&rule.key.as_str()),
+                "{} has no effective-config case",
+                rule.key
+            );
+        }
+    }
+
+    /// An overwrite that brings a setting the existing profile already has,
+    /// same key and value, imports nothing new.
+    #[test]
+    fn a_relaxation_the_profile_already_has_is_not_new() {
+        let existing = json!({"host": "dav.example.com", "options": {"verifyCert": false}});
+        let incoming = security_relaxations(&json!({"host": "dav.example.com",
+            "options": {"verifyCert": false, "trustPasvAddress": true}}));
+        let fresh = new_relaxations(incoming, &existing);
+        let keys: Vec<&str> = fresh.iter().map(|r| r.key.as_str()).collect();
+        assert_eq!(keys, ["trustPasvAddress"]);
     }
 
     #[test]

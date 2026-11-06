@@ -42208,6 +42208,7 @@ fn rclone_import_security(
             let relaxations = security_relaxations_of(
                 &server.host,
                 server.provider_id.as_deref(),
+                server.protocol.as_deref(),
                 server.options.as_ref(),
             );
             if relaxations.is_empty() {

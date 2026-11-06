@@ -19033,19 +19033,36 @@ fn prepare_import(
     // certificate, SSH host key, PASV address, cleartext consent) comes in its
     // safe state unless the policy keeps it (#1506 Requested 198). Done before
     // the target comparison, so an overwrite is judged on what will be stored.
+    // An overwrite that brings a setting the profile already has, same key and
+    // value, imports nothing new: it is neither reported nor reset, so it
+    // compares like with like (Greptile on #1506 Requested 198).
     let mut security = Vec::new();
     for planned in plan.iter().filter(|p| p.outcome != ImportOutcome::Skipped) {
         let server = &mut servers[planned.index];
-        let relaxations = profile_security::security_relaxations_of(
+        let mut relaxations = profile_security::security_relaxations_of(
             &server.host,
             server.provider_id.as_deref(),
+            server.protocol.as_deref(),
             server.options.as_ref(),
         );
+        if planned.outcome == ImportOutcome::Overwritten {
+            if let Some(existing) = current
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(planned.id.as_str()))
+            {
+                relaxations = profile_security::new_relaxations(relaxations, existing);
+            }
+        }
         if relaxations.is_empty() {
             continue;
         }
         let keep = policy.kept_keys(planned.index, &relaxations);
-        let removed = profile_security::make_options_safe(&mut server.options, &relaxations, &keep);
+        let removed = profile_security::make_parts_safe(
+            &mut server.host,
+            &mut server.options,
+            &relaxations,
+            &keep,
+        );
         let (reset, kept) = relaxations
             .into_iter()
             .partition(|relaxation| removed.contains(&relaxation.key));
@@ -20413,7 +20430,10 @@ mod import_security_tests {
             &[],
         );
         for server in &reset.servers {
-            assert_eq!(server.options, Some(json!({"timeout": 30})));
+            assert_eq!(
+                server.options,
+                Some(json!({"timeout": 30, "verifyCert": true, "trustPasvAddress": false}))
+            );
         }
         assert_eq!(reset.security.len(), 2);
         for entry in &reset.security {
@@ -20427,10 +20447,13 @@ mod import_security_tests {
             key: "trustPasvAddress".into(),
         }]);
         let partial = plan(&servers, ExistingProfileMode::Skip, &keep_one, &[]);
-        assert_eq!(partial.servers[0].options, Some(json!({"timeout": 30})));
+        assert_eq!(
+            partial.servers[0].options,
+            Some(json!({"timeout": 30, "verifyCert": true, "trustPasvAddress": false}))
+        );
         assert_eq!(
             partial.servers[1].options,
-            Some(json!({"trustPasvAddress": true, "timeout": 30}))
+            Some(json!({"trustPasvAddress": true, "timeout": 30, "verifyCert": true}))
         );
         assert_eq!(partial.security[1].kept.len(), 1);
 
@@ -20469,6 +20492,32 @@ mod import_security_tests {
         let indices: Vec<usize> = report.security.iter().map(|e| e.file_index).collect();
         assert_eq!(indices, [1]);
         assert_eq!(report.servers[0]["fileIndex"], json!(1));
+    }
+
+    /// Greptile round 1 on #1506 Requested 198: an overwrite that brings the
+    /// relaxed setting the profile already has imports nothing new, so it is
+    /// neither reset nor reported, and it lands instead of being skipped.
+    #[test]
+    fn an_overwrite_with_a_relaxation_the_profile_already_has_lands() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"verifyCert": false}
+        })];
+        let mut server = relaxed("srv_a");
+        server.options = Some(json!({"verifyCert": false, "timeout": 30}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Overwritten);
+        assert!(prepared.target_changed.is_empty());
+        assert!(prepared.security.is_empty());
+        assert_eq!(
+            prepared.servers[0].options,
+            Some(json!({"verifyCert": false, "timeout": 30}))
+        );
     }
 
     /// The reset happens before the overwrite's target check: the safe copy

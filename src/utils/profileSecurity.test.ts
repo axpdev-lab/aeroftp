@@ -7,7 +7,7 @@ import { endpointStaysOnThisMachine, makeSafe, securityRelaxations } from './pro
 
 interface Case {
     name: string;
-    profile: { host?: string; providerId?: string; options?: Record<string, unknown> };
+    profile: { host?: string; providerId?: string; protocol?: string; options?: Record<string, unknown> };
     relaxed: string[];
 }
 
@@ -31,17 +31,24 @@ describe('makeSafe', () => {
         };
         const { profile: safe, removed } = makeSafe(profile, ['trustPasvAddress']);
         expect(removed).toEqual(['verifyCert', 'trustUnknownHosts']);
-        expect(safe.options).toEqual({ trustPasvAddress: true, timeout: 30 });
+        expect(safe.options).toEqual({ trustPasvAddress: true, timeout: 30, verifyCert: true, trustUnknownHosts: false });
         expect(profile.options.verifyCert).toBe(false);
     });
 
     it('removes every spelling and stores the safe scheme where leaving it out is not safe', () => {
         const snake = makeSafe({ host: 'dav.example.com', options: { verify_cert: false } });
         expect(snake.removed).toEqual(['verifyCert']);
-        expect(snake.profile.options).toEqual({});
+        expect(snake.profile.options).toEqual({ verifyCert: true });
         const port80 = makeSafe({ host: 'dav.example.com', options: { webdavScheme: 'http', tls_mode: 'HTTP' } });
         expect(port80.removed).toEqual(['webdavScheme']);
         expect(port80.profile.options).toEqual({ webdavScheme: 'https' });
+    });
+
+    it('rewrites a WebDAV host written as http:// to https://', () => {
+        const { profile, removed } = makeSafe({ host: 'http://dav.example.com:8080', protocol: 'webdav', options: {} });
+        expect(removed).toEqual(['webdavScheme']);
+        expect(profile.host).toBe('https://dav.example.com:8080');
+        expect(profile.options).toEqual({ webdavScheme: 'https' });
     });
 
     it('returns the same profile when nothing relaxes a check', () => {
