@@ -5046,7 +5046,9 @@ const App: React.FC = () => {
       };
       setIsSyncNavigation(false);
       setSyncBasePaths(null);
-      setSessions([newSession]);
+      // The other tabs stay, parked: a device tab joins them, and replaces only
+      // an earlier device tab (one ProviderState slot).
+      setSessions(prev => [...prev.filter(s => s.connectionParams?.protocol !== 'mtp'), newSession]);
       setActiveSessionId(newSession.id);
 
       const storageNames = session.storages
@@ -5121,7 +5123,8 @@ const App: React.FC = () => {
       setRemoteFiles([]);
       setCurrentRemotePath('/');
       setCurrentRemoteDisplayPath('/');
-      setSessions([]);
+      // Only the device tab goes: the others were parked when it opened.
+      setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
       setActiveSessionId(null);
       setShowRemotePanel(false);
       setShowConnectionScreen(true);
@@ -6800,7 +6803,8 @@ const App: React.FC = () => {
         setRemoteFiles([]);
         setCurrentRemotePath('/');
         setCurrentRemoteDisplayPath('/');
-        setSessions([]);
+        // Only the device tab goes: the others were parked when it opened.
+        setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
         setActiveSessionId(null);
         setShowRemotePanel(false);
         setShowConnectionScreen(true);
@@ -8828,7 +8832,7 @@ const App: React.FC = () => {
     if (isSshProtocol(targetSession.connectionParams?.protocol)) {
       const target = normalizeProviderConnectionParams(targetSession.connectionParams);
       const accepted = await connectScope.step(() => checkSftpHostKey(target.server, target.port || 22, connectScope));
-      if (!accepted) return;
+      if (!accepted) { backToParked(); return; }
     }
 
     // Same reason as the disconnect path: the scan belongs to the session being

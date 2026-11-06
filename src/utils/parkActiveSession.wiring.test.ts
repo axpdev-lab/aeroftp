@@ -163,9 +163,34 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(connected).toBeGreaterThan(success);
         expect(body.slice(body.indexOf('setActiveSessionId(sessionId);'), success)).toContain('await ');
         expect(body).toContain('const fromParked = activeSessionId === null;');
-        // The two cancel branches and the failure branch.
-        expect(body.split('backToParked();').length - 1).toBe(3);
+        // The refused host key, the two cancel branches and the failure branch.
+        expect(body.split('backToParked();').length - 1).toBe(4);
         expect(APP).toContain('onTabClick={switchSession}');
+    });
+
+    it('keeps a parked tab parked when its host key is refused', () => {
+        // The card and Active Sessions mark the workspace connected before they
+        // call switchSession: a refused key must not leave it connected with
+        // nothing active.
+        const start = APP.indexOf('  const switchSession = async');
+        const body = APP.slice(start, APP.indexOf('\n  const ', start + 1));
+        expect(body).toContain('if (!accepted) { backToParked(); return; }');
+        expect(body.indexOf('const backToParked')).toBeLessThan(body.indexOf('checkSftpHostKey('));
+    });
+
+    it('keeps the parked tabs when a portable device opens, closes or is unplugged', () => {
+        // The device open parks the live tab first: replacing the whole list,
+        // then emptying it on close, threw every parked tab away.
+        const open = APP.slice(APP.indexOf('  const openMtpSessionFromLiveDevice = useCallback('), APP.indexOf('  /** PLACES portable row'));
+        expect(open).not.toContain('setSessions([newSession])');
+        expect(open).toContain("setSessions(prev => [...prev.filter(s => s.connectionParams?.protocol !== 'mtp'), newSession]);");
+        const closed = APP.slice(APP.indexOf('  const handlePortableDeviceClosed = useCallback('), APP.indexOf('  // Unplug while a device session is live.'));
+        const unplugged = APP.slice(APP.indexOf('      // Gvfs-backed MTP: mount vanishes on unplug'), APP.indexOf("try { await invoke('mtp_close_device', { deviceId: null }); }"));
+        for (const [name, path] of [['close', closed], ['unplug during a listing', unplugged]]) {
+            expect(path.length, name).toBeGreaterThan(0);
+            expect(path, name).not.toContain('setSessions([])');
+            expect(path, name).toContain("setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));");
+        }
     });
 
     it('lets the park keep the old tab\'s Navigation Sync', () => {
