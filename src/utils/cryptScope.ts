@@ -29,6 +29,24 @@ export const normCryptScope = (s?: string | null): string => normalizeRemotePath
  */
 export const normLandingPath = (s?: string | null): string => normCryptScope(s);
 
+/**
+ * A folder under the login folder (`~`, `~/docs`), as the rclone import writes
+ * for an SFTP crypt remote such as `nas:docs`. Only the connected session
+ * knows the absolute folder it names: the backend resolves it when it applies
+ * the overlay and returns that anchor. Read as a path before then, `~/docs`
+ * became `/~/docs`, a folder nobody wrote to.
+ */
+export const isLoginRelativeScope = (s?: string | null): boolean =>
+  s === '~' || !!s?.startsWith('~/');
+
+/**
+ * A binding's scope as the app can read it before the session resolves it:
+ * a login-relative scope reads as '' (the whole remote), so every path counts
+ * as inside until the applied anchor replaces it (fail closed).
+ */
+export const knownCryptScope = (s?: string | null): string =>
+  isLoginRelativeScope(s) ? '' : normCryptScope(s);
+
 export const resolveUsernameTemplate = (
   path: string | null | undefined,
   username: string | null | undefined,
@@ -53,6 +71,10 @@ export const connectLandsOutsideOverlay = (
 ): boolean => {
   const island = normCryptScope(overlayPath);
   if (!island) return false;
+  // An island under the login folder compares only with a landing under it:
+  // where an absolute one stands is known once connected, so the connect
+  // unlocks and the backend anchors it (fail closed).
+  if (isLoginRelativeScope(overlayPath) && !isLoginRelativeScope(remotePath)) return false;
   // The folder the connect opens, read as navigation reads it: `/Crypt ` is
   // another folder than an island at `/Crypt`, and opens outside it.
   const landing = normLandingPath(remotePath);
@@ -97,7 +119,7 @@ export const resolveBoundCryptScope = (
 export const restoredTransferCryptScope = (
   profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
 ): string | undefined => profile.aeroCryptOverlay?.enabled
-  ? normCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
+  ? knownCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
     || resolveUsernameTemplate(profile.initialPath, profile.username) || '')
   : undefined;
 

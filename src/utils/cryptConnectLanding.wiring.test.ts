@@ -11,7 +11,7 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
+import { connectLandsOutsideOverlay, isLoginRelativeScope, isWithinCryptScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
 import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
@@ -261,11 +261,15 @@ describe('crypt overlay deferred connect unlock', () => {
             }],
             resolveUsernameTemplate,
             connectLandsOutsideOverlay,
+            isLoginRelativeScope,
         }, "return getProfileOverlayHint('srv_1', landingPath);");
 
         await expect(hintFor()).resolves.toMatchObject({ opensOutside: true });
         await expect(hintFor('/Crypt')).resolves.toMatchObject({ opensOutside: false });
         await expect(hintFor('/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', opensOutside: true });
+        // An SFTP crypt imported from `nas:docs`: no anchor until the session
+        // resolves `~/docs`, so the panel opens where the connect landed.
+        await expect(hintFor(undefined, '~/docs', '~/docs')).resolves.toMatchObject({ anchor: null, opensOutside: false });
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, resolvedRemoteDir)');
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');

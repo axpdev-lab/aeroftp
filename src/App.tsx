@@ -214,7 +214,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { isLoginRelativeScope, knownCryptScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -6299,7 +6299,7 @@ const App: React.FC = () => {
       const binding = profile?.aeroCryptOverlay;
       if (!profile || !binding?.enabled) return null;
       const scope = binding.remoteScope || profile.initialPath || '';
-      return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
+      return { kind: binding.kind, anchor: scope && scope !== '/' && !isLoginRelativeScope(scope) ? scope : null };
     } catch {
       return null;
     }
@@ -6333,7 +6333,9 @@ const App: React.FC = () => {
       const scope = remoteScope || profileInitialPath || '';
       return {
         kind: binding.kind,
-        anchor: scope && scope !== '/' ? scope : null,
+        // A login-relative scope has no anchor before the session resolves
+        // it: the panel opens where the connect landed.
+        anchor: scope && scope !== '/' && !isLoginRelativeScope(scope) ? scope : null,
         // Remote Path is the opening. An empty Overlays Path means that
         // folder is the encrypted one. A root, or any parent of the island,
         // opens in plaintext and must not point the panel at the island.
@@ -6468,7 +6470,7 @@ const App: React.FC = () => {
       // overlay ones.
       setCryptOverlayOwner({ savedServerId, sessionId: null });
       // Show the path-bar badge immediately (grey) for the whole decrypt window.
-      markSessionOverlayKind({ savedServerId }, binding.kind, binding.remoteScope ?? null);
+      markSessionOverlayKind({ savedServerId }, binding.kind, knownCryptScope(binding.remoteScope));
       setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
@@ -6594,7 +6596,7 @@ const App: React.FC = () => {
               kind: binding.kind,
               reason: refusalFor(overlayRefusalRef.current, savedId),
             };
-            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, binding.remoteScope ?? null);
+            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, knownCryptScope(binding.remoteScope));
           }
         } catch {
           // best-effort: fall through as plain if the profile re-read fails

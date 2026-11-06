@@ -1,7 +1,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
 import { describe, it, expect } from 'vitest';
-import { normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
+import { isLoginRelativeScope, knownCryptScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './cryptScope';
 
 describe('normCryptScope', () => {
   it('collapses the empty scope and the root onto "whole remote"', () => {
@@ -173,4 +173,31 @@ it('serializes the expected binding without collapsing absent, root or literal w
   expect(restoredTransferCryptScope({ username: '', initialPath: '/', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' } })).toBe('');
   expect(restoredTransferCryptScope({ username: '', initialPath: '/ fallback ', aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: '' } })).toBe('/ fallback ');
   expect(restoredTransferCryptScope({ username: 'alice', aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt', remoteScope: '/{username}/vault ' } })).toBe('/alice/vault ');
+});
+
+// The rclone import binds `nas:docs` at `~/docs`. Only the connected session
+// knows that folder, so before the overlay is applied nothing reads it as
+// `/~/docs`: every path counts as inside, and the connect unlocks.
+describe('a scope under the login folder', () => {
+  it('is `~` or `~/...`, never a literal `~docs` or an absolute path', () => {
+    for (const scope of ['~', '~/docs', '~/ docs']) expect(isLoginRelativeScope(scope)).toBe(true);
+    for (const scope of ['~docs', '/~/docs', '/docs', '', null, undefined]) expect(isLoginRelativeScope(scope)).toBe(false);
+  });
+  it('reads as the whole remote until the session resolves it', () => {
+    expect(knownCryptScope('~/docs')).toBe('');
+    expect(knownCryptScope('~')).toBe('');
+    expect(knownCryptScope('/docs/')).toBe('/docs');
+    expect(isWithinCryptScope(knownCryptScope('~/docs'), '/home/u/elsewhere')).toBe(true);
+  });
+  it('keeps a restored transfer behind the overlay wherever it lands', () => {
+    const profile = { username: 'u', initialPath: '~/docs', aeroCryptOverlay: { enabled: true, kind: 'rclone-crypt' as const, remoteScope: '~/docs' } };
+    for (const path of ['/home/u/docs/f', '/home/u/other/f', '/~/docs/f']) expect(restoredTransferRequiresOverlay(profile, path)).toBe(true);
+    expect(restoredTransferRequiresOverlay({ ...profile, aeroCryptOverlay: { ...profile.aeroCryptOverlay, remoteScope: '' } }, '/srv/f')).toBe(true);
+  });
+  it('unlocks on connect unless the landing is a login folder outside it', () => {
+    expect(connectLandsOutsideOverlay('/home/u', '~/docs')).toBe(false);
+    expect(connectLandsOutsideOverlay('~/docs', '~/docs')).toBe(false);
+    expect(connectLandsOutsideOverlay('~/docs/sub', '~/docs')).toBe(false);
+    expect(connectLandsOutsideOverlay('~', '~/docs')).toBe(true);
+  });
 });

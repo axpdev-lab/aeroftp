@@ -2079,7 +2079,7 @@ fn map_crypt_remote(
     options.insert("rcloneCryptEnabled".into(), serde_json::Value::Bool(true));
     options.insert(
         "rcloneCryptRemote".into(),
-        serde_json::Value::String(remote_target),
+        serde_json::Value::String(remote_target.clone()),
     );
     options.insert(
         "rcloneCryptOverlayName".into(),
@@ -2110,7 +2110,15 @@ fn map_crypt_remote(
 
     mapped.options = Some(serde_json::Value::Object(options));
 
-    if crypt_subpath.is_some() {
+    // rclone's sftp opens `nas:docs` under the login folder and `nas:/docs`
+    // from the root, as an alias does ([`apply_rclone_start_folder`]); the
+    // folder is also the overlay's scope. Read from the root like the other
+    // backends, `nas: docs` became `/ docs`, another folder, where files were
+    // encrypted with the right key and rclone never looked.
+    if mapped.protocol == "sftp" {
+        let raw = remote_target.split_once(':').map_or("", |(_, path)| path);
+        apply_rclone_start_folder(&mut mapped, raw);
+    } else if crypt_subpath.is_some() {
         mapped.initial_path = crypt_subpath;
     }
 
@@ -11277,8 +11285,22 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
              [pics]\ntype = alias\nremote = s3r: media/2026\n\n\
              [nas]\ntype = sftp\nhost = nas.example.test\nuser = u\n\n\
              [docs]\ntype = alias\nremote = nas: docs\n\n\
-             [deep]\ntype = alias\nremote = docs: sub\n",
+             [deep]\ntype = alias\nremote = docs: sub\n\n\
+             [relcrypt]\ntype = crypt\nremote = nas: docs\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\n\
+             [abscrypt]\ntype = crypt\nremote = nas:/docs\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n",
             "lead-space-foreign",
+        );
+        // A crypt over SFTP opens where an alias does: under the login folder
+        // for `nas: docs`, from the root for `nas:/docs`.
+        assert_eq!(
+            imported(&foreign, "relcrypt").initial_path.as_deref(),
+            Some("~/ docs")
+        );
+        assert_eq!(
+            imported(&foreign, "abscrypt").initial_path.as_deref(),
+            Some("/docs")
         );
         assert_eq!(bucket_of(&foreign, "pics").as_deref(), Some(" media"));
         assert_eq!(
