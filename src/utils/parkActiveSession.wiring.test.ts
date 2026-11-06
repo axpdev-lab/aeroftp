@@ -145,7 +145,9 @@ describe('a connect parks the live tab before it ends the connection', () => {
         const start = APP.indexOf('  const handleNewTabFromSavedServer = () => {');
         const body = APP.slice(start, APP.indexOf('\n  };', start));
         expect(start).toBeGreaterThan(-1);
-        expect(body).toContain(PARK);
+        // "+" changes no backend, so a portable device tab stays (going back
+        // reuses the live device session).
+        expect(body).toContain('parkActiveSession(true);');
         expect(body).not.toContain('setSessions(');
         expect(body).not.toContain('setActiveSessionId(');
     });
@@ -186,6 +188,11 @@ describe('a connect parks the live tab before it ends the connection', () => {
         expect(open).toContain("setSessions(prev => [...prev.filter(s => s.connectionParams?.protocol !== 'mtp'), newSession]);");
         const closed = APP.slice(APP.indexOf('  const handlePortableDeviceClosed = useCallback('), APP.indexOf('  // Unplug while a device session is live.'));
         const unplugged = APP.slice(APP.indexOf('      // Gvfs-backed MTP: mount vanishes on unplug'), APP.indexOf("try { await invoke('mtp_close_device', { deviceId: null }); }"));
+        // An unplug while another server's tab is live leaves its provider alone.
+        expect(closed).toContain("const deviceOwnsProvider = !activeSessionId || liveConnectionParams.protocol === 'mtp';");
+        expect(closed).toMatch(/if \(deviceOwnsProvider\) \{\s*try \{ await invoke\('provider_disconnect'\); \}/);
+        expect(closed.indexOf("setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));"))
+            .toBeLessThan(closed.indexOf("if (liveConnectionParams.protocol === 'mtp') {"));
         for (const [name, path] of [['close', closed], ['unplug during a listing', unplugged]]) {
             expect(path.length, name).toBeGreaterThan(0);
             expect(path, name).not.toContain('setSessions([])');
@@ -243,12 +250,16 @@ describe('parkActiveSession', () => {
         syncBasePaths: { remote: '/remote', local: '/home/user' },
         aeroVaultOverlaySession: { sessionId: 'vault' },
     };
-    const park = async (activeSessionId: string | null) => {
-        const ctx: Record<string, unknown> = { ...state, activeSessionId, useLatestCallback: (fn: unknown) => fn };
-        const fn = await runSlice<() => void>('  const parkActiveSession = useLatestCallback(', '  /** Shared open path', 'parkActiveSession', ctx);
-        fn();
-        return ctx as Record<string, ReturnType<typeof vi.fn>>;
+    const park = async (activeSessionId: string | null, keepDeviceTab?: boolean) => {
+        const ctx: Record<string, unknown> = {
+            ...state, activeSessionId, useLatestCallback: (fn: unknown) => fn, mtpGvfsMountPathRef: { current: '/run/user/gvfs/mtp' },
+        };
+        const fn = await runSlice<(keep?: boolean) => void>('  const parkActiveSession = useLatestCallback(', '  /** Shared open path', 'parkActiveSession', ctx);
+        fn(keepDeviceTab);
+        return ctx as Record<string, ReturnType<typeof vi.fn>> & { mtpGvfsMountPathRef: { current: string | null } };
     };
+    const applyAll = (setSessions: ReturnType<typeof vi.fn>, tabs: { id: string; status: string; connectionParams?: { protocol: string } }[]) =>
+        setSessions.mock.calls.reduce((prev, [update]) => (update as (p: typeof tabs) => typeof tabs)(prev), tabs);
 
     it('turns the active tab into a cached one with its state, and leaves nothing active', async () => {
         const ctx = await park('a');
@@ -273,12 +284,35 @@ describe('parkActiveSession', () => {
         // next connection lists; the cached tab keeps them (asserted above).
         expect(ctx.setRemoteFiles).toHaveBeenCalledWith([]);
         expect(ctx.setSelectedRemoteFiles).toHaveBeenCalledWith(new Set());
+        // Search results of the parked session would list over the next one.
+        expect(ctx.setRemoteSearchResults).toHaveBeenCalledWith(null);
     });
 
-    it('touches no tab when none is active', async () => {
+    it('drops a portable device tab and its unplug watch when a connect replaces the backend', async () => {
+        const tabs = [
+            { id: 'a', status: 'connected', connectionParams: { protocol: 'ftp' } },
+            { id: 'phone', status: 'cached', connectionParams: { protocol: 'mtp' } },
+        ];
+        const ctx = await park('a');
+        expect(applyAll(ctx.setSessions, tabs).map(t => `${t.id}:${t.status}`)).toEqual(['a:cached']);
+        expect(ctx.setActivePortableDeviceId).toHaveBeenCalledWith(null);
+        expect(ctx.mtpGvfsMountPathRef.current).toBeNull();
+    });
+
+    it('keeps the device tab for the "+" new tab, which changes no backend', async () => {
+        const tabs = [{ id: 'phone', status: 'connected', connectionParams: { protocol: 'mtp' } }];
+        const ctx = await park('phone', true);
+        expect(applyAll(ctx.setSessions, tabs).map(t => `${t.id}:${t.status}`)).toEqual(['phone:cached']);
+        expect(ctx.setActivePortableDeviceId).not.toHaveBeenCalled();
+        expect(ctx.mtpGvfsMountPathRef.current).toBe('/run/user/gvfs/mtp');
+    });
+
+    it('parks no tab when none is active', async () => {
+        const tabs = [{ id: 'b', status: 'cached', connectionParams: { protocol: 'sftp' } }];
         const ctx = await park(null);
-        expect(ctx.setSessions).not.toHaveBeenCalled();
+        expect(applyAll(ctx.setSessions, tabs)).toEqual(tabs);
         expect(ctx.setActiveSessionId).toHaveBeenCalledWith(null);
+        expect((await park(null, true)).setSessions).not.toHaveBeenCalled();
     });
 });
 

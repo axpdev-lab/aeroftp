@@ -4845,7 +4845,7 @@ const App: React.FC = () => {
    *  device), so a Cancel or a failure never leaves a tab marked connected over
    *  a backend that has already gone, and clicking that tab, or going back to
    *  the file manager, reconnects it. */
-  const parkActiveSession = useLatestCallback(() => {
+  const parkActiveSession = useLatestCallback((keepDeviceTab = false) => {
     if (activeSessionId) {
       const parked = {
         status: 'cached' as const,
@@ -4859,10 +4859,22 @@ const App: React.FC = () => {
       };
       setSessions(prev => prev.map(s => s.id === activeSessionId ? { ...s, ...parked } : s));
     }
+    if (!keepDeviceTab) {
+      // A portable device tab cannot be parked: reopening it needs the live
+      // device (PLACES or its card), which a tab click does not have. The
+      // connection replacing the backend ends it, so its tab goes, and so does
+      // the unplug watch, which would otherwise disconnect the new provider.
+      // "+" keeps it: the backend is unchanged, and going back reuses it.
+      setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
+      setActivePortableDeviceId(null);
+      mtpGvfsMountPathRef.current = null;
+    }
     // The remote panel stops showing the parked session's files while the next
-    // connection lists: they live on in the cached tab and come back with it.
+    // connection lists: they live on in the cached tab and come back with it,
+    // and so do search results.
     setRemoteFiles([]);
     setSelectedRemoteFiles(new Set());
+    setRemoteSearchResults(null);
     setActiveSessionId(null);
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
@@ -5113,18 +5125,23 @@ const App: React.FC = () => {
     mtpGvfsMountPathRef.current = null;
     // Device unplugged or ejected: release ProviderState. Eject already called
     // mtp_close_device; unplug may not have, so both are best-effort.
+    // The provider slot is the device's unless another session is live: a tab
+    // of another server is active, so disconnecting would end that one.
+    const deviceOwnsProvider = !activeSessionId || liveConnectionParams.protocol === 'mtp';
     void (async () => {
       try { await invoke('mtp_close_device', { deviceId }); } catch { /* ignore */ }
-      try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+      if (deviceOwnsProvider) {
+        try { await invoke('provider_disconnect'); } catch { /* ignore */ }
+      }
     })();
+    // A device tab "+" kept may outlive the view; it goes in every case.
+    setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
     // Step the remote panel out only when this was an MTP session.
     if (liveConnectionParams.protocol === 'mtp') {
       setIsConnected(false);
       setRemoteFiles([]);
       setCurrentRemotePath('/');
       setCurrentRemoteDisplayPath('/');
-      // Only the device tab goes: the others were parked when it opened.
-      setSessions(prev => prev.filter(s => s.connectionParams?.protocol !== 'mtp'));
       setActiveSessionId(null);
       setShowRemotePanel(false);
       setShowConnectionScreen(true);
@@ -5139,6 +5156,7 @@ const App: React.FC = () => {
       }
     }
   }, [
+    activeSessionId,
     liveConnectionParams.protocol,
     liveConnectionParams.server,
     humanLog,
@@ -9356,7 +9374,7 @@ const App: React.FC = () => {
   };
 
   const handleNewTabFromSavedServer = () => {
-    parkActiveSession();
+    parkActiveSession(true);
     // Reset connection form for a fresh "new server" experience
     setConnectionParams({ server: '', username: '', password: '' });
     setQuickConnectDirs({ remoteDir: '', localDir: '' });
