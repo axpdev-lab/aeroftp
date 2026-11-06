@@ -2507,13 +2507,14 @@ impl S3Provider {
             .await
     }
 
-    /// The dotted-bucket message (C6) when a request failed on the TLS name of
-    /// a Tigris bucket with dots in its name under virtual-host addressing.
+    /// The dotted-bucket message when a request failed on the TLS name of a
+    /// bucket with dots in its name under virtual-host addressing. Every
+    /// virtual-host service has the same limit: its wildcard certificate
+    /// (`*.s3.amazonaws.com`, `*.t3.storage.dev`, ...) covers one label, so
+    /// `my.bucket.<host>` cannot be verified (#1506 Requested 175; Tigris C6
+    /// first). Users used to get a bare certificate error.
     fn dotted_bucket_tls_error(&self, error: &reqwest::Error) -> Option<ProviderError> {
-        if !(self.is_tigris_endpoint()
-            && !self.config.path_style
-            && self.config.bucket.contains('.'))
-        {
+        if self.config.path_style || !self.config.bucket.contains('.') {
             return None;
         }
         let mut text = error.to_string();
@@ -2523,9 +2524,51 @@ impl S3Provider {
             text.push_str(&cause.to_string());
             source = cause.source();
         }
-        is_tls_name_failure(&text).then(|| {
-            ProviderError::ConnectionFailed(tigris_dotted_bucket_message(&self.config.bucket))
+        self.dotted_bucket_error_for(&text)
+    }
+
+    /// [`Self::dotted_bucket_tls_error`] on the error text with its sources.
+    fn dotted_bucket_error_for(&self, text: &str) -> Option<ProviderError> {
+        if self.config.path_style || !self.config.bucket.contains('.') {
+            return None;
+        }
+        if self.is_tigris_endpoint() {
+            return is_tls_name_failure(text).then(|| {
+                ProviderError::ConnectionFailed(tigris_dotted_bucket_message(&self.config.bucket))
+            });
+        }
+        // Elsewhere only a failure that names the host is the dot limit: a
+        // self-signed or expired certificate keeps its own text.
+        is_tls_hostname_failure(text).then(|| {
+            ProviderError::ConnectionFailed(dotted_bucket_message(
+                &self.config.bucket,
+                self.supports_path_style(),
+            ))
         })
+    }
+
+    /// Whether the service still accepts path-style requests, the remedy the
+    /// dotted-bucket message offers. Alibaba OSS and Tencent COS serve
+    /// virtual-host requests only.
+    fn supports_path_style(&self) -> bool {
+        let host = self
+            .config
+            .endpoint
+            .as_deref()
+            .and_then(|endpoint| {
+                let with_scheme = if endpoint.contains("://") {
+                    endpoint.to_string()
+                } else {
+                    format!("https://{endpoint}")
+                };
+                url::Url::parse(&with_scheme)
+                    .ok()
+                    .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+            })
+            .unwrap_or_default();
+        !["aliyuncs.com", "myqcloud.com"]
+            .iter()
+            .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
     }
 
     /// The error for a request that failed before any answer. A TLS name
@@ -9216,6 +9259,40 @@ fn is_tls_name_failure(text: &str) -> bool {
         || lower.contains("not valid for name")
 }
 
+/// Whether a transport error text is a certificate that does not cover the
+/// host name, in the wording of rustls (`NotValidForName`) and of the native
+/// TLS stacks (OpenSSL "hostname mismatch", Schannel and Secure Transport
+/// "not valid for" / "does not match"). Narrower than
+/// [`is_tls_name_failure`]: it is used where any other certificate problem
+/// must keep its own text.
+fn is_tls_hostname_failure(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("notvalidforname")
+        || lower.contains("not valid for name")
+        || lower.contains("hostname mismatch")
+        || lower.contains("does not match the target host")
+        || lower.contains("certificate is not valid for")
+}
+
+/// The message for a TLS name failure on a bucket with dots in its name under
+/// virtual-host addressing, for every service but Tigris (which has its own,
+/// naming its certificate).
+fn dotted_bucket_message(bucket: &str, path_style_supported: bool) -> String {
+    if path_style_supported {
+        format!(
+            "The bucket name '{bucket}' contains dots, and with virtual-host addressing \
+             the server's certificate does not cover a host name with extra dots. Turn \
+             on Path-Style Access for this profile, or use a bucket name without dots."
+        )
+    } else {
+        format!(
+            "The bucket name '{bucket}' contains dots, and with virtual-host addressing \
+             the server's certificate does not cover a host name with extra dots. This \
+             service serves virtual-host requests only: use a bucket name without dots."
+        )
+    }
+}
+
 /// The message for a TLS name failure on a Tigris bucket with dots in its
 /// name (C6): the wildcard certificate of `*.t3.storage.dev` covers one label,
 /// so `my.bucket.t3.storage.dev` cannot be verified.
@@ -13375,6 +13452,119 @@ mod tests {
             }
             other => panic!("a refused connection is not a name failure: {other:?}"),
         }
+    }
+
+    /// #1506 Requested 175: every virtual-host service gets the dotted-bucket
+    /// message for a certificate that does not cover the host, and the remedy
+    /// fits the service; any other failure keeps its own text.
+    #[test]
+    fn dotted_bucket_message_covers_every_virtual_host_service() {
+        assert!(is_tls_hostname_failure(
+            "invalid peer certificate: NotValidForName"
+        ));
+        assert!(is_tls_hostname_failure(
+            "certificate verify failed: Hostname mismatch"
+        ));
+        assert!(!is_tls_hostname_failure(
+            "invalid peer certificate: UnknownIssuer"
+        ));
+        assert!(!is_tls_hostname_failure("certificate has expired"));
+
+        let provider = |endpoint: &str, bucket: &str, path_style: bool| {
+            let mut provider = make_provider(Some(endpoint));
+            provider.config.bucket = bucket.to_string();
+            provider.config.path_style = path_style;
+            provider
+        };
+        assert!(provider("https://s3.us-east-1.amazonaws.com", "a", false).supports_path_style());
+        assert!(!provider("https://oss-us-west-1.aliyuncs.com", "a", false).supports_path_style());
+        assert!(
+            !provider("https://cos.ap-guangzhou.myqcloud.com", "a", false).supports_path_style()
+        );
+
+        let aws = dotted_bucket_message("my.bucket", true);
+        assert!(
+            aws.contains("'my.bucket'") && aws.contains("Path-Style Access"),
+            "{aws}"
+        );
+        let oss = dotted_bucket_message("my.bucket", false);
+        assert!(!oss.contains("Path-Style"), "{oss}");
+        assert!(oss.contains("without dots"), "{oss}");
+
+        // A refused connection is not a name failure on any service.
+        let client = reqwest::Client::new();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let error = runtime
+            .block_on(client.get("http://127.0.0.1:1/").send())
+            .expect_err("connection refused");
+        for endpoint in [
+            "https://s3.us-east-1.amazonaws.com",
+            "https://s3.eu-central-1.wasabisys.com",
+        ] {
+            match provider(endpoint, "my.bucket", false).transport_error(&error) {
+                ProviderError::NetworkError(_) => {}
+                other => panic!("{endpoint}: {other:?}"),
+            }
+        }
+    }
+
+    /// The classification itself, on the error texts the TLS stacks produce:
+    /// a loopback double cannot present a trusted certificate for another host
+    /// (it fails as an unknown issuer first), so the matrix runs on the text.
+    #[test]
+    fn dotted_bucket_error_matrix_across_services() {
+        let provider = |endpoint: &str, bucket: &str, path_style: bool| {
+            let mut provider = make_provider(Some(endpoint));
+            provider.config.bucket = bucket.to_string();
+            provider.config.path_style = path_style;
+            provider
+        };
+        let name = "error sending request: invalid peer certificate: NotValidForName";
+        let issuer = "error sending request: invalid peer certificate: UnknownIssuer";
+        let message = |p: &S3Provider, text: &str| match p.dotted_bucket_error_for(text) {
+            Some(ProviderError::ConnectionFailed(m)) => Some(m),
+            None => None,
+            other => panic!("{other:?}"),
+        };
+        for endpoint in [
+            "https://s3.us-east-1.amazonaws.com",
+            "https://s3.eu-central-1.wasabisys.com",
+            "https://nyc3.digitaloceanspaces.com",
+        ] {
+            let m = message(&provider(endpoint, "my.bucket", false), name).expect(endpoint);
+            assert!(
+                m.contains("'my.bucket'") && m.contains("Path-Style Access"),
+                "{m}"
+            );
+            assert!(
+                message(&provider(endpoint, "my.bucket", true), name).is_none(),
+                "{endpoint}"
+            );
+            assert!(
+                message(&provider(endpoint, "plain", false), name).is_none(),
+                "{endpoint}"
+            );
+            assert!(
+                message(&provider(endpoint, "my.bucket", false), issuer).is_none(),
+                "{endpoint}"
+            );
+        }
+        let oss = message(
+            &provider("https://oss-us-west-1.aliyuncs.com", "my.bucket", false),
+            name,
+        )
+        .expect("oss");
+        assert!(!oss.contains("Path-Style"), "{oss}");
+        // Tigris keeps its own message, and its broad match (C6).
+        let tigris = message(
+            &provider("https://t3.storage.dev", "my.bucket", false),
+            issuer,
+        )
+        .expect("tigris");
+        assert!(tigris.contains("t3.storage.dev"), "{tigris}");
     }
 
     #[tokio::test]
