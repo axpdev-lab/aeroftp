@@ -764,7 +764,25 @@ fn map_remote(
                 port: get_port("port", 22),
                 username: get_str("user").unwrap_or("root").to_string(),
                 password: get_password("pass"),
-                options: None,
+                // The key the export writes as `key_file` (a path, never the
+                // key bytes) and its obscured passphrase. Dropped here, a
+                // key-auth profile came back password-only and stopped
+                // signing in (measured on 2026-11-06: seven SFTP profiles).
+                options: {
+                    let mut options = serde_json::Map::new();
+                    if let Some(key_file) =
+                        get_str("key_file").map(str::trim).filter(|k| !k.is_empty())
+                    {
+                        options.insert(
+                            "private_key_path".into(),
+                            serde_json::Value::String(key_file.to_string()),
+                        );
+                    }
+                    if let Some(pass) = get_password("key_file_pass") {
+                        options.insert("key_passphrase".into(), serde_json::Value::String(pass));
+                    }
+                    (!options.is_empty()).then_some(serde_json::Value::Object(options))
+                },
                 initial_path: None,
                 oauth_token: None,
                 jotta_refresh: None,
@@ -947,7 +965,18 @@ fn map_remote(
             port: 443,
             username: name.to_string(),
             password: None,
-            options: None,
+            // The drive the remote is bound to, which the export writes from
+            // the same keys: without them the profile exported again gave
+            // rclone a remote that fails with "unable to get drive_id".
+            options: {
+                let mut options = serde_json::Map::new();
+                for key in ["drive_id", "drive_type", "region"] {
+                    if let Some(value) = get_str(key).map(str::trim).filter(|v| !v.is_empty()) {
+                        options.insert(key.into(), serde_json::Value::String(value.to_string()));
+                    }
+                }
+                (!options.is_empty()).then_some(serde_json::Value::Object(options))
+            },
             initial_path: None,
             oauth_token: get_str("token").and_then(rclone_token_to_aeroftp),
             jotta_refresh: None,
@@ -1154,9 +1183,21 @@ fn map_remote(
                 );
             }
 
+            // Blomp's preset carries a fact about the service (its object store
+            // answers in cleartext on 8080, `preset_publishes_cleartext_storage`),
+            // so a Blomp remote must come back as Blomp, not as custom Swift.
+            let provider_id = if url::Url::parse(&host)
+                .ok()
+                .and_then(|u| u.host_str().map(str::to_ascii_lowercase))
+                .is_some_and(|h| h == "blomp.com" || h.ends_with(".blomp.com"))
+            {
+                "blomp"
+            } else {
+                "custom-swift"
+            };
             Ok(MappedProfile {
                 protocol: "swift".to_string(),
-                provider_id: Some("custom-swift".to_string()),
+                provider_id: Some(provider_id.to_string()),
                 host,
                 port: u32::from(port),
                 username: get_str("user").unwrap_or("").to_string(),
@@ -1486,10 +1527,23 @@ fn map_remote(
         // Unsupported rclone types: skip gracefully
         _ => Err(format!("unsupported rclone type: {}", rclone_type)),
     };
-    Ok(with_credential_notes(
-        mapped?,
-        credential_notes.into_inner(),
-    ))
+    let mut mapped = mapped?;
+    // The way back of the export's certificate switch: the FTP backend's own
+    // `no_check_certificate`, the `override.` form the export writes for the
+    // backends without one, and the bare key older files carry. Without it a
+    // profile that only connects with verification off came back verifying.
+    let cert_check_off = ["no_check_certificate", "override.no_check_certificate"]
+        .iter()
+        .any(|k| get_str(k).map(|v| v == "true" || v == "1").unwrap_or(false));
+    if cert_check_off && matches!(rclone_type.as_str(), "ftp" | "webdav" | "s3" | "swift") {
+        let options = mapped
+            .options
+            .get_or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+        if let Some(map) = options.as_object_mut() {
+            map.insert("verifyCert".into(), serde_json::Value::Bool(false));
+        }
+    }
+    Ok(with_credential_notes(mapped, credential_notes.into_inner()))
 }
 
 /// Map AeroFTP's Zoho region slug to rclone's `zoho` backend `region`.
@@ -1569,10 +1623,7 @@ fn resolve_alias_target(
         };
         let inner = alias.get("remote").map(|r| r.trim()).unwrap_or("");
         if inner.is_empty() {
-            return Err(format!(
-                "crypt remote wraps the alias '{}', which points at no remote",
-                name.trim()
-            ));
+            return Err(format!("the alias '{}' points at no remote", name.trim()));
         }
         let sub = sub.trim().trim_start_matches('/');
         target = if sub.is_empty() {
@@ -1583,7 +1634,98 @@ fn resolve_alias_target(
             format!("{inner}/{sub}")
         };
     }
-    Err("crypt remote wraps a chain of alias remotes that does not end".to_string())
+    Err("a chain of alias remotes that does not end".to_string())
+}
+
+/// An rclone `alias` remote: its target remote, opened at a folder. It maps to
+/// the target's profile with that folder as the start (a bucket for S3), so a
+/// remote someone pointed at `nas:/team` arrives as a profile that opens in
+/// `/team`. Reported as an unsupported type before, which dropped every start
+/// folder and pinned bucket AeroFTP's own export carries this way (measured on
+/// 2026-11-06: 49 alias remotes in one export of 118 profiles).
+fn map_alias_remote(
+    name: &str,
+    remote: &RcloneRemote,
+    sections: &HashMap<String, RcloneRemote>,
+    aeroftp_export: Option<AeroftpExport>,
+) -> Result<MappedProfile, String> {
+    let target = remote
+        .get("remote")
+        .map(|r| r.trim())
+        .filter(|r| !r.is_empty())
+        .ok_or_else(|| "alias remote points at no remote".to_string())?;
+    let resolved = resolve_alias_target(target, sections)?;
+    let Some((base, path)) = resolved.split_once(':') else {
+        return Err("alias remote points at a local folder, which is not a server".to_string());
+    };
+    let base = base.trim();
+    let base_remote = sections
+        .get(base)
+        .ok_or_else(|| format!("alias remote points at '{base}', which is not in this file"))?;
+    if base_remote.get("type").map(|t| t.trim()) == Some("crypt") {
+        return Err(format!(
+            "alias remote opens the crypt remote '{base}', which imports on its own"
+        ));
+    }
+    let mut mapped = map_remote(name, base_remote, aeroftp_export)?;
+    apply_rclone_start_folder(&mut mapped, path);
+    Ok(mapped)
+}
+
+/// Make the folder an alias opens the profile's start: the bucket and the
+/// path under it for S3, the absolute folder for SFTP (`nas:/abs`), and a
+/// path under the URL's collection for WebDAV, whose start folder is a path
+/// on the server. Elsewhere the alias path is under the account root.
+fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
+    let rel = path.trim().trim_matches('/');
+    if rel.is_empty() {
+        return;
+    }
+    // rclone's sftp reads `nas:docs` from the login folder and `nas:/docs`
+    // from the root, so the form is kept as written.
+    if mapped.protocol == "sftp" {
+        mapped.initial_path = Some(path.trim().trim_end_matches('/').to_string());
+        return;
+    }
+    let options = mapped
+        .options
+        .get_or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
+    let start = match mapped.protocol.as_str() {
+        "s3" => {
+            let has_bucket = options
+                .get("bucket")
+                .and_then(|b| b.as_str())
+                .is_some_and(|b| !b.is_empty());
+            if has_bucket {
+                rel.to_string()
+            } else {
+                let (bucket, rest) = rel.split_once('/').unwrap_or((rel, ""));
+                if let Some(map) = options.as_object_mut() {
+                    map.insert(
+                        "bucket".into(),
+                        serde_json::Value::String(bucket.to_string()),
+                    );
+                }
+                rest.trim_matches('/').to_string()
+            }
+        }
+        "webdav" => {
+            let base = options
+                .get("basePath")
+                .and_then(|b| b.as_str())
+                .unwrap_or("")
+                .trim_matches('/');
+            if base.is_empty() {
+                rel.to_string()
+            } else {
+                format!("{base}/{rel}")
+            }
+        }
+        _ => rel.to_string(),
+    };
+    if !start.is_empty() {
+        mapped.initial_path = Some(format!("/{start}"));
+    }
 }
 
 fn map_crypt_remote(
@@ -1870,8 +2012,8 @@ impl RcloneImportResult {
     }
 }
 
-/// A remote that was skipped (unsupported type).
-#[derive(serde::Serialize)]
+/// A remote that was skipped, with the reason.
+#[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RcloneSkippedRemote {
     pub name: String,
@@ -1941,14 +2083,56 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     let mut section_names: Vec<&String> = sections.keys().collect();
     section_names.sort();
 
+    // AeroFTP's own export carries a profile's start folder or pinned bucket
+    // as an alias it names after the profile (`<name>-path`, `<name>-<bucket>`).
+    // Those fold back into the profile they came from, so the round trip
+    // returns one profile that opens where it did, not a profile at the root
+    // plus a second one. Aliases in any other file are profiles of their own.
+    let mut folded: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut start_of: HashMap<&str, &str> = HashMap::new();
+    if aeroftp_export.is_some() {
+        for name in &section_names {
+            let remote = &sections[*name];
+            if remote.get("type").map(|t| t.trim()) != Some("alias") {
+                continue;
+            }
+            let Some((base, path)) = remote.get("remote").and_then(|r| r.trim().split_once(':'))
+            else {
+                continue;
+            };
+            let base = base.trim();
+            let base_is_plain = sections
+                .get(base)
+                .and_then(|b| b.get("type"))
+                .is_some_and(|t| !matches!(t.trim(), "alias" | "crypt"));
+            if base_is_plain
+                && name.starts_with(&format!("{base}-"))
+                && !start_of.contains_key(base)
+            {
+                start_of.insert(base, path);
+                folded.insert(name.as_str());
+            }
+        }
+    }
+
     for name in section_names {
         let remote = &sections[name];
         let rclone_type = remote.get("type").map(|s| s.as_str()).unwrap_or("unknown");
+        if folded.contains(name.as_str()) {
+            continue;
+        }
 
         let mapped = if rclone_type == "crypt" {
             map_crypt_remote(name, remote, &sections, aeroftp_export)
+        } else if rclone_type == "alias" {
+            map_alias_remote(name, remote, &sections, aeroftp_export)
         } else {
-            map_remote(name, remote, aeroftp_export)
+            map_remote(name, remote, aeroftp_export).map(|mut mapped| {
+                if let Some(path) = start_of.get(name.as_str()) {
+                    apply_rclone_start_folder(&mut mapped, path);
+                }
+                mapped
+            })
         };
 
         match mapped {
@@ -2223,9 +2407,39 @@ fn crypt_export_remote_target(
             .and_then(|v| v.as_str())
             .unwrap_or(""),
     );
+    // The app persists the scope as an absolute path at or under the start
+    // folder (`resolveOverlayScope` in `src/utils/overlayScope.ts`), so over
+    // an alias it is taken relative to that folder, like the imported path
+    // above. Written as it was, the scope equal to the start folder
+    // `/home/u/vault` became `nas-path:/home/u/vault`, which is the folder
+    // inside itself (measured on 2026-11-06: three rclone-crypt SFTP profiles,
+    // "directory not found"). A scope outside the folder is an older relative
+    // one (`/vault` under `/team`) and keeps its meaning.
+    let scope = match base_root.map(trim).filter(|root| !root.is_empty()) {
+        Some(root) if scope == root => String::new(),
+        Some(root) => scope
+            .strip_prefix(&format!("{root}/"))
+            .map(str::to_string)
+            .unwrap_or(scope),
+        None => scope,
+    };
     match folder.map(|folder| folder.trim_end_matches('/')) {
-        Some(folder) if scope.is_empty() => format!("{clear_name}:{folder}"),
-        Some(folder) => format!("{clear_name}:{folder}/{scope}"),
+        Some(folder) => {
+            let folder_rel = trim(folder);
+            let scope = if scope == folder_rel {
+                String::new()
+            } else {
+                scope
+                    .strip_prefix(&format!("{folder_rel}/"))
+                    .map(str::to_string)
+                    .unwrap_or(scope)
+            };
+            if scope.is_empty() {
+                format!("{clear_name}:{folder}")
+            } else {
+                format!("{clear_name}:{folder}/{scope}")
+            }
+        }
         None => target(base_name, &scope),
     }
 }
@@ -2307,9 +2521,63 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
              `rclone config`, using the public key from the ImageKit dashboard."
                 .to_string(),
         ),
+        // These backends address the server through the host alone, so an empty
+        // one used to be written as `url = https://` or `host = `: rclone accepts
+        // the section and every call then fails with "no Host in request URL".
+        "ftp" | "ftps" | "sftp" | "webdav" if server.host.trim().is_empty() => {
+            Some("the profile has no host, which rclone needs to reach the server".to_string())
+        }
+        "swift" if swift_auth_url(server).is_none() => Some(
+            "the profile has no auth URL, which rclone's swift backend needs as `auth`".to_string(),
+        ),
         _ => None,
     }
 }
+
+/// The Keystone auth URL of a Swift profile, from where the provider reads it:
+/// `SwiftConfig::from_provider_config` dials the host (with `https://` when the
+/// host has no scheme). `options.endpoint` is honoured first, for profiles that
+/// carry it there. Reading the endpoint alone left Blomp, whose preset stores
+/// the URL as the host, exported without `auth`.
+fn swift_auth_url(server: &RcloneExportServer) -> Option<String> {
+    let endpoint = server
+        .options
+        .as_ref()
+        .and_then(|o| o.get("endpoint"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let raw = endpoint.unwrap_or_else(|| server.host.trim());
+    if raw.is_empty() {
+        return None;
+    }
+    Some(
+        if raw.starts_with("http://") || raw.starts_with("https://") {
+            raw.to_string()
+        } else {
+            format!("https://{raw}")
+        },
+    )
+}
+
+/// True when the profile turned TLS certificate verification off. The GUI
+/// stores `verifyCert` as a bool, and normalization can deliver it as
+/// `verify_cert` and as the string "false"; every form is honoured.
+fn profile_verify_cert_off(options: Option<&serde_json::Value>) -> bool {
+    options
+        .and_then(|o| o.get("verify_cert").or_else(|| o.get("verifyCert")))
+        .map(|vc| vc.as_bool() == Some(false) || vc.as_str() == Some("false"))
+        .unwrap_or(false)
+}
+
+/// The line that makes rclone skip certificate verification for one remote of a
+/// backend with no such option of its own (WebDAV, S3, Swift). rclone ignores a
+/// bare `no_check_certificate = true` in those sections and verifies anyway;
+/// only the `override.` form applies the global flag to that remote. Measured
+/// with rclone v1.75.2 on 2026-11-06 against self-signed.badssl.com: the bare
+/// key still fails with `x509: certificate signed by unknown authority`, the
+/// `override.` key reaches the server (WebDAV 405, S3 an XML error page).
+const RCLONE_OVERRIDE_NO_CHECK_CERT: &str = "override.no_check_certificate = true\n";
 
 /// The `proton_mode` option of a Proton Drive profile (`cli` when absent).
 fn proton_mode_of(server: &RcloneExportServer) -> &str {
@@ -2593,6 +2861,51 @@ fn rclone_ftp_tls_lines(protocol: &str, options: Option<&serde_json::Value>) -> 
         _ => "",
     }
 }
+/// The TLS lines of an FTP remote: the mode ([`rclone_ftp_tls_lines`]) and,
+/// when the profile turned certificate verification off, the FTP backend's own
+/// `no_check_certificate`. Without it a profile that AeroFTP opens against a
+/// shared-hosting certificate issued for another name (measured on 2026-11-06:
+/// seven Aruba FTPS profiles) is refused by rclone with `tls: failed to verify
+/// certificate`. A cleartext session has no certificate, so nothing is written.
+fn push_rclone_ftp_tls(body: &mut String, protocol: &str, options: Option<&serde_json::Value>) {
+    let tls = rclone_ftp_tls_lines(protocol, options);
+    body.push_str(tls);
+    if !tls.is_empty() && profile_verify_cert_off(options) {
+        body.push_str("no_check_certificate = true\n");
+    }
+}
+
+/// The start folder of a WebDAV profile as a path under the URL its remote
+/// was written with. The URL already ends in the DAV collection (a Nextcloud
+/// `/remote.php/dav/files/<user>/`, a `basePath`), and Nextcloud-derived
+/// presets keep that same collection, `{username}` included, as their start
+/// folder. Taken verbatim, the alias opened the collection inside itself, with
+/// a literal `{username}`, and rclone answered "directory not found"
+/// (measured on 2026-11-06 with TAB.DIGITAL and a lab Nextcloud). Empty when
+/// the start folder is the collection itself, so no alias is needed.
+fn webdav_alias_path(url: &str, initial_path: &str, username: &str) -> String {
+    let trim = |p: &str| p.trim_matches('/').to_string();
+    let start = trim(&initial_path.replace("{username}", username));
+    let url_path = url
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(url)
+        .split_once('/')
+        .map(|(_, path)| trim(path))
+        .unwrap_or_default();
+    if url_path.is_empty() || start == url_path {
+        return if url_path.is_empty() {
+            start
+        } else {
+            String::new()
+        };
+    }
+    match start.strip_prefix(&format!("{url_path}/")) {
+        Some(rest) => rest.to_string(),
+        None => start,
+    }
+}
+
 /// The section names of one exported file.
 ///
 /// rclone merges duplicate sections key by key with the last one winning, so a
@@ -2802,6 +3115,9 @@ pub fn export_rclone(
         // That folder when its alias could not be written: an overlay scope is
         // relative to it, so the crypt wraps the clear remote there.
         let mut crypt_folder: Option<String> = None;
+        // The URL a WebDAV remote was written with: its path is already the
+        // root rclone lists, so the start-folder alias is relative to it.
+        let mut webdav_url: Option<String> = None;
 
         match proto {
             "ftp" => {
@@ -2810,7 +3126,7 @@ pub fn export_rclone(
                 body.push_str(&format!("port = {}\n", server.port));
                 body.push_str(&format!("user = {}\n", server.username));
                 // An `ftp` profile may still connect with TLS (`tlsMode`).
-                body.push_str(rclone_ftp_tls_lines(proto, server.options.as_ref()));
+                push_rclone_ftp_tls(&mut body, proto, server.options.as_ref());
                 if let Some(pw) = password {
                     body.push_str(&format!(
                         "pass = {}\n",
@@ -2823,7 +3139,7 @@ pub fn export_rclone(
                 body.push_str(&format!("host = {}\n", server.host));
                 body.push_str(&format!("port = {}\n", server.port));
                 body.push_str(&format!("user = {}\n", server.username));
-                body.push_str(rclone_ftp_tls_lines(proto, server.options.as_ref()));
+                push_rclone_ftp_tls(&mut body, proto, server.options.as_ref());
                 if let Some(pw) = password {
                     body.push_str(&format!(
                         "pass = {}\n",
@@ -2967,12 +3283,7 @@ pub fn export_rclone(
                     if let Some(b) = s3_pinned_bucket(options) {
                         pinned_bucket = Some(b.to_string());
                     }
-                    // verify_cert is stored as a bool by the GUI but may arrive
-                    // as the string "false" through normalization; honour both.
-                    if let Some(vc) = opts.get("verify_cert").or_else(|| opts.get("verifyCert")) {
-                        verify_cert_off =
-                            vc.as_bool() == Some(false) || vc.as_str() == Some("false");
-                    }
+                    verify_cert_off = profile_verify_cert_off(Some(opts));
                 }
 
                 // Resolve the effective endpoint in precedence order:
@@ -3025,9 +3336,10 @@ pub fn export_rclone(
                     // https://127.0.0.1:1800) present a certificate without IP
                     // SANs that rclone rejects by default; AeroFTP itself
                     // accepts invalid certs on loopback. Honour an explicit
-                    // verify_cert=false from the profile too.
+                    // verify_cert=false from the profile too. The s3 backend has
+                    // no such option, hence the `override.` form.
                     if verify_cert_off || endpoint_stays_on_this_machine(&endpoint) {
-                        body.push_str("no_check_certificate = true\n");
+                        body.push_str(RCLONE_OVERRIDE_NO_CHECK_CERT);
                     }
                 }
 
@@ -3170,6 +3482,10 @@ pub fn export_rclone(
                         obscure_password(pw).unwrap_or_default()
                     ));
                 }
+                if profile_verify_cert_off(options) {
+                    body.push_str(RCLONE_OVERRIDE_NO_CHECK_CERT);
+                }
+                webdav_url = Some(url);
             }
             "googledrive" => {
                 body.push_str("type = drive\n");
@@ -3394,10 +3710,13 @@ pub fn export_rclone(
                     // the password, which fails authentication.
                     body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
+                if let Some(auth) = swift_auth_url(server) {
+                    body.push_str(&format!("auth = {}\n", auth));
+                }
+                if profile_verify_cert_off(options) {
+                    body.push_str(RCLONE_OVERRIDE_NO_CHECK_CERT);
+                }
                 if let Some(opts) = options {
-                    if let Some(endpoint) = opts.get("endpoint").and_then(|v| v.as_str()) {
-                        body.push_str(&format!("auth = {}\n", endpoint));
-                    }
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         body.push_str(&format!("region = {}\n", region));
                     }
@@ -3603,14 +3922,18 @@ pub fn export_rclone(
                 // webdav paths are relative to the account/URL root.
                 let alias_path = if proto == "sftp" {
                     path.to_string()
+                } else if let Some(url) = webdav_url.as_deref() {
+                    webdav_alias_path(url, path, &server.username)
                 } else {
                     path.trim_start_matches('/').to_string()
                 };
                 // rclone reads a config value without the spaces at its ends
                 // (and a quoted one with its quotes), so `remote = nas:/data `
                 // would open `/data`: a folder whose name ends in a space
-                // cannot be written there, and the alias is left out.
-                if path.ends_with(char::is_whitespace) {
+                // cannot be written there, and the alias is left out. An empty
+                // alias path is the collection the WebDAV URL already opens.
+                if alias_path.is_empty() {
+                } else if path.ends_with(char::is_whitespace) {
                     notes.push_str(&format!(
                         "# start-folder alias for '{}' omitted: rclone's config cannot hold '{}', whose name ends in a space\n",
                         server.name.replace(['\n', '\r'], " "),
@@ -8556,5 +8879,486 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 ("Lab-2", "b.example.com", "secret-b"),
             ])
         );
+    }
+
+    // ---- 2026-11-06 live round trip: 118 profiles through rclone v1.75.2 ----
+
+    fn server_with(
+        name: &str,
+        protocol: &str,
+        host: &str,
+        port: u32,
+        provider_id: Option<&str>,
+        options: serde_json::Value,
+    ) -> RcloneExportServer {
+        RcloneExportServer {
+            id: name.to_string(),
+            name: name.to_string(),
+            host: host.to_string(),
+            port,
+            username: "alice".to_string(),
+            protocol: Some(protocol.to_string()),
+            options: Some(options),
+            provider_id: provider_id.map(str::to_string),
+        }
+    }
+
+    fn section_of<'a>(conf: &'a str, name: &str) -> &'a str {
+        let header = format!("[{name}]\n");
+        let start = conf
+            .find(&header)
+            .unwrap_or_else(|| panic!("no [{name}]:\n{conf}"));
+        let body = &conf[start + header.len()..];
+        &body[..body.find("\n[").map(|i| i + 1).unwrap_or(body.len())]
+    }
+
+    fn import_section(conf: &str, name: &str) -> MappedProfile {
+        let sections = parse_rclone_conf(conf);
+        map_remote(name, &sections[name], None).unwrap_or_else(|e| panic!("{name}: {e}"))
+    }
+
+    fn option_of<'a>(profile: &'a MappedProfile, key: &str) -> Option<&'a serde_json::Value> {
+        profile.options.as_ref().and_then(|o| o.get(key))
+    }
+
+    #[test]
+    fn a_profile_that_skips_certificate_checks_keeps_skipping_them_in_rclone_and_back() {
+        let off = |extra: serde_json::Value| {
+            let mut o = serde_json::json!({ "verifyCert": false });
+            o.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            o
+        };
+        let servers = vec![
+            server_with(
+                "ftps",
+                "ftp",
+                "ftp.example.test",
+                21,
+                None,
+                off(serde_json::json!({ "tlsMode": "explicit" })),
+            ),
+            server_with(
+                "dav",
+                "webdav",
+                "dav.example.test",
+                443,
+                None,
+                off(serde_json::json!({})),
+            ),
+            server_with(
+                "obj",
+                "s3",
+                "s3.example.test",
+                443,
+                Some("custom-s3"),
+                off(serde_json::json!({ "endpoint": "https://s3.example.test" })),
+            ),
+            server_with(
+                "sw",
+                "swift",
+                "https://auth.example.test/v3",
+                443,
+                None,
+                off(serde_json::json!({})),
+            ),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "cert-off");
+        assert_eq!(outcome.exported, 4, "{:?}\n{conf}", outcome.skipped);
+        // The FTP backend has the option itself; the others only through the
+        // `override.` form, since rclone ignores the bare key there.
+        assert!(
+            section_of(&conf, "ftps").contains("\nno_check_certificate = true\n"),
+            "{conf}"
+        );
+        for name in ["dav", "obj", "sw"] {
+            let section = section_of(&conf, name);
+            assert!(
+                section.contains("override.no_check_certificate = true"),
+                "{name}:\n{conf}"
+            );
+            assert!(
+                !section.contains("\nno_check_certificate"),
+                "{name}: bare key is ignored by rclone:\n{conf}"
+            );
+        }
+        for name in ["ftps", "dav", "obj", "sw"] {
+            assert_eq!(
+                option_of(&import_section(&conf, name), "verifyCert"),
+                Some(&serde_json::Value::Bool(false)),
+                "{name} must come back with verification off"
+            );
+        }
+    }
+
+    #[test]
+    fn verification_left_on_writes_no_certificate_switch() {
+        let servers = vec![
+            server_with(
+                "ftps",
+                "ftp",
+                "ftp.example.test",
+                21,
+                None,
+                serde_json::json!({ "tlsMode": "explicit" }),
+            ),
+            // Cleartext FTP has no certificate to skip.
+            server_with(
+                "plain",
+                "ftp",
+                "ftp.example.test",
+                21,
+                None,
+                serde_json::json!({ "verifyCert": false }),
+            ),
+            server_with(
+                "dav",
+                "webdav",
+                "dav.example.test",
+                443,
+                None,
+                serde_json::json!({}),
+            ),
+        ];
+        let (_, conf) = export_to_string(&servers, "cert-on");
+        assert!(!conf.contains("no_check_certificate"), "{conf}");
+        assert_eq!(
+            option_of(&import_section(&conf, "ftps"), "verifyCert"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_swift_profile_exports_the_auth_url_the_provider_dials() {
+        let servers = vec![
+            // Blomp's preset keeps the auth URL as the host, which is where
+            // `SwiftConfig::from_provider_config` reads it.
+            server_with(
+                "blomp",
+                "swift",
+                "https://authenticate.blomp.com",
+                443,
+                Some("blomp"),
+                serde_json::json!({}),
+            ),
+            server_with(
+                "bare",
+                "swift",
+                "keystone.example.test",
+                443,
+                None,
+                serde_json::json!({}),
+            ),
+            server_with(
+                "opt",
+                "swift",
+                "ignored.example.test",
+                443,
+                None,
+                serde_json::json!({ "endpoint": "https://id.example.test/v3" }),
+            ),
+            server_with("none", "swift", "", 443, None, serde_json::json!({})),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "swift-auth");
+        assert!(
+            section_of(&conf, "blomp").contains("auth = https://authenticate.blomp.com\n"),
+            "{conf}"
+        );
+        assert!(
+            section_of(&conf, "bare").contains("auth = https://keystone.example.test\n"),
+            "{conf}"
+        );
+        assert!(
+            section_of(&conf, "opt").contains("auth = https://id.example.test/v3\n"),
+            "{conf}"
+        );
+        assert!(!conf.contains("[none]"), "{conf}");
+        assert!(
+            outcome
+                .skipped
+                .iter()
+                .any(|s| s.name == "none" && s.reason.contains("auth URL")),
+            "{:?}",
+            outcome.skipped
+        );
+        // And it imports, as Blomp, where it used to be refused for "no auth URL".
+        let blomp = import_section(&conf, "blomp");
+        assert_eq!(blomp.provider_id.as_deref(), Some("blomp"));
+        assert_eq!(
+            import_section(&conf, "bare").provider_id.as_deref(),
+            Some("custom-swift")
+        );
+    }
+
+    #[test]
+    fn a_profile_without_a_host_is_skipped_with_the_reason_not_written_as_https_colon() {
+        for proto in ["webdav", "ftp", "ftps", "sftp"] {
+            let servers = vec![server_with(
+                "nohost",
+                proto,
+                "  ",
+                443,
+                None,
+                serde_json::json!({}),
+            )];
+            let (outcome, conf) = export_to_string(&servers, &format!("nohost-{proto}"));
+            assert_eq!(outcome.exported, 0, "{proto}:\n{conf}");
+            assert!(!conf.contains("[nohost]"), "{proto}:\n{conf}");
+            assert!(
+                outcome.skipped[0].reason.contains("no host"),
+                "{proto}: {:?}",
+                outcome.skipped
+            );
+        }
+    }
+
+    #[test]
+    fn webdav_alias_path_is_relative_to_the_collection_the_url_opens() {
+        let nc = "https://cloud.example.test/remote.php/dav/files/alice/";
+        assert_eq!(
+            webdav_alias_path(nc, "/remote.php/dav/files/{username}/", "alice"),
+            ""
+        );
+        assert_eq!(
+            webdav_alias_path(nc, "/remote.php/dav/files/alice", "alice"),
+            ""
+        );
+        assert_eq!(
+            webdav_alias_path(nc, "/remote.php/dav/files/{username}/Photos/2026", "alice"),
+            "Photos/2026"
+        );
+        assert_eq!(
+            webdav_alias_path("https://dav.example.test", "/docs/", "alice"),
+            "docs"
+        );
+        assert_eq!(
+            webdav_alias_path("https://dav.example.test:8443/dav", "/team", "alice"),
+            "team"
+        );
+    }
+
+    #[test]
+    fn a_nextcloud_profile_starting_in_its_own_collection_carries_no_alias() {
+        // TAB.DIGITAL stores the collection, `{username}` included, as both the
+        // URL path and the start folder; the lab Nextcloud stores a bare host.
+        let servers = vec![
+            server_with(
+                "tab",
+                "webdav",
+                "https://fie.example.test/remote.php/dav/files/{username}/",
+                443,
+                Some("tabdigital"),
+                serde_json::json!({ "initial_path": "/remote.php/dav/files/{username}/" }),
+            ),
+            server_with(
+                "lab",
+                "webdav",
+                "https://cloud.example.test",
+                443,
+                Some("nextcloud"),
+                serde_json::json!({ "initial_path": "/remote.php/dav/files/alice/" }),
+            ),
+            server_with(
+                "photos",
+                "webdav",
+                "https://cloud.example.test",
+                443,
+                Some("nextcloud"),
+                serde_json::json!({ "initial_path": "/remote.php/dav/files/alice/Photos" }),
+            ),
+        ];
+        let (_, conf) = export_to_string(&servers, "dav-alias");
+        assert!(!conf.contains("[tab-path]"), "{conf}");
+        assert!(!conf.contains("[lab-path]"), "{conf}");
+        assert!(
+            !conf.contains("{username}"),
+            "the template must be resolved:\n{conf}"
+        );
+        assert!(
+            section_of(&conf, "photos-path").contains("remote = photos:Photos\n"),
+            "{conf}"
+        );
+    }
+
+    #[test]
+    fn an_absolute_crypt_scope_is_taken_relative_to_the_start_folder_alias() {
+        let crypt = |scope: &str| {
+            server_with(
+                "nas",
+                "sftp",
+                "nas.example.test",
+                22,
+                None,
+                serde_json::json!({
+                    "initial_path": "/home/u/vault",
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptOverlayScope": scope,
+                    "rcloneCryptPassword": "pw"
+                }),
+            )
+        };
+        // The app persists the scope absolute (`resolveOverlayScope`).
+        let (_, conf) = export_to_string(&[crypt("/home/u/vault")], "crypt-scope-root");
+        assert!(conf.contains("remote = nas-path:\n"), "{conf}");
+        let (_, conf) = export_to_string(&[crypt("/home/u/vault/enc")], "crypt-scope-sub");
+        assert!(conf.contains("remote = nas-path:/enc\n"), "{conf}");
+        assert!(!conf.contains("/home/u/vault/home/u/vault"), "{conf}");
+        assert!(
+            !conf.contains("nas-path:/home/u/vault"),
+            "the folder inside itself:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn import_keeps_the_fields_its_own_export_writes() {
+        let key_pass = obscure_password("key-pass").expect("obscure");
+        let conf = format!(
+            "[key]\ntype = sftp\nhost = h.example.test\nuser = u\nkey_file = ~/.ssh/id_ed25519\nkey_file_pass = {key_pass}\n\n\
+             [od]\ntype = onedrive\ndrive_id = D980DD4FB1784A97\ndrive_type = personal\nregion = global\n\n\
+             [ali]\ntype = s3\nprovider = Alibaba\nendpoint = https://oss-eu-central-1.aliyuncs.com\naccess_key_id = a\nsecret_access_key = b\n\n\
+             [tc]\ntype = s3\nprovider = TencentCOS\nendpoint = https://cos.ap-guangzhou.myqcloud.com\naccess_key_id = a\nsecret_access_key = b\n\n\
+             [gcs]\ntype = s3\nprovider = GCS\nendpoint = https://storage.googleapis.com\naccess_key_id = a\nsecret_access_key = b\n"
+        );
+        let key = import_section(&conf, "key");
+        assert_eq!(
+            option_of(&key, "private_key_path").and_then(|v| v.as_str()),
+            Some("~/.ssh/id_ed25519")
+        );
+        assert_eq!(
+            option_of(&key, "key_passphrase").and_then(|v| v.as_str()),
+            Some("key-pass")
+        );
+        let od = import_section(&conf, "od");
+        for (k, v) in [
+            ("drive_id", "D980DD4FB1784A97"),
+            ("drive_type", "personal"),
+            ("region", "global"),
+        ] {
+            assert_eq!(option_of(&od, k).and_then(|x| x.as_str()), Some(v), "{k}");
+        }
+        assert_eq!(
+            import_section(&conf, "ali").provider_id.as_deref(),
+            Some("alibaba-oss")
+        );
+        assert_eq!(
+            import_section(&conf, "tc").provider_id.as_deref(),
+            Some("tencent-cos")
+        );
+        assert_eq!(
+            import_section(&conf, "gcs").provider_id.as_deref(),
+            Some("google-cloud-storage")
+        );
+    }
+
+    #[test]
+    fn an_aeroftp_export_comes_back_opening_where_each_profile_opened() {
+        let servers = vec![
+            server_with(
+                "nas",
+                "sftp",
+                "nas.example.test",
+                22,
+                None,
+                serde_json::json!({ "initial_path": "/home/u/team" }),
+            ),
+            server_with(
+                "site",
+                "ftp",
+                "ftp.example.test",
+                21,
+                None,
+                serde_json::json!({ "initial_path": "/www/site" }),
+            ),
+            server_with(
+                "obj",
+                "s3",
+                "s3.example.test",
+                443,
+                Some("custom-s3"),
+                serde_json::json!({ "endpoint": "https://s3.example.test", "bucket": "media" }),
+            ),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "alias-fold");
+        assert_eq!(outcome.exported, 3, "{conf}");
+        assert!(
+            conf.contains("type = alias"),
+            "the export carries the folders as aliases:\n{conf}"
+        );
+        let path = tmp_write(
+            &conf,
+            &format!("aeroftp-test-alias-fold-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).expect("import");
+        std::fs::remove_file(&path).ok();
+        let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["nas", "obj", "site"],
+            "one profile each, no alias profiles: {names:?}"
+        );
+        assert!(result.skipped.is_empty(), "{:?}", result.skipped);
+        let by = |n: &str| result.servers.iter().find(|s| s.name == n).unwrap();
+        assert_eq!(by("nas").initial_path.as_deref(), Some("/home/u/team"));
+        assert_eq!(by("site").initial_path.as_deref(), Some("/www/site"));
+        assert_eq!(
+            by("obj")
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|b| b.as_str()),
+            Some("media")
+        );
+    }
+
+    #[test]
+    fn an_alias_in_someone_elses_config_is_a_profile_that_opens_in_its_folder() {
+        let conf = "[nas]\ntype = sftp\nhost = nas.example.test\nuser = u\n\n\
+                    [team]\ntype = alias\nremote = nas:/srv/team\n\n\
+                    [docs]\ntype = alias\nremote = team:docs\n\n\
+                    [home]\ntype = alias\nremote = nas:projects\n\n\
+                    [store]\ntype = s3\nprovider = Other\nendpoint = https://s3.example.test\naccess_key_id = a\nsecret_access_key = b\n\n\
+                    [photos]\ntype = alias\nremote = store:pics/2026\n\n\
+                    [local]\ntype = alias\nremote = /mnt/backup\n";
+        let path = tmp_write(
+            conf,
+            &format!("aeroftp-test-alias-foreign-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).expect("import");
+        std::fs::remove_file(&path).ok();
+        let by = |n: &str| {
+            result
+                .servers
+                .iter()
+                .find(|s| s.name == n)
+                .unwrap_or_else(|| panic!("{n}: {:?}", result.skipped))
+        };
+        assert_eq!(by("nas").initial_path, None);
+        assert_eq!(by("team").initial_path.as_deref(), Some("/srv/team"));
+        assert_eq!(by("team").host, "nas.example.test");
+        // A chain resolves to the remote at its end.
+        assert_eq!(by("docs").initial_path.as_deref(), Some("/srv/team/docs"));
+        // rclone's sftp reads a relative path from the login folder.
+        assert_eq!(by("home").initial_path.as_deref(), Some("projects"));
+        let photos = by("photos");
+        assert_eq!(
+            photos
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|b| b.as_str()),
+            Some("pics")
+        );
+        assert_eq!(photos.initial_path.as_deref(), Some("/2026"));
+        let local = result
+            .skipped
+            .iter()
+            .find(|s| s.name == "local")
+            .expect("local alias skipped");
+        assert!(local.reason.contains("local folder"), "{}", local.reason);
+        assert!(!result
+            .skipped
+            .iter()
+            .any(|s| s.reason.contains("unsupported rclone type: alias")));
     }
 }

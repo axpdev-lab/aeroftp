@@ -74,8 +74,12 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "ceph" => "custom-s3",
         "arvancloud" => "custom-s3",
         "huaweiobs" | "obs" => "custom-s3",
-        "tencentcos" | "cos" => "custom-s3",
-        "alicloud" | "oss" => "custom-s3",
+        // rclone's tokens for presets AeroFTP has: the export writes
+        // `Alibaba`, `TencentCOS` and `GCS`, so mapping them to custom S3 made
+        // every such profile come back without its preset.
+        "tencentcos" | "cos" => "tencent-cos",
+        "alibaba" | "alicloud" | "oss" => "alibaba-oss",
+        "gcs" => "google-cloud-storage",
         "ibmcos" | "ibm-cos" | "ibm" => "ibm-cos",
         "ionos" => "ionos-s3",
         "petabox" => "custom-s3",
