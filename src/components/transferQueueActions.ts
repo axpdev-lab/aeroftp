@@ -92,6 +92,63 @@ export function updateTransferStatus(
     );
 }
 
+/** A row the user stopped: settled as an error and marked `cancelled`. The
+ *  marker is what "Retry all failed" and the journal read; `label` is only
+ *  the text the row shows, translated, and is never read back (row 140: an
+ *  Italian "Annullato dall'utente" was retried and journaled as a failure).
+ *  A row that already settled keeps its outcome, as in `updateTransferStatus`. */
+export function cancelTransfer(items: TransferItem[], id: string, label: string): TransferItem[] {
+    const current = items.find(item => item.id === id);
+    if (current && isSettled(current.status)) return items;
+    return items.map(item =>
+        item.id === id
+            ? {
+                ...item,
+                status: 'error' as TransferStatus,
+                progress: undefined,
+                error: label,
+                cancelled: true,
+                speedBps: undefined,
+                endTime: Date.now(),
+            }
+            : item,
+    );
+}
+
+/** Stop every row in one of `statuses` (the panel's Stop and Stop all). */
+export function stopItems(
+    items: TransferItem[],
+    statuses: ReadonlyArray<TransferStatus>,
+    label: string,
+): TransferItem[] {
+    return items.map(item =>
+        statuses.includes(item.status)
+            ? { ...item, status: 'error' as TransferStatus, error: label, cancelled: true, endTime: Date.now() }
+            : item,
+    );
+}
+
+/** "Retry all failed": every failed row goes back to pending, except the
+ *  rows the user stopped. Returns the new list and the ids requeued. */
+export function retryAllFailed(items: TransferItem[]): { next: TransferItem[]; ids: string[] } {
+    const ids: string[] = [];
+    const next = items.map(item => {
+        if (item.status === 'error' && item.error && !item.cancelled) {
+            ids.push(item.id);
+            return {
+                ...item,
+                status: 'pending' as TransferStatus,
+                error: undefined,
+                progress: undefined,
+                startTime: Date.now(),
+                endTime: undefined,
+            };
+        }
+        return item;
+    });
+    return { next, ids };
+}
+
 /** Live progress for one row: only a row still pending or transferring takes
  *  it (see `isSettled`). */
 export function applyItemProgress(

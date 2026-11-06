@@ -8,7 +8,33 @@
  * Used by the circuit breaker in batch transfer loops for zero-latency classification.
  */
 
-import { SyncErrorKind } from '../types';
+import type { SyncErrorInfo, SyncErrorKind } from '../types';
+
+type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+
+/**
+ * Classify a failed transfer with the backend's classifier
+ * (`classify_transfer_error`, sync.rs `classify_sync_error`), the one the
+ * executors use. It reads the OS error code, so a full disk or a reset
+ * connection is known in any language; the copy below matches English text
+ * only (#1506 row 164). The copy answers only when the command cannot be
+ * reached. Where the two disagree the backend wins: "broken pipe" is a lost
+ * connection, retryable, not a disk error.
+ */
+export async function classifyTransferFailure(
+  rawError: string,
+  invoke: Invoke,
+): Promise<{ kind: SyncErrorKind; retryable: boolean }> {
+  try {
+    const info = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath: null });
+    if (info && typeof info.kind === 'string' && typeof info.retryable === 'boolean') {
+      return { kind: info.kind, retryable: info.retryable };
+    }
+  } catch {
+    // Fall through to the local copy.
+  }
+  return classifyErrorFast(rawError);
+}
 
 /**
  * Fast synchronous classification for common error patterns.
