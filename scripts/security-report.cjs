@@ -166,30 +166,7 @@ function runOsvScanner(ignoreInfo) {
   } catch {
     return { tool: 'osv-scanner', skipped: false, parseError: true, raw: r.stdout || r.stderr };
   }
-  const ignored = ignoreInfo?.ignored || new Set();
-  const open = [];
-  const suppressed = [];
-
-  for (const result of parsed?.results || []) {
-    for (const pkg of result.packages || []) {
-      for (const vuln of pkg.vulnerabilities || []) {
-        const aliases = new Set([vuln.id, ...(vuln.aliases || [])]);
-        const isSuppressed = [...aliases].some((id) => ignored.has(id));
-        const cvssScore = vuln.severity?.find((s) => s.type?.startsWith('CVSS'))?.score || '';
-        const finding = {
-          ecosystem: pkg.package?.ecosystem,
-          package: pkg.package?.name,
-          version: pkg.package?.version,
-          id: vuln.id,
-          aliases: vuln.aliases || [],
-          summary: vuln.summary,
-          severity: cvssScore || 'unknown',
-          fixedVersion: extractFixedVersion(vuln),
-        };
-        (isSuppressed ? suppressed : open).push(finding);
-      }
-    }
-  }
+  const { open, suppressed } = collectOsvFindings(parsed, ignoreInfo?.ignored || new Set());
 
   return {
     tool: 'osv-scanner',
@@ -203,6 +180,46 @@ function runOsvScanner(ignoreInfo) {
     suppressed,
     auditTomlPath: ignoreInfo?.path || null,
   };
+}
+
+// osv-scanner reports one record per lockfile, so a crate pinned at the same
+// version in several lockfiles (the app, the peer-l0 spike, the test helpers)
+// comes back once per file. A finding is one package version and one
+// advisory: count it once and list the lockfiles it was seen in.
+function collectOsvFindings(parsed, ignored) {
+  const byKey = new Map();
+  for (const result of parsed?.results || []) {
+    // osv-scanner runs with cwd ROOT, and may print the source relative to it:
+    // resolve against ROOT, not against the caller's working directory.
+    const source = result.source?.path ? path.relative(ROOT, path.resolve(ROOT, result.source.path)) || result.source.path : '';
+    for (const pkg of result.packages || []) {
+      for (const vuln of pkg.vulnerabilities || []) {
+        const key = [pkg.package?.ecosystem, pkg.package?.name, pkg.package?.version, vuln.id].join('\u0000');
+        let finding = byKey.get(key);
+        if (!finding) {
+          const aliases = new Set([vuln.id, ...(vuln.aliases || [])]);
+          finding = {
+            ecosystem: pkg.package?.ecosystem,
+            package: pkg.package?.name,
+            version: pkg.package?.version,
+            id: vuln.id,
+            aliases: vuln.aliases || [],
+            summary: vuln.summary,
+            severity: vuln.severity?.find((s) => s.type?.startsWith('CVSS'))?.score || 'unknown',
+            fixedVersion: extractFixedVersion(vuln),
+            lockfiles: [],
+            suppressed: [...aliases].some((id) => ignored.has(id)),
+          };
+          byKey.set(key, finding);
+        }
+        if (source && !finding.lockfiles.includes(source)) finding.lockfiles.push(source);
+      }
+    }
+  }
+  const open = [];
+  const suppressed = [];
+  for (const finding of byKey.values()) (finding.suppressed ? suppressed : open).push(finding);
+  return { open, suppressed };
 }
 
 function extractFixedVersion(vuln) {
@@ -316,7 +333,7 @@ function renderSection(result) {
     const renderRow = (f) => `
       <tr class="${severityClass(f.severity)}">
         <td>${escapeHtml(f.ecosystem)}</td>
-        <td>${escapeHtml(f.package)} <span class="muted">${escapeHtml(f.version)}</span></td>
+        <td>${escapeHtml(f.package)} <span class="muted">${escapeHtml(f.version)}</span>${(f.lockfiles || []).length ? `<br><span class="muted">${f.lockfiles.map(escapeHtml).join(', ')}</span>` : ''}</td>
         <td><a href="https://osv.dev/vulnerability/${escapeHtml(f.id)}" target="_blank" rel="noopener">${escapeHtml(f.id)}</a></td>
         <td>${escapeHtml(f.severity || '')}</td>
         <td>${escapeHtml(f.fixedVersion || '')}</td>
@@ -332,7 +349,7 @@ function renderSection(result) {
         <header>
           <h2>osv-scanner <span class="muted">(Google OSV DB - includes RustSec, GHSA, CVE)</span></h2>
           <span class="badge ${isClean ? 'badge-ok' : 'badge-bad'}">
-            ${c.open} open · ${c.suppressed} suppressed
+            ${c.open} open · ${c.suppressed} suppressed findings
           </span>
         </header>
         ${isClean
@@ -340,7 +357,7 @@ function renderSection(result) {
           : `<p class="muted">Open findings are advisories not yet present in ${auditLink}. Review and either bump the dependency or add a justified suppression.</p>
              <table><thead><tr><th>Ecosystem</th><th>Package</th><th>ID</th><th>CVSS</th><th>Fixed in</th><th>Summary</th></tr></thead><tbody>${openRows}</tbody></table>`}
         ${result.suppressed.length
-          ? `<details><summary>Suppressed via ${auditLink} (${result.suppressed.length}) - documented rationale required</summary>
+          ? `<details><summary>Suppressed via ${auditLink}: ${result.suppressed.length} findings (one per package version and advisory, counted once across lockfiles) - documented rationale required</summary>
               <table><thead><tr><th>Ecosystem</th><th>Package</th><th>ID</th><th>CVSS</th><th>Fixed in</th><th>Summary</th></tr></thead><tbody>${suppRows}</tbody></table>
             </details>`
           : ''}
@@ -373,7 +390,7 @@ function buildHtml({ pkg, cargoVersion, results }) {
     ? 'No open vulnerabilities'
     : `${totalIssues} open finding(s)`;
   const subLabel = totalSuppressed > 0
-    ? `${totalSuppressed} additional advisory(ies) suppressed via documented audit.toml rationale`
+    ? `${totalSuppressed} additional finding(s) suppressed via documented audit.toml rationale`
     : 'aggregated across cargo audit, npm audit, and osv-scanner';
 
   return `<!doctype html>
@@ -463,7 +480,9 @@ function buildHtml({ pkg, cargoVersion, results }) {
 </html>`;
 }
 
-(function main() {
+module.exports = { collectOsvFindings };
+
+if (require.main === module) (function main() {
   const pkg = readPkg();
   const cargoVersion = readCargoVersion();
   const ignoreInfo = readAuditIgnoreList();

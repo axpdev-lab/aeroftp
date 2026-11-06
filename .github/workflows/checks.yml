@@ -70,6 +70,9 @@ jobs:
       - name: Snap stale-package audit reads every staged package
         run: node --test .github/scripts/test-snap-stale-packages.mjs
 
+      - name: Security report counts each OSV finding once across lockfiles
+        run: node --test .github/scripts/test-security-report.mjs
+
       # Two checks that read a git command through a command substitution,
       # which hides its exit status: each now fails when git does.
       - name: DCO check fails when git cannot read the commit range

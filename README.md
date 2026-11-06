@@ -609,9 +609,9 @@ Output is published in [`docs/security/security-report-latest.html`](docs/securi
 | May 2026 | v3.7.5 | **0** | 25 | Closed CVE-2026-42184 (tauri origin confusion), GHSA-2p6r-x3vv-xqm2 (rpassword), 2x openssl GHSA |
 | Jun 2026 | v4.0.5 | **0** | 23 | russh 0.61.2 cleared GHSA-wwx6-x28x-8259 (HIGH) + GHSA-hpv4-5h6f-wqr3 (MEDIUM) + SFTP parsing advisories; 2 suppressions removed |
 | Jun 2026 | v4.0.7 | **0** | 28 | Full self-hosted run (`cargo audit` + `npm audit` + `osv-scanner` 2.4.0): 0 open, 28 advisories suppressed per `audit.toml`; dual blind AeroVault audit remediation shipped (grade A) |
-| Nov 2026 | v4.2.6 (`main` at `ccf3f4be9`) | **0** | 29 | Full self-hosted run (`cargo audit` 0.22.2 + `npm audit` + `osv-scanner` 2.4.0). The one open finding, tokio RUSTSEC-2026-0386 in the test-only fake portal lockfile, was cleared by moving it to tokio 1.54.1. 16 ignores that no longer matched any advisory were removed from `audit.toml`, which now lists 17 IDs |
+| Nov 2026 | v4.2.6 (`main` at `9fe735ab8` plus this audit's changes) | **0** | 25 | Full self-hosted run (`cargo audit` 0.22.2 + `npm audit` + `osv-scanner` 2.4.0). The one open finding on `main` at `ccf3f4be9`, tokio RUSTSEC-2026-0386 in the test-only fake portal lockfile, was cleared by moving it to tokio 1.54.1; the scanned tree includes that change. 16 ignores that no longer matched any advisory were removed from `audit.toml`, which now lists 17 IDs. From this run a suppressed finding is one package version and one advisory, counted once across lockfiles; earlier rows counted one per lockfile record |
 
-The rows above are dated runs. The newest one is a scan of `main` after 4.2.6, not of a later revision. Release preparation must use current audit results. Past Aikido Security reports remain linked in the Security Posture table below for archive.
+The rows above are dated runs. The newest one is a scan of `main` at `9fe735ab8` (after 4.2.6) with this audit's lockfile and `audit.toml` changes applied, not of a later revision. Release preparation must use current audit results. Past Aikido Security reports remain linked in the Security Posture table below for archive.
 
 ### Security Posture
 

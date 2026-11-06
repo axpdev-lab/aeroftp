@@ -118,9 +118,11 @@ Findings not yet addressed are surfaced as **open**. Findings accepted with writ
 
 | Month | Version | Open | Suppressed (justified) | Report |
 |---|---|---|---|---|
-| Nov 2026 | v4.2.6 (`main` at `ccf3f4be9`) | **0** | 29 | [HTML](docs/security/security-report-latest.html) |
+| Nov 2026 | v4.2.6 (`main` at `9fe735ab8` plus this audit's changes) | **0** | 25 | [HTML](docs/security/security-report-latest.html) |
 | Jun 2026 | v4.0.7 | **0** | 28 | [HTML](https://github.com/axpdev-lab/aeroftp/blob/aa0e4774541c8eeafe14b33b0c92427d7621e7d8/docs/security/security-report-latest.html) |
 | May 2026 | v3.8.0 | **0** | 26 | archived |
+
+Only the newest row links `security-report-latest.html`. The next audit replaces that file, so the same pull request repins this row to the blob of the last `main` commit that carries it, as the June row is pinned to `aa0e477`. Dated copies under `docs/security/` are not committed (`.gitignore`). Counts: a suppressed finding is one package version and one advisory, counted once across lockfiles (since November 2026; earlier rows counted one per lockfile record).
 
 #### Third-party tooling
 

@@ -137,9 +137,10 @@ ignore = [
     # ----------------------------------------------------------------
     # glib 0.18 unsound (transitive via Tauri / wry)
     # ----------------------------------------------------------------
-    # `glib 0.18.5` carries a soundness advisory for unsafe code in
-    # `gobject-sys::g_object_get`. It comes with the GTK3 stack of the
-    # Tauri 2.x Linux WebView (wry, WebKitGTK). Cannot be dropped
+    # `glib 0.18.5` carries a soundness advisory for `glib::VariantStrIter`:
+    # its iterator passed an immutable reference to a C out-parameter.
+    # AeroFTP never calls `VariantStrIter`. glib comes with the GTK3 stack
+    # of the Tauri 2.x Linux WebView (wry, WebKitGTK). Cannot be dropped
     # without dropping Tauri Linux support entirely. Will be cleared
     # automatically when Tauri ships GTK4-based wry.
     "RUSTSEC-2024-0429",  # glib
@@ -401,7 +402,7 @@ ignore = [
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
 # a specific RUSTSEC ID with a paragraph explaining the threat-model gap.
-# Severity: do not blanket-ignore "low" or "informational" — review them.
+# Severity: do not blanket-ignore "low" or "informational"; review them.
 
 [output]
 deny = ["unmaintained", "unsound", "yanked"]
