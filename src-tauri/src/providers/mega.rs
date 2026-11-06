@@ -592,8 +592,9 @@ impl MegaCmdProvider {
     /// hold a file of the folder's own name.
     async fn listed_file_size(&mut self, path: &str) -> Option<u64> {
         let name = Path::new(path).file_name()?.to_string_lossy().to_string();
+        let address = self.node_address(path).await.ok()?;
         let listing = self
-            .run_mega_cmd_with_reauth("mega-ls", &["-l", path])
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", &address])
             .await
             .ok()?;
         if listing.lines().any(|line| {
@@ -765,8 +766,9 @@ impl StorageProvider for MegaCmdProvider {
 
         tracing::debug!("[MEGAcmd] Listing path: {}", target_path);
 
+        let address = self.node_address(&target_path).await?;
         let output = self
-            .run_mega_cmd_with_reauth("mega-ls", &["-l", &target_path])
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", &address])
             .await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => ProviderError::NotFound(target_path.clone()),
@@ -809,7 +811,8 @@ impl StorageProvider for MegaCmdProvider {
 
         tracing::debug!("[MEGAcmd] CD verifying path: {}", new_path);
 
-        self.run_mega_cmd_with_reauth("mega-ls", &[&new_path])
+        let address = self.node_address(&new_path).await?;
+        self.run_mega_cmd_with_reauth("mega-ls", &[&address])
             .await
             .map_err(|e| match e {
                 ProviderError::NotFound(_) => {
@@ -890,10 +893,11 @@ impl StorageProvider for MegaCmdProvider {
                 bar.report((*size as f64 * percent / 100.0) as u64);
             }
         };
+        let remote_address = self.node_address(&abs_remote).await?;
         match self
             .run_mega_transfer_with_reauth(
                 "mega-get",
-                &[&abs_remote, &local_arg],
+                &[&remote_address, &local_arg],
                 Some(&on_percent),
             )
             .await
@@ -942,7 +946,8 @@ impl StorageProvider for MegaCmdProvider {
         ));
         let temp_str = temp_path.to_string_lossy().to_string();
 
-        self.run_mega_transfer_with_reauth("mega-get", &[&abs_remote, &temp_str], Some(&|_| {}))
+        let address = self.node_address(&abs_remote).await?;
+        self.run_mega_transfer_with_reauth("mega-get", &[&address, &temp_str], Some(&|_| {}))
             .await
             .map_err(|e| {
                 ProviderError::TransferFailed(format!("Download to bytes failed: {}", e))
@@ -994,6 +999,7 @@ impl StorageProvider for MegaCmdProvider {
         // resolution inside MEGAcmd does not produce `\\?\C:/...` (invalid).
         let local_arg = Self::normalize_local_path_for_cli(l);
         let on_percent = |percent: f64| progress.report((size as f64 * percent / 100.0) as u64);
+        refuse_mega_wildcard_name(&abs_remote)?;
         self.run_mega_transfer_with_reauth(
             "mega-put",
             &[&local_arg, &abs_remote],
@@ -1027,6 +1033,11 @@ impl StorageProvider for MegaCmdProvider {
     /// The adapter's own admission (see `bulk`): one remote folder, new names
     /// only for uploads, a whole folder of at most 256 files for downloads.
     async fn bulk_admits(&mut self, items: &[super::bulk::BulkTransferItem], upload: bool) -> bool {
+        // A bulk names its files by path; a wildcard name goes the single-file
+        // way, which addresses existing nodes by handle (#1506 Requested 189).
+        if items.iter().any(|item| mega_wildcard(&item.remote_path)) {
+            return false;
+        }
         self.bulk_admits_group(items, upload).await
     }
 
@@ -1043,6 +1054,7 @@ impl StorageProvider for MegaCmdProvider {
     async fn mkdir(&mut self, p: &str) -> Result<(), ProviderError> {
         // CQ-06: Resolve path
         let p = self.resolve_path(p);
+        refuse_mega_wildcard_name(&p)?;
         self.run_mega_cmd_with_reauth("mega-mkdir", &[&p]).await?;
         Ok(())
     }
@@ -1146,7 +1158,10 @@ impl StorageProvider for MegaCmdProvider {
             return Ok(());
         }
         super::refuse_occupied_destination(self, &f, &t).await?;
-        self.run_mega_cmd_with_reauth("mega-mv", &[&f, &t]).await?;
+        refuse_mega_wildcard_name(&t)?;
+        let source = self.node_address(&f).await?;
+        self.run_mega_cmd_with_reauth("mega-mv", &[&source, &t])
+            .await?;
         Ok(())
     }
 
@@ -1170,7 +1185,10 @@ impl StorageProvider for MegaCmdProvider {
             Err(ProviderError::NotFound(_)) => {}
             Err(e) => return Err(e),
         }
-        self.run_mega_cmd_with_reauth("mega-mv", &[&f, &t]).await?;
+        refuse_mega_wildcard_name(&t)?;
+        let source = self.node_address(&f).await?;
+        self.run_mega_cmd_with_reauth("mega-mv", &[&source, &t])
+            .await?;
         Ok(())
     }
 
@@ -1217,8 +1235,9 @@ impl StorageProvider for MegaCmdProvider {
             parent
         };
 
+        let parent_address = self.node_address(&parent).await?;
         let output = self
-            .run_mega_cmd_with_reauth("mega-ls", &["-l", &parent])
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", &parent_address])
             .await
             .map_err(|e| match e {
                 // A parent that is not there holds nothing: the path is
@@ -1249,7 +1268,11 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn exists(&mut self, p: &str) -> Result<bool, ProviderError> {
         let p = self.resolve_path(p);
-        map_mega_exists(self.run_mega_cmd_with_reauth("mega-ls", &[&p]).await)
+        let address = match self.node_address(&p).await {
+            Ok(address) => address,
+            Err(e) => return map_mega_exists(Err(e)),
+        };
+        map_mega_exists(self.run_mega_cmd_with_reauth("mega-ls", &[&address]).await)
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
@@ -1278,7 +1301,10 @@ impl StorageProvider for MegaCmdProvider {
     async fn server_side_copy(&mut self, f: &str, t: &str) -> Result<(), ProviderError> {
         let f = self.resolve_path(f);
         let t = self.resolve_path(t);
-        self.run_mega_cmd_with_reauth("mega-cp", &[&f, &t]).await?;
+        refuse_mega_wildcard_name(&t)?;
+        let source = self.node_address(&f).await?;
+        self.run_mega_cmd_with_reauth("mega-cp", &[&source, &t])
+            .await?;
         Ok(())
     }
 
@@ -1292,6 +1318,9 @@ impl StorageProvider for MegaCmdProvider {
         options: ShareLinkOptions,
     ) -> Result<ShareLinkResult, ProviderError> {
         let abs_path = self.resolve_path(path);
+        // The export output is parsed against the path; a wildcard name is
+        // refused rather than exported by handle untested (#1506 Requested 189).
+        refuse_mega_wildcard_name(&abs_path)?;
 
         // SHARE-01: MEGAcmd's mega-export does not support link expiry.
         if let Some(secs) = options.expires_in_secs {
@@ -1338,7 +1367,8 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn remove_share_link(&mut self, path: &str) -> Result<(), ProviderError> {
         let abs_path = self.resolve_path(path);
-        self.run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path])
+        let address = self.node_address(&abs_path).await?;
+        self.run_mega_cmd_with_reauth("mega-export", &["-d", &address])
             .await?;
         Ok(())
     }
@@ -1349,7 +1379,8 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn import_link(&mut self, link: &str, dest: &str) -> Result<(), ProviderError> {
         let abs_dest = self.resolve_path(dest);
-        self.run_mega_cmd_with_reauth("mega-import", &[link, &abs_dest])
+        let address = self.node_address(&abs_dest).await?;
+        self.run_mega_cmd_with_reauth("mega-import", &[link, &address])
             .await?;
         Ok(())
     }
@@ -1367,8 +1398,9 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
         let abs_path = self.resolve_path(path);
+        let address = self.node_address(&abs_path).await?;
         let output = self
-            .run_mega_cmd_with_reauth("mega-du", &[&abs_path])
+            .run_mega_cmd_with_reauth("mega-du", &[&address])
             .await?;
 
         // CQ-04: More specific line matching for disk usage output.
@@ -1406,8 +1438,9 @@ impl StorageProvider for MegaCmdProvider {
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
         let abs_path = self.resolve_path(path);
+        let address = self.node_address(&abs_path).await?;
         let output = self
-            .run_mega_cmd_with_reauth("mega-find", &[&abs_path, "--pattern", pattern])
+            .run_mega_cmd_with_reauth("mega-find", &[&address, "--pattern", pattern])
             .await?;
 
         let mut entries = Vec::new();
@@ -1538,13 +1571,48 @@ impl MegaCmdProvider {
     ) -> Result<(), ProviderError> {
         let p = self.resolve_path(path);
         let handle = self.node_handle(&p, from).await;
-        self.run_mega_cmd_with_reauth("mega-mv", &[&p, "//bin/"])
+        let address = self.node_address(&p).await?;
+        self.run_mega_cmd_with_reauth("mega-mv", &[&address, "//bin/"])
             .await?;
         if self.trashed.len() == TRASHED_KEPT {
             self.trashed.pop_front();
         }
         self.trashed.push_back((p, handle));
         Ok(())
+    }
+
+    /// The argument that names the existing node at `path` for MEGAcmd: the
+    /// path itself, or, when it holds a wildcard character, `H:<handle>`
+    /// resolved one level at a time from the root, each level listed by its
+    /// own handle so no pattern ever reaches MEGAcmd (handles address one node,
+    /// checked live on 2.6.0 for `mega-ls` and `mega-mv`).
+    async fn node_address(&mut self, path: &str) -> Result<String, ProviderError> {
+        if !mega_wildcard(path) {
+            return Ok(path.to_string());
+        }
+        let mut current = "/".to_string();
+        for name in path.split('/').filter(|part| !part.is_empty()) {
+            let listing = self
+                .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", &current])
+                .await?;
+            current = unique_handle_for(&listing, name).map_err(|e| match e {
+                ProviderError::NotFound(_) => ProviderError::NotFound(path.to_string()),
+                other => other,
+            })?;
+        }
+        Ok(current)
+    }
+
+    /// The argument that names one item at the top of the rubbish bin: its
+    /// path when the name is plain, its handle when the name holds a wildcard.
+    async fn bin_item_address(&mut self, name: &str) -> Result<String, ProviderError> {
+        if !mega_wildcard(name) {
+            return Ok(format!("//bin/{name}"));
+        }
+        let listing = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", "//bin"])
+            .await?;
+        unique_handle_for(&listing, name)
     }
 
     /// The handle (`H:...`) of the node at `path`. `--show-handles` and the
@@ -1565,8 +1633,12 @@ impl MegaCmdProvider {
             HandleFrom::Parent if parent.is_empty() => "/",
             HandleFrom::Parent => parent,
         };
+        let listed = self
+            .node_address(listed)
+            .await
+            .map_err(|e| NodeUnknown::Unread(e.to_string()))?;
         let listing = self
-            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", listed])
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", &listed])
             .await
             .map_err(|e| NodeUnknown::Unread(e.to_string()))?;
         let mut matches = listing
@@ -1638,8 +1710,9 @@ impl MegaCmdProvider {
             .file_name()
             .ok_or_else(|| ProviderError::InvalidPath("Invalid trash item name".to_string()))?
             .to_string_lossy();
-        let rubbish_path = format!("//bin/{}", clean_name);
+        let rubbish_path = self.bin_item_address(&clean_name).await?;
         let abs_dest = self.resolve_path(dest);
+        refuse_mega_wildcard_name(&abs_dest)?;
         self.run_mega_cmd_with_reauth("mega-mv", &[&rubbish_path, &abs_dest])
             .await?;
         Ok(())
@@ -1655,7 +1728,10 @@ impl MegaCmdProvider {
             .file_name()
             .ok_or_else(|| ProviderError::InvalidPath("Invalid trash item name".to_string()))?
             .to_string_lossy();
-        let rubbish_path = format!("//bin/{}", clean_name);
+        // A name with `*` or `?` is purged by handle: `//bin/*` would match, and
+        // permanently delete, every item in the bin (#1506 Requested 189,
+        // measured on MEGAcmd 2.6).
+        let rubbish_path = self.bin_item_address(&clean_name).await?;
         // Use -r -f: MEGA soft-deletes files but hard-deletes folders, so a
         // folder trashed via the native API needs `-r` to purge (MEGAcmd errors
         // "Use -r to delete a folder recursively" otherwise). `-r` is harmless on
@@ -1693,6 +1769,44 @@ fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, Provid
         // unreadable root would read as missing, which is how a run decides
         // there is nothing to keep.
         Err(e) => Err(e),
+    }
+}
+
+/// Whether a remote path holds a character MEGAcmd treats as a wildcard.
+/// MEGAcmd expands `*` and `?` in path arguments itself, on the server side,
+/// with no escape (`\\*` is not found, measured on MEGAcmd 2.6, 2026-11-06), so a
+/// node named `*` addressed by path selects all of its siblings: a purge of
+/// `//bin/*` empties the whole rubbish bin (#1506 Requested 189).
+fn mega_wildcard(path: &str) -> bool {
+    path.contains(['*', '?'])
+}
+
+/// Refuse to create or name a node whose path holds a MEGAcmd wildcard: the
+/// command would read the name as a pattern and act on whatever it matches.
+fn refuse_mega_wildcard_name(path: &str) -> Result<(), ProviderError> {
+    if mega_wildcard(path) {
+        return Err(ProviderError::InvalidPath(format!(
+            "'{path}': MEGAcmd reads '*' and '?' in a path as wildcards and has no \
+             escape for them, so AeroFTP does not create or name an item with them"
+        )));
+    }
+    Ok(())
+}
+
+/// The one handle a `--show-handles` listing gives for `name`, or why not.
+fn unique_handle_for(listing: &str, name: &str) -> Result<String, ProviderError> {
+    let mut matches = listing
+        .lines()
+        .filter_map(parse_handle_line)
+        .filter(|(_, n)| *n == name)
+        .map(|(handle, _)| handle);
+    match (matches.next(), matches.next()) {
+        (Some(handle), None) => Ok(handle.to_string()),
+        (Some(_), Some(_)) => Err(ProviderError::InvalidPath(format!(
+            "more than one item is named '{name}' here, and MEGAcmd cannot tell them \
+             apart by name: nothing was changed"
+        ))),
+        (None, _) => Err(ProviderError::NotFound(name.to_string())),
     }
 }
 
@@ -2241,6 +2355,78 @@ mod tests {
             parse_handle_line("----  1  3  15Jan2026  14:30  a.txt"),
             None
         );
+    }
+
+    /// #1506 Requested 189: what counts as a MEGAcmd wildcard, and a
+    /// destination name with one is refused before any command runs.
+    #[test]
+    fn wildcard_names_are_detected_and_refused_as_destinations() {
+        for wild in ["/a/*", "/a/b?c.txt", "//bin/*", "*"] {
+            assert!(mega_wildcard(wild), "{wild}");
+            assert!(
+                matches!(
+                    refuse_mega_wildcard_name(wild),
+                    Err(ProviderError::InvalidPath(_))
+                ),
+                "{wild}"
+            );
+        }
+        for plain in ["/a/b.txt", "/dir with space/[x].txt", "//bin/report"] {
+            assert!(!mega_wildcard(plain), "{plain}");
+            assert!(refuse_mega_wildcard_name(plain).is_ok(), "{plain}");
+        }
+    }
+
+    /// The listing shape measured live on MEGAcmd 2.6: the handle of exactly
+    /// the node named `*`, never its siblings; two of the same name refuse.
+    #[test]
+    fn unique_handle_for_picks_the_exact_name() {
+        let listing = "FLAGS VERS      SIZE            DATE          HANDLE NAME\n\
+                       ----    1            5 06Nov2026 12:20:41 H:yj5ATZxI *\n\
+                       ----    1            2 06Nov2026 12:20:41 H:C65SkDZa a.txt\n\
+                       ----    1            2 06Nov2026 12:20:41 H:X350WLqb b.txt\n";
+        assert_eq!(unique_handle_for(listing, "*").unwrap(), "H:yj5ATZxI");
+        assert_eq!(unique_handle_for(listing, "a.txt").unwrap(), "H:C65SkDZa");
+        assert!(matches!(
+            unique_handle_for(listing, "c.txt"),
+            Err(ProviderError::NotFound(_))
+        ));
+        let twice = format!("{listing}----    1            9 06Nov2026 12:20:41 H:Zzzzzzzz *\n");
+        assert!(matches!(
+            unique_handle_for(&twice, "*"),
+            Err(ProviderError::InvalidPath(_))
+        ));
+    }
+
+    /// End to end on a MEGAcmd stand-in that records its arguments: purging a
+    /// bin item named `*` runs `mega-rm` on that item's handle, never on
+    /// `//bin/*` (which MEGAcmd would expand to the whole bin).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn purging_a_bin_item_named_star_uses_its_handle() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let log = dir.path().join("argv.log");
+        let ls = "#!/bin/sh\n\
+                  echo \"mega-ls $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
+                  echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'\n\
+                  echo '----    1            5 06Nov2026 12:20:41 H:yj5ATZxI *'\n\
+                  echo '----    1            2 06Nov2026 12:20:41 H:C65SkDZa a.txt'\n";
+        let rm = "#!/bin/sh\necho \"mega-rm $*\" >> \"$(dirname \"$0\")/argv.log\"\n";
+        for (name, body) in [("mega-ls", ls), ("mega-rm", rm)] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, body).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        provider
+            .permanent_delete_from_trash("*")
+            .await
+            .expect("purge by handle");
+        let argv = std::fs::read_to_string(&log).unwrap();
+        assert!(argv.contains("mega-rm -r -f H:yj5ATZxI"), "{argv}");
+        assert!(!argv.contains("//bin/*"), "{argv}");
     }
 
     pub(super) fn test_provider() -> MegaCmdProvider {
