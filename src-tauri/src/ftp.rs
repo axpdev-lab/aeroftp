@@ -85,6 +85,10 @@ pub struct FtpConnectionSpec {
     pub password: SecretString,
     pub initial_path: String,
     pub timeouts: FtpTimeoutConfig,
+    /// The profile's PASV-address trust, so a pooled transfer connection
+    /// dials its data connections as the browsing one does (#1506 Requested
+    /// 188).
+    pub trust_pasv_address: bool,
 }
 
 pub struct FtpManager {
@@ -125,6 +129,14 @@ impl FtpManager {
         self.trust_pasv_address = trust;
     }
 
+    /// Take the per-connection settings of `spec` (timeouts and PASV-address
+    /// trust) before `connect`, as every pooled session does, so a transfer
+    /// connection behaves like the session it was derived from.
+    pub fn apply_connection_spec(&mut self, spec: &FtpConnectionSpec) {
+        self.timeouts = spec.timeouts;
+        self.trust_pasv_address = spec.trust_pasv_address;
+    }
+
     /// Apply GUI transfer timeout to connection-oriented FTP operations.
     pub fn apply_transfer_timeout(&mut self, timeout_seconds: u64) {
         let timeout_seconds = timeout_seconds.clamp(10, 300);
@@ -134,10 +146,6 @@ impl FtpManager {
         self.timeouts.command_timeout = Duration::from_secs(command_seconds);
         self.timeouts.list_timeout = Duration::from_secs(command_seconds.max(30));
         self.timeouts.upload_timeout = Duration::from_secs(timeout_seconds.max(30) * 10);
-    }
-
-    pub fn set_timeout_config(&mut self, timeouts: FtpTimeoutConfig) {
-        self.timeouts = timeouts;
     }
 
     pub fn timeout_config(&self) -> FtpTimeoutConfig {
@@ -159,6 +167,7 @@ impl FtpManager {
             password,
             initial_path: self.current_path.clone(),
             timeouts: self.timeouts,
+            trust_pasv_address: self.trust_pasv_address,
         })
     }
 
@@ -1506,6 +1515,36 @@ pub(crate) mod exists_tests {
 /// A login abandoned before its reply (a cancelled `connect_ftp`) leaves the
 /// control channel out of step: the disconnect that follows sends no QUIT and
 /// does not wait for one.
+#[cfg(test)]
+mod connection_spec_tests {
+    use super::*;
+
+    /// A pooled transfer session dials with the PASV-address trust of the
+    /// session it was derived from, both ways (CodeRabbit on #1506 Requested
+    /// 188: the pool used to build its managers with the default).
+    #[test]
+    fn a_pooled_session_keeps_the_pasv_address_trust() {
+        for trust in [true, false] {
+            let mut browsing = FtpManager::new();
+            browsing.server = Some("ftp.example.com:21".to_string());
+            browsing.username = Some("user".to_string());
+            browsing.password = Some(SecretString::from("unused".to_string()));
+            browsing.set_trust_pasv_address(trust);
+            let spec = browsing.connection_spec().expect("spec");
+            assert_eq!(spec.trust_pasv_address, trust);
+
+            let mut pooled = FtpManager::new();
+            pooled.set_trust_pasv_address(!trust);
+            pooled.apply_connection_spec(&spec);
+            assert_eq!(pooled.trust_pasv_address, trust);
+            assert_eq!(
+                pooled.timeouts.connect_timeout,
+                spec.timeouts.connect_timeout
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod abandoned_login_tests {
     use super::*;

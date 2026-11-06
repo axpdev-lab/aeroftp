@@ -927,10 +927,6 @@ impl StorageProvider for MegaCmdProvider {
     async fn download_to_bytes(&mut self, r: &str) -> Result<Vec<u8>, ProviderError> {
         // XFER-01: Implement via temp file
         let abs_remote = self.resolve_path(r);
-        let file_name = Path::new(&abs_remote)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| format!("mega_tmp_{}", uuid::Uuid::new_v4()));
 
         // The temp target MUST be a fresh, unique, non-existing path. MEGAcmd's
         // `mega-get` does NOT overwrite an existing local target: when the path
@@ -940,13 +936,10 @@ impl StorageProvider for MegaCmdProvider {
         // "CORRUPTED" in the speed test, and as wrong content for previews /
         // hashing that go through download_to_bytes). A per-call UUID prefix
         // guarantees the path does not pre-exist, so MEGAcmd writes exactly
-        // where we then read.
-        let temp_dir = std::env::temp_dir();
-        let temp_path = temp_dir.join(format!(
-            "aeroftp_mega_{}_{}",
-            uuid::Uuid::new_v4(),
-            file_name
-        ));
+        // where we then read. The remote name is left out: a MEGA name may hold
+        // `*`, `?` or other characters Windows refuses in a file name, now that
+        // such nodes are addressed by handle (CodeRabbit on #1506 Requested 189).
+        let temp_path = std::env::temp_dir().join(format!("aeroftp_mega_{}", uuid::Uuid::new_v4()));
         let temp_str = temp_path.to_string_lossy().to_string();
 
         let address = self.node_address(&abs_remote).await?;

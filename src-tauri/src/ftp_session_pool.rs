@@ -241,6 +241,7 @@ impl FtpSessionPool {
                 password: secrecy::SecretString::from("unused".to_string()),
                 initial_path: "/".to_string(),
                 timeouts: crate::ftp::FtpTimeoutConfig::default(),
+                trust_pasv_address: false,
             },
             pool_size: 1,
             min_ready_sessions: 0,
@@ -275,6 +276,7 @@ impl FtpSessionPool {
                 password: secrecy::SecretString::from("unused".to_string()),
                 initial_path: "/".to_string(),
                 timeouts,
+                trust_pasv_address: false,
             },
             pool_size: 1,
             min_ready_sessions: 0,
@@ -314,6 +316,7 @@ impl FtpSessionPool {
                 password: secrecy::SecretString::from("unused".to_string()),
                 initial_path: "/".to_string(),
                 timeouts,
+                trust_pasv_address: false,
             },
             pool_size: 1,
             min_ready_sessions: 0,
@@ -411,7 +414,7 @@ impl FtpSessionLease {
         }
 
         let _ = manager.disconnect().await;
-        manager.set_timeout_config(self.inner.config.connection.timeouts);
+        manager.apply_connection_spec(&self.inner.config.connection);
         manager
             .connect(&self.inner.config.connection.server)
             .await
@@ -571,7 +574,7 @@ fn schedule_repair(inner: Arc<FtpSessionPoolInner>, session: PooledSession) {
 async fn reconnect_pooled(config: &FtpPoolConfig, session: &PooledSession) -> Result<(), String> {
     let mut manager = session.manager.lock().await;
     let _ = manager.disconnect().await;
-    manager.set_timeout_config(config.connection.timeouts);
+    manager.apply_connection_spec(&config.connection);
     manager
         .connect(&config.connection.server)
         .await
@@ -655,7 +658,7 @@ impl Drop for FtpSessionLease {
 
 async fn create_connected_session(config: &FtpPoolConfig) -> Result<FtpManager, String> {
     let mut manager = FtpManager::new();
-    manager.set_timeout_config(config.connection.timeouts);
+    manager.apply_connection_spec(&config.connection);
     manager
         .connect(&config.connection.server)
         .await
@@ -692,6 +695,7 @@ mod tests {
                 password: SecretString::from("secret".to_string()),
                 initial_path: "/".to_string(),
                 timeouts: crate::ftp::FtpTimeoutConfig::default(),
+                trust_pasv_address: false,
             },
             pool_size: 10,
             min_ready_sessions: 0,
