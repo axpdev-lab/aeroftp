@@ -1744,25 +1744,33 @@ fn map_alias_remote(
 /// path under the URL's collection for WebDAV, whose start folder is a path
 /// on the server. Elsewhere the alias path is under the account root.
 fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
-    let rel = path.trim().trim_matches('/');
-    if rel.is_empty() {
+    // rclone's sftp reads `nas:docs` from the login folder and `nas:/docs`
+    // from the root, so the form is kept as written; `nas:/` is the root,
+    // which AeroFTP opens for a start folder of `/` (no start folder is the
+    // login folder).
+    if mapped.protocol == "sftp" {
+        let path = path.trim();
+        let kept = path.trim_end_matches('/');
+        if !kept.is_empty() {
+            mapped.initial_path = Some(kept.to_string());
+        } else if path.starts_with('/') {
+            mapped.initial_path = Some("/".to_string());
+        }
         return;
     }
-    // rclone's sftp reads `nas:docs` from the login folder and `nas:/docs`
-    // from the root, so the form is kept as written.
-    if mapped.protocol == "sftp" {
-        mapped.initial_path = Some(path.trim().trim_end_matches('/').to_string());
+    let rel = path.trim().trim_matches('/');
+    if rel.is_empty() {
         return;
     }
     let options = mapped
         .options
         .get_or_insert_with(|| serde_json::Value::Object(serde_json::Map::new()));
     let start = match mapped.protocol.as_str() {
-        // Swift and Azure containers sit where an S3 bucket does.
-        // rclone has no bucket key for these backends (a `container` line is
-        // ignored), so the first segment of the path IS the bucket rclone
-        // opens, even when the section names one.
-        "s3" | "swift" | "azure" => {
+        // Swift and Azure containers and B2 buckets sit where an S3 bucket
+        // does. rclone has no bucket key for these backends (a `container`
+        // line is ignored), so the first segment of the path IS the bucket
+        // rclone opens, even when the section names one.
+        "s3" | "swift" | "azure" | "backblaze" => {
             let (bucket, rest) = rel.split_once('/').unwrap_or((rel, ""));
             if let Some(map) = options.as_object_mut() {
                 map.insert(
@@ -4086,7 +4094,7 @@ pub fn export_rclone(
                 // `key` is NOT an rclone IsPassword field, so it is emitted plain
                 // (same as S3 secret_access_key / Swift key). The bucket is part
                 // of the remote path in rclone (`remote:bucket`), not a config
-                // key, so it is intentionally not emitted here.
+                // key, so a pinned one travels as an alias, like S3's.
                 body.push_str("type = b2\n");
                 body.push_str(&format!("account = {}\n", server.username));
                 if let Some(pw) = password.filter(|p| !p.is_empty()) {
@@ -4094,6 +4102,27 @@ pub fn export_rclone(
                     // (s3 secret_access_key, azure/swift key) so a crafted
                     // application key can't forge a second [section].
                     body.push_str(&format!("key = {}\n", ini_value(pw)));
+                }
+                if let Some(bucket) = options
+                    .and_then(|o| o.get("bucket"))
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|b| !b.is_empty())
+                {
+                    match write_bucket_alias(
+                        &mut names,
+                        &mut trailing,
+                        &mut notes,
+                        &remote_name,
+                        bucket,
+                        "bucket",
+                    ) {
+                        Some(alias_name) => {
+                            crypt_base = alias_name;
+                            crypt_base_root = Some(bucket.to_string());
+                        }
+                        None => crypt_folder = Some(bucket.to_string()),
+                    }
                 }
             }
             // Drime, Cloudinary and ImageKit take the same secrets AeroFTP
@@ -4152,10 +4181,12 @@ pub fn export_rclone(
         // carried as an `alias` remote, exactly like a pinned S3 bucket. The
         // alias name is generated, so it yields to every real profile name.
         if matches!(proto, "sftp" | "ftp" | "ftps" | "webdav") {
+            // `/` is the root only for sftp, whose remote opens the login
+            // folder; ftp and webdav remotes already open at `/`.
             if let Some(path) = options
                 .and_then(|o| o.get("initial_path"))
                 .and_then(|v| v.as_str())
-                .filter(|p| !p.is_empty() && *p != "/")
+                .filter(|p| !p.is_empty() && (*p != "/" || proto == "sftp"))
             {
                 // sftp addresses an absolute folder as `remote:/abs`; ftp and
                 // webdav paths are relative to the account/URL root.
@@ -4226,6 +4257,24 @@ pub fn export_rclone(
         // before this remote is written so that a refusal can be noted above
         // this remote's header, where it stays when rclone rewrites the file;
         // the names it claims come after this remote's in either order.
+        // The app saves a WebDAV overlay scope as a path on the server, while
+        // rclone's webdav remote, and the alias over it, start at the URL's
+        // collection: the scope is taken in that form, or the collection
+        // would be written twice (`dav-path:/remote.php/dav/files/alice/docs`).
+        let webdav_crypt_options = match (proto, webdav_url.as_deref(), options) {
+            ("webdav", Some(url), Some(o)) => o
+                .get("rcloneCryptOverlayScope")
+                .and_then(|v| v.as_str())
+                .map(|scope| {
+                    let mut o = o.clone();
+                    o["rcloneCryptOverlayScope"] = serde_json::Value::String(format!(
+                        "/{}",
+                        webdav_alias_path(url, scope, &server.username)
+                    ));
+                    o
+                }),
+            _ => None,
+        };
         let mut crypt_section = String::new();
         let crypt = append_crypt_remote_section(
             &mut crypt_section,
@@ -4233,7 +4282,7 @@ pub fn export_rclone(
             &remote_name,
             crypt_base_root.as_deref(),
             crypt_folder.as_deref(),
-            options,
+            webdav_crypt_options.as_ref().or(options),
             &mut names,
         );
         if let CryptSection::Refused(reason) = &crypt {
@@ -9461,6 +9510,151 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             !conf.contains("nas-path:/home/u/vault"),
             "the folder inside itself:\n{conf}"
         );
+    }
+
+    #[test]
+    fn a_webdav_crypt_scope_saved_on_the_server_path_is_taken_from_the_collection() {
+        // The app saves the scope as a server path; rclone's remote and the
+        // start-folder alias begin at the collection the URL opens.
+        let crypt = |scope: &str| {
+            server_with(
+                "dav",
+                "webdav",
+                "https://cloud.example.test",
+                443,
+                Some("nextcloud"),
+                serde_json::json!({
+                    "initial_path": "/remote.php/dav/files/alice/docs",
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptOverlayScope": scope,
+                    "rcloneCryptPassword": "pw"
+                }),
+            )
+        };
+        let (_, conf) = export_to_string(
+            &[crypt("/remote.php/dav/files/alice/docs")],
+            "dav-crypt-root",
+        );
+        assert!(
+            section_of(&conf, "dav-path").contains("remote = dav:docs\n"),
+            "{conf}"
+        );
+        assert!(conf.contains("remote = dav-path:\n"), "{conf}");
+        let (_, conf) = export_to_string(
+            &[crypt("/remote.php/dav/files/alice/docs/vault")],
+            "dav-crypt-sub",
+        );
+        assert!(conf.contains("remote = dav-path:/vault\n"), "{conf}");
+        assert!(
+            !conf.contains("dav-path:/remote.php"),
+            "the collection written twice:\n{conf}"
+        );
+    }
+
+    #[test]
+    fn an_sftp_root_start_folder_survives_the_round_trip() {
+        // AeroFTP opens `/` at the server root and no start folder at the
+        // login folder; rclone's `nas:` is the login folder, `nas:/` the root.
+        let servers = vec![
+            server_with(
+                "root",
+                "sftp",
+                "nas.example.test",
+                22,
+                None,
+                serde_json::json!({ "initial_path": "/" }),
+            ),
+            server_with(
+                "home",
+                "sftp",
+                "nas.example.test",
+                22,
+                None,
+                serde_json::json!({}),
+            ),
+        ];
+        let (_, conf) = export_to_string(&servers, "sftp-root");
+        assert!(
+            section_of(&conf, "root-path").contains("remote = root:/\n"),
+            "{conf}"
+        );
+        assert!(!conf.contains("[home-path]"), "{conf}");
+        let path = tmp_write(
+            &conf,
+            &format!("aeroftp-test-sftp-root-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).expect("import");
+        std::fs::remove_file(&path).ok();
+        let initial = |name: &str| {
+            result
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap()
+                .initial_path
+                .clone()
+        };
+        assert_eq!(initial("root").as_deref(), Some("/"));
+        assert_eq!(initial("home"), None);
+
+        // A foreign alias at the root says the same.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "[nas]\ntype = sftp\nhost = nas.example.test\nuser = u\n\n[top]\ntype = alias\nremote = nas:/\n",
+        )
+        .unwrap();
+        let result = import_rclone(&path).expect("import");
+        let top = result.servers.iter().find(|s| s.name == "top").unwrap();
+        assert_eq!(top.initial_path.as_deref(), Some("/"));
+    }
+
+    #[test]
+    fn a_b2_bucket_travels_as_the_alias_path_both_ways() {
+        let servers = vec![server_with(
+            "b2",
+            "backblaze",
+            "api.backblazeb2.com",
+            443,
+            Some("backblaze-native"),
+            serde_json::json!({ "bucket": "media" }),
+        )];
+        let (_, conf) = export_to_string(&servers, "b2-bucket");
+        assert!(
+            section_of(&conf, "b2-media").contains("type = alias\nremote = b2:media\n"),
+            "{conf}"
+        );
+        let path = tmp_write(
+            &conf,
+            &format!("aeroftp-test-b2-bucket-{}.conf", std::process::id()),
+        );
+        let result = import_rclone(&path).expect("import");
+        std::fs::remove_file(&path).ok();
+        let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["b2"], "the alias folds back: {names:?}");
+        let bucket_of = |server: &ServerProfileExport| {
+            server
+                .options
+                .as_ref()
+                .and_then(|o| o.get("bucket"))
+                .and_then(|b| b.as_str())
+                .map(str::to_string)
+        };
+        assert_eq!(bucket_of(&result.servers[0]).as_deref(), Some("media"));
+
+        // A foreign alias into a bucket: the first segment is the bucket.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "[b2]\ntype = b2\naccount = a\nkey = k\n\n[photos]\ntype = alias\nremote = b2:media/photos\n",
+        )
+        .unwrap();
+        let result = import_rclone(&path).expect("import");
+        let photos = result.servers.iter().find(|s| s.name == "photos").unwrap();
+        assert_eq!(bucket_of(photos).as_deref(), Some("media"));
+        assert_eq!(photos.initial_path.as_deref(), Some("/photos"));
     }
 
     #[test]
