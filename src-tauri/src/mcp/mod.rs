@@ -172,6 +172,9 @@ fn safe_profile_record(p: &serde_json::Value) -> serde_json::Value {
         // Where the sign-in lives, derived from the options this
         // record drops (`profile_auth_state::profile_auth_source`).
         "authSource": crate::profile_auth_state::profile_auth_source(p).as_str(),
+        // The options choose the destination too: their digest, so the
+        // connection identity of a rebuilt profile is the full one's.
+        "destination": crate::ai_core::credential_provider::profile_destination(p),
     })
 }
 
@@ -202,5 +205,24 @@ mod tests {
                 "{profile}"
             );
         }
+    }
+
+    /// The safe record drops the options but keeps where they point: a
+    /// profile rebuilt from it has the full profile's destination, so a
+    /// bucket or region edit changes its identity as it does the full one's,
+    /// and no option value travels in the record.
+    #[test]
+    fn the_safe_record_keeps_the_destination_without_the_options() {
+        let profile = json!({"id": "s", "name": "lab", "protocol": "s3", "host": "s3.example.com",
+            "options": {"bucket": "sentinel-bucket", "region": "eu-west-1"}});
+        let record = super::safe_profile_record(&profile);
+        let full = crate::ai_core::credential_provider::ServerProfile::from_profile_json(&profile)
+            .expect("profile");
+        let rebuilt =
+            crate::ai_core::credential_provider::ServerProfile::from_profile_json(&record)
+                .expect("profile");
+        assert!(!full.destination.is_empty());
+        assert_eq!(rebuilt.destination, full.destination);
+        assert!(!record.to_string().contains("sentinel-bucket"), "{record}");
     }
 }

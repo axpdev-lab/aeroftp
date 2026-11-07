@@ -38,6 +38,12 @@ pub struct ServerProfile {
     /// survive `mcp::load_safe_profiles`.
     #[serde(default = "default_auth_source", skip_serializing)]
     pub auth_source: crate::profile_auth_state::AuthSource,
+    /// The profile's non-secret provider options (bucket, region, endpoint,
+    /// container, ...) as one digest ([`profile_destination`]): they choose
+    /// where a connection lands as much as the host does. Derived, and
+    /// carried by `mcp::load_safe_profiles` as a digest, never the values.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub destination: String,
 }
 
 fn default_auth_source() -> crate::profile_auth_state::AuthSource {
@@ -57,6 +63,7 @@ impl ServerProfile {
             self.initial_path,
             self.provider_id,
             self.crypt_overlay,
+            self.destination,
         ])
         .to_string()
     }
@@ -119,8 +126,47 @@ impl ServerProfile {
             crypt_overlay,
             protocol_class,
             auth_source,
+            // Pre-derived on a safe record, computed on a raw profile.
+            destination: p
+                .get("destination")
+                .and_then(|v| v.as_str())
+                .map(String::from)
+                .unwrap_or_else(|| profile_destination(p)),
         })
     }
+}
+
+/// A digest of the provider options a saved profile connects with, its
+/// secrets left out: an S3 profile edited to another bucket or region keeps
+/// its host, and a call approved for the old one must not land in the new
+/// one (Greptile on #1522). Keys are compared in their canonical form, so a
+/// key written two ways is the same option. Empty for a profile with none.
+pub fn profile_destination(p: &serde_json::Value) -> String {
+    use sha2::{Digest, Sha256};
+    let mut options: Vec<(String, String)> = p
+        .get("options")
+        .and_then(|v| v.as_object())
+        .map(|options| {
+            options
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        crate::profile_loader::canonicalize_profile_option_key(key),
+                        value.to_string(),
+                    )
+                })
+                .filter(|(key, _)| {
+                    key != "profile_id" && !crate::ai_tools::is_secret_approval_key(key)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    if options.is_empty() {
+        return String::new();
+    }
+    options.sort();
+    let canonical = serde_json::to_string(&options).unwrap_or_default();
+    format!("{:x}", Sha256::digest(canonical.as_bytes()))
 }
 
 /// Server credentials (secrets).
@@ -231,5 +277,46 @@ mod tests {
             exact_profile_index(&profiles[..1], "srv_2", id_and_name),
             Some(0)
         );
+    }
+
+    /// Greptile on #1522: an approval bound to an S3 profile stayed valid
+    /// after only its bucket or region changed, so the write landed in the
+    /// new bucket. The options are part of the identity now; a rename, or a
+    /// secret rotated in the options, is not a new destination.
+    #[test]
+    fn a_profile_edited_to_another_bucket_or_region_is_not_the_one_approved() {
+        let profile = serde_json::json!({
+            "id": "srv_s3", "name": "lab", "protocol": "s3", "host": "s3.example.com", "port": 443,
+            "username": "AKIASENTINEL",
+            "options": {"bucket": "bucket-a", "region": "eu-west-1", "secretAccessKey": "sentinel-a"},
+        });
+        let identity = |p: &serde_json::Value| super::profile_identity(p).expect("a profile");
+        let approved = identity(&profile);
+        let edit = |key: &str, value: serde_json::Value| {
+            let mut edited = profile.clone();
+            edited["options"][key] = value;
+            edited
+        };
+        for edited in [
+            edit("bucket", "bucket-b".into()),
+            edit("region", "us-east-1".into()),
+        ] {
+            assert!(
+                super::approved_target_unchanged("lab", Some(&approved), Some(&identity(&edited)))
+                    .is_err(),
+                "{edited}"
+            );
+        }
+        let mut renamed = profile.clone();
+        renamed["name"] = "lab renamed".into();
+        assert_eq!(identity(&renamed), approved);
+        assert_eq!(
+            identity(&edit("secretAccessKey", "sentinel-b".into())),
+            approved
+        );
+        // The same option written in another case is the same destination.
+        let mut recased = profile.clone();
+        recased["options"] = serde_json::json!({"Bucket": "bucket-a", "region": "eu-west-1"});
+        assert_eq!(identity(&recased), approved);
     }
 }

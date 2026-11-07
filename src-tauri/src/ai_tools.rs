@@ -453,7 +453,7 @@ const NOT_SECRET_WORDS: [&str; 3] = ["secretary", "secretariat", "tokeniz"];
 /// any compound (`api_token`, `secretKey`, `secretkey`, `tokenvalue`), unless
 /// that word is part of one that names none (`secretary`, `tokenizer`). Fail
 /// closed: an unknown compound is hidden.
-fn is_secret_approval_key(key: &str) -> bool {
+pub(crate) fn is_secret_approval_key(key: &str) -> bool {
     let mut lower = key.to_ascii_lowercase();
     for word in NOT_SECRET_WORDS {
         lower = lower.replace(word, "_");
