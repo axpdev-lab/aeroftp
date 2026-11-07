@@ -7216,8 +7216,44 @@ async fn copy_then_delete_local(
     from: &std::path::Path,
     to: &std::path::Path,
 ) -> Result<(), String> {
-    // A link is moved as a link would be by rename: never by copying the
-    // tree it points to.
+    // What stands at the destination is replaced as rename replaces it: a
+    // link there is removed as itself, never written through to the file it
+    // names (deep-scan 39, 40).
+    if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        remove_local_file_or_link(to)
+            .await
+            .map_err(|e| format!("Failed to replace the link at the destination: {}", e))?;
+    }
+    let source = std::fs::symlink_metadata(from)
+        .map_err(|e| format!("Failed to read the source of a cross-device move: {}", e))?;
+    // A link is moved as rename moves it: the same link at the destination,
+    // never a copy of what it points to.
+    if source.file_type().is_symlink() {
+        let target = tokio::fs::read_link(from)
+            .await
+            .map_err(|e| format!("Failed to read the link for a cross-device move: {}", e))?;
+        if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.is_file()) {
+            tokio::fs::remove_file(to)
+                .await
+                .map_err(|e| format!("Failed to replace the destination: {}", e))?;
+        }
+        #[cfg(unix)]
+        let made = tokio::fs::symlink(&target, to).await;
+        #[cfg(windows)]
+        let made = {
+            use std::os::windows::fs::FileTypeExt;
+            if source.file_type().is_symlink_dir() {
+                tokio::fs::symlink_dir(&target, to).await
+            } else {
+                tokio::fs::symlink_file(&target, to).await
+            }
+        };
+        made.map_err(|e| format!("Failed to recreate the link for a cross-device move: {}", e))?;
+        remove_local_file_or_link(from)
+            .await
+            .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
+        return Ok(());
+    }
     if local_delete_walks_into(from) {
         copy_dir_recursive(from, to, 0).await?;
         tokio::fs::remove_dir_all(from)
@@ -7385,8 +7421,53 @@ async fn copy_dir_recursive(
 #[cfg(all(test, unix))]
 mod local_link_tests {
     use super::{
-        copy_dir_recursive, copy_local_file, local_delete_walks_into, remove_local_file_or_link,
+        copy_dir_recursive, copy_local_file, copy_then_delete_local, local_delete_walks_into,
+        remove_local_file_or_link,
     };
+
+    /// Deep-scan 39, 40: the cross-device move keeps a link a link, and
+    /// replaces a link at the destination instead of writing through it.
+    #[tokio::test]
+    async fn a_cross_device_move_moves_links_as_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let folder = dir.path().join("folder");
+        std::fs::create_dir(&folder).unwrap();
+
+        let file_link = dir.path().join("file_link");
+        std::os::unix::fs::symlink(&target, &file_link).unwrap();
+        let moved = dir.path().join("moved_file_link");
+        copy_then_delete_local(&file_link, &moved).await.unwrap();
+        assert!(std::fs::symlink_metadata(&file_link).is_err());
+        assert!(std::fs::symlink_metadata(&moved)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_link(&moved).unwrap(), target);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+
+        let dir_link = dir.path().join("dir_link");
+        std::os::unix::fs::symlink(&folder, &dir_link).unwrap();
+        let moved_dir = dir.path().join("moved_dir_link");
+        copy_then_delete_local(&dir_link, &moved_dir).await.unwrap();
+        assert_eq!(std::fs::read_link(&moved_dir).unwrap(), folder);
+        assert!(folder.is_dir());
+
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, b"outside").unwrap();
+        let dest = dir.path().join("dest.txt");
+        std::os::unix::fs::symlink(&outside, &dest).unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"moved").unwrap();
+        copy_then_delete_local(&src, &dest).await.unwrap();
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+        assert!(!std::fs::symlink_metadata(&dest)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"moved");
+    }
 
     #[tokio::test]
     async fn a_link_to_a_folder_is_deleted_as_itself() {
