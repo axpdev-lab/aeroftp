@@ -1039,17 +1039,14 @@ fn first_link_under(root: &std::path::Path, rel: &str) -> Option<std::path::Path
     None
 }
 
-/// A vault entry name the sync must not extract: a traversal, a root, a NUL
-/// or a backslash, and anything that is not a plain relative path of normal
-/// components, which on Windows includes a drive prefix such as `C:/x`: the
-/// join would replace the local folder with that drive (deep-scan 17).
+/// A vault entry name the sync must not extract: anything that is not a
+/// plain relative path of normal components (a `..` or `.` segment, a root,
+/// a backslash or a NUL), which on Windows includes a drive prefix such as
+/// `C:/x`: the join would replace the local folder with that drive
+/// (deep-scan 17). A name that merely contains two dots, `a..b.txt`, is a
+/// normal component.
 fn sync_entry_name_is_unsafe(name: &str) -> bool {
-    name.contains("..")
-        || name.starts_with('/')
-        || name.starts_with('\\')
-        || name.contains('\0')
-        || name.contains('\\')
-        || crate::readable_vault::validate_rel_path(name).is_err()
+    crate::readable_vault::validate_rel_path(name).is_err()
 }
 
 /// Validate a relative path for vault entry safety.
@@ -1369,7 +1366,7 @@ mod tests {
         for bad in ["../x", "a/../../x", "/etc/x", "a\\b", "./a", ""] {
             assert!(super::sync_entry_name_is_unsafe(bad), "{bad:?}");
         }
-        for good in ["a.txt", "docs/b.txt", "deep/er/c.bin"] {
+        for good in ["a.txt", "docs/b.txt", "deep/er/c.bin", "a..b.txt"] {
             assert!(!super::sync_entry_name_is_unsafe(good), "{good:?}");
         }
         #[cfg(windows)]

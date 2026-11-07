@@ -1224,6 +1224,25 @@ mod tests {
             ),
         }
         assert_eq!(dest.writes.load(std::sync::atomic::Ordering::Relaxed), 0);
+
+        // A `..` the walk resolves inside the folder (`/src/sub/../ok2` is
+        // `/src/ok2` to it) still reaches the planner, whose own check
+        // refuses the plan: the relative part would be appended as is.
+        let mut source = WalkTreeProvider::new(
+            HashMap::from([(
+                "/src".into(),
+                vec![
+                    RemoteEntry::file("ok".into(), "/src/ok".into(), 1),
+                    RemoteEntry::file("ok2".into(), "/src/sub/../ok2".into(), 1),
+                ],
+            )]),
+            false,
+        );
+        assert!(matches!(
+            plan_transfer(&mut source, &mut dest, &request).await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert_eq!(dest.writes.load(std::sync::atomic::Ordering::Relaxed), 0);
     }
 
     #[test]
