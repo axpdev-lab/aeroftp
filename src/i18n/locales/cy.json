@@ -2378,7 +2378,8 @@
             "discoverScp": "Copïo ffeiliau dros SSH ar gyfer gweinyddion heb SFTP",
             "discoverTigris": "Tigris: storfa wedi'i dosbarthu'n fyd-eang sy'n gydnaws ag S3, dim ffioedd all-drosglwyddo data (5 GB am ddim)",
             "trustPasvAddress": "Defnyddio'r cyfeiriad goddefol a roddir gan y gweinydd",
-            "trustPasvAddressHelp": "I ffwrdd: mae cysylltiadau data yn mynd i'r gwesteiwr y gwnaethoch gysylltu ag ef, fel y mae curl yn ei wneud. Trowch ymlaen ar gyfer gweinydd sy'n anfon data o gyfeiriad arall yn unig."
+            "trustPasvAddressHelp": "I ffwrdd: mae cysylltiadau data yn mynd i'r gwesteiwr y gwnaethoch gysylltu ag ef, fel y mae curl yn ei wneud. Trowch ymlaen ar gyfer gweinydd sy'n anfon data o gyfeiriad arall yn unig.",
+            "discoverFastly": "Fastly Object Storage: storfa sy'n gydnaws ag S3 mewn 12 rhanbarth (5 GB am ddim, mae angen cerdyn)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

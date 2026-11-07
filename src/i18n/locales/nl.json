@@ -2378,7 +2378,8 @@
             "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP",
             "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)",
             "trustPasvAddress": "Het door de server opgegeven passieve adres gebruiken",
-            "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt."
+            "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt.",
+            "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

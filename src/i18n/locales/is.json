@@ -2378,7 +2378,8 @@
             "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP",
             "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)",
             "trustPasvAddress": "Nota óvirka vistfangið sem þjónninn gefur upp",
-            "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi."
+            "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi.",
+            "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

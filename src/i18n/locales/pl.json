@@ -2378,7 +2378,8 @@
             "discoverScp": "Kopiowanie plików przez SSH dla serwerów bez SFTP",
             "discoverTigris": "Tigris: globalnie rozproszona pamięć masowa zgodna z S3, bez opłat za transfer wychodzący (5 GB za darmo)",
             "trustPasvAddress": "Użyj adresu pasywnego podanego przez serwer",
-            "trustPasvAddressHelp": "Wyłączone: połączenia danych idą do hosta, z którym się połączyłeś, tak jak robi to curl. Włącz tylko dla serwera, który wysyła dane z innego adresu."
+            "trustPasvAddressHelp": "Wyłączone: połączenia danych idą do hosta, z którym się połączyłeś, tak jak robi to curl. Włącz tylko dla serwera, który wysyła dane z innego adresu.",
+            "discoverFastly": "Fastly Object Storage: pamięć masowa zgodna z S3 w 12 regionach (5 GB za darmo, wymagana karta)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

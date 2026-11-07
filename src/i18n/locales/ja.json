@@ -2378,7 +2378,8 @@
             "discoverScp": "SFTPのないサーバー向けのSSH経由ファイルコピー",
             "discoverTigris": "Tigris: グローバル分散型の S3 互換ストレージ、エグレス料金なし（5 GB 無料）",
             "trustPasvAddress": "サーバーが示すパッシブアドレスを使用する",
-            "trustPasvAddressHelp": "オフ: データ接続は curl と同様に、接続したホストへ向かいます。別のアドレスからデータを送信するサーバーの場合のみオンにしてください。"
+            "trustPasvAddressHelp": "オフ: データ接続は curl と同様に、接続したホストへ向かいます。別のアドレスからデータを送信するサーバーの場合のみオンにしてください。",
+            "discoverFastly": "Fastly Object Storage: 12リージョンで利用できるS3互換ストレージ (5 GB無料、カードが必要)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

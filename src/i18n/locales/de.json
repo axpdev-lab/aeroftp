@@ -2378,7 +2378,8 @@
             "discoverScp": "Dateikopie über SSH für Server ohne SFTP",
             "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)",
             "trustPasvAddress": "Vom Server genannte passive Adresse verwenden",
-            "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet."
+            "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet.",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

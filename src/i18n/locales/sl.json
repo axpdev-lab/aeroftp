@@ -2378,7 +2378,8 @@
             "discoverScp": "Kopiranje datotek prek SSH za strežnike brez SFTP",
             "discoverTigris": "Tigris: globalno porazdeljeno shranjevanje, združljivo s S3, brez stroškov izhodnega prenosa (5 GB brezplačno)",
             "trustPasvAddress": "Uporabi pasivni naslov, ki ga poda strežnik",
-            "trustPasvAddressHelp": "Izklopljeno: podatkovne povezave gredo na gostitelja, s katerim ste se povezali, kot počne curl. Vklopite le za strežnik, ki pošilja podatke z drugega naslova."
+            "trustPasvAddressHelp": "Izklopljeno: podatkovne povezave gredo na gostitelja, s katerim ste se povezali, kot počne curl. Vklopite le za strežnik, ki pošilja podatke z drugega naslova.",
+            "discoverFastly": "Fastly Object Storage: shramba, združljiva z S3, v 12 regijah (5 GB brezplačno, potrebna kartica)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

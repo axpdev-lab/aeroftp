@@ -592,7 +592,8 @@
   },
   "presetAliases": {
     "backblaze-b2": "backblaze",
-    "azure-blob": "azure"
+    "azure-blob": "azure",
+    "fastly-object-storage": "fastly"
   },
   "presets": [
     {
@@ -749,6 +750,17 @@
         "endpointTemplate": "https://s3.{region}.cloud-object-storage.appdomain.cloud"
       },
       "firstRegion": "eu-de"
+    },
+    {
+      "id": "fastly",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "eu-central-1",
+        "endpointTemplate": "https://{region}.object.fastlystorage.app"
+      },
+      "firstRegion": "eu-central-1"
     },
     {
       "id": "storj",

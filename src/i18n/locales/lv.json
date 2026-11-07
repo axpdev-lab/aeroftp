@@ -2378,7 +2378,8 @@
             "discoverScp": "Failu kopēšana caur SSH serveriem bez SFTP",
             "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)",
             "trustPasvAddress": "Izmantot servera norādīto pasīvo adresi",
-            "trustPasvAddressHelp": "Izslēgts: datu savienojumi iet uz resursdatoru, ar kuru izveidojāt savienojumu, kā to dara curl. Ieslēdziet tikai serverim, kas sūta datus no citas adreses."
+            "trustPasvAddressHelp": "Izslēgts: datu savienojumi iet uz resursdatoru, ar kuru izveidojāt savienojumu, kā to dara curl. Ieslēdziet tikai serverim, kas sūta datus no citas adreses.",
+            "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas, nepieciešama karte)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

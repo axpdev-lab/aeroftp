@@ -2378,7 +2378,8 @@
             "discoverScp": "Salinan fail melalui SSH untuk pelayan tanpa SFTP",
             "discoverTigris": "Tigris: storan teragih secara global yang serasi dengan S3, tanpa yuran egress (5 GB percuma)",
             "trustPasvAddress": "Gunakan alamat pasif yang diberikan pelayan",
-            "trustPasvAddressHelp": "Mati: sambungan data menuju hos yang anda sambungkan, seperti yang dilakukan curl. Hidupkan hanya untuk pelayan yang menghantar data dari alamat lain."
+            "trustPasvAddressHelp": "Mati: sambungan data menuju hos yang anda sambungkan, seperti yang dilakukan curl. Hidupkan hanya untuk pelayan yang menghantar data dari alamat lain.",
+            "discoverFastly": "Fastly Object Storage: storan serasi S3 di 12 wilayah (5 GB percuma, kad diperlukan)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

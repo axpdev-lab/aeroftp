@@ -2378,7 +2378,8 @@
             "discoverScp": "Kopiranje datoteka preko SSH-a za poslužitelje bez SFTP-a",
             "discoverTigris": "Tigris: globalno distribuirana pohrana kompatibilna sa S3, bez naknada za izlazni promet (5 GB besplatno)",
             "trustPasvAddress": "Koristi pasivnu adresu koju navede poslužitelj",
-            "trustPasvAddressHelp": "Isključeno: podatkovne veze idu na host s kojim ste se povezali, kao što radi curl. Uključite samo za poslužitelj koji šalje podatke s druge adrese."
+            "trustPasvAddressHelp": "Isključeno: podatkovne veze idu na host s kojim ste se povezali, kao što radi curl. Uključite samo za poslužitelj koji šalje podatke s druge adrese.",
+            "discoverFastly": "Fastly Object Storage: pohrana kompatibilna sa S3 u 12 regija (5 GB besplatno, potrebna kartica)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

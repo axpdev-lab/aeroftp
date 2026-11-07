@@ -2378,7 +2378,8 @@
             "discoverScp": "Kopírování souborů přes SSH pro servery bez SFTP",
             "discoverTigris": "Tigris: globálně distribuované úložiště kompatibilní s S3, bez poplatků za odchozí data (5 GB zdarma)",
             "trustPasvAddress": "Použít pasivní adresu zadanou serverem",
-            "trustPasvAddressHelp": "Vypnuto: datová spojení směřují na hostitele, ke kterému jste se připojili, stejně jako u curl. Zapněte jen pro server, který posílá data z jiné adresy."
+            "trustPasvAddressHelp": "Vypnuto: datová spojení směřují na hostitele, ke kterému jste se připojili, stejně jako u curl. Zapněte jen pro server, který posílá data z jiné adresy.",
+            "discoverFastly": "Fastly Object Storage: úložiště kompatibilní s S3 ve 12 regionech (5 GB zdarma, vyžaduje kartu)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

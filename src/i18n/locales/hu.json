@@ -2378,7 +2378,8 @@
             "discoverScp": "Fájlmásolás SSH-n keresztül SFTP nélküli szerverekhez",
             "discoverTigris": "Tigris: globálisan elosztott, S3-kompatibilis tárhely, kimenő forgalmi díj nélkül (5 GB ingyenes)",
             "trustPasvAddress": "A szerver által megadott passzív cím használata",
-            "trustPasvAddressHelp": "Ki: az adatkapcsolatok arra a gazdagépre mennek, amelyhez csatlakozott, ahogy a curl is teszi. Csak olyan szervernél kapcsolja be, amely más címről küldi az adatokat."
+            "trustPasvAddressHelp": "Ki: az adatkapcsolatok arra a gazdagépre mennek, amelyhez csatlakozott, ahogy a curl is teszi. Csak olyan szervernél kapcsolja be, amely más címről küldi az adatokat.",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibilis tárhely 12 régióban (5 GB ingyenes, kártya szükséges)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

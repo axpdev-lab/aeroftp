@@ -109,6 +109,18 @@ pub fn preset(raw: &str) -> Option<&'static ConnectionPreset> {
     manifest().presets.iter().find(|p| p.id == id)
 }
 
+/// The canonical preset id for a stored provider id: an alias of the manifest
+/// (`fastly-object-storage`, `backblaze-b2`, `azure-blob`) becomes its target,
+/// any other id comes back unchanged. One rule for every surface that keys or
+/// maps on the id, so an old or hand-edited profile that carries the alias
+/// behaves like one that carries the canonical id.
+pub fn canonical_preset_id(raw: &str) -> &str {
+    manifest()
+        .preset_aliases
+        .get(raw)
+        .map_or(raw, String::as_str)
+}
+
 pub fn canonical_protocol_and_provider<'a>(
     raw: &'a str,
     provider_id: Option<&'a str>,

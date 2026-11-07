@@ -2378,7 +2378,8 @@
             "discoverScp": "Copia de ficheiros por SSH para servidores sen SFTP",
             "discoverTigris": "Tigris: almacenamento distribuído globalmente compatible con S3, sen custos de saída de datos (5 GB gratis)",
             "trustPasvAddress": "Usar o enderezo pasivo indicado polo servidor",
-            "trustPasvAddressHelp": "Desactivado: as conexións de datos van ao host ao que te conectaches, como fai curl. Actívao só para un servidor que envía os datos desde outro enderezo."
+            "trustPasvAddressHelp": "Desactivado: as conexións de datos van ao host ao que te conectaches, como fai curl. Actívao só para un servidor que envía os datos desde outro enderezo.",
+            "discoverFastly": "Fastly Object Storage: almacenamento compatible con S3 en 12 rexións (5 GB gratis, require tarxeta)"
         },
         "shortcuts": {
             "title": "Atallos de teclado",

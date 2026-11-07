@@ -2378,7 +2378,8 @@
             "discoverScp": "Filkopiering via SSH för servrar utan SFTP",
             "discoverTigris": "Tigris: globalt distribuerad S3-kompatibel lagring, utan avgifter för utgående data (5 GB gratis)",
             "trustPasvAddress": "Använd den passiva adress servern anger",
-            "trustPasvAddressHelp": "Av: dataanslutningar går till värden du anslöt till, som curl gör. Slå bara på för en server som skickar data från en annan adress."
+            "trustPasvAddressHelp": "Av: dataanslutningar går till värden du anslöt till, som curl gör. Slå bara på för en server som skickar data från en annan adress.",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort krävs)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

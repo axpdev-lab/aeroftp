@@ -676,6 +676,13 @@
       "folded": "copia",
       "twin": "còpia",
       "reason": "Copia-ho tot is the imperative copia with the enclitic ho (copy it all). The verb copiar takes no accent here; còpia is the noun."
+    },
+    "lt\u001fsupport.fiatSection\u001fPaaukoti kortele": {
+      "locale": "lt",
+      "key": "support.fiatSection",
+      "folded": "kortele",
+      "twin": "kortelė",
+      "reason": "Paaukoti kortele is donate by card, the instrumental case of kortelė (card); the nominative kortelė is the other form and the two are different cases, not a stripped letter."
     }
   }
 }

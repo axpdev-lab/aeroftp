@@ -20020,6 +20020,68 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_provider_params_fastly_fetch_resolves_region_endpoint_and_path_style() {
+        // Quick Connect Fetch sends the keys, the preset id and the region the
+        // user picked, but no endpoint. Fastly signs with the host label as the
+        // region and answers 400 when the two differ (Tier 0, 2026-11-06), so
+        // the template, the signing region and path-style must all come from
+        // the manifest, for every caller.
+        let fastly = |region: Option<&str>, endpoint: Option<&str>| {
+            let mut params = s3_params(None);
+            params.server = String::new();
+            // The shared helper models a Garage box on port 3900; a preset
+            // Fetch carries no such port.
+            params.port = None;
+            params.provider_id = Some("fastly".to_string());
+            params.region = region.map(String::from);
+            params.endpoint = endpoint.map(String::from);
+            params.to_provider_config().unwrap()
+        };
+        // No region: the Frankfurt default, never the generic us-east-1.
+        let config = fastly(None, None);
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://eu-central-1.object.fastlystorage.app")
+        );
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-central-1")
+        );
+        let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(s3.region, "eu-central-1");
+        assert!(s3.path_style);
+        // The older regions are separate hosts, not prefixes of the -1 ones.
+        for (region, host) in [
+            ("us-east", "https://us-east.object.fastlystorage.app"),
+            ("us-east-1", "https://us-east-1.object.fastlystorage.app"),
+            ("eu-central", "https://eu-central.object.fastlystorage.app"),
+            (
+                "jp-central-1",
+                "https://jp-central-1.object.fastlystorage.app",
+            ),
+        ] {
+            let config = fastly(Some(region), None);
+            assert_eq!(
+                config.extra.get("endpoint").map(String::as_str),
+                Some(host),
+                "{region}"
+            );
+            let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+            assert_eq!(s3.region, region);
+            assert!(s3.path_style, "{region}");
+        }
+        // An explicit endpoint still wins over the template.
+        let config = fastly(
+            Some("eu-central-1"),
+            Some("https://us-west-1.object.fastlystorage.app"),
+        );
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://us-west-1.object.fastlystorage.app")
+        );
+    }
+
+    #[test]
     fn test_s3_provider_params_absent_session_token() {
         let config = s3_params(None).to_provider_config().unwrap();
         assert!(!config.extra.contains_key("session_token"));
