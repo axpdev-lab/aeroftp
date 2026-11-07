@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Conexión de datos ao enderezo que indica o servidor (PASV)",
             "importSecurityUnknownHostKeys": "Claves de host SSH descoñecidas aceptadas",
             "keystoreSecurityReset": "{count} servidores restaurados tiñan opcións que desactivan unha comprobación de seguranza; volveuse á configuración segura: {details}.",
-            "keystoreSecurityResetFailed": "Non se puideron comprobar nin restablecer os axustes de seguranza de {count} contas restauradas. Móstranse aquí en lugar de deixalas activas sen aviso."
+            "keystoreSecurityResetFailed": "Non se puideron comprobar nin restablecer os axustes de seguranza de {count} contas restauradas. Móstranse aquí en lugar de deixalas activas sen aviso.",
+            "keystoreSecurityResetQuarantine": "Non se puido protexer a base de datos de contas restaurada e púxose en corentena como {path}. Non hai ningunha conta restaurada activa. Corrixe o problema do disco ou dos permisos e volve restaurar a copia de seguranza. O ficheiro en corentena segue dispoñible para a recuperación."
         },
         "devtools": {
             "title": "AeroTools",

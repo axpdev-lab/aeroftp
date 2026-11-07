@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Datu-konexioa zerbitzariak adierazten duen helbidera (PASV)",
             "importSecurityUnknownHostKeys": "SSH ostalari-gako ezezagunak onartuta",
             "keystoreSecurityReset": "Berrezarritako {count} zerbitzarik segurtasun-egiaztapen bat desaktibatzen duten aukerak zituzten; ezarpen seguruan jarri dira berriro: {details}.",
-            "keystoreSecurityResetFailed": "Ezin izan dira {count} berreskuratutako kontuen segurtasun-ezarpenak egiaztatu edo berrezarri. Hemen zerrendatzen dira, oharrik gabe aktibo uztearen ordez."
+            "keystoreSecurityResetFailed": "Ezin izan dira {count} berreskuratutako kontuen segurtasun-ezarpenak egiaztatu edo berrezarri. Hemen zerrendatzen dira, oharrik gabe aktibo uztearen ordez.",
+            "keystoreSecurityResetQuarantine": "Berreskuratutako kontuen datu-basea ezin izan da babestu, eta {path} gisa isolatu da. Ez dago berreskuratutako konturik aktibo. Konpondu diskoaren edo baimenen arazoa, eta berreskuratu berriro babeskopia. Isolatutako fitxategia berreskuratzeko erabilgarri dago oraindik."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Kết nối dữ liệu tới địa chỉ do máy chủ chỉ định (PASV)",
             "importSecurityUnknownHostKeys": "Chấp nhận khóa máy chủ SSH không xác định",
             "keystoreSecurityReset": "{count} máy chủ được khôi phục có tùy chọn tắt kiểm tra bảo mật; chúng đã được đặt lại về cài đặt an toàn: {details}.",
-            "keystoreSecurityResetFailed": "Không thể kiểm tra hoặc đặt lại cài đặt bảo mật của {count} tài khoản đã khôi phục. Các tài khoản này được liệt kê tại đây thay vì tiếp tục hoạt động mà không có cảnh báo."
+            "keystoreSecurityResetFailed": "Không thể kiểm tra hoặc đặt lại cài đặt bảo mật của {count} tài khoản đã khôi phục. Các tài khoản này được liệt kê tại đây thay vì tiếp tục hoạt động mà không có cảnh báo.",
+            "keystoreSecurityResetQuarantine": "Không thể bảo mật cơ sở dữ liệu tài khoản đã khôi phục và nó đã được cách ly thành {path}. Không có tài khoản nào được khôi phục đang hoạt động. Hãy khắc phục sự cố đĩa hoặc quyền, sau đó khôi phục lại bản sao lưu. Tệp bị cách ly vẫn sẵn sàng để phục hồi."
         },
         "devtools": {
             "title": "AeroTools",

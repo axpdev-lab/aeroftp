@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Datu savienojums ar adresi, ko norāda serveris (PASV)",
             "importSecurityUnknownHostKeys": "Pieņemtas nezināmas SSH resursdatora atslēgas",
             "keystoreSecurityReset": "{count} atjaunotiem serveriem bija opcijas, kas izslēdz drošības pārbaudi; tie tika atgriezti drošajā iestatījumā: {details}.",
-            "keystoreSecurityResetFailed": "Neizdevās pārbaudīt vai atiestatīt {count} atjaunoto kontu drošības iestatījumus. Tie ir uzskaitīti šeit, nevis atstāti aktīvi bez brīdinājuma."
+            "keystoreSecurityResetFailed": "Neizdevās pārbaudīt vai atiestatīt {count} atjaunoto kontu drošības iestatījumus. Tie ir uzskaitīti šeit, nevis atstāti aktīvi bez brīdinājuma.",
+            "keystoreSecurityResetQuarantine": "Atjaunoto kontu datubāzi neizdevās aizsargāt, un tā tika izolēta kā {path}. Neviens atjaunots konts nav aktīvs. Novērsiet diska vai atļauju problēmu, pēc tam vēlreiz atjaunojiet dublējumu. Izolētais fails joprojām ir pieejams atkopšanai."
         },
         "devtools": {
             "title": "AeroTools",

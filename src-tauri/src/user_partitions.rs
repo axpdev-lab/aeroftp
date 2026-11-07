@@ -2122,6 +2122,7 @@ pub struct ProfileResetReport {
     pub reset: Vec<crate::profile_security::ProfileReset>,
     pub left: usize,
     pub failed: usize,
+    pub quarantine_path: Option<PathBuf>,
     persistent_failure: bool,
 }
 
@@ -2151,23 +2152,51 @@ fn security_reset_block_key(conn: &Connection, user_id: i64) -> (String, i64) {
     (database, user_id)
 }
 
+fn security_reset_marker_path(conn: &Connection, user_id: i64) -> Option<PathBuf> {
+    conn.path()
+        .map(|database| PathBuf::from(format!("{database}.security-reset-blocked-{user_id}")))
+}
+
 fn block_security_reset(conn: &Connection, user_id: i64) {
     if let Ok(mut blocks) = SECURITY_RESET_BLOCKS.lock() {
         blocks.insert(security_reset_block_key(conn, user_id));
     }
+    if let Some(path) = security_reset_marker_path(conn, user_id) {
+        if let Err(e) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+        {
+            tracing::warn!("Persistent security reset block {}: {e}", path.display());
+        }
+    }
 }
 
 fn unblock_security_reset(conn: &Connection, user_id: i64) {
+    if let Some(path) = security_reset_marker_path(conn, user_id) {
+        match std::fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                tracing::warn!(
+                    "Clear persistent security reset block {}: {e}",
+                    path.display()
+                );
+                return;
+            }
+        }
+    }
     if let Ok(mut blocks) = SECURITY_RESET_BLOCKS.lock() {
         blocks.remove(&security_reset_block_key(conn, user_id));
     }
 }
 
 fn security_reset_blocked(conn: &Connection, user_id: i64) -> bool {
-    SECURITY_RESET_BLOCKS
+    let blocked = SECURITY_RESET_BLOCKS
         .lock()
         .map(|blocks| blocks.contains(&security_reset_block_key(conn, user_id)))
-        .unwrap_or(true)
+        .unwrap_or(true);
+    blocked || security_reset_marker_path(conn, user_id).is_some_and(|path| path.exists())
 }
 
 fn mark_security_reset_pending(conn: &mut Connection, user_id: i64) -> Result<(), String> {
@@ -2180,6 +2209,15 @@ fn mark_security_reset_pending(conn: &mut Connection, user_id: i64) -> Result<()
 }
 
 fn quarantine_security_reset_db(path: &std::path::Path) -> Result<PathBuf, String> {
+    quarantine_security_reset_db_with(path, |source, destination| {
+        std::fs::rename(source, destination)
+    })
+}
+
+fn quarantine_security_reset_db_with(
+    path: &std::path::Path,
+    rename: impl Fn(&std::path::Path, &std::path::Path) -> std::io::Result<()>,
+) -> Result<PathBuf, String> {
     let target = PathBuf::from(format!(
         "{}.security-reset-failed-{}",
         path.display(),
@@ -2189,7 +2227,7 @@ fn quarantine_security_reset_db(path: &std::path::Path) -> Result<PathBuf, Strin
         let source = PathBuf::from(format!("{}{suffix}", path.display()));
         if source.exists() {
             let destination = PathBuf::from(format!("{}{suffix}", target.display()));
-            std::fs::rename(&source, &destination).map_err(|e| {
+            rename(&source, &destination).map_err(|e| {
                 format!(
                     "Quarantine restored partition database {}: {e}",
                     source.display()
@@ -2215,14 +2253,17 @@ pub fn reset_profile_relaxations_in_db(
     let mut conn =
         Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = reset_profile_relaxations(&mut conn, &root_key, except_user);
+    let mut result = reset_profile_relaxations(&mut conn, &root_key, except_user);
     root_key.zeroize();
     let needs_quarantine = result
         .as_ref()
         .is_ok_and(|report| report.persistent_failure);
     if needs_quarantine {
         drop(conn);
-        quarantine_security_reset_db(db_path)?;
+        let quarantine_path = quarantine_security_reset_db(db_path)?;
+        if let Ok(report) = result.as_mut() {
+            report.quarantine_path = Some(quarantine_path);
+        }
     }
     result
 }
@@ -8268,6 +8309,7 @@ mod tests {
                     })
             })
             .expect("quarantined database");
+        assert_eq!(report.quarantine_path.as_ref().unwrap(), &preserved);
         assert!(preserved.metadata().unwrap().len() > 0);
 
         let fresh = open_or_init_path(path.clone()).unwrap();
@@ -8277,6 +8319,52 @@ mod tests {
             })
             .unwrap();
         assert_eq!(profiles, 0, "a restart creates no unsafe restored profile");
+    }
+
+    #[test]
+    fn a_failed_quarantine_keeps_a_persistent_block_after_restart() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let root = store.derive_user_partition_wrapping_key();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let path = dir.path().join(DB_FILENAME);
+        let mut conn = open_or_init_path(path.clone()).unwrap();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let user = active_user_id(&conn).unwrap().unwrap();
+        let row = read_user_key_row(&conn, user).unwrap();
+        let dek = unwrap_user_dek_with_key(&row, &root_secret).unwrap();
+        insert_profile_rows(
+            &conn,
+            &root_secret,
+            user,
+            &dek,
+            &[json!({
+                "id": "relaxed", "name": "Relaxed", "protocol": "sftp",
+                "host": "sftp.example.com", "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        block_security_reset(&conn, user);
+        let error = quarantine_security_reset_db_with(&path, |_, _| {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                "forced rename failure",
+            ))
+        })
+        .unwrap_err();
+        assert!(error.contains("forced rename failure"), "{error}");
+        drop(conn);
+
+        let fresh = open_or_init_path(path.clone()).unwrap();
+        assert!(security_reset_blocked(&fresh, user));
+        assert_eq!(
+            list_server_profiles_for(&fresh, &root, user).unwrap_err(),
+            "SECURITY_RESET_PENDING"
+        );
+        unblock_security_reset(&fresh, user);
+        assert!(!security_reset_blocked(&fresh, user));
     }
 
     #[test]

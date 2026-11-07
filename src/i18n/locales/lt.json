@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Duomenų ryšys su serverio nurodytu adresu (PASV)",
             "importSecurityUnknownHostKeys": "Priimami nežinomi SSH pagrindinio kompiuterio raktai",
             "keystoreSecurityReset": "{count} atkurtų serverių turėjo parinkčių, išjungiančių saugumo patikrą; jos buvo grąžintos į saugų nustatymą: {details}.",
-            "keystoreSecurityResetFailed": "Nepavyko patikrinti arba iš naujo nustatyti {count} atkurtų paskyrų saugos nustatymų. Jos pateikiamos čia, o ne paliekamos aktyvios be įspėjimo."
+            "keystoreSecurityResetFailed": "Nepavyko patikrinti arba iš naujo nustatyti {count} atkurtų paskyrų saugos nustatymų. Jos pateikiamos čia, o ne paliekamos aktyvios be įspėjimo.",
+            "keystoreSecurityResetQuarantine": "Atkurtos paskyrų duomenų bazės apsaugoti nepavyko, todėl ji buvo izoliuota kaip {path}. Nė viena atkurta paskyra nėra aktyvi. Išspręskite disko arba teisių problemą, tada vėl atkurkite atsarginę kopiją. Izoliuotas failas ir toliau pasiekiamas atkūrimui."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Sambungan data ke alamat yang dinyatakan oleh pelayan (PASV)",
             "importSecurityUnknownHostKeys": "Kunci hos SSH tidak dikenali diterima",
             "keystoreSecurityReset": "{count} pelayan yang dipulihkan mempunyai pilihan yang mematikan semakan keselamatan; pelayan itu dikembalikan kepada tetapan selamat: {details}.",
-            "keystoreSecurityResetFailed": "Tetapan keselamatan {count} akaun yang dipulihkan tidak dapat disemak atau ditetapkan semula. Akaun tersebut disenaraikan di sini dan bukannya dibiarkan aktif tanpa pemberitahuan."
+            "keystoreSecurityResetFailed": "Tetapan keselamatan {count} akaun yang dipulihkan tidak dapat disemak atau ditetapkan semula. Akaun tersebut disenaraikan di sini dan bukannya dibiarkan aktif tanpa pemberitahuan.",
+            "keystoreSecurityResetQuarantine": "Pangkalan data akaun yang dipulihkan tidak dapat dilindungi dan telah diketepikan sebagai {path}. Tiada akaun yang dipulihkan aktif. Betulkan masalah cakera atau kebenaran, kemudian pulihkan sandaran sekali lagi. Fail yang diketepikan itu kekal tersedia untuk pemulihan."
         },
         "devtools": {
             "title": "AeroTools",

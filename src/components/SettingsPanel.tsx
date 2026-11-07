@@ -3771,6 +3771,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             sqliteDbsFailed?: string[];
                                                                             // Restored profiles whose security-relaxing options were put back to safe.
                                                                             securityReset?: { name: string; keys: string[] }[];
+                                                                            securityResetFailed?: number;
+                                                                            securityResetQuarantine?: string;
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,

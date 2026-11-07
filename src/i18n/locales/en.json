@@ -4464,7 +4464,8 @@
             "configEntriesCount": "{count} config entries",
             "keystoreDatabasesFailed": "The import finished, but these databases could not be restored and keep what they held: {names}.",
             "keystoreSecurityReset": "{count} restored server(s) had options that turn a security check off; they were put back to the safe setting: {details}.",
-            "keystoreSecurityResetFailed": "The security settings of {count} restored account(s) could not be checked or reset. They are reported here instead of being silently left active."
+            "keystoreSecurityResetFailed": "The security settings of {count} restored account(s) could not be checked or reset. They are reported here instead of being silently left active.",
+            "keystoreSecurityResetQuarantine": "The restored account database could not be secured and was set aside as {path}. No restored account is active. Fix the disk or permission problem, then restore the backup again. The quarantined file remains available for recovery."
         },
         "sharing": {
             "add": "Add",

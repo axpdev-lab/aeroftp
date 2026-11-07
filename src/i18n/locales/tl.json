@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Koneksyon ng data sa address na itinuturo ng server (PASV)",
             "importSecurityUnknownHostKeys": "Tinatanggap ang mga hindi kilalang SSH host key",
             "keystoreSecurityReset": "{count} naibalik na server ang may mga opsyon na nag-o-off ng security check; ibinalik ang mga ito sa ligtas na setting: {details}.",
-            "keystoreSecurityResetFailed": "Hindi nasuri o na-reset ang mga setting ng seguridad ng {count} naibalik na account. Nakalista ang mga ito rito sa halip na manatiling aktibo nang walang babala."
+            "keystoreSecurityResetFailed": "Hindi nasuri o na-reset ang mga setting ng seguridad ng {count} naibalik na account. Nakalista ang mga ito rito sa halip na manatiling aktibo nang walang babala.",
+            "keystoreSecurityResetQuarantine": "Hindi naprotektahan ang na-restore na database ng mga account at inilagay sa quarantine bilang {path}. Walang aktibong na-restore na account. Ayusin ang problema sa disk o pahintulot, saka i-restore muli ang backup. Ang naka-quarantine na file ay available pa rin para sa recovery."
         },
         "devtools": {
             "title": "AeroTools",

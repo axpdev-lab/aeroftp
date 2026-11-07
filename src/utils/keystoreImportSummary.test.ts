@@ -39,6 +39,17 @@ describe('keystoreImportSummary', () => {
         expect(summary.text).toContain('settings.keystoreSecurityResetFailed(count=1)');
     });
 
+    it('reports the quarantined database and carries its path into the result modal', () => {
+        const result = {
+            imported: 2, skipped: 0,
+            securityResetQuarantine: '/tmp/user_partitions.db.security-reset-failed-test',
+        };
+        const summary = keystoreImportSummary(result, null, t);
+        expect(summary.type).toBe('info');
+        expect(summary.text).toContain('settings.keystoreSecurityResetQuarantine(path=/tmp/user_partitions.db.security-reset-failed-test)');
+        expect(keystoreImportModalResult(result)).toEqual(result);
+    });
+
     it('carries reset details and failures into the Settings result modal', () => {
         const result = {
             imported: 2, skipped: 0,

@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "サーバーが指定したアドレスへのデータ接続 (PASV)",
             "importSecurityUnknownHostKeys": "未知の SSH ホストキーを受け入れる",
             "keystoreSecurityReset": "復元された {count} 台のサーバーに、セキュリティチェックを無効にするオプションがありました。安全な設定に戻しました: {details}。",
-            "keystoreSecurityResetFailed": "{count} 件の復元されたアカウントのセキュリティ設定を確認またはリセットできませんでした。通知なく有効なままにせず、ここに一覧表示しています。"
+            "keystoreSecurityResetFailed": "{count} 件の復元されたアカウントのセキュリティ設定を確認またはリセットできませんでした。通知なく有効なままにせず、ここに一覧表示しています。",
+            "keystoreSecurityResetQuarantine": "復元されたアカウントデータベースを保護できなかったため、{path} として隔離されました。復元されたアカウントはいずれも有効ではありません。ディスクまたはアクセス権の問題を修正してから、バックアップを再度復元してください。隔離されたファイルは、回復用に引き続き利用できます。"
         },
         "devtools": {
             "title": "AeroTools",

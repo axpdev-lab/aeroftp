@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Cysylltiad data â'r cyfeiriad y mae'r gweinydd yn ei enwi (PASV)",
             "importSecurityUnknownHostKeys": "Allweddi gwesteiwr SSH anhysbys wedi'u derbyn",
             "keystoreSecurityReset": "Roedd gan {count} gweinydd a adferwyd opsiynau sy'n diffodd gwiriad diogelwch; cawsant eu rhoi yn ôl i'r gosodiad diogel: {details}.",
-            "keystoreSecurityResetFailed": "Nid oedd modd gwirio nac ailosod gosodiadau diogelwch {count} o gyfrifon wedi'u hadfer. Maent wedi'u rhestru yma yn hytrach na'u gadael yn weithredol heb rybudd."
+            "keystoreSecurityResetFailed": "Nid oedd modd gwirio nac ailosod gosodiadau diogelwch {count} o gyfrifon wedi'u hadfer. Maent wedi'u rhestru yma yn hytrach na'u gadael yn weithredol heb rybudd.",
+            "keystoreSecurityResetQuarantine": "Ni oedd modd diogelu'r gronfa ddata cyfrifon a adferwyd, felly cafodd ei rhoi mewn cwarantin fel {path}. Nid oes unrhyw gyfrif a adferwyd yn weithredol. Trwsiwch broblem y ddisg neu'r caniatâd, yna adferwch y copi wrth gefn eto. Mae'r ffeil mewn cwarantin yn parhau i fod ar gael i'w hadfer."
         },
         "devtools": {
             "title": "AeroTools",

@@ -34,6 +34,7 @@ export interface KeystoreImportResult {
     sqliteDbsFailed?: string[];
     securityReset?: { name: string; keys: string[] }[];
     securityResetFailed?: number;
+    securityResetQuarantine?: string;
 }
 
 interface KeystoreImportResultModalProps {
@@ -125,6 +126,12 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
                     {(result.securityResetFailed ?? 0) > 0 && (
                         <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200">
                             {t('settings.keystoreSecurityResetFailed', { count: result.securityResetFailed ?? 0 })}
+                        </div>
+                    )}
+
+                    {result.securityResetQuarantine && (
+                        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200 break-all">
+                            {t('settings.keystoreSecurityResetQuarantine', { path: result.securityResetQuarantine })}
                         </div>
                     )}
 

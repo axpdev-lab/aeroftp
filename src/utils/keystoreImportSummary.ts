@@ -22,6 +22,7 @@ export interface KeystoreImportOutcome {
     /** Restored profiles whose security-relaxing options were put back to safe. */
     securityReset?: { name: string; keys: string[] }[];
     securityResetFailed?: number;
+    securityResetQuarantine?: string;
 }
 
 /** What the caller knows about the import that the result does not carry. */
@@ -52,6 +53,7 @@ export function keystoreImportModalResult(result: KeystoreImportOutcome): Keysto
         || !!result.userPartitionsBackupPath
         || !!result.sqliteDbsFailed?.length
         || (result.securityResetFailed ?? 0) > 0
+        || !!result.securityResetQuarantine
         || !!result.securityReset?.length;
     return needed ? { ...result } : null;
 }
@@ -105,6 +107,9 @@ export function keystoreImportSummary(
     if ((result.securityResetFailed ?? 0) > 0) {
         extraNotes.push(t('settings.keystoreSecurityResetFailed', { count: result.securityResetFailed ?? 0 }));
     }
+    if (result.securityResetQuarantine) {
+        extraNotes.push(t('settings.keystoreSecurityResetQuarantine', { path: result.securityResetQuarantine }));
+    }
     if (result.sqliteDbsFailed?.length) {
         extraNotes.push(t('settings.keystoreDatabasesFailed', { names: result.sqliteDbsFailed.join(', ') }));
     }
@@ -119,6 +124,7 @@ export function keystoreImportSummary(
         || !!result.requiresRestart
         || !!result.profileDecisionsError
         || (result.securityResetFailed ?? 0) > 0
+        || !!result.securityResetQuarantine
         || !!result.sqliteDbsFailed?.length
         || !!preferencesError;
     return {

@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Koneksi data ke alamat yang disebutkan server (PASV)",
             "importSecurityUnknownHostKeys": "Kunci host SSH tidak dikenal diterima",
             "keystoreSecurityReset": "{count} server yang dipulihkan memiliki opsi yang menonaktifkan pemeriksaan keamanan; server itu dikembalikan ke pengaturan aman: {details}.",
-            "keystoreSecurityResetFailed": "Pengaturan keamanan {count} akun yang dipulihkan tidak dapat diperiksa atau direset. Akun tersebut dicantumkan di sini alih-alih dibiarkan aktif tanpa pemberitahuan."
+            "keystoreSecurityResetFailed": "Pengaturan keamanan {count} akun yang dipulihkan tidak dapat diperiksa atau direset. Akun tersebut dicantumkan di sini alih-alih dibiarkan aktif tanpa pemberitahuan.",
+            "keystoreSecurityResetQuarantine": "Basis data akun yang dipulihkan tidak dapat diamankan dan dikarantina sebagai {path}. Tidak ada akun yang dipulihkan yang aktif. Perbaiki masalah disk atau izin, lalu pulihkan cadangan lagi. File yang dikarantina tetap tersedia untuk pemulihan."
         },
         "devtools": {
             "title": "AeroTools",

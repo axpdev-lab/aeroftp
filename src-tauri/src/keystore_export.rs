@@ -602,6 +602,9 @@ pub struct KeystoreImportResult {
     /// Accounts whose restored options could not be checked or reset.
     #[serde(default)]
     pub security_reset_failed: usize,
+    /// The preserved account database set aside when no reset marker persisted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security_reset_quarantine: Option<PathBuf>,
 }
 
 /// User-facing selectivity for import. All flags default to `true` so
@@ -1870,6 +1873,7 @@ fn import_keystore_with_store(
         Vec::new()
     };
     let mut security_reset_failed = 0usize;
+    let mut security_reset_quarantine = None;
     // From the first read of this device's list to the last write: the plan below
     // reads it, the partition file may be replaced with its journals removed, and
     // the decisions are written from that read. No other writer may land between.
@@ -2278,9 +2282,13 @@ fn import_keystore_with_store(
             } else {
                 None
             };
-            let (reset, failed) = reset_restored_partition_relaxations(store, cfg, except_user);
+            let (reset, failed, quarantine) =
+                reset_restored_partition_relaxations(store, cfg, except_user);
             security_reset.extend(reset);
             security_reset_failed += failed;
+            if quarantine.is_some() {
+                security_reset_quarantine = quarantine;
+            }
             restored_list_unread =
                 !refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
         }
@@ -2431,6 +2439,7 @@ fn import_keystore_with_store(
         sqlite_dbs_failed,
         security_reset: dedup_resets(security_reset),
         security_reset_failed,
+        security_reset_quarantine,
     })
 }
 
@@ -2484,7 +2493,11 @@ fn reset_restored_partition_relaxations(
     store: &crate::credential_store::CredentialStore,
     config_dir: &Path,
     except_user: Option<i64>,
-) -> (Vec<crate::profile_security::ProfileReset>, usize) {
+) -> (
+    Vec<crate::profile_security::ProfileReset>,
+    usize,
+    Option<PathBuf>,
+) {
     let db_path = config_dir.join("user_partitions.db");
     match crate::user_partitions::reset_profile_relaxations_in_db(store, &db_path, except_user) {
         Ok(report) => {
@@ -2495,11 +2508,11 @@ fn reset_restored_partition_relaxations(
                     report.failed
                 );
             }
-            (report.reset, report.failed)
+            (report.reset, report.failed, report.quarantine_path)
         }
         Err(e) => {
             tracing::warn!("Keystore import: restored security options not checked: {e}");
-            (Vec::new(), 1)
+            (Vec::new(), 1, None)
         }
     }
 }

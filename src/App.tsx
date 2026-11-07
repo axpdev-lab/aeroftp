@@ -16462,6 +16462,7 @@ const App: React.FC = () => {
             sqliteDbsFailed?: string[];
             securityReset?: { name: string; keys: string[] }[];
             securityResetFailed?: number;
+            securityResetQuarantine?: string;
           }>('import_keystore', {
             password,
             filePath,

@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Podatkovna veza na adresu koju navodi poslužitelj (PASV)",
             "importSecurityUnknownHostKeys": "Prihvaćeni nepoznati SSH ključevi poslužitelja",
             "keystoreSecurityReset": "{count} vraćenih poslužitelja imalo je opcije koje isključuju sigurnosnu provjeru; vraćeni su na sigurnu postavku: {details}.",
-            "keystoreSecurityResetFailed": "Sigurnosne postavke {count} obnovljenih računa nije bilo moguće provjeriti ili resetirati. Navedeni su ovdje umjesto da ostanu aktivni bez upozorenja."
+            "keystoreSecurityResetFailed": "Sigurnosne postavke {count} obnovljenih računa nije bilo moguće provjeriti ili resetirati. Navedeni su ovdje umjesto da ostanu aktivni bez upozorenja.",
+            "keystoreSecurityResetQuarantine": "Obnovljenu bazu podataka računa nije bilo moguće zaštititi i stavljena je u karantenu kao {path}. Nijedan obnovljeni račun nije aktivan. Riješite problem s diskom ili dopuštenjima, a zatim ponovno obnovite sigurnosnu kopiju. Datoteka u karanteni ostaje dostupna za oporavak."
         },
         "devtools": {
             "title": "AeroTools",

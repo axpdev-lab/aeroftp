@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Dataforbindelse til den adresse, serveren angiver (PASV)",
             "importSecurityUnknownHostKeys": "Ukendte SSH-værtsnøgler accepteret",
             "keystoreSecurityReset": "{count} gendannede servere havde indstillinger, der slår en sikkerhedskontrol fra; de blev sat tilbage til den sikre indstilling: {details}.",
-            "keystoreSecurityResetFailed": "Sikkerhedsindstillingerne for {count} gendannede konti kunne ikke kontrolleres eller nulstilles. De er angivet her i stedet for at forblive aktive uden varsel."
+            "keystoreSecurityResetFailed": "Sikkerhedsindstillingerne for {count} gendannede konti kunne ikke kontrolleres eller nulstilles. De er angivet her i stedet for at forblive aktive uden varsel.",
+            "keystoreSecurityResetQuarantine": "Den gendannede kontodatabase kunne ikke sikres og blev sat i karantæne som {path}. Ingen gendannet konto er aktiv. Løs problemet med disken eller tilladelserne, og gendan derefter sikkerhedskopien igen. Den fil, der er sat i karantæne, er stadig tilgængelig til gendannelse."
         },
         "devtools": {
             "title": "AeroTools",

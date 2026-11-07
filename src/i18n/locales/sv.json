@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Dataanslutning till adressen som servern anger (PASV)",
             "importSecurityUnknownHostKeys": "Okända SSH-värdnycklar accepteras",
             "keystoreSecurityReset": "{count} återställda servrar hade alternativ som stänger av en säkerhetskontroll; de sattes tillbaka till den säkra inställningen: {details}.",
-            "keystoreSecurityResetFailed": "Säkerhetsinställningarna för {count} återställda konton kunde inte kontrolleras eller återställas. De listas här i stället för att förbli aktiva utan varning."
+            "keystoreSecurityResetFailed": "Säkerhetsinställningarna för {count} återställda konton kunde inte kontrolleras eller återställas. De listas här i stället för att förbli aktiva utan varning.",
+            "keystoreSecurityResetQuarantine": "Den återställda kontodatabasen kunde inte skyddas och sattes i karantän som {path}. Inget återställt konto är aktivt. Åtgärda problemet med disken eller behörigheterna och återställ sedan säkerhetskopian igen. Filen i karantän är fortfarande tillgänglig för återställning."
         },
         "devtools": {
             "title": "AeroTools",

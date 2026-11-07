@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Adatkapcsolat a kiszolgáló által megadott címre (PASV)",
             "importSecurityUnknownHostKeys": "Ismeretlen SSH gazdakulcsok elfogadva",
             "keystoreSecurityReset": "{count} visszaállított szerver olyan beállításokat használt, amelyek kikapcsolnak egy biztonsági ellenőrzést; visszaállítottuk őket a biztonságos beállításra: {details}.",
-            "keystoreSecurityResetFailed": "Nem sikerült ellenőrizni vagy alaphelyzetbe állítani {count} visszaállított fiók biztonsági beállításait. Ahelyett, hogy figyelmeztetés nélkül aktívak maradnának, itt vannak felsorolva."
+            "keystoreSecurityResetFailed": "Nem sikerült ellenőrizni vagy alaphelyzetbe állítani {count} visszaállított fiók biztonsági beállításait. Ahelyett, hogy figyelmeztetés nélkül aktívak maradnának, itt vannak felsorolva.",
+            "keystoreSecurityResetQuarantine": "A visszaállított fiókadatbázist nem sikerült biztonságossá tenni, ezért karanténba került: {path}. Egyetlen visszaállított fiók sem aktív. Oldja meg a lemezzel vagy a jogosultságokkal kapcsolatos problémát, majd állítsa vissza újra a biztonsági mentést. A karanténba helyezett fájl továbbra is rendelkezésre áll a helyreállításhoz."
         },
         "devtools": {
             "title": "AeroTools",

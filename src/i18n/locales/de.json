@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Datenverbindung zur vom Server genannten Adresse (PASV)",
             "importSecurityUnknownHostKeys": "Unbekannte SSH-Hostschlüssel akzeptiert",
             "keystoreSecurityReset": "{count} wiederhergestellte Server hatten Optionen, die eine Sicherheitsprüfung deaktivieren; sie wurden auf die sichere Einstellung zurückgesetzt: {details}.",
-            "keystoreSecurityResetFailed": "Die Sicherheitseinstellungen von {count} wiederhergestellten Konten konnten nicht überprüft oder zurückgesetzt werden. Sie werden hier aufgeführt, anstatt ohne Hinweis aktiv zu bleiben."
+            "keystoreSecurityResetFailed": "Die Sicherheitseinstellungen von {count} wiederhergestellten Konten konnten nicht überprüft oder zurückgesetzt werden. Sie werden hier aufgeführt, anstatt ohne Hinweis aktiv zu bleiben.",
+            "keystoreSecurityResetQuarantine": "Die wiederhergestellte Kontodatenbank konnte nicht gesichert werden und wurde als {path} unter Quarantäne gestellt. Kein wiederhergestelltes Konto ist aktiv. Behebe das Datenträger- oder Berechtigungsproblem und stelle dann die Sicherung erneut wieder her. Die unter Quarantäne gestellte Datei bleibt zur Wiederherstellung verfügbar."
         },
         "devtools": {
             "title": "AeroTools",

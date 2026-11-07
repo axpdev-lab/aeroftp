@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Andmeühendus serveri nimetatud aadressile (PASV)",
             "importSecurityUnknownHostKeys": "Tundmatud SSH hostivõtmed on aktsepteeritud",
             "keystoreSecurityReset": "{count} taastatud serveril olid suvandid, mis lülitavad turvakontrolli välja; need seati tagasi turvalisele seadele: {details}.",
-            "keystoreSecurityResetFailed": "{count} taastatud konto turbesätteid ei õnnestunud kontrollida ega lähtestada. Need on loetletud siin, selle asemel et jääda ilma hoiatuseta aktiivseks."
+            "keystoreSecurityResetFailed": "{count} taastatud konto turbesätteid ei õnnestunud kontrollida ega lähtestada. Need on loetletud siin, selle asemel et jääda ilma hoiatuseta aktiivseks.",
+            "keystoreSecurityResetQuarantine": "Taastatud kontode andmebaasi ei õnnestunud kaitsta ja see pandi karantiini nimega {path}. Ükski taastatud konto pole aktiivne. Parandage ketta- või õigustega seotud probleem ja taastage seejärel varukoopia uuesti. Karantiini pandud fail jääb taastamiseks kättesaadavaks."
         },
         "devtools": {
             "title": "AeroTools",

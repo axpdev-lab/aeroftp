@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Dátové spojenie na adresu, ktorú uvádza server (PASV)",
             "importSecurityUnknownHostKeys": "Prijímajú sa neznáme kľúče hostiteľa SSH",
             "keystoreSecurityReset": "{count} obnovených serverov malo možnosti, ktoré vypínajú bezpečnostnú kontrolu; boli vrátené na bezpečné nastavenie: {details}.",
-            "keystoreSecurityResetFailed": "Nastavenia zabezpečenia {count} obnovených účtov nebolo možné skontrolovať ani resetovať. Sú uvedené tu, aby nezostali aktívne bez upozornenia."
+            "keystoreSecurityResetFailed": "Nastavenia zabezpečenia {count} obnovených účtov nebolo možné skontrolovať ani resetovať. Sú uvedené tu, aby nezostali aktívne bez upozornenia.",
+            "keystoreSecurityResetQuarantine": "Obnovenú databázu účtov sa nepodarilo zabezpečiť a bola izolovaná ako {path}. Žiadny obnovený účet nie je aktívny. Opravte problém s diskom alebo oprávneniami a potom znova obnovte zálohu. Izolovaný súbor zostáva k dispozícii na obnovenie."
         },
         "devtools": {
             "title": "AeroTools",

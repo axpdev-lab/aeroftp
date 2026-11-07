@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Sunucunun belirttiği adrese veri bağlantısı (PASV)",
             "importSecurityUnknownHostKeys": "Bilinmeyen SSH ana makine anahtarları kabul edildi",
             "keystoreSecurityReset": "Geri yüklenen {count} sunucuda bir güvenlik denetimini kapatan seçenekler vardı; bunlar güvenli ayara geri döndürüldü: {details}.",
-            "keystoreSecurityResetFailed": "{count} geri yüklenen hesabın güvenlik ayarları denetlenemedi veya sıfırlanamadı. Bu hesaplar, uyarı verilmeden etkin bırakılmak yerine burada listeleniyor."
+            "keystoreSecurityResetFailed": "{count} geri yüklenen hesabın güvenlik ayarları denetlenemedi veya sıfırlanamadı. Bu hesaplar, uyarı verilmeden etkin bırakılmak yerine burada listeleniyor.",
+            "keystoreSecurityResetQuarantine": "Geri yüklenen hesap veritabanı güvenceye alınamadı ve {path} olarak karantinaya alındı. Hiçbir geri yüklenen hesap etkin değil. Disk veya izin sorununu giderin, ardından yedeği yeniden geri yükleyin. Karantinaya alınan dosya kurtarma için erişilebilir durumda kalır."
         },
         "devtools": {
             "title": "AeroTools",

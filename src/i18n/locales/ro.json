@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Conexiune de date la adresa indicată de server (PASV)",
             "importSecurityUnknownHostKeys": "Chei de gazdă SSH necunoscute acceptate",
             "keystoreSecurityReset": "{count} servere restaurate aveau opțiuni care dezactivează o verificare de securitate; au fost readuse la setarea sigură: {details}.",
-            "keystoreSecurityResetFailed": "Setările de securitate pentru {count} conturi restaurate nu au putut fi verificate sau resetate. Acestea sunt listate aici în loc să rămână active fără avertisment."
+            "keystoreSecurityResetFailed": "Setările de securitate pentru {count} conturi restaurate nu au putut fi verificate sau resetate. Acestea sunt listate aici în loc să rămână active fără avertisment.",
+            "keystoreSecurityResetQuarantine": "Baza de date restaurată a conturilor nu a putut fi securizată și a fost pusă în carantină ca {path}. Niciun cont restaurat nu este activ. Remediați problema de disc sau de permisiuni, apoi restaurați din nou copia de rezervă. Fișierul aflat în carantină rămâne disponibil pentru recuperare."
         },
         "devtools": {
             "title": "AeroTools",

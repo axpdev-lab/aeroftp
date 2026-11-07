@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Muunganisho wa data kwa anwani inayotajwa na seva (PASV)",
             "importSecurityUnknownHostKeys": "Funguo za mwenyeji wa SSH zisizojulikana zimekubaliwa",
             "keystoreSecurityReset": "Seva {count} zilizorejeshwa zilikuwa na chaguo zinazozima ukaguzi wa usalama; zilirudishwa kwenye mpangilio salama: {details}.",
-            "keystoreSecurityResetFailed": "Mipangilio ya usalama ya akaunti {count} zilizorejeshwa haikuweza kukaguliwa au kuwekwa upya. Zimeorodheshwa hapa badala ya kuachwa zikifanya kazi bila onyo."
+            "keystoreSecurityResetFailed": "Mipangilio ya usalama ya akaunti {count} zilizorejeshwa haikuweza kukaguliwa au kuwekwa upya. Zimeorodheshwa hapa badala ya kuachwa zikifanya kazi bila onyo.",
+            "keystoreSecurityResetQuarantine": "Hifadhidata ya akaunti iliyorejeshwa haikuweza kulindwa, na imewekwa karantini kama {path}. Hakuna akaunti iliyorejeshwa iliyo hai. Rekebisha tatizo la diski au ruhusa, kisha rejesha nakala rudufu tena. Faili iliyowekwa karantini bado inapatikana kwa ajili ya urejeshaji."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1388,7 +1388,8 @@
             "importSecurityPasvAddress": "Connexió de dades a l'adreça que indica el servidor (PASV)",
             "importSecurityUnknownHostKeys": "Claus d'amfitrió SSH desconegudes acceptades",
             "keystoreSecurityReset": "{count} servidors restaurats tenien opcions que desactiven una comprovació de seguretat; s'han tornat a la configuració segura: {details}.",
-            "keystoreSecurityResetFailed": "No s'han pogut comprovar ni restablir els paràmetres de seguretat de {count} comptes restaurats. Es mostren aquí en lloc de deixar-los actius sense avís."
+            "keystoreSecurityResetFailed": "No s'han pogut comprovar ni restablir els paràmetres de seguretat de {count} comptes restaurats. Es mostren aquí en lloc de deixar-los actius sense avís.",
+            "keystoreSecurityResetQuarantine": "No s'ha pogut protegir la base de dades de comptes restaurada i s'ha posat en quarantena com a {path}. No hi ha cap compte restaurat actiu. Corregeix el problema del disc o dels permisos i torna a restaurar la còpia de seguretat. El fitxer en quarantena continua disponible per a la recuperació."
         },
         "devtools": {
             "title": "AeroTools",
