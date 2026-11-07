@@ -44,6 +44,23 @@ describe('S3 host map', () => {
         }
     });
 
+    it('keeps every host pattern anchored and free of nested quantifiers', () => {
+        // The patterns are compiled with `new RegExp` at module load. A group
+        // that holds its own + or * and repeats without bound ((a+)+, (a*)*,
+        // (a+){2,}) can backtrack exponentially; an optional group ((-[0-9]+)?)
+        // runs at most once and stays linear. An unanchored pattern matches a
+        // lookalike host.
+        const nestedQuantifier = /\([^()]*[+*][^()]*\)[+*{]/;
+        for (const entry of entries) {
+            for (const pattern of entry.hostPatterns ?? []) {
+                expect(() => new RegExp(pattern), pattern).not.toThrow();
+                expect(pattern.endsWith('$'), pattern).toBe(true);
+                expect(pattern.startsWith('^') || pattern.startsWith('(^|\\.)'), pattern).toBe(true);
+                expect(nestedQuantifier.test(pattern), pattern).toBe(false);
+            }
+        }
+    });
+
     it('covers every S3 preset whose endpoint has a fixed host', () => {
         const presets = (manifest as { presets: { id: string; protocol: string; defaults?: { endpoint?: string; endpointTemplate?: string } }[] }).presets;
         for (const preset of presets.filter(p => p.protocol === 's3')) {
