@@ -128,7 +128,7 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<PathBuf> {
         }
         // The path as given counts too: a root named through a link, or through folders that
         // are links, can be replaced in any of those folders even when its target is private.
-        let given = std::path::absolute(out_path)?;
+        let given = given_root(out_path)?;
         // A root that is itself a link must belong to the owner of the folder it names: in
         // a sticky folder another user could otherwise replace a link of their own.
         {
@@ -188,6 +188,14 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<PathBuf> {
 /// the root's entry replaced by another user: it is not writable by every user, or it is
 /// sticky AND owned by root or by `trusted` (the replica folder's owner). The sticky bit
 /// keeps other users from replacing an entry, but not the folder's own owner.
+/// The replica root as the user gave it, absolute and without a trailing separator:
+/// `absolute` keeps one, and `symlink_metadata("x/")` follows a link at `x`, so the last
+/// component would not be checked as itself. Links are not resolved here.
+#[cfg(unix)]
+pub(crate) fn given_root(out_path: &Path) -> std::io::Result<PathBuf> {
+    Ok(std::path::absolute(out_path)?.components().collect())
+}
+
 #[cfg(unix)]
 pub(crate) fn ancestor_is_safe(mode: u32, owner: u32, trusted: u32) -> bool {
     if mode & 0o002 == 0 {
@@ -2267,5 +2275,27 @@ mod replica_path_tests {
             .unwrap()
             .file_type()
             .is_symlink());
+    }
+
+    /// A root given with a trailing separator is checked as the same path without it, so a
+    /// link at its last component is still inspected as a link (CodeRabbit on #1529).
+    #[cfg(unix)]
+    #[test]
+    fn a_trailing_separator_does_not_hide_the_roots_last_link() {
+        use crate::drive::{check_replica_root, given_root};
+        let dir = tempfile::tempdir().unwrap();
+        let private = dir.path().join("private");
+        std::fs::create_dir(&private).unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&private, &link).unwrap();
+        let slashed = std::path::PathBuf::from(format!("{}/", link.display()));
+        assert_eq!(given_root(&slashed).unwrap(), given_root(&link).unwrap());
+        assert_eq!(given_root(&slashed).unwrap(), link);
+        assert!(std::fs::symlink_metadata(given_root(&slashed).unwrap())
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        let with_slash = std::path::PathBuf::from(format!("{}/", private.display()));
+        assert!(check_replica_root(&with_slash).is_ok());
     }
 }
