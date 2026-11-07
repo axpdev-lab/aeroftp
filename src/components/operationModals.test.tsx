@@ -3,6 +3,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { act } from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../types';
@@ -61,6 +63,7 @@ vi.mock('./vault/VaultReceipt', () => ({ VaultReceipt: () => null }));
 vi.mock('./vault/ZipCompressionReport', () => ({ ZipCompressionReport: () => null }));
 
 import { SpeedTestDialog } from './SpeedTestDialog';
+import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
 import { buildSpeedTestConnection } from '../utils/speedTest';
 import { isEscapeClaimed, useGuardedClose } from '../hooks/useGuardedClose';
 import { TwoFactorPromptDialog } from './TwoFactorPromptDialog';
@@ -206,6 +209,40 @@ describe('SpeedTestDialog (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await render(<SpeedTestDialog servers={[server('a')]} onClose={onClose} active />);
         expect(isEscapeClaimed()).toBe(true);
+    });
+
+    it('leaves ESC to the app while a running test is hidden with its tab, and claims it again when shown', async () => {
+        // The tab switch hides My Servers without unmounting it: the hidden
+        // dialog must not take the ESC meant for what is in front (the app
+        // shortcut closes the shortcuts dialog), nor open a confirm unseen.
+        const appEscape = vi.fn();
+        const onClose = vi.fn();
+        const run = deferred<unknown>();
+        mocks.handlers.speedtest_history_summary = async () => ({ samples: 0 });
+        mocks.handlers.speedtest_run = () => run.promise;
+        const Shell = ({ active }: { active: boolean }) => {
+            useKeyboardShortcuts({ Escape: appEscape }, []);
+            return <SpeedTestDialog servers={[server('a')]} onClose={onClose} active={active} />;
+        };
+        await render(<Shell active />);
+        await click('speedTest.start');
+        await flush();
+        await render(<Shell active={false} />);
+        await escape();
+        expect(appEscape).toHaveBeenCalledTimes(1);
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).not.toHaveBeenCalled();
+        await render(<Shell active />);
+        await escape();
+        expect(appEscape).toHaveBeenCalledTimes(1);
+        expect(confirmOpen()).toBe(true);
+    });
+
+    it('is told it is hidden by My Servers, the hub and the app', () => {
+        const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
+        expect(read('src/App.tsx')).toMatch(/<IntroHub\s+visible=\{showConnectionScreen\}/);
+        expect(read('src/components/IntroHub/IntroHub.tsx')).toMatch(/<MyServersPanel\s+visible=\{props\.visible !== false && activeTab === 'my-servers'\}/);
+        expect(read('src/components/IntroHub/MyServersPanel.tsx')).toMatch(/<SpeedTestDialog[\s\S]{0,300}?active=\{visible\}/);
     });
 
     it('keeps a finished result from the backdrop, and the X closes at once', async () => {
