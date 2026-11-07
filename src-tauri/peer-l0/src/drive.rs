@@ -184,6 +184,7 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
 /// the root's entry replaced by another user: it is not writable by every user, or it is
 /// sticky AND owned by root or by `trusted` (the replica folder's owner). The sticky bit
 /// keeps other users from replacing an entry, but not the folder's own owner.
+#[cfg(unix)]
 pub(crate) fn ancestor_is_safe(mode: u32, owner: u32, trusted: u32) -> bool {
     if mode & 0o002 == 0 {
         return true;
@@ -194,6 +195,7 @@ pub(crate) fn ancestor_is_safe(mode: u32, owner: u32, trusted: u32) -> bool {
 /// Whether a component of the replica root's path as given, owned by `owner`, can be relied
 /// on: a real folder can (its mode is checked separately), and a link only when it belongs to
 /// root or to `trusted` (the replica folder's owner), since a link's owner can replace it.
+#[cfg(unix)]
 pub(crate) fn link_is_trusted(is_link: bool, owner: u32, trusted: u32) -> bool {
     !is_link || owner == 0 || owner == trusted
 }
@@ -2116,6 +2118,7 @@ mod replica_path_tests {
 
     /// A world-writable folder above the root is accepted only when it is sticky and owned
     /// by root or the replica folder's owner: its owner could otherwise swap the root.
+    #[cfg(unix)]
     #[test]
     fn a_sticky_ancestor_must_belong_to_root_or_the_replica_owner() {
         use crate::drive::ancestor_is_safe;
