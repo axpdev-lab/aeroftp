@@ -141,6 +141,20 @@ it('keeps a finished comparison when the backdrop is clicked, and closes from th
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+it('answers ESC like the X: a compare scan asks first, an idle dialog closes', async () => {
+    const onClose = vi.fn();
+    const onStopCompare = vi.fn();
+    await React.act(async () => root.render(React.createElement(AeroSyncDialog, withContext({ compareLoading: true }, { onClose, onStopCompare }))));
+    await React.act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onStopCompare).not.toHaveBeenCalled();
+    expect(button('modalGuard.stopAndClose')).toBeTruthy();
+    await React.act(async () => root.render(React.createElement(AeroSyncDialog, withContext({ compareLoading: false, compareResult: null, compareIdle: true }, { onClose }))));
+    await React.act(async () => button('modalGuard.wait').click());
+    await React.act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
+
 it('closes from the backdrop when it holds no comparison and runs nothing', async () => {
     const onClose = vi.fn();
     await React.act(async () => root.render(React.createElement(AeroSyncDialog, withContext({ compareLoading: false, compareResult: null, compareIdle: true }, { onClose }))));

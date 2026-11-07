@@ -68,6 +68,8 @@ import { ServerHealthCheck } from './ServerHealthCheck';
 import VaultSyncDialog from './VaultSyncDialog';
 import { UnifiedTransferPlanDialog } from './UnifiedTransferPlanDialog';
 import { VaultPanel } from './VaultPanel';
+import { CanaryResultDialog } from './Sync/CanaryResultDialog';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -249,6 +251,27 @@ describe('CrossProfilePanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await click('modalGuard.stopAndClose');
         expect(mocks.invoke).toHaveBeenCalledWith('cross_profile_cancel', { transferId: 'plan-1' });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers ESC like the X: a ready plan closes, a running transfer asks first', async () => {
+        const onClose = vi.fn();
+        await planReady(onClose);
+        const execution = deferred<unknown>();
+        mocks.handlers.cross_profile_execute = () => execution.promise;
+        await click('transfer.crossProfile.executeTransfer');
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(true);
+        await click('modalGuard.wait');
+        expect(confirmOpen()).toBe(false);
+        expect(mocks.invoke).not.toHaveBeenCalledWith('cross_profile_cancel', expect.anything());
+    });
+
+    it('closes from ESC once a plan is shown', async () => {
+        const onClose = vi.fn();
+        await planReady(onClose);
+        await escape();
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
@@ -528,6 +551,30 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('answers ESC like the X: an opened vault closes, an operation asks first', async () => {
+        const onClose = vi.fn();
+        vault('open');
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+        onClose.mockClear();
+        vault('open', true);
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(true);
+    });
+
+    it('leaves ESC to a dialog of its own open over it', async () => {
+        const onClose = vi.fn();
+        vault('browse');
+        mocks.vaultState.showRepairDialog = true;
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(false);
+    });
+
     it('closes from the backdrop on the home screen, unless an operation runs', async () => {
         const onClose = vi.fn();
         vault('home');
@@ -541,5 +588,27 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await click('common.close');
         expect(confirmOpen()).toBe(true);
+    });
+});
+
+describe('CanaryResultDialog over a modal (Discussion #1527)', () => {
+    const result = {
+        sampled_files: 1, total_files: 4, results: [],
+        summary: { would_upload: 1, would_download: 0, would_delete: 0, conflicts: 0, errors: 0, estimated_transfer_size: 10 },
+    };
+    // Stands for AeroSync, which stays open under the canary result.
+    const Underneath = ({ onClose }: { onClose: () => void }) => {
+        useGuardedClose({ guard: null, onClose, escape: true });
+        return null;
+    };
+
+    it('takes one ESC for itself and leaves the modal underneath open', async () => {
+        const onUnder = vi.fn();
+        const onCanary = vi.fn();
+        await render(<Underneath onClose={onUnder} />);
+        await render(<><Underneath onClose={onUnder} /><CanaryResultDialog result={result} onClose={onCanary} onApprove={vi.fn()} /></>);
+        await escape();
+        expect(onCanary).toHaveBeenCalledTimes(1);
+        expect(onUnder).not.toHaveBeenCalled();
     });
 });
