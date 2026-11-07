@@ -766,7 +766,8 @@
             "stagedCount": "Undirbúið: {count}",
             "pendingCount": "Bíður: {count}",
             "failedCount": "Mistókst: {count}",
-            "queuedForAnotherServer": "Ekki hafið: þessi flutningur var í biðröð fyrir annan netþjón. Skiptu aftur yfir í flipa þess netþjóns og reyndu síðan aftur."
+            "queuedForAnotherServer": "Ekki hafið: þessi flutningur var í biðröð fyrir annan netþjón. Skiptu aftur yfir í flipa þess netþjóns og reyndu síðan aftur.",
+            "queuedOverlayChanged": "Ekki hafið: dulkóðaða overlay-lagið sem þessi flutningur var settur í biðröð undir er læst eða nær ekki lengur yfir þessa möppu. Opnaðu það á þeim netþjóni og reyndu aftur."
         },
         "settings": {
             "title": "Stillingar",

@@ -47,6 +47,11 @@ describe('Apply on a remote file', () => {
         expect(MARKDOWN).toContain('prev.editorFileIsRemote === next.editorFileIsRemote');
         expect(CODE_EDITOR).toContain('window.addEventListener(EDITOR_APPLY_EVENT, handleApply);');
         expect(CODE_EDITOR).toContain('window.addEventListener(EDITOR_READ_EVENT, handleRead);');
+        // An Apply is one undoable edit, so it never discards unsaved work.
+        const apply = between(CODE_EDITOR, 'const handleApply = (e: Event) => {', 'detail.accept();');
+        expect(apply).toContain("editor.executeEdits('aeroagent-apply'");
+        expect(apply).toContain('editor.pushUndoStop();');
+        expect(apply).not.toContain('setValue(');
     });
 });
 
@@ -55,31 +60,50 @@ describe('a queued transfer', () => {
         const registrations = APP.split('retryCallbacksRef.current.set(').slice(1).map(rest => rest.slice(0, 120));
         // The restored-journal retry has its own profile ownership check.
         const restored = registrations.filter(r => r.startsWith('id, () => retryRestoredEntry('));
-        const bound = registrations.filter(r => r.startsWith('id, boundToQueuedServer(id, '));
+        const bound = registrations.filter(r => r.startsWith('id, boundToQueuedServer(queuedTarget, id, '));
         expect(restored).toHaveLength(1);
         expect(bound).toHaveLength(5);
         expect(registrations).toHaveLength(restored.length + bound.length);
     });
 
+    // The listing and the overwrite questions before the registrations give
+    // the user time to switch tabs: the target is taken before any of them.
+    it.each(['const runFileBatch = useLatestCallback(', 'const uploadMultipleFiles = withBatchLatch(', 'const downloadMultipleFiles = withBatchLatch('])(
+        'takes its target before the first await in %s',
+        (head) => {
+            const body = APP.slice(APP.indexOf(head));
+            const snapshot = body.indexOf('const queuedTarget = snapshotQueuedTarget();');
+            expect(snapshot).toBeGreaterThan(0);
+            expect(snapshot).toBeLessThan(body.indexOf('await '));
+        },
+    );
+
     it.each([
-        ['fails without running when another server is live', false, true],
-        ['runs when its server is live again', true, false],
-    ])('%s', async (_name, same, fails) => {
+        ['runs on its server and overlay', 'a.example', 'vault-1', 'run'],
+        ['fails without running when another server is live', 'b.example', 'vault-1', 'transfer.queuedForAnotherServer'],
+        ['fails without running when its overlay was locked', 'a.example', null, 'transfer.queuedOverlayChanged'],
+    ])('%s', async (_name, liveServer, liveVault, outcome) => {
         const source = between(APP, '  const boundToQueuedServer = useLatestCallback(', '\n  });\n') + '\n  });';
         const run = vi.fn();
         const ctx = {
             useLatestCallback: (fn: unknown) => fn,
-            liveConnectionParams: { server: 'a.example', protocol: 'sftp', username: 'u' },
-            liveServerIs: vi.fn(() => same),
+            isConnected: true,
+            liveConnectionParams: { server: liveServer, protocol: 'sftp', username: 'u' },
+            isSameConnection: (a: { server: string }, b: { server: string }) => a.server === b.server,
+            liveOverlayVault: () => liveVault,
             transferQueue: { failTransfer: vi.fn() },
             t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const bind = new Function(...Object.keys(ctx), `${code}; return boundToQueuedServer;`)(...Object.values(ctx));
-        await bind('item-1', run)();
-        expect(ctx.liveServerIs).toHaveBeenCalledWith({ server: 'a.example', protocol: 'sftp', username: 'u' });
-        expect(run).toHaveBeenCalledTimes(fails ? 0 : 1);
-        if (fails) expect(ctx.transferQueue.failTransfer).toHaveBeenCalledWith('item-1', 'transfer.queuedForAnotherServer');
-        else expect(ctx.transferQueue.failTransfer).not.toHaveBeenCalled();
+        const queuedFor = { params: { server: 'a.example', protocol: 'sftp', username: 'u' }, overlayVault: 'vault-1' };
+        await bind(queuedFor, 'item-1', run)();
+        if (outcome === 'run') {
+            expect(run).toHaveBeenCalledTimes(1);
+            expect(ctx.transferQueue.failTransfer).not.toHaveBeenCalled();
+        } else {
+            expect(run).not.toHaveBeenCalled();
+            expect(ctx.transferQueue.failTransfer).toHaveBeenCalledWith('item-1', outcome);
+        }
     });
 });

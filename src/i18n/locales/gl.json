@@ -766,7 +766,8 @@
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendentes: {count}",
             "failedCount": "Fallidos: {count}",
-            "queuedForAnotherServer": "Non iniciada: esta transferencia estaba na cola para outro servidor. Volve á lapela dese servidor e téntao de novo."
+            "queuedForAnotherServer": "Non iniciada: esta transferencia estaba na cola para outro servidor. Volve á lapela dese servidor e téntao de novo.",
+            "queuedOverlayChanged": "Non iniciada: o overlay cifrado baixo o que se puxo en cola esta transferencia está bloqueado ou xa non cobre este cartafol. Desbloquéao nese servidor e téntao de novo."
         },
         "settings": {
             "title": "Axustes",

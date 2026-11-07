@@ -766,7 +766,8 @@
             "stagedCount": "{count}개 준비됨",
             "pendingCount": "{count}개 대기 중",
             "failedCount": "{count}개 실패",
-            "queuedForAnotherServer": "시작되지 않음: 이 전송은 다른 서버용으로 대기열에 있었습니다. 해당 서버의 탭으로 돌아간 다음 다시 시도하세요."
+            "queuedForAnotherServer": "시작되지 않음: 이 전송은 다른 서버용으로 대기열에 있었습니다. 해당 서버의 탭으로 돌아간 다음 다시 시도하세요.",
+            "queuedOverlayChanged": "시작되지 않음: 이 전송이 대기열에 추가될 때 사용된 암호화 오버레이가 잠겨 있거나 더 이상 이 폴더를 포함하지 않습니다. 해당 서버에서 잠금을 해제한 후 다시 시도하세요."
         },
         "settings": {
             "title": "설정",

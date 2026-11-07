@@ -5140,7 +5140,8 @@
             "stagedCount": "{count} staged",
             "pendingCount": "{count} Pending",
             "failedCount": "{count} Failed",
-            "queuedForAnotherServer": "Not started: this transfer was queued for another server. Switch back to that server's tab, then retry."
+            "queuedForAnotherServer": "Not started: this transfer was queued for another server. Switch back to that server's tab, then retry.",
+            "queuedOverlayChanged": "Not started: the encrypted overlay this transfer was queued under is locked or no longer covers this folder. Unlock it on that server, then retry."
         },
         "scanning": {
             "deleting": "Deleting",

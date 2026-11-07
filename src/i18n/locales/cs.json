@@ -766,7 +766,8 @@
             "stagedCount": "Připraveno: {count}",
             "pendingCount": "Čekající: {count}",
             "failedCount": "Selhalo: {count}",
-            "queuedForAnotherServer": "Nespuštěno: tento přenos byl zařazen do fronty pro jiný server. Přepněte zpět na kartu tohoto serveru a zkuste to znovu."
+            "queuedForAnotherServer": "Nespuštěno: tento přenos byl zařazen do fronty pro jiný server. Přepněte zpět na kartu tohoto serveru a zkuste to znovu.",
+            "queuedOverlayChanged": "Nespuštěno: šifrovaný overlay, pod kterým byl tento přenos zařazen do fronty, je zamčený nebo už tuto složku nepokrývá. Odemkněte jej na onom serveru a zkuste to znovu."
         },
         "settings": {
             "title": "Nastavení",

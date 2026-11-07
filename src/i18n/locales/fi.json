@@ -766,7 +766,8 @@
             "stagedCount": "Valmisteltu: {count}",
             "pendingCount": "Odottaa: {count}",
             "failedCount": "Epäonnistui: {count}",
-            "queuedForAnotherServer": "Ei käynnistetty: tämä siirto oli jonossa toiselle palvelimelle. Palaa kyseisen palvelimen välilehteen ja yritä uudelleen."
+            "queuedForAnotherServer": "Ei käynnistetty: tämä siirto oli jonossa toiselle palvelimelle. Palaa kyseisen palvelimen välilehteen ja yritä uudelleen.",
+            "queuedOverlayChanged": "Ei käynnistynyt: salattu overlay, jonka alla tämä siirto jonotettiin, on lukittu tai ei enää kata tätä kansiota. Avaa se kyseisellä palvelimella ja yritä uudelleen."
         },
         "settings": {
             "title": "Asetukset",

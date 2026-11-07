@@ -766,7 +766,8 @@
             "stagedCount": "Đã chuẩn bị: {count}",
             "pendingCount": "Đang chờ: {count}",
             "failedCount": "Thất bại: {count}",
-            "queuedForAnotherServer": "Chưa bắt đầu: lượt truyền này được xếp hàng cho một máy chủ khác. Hãy quay lại tab của máy chủ đó, rồi thử lại."
+            "queuedForAnotherServer": "Chưa bắt đầu: lượt truyền này được xếp hàng cho một máy chủ khác. Hãy quay lại tab của máy chủ đó, rồi thử lại.",
+            "queuedOverlayChanged": "Chưa bắt đầu: overlay được mã hóa mà lượt truyền này được xếp hàng đợi bên dưới đang bị khóa hoặc không còn bao phủ thư mục này. Hãy mở khóa nó trên máy chủ đó, rồi thử lại."
         },
         "settings": {
             "title": "Cài đặt",

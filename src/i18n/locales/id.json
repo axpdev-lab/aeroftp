@@ -766,7 +766,8 @@
             "stagedCount": "Disiapkan: {count}",
             "pendingCount": "Menunggu: {count}",
             "failedCount": "Gagal: {count}",
-            "queuedForAnotherServer": "Belum dimulai: transfer ini diantrekan untuk server lain. Beralih kembali ke tab server tersebut, lalu coba lagi."
+            "queuedForAnotherServer": "Belum dimulai: transfer ini diantrekan untuk server lain. Beralih kembali ke tab server tersebut, lalu coba lagi.",
+            "queuedOverlayChanged": "Belum dimulai: overlay terenkripsi tempat transfer ini diantrekan terkunci atau tidak lagi mencakup folder ini. Buka kunci di server tersebut, lalu coba lagi."
         },
         "settings": {
             "title": "Pengaturan",

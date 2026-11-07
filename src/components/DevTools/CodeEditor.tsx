@@ -459,8 +459,14 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
         const handleApply = (e: Event) => {
             const detail = (e as CustomEvent<EditorApplyDetail>).detail;
             const editor = editorRef.current;
-            if (!editor || !matches(detail)) return;
-            editor.setValue(detail.content);
+            const model = editor?.getModel();
+            if (!editor || !model || !matches(detail)) return;
+            // One edit over the whole buffer, between undo stops: Ctrl+Z gives
+            // back the unsaved edits it replaced. `setValue` cleared the undo
+            // history, so an Apply discarded them for good.
+            editor.pushUndoStop();
+            editor.executeEdits('aeroagent-apply', [{ range: model.getFullModelRange(), text: detail.content }]);
+            editor.pushUndoStop();
             setHasChanges(detail.content !== originalContent);
             detail.accept();
         };

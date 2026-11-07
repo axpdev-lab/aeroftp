@@ -766,7 +766,8 @@
             "stagedCount": "Ettevalmistatud: {count}",
             "pendingCount": "Ootel: {count}",
             "failedCount": "Ebaõnnestunud: {count}",
-            "queuedForAnotherServer": "Pole alustatud: see ülekanne oli järjekorras teise serveri jaoks. Minge tagasi selle serveri vahelehele ja proovige uuesti."
+            "queuedForAnotherServer": "Pole alustatud: see ülekanne oli järjekorras teise serveri jaoks. Minge tagasi selle serveri vahelehele ja proovige uuesti.",
+            "queuedOverlayChanged": "Pole alustatud: krüptitud overlay, mille all see ülekanne järjekorda pandi, on lukus või ei kata enam seda kausta. Avage see lukust sellel serveril ja proovige uuesti."
         },
         "settings": {
             "title": "Seaded",

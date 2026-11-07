@@ -766,7 +766,8 @@
             "stagedCount": "Pripravené: {count}",
             "pendingCount": "Čakajúce: {count}",
             "failedCount": "Zlyhalo: {count}",
-            "queuedForAnotherServer": "Nespustené: tento prenos bol zaradený do frontu pre iný server. Prepnite sa späť na kartu tohto servera a skúste to znova."
+            "queuedForAnotherServer": "Nespustené: tento prenos bol zaradený do frontu pre iný server. Prepnite sa späť na kartu tohto servera a skúste to znova.",
+            "queuedOverlayChanged": "Nespustené: šifrovaný overlay, pod ktorým bol tento prenos zaradený do frontu, je zamknutý alebo už túto priečinok nepokrýva. Odomknite ho na tom serveri a skúste to znova."
         },
         "settings": {
             "title": "Nastavenia",

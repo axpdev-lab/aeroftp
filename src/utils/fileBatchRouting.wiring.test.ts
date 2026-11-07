@@ -235,8 +235,8 @@ describe('#591: Start and Retry re-arm the cancel state, the runners never do', 
 
   it('registers every file-batch row callback through rearmedOnUserAction', () => {
     // Bound to the server it was queued for too (Requested 184).
-    expect(APP).toMatch(/for \(const id of batchIds\) retryCallbacksRef\.current\.set\(id, boundToQueuedServer\(id, rearmedOnUserAction\(\w+, batchDispatcher\.callbackFor\(id\)\)\)\)/);
-    expect(APP).toMatch(/for \(const id of singleIds\) retryCallbacksRef\.current\.set\(id, boundToQueuedServer\(id, rearmedOnUserAction\(\w+, singleDispatcher\.callbackFor\(id\)\)\)\)/);
+    expect(APP).toMatch(/for \(const id of batchIds\) retryCallbacksRef\.current\.set\(id, boundToQueuedServer\(queuedTarget, id, rearmedOnUserAction\(\w+, batchDispatcher\.callbackFor\(id\)\)\)\)/);
+    expect(APP).toMatch(/for \(const id of singleIds\) retryCallbacksRef\.current\.set\(id, boundToQueuedServer\(queuedTarget, id, rearmedOnUserAction\(\w+, singleDispatcher\.callbackFor\(id\)\)\)\)/);
   });
 
   it('keeps the runners from clearing a Stop pressed during the run', () => {

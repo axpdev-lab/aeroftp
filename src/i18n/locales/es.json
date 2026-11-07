@@ -766,7 +766,8 @@
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendientes: {count}",
             "failedCount": "Fallidos: {count}",
-            "queuedForAnotherServer": "No iniciada: esta transferencia estaba en cola para otro servidor. Vuelva a la pestaña de ese servidor y reinténtelo."
+            "queuedForAnotherServer": "No iniciada: esta transferencia estaba en cola para otro servidor. Vuelva a la pestaña de ese servidor y reinténtelo.",
+            "queuedOverlayChanged": "No iniciada: el overlay cifrado bajo el que se puso en cola esta transferencia está bloqueado o ya no cubre esta carpeta. Desbloquéalo en ese servidor y vuelve a intentarlo."
         },
         "settings": {
             "title": "Configuración",

@@ -766,7 +766,8 @@
             "stagedCount": "{count} 个已暂存",
             "pendingCount": "{count} 个等待中",
             "failedCount": "{count} 个失败",
-            "queuedForAnotherServer": "未开始：此传输已排入另一台服务器的队列。请切换回该服务器的标签页，然后重试。"
+            "queuedForAnotherServer": "未开始：此传输已排入另一台服务器的队列。请切换回该服务器的标签页，然后重试。",
+            "queuedOverlayChanged": "未开始：此传输排队时所用的加密覆盖层已锁定，或不再覆盖此文件夹。请在该服务器上解锁，然后重试。"
         },
         "settings": {
             "title": "设置",

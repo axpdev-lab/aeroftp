@@ -766,7 +766,8 @@
             "stagedCount": "Disediakan: {count}",
             "pendingCount": "Menunggu: {count}",
             "failedCount": "Gagal: {count}",
-            "queuedForAnotherServer": "Belum dimulakan: pemindahan ini telah disusun dalam baris gilir untuk pelayan lain. Tukar kembali ke tab pelayan itu, kemudian cuba lagi."
+            "queuedForAnotherServer": "Belum dimulakan: pemindahan ini telah disusun dalam baris gilir untuk pelayan lain. Tukar kembali ke tab pelayan itu, kemudian cuba lagi.",
+            "queuedOverlayChanged": "Belum dimulakan: overlay disulitkan yang menjadi asas pemindahan ini dibaris gilir telah dikunci atau tidak lagi meliputi folder ini. Buka kuncinya pada pelayan itu, kemudian cuba lagi."
         },
         "settings": {
             "title": "Tetapan",

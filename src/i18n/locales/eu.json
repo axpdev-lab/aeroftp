@@ -766,7 +766,8 @@
             "stagedCount": "Prestatuta: {count}",
             "pendingCount": "Zain: {count}",
             "failedCount": "Huts eginda: {count}",
-            "queuedForAnotherServer": "Ez da hasi: transferentzia hau beste zerbitzari baterako ilaran zegoen. Itzuli zerbitzari horren fitxara eta saiatu berriro."
+            "queuedForAnotherServer": "Ez da hasi: transferentzia hau beste zerbitzari baterako ilaran zegoen. Itzuli zerbitzari horren fitxara eta saiatu berriro.",
+            "queuedOverlayChanged": "Ez da hasi: transferentzia hau ilaran jarri zen overlay zifratua blokeatuta dago edo ez du karpeta hau estaltzen jada. Desblokeatu zerbitzari horretan, eta saiatu berriro."
         },
         "settings": {
             "title": "Ezarpenak",

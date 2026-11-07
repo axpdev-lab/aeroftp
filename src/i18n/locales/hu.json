@@ -766,7 +766,8 @@
             "stagedCount": "Előkészítve: {count}",
             "pendingCount": "Függőben: {count}",
             "failedCount": "Sikertelen: {count}",
-            "queuedForAnotherServer": "Nem indult el: ez az átvitel egy másik szerverhez volt sorba állítva. Váltson vissza az adott szerver lapjára, majd próbálja újra."
+            "queuedForAnotherServer": "Nem indult el: ez az átvitel egy másik szerverhez volt sorba állítva. Váltson vissza az adott szerver lapjára, majd próbálja újra.",
+            "queuedOverlayChanged": "Nem indult el: a titkosított overlay, amely alatt ezt az átvitelt sorba állították, zárolva van, vagy már nem fedi le ezt a mappát. Oldja fel azon a szerveren, majd próbálja újra."
         },
         "settings": {
             "title": "Beállítások",

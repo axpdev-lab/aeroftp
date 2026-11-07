@@ -220,7 +220,8 @@ export function fixture(options: Options = {}) {
     retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
     // One server for the whole run: a queued Start or Retry always finds it
     // live (the server check itself is pinned in wrongTarget.wiring.test.ts).
-    boundToQueuedServer: (_id: string, run: () => unknown) => async () => { await run(); },
+    boundToQueuedServer: (_target: unknown, _id: string, run: () => unknown) => async () => { await run(); },
+    snapshotQueuedTarget: () => ({ params: {}, overlayVault: null }),
     fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, folderTransferFailure, FolderTransferFailedError,
     isCancelledTransferError, createFileBatchDispatcher, rearmedOnUserAction,
     joinRemotePath: (dir: string, name: string) => `${dir}${dir.endsWith('/') ? '' : '/'}${name}`,

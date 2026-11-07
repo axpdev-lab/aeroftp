@@ -1242,7 +1242,8 @@
             "stagedCount": "In preparazione: {count}",
             "pendingCount": "In attesa: {count}",
             "failedCount": "Non riusciti: {count}",
-            "queuedForAnotherServer": "Non avviato: questo trasferimento era in coda per un altro server. Torna alla scheda di quel server, poi riprova."
+            "queuedForAnotherServer": "Non avviato: questo trasferimento era in coda per un altro server. Torna alla scheda di quel server, poi riprova.",
+            "queuedOverlayChanged": "Non avviato: l'overlay cifrato sotto cui era in coda questo trasferimento è bloccato o non copre più questa cartella. Sbloccalo su quel server, poi riprova."
         },
         "scanning": {
             "deleting": "Eliminazione",

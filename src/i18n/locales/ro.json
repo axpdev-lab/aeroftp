@@ -766,7 +766,8 @@
             "stagedCount": "Pregătite: {count}",
             "pendingCount": "În așteptare: {count}",
             "failedCount": "Eșuate: {count}",
-            "queuedForAnotherServer": "Neîncepută: acest transfer era în coadă pentru alt server. Reveniți la fila acelui server, apoi încercați din nou."
+            "queuedForAnotherServer": "Neîncepută: acest transfer era în coadă pentru alt server. Reveniți la fila acelui server, apoi încercați din nou.",
+            "queuedOverlayChanged": "Nepornit: overlay-ul criptat sub care a fost pus în coadă acest transfer este blocat sau nu mai acoperă acest folder. Deblochează-l pe acel server, apoi încearcă din nou."
         },
         "settings": {
             "title": "Setări",

@@ -766,7 +766,8 @@
             "stagedCount": "Przygotowane: {count}",
             "pendingCount": "Oczekujące: {count}",
             "failedCount": "Nieudane: {count}",
-            "queuedForAnotherServer": "Nie rozpoczęto: ten transfer był w kolejce dla innego serwera. Wróć do karty tego serwera, a następnie spróbuj ponownie."
+            "queuedForAnotherServer": "Nie rozpoczęto: ten transfer był w kolejce dla innego serwera. Wróć do karty tego serwera, a następnie spróbuj ponownie.",
+            "queuedOverlayChanged": "Nie rozpoczęto: zaszyfrowany overlay, pod którym ten transfer został umieszczony w kolejce, jest zablokowany lub nie obejmuje już tego folderu. Odblokuj go na tym serwerze, a następnie spróbuj ponownie."
         },
         "settings": {
             "title": "Ustawienia",

@@ -766,7 +766,8 @@
             "stagedCount": "Vorgemerkt: {count}",
             "pendingCount": "Ausstehend: {count}",
             "failedCount": "Fehlgeschlagen: {count}",
-            "queuedForAnotherServer": "Nicht gestartet: Diese Übertragung war für einen anderen Server eingereiht. Wechseln Sie zurück zum Tab dieses Servers und versuchen Sie es erneut."
+            "queuedForAnotherServer": "Nicht gestartet: Diese Übertragung war für einen anderen Server eingereiht. Wechseln Sie zurück zum Tab dieses Servers und versuchen Sie es erneut.",
+            "queuedOverlayChanged": "Nicht gestartet: Das verschlüsselte Overlay, unter dem diese Übertragung eingereiht wurde, ist gesperrt oder deckt diesen Ordner nicht mehr ab. Entsperre es auf diesem Server und versuche es dann erneut."
         },
         "settings": {
             "title": "Einstellungen",

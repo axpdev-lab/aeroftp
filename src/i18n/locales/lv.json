@@ -766,7 +766,8 @@
             "stagedCount": "Sagatavoti: {count}",
             "pendingCount": "Gaida: {count}",
             "failedCount": "Neizdevās: {count}",
-            "queuedForAnotherServer": "Nav sākts: šī pārsūtīšana bija ievietota rindā citam serverim. Atgriezieties šī servera cilnē un mēģiniet vēlreiz."
+            "queuedForAnotherServer": "Nav sākts: šī pārsūtīšana bija ievietota rindā citam serverim. Atgriezieties šī servera cilnē un mēģiniet vēlreiz.",
+            "queuedOverlayChanged": "Nav sākts: šifrētais overlay, ar kuru šī pārsūtīšana tika ievietota rindā, ir bloķēts vai vairs neaptver šo mapi. Atbloķējiet to attiecīgajā serverī un mēģiniet vēlreiz."
         },
         "settings": {
             "title": "Iestatījumi",

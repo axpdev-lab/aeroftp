@@ -766,7 +766,8 @@
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendentes: {count}",
             "failedCount": "{count} com falha",
-            "queuedForAnotherServer": "Não iniciada: esta transferência estava na fila para outro servidor. Volte ao separador desse servidor e tente novamente."
+            "queuedForAnotherServer": "Não iniciada: esta transferência estava na fila para outro servidor. Volte ao separador desse servidor e tente novamente.",
+            "queuedOverlayChanged": "Não iniciada: o overlay cifrado sob o qual esta transferência foi colocada na fila está bloqueado ou já não abrange esta pasta. Desbloqueie-o nesse servidor e tente novamente."
         },
         "settings": {
             "title": "Configurações",

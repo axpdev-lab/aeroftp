@@ -766,7 +766,8 @@
             "stagedCount": "Klargjorte: {count}",
             "pendingCount": "Afventende: {count}",
             "failedCount": "Mislykkede: {count}",
-            "queuedForAnotherServer": "Ikke startet: denne overførsel stod i kø til en anden server. Skift tilbage til den servers fane, og prøv igen."
+            "queuedForAnotherServer": "Ikke startet: denne overførsel stod i kø til en anden server. Skift tilbage til den servers fane, og prøv igen.",
+            "queuedOverlayChanged": "Ikke startet: det krypterede overlay, som denne overførsel blev sat i kø under, er låst eller dækker ikke længere denne mappe. Lås det op på den server, og prøv igen."
         },
         "settings": {
             "title": "Indstillinger",

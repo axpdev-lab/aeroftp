@@ -766,7 +766,8 @@
             "stagedCount": "Wedi'u llwyfannu: {count}",
             "pendingCount": "Yn aros: {count}",
             "failedCount": "Wedi methu: {count}",
-            "queuedForAnotherServer": "Heb ddechrau: roedd y trosglwyddiad hwn wedi'i ciwio ar gyfer gweinydd arall. Newidiwch yn ôl i dab y gweinydd hwnnw, yna ceisiwch eto."
+            "queuedForAnotherServer": "Heb ddechrau: roedd y trosglwyddiad hwn wedi'i ciwio ar gyfer gweinydd arall. Newidiwch yn ôl i dab y gweinydd hwnnw, yna ceisiwch eto.",
+            "queuedOverlayChanged": "Heb ddechrau: mae'r troshaen wedi'i amgryptio y cafodd y trosglwyddiad hwn ei ciwio oddi tano wedi'i gloi neu nid yw'n cwmpasu'r ffolder hon mwyach. Datgloi ef ar y gweinydd hwnnw, yna ceisiwch eto."
         },
         "settings": {
             "title": "Gosodiadau",

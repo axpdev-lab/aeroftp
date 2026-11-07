@@ -766,7 +766,8 @@
             "stagedCount": "Hazırlanan: {count}",
             "pendingCount": "Bekleyen: {count}",
             "failedCount": "Başarısız: {count}",
-            "queuedForAnotherServer": "Başlatılmadı: bu aktarım başka bir sunucu için kuyruğa alınmıştı. O sunucunun sekmesine geri dönün, ardından yeniden deneyin."
+            "queuedForAnotherServer": "Başlatılmadı: bu aktarım başka bir sunucu için kuyruğa alınmıştı. O sunucunun sekmesine geri dönün, ardından yeniden deneyin.",
+            "queuedOverlayChanged": "Başlatılmadı: bu aktarımın kuyruğa alındığı şifreli overlay kilitli veya artık bu klasörü kapsamıyor. Onu o sunucuda kilidini açın, ardından tekrar deneyin."
         },
         "settings": {
             "title": "Ayarlar",

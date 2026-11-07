@@ -766,7 +766,8 @@
             "stagedCount": "Préparés : {count}",
             "pendingCount": "En attente : {count}",
             "failedCount": "Échecs : {count}",
-            "queuedForAnotherServer": "Non démarré : ce transfert était en file d'attente pour un autre serveur. Revenez à l'onglet de ce serveur, puis réessayez."
+            "queuedForAnotherServer": "Non démarré : ce transfert était en file d'attente pour un autre serveur. Revenez à l'onglet de ce serveur, puis réessayez.",
+            "queuedOverlayChanged": "Non démarré : l'overlay chiffré sous lequel ce transfert a été mis en file d'attente est verrouillé ou ne couvre plus ce dossier. Déverrouillez-le sur ce serveur, puis réessayez."
         },
         "settings": {
             "title": "Paramètres",
