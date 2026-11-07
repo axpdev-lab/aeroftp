@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Ansluten med SCP",
             "scpModeBody": "{host} saknar SFTP, så AeroFTP använder SCP på samma anslutning.",
             "saveOnAnotherServer": "Inte sparad: den här filen öppnades från en server, ett konto eller ett krypterat överlägg som inte är aktivt nu. Växla tillbaka till dess flik och spara igen.",
-            "openedOnAnotherServer": "Inte öppnad: servern ändrades medan filen lästes. Öppna den igen."
+            "openedOnAnotherServer": "Inte öppnad: servern ändrades medan filen lästes. Öppna den igen.",
+            "remoteTargetChanged": "Ingenting ändrades: servern, kontot eller det krypterade lagret har ändrats sedan åtgärden startade, eller ansluter fortfarande på nytt. Försök igen på den aktuella anslutningen."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",

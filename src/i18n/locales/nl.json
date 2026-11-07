@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Verbonden met SCP",
             "scpModeBody": "{host} heeft geen SFTP, dus AeroFTP gebruikt SCP op dezelfde verbinding.",
             "saveOnAnotherServer": "Niet opgeslagen: dit bestand is geopend vanaf een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en sla opnieuw op.",
-            "openedOnAnotherServer": "Niet geopend: de server is gewijzigd tijdens het lezen van het bestand. Open het opnieuw."
+            "openedOnAnotherServer": "Niet geopend: de server is gewijzigd tijdens het lezen van het bestand. Open het opnieuw.",
+            "remoteTargetChanged": "Er is niets gewijzigd: de server, het account of de versleutelde overlay is veranderd sinds de actie begon, of maakt nog opnieuw verbinding. Probeer het opnieuw op de huidige verbinding."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",

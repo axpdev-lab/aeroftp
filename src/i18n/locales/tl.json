@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Nakakonekta gamit ang SCP",
             "scpModeBody": "Walang SFTP ang {host}, kaya gumagamit ang AeroFTP ng SCP sa parehong koneksyon.",
             "saveOnAnotherServer": "Hindi na-save: ang file na ito ay binuksan mula sa isang server, account o naka-encrypt na overlay na hindi aktibo ngayon. Bumalik sa tab nito, pagkatapos mag-save muli.",
-            "openedOnAnotherServer": "Hindi nabuksan: nagbago ang server habang binabasa ang file. Buksan itong muli."
+            "openedOnAnotherServer": "Hindi nabuksan: nagbago ang server habang binabasa ang file. Buksan itong muli.",
+            "remoteTargetChanged": "Walang binago: nagbago ang server, account o naka-encrypt na overlay mula nang magsimula ang aksyon, o muling kumokonekta pa rin. Subukan muli sa kasalukuyang koneksyon."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",

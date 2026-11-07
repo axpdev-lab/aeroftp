@@ -11,6 +11,7 @@ import AI_CHAT from '../components/DevTools/AIChat.tsx?raw';
 import MESSAGE_ROW from '../components/DevTools/ChatMessageRow.tsx?raw';
 import MARKDOWN from '../components/DevTools/MarkdownRenderer.tsx?raw';
 import PREVIEW from '../hooks/usePreview.ts?raw';
+import DRAG from '../hooks/useDragAndDrop.ts?raw';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, local, remote } from '../components/appTransfers.testkit';
 import { isSameConnection, savedProfileIdOf } from './liveConnection';
 
@@ -500,5 +501,79 @@ describe('the editor\'s save of a remote file', () => {
         }
         expect(APP).toContain('snapshot: () => snapshotQueuedTarget(),');
         expect(APP).toContain('onSaveFile={saveDevToolsFile}');
+    });
+});
+
+/**
+ * A direct remote action (a delete, a rename, a new folder, a move by drag)
+ * acts on the server it was started on. Its dialog or confirmation stays open
+ * as long as the user wants, and a tab switch, a reconnect or a cancelled
+ * connect's teardown meanwhile moved the write to another server. Each action
+ * takes its target when it starts and checks it right before every write.
+ */
+describe('a direct remote action', () => {
+    const WRITE = /invoke(<[^>]*>)?\('(provider_delete_file|provider_delete_dir|delete_remote_file|provider_rename|rename_remote_file|provider_mkdir|create_remote_folder|aerovault_overlay_delete_entries|aerovault_overlay_rename_entry|aerovault_overlay_create_directory)'/;
+    const body = (name: string) => {
+        const start = APP.indexOf(`\n  const ${name} = `);
+        expect(start, name).toBeGreaterThan(0);
+        const rest = APP.slice(start + 1);
+        const end = rest.slice(10).search(/\n {2}const [A-Za-z_]+ = |\n {2}\/\/ ===|\n {2}\/\*\*/);
+        return rest.slice(0, end + 10);
+    };
+
+    it.each([
+        ['deleteMultipleRemoteFiles', 'remoteActionGuard()'],
+        ['deleteRemoteFile', 'remoteActionGuard()'],
+        ['renameFile', 'remoteActionGuard()'],
+        ['commitInlineRename', 'remoteActionGuard(inlineRename.target)'],
+        ['handleBatchRename', 'remoteActionGuard(batchRenameDialog?.target)'],
+        ['createFolder', 'remoteActionGuard()'],
+        ['handleSyncNavCreateFolder', 'remoteActionGuard(syncNavDialog?.target)'],
+    ])('%s checks the server it started on right before each remote write', (name, guard) => {
+        const fn = body(name);
+        const taken = fn.indexOf(`const onTarget = ${guard};`);
+        expect(taken, `${name} takes its target`).toBeGreaterThan(0);
+        expect(taken).toBeLessThan(fn.search(/await |setInputDialog\(|setConfirmDialog\(/));
+        const lines = fn.split('\n');
+        const writes = lines.map((line, i) => [line, i] as const).filter(([line]) => WRITE.test(line));
+        expect(writes.length, `${name} writes`).toBeGreaterThan(0);
+        for (const [line, i] of writes) expect(lines[i - 1].trim(), `${name}: ${line.trim()}`).toBe('onTarget();');
+    });
+
+    it('takes the target when the dialog it is answered from opens', () => {
+        expect(APP).toContain('setInlineRename({ path, name, isRemote, target: isRemote ? snapshotQueuedTarget() : undefined });');
+        expect(APP).toContain('setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target: snapshotQueuedTarget() });');
+        expect(APP.match(/setSyncNavDialog\(\{ [^}]*isRemote: true[^}]*target: snapshotQueuedTarget\(\) \}\)/g)).toHaveLength(2);
+    });
+
+    it('moves a dropped remote file only on the server it was dropped on', () => {
+        const move = between(DRAG, '        // Same-panel move (rename into another folder), never into itself.', '            } catch (err) {');
+        expect(move).toContain("const onTarget = sourceIsRemote ? remoteActionGuard?.() : undefined;");
+        expect(move).toMatch(/onTarget\?\.\(\);\n\s+if \(useProviderCmd\) \{\n\s+await invoke\('provider_rename'/);
+        expect(APP).toContain('remoteActionGuard: () => remoteActionGuard(),');
+    });
+
+    it('refuses once the server changed, a switch reconnects or a teardown runs', async () => {
+        const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const failQueuedRestIfRetargeted =');
+        const session = { id: 'A', connectionParams: { server: 'a.example', protocol: 'sftp', username: 'u', password: 'k' }, cryptOverlay: null };
+        const ctx = {
+            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
+            isSameConnection, savedProfileIdOf, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            QueuedTargetChangedError: class extends Error {},
+        };
+        const { code } = await transformWithOxc(source, 'action-guard.ts');
+        const { remoteActionGuard } = new Function(...Object.keys(ctx), `${code}; return { remoteActionGuard };`)(...Object.values(ctx));
+        const onTarget = remoteActionGuard();
+        expect(() => onTarget()).not.toThrow();
+        for (const [ref, value] of [[ctx.remoteConnectPhaseRef, 'switch'], [ctx.backendTeardownsRef, 1], [ctx.backendUncertainRef, true]] as const) {
+            const previous = ref.current;
+            (ref as { current: unknown }).current = value;
+            expect(() => onTarget()).toThrow('toast.remoteTargetChanged');
+            (ref as { current: unknown }).current = previous;
+        }
+        session.connectionParams.server = 'b.example';
+        expect(() => onTarget()).toThrow('toast.remoteTargetChanged');
     });
 });

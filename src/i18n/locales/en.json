@@ -4931,6 +4931,7 @@
             "saveFailed": "Save Failed",
             "saveOnAnotherServer": "Not saved: this file was opened from a server, account or encrypted overlay that is not active now. Switch back to its tab, then save again.",
             "openedOnAnotherServer": "Not opened: the server changed while the file was being read. Open it again.",
+            "remoteTargetChanged": "Nothing was changed: the server, account or encrypted overlay changed since this action started, or is still reconnecting. Try again on the current connection.",
             "saveServerFirst": "Please save your server first",
             "serverNotFound": "Server not found",
             "serverProfileNotFound": "Server profile \"{name}\" not found",

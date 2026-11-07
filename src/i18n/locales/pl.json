@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Połączono przez SCP",
             "scpModeBody": "{host} nie ma SFTP, więc AeroFTP używa SCP w tym samym połączeniu.",
             "saveOnAnotherServer": "Nie zapisano: ten plik został otwarty z serwera, konta lub zaszyfrowanej nakładki, które nie są teraz aktywne. Wróć do jego karty i zapisz ponownie.",
-            "openedOnAnotherServer": "Nie otwarto: serwer zmienił się podczas odczytu pliku. Otwórz go ponownie."
+            "openedOnAnotherServer": "Nie otwarto: serwer zmienił się podczas odczytu pliku. Otwórz go ponownie.",
+            "remoteTargetChanged": "Nic nie zostało zmienione: serwer, konto lub szyfrowana nakładka zmieniły się od rozpoczęcia akcji albo wciąż trwa ponowne łączenie. Spróbuj ponownie przy bieżącym połączeniu."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",

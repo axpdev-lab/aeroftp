@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Prisijungta per SCP",
             "scpModeBody": "{host} neturi SFTP, todėl AeroFTP naudoja SCP tuo pačiu ryšiu.",
             "saveOnAnotherServer": "Neišsaugota: šis failas buvo atidarytas iš serverio, paskyros ar šifruoto sluoksnio, kuris dabar neaktyvus. Grįžkite į jo skirtuką ir išsaugokite dar kartą.",
-            "openedOnAnotherServer": "Neatidaryta: skaitant failą serveris pasikeitė. Atidarykite jį iš naujo."
+            "openedOnAnotherServer": "Neatidaryta: skaitant failą serveris pasikeitė. Atidarykite jį iš naujo.",
+            "remoteTargetChanged": "Nieko nepakeista: serveris, paskyra ar šifruotas sluoksnis pasikeitė nuo veiksmo pradžios arba dar jungiasi iš naujo. Bandykite dar kartą dabartiniu ryšiu."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kūrėjų įrankių rinkinys.",

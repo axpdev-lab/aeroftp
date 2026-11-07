@@ -1101,9 +1101,9 @@ const App: React.FC = () => {
     onCommit: (message: string) => void;
     onCancel?: () => void;
   } | null>(null);
-  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: BatchRenameSibling[] } | null>(null);
+  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: BatchRenameSibling[]; target?: QueuedTarget } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
-  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
+  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean; target?: QueuedTarget } | null>(null);
   const [inlineRenameValue, setInlineRenameValue] = useState('');
   const inlineRenameRef = useRef<HTMLInputElement>(null);
 
@@ -1524,7 +1524,7 @@ const App: React.FC = () => {
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
-  const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
+  const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string; target?: QueuedTarget } | null>(null);
   // AeroFile sidebar state (persisted in localStorage)
   const [showSidebar, setShowSidebar] = useState(() => localStorage.getItem('aerofile_show_sidebar') !== 'false');
   // Boot always starts on the single default panel (left, "L") even if the
@@ -7140,6 +7140,8 @@ const App: React.FC = () => {
     onCrossPanelDrop: async (files, fromRemote, targetDir, sourceKey) => {
       await crossPanelDropRef.current?.(files, fromRemote, targetDir, sourceKey);
     },
+    // Called on a drop, long after the render that declares it.
+    remoteActionGuard: () => remoteActionGuard(),
   });
 
   // --- Connection step logging helpers ---
@@ -10390,7 +10392,7 @@ const App: React.FC = () => {
             setRemoteSearchResults(null);
           } catch {
             if (navId !== remoteNavCounter.current) return null;
-            setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
+            setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath, target: snapshotQueuedTarget() });
           }
         } else if (action.kind === 'navigate') {
           const response: FileListResponse = await invoke('provider_change_dir', { path: action.path });
@@ -10400,7 +10402,7 @@ const App: React.FC = () => {
           setSelectedRemoteFiles(new Set());
           setRemoteSearchResults(null);
         } else if (action.kind === 'missing') {
-          setSyncNavDialog({ missingPath: action.path, isRemote: true, targetPath: action.path });
+          setSyncNavDialog({ missingPath: action.path, isRemote: true, targetPath: action.path, target: snapshotQueuedTarget() });
         } else if (action.kind === 'conflict') {
           notify.error(t('cloud.conflict'), syncMirrorConflictText(action.path, action.candidates));
         }
@@ -10543,18 +10545,22 @@ const App: React.FC = () => {
 
   // Handle sync nav dialog actions
   const handleSyncNavCreateFolder = async () => {
+    // The server the navigation was on when it asked to create the folder.
+    const onTarget = remoteActionGuard(syncNavDialog?.target);
     if (!syncNavDialog) return;
     const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
     const isProviderConn = usesProviderApi(protocol);
     try {
       if (syncNavDialog.isRemote) {
         if (isProviderConn) {
+          onTarget();
           await invoke('provider_mkdir', { path: syncNavDialog.targetPath });
           const response: FileListResponse = await invoke('provider_change_dir', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
           setSelectedRemoteFiles(new Set());
         } else {
+          onTarget();
           await invoke('create_remote_folder', { path: syncNavDialog.targetPath });
           const response: FileListResponse = await invoke('change_directory', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
@@ -11229,6 +11235,20 @@ const App: React.FC = () => {
     await run();
   });
 
+  /** Whether the backend serves the live tab now: not while a connect or a
+   *  tab switch runs (the tab is the new one, the backend not yet), while a
+   *  cancelled one is torn down, or after a teardown that hung. */
+  const backendServesLiveTab = () =>
+    !remoteConnectPhaseRef.current && backendTeardownsRef.current === 0 && !backendUncertainRef.current;
+
+  /** The target check of a direct remote action (a rename, a delete, a new
+   *  folder), on the target taken when the action started: run right before
+   *  each of its writes, so a dialog the user answered meanwhile, a tab
+   *  switch or a reconnect cannot move the write to another server. */
+  const remoteActionGuard = (target: QueuedTarget = snapshotQueuedTarget()) => () => {
+    if (queuedTargetProblem(target)) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
+  };
+
   /** Why the live connection is no longer the target a batch was queued for,
    *  as the message key, or `null` when it still is. */
   const queuedTargetProblem = useLatestCallback((queuedFor: QueuedTarget): string | null => {
@@ -11236,9 +11256,7 @@ const App: React.FC = () => {
     // reconnected, and a cancelled one drops the half-open connection after
     // its phase ends: until either is done, the live tab is not the server the
     // backend writes to, or reads from.
-    if (remoteConnectPhaseRef.current || backendTeardownsRef.current > 0 || backendUncertainRef.current) {
-      return 'transfer.queuedForAnotherServer';
-    }
+    if (!backendServesLiveTab()) return 'transfer.queuedForAnotherServer';
     if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) return 'transfer.queuedForAnotherServer';
     // The same server fields can reach another account: FileLu's API key is
     // the password, and an OAuth account is told apart only by its profile.
@@ -14583,6 +14601,8 @@ const App: React.FC = () => {
   const deleteMultipleRemoteFiles = withBatchLatch((filesOverride?: string[]) => {
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
+    // The server this delete is for, taken before its confirmation.
+    const onTarget = remoteActionGuard();
 
     const performDelete = async () => {
       const deletedFiles: string[] = [];
@@ -14626,6 +14646,7 @@ const App: React.FC = () => {
           .filter(Boolean) as RemoteFile[];
         const entryPaths = resolvedFiles.map(f => f.path);
         try {
+          onTarget();
           await invoke<number>('aerovault_overlay_delete_entries', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPaths,
@@ -14666,6 +14687,7 @@ const App: React.FC = () => {
         for (const dir of dirFiles) {
           if (batchCancelledRef.current) break;
           try {
+            onTarget();
             await invoke('provider_delete_dir', { path: dir.path, recursive: true, commitMessage: batchCommitMessage });
             deletedFolders.push(dir.path);
           } catch (err) {
@@ -14687,11 +14709,14 @@ const App: React.FC = () => {
             try {
               if (isProvider) {
                 if (file.is_dir) {
+                  onTarget();
                   await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null });
                 } else {
+                  onTarget();
                   await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null });
                 }
               } else {
+                onTarget();
                 await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
               }
 
@@ -14873,6 +14898,8 @@ const App: React.FC = () => {
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
   const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
     const fileName = path.split('/').pop() || path;
+    // The server this delete is for, taken before its confirmation.
+    const onTarget = remoteActionGuard();
     const protocol = liveConnectionParams.protocol;
     const isGitHubRepoMode = (protocol === 'github' && !path.startsWith('/.github-releases')) || protocol === 'gitlab';
 
@@ -14898,6 +14925,7 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
         if (isAeroVaultOverlay) {
+          onTarget();
           await invoke<number>('aerovault_overlay_delete_entries', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPaths: [path],
@@ -14905,11 +14933,14 @@ const App: React.FC = () => {
           });
         } else if (isProvider) {
           if (isDir) {
+            onTarget();
             await invoke('provider_delete_dir', { path, recursive: true });
           } else {
+            onTarget();
             await invoke('provider_delete_file', { path, commitMessage: commitMessage || null });
           }
         } else {
+          onTarget();
           await invoke('delete_remote_file', { path, isDir });
         }
         humanLog.logSuccess('DELETE', { filename: path }, logId);
@@ -14937,6 +14968,8 @@ const App: React.FC = () => {
   };
 
   const renameFile = (path: string, currentName: string, isRemote: boolean) => {
+    // The server this rename is for, taken before its dialog.
+    const onTarget = remoteActionGuard();
     setInputDialog({
       title: t('common.rename'),
       defaultValue: currentName,
@@ -14963,14 +14996,17 @@ const App: React.FC = () => {
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
             if (isAeroVaultOverlay) {
+              onTarget();
               await invoke<string>('aerovault_overlay_rename_entry', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 entryPath: path,
                 newName,
               });
             } else if (isProvider) {
+              onTarget();
               await invoke('provider_rename', { from: path, to: newPath });
             } else {
+              onTarget();
               await invoke('rename_remote_file', { from: path, to: newPath });
             }
             await loadRemoteFiles(undefined, true);
@@ -15011,7 +15047,7 @@ const App: React.FC = () => {
   const startInlineRename = (path: string, name: string, isRemote: boolean) => {
     if (name === '..') return;
     if (isRemote && liveConnectionParams.protocol === 'immich') return;
-    setInlineRename({ path, name, isRemote });
+    setInlineRename({ path, name, isRemote, target: isRemote ? snapshotQueuedTarget() : undefined });
     setInlineRenameValue(name);
     // Focus input after render
     setTimeout(() => {
@@ -15032,6 +15068,8 @@ const App: React.FC = () => {
   const commitInlineRename = async () => {
     if (!inlineRename) return;
     const { path, name, isRemote } = inlineRename;
+    // The server the inline rename started on.
+    const onTarget = remoteActionGuard(inlineRename.target);
     const newName = inlineRenameValue.trim();
 
     // Cancel if empty or unchanged
@@ -15058,14 +15096,17 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
         if (isAeroVaultOverlay) {
+          onTarget();
           await invoke<string>('aerovault_overlay_rename_entry', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPath: path,
             newName,
           });
         } else if (isProvider) {
+          onTarget();
           await invoke('provider_rename', { from: path, to: newPath });
         } else {
+          onTarget();
           await invoke('rename_remote_file', { from: path, to: newPath });
         }
         await loadRemoteFiles(undefined, true);
@@ -15122,6 +15163,8 @@ const App: React.FC = () => {
 
   // Batch rename handler for multiple selected files
   const handleBatchRename = async (renames: Map<string, string>) => {
+    // The server the batch rename dialog was opened on.
+    const onTarget = remoteActionGuard(batchRenameDialog?.target);
     const isRemote = batchRenameDialog?.isRemote ?? true;
     const logId = humanLog.logStart('BATCH_RENAME', {
       count: renames.size,
@@ -15145,14 +15188,17 @@ const App: React.FC = () => {
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
           if (isAeroVaultOverlay) {
+            onTarget();
             await invoke<string>('aerovault_overlay_rename_entry', {
               sessionId: aeroVaultOverlaySession?.sessionId,
               entryPath: oldPath,
               newName,
             });
           } else if (isProvider) {
+            onTarget();
             await invoke('provider_rename', { from: oldPath, to: newPath });
           } else {
+            onTarget();
             await invoke('rename_remote_file', { from: oldPath, to: newPath });
           }
         } else {
@@ -15196,6 +15242,8 @@ const App: React.FC = () => {
   };
 
   const createFolder = useLatestCallback((isRemote: boolean, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
+    // The server the new folder is for, taken before its dialog.
+    const onTarget = remoteActionGuard();
     setInputDialog({
       title: t('dialog.newFolder'),
       defaultValue: '',
@@ -15213,13 +15261,16 @@ const App: React.FC = () => {
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
             if (isAeroVaultOverlay) {
+              onTarget();
               await invoke('aerovault_overlay_create_directory', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 dirName: name,
               });
             } else if (isProvider) {
+              onTarget();
               await invoke('provider_mkdir', { path });
             } else {
+              onTarget();
               await invoke('create_remote_folder', { path });
             }
             await loadRemoteFiles(undefined, true);
@@ -15306,7 +15357,7 @@ const App: React.FC = () => {
           // C-F02: pre-existing siblings NOT in this batch, captured at open time,
           // so the dialog can pre-flag a rename target that would collide with one.
           const siblings = remoteFiles.filter(f => !selection.has(f.name)).map(f => f.name);
-          setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
+          setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target: snapshotQueuedTarget() });
         }
       }] : []),
       ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || isSshProtocol(currentProtocol) ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
@@ -18547,7 +18598,7 @@ const App: React.FC = () => {
               setPermissionsDialog(null);
               notify.error(t('common.failed'), t('toast.permissionsSessionChanged'));
             };
-            if (remoteConnectPhaseRef.current || dialog.sessionId !== activeSessionId) {
+            if (!backendServesLiveTab() || dialog.sessionId !== activeSessionId) {
               sessionChanged();
               return;
             }

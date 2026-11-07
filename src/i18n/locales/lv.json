@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Savienots ar SCP",
             "scpModeBody": "Serverim {host} nav SFTP, tāpēc AeroFTP izmanto SCP tajā pašā savienojumā.",
             "saveOnAnotherServer": "Nav saglabāts: šis fails tika atvērts no servera, konta vai šifrēta slāņa, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un saglabājiet vēlreiz.",
-            "openedOnAnotherServer": "Nav atvērts: faila lasīšanas laikā serveris mainījās. Atveriet to vēlreiz."
+            "openedOnAnotherServer": "Nav atvērts: faila lasīšanas laikā serveris mainījās. Atveriet to vēlreiz.",
+            "remoteTargetChanged": "Nekas netika mainīts: serveris, konts vai šifrētais slānis ir mainījies kopš darbības sākuma vai vēl savienojas atkārtoti. Mēģiniet vēlreiz pašreizējā savienojumā."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",

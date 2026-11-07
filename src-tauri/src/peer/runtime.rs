@@ -1465,13 +1465,21 @@ mod tests {
             .find("tokio::spawn(share_loop(")
             .expect("the publisher");
         let registered = start_share.find("shares.insert(").expect("the registry");
+        // The code alone: a comment may say "return" or end in a question mark.
+        let code = |text: &str| {
+            text.lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
         let unregistered = &start_share[spawned..registered];
         let steps = unregistered
             .find("started_or_stopped(&cancel, task, async {")
             .expect("the post-spawn steps run inside started_or_stopped");
+        let before = code(&unregistered[..steps]);
         assert!(
-            !unregistered[..steps].contains('?') && !unregistered[..steps].contains("return"),
-            "nothing between the spawn and the steps can return"
+            !before.contains('?') && !before.contains("return"),
+            "nothing between the spawn and the steps can return: {before}"
         );
         assert!(unregistered[steps..]
             .find("gui_peer_drive_store_as(")
@@ -1480,6 +1488,7 @@ mod tests {
             .find("})\n        .await?;")
             .expect("the steps' end")
             + "})\n        .await?;".len()..];
+        let after = code(after);
         assert!(
             !after.contains('?') && !after.contains("return"),
             "nothing after the steps can return before the registry: {after}"

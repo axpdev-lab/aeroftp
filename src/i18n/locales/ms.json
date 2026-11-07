@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Disambungkan dengan SCP",
             "scpModeBody": "{host} tiada SFTP, jadi AeroFTP menggunakan SCP pada sambungan yang sama.",
             "saveOnAnotherServer": "Tidak disimpan: fail ini dibuka daripada pelayan, akaun atau tindanan disulitkan yang tidak aktif sekarang. Kembali ke tabnya, kemudian simpan semula.",
-            "openedOnAnotherServer": "Tidak dibuka: pelayan berubah semasa fail dibaca. Buka semula."
+            "openedOnAnotherServer": "Tidak dibuka: pelayan berubah semasa fail dibaca. Buka semula.",
+            "remoteTargetChanged": "Tiada apa yang diubah: pelayan, akaun atau lapisan tersulit telah berubah sejak tindakan bermula, atau masih menyambung semula. Cuba lagi pada sambungan semasa."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",

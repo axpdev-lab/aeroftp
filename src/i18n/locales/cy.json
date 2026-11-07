@@ -1756,7 +1756,8 @@
             "scpModeTitle": "Wedi cysylltu gydag SCP",
             "scpModeBody": "Does gan {host} ddim SFTP, felly mae AeroFTP yn defnyddio SCP ar yr un cysylltiad.",
             "saveOnAnotherServer": "Heb gadw: agorwyd y ffeil hon o weinydd, cyfrif neu droshaen amgryptiedig nad yw'n weithredol nawr. Ewch yn ôl i'w dab, yna cadwch eto.",
-            "openedOnAnotherServer": "Heb ei agor: newidiodd y gweinydd tra oedd y ffeil yn cael ei darllen. Agorwch hi eto."
+            "openedOnAnotherServer": "Heb ei agor: newidiodd y gweinydd tra oedd y ffeil yn cael ei darllen. Agorwch hi eto.",
+            "remoteTargetChanged": "Ni newidiwyd dim: mae'r gweinydd, y cyfrif neu'r troshaen wedi'i amgryptio wedi newid ers i'r weithred ddechrau, neu mae'n dal i ailgysylltu. Ceisiwch eto ar y cysylltiad cyfredol."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
