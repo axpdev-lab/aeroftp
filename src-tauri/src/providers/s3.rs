@@ -14512,6 +14512,50 @@ mod tests {
         ));
     }
 
+    /// Fastly refuses a presigned URL older than the SigV4 7 days (Tier 0,
+    /// 2026-11-06: a 1 h link answered 200, an 8 day link 403). The S3-wide cap
+    /// of #1525 covers Fastly, so a 30 day request signs 604800 seconds, and the
+    /// share dialog is told the same maximum.
+    #[tokio::test]
+    async fn fastly_share_link_expiry_never_exceeds_seven_days() {
+        let mut provider = make_provider(Some("https://eu-central-1.object.fastlystorage.app"));
+        provider.connected = true;
+        assert_eq!(
+            provider.share_link_capabilities().max_expiration_secs,
+            Some(604_800)
+        );
+        for (requested, signed) in [
+            (30 * 24 * 3600_u64, 604_800_u64),
+            (8 * 24 * 3600, 604_800),
+            (604_800, 604_800),
+            (3600, 3600),
+        ] {
+            let link = provider
+                .create_share_link(
+                    "/a.txt",
+                    ShareLinkOptions {
+                        expires_in_secs: Some(requested),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("presign");
+            assert!(
+                link.url.contains(&format!("X-Amz-Expires={signed}&")),
+                "{requested}: {}",
+                link.url
+            );
+            // Path-style on the regional host, signed for the host's own region.
+            assert!(
+                link.url.starts_with(
+                    "https://eu-central-1.object.fastlystorage.app/test-bucket/a.txt?"
+                ),
+                "{}",
+                link.url
+            );
+        }
+    }
+
     /// What `sync_one_config` hands the scheduler for a Fastly profile.
     #[test]
     fn a_fastly_provider_reports_the_thirty_minute_floor_as_scan_traits() {
