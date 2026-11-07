@@ -2,28 +2,33 @@
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 //
 // CO-5: surface the result of `sftp_probe_delta_eligibility` to the user
-// when the active SFTP session cannot drive delta sync. The dialog is
-// purely informational: the chosen preset still runs against the
-// classic copy path, but the user gets the probe verdict and an opt-out
-// to suppress the prompt for the current saved server.
+// when the active SFTP session cannot drive delta sync. The dialog asks
+// before the queued plan runs: Continue runs it on the classic copy path
+// (with an opt-out to suppress the prompt for the current saved server),
+// Cancel, the X and ESC drop it.
 
 import * as React from 'react';
 import { ShieldAlert, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
 
 export interface DeltaEligibilityDialogProps {
     isOpen: boolean;
     reason: string;
     serverLabel: string;
-    onClose: (skipFuturePrompts: boolean) => void;
+    /** Continue: the queued plan runs on the classic copy path. */
+    onContinue: (skipFuturePrompts: boolean) => void;
+    /** Cancel: the queued plan does not run. */
+    onCancel: () => void;
 }
 
 export const DeltaEligibilityDialog: React.FC<DeltaEligibilityDialogProps> = ({
     isOpen,
     reason,
     serverLabel,
-    onClose,
+    onContinue,
+    onCancel,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -33,23 +38,12 @@ export const DeltaEligibilityDialog: React.FC<DeltaEligibilityDialogProps> = ({
         if (isOpen) setSkipFuture(false);
     }, [isOpen]);
 
-    // Escape dismisses the dialog, matching the other AeroSync modals.
-    // The latest `skipFuture` value is read through a ref so the handler
-    // stays stable without re-binding the listener on every keystroke.
-    const skipFutureRef = React.useRef(skipFuture);
-    React.useLayoutEffect(() => { skipFutureRef.current = skipFuture; }, [skipFuture]);
-    React.useEffect(() => {
-        if (!isOpen) return;
-        const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose(skipFutureRef.current);
-        };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    // A question, not a notice: the queued plan runs only on Continue. The
+    // backdrop is inert, and ESC and the X cancel the plan (Discussion #1527:
+    // a stray click outside used to start it).
+    const guarded = useGuardedClose({ guard: null, onClose: onCancel, backdrop: 'never', escape: isOpen });
 
     if (!isOpen) return null;
-
-    const dismiss = () => onClose(skipFuture);
 
     return (
         <div
@@ -57,7 +51,7 @@ export const DeltaEligibilityDialog: React.FC<DeltaEligibilityDialogProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label={t('aerosync.deltaEligibility.title') || 'Delta sync not available'}
-            onClick={dismiss}
+            onClick={guarded.onBackdropClick}
         >
             <div
                 {...modalDrag.panelProps}
@@ -76,7 +70,7 @@ export const DeltaEligibilityDialog: React.FC<DeltaEligibilityDialogProps> = ({
                     </div>
                     <button
                         type="button"
-                        onClick={dismiss}
+                        onClick={guarded.requestClose}
                         aria-label={t('common.close') || 'Close'}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
                     >
@@ -116,10 +110,17 @@ export const DeltaEligibilityDialog: React.FC<DeltaEligibilityDialogProps> = ({
                     </label>
                 </div>
 
-                <div className="flex justify-end px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
                     <button
                         type="button"
-                        onClick={dismiss}
+                        onClick={onCancel}
+                        className="px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                    >
+                        {t('common.cancel') || 'Cancel'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => onContinue(skipFuture)}
                         className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
                     >
                         {t('aerosync.deltaEligibility.continue') || 'Continue'}

@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { Shield, Copy, Check, X, AlertCircle } from 'lucide-react';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { copyText } from '../utils/clipboard';
 
 interface TotpSetupProps {
@@ -24,6 +26,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
     const [code, setCode] = useState('');
     const [error, setError] = useState('');
     const [copied, setCopied] = useState(false);
+    const [verifying, setVerifying] = useState(false);
     const copyTimerRef = useRef<ReturnType<typeof setTimeout>>();
     const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -56,15 +59,16 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
         }
     }, [isOpen]);
 
-    // Escape key handler (FE-002)
-    useEffect(() => {
-        if (!isOpen) return;
-        const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
-        };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    // Discussion #1527: a click outside dropped the secret being set up, or
+    // the window in the middle of enabling it. The backdrop is inert while a
+    // secret is shown; the X and ESC (FE-002) ask first while the code is
+    // checked, since enabling goes on after the window closes.
+    const guarded = useGuardedClose({
+        guard: verifying ? 'busy' : null,
+        onClose,
+        backdrop: secret ? 'never' : 'idle',
+        escape: isOpen,
+    });
 
     // Focus management on open (FE-013)
     useEffect(() => {
@@ -92,6 +96,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
 
     const handleVerify = async () => {
         setError('');
+        setVerifying(true);
         try {
             const valid = await invoke<boolean>('totp_setup_verify', { code });
             if (valid) {
@@ -103,6 +108,8 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
             }
         } catch (e) {
             setError(String(e));
+        } finally {
+            setVerifying(false);
         }
     };
 
@@ -115,7 +122,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
             aria-modal="true"
             aria-labelledby="totp-setup-title"
         >
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
             <div
                 {...modalDrag.panelProps}
                 ref={dialogRef}
@@ -130,7 +137,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
                             {t('security.totp.setup')}
                         </h3>
                     </div>
-                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" title={t('common.close')}>
+                    <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700" title={t('common.close')}>
                         <X size={16} className="text-gray-500 dark:text-gray-400" />
                     </button>
                 </div>
@@ -207,7 +214,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
                                 bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100
                                 border border-gray-200 dark:border-gray-700
                                 focus:outline-none focus:border-purple-500"
-                            onKeyDown={e => { if (e.key === 'Enter' && code.length === 6) handleVerify(); }}
+                            onKeyDown={e => { if (e.key === 'Enter' && code.length === 6 && !verifying) handleVerify(); }}
                         />
 
                         <div className="flex gap-2">
@@ -219,7 +226,7 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
                             </button>
                             <button
                                 onClick={handleVerify}
-                                disabled={code.length !== 6}
+                                disabled={code.length !== 6 || verifying}
                                 className="flex-1 py-2 rounded-lg bg-green-600 text-white font-medium text-sm
                                     hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
@@ -229,6 +236,14 @@ export const TotpSetup: React.FC<TotpSetupProps> = ({ isOpen, onClose, onEnabled
                     </div>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

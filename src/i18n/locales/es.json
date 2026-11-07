@@ -6668,7 +6668,9 @@
             "dirtyTitle": "Cambios sin guardar",
             "dirtyBody": "Tienes cambios sin guardar. ¿Descartarlos y cerrar?",
             "keepEditing": "Seguir editando",
-            "discardAndClose": "Descartar y cerrar"
+            "discardAndClose": "Descartar y cerrar",
+            "busyBodyKeepsRunning": "Hay una operación en curso. Continúa después de cerrar esta ventana y su resultado no se muestra aquí. ¿Cerrar de todos modos?",
+            "closeAnyway": "Cerrar de todos modos"
         },
         "modalView": {
             "listView": "Vista de lista",

@@ -6668,7 +6668,9 @@
             "dirtyTitle": "Modifications non enregistrées",
             "dirtyBody": "Vous avez des modifications non enregistrées. Les abandonner et fermer ?",
             "keepEditing": "Continuer l'édition",
-            "discardAndClose": "Abandonner et fermer"
+            "discardAndClose": "Abandonner et fermer",
+            "busyBodyKeepsRunning": "Une opération est en cours. Elle se poursuit après la fermeture de cette fenêtre et son résultat n'est pas affiché ici. Fermer quand même ?",
+            "closeAnyway": "Fermer quand même"
         },
         "modalView": {
             "listView": "Vue liste",

@@ -6668,7 +6668,9 @@
             "dirtyTitle": "Neįrašyti pakeitimai",
             "dirtyBody": "Turite neįrašytų pakeitimų. Atmesti ir uždaryti?",
             "keepEditing": "Tęsti redagavimą",
-            "discardAndClose": "Atmesti ir uždaryti"
+            "discardAndClose": "Atmesti ir uždaryti",
+            "busyBodyKeepsRunning": "Operacija vis dar vykdoma. Ji tęsis uždarius šį langą, o jos rezultatas čia nebus rodomas. Vis tiek uždaryti?",
+            "closeAnyway": "Vis tiek uždaryti"
         },
         "modalView": {
             "listView": "Sąrašo rodinys",

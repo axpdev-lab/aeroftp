@@ -6668,7 +6668,9 @@
             "dirtyTitle": "Thay đổi chưa lưu",
             "dirtyBody": "Bạn có thay đổi chưa lưu. Bỏ và đóng?",
             "keepEditing": "Tiếp tục chỉnh sửa",
-            "discardAndClose": "Bỏ và đóng"
+            "discardAndClose": "Bỏ và đóng",
+            "busyBodyKeepsRunning": "Một thao tác vẫn đang chạy. Thao tác này sẽ tiếp tục sau khi đóng cửa sổ này, và kết quả sẽ không hiển thị ở đây. Vẫn đóng?",
+            "closeAnyway": "Vẫn đóng"
         },
         "modalView": {
             "listView": "Xem danh sách",

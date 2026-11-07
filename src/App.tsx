@@ -3190,15 +3190,9 @@ const App: React.FC = () => {
       else if (showShortcutsDialog) setShowShortcutsDialog(false);
       else if (showAboutDialog) setShowAboutDialog(false);
       else if (showSettingsPanel) setShowSettingsPanel(false);
-      else if (inputDialog) setInputDialog(null);
-      // Through onCancel, not a bare clear: several confirmations are awaited
-      // as promises (trash choices, overwrite prompts) and settle only there,
-      // so clearing the dialog directly left them pending, and a batch latch
-      // with them.
-      else if (confirmDialog) {
-        if (confirmDialog.onCancel) confirmDialog.onCancel();
-        else setConfirmDialog(null);
-      }
+      // The input and confirm dialogs answer ESC themselves (useGuardedClose),
+      // the confirm through its onCancel: several confirmations are awaited as
+      // promises (trash choices, overwrite prompts) and settle only there.
       else if (selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0 || selectedLocalFiles2.size > 0) {
         setSelectedRemoteFiles(new Set());
         setSelectedLocalFiles(new Set());
@@ -3208,7 +3202,7 @@ const App: React.FC = () => {
         setLastSelectedLocalIndex2(null);
       }
     }
-  }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
+  }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel,
     universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, selectedLocalFiles2, remoteFiles, localFiles, localFiles2,
     activePanel, activeLocalPanelId, currentRemotePath, currentLocalPath, currentLocalPath2,
     isConnected, showRemotePanel, cardLayout, toggleCardLayout, toggleDualLocalPanel, showDualLocalPanel]);
@@ -17977,7 +17971,9 @@ const App: React.FC = () => {
           isOpen={!!deltaEligibilityPrompt}
           reason={deltaEligibilityPrompt?.reason || ''}
           serverLabel={deltaEligibilityPrompt?.serverLabel || ''}
-          onClose={(skipFuturePrompts) => {
+          // Cancel drops the queued plan: it runs only on Continue.
+          onCancel={() => setDeltaEligibilityPrompt(null)}
+          onContinue={(skipFuturePrompts) => {
             const prompt = deltaEligibilityPrompt;
             setDeltaEligibilityPrompt(null);
             if (!prompt) return;
@@ -19136,6 +19132,7 @@ const App: React.FC = () => {
               the foreground: zero remount = zero flash of the empty state. */}
           <div className={showConnectionScreen ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
             <IntroHub
+              visible={showConnectionScreen}
               vaultReady={vaultBootComplete && !isAppLocked && !showMasterPasswordSetup}
               registerProfileConnector={registerProfileConnector}
               connectionParams={connectionParams}

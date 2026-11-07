@@ -6668,7 +6668,9 @@
             "dirtyTitle": "Osparade ändringar",
             "dirtyBody": "Du har osparade ändringar. Kasta och stäng?",
             "keepEditing": "Fortsätt redigera",
-            "discardAndClose": "Kasta och stäng"
+            "discardAndClose": "Kasta och stäng",
+            "busyBodyKeepsRunning": "En åtgärd pågår fortfarande. Den fortsätter när det här fönstret har stängts, och resultatet visas inte här. Stäng ändå?",
+            "closeAnyway": "Stäng ändå"
         },
         "modalView": {
             "listView": "Listvy",
