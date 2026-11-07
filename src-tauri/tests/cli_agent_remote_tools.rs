@@ -152,7 +152,42 @@ async fn the_cli_agent_context_lists_a_saved_server() {
     );
 
     CredentialStore::unlock_with_master(MASTER, None).expect("open the private vault");
+    let store = CredentialStore::from_cache().expect("cached vault");
     let ctx = CliToolCtx::new(CliEventSink { json_mode: true }, CliCredentialProvider);
+
+    // A saved FTP profile without a `tlsMode` requires explicit TLS (#1506
+    // Requested 198), so against `serve ftp` (plain FTP) it refuses before
+    // login. Opting into `tlsMode = "none"` connects to the local server.
+    let without_tls_mode = dispatch_tool(
+        &ctx,
+        "remote_list",
+        &serde_json::json!({"server": "lab", "path": "/"}),
+    )
+    .await
+    .expect_err("a saved FTP profile without tlsMode requires explicit TLS");
+    assert!(
+        without_tls_mode
+            .to_string()
+            .contains("did not accept explicit TLS"),
+        "{without_tls_mode}"
+    );
+
+    let user = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store)
+        .expect("read active user")
+        .expect("active user");
+    let (_, revision) =
+        ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(&store, user.id)
+            .expect("read saved profiles");
+    ftp_client_gui_lib::user_partitions::cli_update_profiles_at_revision(
+        &store,
+        user.id,
+        &revision,
+        |list| {
+            list[0]["options"] = serde_json::json!({ "tlsMode": "none" });
+        },
+    )
+    .expect("set plain FTP on purpose for the local test server");
+
     let listing = dispatch_tool(
         &ctx,
         "remote_list",
