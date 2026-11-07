@@ -869,6 +869,7 @@ const App: React.FC = () => {
   const [lockedFiles, setLockedFiles] = useState<Map<string, string>>(new Map());
   // Provider capabilities (cached per session)
   const [providerCaps, setProviderCaps] = useState<{ versions: boolean; thumbnails: boolean; permissions: boolean; locking: boolean }>({ versions: false, thumbnails: false, permissions: false, locking: false });
+  const providerCapsVersionRef = useRef(0); // Guard against stale async capability responses across session switches/disconnects
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
   const localPanel = useLocalPanel({ panelId: 'local' });
   const localPanel2 = useLocalPanel({ panelId: 'local2' });
@@ -4062,9 +4063,10 @@ const App: React.FC = () => {
   // Check provider capabilities when connected
   useEffect(() => {
     if (isConnected) {
-      refreshProviderCaps();
+      void refreshProviderCaps();
       setLockedFiles(new Map());
     } else {
+      providerCapsVersionRef.current++;
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
     }
   }, [isConnected, liveConnectionParams.protocol]);
@@ -7097,11 +7099,14 @@ const App: React.FC = () => {
   };
 
   // Check provider capabilities after connection (for context menu features)
-  const refreshProviderCaps = useLatestCallback(async () => {
-    const protocol = liveConnectionParams.protocol;
+  const refreshProviderCaps = useLatestCallback(async (protocolOverride?: string) => {
+    const reqVersion = ++providerCapsVersionRef.current;
+    const protocol = protocolOverride ?? liveConnectionParams.protocol;
     if (!protocol || ['ftp', 'ftps'].includes(protocol) || isSshProtocol(protocol)) {
       // FTP/SFTP/SCP don't use provider_* capability commands
-      setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
+      if (reqVersion === providerCapsVersionRef.current) {
+        setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
+      }
       return;
     }
     try {
@@ -7111,8 +7116,10 @@ const App: React.FC = () => {
         invoke<boolean>('provider_supports_permissions').catch(() => false),
         invoke<boolean>('provider_supports_locking').catch(() => false),
       ]);
+      if (reqVersion !== providerCapsVersionRef.current) return;
       setProviderCaps({ versions, thumbnails, permissions, locking });
     } catch {
+      if (reqVersion !== providerCapsVersionRef.current) return;
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
     }
   });
@@ -9061,6 +9068,9 @@ const App: React.FC = () => {
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting
+    providerCapsVersionRef.current++; // Invalidate any in-flight capability response from the previous session
+    setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
+    setLockedFiles(new Map());
 
     // Load cached data immediately (zero latency UX)
     setRemoteFiles(targetSession.remoteFiles);
@@ -9416,6 +9426,9 @@ const App: React.FC = () => {
 
       // Fetch storage quota after successful reconnection
       fetchStorageQuota(protocol, targetSession.connectionParams, { newConnection: true });
+      // Refresh provider capabilities for the newly active session (e.g. switching between AWS S3 and Fastly S3 where isConnected and protocol stay unchanged)
+      void refreshProviderCaps(protocol);
+      setLockedFiles(new Map());
 
       // Also refresh local files for this session's local path. The remote
       // session is up by now: a local folder that is gone or unreadable must
