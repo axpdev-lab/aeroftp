@@ -5649,7 +5649,8 @@
             "managePasswordProtected": "Aizsargāts ar paroli",
             "expirationHoursOne": "{count} stunda",
             "expirationHoursMany": "{count} stundas",
-            "expirationDaysMany": "{count} dienas"
+            "expirationDaysMany": "{count} dienas",
+            "expiresSoonerThanChosen": "īsāk nekā izvēlēts"
         },
         "introHub": {
             "tab": {

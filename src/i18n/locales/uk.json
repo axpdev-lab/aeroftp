@@ -5649,7 +5649,8 @@
             "managePasswordProtected": "Захищено паролем",
             "expirationHoursOne": "{count} година",
             "expirationHoursMany": "{count} год.",
-            "expirationDaysMany": "{count} дн."
+            "expirationDaysMany": "{count} дн.",
+            "expiresSoonerThanChosen": "коротше за вибране"
         },
         "introHub": {
             "tab": {

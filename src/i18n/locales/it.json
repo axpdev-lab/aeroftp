@@ -6008,7 +6008,8 @@
             "managePasswordProtected": "Protetto da password",
             "expirationHoursOne": "{count} ora",
             "expirationHoursMany": "{count} ore",
-            "expirationDaysMany": "{count} giorni"
+            "expirationDaysMany": "{count} giorni",
+            "expiresSoonerThanChosen": "più breve di quella scelta"
         },
         "introHub": {
             "tab": {

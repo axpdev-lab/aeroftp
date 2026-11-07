@@ -5649,7 +5649,8 @@
             "managePasswordProtected": "已设置密码保护",
             "expirationHoursOne": "{count} 小时",
             "expirationHoursMany": "{count} 小时",
-            "expirationDaysMany": "{count} 天"
+            "expirationDaysMany": "{count} 天",
+            "expiresSoonerThanChosen": "短于所选时间"
         },
         "introHub": {
             "tab": {

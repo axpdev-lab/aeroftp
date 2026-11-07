@@ -5668,7 +5668,8 @@
             "managePasswordProtected": "បានការពារដោយពាក្យសម្ងាត់",
             "expirationHoursOne": "{count} ម៉ោង",
             "expirationHoursMany": "{count} ម៉ោង",
-            "expirationDaysMany": "{count} ថ្ងៃ"
+            "expirationDaysMany": "{count} ថ្ងៃ",
+            "expiresSoonerThanChosen": "ខ្លីជាងដែលបានជ្រើសរើស"
         },
         "introHub": {
             "tab": {

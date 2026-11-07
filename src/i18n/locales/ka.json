@@ -5649,7 +5649,8 @@
             "managePasswordProtected": "დაცულია პაროლით",
             "expirationHoursOne": "{count} საათი",
             "expirationHoursMany": "{count} საათი",
-            "expirationDaysMany": "{count} დღე"
+            "expirationDaysMany": "{count} დღე",
+            "expiresSoonerThanChosen": "არჩეულზე მოკლე"
         },
         "introHub": {
             "tab": {

@@ -5668,7 +5668,8 @@
             "managePasswordProtected": "Wedi'i ddiogelu gan gyfrinair",
             "expirationHoursOne": "{count} awr",
             "expirationHoursMany": "{count} awr",
-            "expirationDaysMany": "{count} diwrnod"
+            "expirationDaysMany": "{count} diwrnod",
+            "expiresSoonerThanChosen": "yn fyrrach na'r hyn a ddewiswyd"
         },
         "introHub": {
             "tab": {

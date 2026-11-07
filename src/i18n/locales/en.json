@@ -5877,6 +5877,7 @@
             "manageRevokeConfirm": "Revoke this share link? Anyone with the link will lose access.",
             "manageCreated": "Created",
             "manageExpires": "Expires",
+            "expiresSoonerThanChosen": "shorter than chosen",
             "manageNeverExpires": "Never",
             "managePasswordProtected": "Password protected",
             "expirationHoursOne": "{count} hour",

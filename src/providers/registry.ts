@@ -2245,15 +2245,25 @@ export const presetDefaultS3Region = (providerId?: string): string | undefined =
  * produce (a virtual-hosted `bucket.` host, another provider). Mirrors
  * `s3_region_from_endpoint` in src-tauri/src/profile_loader.rs.
  */
+/** Labels in a region's place that are not one: see regionFromS3Template. */
+const S3_INTERNAL_ENDPOINT_SUFFIX = '-internal';
+const S3_NON_REGION_LABELS = ['accelerate', 'accelerate-overseas'];
+
 const regionFromS3Template = (template: string, endpoint: string): string | undefined => {
     const withoutScheme = (v: string) => v.replace(/^https?:\/\//i, '');
     const [prefix, suffix, ...rest] = withoutScheme(template).split('{region}');
     if (suffix === undefined || rest.length || prefix.includes('{') || suffix.includes('{')) return undefined;
     const host = withoutScheme(endpoint.trim()).split(/[/?#]/)[0].split(':')[0].toLowerCase();
     if (!host.startsWith(prefix) || !host.endsWith(suffix)) return undefined;
-    const region = host.slice(prefix.length, host.length - suffix.length);
+    // An internal endpoint names its region with a suffix and an accelerate
+    // endpoint names none (Greptile on #1525); the same lists as
+    // region_from_s3_template in Rust.
+    const raw = host.slice(prefix.length, host.length - suffix.length);
+    const region = raw.endsWith(S3_INTERNAL_ENDPOINT_SUFFIX) ? raw.slice(0, -S3_INTERNAL_ENDPOINT_SUFFIX.length) : raw;
+    if (S3_NON_REGION_LABELS.includes(region)) return undefined;
     return /^[a-z0-9-]+$/.test(region) ? region : undefined;
 };
+
 
 const regionFromS3Endpoint = (providerId: string | undefined, endpoint: string): string | undefined => {
     const template = providerId ? getProviderById(providerId)?.defaults?.endpointTemplate : undefined;
@@ -2286,12 +2296,14 @@ export const resolveProfileS3Location = (
     const storedRegion = typeof options?.region === 'string' && options.region.trim() ? options.region.trim() : undefined;
     const storedEndpoint = typeof options?.endpoint === 'string' ? options.endpoint.trim() : '';
     const signing = (region?: string) => region || 'us-east-1';
-    // An explicit endpoint without a stored region signs with the region the
-    // endpoint names (SigV4 credential scope), else the preset's declared
-    // default, as the Rust loader does (s3_profile_default_region).
+    // An explicit endpoint signs with the region it names, spelled as the
+    // host spells it (SigV4's credential scope is case-sensitive), even over
+    // a stored region (an importer's us-east-1, #1506 Requested 200), then
+    // the stored region, then the preset's declared default, as the Rust
+    // loader does (apply_s3_profile_defaults).
     const explicit = (endpoint: string) => {
-        const region = storedRegion
-            || regionFromS3Endpoint(providerId, endpoint)
+        const region = regionFromS3Endpoint(providerId, endpoint)
+            || storedRegion
             || (providerId ? getProviderById(providerId)?.defaults?.region : undefined);
         return { endpoint, region, signingRegion: signing(region) };
     };

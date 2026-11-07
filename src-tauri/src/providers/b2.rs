@@ -3869,6 +3869,7 @@ impl StorageProvider for B2Provider {
             available_permissions: Vec::new(),
             supports_list_links: false,
             supports_revoke: false,
+            max_expiration_secs: Some(604_800),
         }
     }
 

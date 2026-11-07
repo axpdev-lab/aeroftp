@@ -5649,7 +5649,8 @@
             "managePasswordProtected": "Beskyttet med adgangskode",
             "expirationHoursOne": "{count} time",
             "expirationHoursMany": "{count} timer",
-            "expirationDaysMany": "{count} dage"
+            "expirationDaysMany": "{count} dage",
+            "expiresSoonerThanChosen": "kortere end valgt"
         },
         "introHub": {
             "tab": {
