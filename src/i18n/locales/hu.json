@@ -765,7 +765,10 @@
             },
             "stagedCount": "Előkészítve: {count}",
             "pendingCount": "Függőben: {count}",
-            "failedCount": "Sikertelen: {count}"
+            "failedCount": "Sikertelen: {count}",
+            "queuedForAnotherServer": "Nem indult el: ez az átvitel egy másik szerverhez vagy fiókhoz volt sorba állítva. Váltson vissza a lapjára, majd próbálja újra.",
+            "queuedOverlayChanged": "Nem indult el: a titkosított overlay, amely alatt ezt az átvitelt sorba állították, zárolva van, vagy már nem fedi le ezt a mappát. Oldja fel azon a szerveren, majd próbálja újra.",
+            "pasteFromAnotherServer": "Nincs beillesztve: ezeket a fájlokat egy most nem aktív szerveren, fiókban vagy titkosított rétegen vágták ki vagy másolták. Váltson vissza a lapjára, majd illessze be újra."
         },
         "settings": {
             "title": "Beállítások",
@@ -1751,7 +1754,10 @@
             "createFailed": "A létrehozás sikertelen",
             "unknownServer": "Ismeretlen",
             "scpModeTitle": "Csatlakozva SCP-vel",
-            "scpModeBody": "A(z) {host} szerveren nincs SFTP, ezért az AeroFTP SCP-t használ ugyanazon a kapcsolaton."
+            "scpModeBody": "A(z) {host} szerveren nincs SFTP, ezért az AeroFTP SCP-t használ ugyanazon a kapcsolaton.",
+            "saveOnAnotherServer": "Nincs mentve: ezt a fájlt egy most nem aktív szerverről, fiókból vagy titkosított rétegből nyitották meg. Váltson vissza a lapjára, majd mentse újra.",
+            "openedOnAnotherServer": "Nincs megnyitva: a szerver megváltozott a fájl olvasása közben. Nyissa meg újra.",
+            "remoteTargetChanged": "Nem történt módosítás: a szerver, a fiók vagy a titkosított réteg megváltozott a művelet indítása óta, vagy még újracsatlakozik. Próbálja újra az aktuális kapcsolaton."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -3069,7 +3075,8 @@
                 "diff": "Összehasonlítás az eredetivel",
                 "diffNoFile": "Nincs megnyitott fájl az összehasonlításhoz",
                 "commandBlocked": "Parancs letiltva: potenciálisan romboló",
-                "confirmRun": "Futtatás megerősítése: {command}"
+                "confirmRun": "Futtatás megerősítése: {command}",
+                "reopenEditor": "Jelenítse meg a szerkesztőt ezzel a megnyitott fájllal, majd próbálja újra."
             },
             "thinkingBlock": {
                 "thinking": "Gondolkodás...",

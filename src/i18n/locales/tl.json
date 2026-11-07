@@ -765,7 +765,10 @@
             },
             "stagedCount": "Naka-stage: {count}",
             "pendingCount": "Naghihintay: {count}",
-            "failedCount": "Nabigo: {count}"
+            "failedCount": "Nabigo: {count}",
+            "queuedForAnotherServer": "Hindi nasimulan: ang paglilipat na ito ay naka-queue para sa ibang server o account. Bumalik sa tab nito, pagkatapos subukan muli.",
+            "queuedOverlayChanged": "Hindi nasimulan: ang naka-encrypt na overlay kung saan na-queue ang paglilipat na ito ay naka-lock o hindi na sumasaklaw sa folder na ito. I-unlock ito sa server na iyon, pagkatapos ay subukan muli.",
+            "pasteFromAnotherServer": "Hindi na-paste: ang mga file na ito ay na-cut o nakopya sa isang server, account o naka-encrypt na overlay na hindi aktibo ngayon. Bumalik sa tab nito, pagkatapos mag-paste muli."
         },
         "settings": {
             "title": "Mga Setting",
@@ -1751,7 +1754,10 @@
             "createFailed": "Nabigo ang paglikha",
             "unknownServer": "Hindi kilala",
             "scpModeTitle": "Nakakonekta gamit ang SCP",
-            "scpModeBody": "Walang SFTP ang {host}, kaya gumagamit ang AeroFTP ng SCP sa parehong koneksyon."
+            "scpModeBody": "Walang SFTP ang {host}, kaya gumagamit ang AeroFTP ng SCP sa parehong koneksyon.",
+            "saveOnAnotherServer": "Hindi na-save: ang file na ito ay binuksan mula sa isang server, account o naka-encrypt na overlay na hindi aktibo ngayon. Bumalik sa tab nito, pagkatapos mag-save muli.",
+            "openedOnAnotherServer": "Hindi nabuksan: nagbago ang server habang binabasa ang file. Buksan itong muli.",
+            "remoteTargetChanged": "Walang binago: nagbago ang server, account o naka-encrypt na overlay mula nang magsimula ang aksyon, o muling kumokonekta pa rin. Subukan muli sa kasalukuyang koneksyon."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -3069,7 +3075,8 @@
                 "diff": "Ihambing sa orihinal",
                 "diffNoFile": "Walang bukas na file para ihambing",
                 "commandBlocked": "Naharang ang utos: posibleng mapaminsala",
-                "confirmRun": "Kumpirmahin ang pagpapatakbo: {command}"
+                "confirmRun": "Kumpirmahin ang pagpapatakbo: {command}",
+                "reopenEditor": "Ipakita ang editor na bukas ang file na ito, pagkatapos subukan muli."
             },
             "thinkingBlock": {
                 "thinking": "Nag-iisip...",

@@ -819,7 +819,7 @@ export const DevToolsV2: React.FC<DevToolsV2Props> = ({
                                 <span className={`text-xs ${theme.text}`}>{t('devtools.agent')}</span>
                             </div>
                             <div className="flex-1 overflow-hidden">
-                                <AIChat className="h-full" remotePath={remotePath} localPath={localPath} appTheme={appTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} activeFilePanel={activeFilePanel} isCloudConnection={isCloudConnection} onFileMutation={onFileMutation} editorFileName={editorFile?.name} editorFilePath={editorFile?.path} aiSettingsOpenRequest={aiSettingsOpenRequest} />
+                                <AIChat className="h-full" remotePath={remotePath} localPath={localPath} appTheme={appTheme} providerType={providerType} isConnected={isConnected} selectedFiles={selectedFiles} serverHost={serverHost} serverPort={serverPort} serverUser={serverUser} activeFilePanel={activeFilePanel} isCloudConnection={isCloudConnection} onFileMutation={onFileMutation} editorFileName={editorFile?.name} editorFilePath={editorFile?.path} editorFileIsRemote={!!editorFile?.isRemote} aiSettingsOpenRequest={aiSettingsOpenRequest} />
                             </div>
                         </div>
 

@@ -1242,7 +1242,10 @@
             },
             "stagedCount": "In preparazione: {count}",
             "pendingCount": "In attesa: {count}",
-            "failedCount": "Non riusciti: {count}"
+            "failedCount": "Non riusciti: {count}",
+            "queuedForAnotherServer": "Non avviato: questo trasferimento era in coda per un altro server o account. Torna alla sua scheda, poi riprova.",
+            "queuedOverlayChanged": "Non avviato: l'overlay cifrato sotto cui era in coda questo trasferimento è bloccato o non copre più questa cartella. Sbloccalo su quel server, poi riprova.",
+            "pasteFromAnotherServer": "Non incollato: questi file sono stati tagliati o copiati su un server, account o overlay cifrato che ora non è attivo. Torna alla sua scheda, poi incolla di nuovo."
         },
         "scanning": {
             "deleting": "Eliminazione",
@@ -2334,7 +2337,10 @@
             "createFailed": "Creazione non riuscita",
             "unknownServer": "Sconosciuto",
             "scpModeTitle": "Connesso con SCP",
-            "scpModeBody": "{host} non ha SFTP, quindi AeroFTP usa SCP sulla stessa connessione."
+            "scpModeBody": "{host} non ha SFTP, quindi AeroFTP usa SCP sulla stessa connessione.",
+            "saveOnAnotherServer": "Non salvato: questo file è stato aperto da un server, account o overlay cifrato che ora non è attivo. Torna alla sua scheda, poi salva di nuovo.",
+            "openedOnAnotherServer": "Non aperto: il server è cambiato durante la lettura del file. Aprilo di nuovo.",
+            "remoteTargetChanged": "Nessuna modifica: il server, l'account o l'overlay cifrato è cambiato da quando l'azione è iniziata, oppure si sta ancora riconnettendo. Riprova sulla connessione attuale."
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -3306,7 +3312,8 @@
                 "diff": "Confronta con originale",
                 "diffNoFile": "Nessun file aperto per il confronto",
                 "commandBlocked": "Comando bloccato: potenzialmente distruttivo",
-                "confirmRun": "Conferma esecuzione: {command}"
+                "confirmRun": "Conferma esecuzione: {command}",
+                "reopenEditor": "Mostra l'editor con questo file aperto, poi riprova."
             },
             "thinkingBlock": {
                 "thinking": "Ragionamento...",

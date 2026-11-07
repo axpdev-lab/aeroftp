@@ -1,4 +1,5 @@
 use crate::ai_core::local_tools::{get_str_opt, resolve_local_path, validate_path, PathPolicy};
+use crate::ai_core::pinned_source::PinnedSource;
 use crate::ai_core::tools::ToolError;
 use crate::ai_tools::{
     create_temp_provider, download_from_provider, emit_tool_progress, find_server_by_name_or_id,
@@ -178,6 +179,125 @@ async fn publish_remote_edit_on_ftp_manager(
 ) -> Result<(), String> {
     let mut lease = super::ftp_manager_provider::FtpManagerProvider::borrow(manager);
     publish_remote_edit(&mut lease.provider, local_temp, path, allow_non_atomic).await
+}
+
+/// One file of `upload_files`: reported as uploaded only when the upload went
+/// through and its source is still the file the policy checked, else as an
+/// error naming it.
+pub(crate) fn record_upload_outcome(
+    source: &PinnedSource,
+    sent: Result<(), String>,
+    name: String,
+    uploaded: &mut Vec<String>,
+    errors: &mut Vec<Value>,
+) {
+    match source.settle_upload(sent) {
+        Ok(()) => uploaded.push(name),
+        Err(e) => errors.push(json!({ "file": name, "error": e })),
+    }
+}
+
+/// The remote side `upload_files` writes through, so the steps of one file
+/// can run against a recording fake in a test.
+#[async_trait::async_trait]
+pub(crate) trait UploadRemote: Send {
+    /// Make one remote folder; an existing one is fine, and a failure is the
+    /// upload's to report.
+    async fn mkdir(&mut self, path: &str);
+    /// Upload one file: the outer error ends the whole call (no connection
+    /// at all), the inner one is that file's.
+    async fn upload(&mut self, local: &str, remote: &str) -> Result<Result<(), String>, String>;
+}
+
+/// The live connection: the provider when one is active, else the legacy
+/// FTP session, looked up again for every call as before.
+struct LiveUploadRemote<'a> {
+    state: &'a crate::provider_commands::ProviderState,
+    app_state: &'a crate::AppState,
+}
+
+#[async_trait::async_trait]
+impl UploadRemote for LiveUploadRemote<'_> {
+    async fn mkdir(&mut self, path: &str) {
+        if has_provider(self.state).await {
+            let mut provider = self.state.provider.lock().await;
+            if let Some(p) = provider.as_mut() {
+                let _ = p.mkdir(path).await;
+            }
+        } else if has_ftp(self.app_state).await {
+            let mut manager = self.app_state.ftp_manager.lock().await;
+            let _ = manager.mkdir(path).await;
+        }
+    }
+
+    async fn upload(&mut self, local: &str, remote: &str) -> Result<Result<(), String>, String> {
+        if has_provider(self.state).await {
+            let mut provider = self.state.provider.lock().await;
+            let provider = provider
+                .as_mut()
+                .ok_or_else(|| "No active provider connection".to_string())?;
+            Ok(provider
+                .upload(local, remote, None)
+                .await
+                .map_err(|e| e.to_string()))
+        } else if has_ftp(self.app_state).await {
+            let mut manager = self.app_state.ftp_manager.lock().await;
+            Ok(manager
+                .upload_file(local, remote)
+                .await
+                .map_err(|e| e.to_string()))
+        } else {
+            Ok(Err("Not connected to any server".to_string()))
+        }
+    }
+}
+
+/// One file of `upload_files`. The file the policy approves is the file sent
+/// (deep scan item 27): pinned before any remote side effect, its parent
+/// folders included, and checked again after the upload. A refused source is
+/// that file's error, with nothing done on the remote side for it; the others
+/// still go. `progress` is told the file's name just before its upload.
+pub(crate) async fn upload_one_file(
+    remote: &mut dyn UploadRemote,
+    local_path: &str,
+    rel_path: &str,
+    remote_dir: &str,
+    progress: &(dyn Fn(&str) + Send + Sync),
+    uploaded: &mut Vec<String>,
+    errors: &mut Vec<Value>,
+) -> Result<(), String> {
+    let display_name = rel_path.to_string();
+    let source = match PinnedSource::pin(local_path, "path", |path, label| {
+        validate_path(path, label).map_err(ToolError::Denied)
+    }) {
+        Ok(source) => source,
+        Err(e) => {
+            errors.push(json!({ "file": display_name, "error": e.to_string() }));
+            return Ok(());
+        }
+    };
+    let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), rel_path);
+
+    // Ensure remote parent directory exists (create each level)
+    if let Some(parent) = std::path::Path::new(&remote_path).parent() {
+        let parent_str = parent.to_string_lossy().to_string();
+        let base = remote_dir.trim_end_matches('/');
+        if parent_str != base {
+            // Build list of directories to create, from shallowest to deepest
+            let rel_to_base = parent_str.strip_prefix(base).unwrap_or(&parent_str);
+            let parts: Vec<&str> = rel_to_base.split('/').filter(|s| !s.is_empty()).collect();
+            let mut current = base.to_string();
+            for part in &parts {
+                current = format!("{}/{}", current, part);
+                remote.mkdir(&current).await;
+            }
+        }
+    }
+
+    progress(&display_name);
+    let result = remote.upload(source.path(), &remote_path).await?;
+    record_upload_outcome(&source, result, display_name, uploaded, errors);
+    Ok(())
 }
 
 pub async fn dispatch_gui_tool(
@@ -729,68 +849,24 @@ pub async fn dispatch_gui_tool(
             }
 
             let total = expanded_paths.len();
+            let mut remote = LiveUploadRemote {
+                state: state.inner(),
+                app_state: app_state.inner(),
+            };
             for (idx, (local_path, rel_path)) in expanded_paths.iter().enumerate() {
-                validate_path(local_path, "path").map_err(|e| e.to_string())?;
-                let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), rel_path);
-
-                // Ensure remote parent directory exists (create each level)
-                if let Some(parent) = std::path::Path::new(&remote_path).parent() {
-                    let parent_str = parent.to_string_lossy().to_string();
-                    let base = remote_dir.trim_end_matches('/');
-                    if parent_str != base {
-                        // Build list of directories to create, from shallowest to deepest
-                        let rel_to_base = parent_str.strip_prefix(base).unwrap_or(&parent_str);
-                        let parts: Vec<&str> =
-                            rel_to_base.split('/').filter(|s| !s.is_empty()).collect();
-                        let mut current = base.to_string();
-                        for part in &parts {
-                            current = format!("{}/{}", current, part);
-                            if has_provider(&state).await {
-                                let mut provider = state.provider.lock().await;
-                                if let Some(p) = provider.as_mut() {
-                                    let _ = p.mkdir(&current).await;
-                                }
-                            } else if has_ftp(&app_state).await {
-                                let mut manager = app_state.ftp_manager.lock().await;
-                                let _ = manager.mkdir(&current).await;
-                            }
-                        }
-                    }
-                }
-
-                let display_name = rel_path.clone();
-                emit_tool_progress(
-                    &app,
-                    "upload_files",
-                    idx as u32 + 1,
-                    total as u32,
-                    &display_name,
-                );
-
-                let result = if has_provider(&state).await {
-                    let mut provider = state.provider.lock().await;
-                    let provider = match provider.as_mut() {
-                        Some(p) => p,
-                        None => return Err("No active provider connection".into()),
-                    };
-                    provider
-                        .upload(local_path, &remote_path, None)
-                        .await
-                        .map_err(|e| e.to_string())
-                } else if has_ftp(&app_state).await {
-                    let mut manager = app_state.ftp_manager.lock().await;
-                    manager
-                        .upload_file(local_path, &remote_path)
-                        .await
-                        .map_err(|e| e.to_string())
-                } else {
-                    Err("Not connected to any server".to_string())
+                let progress = |name: &str| {
+                    emit_tool_progress(&app, "upload_files", idx as u32 + 1, total as u32, name)
                 };
-
-                match result {
-                    Ok(_) => uploaded.push(display_name),
-                    Err(e) => errors.push(json!({ "file": display_name, "error": e })),
-                }
+                upload_one_file(
+                    &mut remote,
+                    local_path,
+                    rel_path,
+                    &remote_dir,
+                    &progress,
+                    &mut uploaded,
+                    &mut errors,
+                )
+                .await?;
             }
 
             Ok(json!({
@@ -1150,6 +1226,124 @@ mod tests {
         assert!(err.contains("not valid UTF-8"), "{err}");
     }
     use crate::providers::edit_replace_tests::EditFake;
+
+    /// The GUI's `upload_files`, as it runs: every file goes through
+    /// `upload_one_file`, which pins its source before any remote side effect
+    /// (its parent folders included) and reports every outcome through
+    /// `record_upload_outcome`, which reports a source replaced during the
+    /// upload as an error (tested in `pinned_source`).
+    #[test]
+    fn upload_files_sends_every_file_through_upload_one_file() {
+        let src = include_str!("gui_tools.rs");
+        // The code alone: a comment may name any of the calls checked below.
+        let production: String = src[..src.find("#[cfg(test)]").expect("tests")]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let start = production
+            .find("\"upload_files\" => {")
+            .expect("upload_files");
+        let arm = &production[start..];
+        let arm = &arm[..arm[1..]
+            .find("\n        \"")
+            .map_or(arm.len(), |end| end + 1)];
+        assert_eq!(arm.matches("upload_one_file(").count(), 1);
+        for direct in [".upload(", ".upload_file(", ".mkdir(", "PinnedSource::pin("] {
+            assert!(
+                !arm.contains(direct),
+                "the arm writes only through upload_one_file: {direct}"
+            );
+        }
+        let one = &production[production
+            .find("pub(crate) async fn upload_one_file(")
+            .expect("upload_one_file")..];
+        let one = &one[..one.find("\n}\n").expect("its end")];
+        assert_eq!(one.matches("PinnedSource::pin(").count(), 1);
+        assert_eq!(one.matches("record_upload_outcome(").count(), 1);
+    }
+
+    /// Records what `upload_one_file` asks of the remote side.
+    #[cfg(unix)]
+    #[derive(Default)]
+    struct RecordingRemote {
+        mkdirs: Vec<String>,
+        uploads: Vec<(String, String)>,
+    }
+
+    #[cfg(unix)]
+    #[async_trait::async_trait]
+    impl super::UploadRemote for RecordingRemote {
+        async fn mkdir(&mut self, path: &str) {
+            self.mkdirs.push(path.to_string());
+        }
+        async fn upload(
+            &mut self,
+            local: &str,
+            remote: &str,
+        ) -> Result<Result<(), String>, String> {
+            self.uploads.push((local.to_string(), remote.to_string()));
+            Ok(Ok(()))
+        }
+    }
+
+    /// CodeRabbit on #1526: a link under a protected folder that points to a
+    /// file outside it is refused, and nothing is done on the remote side for
+    /// it, no parent folder and no upload. A plain file next to it goes.
+    #[cfg(unix)]
+    #[test]
+    fn a_refused_source_makes_no_remote_folder_and_no_upload() {
+        // Sync, with its own runtime: the HOME lock is never held across an
+        // await.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        let outside = home.join("outside.txt");
+        std::fs::write(&outside, b"sentinel").unwrap();
+        let link = home.join(".ssh").join("id_ed25519");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+
+        let mut remote = RecordingRemote::default();
+        let (mut uploaded, mut errors) = (Vec::new(), Vec::new());
+        let progress = |_: &str| {};
+        let refused = runtime.block_on(super::upload_one_file(
+            &mut remote,
+            &link.to_string_lossy(),
+            "keys/id_ed25519",
+            "/up",
+            &progress,
+            &mut uploaded,
+            &mut errors,
+        ));
+        let sent = runtime.block_on(super::upload_one_file(
+            &mut remote,
+            &outside.to_string_lossy(),
+            "docs/outside.txt",
+            "/up",
+            &progress,
+            &mut uploaded,
+            &mut errors,
+        ));
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+
+        refused.unwrap();
+        sent.unwrap();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0]["file"], "keys/id_ed25519");
+        assert_eq!(remote.mkdirs, vec!["/up/docs".to_string()]);
+        assert_eq!(remote.uploads.len(), 1);
+        assert_eq!(remote.uploads[0].1, "/up/docs/outside.txt");
+        assert_eq!(uploaded, vec!["docs/outside.txt".to_string()]);
+    }
 
     /// A listed name that is absolute, holds a separator or is `..` would make
     /// the comparison leave the local folder.

@@ -765,7 +765,10 @@
             },
             "stagedCount": "Pripremljeno: {count}",
             "pendingCount": "Na čekanju: {count}",
-            "failedCount": "Neuspjelo: {count}"
+            "failedCount": "Neuspjelo: {count}",
+            "queuedForAnotherServer": "Nije pokrenuto: ovaj prijenos bio je u redu za drugi poslužitelj ili račun. Vratite se na njegovu karticu pa pokušajte ponovno.",
+            "queuedOverlayChanged": "Nije pokrenuto: šifrirani overlay pod kojim je ovaj prijenos stavljen u red zaključan je ili više ne pokriva ovu mapu. Otključajte ga na tom poslužitelju, zatim pokušajte ponovno.",
+            "pasteFromAnotherServer": "Nije zalijepljeno: ove su datoteke izrezane ili kopirane na poslužitelju, računu ili šifriranom sloju koji trenutno nije aktivan. Vratite se na njegovu karticu pa ponovno zalijepite."
         },
         "settings": {
             "title": "Postavke",
@@ -1751,7 +1754,10 @@
             "createFailed": "Stvaranje nije uspjelo",
             "unknownServer": "nepoznatim poslužiteljem",
             "scpModeTitle": "Povezano putem SCP-a",
-            "scpModeBody": "{host} nema SFTP, pa AeroFTP koristi SCP na istoj vezi."
+            "scpModeBody": "{host} nema SFTP, pa AeroFTP koristi SCP na istoj vezi.",
+            "saveOnAnotherServer": "Nije spremljeno: ova je datoteka otvorena s poslužitelja, računa ili šifriranog sloja koji trenutno nije aktivan. Vratite se na njegovu karticu pa ponovno spremite.",
+            "openedOnAnotherServer": "Nije otvoreno: poslužitelj se promijenio tijekom čitanja datoteke. Otvorite je ponovno.",
+            "remoteTargetChanged": "Ništa nije promijenjeno: poslužitelj, račun ili šifrirani sloj promijenio se otkako je radnja započela ili se još ponovno povezuje. Pokušajte ponovno na trenutnoj vezi."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -3069,7 +3075,8 @@
                 "diff": "Usporedi s originalom",
                 "diffNoFile": "Nema otvorene datoteke za usporedbu",
                 "commandBlocked": "Naredba blokirana: potencijalno destruktivna",
-                "confirmRun": "Potvrdi pokretanje: {command}"
+                "confirmRun": "Potvrdi pokretanje: {command}",
+                "reopenEditor": "Prikažite uređivač s otvorenom ovom datotekom pa pokušajte ponovno."
             },
             "thinkingBlock": {
                 "thinking": "Razmišljanje...",

@@ -765,7 +765,10 @@
             },
             "stagedCount": "{count} 件ステージ済み",
             "pendingCount": "{count} 件保留中",
-            "failedCount": "{count} 件失敗"
+            "failedCount": "{count} 件失敗",
+            "queuedForAnotherServer": "開始されませんでした: この転送は別のサーバーまたはアカウント向けにキューに入っていました。そのタブに戻ってから、もう一度お試しください。",
+            "queuedOverlayChanged": "開始されませんでした: この転送がキューに入れられたときの暗号化オーバーレイがロックされているか、このフォルダーをカバーしなくなりました。そのサーバーでロックを解除してから、もう一度お試しください。",
+            "pasteFromAnotherServer": "貼り付けられませんでした: これらのファイルは、現在アクティブではないサーバー、アカウント、または暗号化オーバーレイで切り取りまたはコピーされました。そのタブに戻ってから、もう一度貼り付けてください。"
         },
         "settings": {
             "title": "設定",
@@ -1751,7 +1754,10 @@
             "createFailed": "作成に失敗しました",
             "unknownServer": "不明なサーバー",
             "scpModeTitle": "SCPで接続しました",
-            "scpModeBody": "{host} にはSFTPがないため、AeroFTPは同じ接続でSCPを使用しています。"
+            "scpModeBody": "{host} にはSFTPがないため、AeroFTPは同じ接続でSCPを使用しています。",
+            "saveOnAnotherServer": "保存されませんでした: このファイルは、現在アクティブではないサーバー、アカウント、または暗号化オーバーレイから開かれました。そのタブに戻ってから、もう一度保存してください。",
+            "openedOnAnotherServer": "開けませんでした：ファイルの読み取り中にサーバーが変更されました。もう一度開いてください。",
+            "remoteTargetChanged": "変更はありませんでした: 操作の開始後にサーバー、アカウント、または暗号化オーバーレイが変更されたか、まだ再接続中です。現在の接続でもう一度お試しください。"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -3033,7 +3039,8 @@
                 "diff": "元のコードと差分",
                 "diffNoFile": "比較するファイルが開かれていません",
                 "commandBlocked": "コマンドをブロックしました: 破壊的な可能性があります",
-                "confirmRun": "実行を確認: {command}"
+                "confirmRun": "実行を確認: {command}",
+                "reopenEditor": "このファイルを開いた状態でエディターを表示してから、もう一度お試しください。"
             },
             "thinkingBlock": {
                 "thinking": "考え中...",

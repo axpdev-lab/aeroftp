@@ -11601,7 +11601,25 @@ async fn preview_remote_file(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
+    expected_generation: Option<u64>,
 ) -> Result<String, String> {
+    read_remote_file_for_preview(&state, &provider_state, path, expected_generation).await
+}
+
+/// [`preview_remote_file`] without the Tauri state wrappers, so a test can run
+/// it on plain state.
+async fn read_remote_file_for_preview(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    expected_generation: Option<u64>,
+) -> Result<String, String> {
+    // The editor's read, bound to the connection it was opened on: held for
+    // the whole read, so a switch waits for it, and refused if one came first.
+    let _pin = match expected_generation {
+        Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
+        None => None,
+    };
     // The preview lands in clear on disk: in a private folder (0700, a name
     // no one can predict) rather than at a timestamped name in the shared
     // temp folder with the default mode (deep-scan 105). The folder goes
@@ -12037,7 +12055,28 @@ async fn save_remote_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
     content: String,
+    expected_generation: Option<u64>,
 ) -> Result<(), String> {
+    write_remote_file_from_editor(&state, &provider_state, path, content, expected_generation).await
+}
+
+/// [`save_remote_file`] without the Tauri state wrappers, so a test can run
+/// it on plain state.
+async fn write_remote_file_from_editor(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    content: String,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
+    // The editor's save, bound to the connection read just before it: held
+    // through the write, so a switch waits for it, and refused if one came
+    // first (Greptile on #1526: the frontend check alone left the gap
+    // between it and the provider lock).
+    let _pin = match expected_generation {
+        Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
+        None => None,
+    };
     // Fail-closed: the remote editor save is a direct provider write, so it must
     // refuse when the session has a crypt overlay that is currently unwrapped
     // (badge locked / stepped outside the encrypted scope). Without this an
