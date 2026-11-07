@@ -259,6 +259,10 @@ pub struct CliToolCtx {
     /// risolvere path relativi. Mirror del legacy CLI `resolve_path`
     /// che faceva `std::env::current_dir().join(path)`.
     pub cwd: Option<String>,
+    /// The connection identity each approved profile id had when the call
+    /// was approved: the pool refuses to reach a profile that now connects
+    /// elsewhere ([`crate::ai_core::tools::change_targets`]).
+    pub approved_identities: std::collections::HashMap<String, String>,
 }
 
 impl CliToolCtx {
@@ -270,7 +274,22 @@ impl CliToolCtx {
         let cwd = std::env::current_dir()
             .ok()
             .map(|p| p.to_string_lossy().to_string());
-        Self { sink, creds, cwd }
+        Self {
+            sink,
+            creds,
+            cwd,
+            approved_identities: std::collections::HashMap::new(),
+        }
+    }
+
+    /// The context of a call approved for `targets`: each profile it names is
+    /// reached only while it still connects where it did at the approval.
+    pub fn approved_for(mut self, targets: &[crate::ai_core::tools::ApprovedTarget]) -> Self {
+        self.approved_identities = targets
+            .iter()
+            .filter_map(|target| target.profile.clone())
+            .collect();
+        self
     }
 }
 
@@ -285,10 +304,10 @@ impl ToolCtx for CliToolCtx {
     async fn remote_backend(&self, server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
         // Nothing connects here: the pool opens the saved server when a tool
         // first uses the backend.
-        Ok(Arc::new(McpRemoteBackend::new(
-            Arc::clone(&CLI_AGENT_POOL),
-            server_id.to_string(),
-        )))
+        Ok(Arc::new(
+            McpRemoteBackend::new(Arc::clone(&CLI_AGENT_POOL), server_id.to_string())
+                .expecting(self.approved_identities.get(server_id).cloned()),
+        ))
     }
     fn context_local_path(&self) -> Option<&str> {
         self.cwd.as_deref()

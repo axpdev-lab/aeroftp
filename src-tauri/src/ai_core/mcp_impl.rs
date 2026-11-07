@@ -105,6 +105,9 @@ impl ToolCtx for McpToolCtx {
 pub struct McpRemoteBackend {
     pool: Arc<ConnectionPool>,
     server: String,
+    /// The connection identity the profile had when the call was approved:
+    /// the pool reaches it only while it still connects there.
+    expected_identity: Option<String>,
 }
 
 /// Heuristic: does this error look like an expired / invalid OAuth or auth
@@ -158,7 +161,17 @@ impl McpRemoteBackend {
     /// A backend for `server` over `pool`: the MCP server's, and the CLI
     /// agent's over its own process-wide pool.
     pub(crate) fn new(pool: Arc<ConnectionPool>, server: String) -> Self {
-        Self { pool, server }
+        Self {
+            pool,
+            server,
+            expected_identity: None,
+        }
+    }
+
+    /// The same backend, bound to the identity its profile was approved with.
+    pub(crate) fn expecting(mut self, identity: Option<String>) -> Self {
+        self.expected_identity = identity;
+        self
     }
 
     async fn with_provider<T, F>(&self, op: F) -> Result<T, String>
@@ -174,7 +187,11 @@ impl McpRemoteBackend {
             > + Clone,
     {
         // First attempt against the pooled (possibly stale-token) provider.
-        let first = match self.pool.get_provider(&self.server).await {
+        let first = match self
+            .pool
+            .get_provider_expecting(&self.server, self.expected_identity.as_deref())
+            .await
+        {
             Ok(arc) => {
                 let mut guard = arc.lock().await;
                 op.clone()(&mut guard)
@@ -194,7 +211,10 @@ impl McpRemoteBackend {
                 // did not take effect server-side, so the single retry is safe
                 // for mutating ops too.
                 let _ = self.pool.invalidate(&self.server).await;
-                let arc = self.pool.get_provider(&self.server).await?;
+                let arc = self
+                    .pool
+                    .get_provider_expecting(&self.server, self.expected_identity.as_deref())
+                    .await?;
                 let mut guard = arc.lock().await;
                 op(&mut guard)
                     .await
@@ -208,15 +228,21 @@ impl McpRemoteBackend {
 #[async_trait]
 impl RemoteBackend for McpRemoteBackend {
     async fn is_connected(&self) -> bool {
-        self.pool.get_provider(&self.server).await.is_ok()
+        self.pool
+            .get_provider_expecting(&self.server, self.expected_identity.as_deref())
+            .await
+            .is_ok()
     }
 
     async fn provider_type(&self) -> Option<ProviderType> {
+        self.provider_type_or_reason().await.ok()
+    }
+
+    async fn provider_type_or_reason(&self) -> Result<ProviderType, String> {
         // Cold acquisition can fail with stale credentials before the type is
         // available. Use the same vault reload and retry as the write itself.
         self.with_provider(|p| Box::pin(async move { Ok(p.provider_type()) }))
             .await
-            .ok()
     }
 
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {

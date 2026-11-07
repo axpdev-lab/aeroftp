@@ -85,9 +85,10 @@ fn validate_remote_path(path: &str, label: &str) -> Result<(), ToolError> {
 /// against the target backend. If its type cannot be resolved, fail closed:
 /// a later write could reconnect, so skipping this check is unsafe.
 async fn reject_restricted_leaf(backend: &dyn RemoteBackend, path: &str) -> Result<(), ToolError> {
-    let provider = backend.provider_type().await.ok_or_else(|| {
-        ToolError::Exec("Cannot validate destination name: remote provider unavailable".to_string())
-    })?;
+    let provider = backend
+        .provider_type_or_reason()
+        .await
+        .map_err(|e| ToolError::Exec(format!("Cannot validate destination name: {e}")))?;
     crate::restricted_chars::validate_path(provider, path)
         .map_err(|e| ToolError::Exec(e.to_string()))
 }
@@ -4697,6 +4698,12 @@ mod tests {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
         let r = resolve_profile(&profiles, "id-b").unwrap();
         assert_eq!(r.id, "id-b");
+    }
+
+    #[test]
+    fn resolve_profile_takes_an_id_over_a_profile_named_like_it() {
+        let profiles = vec![server("id-a", "id-b"), server("id-b", "Beta")];
+        assert_eq!(resolve_profile(&profiles, "id-b").unwrap().id, "id-b");
     }
 
     #[test]

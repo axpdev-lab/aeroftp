@@ -45,6 +45,22 @@ fn default_auth_source() -> crate::profile_auth_state::AuthSource {
 }
 
 impl ServerProfile {
+    /// What the profile connects to, and nothing that only names or labels
+    /// it: an approval is bound to this as well as to the id, because a
+    /// profile edited to another host keeps its id.
+    pub fn connection_identity(&self) -> String {
+        serde_json::json!([
+            self.protocol,
+            self.host,
+            self.port,
+            self.username,
+            self.initial_path,
+            self.provider_id,
+            self.crypt_overlay,
+        ])
+        .to_string()
+    }
+
     /// The one place a saved profile's JSON becomes a [`ServerProfile`].
     ///
     /// G27: the Tauri, CLI and MCP providers each built this record by hand
@@ -125,6 +141,29 @@ impl std::fmt::Debug for ServerCredentials {
     }
 }
 
+/// The saved profile `query` names exactly, as its index in `profiles`: a
+/// profile whose id is `query` first, else one whose name is `query` ignoring
+/// case. Every surface resolves a server in this one order (the desktop
+/// tools, the MCP pool behind the CLI agent, and the approval that binds a
+/// change to profile ids), so a profile named like another profile's id is
+/// never approved as one profile and run as the other. `None` when nothing is
+/// named exactly; a caller may then try a part of a name, as reads do.
+pub fn exact_profile_index<T>(
+    profiles: &[T],
+    query: &str,
+    id_and_name: impl Fn(&T) -> (&str, &str),
+) -> Option<usize> {
+    profiles
+        .iter()
+        .position(|profile| id_and_name(profile).0 == query)
+        .or_else(|| {
+            let lower = query.to_lowercase();
+            profiles
+                .iter()
+                .position(|profile| id_and_name(profile).1.to_lowercase() == lower)
+        })
+}
+
 /// Extra provider-specific options (region, bucket, endpoint, etc.)
 pub type ProviderExtraOptions = std::collections::HashMap<String, String>;
 
@@ -138,4 +177,35 @@ pub trait CredentialProvider: Send + Sync {
 
     /// Load provider-specific extra options for a server.
     fn get_extra_options(&self, server_id: &str) -> Result<ProviderExtraOptions, String>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::exact_profile_index;
+
+    /// Greptile on #1522: a profile named like another profile's id was
+    /// approved as one and run as the other, because surfaces resolved in
+    /// different orders. An id wins over a name everywhere.
+    #[test]
+    fn an_id_wins_over_a_profile_named_like_it_and_then_a_name_ignoring_case() {
+        let profiles = [("srv_1", "srv_2"), ("srv_2", "Lab")];
+        fn id_and_name<'a>(p: &'a (&'static str, &'static str)) -> (&'a str, &'a str) {
+            (p.0, p.1)
+        }
+        assert_eq!(
+            exact_profile_index(&profiles, "srv_2", id_and_name),
+            Some(1)
+        );
+        assert_eq!(exact_profile_index(&profiles, "LAB", id_and_name), Some(1));
+        assert_eq!(
+            exact_profile_index(&profiles, "srv_1", id_and_name),
+            Some(0)
+        );
+        assert_eq!(exact_profile_index(&profiles, "la", id_and_name), None);
+        // With the id profile gone, the same query names the other one.
+        assert_eq!(
+            exact_profile_index(&profiles[..1], "srv_2", id_and_name),
+            Some(0)
+        );
+    }
 }

@@ -75896,6 +75896,7 @@ static CLI_TOOL_DISPATCHES: std::sync::Mutex<Vec<(String, serde_json::Value)>> =
 async fn execute_cli_tool(
     tool_name: &str,
     args: &serde_json::Value,
+    approved_targets: &[ftp_client_gui_lib::ai_core::tools::ApprovedTarget],
 ) -> Result<serde_json::Value, String> {
     #[cfg(test)]
     CLI_TOOL_DISPATCHES
@@ -75908,7 +75909,8 @@ async fn execute_cli_tool(
     let ctx = ftp_client_gui_lib::ai_core::cli_impl::CliToolCtx::new(
         ftp_client_gui_lib::ai_core::cli_impl::CliEventSink { json_mode },
         ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
-    );
+    )
+    .approved_for(approved_targets);
     match ftp_client_gui_lib::ai_core::tools::dispatch_tool(&ctx, tool_name, args).await {
         Ok(v) => Ok(v),
         Err(ftp_client_gui_lib::ai_core::tools::ToolError::Unknown(_))
@@ -76216,10 +76218,11 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         ) {
             return Ok(format!("Error: {reason}"));
         }
-        // The profiles the approval is given for: checked again before the
-        // call runs, so a profile replaced while the prompt was open is not the
-        // one written to.
-        let approved_targets = ftp_client_gui_lib::ai_core::tools::change_target_ids(
+        // The profiles the approval is given for, by id and by what they
+        // connect to: checked again before the call runs, so a profile replaced
+        // or edited to another host while the prompt was open is not the one
+        // written to.
+        let approved_targets = ftp_client_gui_lib::ai_core::tools::change_targets(
             &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
             &tc.name,
             &tc.arguments,
@@ -76245,7 +76248,7 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
 
         ftp_client_gui_lib::ai_core::runner::check_cancelled(cancel)?;
         if approved
-            && ftp_client_gui_lib::ai_core::tools::change_target_ids(
+            && ftp_client_gui_lib::ai_core::tools::change_targets(
                 &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
                 &tc.name,
                 &tc.arguments,
@@ -76261,7 +76264,14 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
                 eprint!("  \x1b[2m⠙ Executing {}...\x1b[0m", tc.name);
                 io::stderr().flush().ok();
             }
-            let outcome = execute_cli_tool(&tc.name, &tc.arguments).await;
+            // The call names each approved profile by its id, and the pool
+            // reaches it only while it connects where it did at the approval:
+            // a name resolved again here could reach a profile replaced since.
+            let pinned = ftp_client_gui_lib::ai_core::tools::args_pinned_to(
+                &tc.arguments,
+                &approved_targets,
+            );
+            let outcome = execute_cli_tool(&tc.name, &pinned, &approved_targets).await;
             match outcome {
                 Ok(val) => {
                     if is_tty && !cancel.is_cancelled() {

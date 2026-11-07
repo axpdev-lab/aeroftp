@@ -25,7 +25,9 @@ use std::process::{Child, Stdio};
 use std::time::{Duration, Instant};
 
 use ftp_client_gui_lib::ai_core::cli_impl::{CliCredentialProvider, CliEventSink, CliToolCtx};
-use ftp_client_gui_lib::ai_core::tools::dispatch_tool;
+use ftp_client_gui_lib::ai_core::tools::{
+    args_pinned_to, change_targets, dispatch_tool, ApprovedTarget,
+};
 use ftp_client_gui_lib::credential_store::CredentialStore;
 
 const USER: &str = "u";
@@ -159,5 +161,55 @@ async fn the_cli_agent_context_lists_a_saved_server() {
     .await
     .expect("the CLI agent context lists the saved server");
     assert!(listing.to_string().contains(LISTED), "{listing}");
+
+    // An upload approved while `lab` connected elsewhere (the profile was
+    // edited after the approval) is refused by the pool, whose connection
+    // from the listing above is still open, and nothing reaches the server.
+    let source = home.path().join("upload.txt");
+    std::fs::write(&source, b"approved bytes").unwrap();
+    let upload = serde_json::json!({
+        "server": "lab",
+        "local_path": source.to_string_lossy(),
+        "remote_path": "/uploaded.txt",
+    });
+    let targets = change_targets(&CliCredentialProvider, "remote_upload", &upload);
+    let approved_id = targets[0]
+        .profile
+        .clone()
+        .expect("lab is a saved profile")
+        .0;
+    let stale = vec![ApprovedTarget {
+        key: "server",
+        profile: Some((approved_id, "[\"ftp\",\"elsewhere.example\"]".to_string())),
+    }];
+    let refused = dispatch_tool(
+        &CliToolCtx::new(CliEventSink { json_mode: true }, CliCredentialProvider)
+            .approved_for(&stale),
+        "remote_upload",
+        &args_pinned_to(&upload, &stale),
+    )
+    .await
+    .expect_err("an upload approved for another host");
+    assert!(
+        refused
+            .to_string()
+            .contains("changed after the call was approved"),
+        "{refused}"
+    );
+    assert!(!served.path().join("uploaded.txt").exists());
+
+    // Approved for what `lab` connects to, the same upload lands.
+    dispatch_tool(
+        &CliToolCtx::new(CliEventSink { json_mode: true }, CliCredentialProvider)
+            .approved_for(&targets),
+        "remote_upload",
+        &args_pinned_to(&upload, &targets),
+    )
+    .await
+    .expect("the approved upload");
+    assert_eq!(
+        std::fs::read(served.path().join("uploaded.txt")).unwrap(),
+        b"approved bytes"
+    );
     drop(server);
 }

@@ -2242,16 +2242,26 @@ pub const TARGET_PROFILE_KEYS: [&str; 7] = [
     "profile_id",
 ];
 
-/// The saved profile each target of a change names exactly, as `key=id`
-/// (`key=?` when none does). Taken before the approval and again before the
-/// call runs: when a name maps to another profile in between (the profile was
-/// replaced while the prompt was open) the two differ and the call does not
-/// run on the replacement. Empty for a call that only reads.
-pub fn change_target_ids(
+/// A target of a change, as approved: the argument naming it, and the saved
+/// profile it names exactly with what that profile connects to (`None` when
+/// no profile is named exactly).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovedTarget {
+    pub key: &'static str,
+    pub profile: Option<(String, String)>,
+}
+
+/// The saved profile each target of a change names exactly, with its id and
+/// its connection identity. Taken before the approval and again before the
+/// call runs: when a name maps to another profile in between (replaced while
+/// the prompt was open), or the profile now connects elsewhere (edited to
+/// another host), the two differ and the call does not run. Empty for a call
+/// that only reads.
+pub fn change_targets(
     creds: &dyn CredentialProvider,
     tool_name: &str,
     args: &Value,
-) -> Vec<String> {
+) -> Vec<ApprovedTarget> {
     let Some(def) = find_tool(tool_name) else {
         return Vec::new();
     };
@@ -2268,14 +2278,44 @@ pub fn change_target_ids(
             continue;
         }
         let saved = saved.get_or_insert_with(|| creds.list_servers().unwrap_or_default());
-        let lower = query.to_lowercase();
-        let id = saved
-            .iter()
-            .find(|profile| profile.id == query || profile.name.to_lowercase() == lower)
-            .map_or("?", |profile| profile.id.as_str());
-        bound.push(format!("{key}={id}"));
+        // The resolver execution uses, in its order, so the id bound here is
+        // the profile the call will run on.
+        let id = crate::ai_core::credential_provider::exact_profile_index(saved, query, |p| {
+            (p.id.as_str(), p.name.as_str())
+        })
+        .map(|index| (saved[index].id.clone(), saved[index].connection_identity()));
+        bound.push(ApprovedTarget { key, profile: id });
     }
     bound
+}
+
+/// [`change_targets`] as `key=id#identity` strings (`key=?`), the form the
+/// desktop's approval keys carry.
+pub fn change_target_ids(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Vec<String> {
+    change_targets(creds, tool_name, args)
+        .into_iter()
+        .map(|target| match target.profile {
+            Some((id, identity)) => format!("{}={id}#{identity}", target.key),
+            None => format!("{}=?", target.key),
+        })
+        .collect()
+}
+
+/// `args` with every approved target replaced by its profile id, so the
+/// backend resolves the profile the approval named and no other: a name
+/// resolved again after the approval could reach a profile replaced since.
+pub fn args_pinned_to(args: &Value, targets: &[ApprovedTarget]) -> Value {
+    let mut pinned = args.clone();
+    for target in targets {
+        if let (Some((id, _)), Some(object)) = (&target.profile, pinned.as_object_mut()) {
+            object.insert(target.key.to_string(), Value::String(id.clone()));
+        }
+    }
+    pinned
 }
 
 /// Why a call that changes something may not run on the saved server it
@@ -2793,15 +2833,58 @@ mod tests {
         let before = SavedServers(vec![saved("srv_1", "lab-prod")]);
         let after = SavedServers(vec![saved("srv_9", "lab-prod")]);
         let args = json!({"server": "lab-prod", "path": "/x"});
-        assert_eq!(
-            change_target_ids(&before, "remote_delete", &args),
-            vec!["server=srv_1"]
-        );
+        let ids = change_target_ids(&before, "remote_delete", &args);
+        assert_eq!(ids.len(), 1);
+        assert!(ids[0].starts_with("server=srv_1#"), "{ids:?}");
         assert_ne!(
             change_target_ids(&before, "remote_delete", &args),
             change_target_ids(&after, "remote_delete", &args)
         );
         assert!(change_target_ids(&before, "remote_list", &args).is_empty());
+    }
+
+    /// CodeRabbit on a91117d57: a profile edited to another host keeps its id,
+    /// so the binding names what it connects to as well; and the call runs
+    /// with each target pinned to the approved id.
+    #[test]
+    fn a_change_is_bound_to_what_its_profile_connects_to_and_runs_on_its_id() {
+        let mut moved = saved("srv_1", "lab-prod");
+        moved.host = "elsewhere".into();
+        let before = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let after = SavedServers(vec![moved]);
+        let args = json!({"server": "lab-prod", "dst_server": "nowhere", "path": "/x"});
+        assert_ne!(
+            change_target_ids(&before, "aeroftp_transfer", &args),
+            change_target_ids(&after, "aeroftp_transfer", &args)
+        );
+        let targets = change_targets(&before, "aeroftp_transfer", &args);
+        let pinned = args_pinned_to(&args, &targets);
+        assert_eq!(pinned["server"], "srv_1");
+        // No profile is named `nowhere`: the backend reports it, unchanged.
+        assert_eq!(pinned["dst_server"], "nowhere");
+        assert_eq!(pinned["path"], "/x");
+    }
+
+    /// Greptile on a91117d57: the approval took the first profile whose id OR
+    /// name matched, while execution takes an id before any name. A profile
+    /// named like another's id now binds the id profile, as execution runs
+    /// it; and when that profile is deleted while the approval is open, the
+    /// same query names the other one, so the recheck refuses.
+    #[test]
+    fn a_profile_named_like_another_ids_binds_the_id_profile_and_its_deletion_is_seen() {
+        let both = SavedServers(vec![saved("srv_1", "srv_2"), saved("srv_2", "lab")]);
+        let args = json!({"server": "srv_2", "path": "/x"});
+        let approved = change_target_ids(&both, "remote_delete", &args);
+        assert_eq!(approved.len(), 1);
+        assert!(approved[0].starts_with("server=srv_2#"), "{approved:?}");
+        // Execution resolves it the same way (`resolve_profile_takes_an_id_over_a_profile_named_like_it`).
+        let deleted = SavedServers(vec![saved("srv_1", "srv_2")]);
+        let after = change_target_ids(&deleted, "remote_delete", &args);
+        assert!(after[0].starts_with("server=srv_1#"), "{after:?}");
+        assert_ne!(
+            approved,
+            change_target_ids(&deleted, "remote_delete", &args)
+        );
     }
 
     // `server: "lab"` resolved to the one profile containing it, `lab-prod`,

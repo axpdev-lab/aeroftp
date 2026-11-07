@@ -2033,21 +2033,17 @@ pub(crate) fn find_server_by_name_or_id(
     servers: &[SavedServerInfo],
     query: &str,
 ) -> Result<SavedServerInfo, String> {
-    // 1. Exact ID match
-    if let Some(s) = servers.iter().find(|s| s.id == query) {
-        return Ok(s.clone());
-    }
-
-    // 2. Exact name match (case-insensitive)
-    let query_lower = query.to_lowercase();
-    if let Some(s) = servers
-        .iter()
-        .find(|s| s.name.to_lowercase() == query_lower)
+    // 1. An exact id, then an exact name: the order every surface shares.
+    if let Some(index) =
+        crate::ai_core::credential_provider::exact_profile_index(servers, query, |s| {
+            (s.id.as_str(), s.name.as_str())
+        })
     {
-        return Ok(s.clone());
+        return Ok(servers[index].clone());
     }
+    let query_lower = query.to_lowercase();
 
-    // 3. Fuzzy name match (contains, case-insensitive)
+    // 2. Fuzzy name match (contains, case-insensitive)
     let matches: Vec<&SavedServerInfo> = servers
         .iter()
         .filter(|s| s.name.to_lowercase().contains(&query_lower))
