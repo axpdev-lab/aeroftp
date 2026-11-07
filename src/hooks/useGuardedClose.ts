@@ -46,6 +46,11 @@ interface UseGuardedCloseOptions {
   /** Route ESC to `requestClose` while true (the modal is open). Leave it
    *  unset for a modal that handles ESC itself. */
   escape?: boolean;
+  /** While true the modal keeps its place among the modals that route ESC,
+   *  but answers no press: something of its own open over it (a dialog that
+   *  handles ESC itself, a request that must finish) owns the key. Switching
+   *  `escape` off and on instead would move the modal to the top. */
+  escapeSuspended?: boolean;
 }
 
 export interface GuardedClose {
@@ -84,9 +89,16 @@ export function isEscapeClaimed(): boolean {
   return escapeStack.length > 0;
 }
 
-export function useGuardedClose({ guard, onClose, onAbort, backdrop = 'idle', escape = false }: UseGuardedCloseOptions): GuardedClose {
+export function useGuardedClose({ guard, onClose, onAbort, backdrop = 'idle', escape = false, escapeSuspended = false }: UseGuardedCloseOptions): GuardedClose {
   const [confirmKind, setConfirmKind] = useState<GuardKind | null>(null);
   const tokenRef = useRef<symbol | null>(null);
+
+  // A confirm asks about an operation or input that is there now: once the
+  // guard is gone (the operation ended, the input was saved) it has nothing
+  // left to ask, and a modal that stays mounted must not show it next time.
+  useEffect(() => {
+    if (!guard) setConfirmKind(null);
+  }, [guard]);
 
   const requestClose = useCallback(() => {
     if (guard) setConfirmKind(guard);
@@ -118,7 +130,7 @@ export function useGuardedClose({ guard, onClose, onAbort, backdrop = 'idle', es
     };
   }, [escape]);
   useEffect(() => {
-    if (!escape || confirmKind) return;
+    if (!escape || escapeSuspended || confirmKind) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       if (escapeStack[escapeStack.length - 1] !== tokenRef.current) return;
@@ -127,7 +139,7 @@ export function useGuardedClose({ guard, onClose, onAbort, backdrop = 'idle', es
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [escape, confirmKind, requestClose]);
+  }, [escape, escapeSuspended, confirmKind, requestClose]);
 
   const confirmAndClose = useCallback(() => {
     if (confirmKind === 'busy') onAbort?.();

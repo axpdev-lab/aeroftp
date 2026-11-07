@@ -61,6 +61,9 @@ vi.mock('./vault/VaultReceipt', () => ({ VaultReceipt: () => null }));
 vi.mock('./vault/ZipCompressionReport', () => ({ ZipCompressionReport: () => null }));
 
 import { SpeedTestDialog } from './SpeedTestDialog';
+import { buildSpeedTestConnection } from '../utils/speedTest';
+import { isEscapeClaimed, useGuardedClose } from '../hooks/useGuardedClose';
+import { TwoFactorPromptDialog } from './TwoFactorPromptDialog';
 import { CrossProfilePanel } from './CrossProfile/CrossProfilePanel';
 import { ShareLinkModal } from './ShareLinkModal';
 import { TotpSetup } from './TotpSetup';
@@ -165,6 +168,44 @@ describe('SpeedTestDialog (Discussion #1527)', () => {
         await click('modalGuard.stopAndClose');
         expect(mocks.invoke).toHaveBeenCalledWith('speedtest_cancel');
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('asks from the X too while a test runs, instead of cancelling it outright', async () => {
+        const onClose = vi.fn();
+        await start(onClose);
+        await click('common.close');
+        expect(mocks.invoke).not.toHaveBeenCalledWith('speedtest_cancel');
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(true);
+        await click('modalGuard.wait');
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('starts no test after a stop and close that landed while the connection was prepared', async () => {
+        const onClose = vi.fn();
+        const connection = deferred<Awaited<ReturnType<typeof buildSpeedTestConnection>>>();
+        vi.mocked(buildSpeedTestConnection).mockImplementationOnce(() => connection.promise);
+        mocks.handlers.speedtest_history_summary = async () => ({ samples: 0 });
+        await render(<SpeedTestDialog servers={[server('a')]} onClose={onClose} />);
+        await click('speedTest.start');
+        await escape();
+        await click('modalGuard.stopAndClose');
+        expect(onClose).toHaveBeenCalledTimes(1);
+        await act(async () => connection.resolve({ protocol: 'ftp', server: 'ftp.example.com', username: 'tester', password: '' } as never));
+        await flush();
+        expect(mocks.invoke).not.toHaveBeenCalledWith('speedtest_run', expect.anything());
+    });
+
+    it('claims no ESC while its tab hides it', async () => {
+        const onClose = vi.fn();
+        mocks.handlers.speedtest_history_summary = async () => ({ samples: 0 });
+        await render(<SpeedTestDialog servers={[server('a')]} onClose={onClose} active={false} />);
+        expect(isEscapeClaimed()).toBe(false);
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        await render(<SpeedTestDialog servers={[server('a')]} onClose={onClose} active />);
+        expect(isEscapeClaimed()).toBe(true);
     });
 
     it('keeps a finished result from the backdrop, and the X closes at once', async () => {
@@ -392,6 +433,27 @@ describe('TotpSetup (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('shows no stale confirm when it is opened again after a verification that ended under the confirm', async () => {
+        const onClose = vi.fn();
+        const verify = deferred<boolean>();
+        mocks.handlers.totp_setup_verify = () => verify.promise;
+        mocks.handlers.totp_enable = async () => secret.secret;
+        await open(onClose);
+        await click('security.totp.next');
+        await typeInto(host.querySelector('input') as HTMLInputElement, '123456');
+        await click('security.totp.verify');
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        // The code checks out while the confirm is open: setup closes itself.
+        await act(async () => verify.resolve(true));
+        await flush();
+        expect(onClose).toHaveBeenCalledTimes(1);
+        await render(<TotpSetup isOpen={false} onClose={onClose} onEnabled={vi.fn()} />);
+        await render(<TotpSetup isOpen onClose={onClose} onEnabled={vi.fn()} />);
+        await flush();
+        expect(confirmOpen()).toBe(false);
+    });
+
     it('closes from the backdrop while no secret is shown yet', async () => {
         const onClose = vi.fn();
         mocks.handlers.totp_setup_start = () => new Promise(() => undefined);
@@ -507,6 +569,17 @@ describe('UnifiedTransferPlanDialog (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         expect(xButton().disabled).toBe(true);
     });
+
+    it('closes on ESC like the X, does nothing on ESC while it executes, and keeps ESC from the app shortcut', async () => {
+        const onClose = vi.fn();
+        await render(<UnifiedTransferPlanDialog plan={plan} executing onExecute={vi.fn()} onClose={onClose} />);
+        expect(isEscapeClaimed()).toBe(true);
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        await render(<UnifiedTransferPlanDialog plan={plan} onExecute={vi.fn()} onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe('VaultPanel (Discussion #1527)', () => {
@@ -541,5 +614,29 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await click('common.close');
         expect(confirmOpen()).toBe(true);
+    });
+});
+
+describe('TwoFactorPromptDialog over a modal (Discussion #1527)', () => {
+    const Underneath = ({ onClose }: { onClose: () => void }) => {
+        useGuardedClose({ guard: null, onClose, escape: true });
+        return null;
+    };
+    const prompt = (onCancel: () => void, loading = false) => (
+        <TwoFactorPromptDialog isOpen providerKey="mega" accountLabel="tester@example.com" onSubmit={vi.fn()} onCancel={onCancel} loading={loading} />
+    );
+
+    it('takes one ESC for itself and leaves the dialog underneath open, and none while a retry runs', async () => {
+        const onUnder = vi.fn();
+        const onCancel = vi.fn();
+        await render(<Underneath onClose={onUnder} />);
+        await render(<><Underneath onClose={onUnder} />{prompt(onCancel, true)}</>);
+        await escape();
+        expect(onCancel).not.toHaveBeenCalled();
+        expect(onUnder).not.toHaveBeenCalled();
+        await render(<><Underneath onClose={onUnder} />{prompt(onCancel)}</>);
+        await escape();
+        expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(onUnder).not.toHaveBeenCalled();
     });
 });

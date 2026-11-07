@@ -110,6 +110,25 @@ describe('a decision prompt', () => {
         expect(onAccept).not.toHaveBeenCalled();
     });
 
+    it('about a host key being saved: ESC and Cancel wait until the accept settles', async () => {
+        let settle!: () => void;
+        const onAccept = vi.fn(() => new Promise<void>((resolve) => { settle = resolve; }));
+        const onReject = vi.fn();
+        render(<HostKeyDialog visible info={{ status: 'unknown', fingerprint: 'SHA256:x', algorithm: 'ed25519' }} host="h" port={22} onAccept={onAccept} onReject={onReject} />);
+        const buttons = () => [...document.querySelectorAll('button')];
+        const trust = buttons().find(b => b.textContent === 'protocol.hostKeyTrustAction')!;
+        act(() => { trust.click(); });
+        expect(onAccept).toHaveBeenCalledTimes(1);
+        escape();
+        act(() => { buttons().find(b => b.textContent === 'common.cancel')!.click(); });
+        act(() => { trust.click(); });
+        expect(onReject).not.toHaveBeenCalled();
+        expect(onAccept).toHaveBeenCalledTimes(1);
+        await act(async () => { settle(); });
+        escape();
+        expect(onReject).toHaveBeenCalledTimes(1);
+    });
+
     it('about receiving with AeroShare: the backdrop and ESC record no decline', async () => {
         render(<AeroShareActivationPrompt />);
         await act(async () => { window.dispatchEvent(new Event(AERO_SHARE_ACTIVATED_EVENT)); });

@@ -42,6 +42,9 @@ interface FormTabState extends FormTab {
 
 export interface IntroHubProps {
     vaultReady: boolean;
+    /** False while a session is in the foreground and the hub is hidden
+     *  (it stays mounted). Default true. */
+    visible?: boolean;
     registerProfileConnector?: RegisterProfileConnector;
     connectionParams: ConnectionParams;
     quickConnectDirs: QuickConnectDirs;
@@ -445,6 +448,7 @@ export function IntroHub(props: IntroHubProps) {
                 {/* Tab: My Servers (always mounted) */}
                 <div className={activeTab === 'my-servers' ? 'h-full' : 'hidden'}>
                     <MyServersPanel
+                        visible={props.visible !== false && activeTab === 'my-servers'}
                         onConnect={onSavedServerConnect}
                         registerProfileConnector={props.registerProfileConnector}
                         cancellableConnect={cancellableConnect}

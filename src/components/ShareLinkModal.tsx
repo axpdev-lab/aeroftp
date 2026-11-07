@@ -191,8 +191,10 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     guard: creating || revokingId !== null ? 'busy' : optionsTyped ? 'dirty' : null,
     onClose,
     backdrop: state === 'success' ? 'never' : 'idle',
-    // The revoke confirm answers ESC itself while it is open.
-    escape: pendingRevokeId === null,
+    // The revoke confirm answers ESC itself while it is open; the modal keeps
+    // its place under any prompt opened meanwhile.
+    escape: true,
+    escapeSuspended: pendingRevokeId !== null,
   });
 
   const handleGenerate = () => {

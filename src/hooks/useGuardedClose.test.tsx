@@ -147,6 +147,39 @@ describe('useGuardedClose', () => {
         expect(appEscape).toHaveBeenCalledTimes(1);
     });
 
+    it('keeps a modal in its place while its ESC is suspended, and answers nothing for it meanwhile', () => {
+        const onUnder = vi.fn();
+        const onOver = vi.fn();
+        const Under = ({ suspended }: { suspended: boolean }) => {
+            useGuardedClose({ guard: null, onClose: onUnder, escape: true, escapeSuspended: suspended });
+            return null;
+        };
+        const Over = () => {
+            useGuardedClose({ guard: null, onClose: onOver, escape: true });
+            return null;
+        };
+        // The panel suspends its ESC for a dialog of its own, a prompt opens
+        // over it, and the dialog closes: the prompt is still on top.
+        act(() => root.render(<Under suspended />));
+        escape();
+        expect(onUnder).not.toHaveBeenCalled();
+        act(() => root.render(<><Under suspended /><Over /></>));
+        act(() => root.render(<><Under suspended={false} /><Over /></>));
+        escape();
+        expect(onOver).toHaveBeenCalledTimes(1);
+        expect(onUnder).not.toHaveBeenCalled();
+    });
+
+    it('drops an open confirm once the guard is gone, so a reopened modal does not show it', () => {
+        render({ guard: 'busy', abort: true });
+        act(() => api.requestClose());
+        expect(api.confirmOpen).toBe(true);
+        // The operation ends while the confirm is open.
+        render({ guard: null, abort: true });
+        expect(api.confirmOpen).toBe(false);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('leaves ESC to an inner handler that took it', () => {
         render({ guard: null, escape: true });
         act(() => {

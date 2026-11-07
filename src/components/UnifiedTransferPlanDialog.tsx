@@ -7,6 +7,7 @@ import type { UnifiedTransferPlan } from '../utils/unifiedTransferPlanner';
 import { getEndpointLabel } from '../utils/panelEndpoints';
 import { formatBytes } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 import { useTranslation } from '../i18n';
 import type { TranslationFunction } from '../i18n';
 
@@ -56,7 +57,11 @@ export const UnifiedTransferPlanDialog: React.FC<UnifiedTransferPlanDialogProps>
     const destinationLabel = getEndpointLabel(plan.destination);
     const destructive = plan.destructive;
     // The plan is this dialog's content: the backdrop has no click handler,
-    // and the X and Cancel are disabled while it executes (Discussion #1527).
+    // and the X and Cancel are disabled while it executes. ESC closes it
+    // like the X, and does nothing while it executes; it also keeps the
+    // app-wide ESC from clearing the selection the plan was made from
+    // (Discussion #1527).
+    useGuardedClose({ guard: null, onClose, backdrop: 'never', escape: true, escapeSuspended: executing });
 
     return (
         <div
