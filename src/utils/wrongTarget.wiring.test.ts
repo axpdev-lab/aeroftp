@@ -10,6 +10,9 @@ import DEVTOOLS from '../components/DevTools/DevToolsV2.tsx?raw';
 import AI_CHAT from '../components/DevTools/AIChat.tsx?raw';
 import MESSAGE_ROW from '../components/DevTools/ChatMessageRow.tsx?raw';
 import MARKDOWN from '../components/DevTools/MarkdownRenderer.tsx?raw';
+import PREVIEW from '../hooks/usePreview.ts?raw';
+import { INBOX, LOCAL, REMOTE, SUB, fixture, local, remote } from '../components/appTransfers.testkit';
+import { isSameConnection, savedProfileIdOf } from './liveConnection';
 
 /**
  * Requested 184: an action landed on the wrong target. "Apply" on a code block
@@ -31,8 +34,9 @@ describe('Apply on a remote file', () => {
         const remote = between(apply, 'if (editorFilePath && editorFileIsRemote) {', '} else if (editorFilePath) {');
         expect(remote).toContain('applyToEditorBuffer({ path: editorFilePath, isRemote: true }, code)');
         expect(remote).not.toContain('writeTextFile');
-        expect(remote).toContain('throw new Error');
-        const diff = between(CODE_BLOCK, 'const handleDiff = useCallback(', '}, [editorFilePath, editorFileIsRemote, showDiff]);');
+        // Without the editor showing the file the action says so (CodeBlockActions.test.tsx).
+        expect(remote).toContain("showUnreachable('apply')");
+        const diff = between(CODE_BLOCK, 'const handleDiff = useCallback(', '}, [editorFilePath, editorFileIsRemote, showDiff, showUnreachable]);');
         const remoteDiff = between(diff, 'if (editorFileIsRemote) {', 'try {');
         expect(remoteDiff).toContain('readEditorBuffer({ path: editorFilePath, isRemote: true })');
         expect(remoteDiff).not.toContain('readTextFile');
@@ -72,32 +76,45 @@ describe('a queued transfer', () => {
         'takes its target before the first await in %s',
         (head) => {
             const body = APP.slice(APP.indexOf(head));
-            const snapshot = body.indexOf('const queuedTarget = snapshotQueuedTarget();');
+            const snapshot = body.search(/const queuedTarget = (options\.queuedTarget \?\? )?snapshotQueuedTarget\(\);/);
             expect(snapshot).toBeGreaterThan(0);
             expect(snapshot).toBeLessThan(body.indexOf('await '));
         },
     );
 
+    // A Retry runs App's own target check (the testkit runs the same
+    // closures), with the real comparison of connections.
+    const queued = { server: 'a.example', protocol: 'sftp' as const, port: 22, username: 'u', password: 'key-1', savedServerId: 'profile-1', options: { bucket: 'b1' } };
     it.each([
-        ['runs on its server and overlay', 'a.example', 'vault-1', 'run'],
-        ['fails without running when another server is live', 'b.example', 'vault-1', 'transfer.queuedForAnotherServer'],
-        ['fails without running when its overlay was locked', 'a.example', null, 'transfer.queuedOverlayChanged'],
-    ])('%s', async (_name, liveServer, liveVault, outcome) => {
-        const source = between(APP, '  const boundToQueuedServer = useLatestCallback(', '\n  });\n') + '\n  });';
+        ['runs on its server, account and overlay', {}, 'vault-1', 'run'],
+        ['fails on another host', { server: 'b.example' }, 'vault-1', 'transfer.queuedForAnotherServer'],
+        ['fails on the same host with another port', { port: 2222 }, 'vault-1', 'transfer.queuedForAnotherServer'],
+        ['fails on the same host with another bucket', { options: { bucket: 'b2' } }, 'vault-1', 'transfer.queuedForAnotherServer'],
+        ['fails on the same fields with another API key (FileLu)', { password: 'key-2' }, 'vault-1', 'transfer.queuedForAnotherServer'],
+        ['fails on the same fields with another profile (OAuth)', { savedServerId: 'profile-2' }, 'vault-1', 'transfer.queuedForAnotherServer'],
+        ['fails when its overlay was locked', {}, null, 'transfer.queuedOverlayChanged'],
+    ] as const)('%s', async (_name, change, liveVault, outcome) => {
+        const source = between(APP, '  const liveOverlayVault = useLatestCallback(', '\n  const queuedTargetGuard =');
         const run = vi.fn();
+        const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: { vaultId: 'vault-1' } as { vaultId: string } | null };
         const ctx = {
             useLatestCallback: (fn: unknown) => fn,
             isConnected: true,
-            liveConnectionParams: { server: liveServer, protocol: 'sftp', username: 'u' },
-            isSameConnection: (a: { server: string }, b: { server: string }) => a.server === b.server,
-            liveOverlayVault: () => liveVault,
+            sessions: [session],
+            activeSessionId: 'A',
+            liveConnectionParams: session.connectionParams,
+            isSameConnection,
+            savedProfileIdOf,
             transferQueue: { failTransfer: vi.fn() },
             t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
-        const bind = new Function(...Object.keys(ctx), `${code}; return boundToQueuedServer;`)(...Object.values(ctx));
-        const queuedFor = { params: { server: 'a.example', protocol: 'sftp', username: 'u' }, overlayVault: 'vault-1' };
-        await bind(queuedFor, 'item-1', run)();
+        const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, boundToQueuedServer };`)(...Object.values(ctx));
+        const queuedFor = fns.snapshotQueuedTarget();
+        // The switch: the same session object as App's state would hold after it.
+        Object.assign(session.connectionParams, change);
+        session.cryptOverlay = liveVault ? { vaultId: liveVault } : null;
+        await fns.boundToQueuedServer(queuedFor, 'item-1', run)();
         if (outcome === 'run') {
             expect(run).toHaveBeenCalledTimes(1);
             expect(ctx.transferQueue.failTransfer).not.toHaveBeenCalled();
@@ -105,5 +122,220 @@ describe('a queued transfer', () => {
             expect(run).not.toHaveBeenCalled();
             expect(ctx.transferQueue.failTransfer).toHaveBeenCalledWith('item-1', outcome);
         }
+    });
+
+    it.each([
+        ['another port', { port: 2222 }],
+        ['another bucket', { options: { bucket: 'other' } }],
+        ['another API key', { password: 'key-2' }],
+        ['another profile', { savedServerId: 'profile-2' }],
+    ] as const)('fails its Retry without uploading after a switch to the same host with %s', async (_name, change) => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, fail: (command, call) => (command === 'provider_upload_file' && call === 1 ? 'Connection reset' : undefined) });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        expect(f.row('q0')).toMatchObject({ status: 'error' });
+        f.switchServer(change);
+        // Retry All Failed: the queue reopens the row, then runs its callback.
+        await f.retryAllFailedItems();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file')).toHaveLength(1);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedForAnotherServer' });
+    });
+
+    it('runs its Retry when the server it was queued for is live', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, fail: (command, call) => (command === 'provider_upload_file' && call === 1 ? 'Connection reset' : undefined) });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        // Retry All Failed: the queue reopens the row, then runs its callback.
+        await f.retryAllFailedItems();
+        expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/up.txt`]);
+        expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    });
+});
+
+/**
+ * The check at the start of a transfer is not enough: the overwrite question
+ * stays open as long as the user wants, and a tab switch meanwhile made the
+ * write that followed land on the other server. Every write checks the target
+ * again, after the last await before it.
+ */
+describe('a switch to another server while the overwrite question is open', () => {
+    const answerAfterSwitch = (f: ReturnType<typeof fixture>) => f.checkOverwrite.mockImplementation(async () => {
+        f.switchServer();
+        return { action: 'overwrite', destinationExists: true };
+    });
+
+    // The file being asked about fails with the reason, and the files after it
+    // fail with it too, without a question of their own.
+    const expectNothingWritten = (f: ReturnType<typeof fixture>, files: number) => {
+        expect(f.checkOverwrite).toHaveBeenCalledTimes(1);
+        expect(f.written()).toEqual([]);
+        // One file runs on the single-file path, which has queued its row; a
+        // batch stops before it queues any, as a failed preflight does.
+        const errors = f.transferQueue.failTransfer.mock.calls.map(([, error]) => error);
+        if (files === 1) expect(errors).toEqual(['transfer.queuedForAnotherServer']);
+        else {
+            expect(errors).toEqual([]);
+            expect(f.notify.error.mock.calls.map(([, reason]) => reason)).toEqual(['transfer.queuedForAnotherServer']);
+        }
+    };
+
+    describe.each([['one file', ['up.txt']], ['three files', ['up.txt', 'b.txt', 'c.txt']]] as const)('%s', (_label, names) => {
+        it('uploads nothing to the server switched to', async () => {
+            const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: names.map(n => remote(n)) }, policy: 'ask' });
+            answerAfterSwitch(f);
+            await f.drop(names.map(n => local(n)), false, REMOTE, 'local');
+            expectNothingWritten(f, names.length);
+        });
+
+        it('downloads nothing from the server switched to', async () => {
+            const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)), [SUB]: names.map(n => local(n, SUB)) }, policy: 'ask' });
+            answerAfterSwitch(f);
+            await f.drop(names.map(n => remote(n)), true, SUB);
+            expectNothingWritten(f, names.length);
+        });
+    });
+
+    it('commits nothing to a GitHub repository switched to, and asks nothing more', async () => {
+        const names = ['up.txt', 'b.txt', 'c.txt'];
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: names.map(n => remote(n)) }, policy: 'ask', protocol: 'github' });
+        answerAfterSwitch(f);
+        await f.drop(names.map(n => local(n)), false, REMOTE, 'local');
+        expect(f.checkOverwrite).toHaveBeenCalledTimes(1);
+        expect(f.commits()).toEqual([]);
+        expect(f.written()).toEqual([]);
+        const errors = f.transferQueue.failTransfer.mock.calls.map(([, error]) => error);
+        expect(errors).toHaveLength(names.length);
+        expect(new Set(errors)).toEqual(new Set(['transfer.queuedForAnotherServer']));
+    });
+
+    it('passes the check to every write of the three batch functions', () => {
+        for (const [head, end] of [
+            ['const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles ='],
+            ['const uploadMultipleFiles = withBatchLatch(', '\n  // === Bulk Operations ==='],
+            ['const downloadMultipleFiles = withBatchLatch(', '\n  // Wire cross-panel drag & drop callback'],
+        ]) {
+            const body = between(APP, head, end);
+            expect(body).toContain('const onQueuedTarget = queuedTargetGuard(queuedTarget);');
+            const writes = body.split(/await (?:uploadFile|downloadFile)\(/).slice(1).map(call => call.slice(0, call.indexOf(';')));
+            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget\)$/);
+        }
+        const batch = between(APP, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
+        expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);
+        expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isDownload\) \{\n\s+await invoke\('provider_download_file'/);
+        expect(batch).toContain('if (queuedTargetProblem(queuedTarget)) return;');
+        // uploadFile and downloadFile run it inside their ownership check,
+        // which every one of their writes calls first.
+        for (const name of ['downloadFile', 'uploadFile']) {
+            const fn = between(APP, `const ${name} = useLatestCallback(`, 'const ');
+            expect(fn).toContain('onTarget?: () => void');
+        }
+        // Without one, they bind to the server live at the call.
+        expect(APP.match(/const checkTarget = onTarget \?\? queuedTargetGuard\(snapshotQueuedTarget\(\)\);/g)).toHaveLength(2);
+        expect(APP.match(/const assertOwnership = \(\) => \{\n\s+checkTarget\(\);/g)).toHaveLength(2);
+    });
+});
+
+/**
+ * Remote files cut or copied are their server's: the clipboard named no
+ * server, so a cut on A pasted after a switch to B downloaded B's files at the
+ * same paths and then deleted them from B, or moved them there.
+ */
+describe('remote files cut on one server and pasted after a switch to another', () => {
+    const names = ['a.txt', 'b.txt'];
+    const cutOnA = (f: ReturnType<typeof fixture>) => f.clipboardCut(names.map(n => ({ name: n, path: `${REMOTE}/${n}`, is_dir: false })), true, REMOTE);
+    const touched = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
+        .filter(([command]) => /^provider_(download|delete|rename|server_copy)|^(delete|rename)_remote_file$/.test(command));
+
+    it.each([
+        ['into a local folder', false, SUB],
+        ['into another folder of the server', true, INBOX],
+    ] as const)('touches none of B\'s files %s, and keeps the clipboard', async (_label, targetIsRemote, targetDir) => {
+        const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
+        cutOnA(f);
+        f.switchServer();
+        await f.clipboardPaste(targetIsRemote, targetDir);
+        expect(touched(f)).toEqual([]);
+        expect(f.written()).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', isRemote: true });
+        expect(f.notify.error).toHaveBeenCalledWith('contextMenu.paste', 'transfer.pasteFromAnotherServer');
+    });
+
+    it('moves them once their server is live again', async () => {
+        const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
+        cutOnA(f);
+        f.switchServer();
+        await f.clipboardPaste(false, SUB);
+        f.switchServer({ server: 'a.example' });
+        await f.clipboardPaste(false, SUB);
+        expect(f.written()).toEqual(names.map(n => `${SUB}/${n}`));
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_delete_file').map(([, args]) => args!.path))
+            .toEqual(names.map(n => `${REMOTE}/${n}`));
+        expect(f.fileClipboardRef.current).toBeNull();
+    });
+
+    it('deletes nothing on B when the switch comes while the paste asks about overwriting', async () => {
+        const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)), [SUB]: names.map(n => local(n, SUB)) }, policy: 'ask' });
+        cutOnA(f);
+        f.checkOverwrite.mockImplementation(async () => {
+            f.switchServer();
+            return { action: 'overwrite', destinationExists: true };
+        });
+        await f.clipboardPaste(false, SUB);
+        expect(touched(f)).toEqual([]);
+        expect(f.notify.warning).toHaveBeenCalledWith('toast.cutPartial');
+    });
+});
+
+/**
+ * The editor keeps a remote file open across a tab switch, and its save sent
+ * the content to the live server: the file at the same path on another server
+ * received it. The file keeps the server it was read from.
+ */
+describe('the editor\'s save of a remote file', () => {
+    const opened = (f: ReturnType<typeof fixture>, target = f.snapshotQueuedTarget()) =>
+        ({ name: 'a.txt', path: `${REMOTE}/a.txt`, content: 'old', mimeType: 'text/plain', size: 3, isRemote: true, target });
+    const saves = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls.filter(([command]) => command === 'save_remote_file');
+
+    it('refuses another server, and saves once its own is live again', async () => {
+        const f = fixture();
+        const file = opened(f);
+        f.switchServer();
+        await f.saveDevToolsFile('new', file);
+        expect(saves(f)).toEqual([]);
+        expect(f.notify.error).toHaveBeenCalledWith('toast.saveFailed', 'toast.saveOnAnotherServer');
+        f.switchServer({ server: 'a.example' });
+        await f.saveDevToolsFile('new', file);
+        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new' }]]);
+    });
+
+    it('refuses another account on the same server', async () => {
+        const f = fixture();
+        const file = opened(f);
+        f.switchServer({ password: 'key-2' });
+        await f.saveDevToolsFile('new', file);
+        expect(saves(f)).toEqual([]);
+    });
+
+    it('refuses a remote file that does not say which server it came from', async () => {
+        const f = fixture();
+        await f.saveDevToolsFile('new', { ...opened(f), target: undefined });
+        expect(saves(f)).toEqual([]);
+    });
+
+    it('saves a local file whichever server is live', async () => {
+        const f = fixture();
+        f.switchServer();
+        await f.saveDevToolsFile('new', { ...opened(f), path: `${LOCAL}/a.txt`, isRemote: false, target: null });
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'save_local_file')).toHaveLength(1);
+    });
+
+    it('takes the server when the editor reads the file, before the read', () => {
+        for (const opener of ['const openDevToolsPreview = useCallback(', 'const openDevToolsFromData = useCallback(']) {
+            const body = between(PREVIEW, opener, '}, [notify]);');
+            const target = body.indexOf('liveRemoteTarget()');
+            expect(target).toBeGreaterThan(0);
+            expect(target).toBeLessThan(body.indexOf("invoke<string>('preview_remote_file'"));
+            expect(body).toContain('        target,\n');
+        }
+        expect(APP).toContain('usePreview({ notify, toast, remoteTarget: () => snapshotQueuedTarget() })');
+        expect(APP).toContain('onSaveFile={saveDevToolsFile}');
     });
 });

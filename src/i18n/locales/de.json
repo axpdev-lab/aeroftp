@@ -766,8 +766,9 @@
             "stagedCount": "Vorgemerkt: {count}",
             "pendingCount": "Ausstehend: {count}",
             "failedCount": "Fehlgeschlagen: {count}",
-            "queuedForAnotherServer": "Nicht gestartet: Diese Übertragung war für einen anderen Server eingereiht. Wechseln Sie zurück zum Tab dieses Servers und versuchen Sie es erneut.",
-            "queuedOverlayChanged": "Nicht gestartet: Das verschlüsselte Overlay, unter dem diese Übertragung eingereiht wurde, ist gesperrt oder deckt diesen Ordner nicht mehr ab. Entsperre es auf diesem Server und versuche es dann erneut."
+            "queuedForAnotherServer": "Nicht gestartet: Diese Übertragung war für einen anderen Server oder ein anderes Konto eingereiht. Wechseln Sie zurück zu dessen Tab und versuchen Sie es erneut.",
+            "queuedOverlayChanged": "Nicht gestartet: Das verschlüsselte Overlay, unter dem diese Übertragung eingereiht wurde, ist gesperrt oder deckt diesen Ordner nicht mehr ab. Entsperre es auf diesem Server und versuche es dann erneut.",
+            "pasteFromAnotherServer": "Nicht eingefügt: Diese Dateien wurden auf einem Server, Konto oder verschlüsselten Overlay ausgeschnitten oder kopiert, das jetzt nicht aktiv ist. Wechseln Sie zurück zu dessen Tab und fügen Sie sie erneut ein."
         },
         "settings": {
             "title": "Einstellungen",
@@ -1753,7 +1754,8 @@
             "createFailed": "Erstellen fehlgeschlagen",
             "unknownServer": "Unbekannt",
             "scpModeTitle": "Mit SCP verbunden",
-            "scpModeBody": "{host} hat kein SFTP, daher verwendet AeroFTP SCP auf derselben Verbindung."
+            "scpModeBody": "{host} hat kein SFTP, daher verwendet AeroFTP SCP auf derselben Verbindung.",
+            "saveOnAnotherServer": "Nicht gespeichert: Diese Datei wurde von einem Server, Konto oder verschlüsselten Overlay geöffnet, das jetzt nicht aktiv ist. Wechseln Sie zurück zu dessen Tab und speichern Sie erneut."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -3070,7 +3072,8 @@
                 "diff": "Mit Original vergleichen",
                 "diffNoFile": "Keine Datei zum Vergleichen geöffnet",
                 "commandBlocked": "Befehl blockiert: potenziell destruktiv",
-                "confirmRun": "Ausführung bestätigen: {command}"
+                "confirmRun": "Ausführung bestätigen: {command}",
+                "reopenEditor": "Zeigen Sie den Editor mit dieser geöffneten Datei an und versuchen Sie es erneut."
             },
             "thinkingBlock": {
                 "thinking": "Denke nach...",

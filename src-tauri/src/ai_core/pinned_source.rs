@@ -148,6 +148,12 @@ impl PinnedSource {
         }
     }
 
+    /// The answer of an upload of this source: the upload's own error, or,
+    /// when it went through, an error when the source changed meanwhile.
+    pub(crate) fn settle_upload(&self, sent: Result<(), String>) -> Result<(), String> {
+        sent.and_then(|()| self.verify_unchanged().map_err(|e| e.to_string()))
+    }
+
     fn still_names_the_file(&self) -> bool {
         let names = |p: &std::path::Path| {
             std::fs::metadata(p).is_ok_and(|meta| Identity::of(&meta) == self.identity)
@@ -283,6 +289,56 @@ mod tests {
         assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
         let err = PinnedSource::pin(&fifo.to_string_lossy(), "local_path", allow).unwrap_err();
         assert!(err.to_string().contains("not a regular file"), "{err}");
+    }
+
+    /// The GUI's `upload_files` settles each upload through `settle_upload`: a
+    /// source replaced while it was sent is an error naming it, never a file
+    /// reported as uploaded, and the upload's own error stays its own.
+    #[cfg(unix)]
+    #[test]
+    fn an_upload_of_a_source_replaced_after_the_pin_settles_as_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("data.bin");
+        std::fs::write(&file, b"original").unwrap();
+        let path = file.to_string_lossy().to_string();
+        let pinned = PinnedSource::pin(&path, "path", allow).unwrap();
+        pinned.settle_upload(Ok(())).unwrap();
+        assert_eq!(
+            pinned
+                .settle_upload(Err("quota exceeded".into()))
+                .unwrap_err(),
+            "quota exceeded"
+        );
+
+        let other = dir.path().join("other.bin");
+        std::fs::write(&other, b"original").unwrap();
+        std::fs::rename(&other, &file).unwrap();
+        let err = pinned.settle_upload(Ok(())).unwrap_err();
+        assert!(err.contains("changed during the upload"), "{err}");
+        assert!(err.contains(&path), "{err}");
+        let gui = include_str!("gui_tools.rs");
+        assert!(gui.contains("let result = source.settle_upload(result);"));
+    }
+
+    /// Without `O_NONBLOCK` the open of a FIFO waits for a writer, and a file
+    /// that turned into one between the check and the open hung the upload.
+    #[cfg(unix)]
+    #[test]
+    fn opening_a_fifo_without_a_writer_does_not_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("pipe");
+        let c_path = std::ffi::CString::new(fifo.to_string_lossy().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let path = fifo.to_string_lossy().to_string();
+        std::thread::spawn(move || {
+            let opened = open_source(&path).map(|file| file.metadata().map(|m| m.is_file()));
+            let _ = sender.send(opened.map_err(|e| e.to_string()));
+        });
+        let opened = receiver
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the open of a FIFO with no writer returned at once");
+        assert!(!opened.expect("opened").expect("metadata"));
     }
 
     #[cfg(windows)]

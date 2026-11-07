@@ -3,6 +3,8 @@
 
 // DevTools Types - Extensible architecture for future phases
 
+import type { QueuedTarget } from '../../utils/queuedTarget';
+
 export type DevToolsTab = 'preview' | 'editor' | 'terminal' | 'chat';
 
 export interface DevToolsState {
@@ -19,6 +21,9 @@ export interface PreviewFile {
     mimeType: string;
     size: number;
     isRemote: boolean;  // true = from FTP server, false = local
+    /** The server (and crypt overlay) a remote file was read from: its save
+     *  goes there or nowhere, whichever server is live when it is saved. */
+    target?: QueuedTarget | null;
 }
 
 // File type detection helpers

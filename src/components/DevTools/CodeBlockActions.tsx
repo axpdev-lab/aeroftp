@@ -53,6 +53,13 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
     const [copyError, setCopyError] = useState(false);
     const [applied, setApplied] = useState(false);
     const [applyError, setApplyError] = useState(false);
+    // The action that could not reach the remote file's editor buffer: the
+    // editor is hidden or has another file open, and the message says so.
+    const [unreachable, setUnreachable] = useState<'apply' | 'diff' | null>(null);
+    const showUnreachable = useCallback((action: 'apply' | 'diff') => {
+        setUnreachable(action);
+        setTimeout(() => setUnreachable(current => (current === action ? null : current)), 4000);
+    }, []);
     const [confirmRun, setConfirmRun] = useState(false);
     const [blocked, setBlocked] = useState(false);
     const [showDiff, setShowDiff] = useState(false);
@@ -78,7 +85,8 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                 // path (deep scan item 9). The code goes into the editor's buffer,
                 // left unsaved; the editor's save uploads it to its own server.
                 if (!applyToEditorBuffer({ path: editorFilePath, isRemote: true }, code)) {
-                    throw new Error('The remote file is not open in the editor');
+                    showUnreachable('apply');
+                    return;
                 }
                 setApplied(true);
                 setTimeout(() => setApplied(false), 2000);
@@ -111,7 +119,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
             setApplyError(true);
             setTimeout(() => setApplyError(false), 2000);
         }
-    }, [code, language, editorFilePath, editorFileIsRemote]);
+    }, [code, language, editorFilePath, editorFileIsRemote, showUnreachable]);
 
     const handleRunClick = useCallback(() => {
         if (confirmRun) {
@@ -146,8 +154,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
             // local file that happens to share its path.
             const original = readEditorBuffer({ path: editorFilePath, isRemote: true });
             if (original === null) {
-                setApplyError(true);
-                setTimeout(() => setApplyError(false), 2000);
+                showUnreachable('diff');
                 return;
             }
             setDiffOriginal(original);
@@ -163,7 +170,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
             setDiffOriginal('');
             setShowDiff(true);
         }
-    }, [editorFilePath, editorFileIsRemote, showDiff]);
+    }, [editorFilePath, editorFileIsRemote, showDiff, showUnreachable]);
 
     const handleDiffApply = useCallback(async () => {
         await handleApplyToFile();
@@ -192,7 +199,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                 {/* Apply to file */}
                 <button
                     onClick={handleApplyToFile}
-                    className={`p-1 rounded hover:bg-gray-700 transition-colors ${applyError ? 'text-red-400' : 'text-gray-400 hover:text-gray-200'}`}
+                    className={`p-1 rounded hover:bg-gray-700 transition-colors ${applyError || unreachable === 'apply' ? 'text-red-400' : 'text-gray-400 hover:text-gray-200'}`}
                     title={editorFilePath
                         ? `${t('ai.codeBlock.apply') || 'Apply to'} ${editorFileName || 'file'}`
                         : t('ai.codeBlock.apply') || 'Save as file'
@@ -208,9 +215,11 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                     className={`p-1 rounded transition-colors ${
                         !editorFilePath
                             ? 'text-gray-600 cursor-not-allowed'
-                            : showDiff
-                                ? 'text-purple-400 bg-gray-700'
-                                : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
+                            : unreachable === 'diff'
+                                ? 'text-red-400 hover:bg-gray-700'
+                                : showDiff
+                                    ? 'text-purple-400 bg-gray-700'
+                                    : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700'
                     }`}
                     title={editorFilePath
                         ? (t('ai.codeBlock.diff') || 'Diff with original')
@@ -239,6 +248,12 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                     {blocked ? <ShieldAlert size={13} /> : confirmRun ? <AlertTriangle size={13} /> : <Terminal size={13} />}
                 </button>
             </div>
+
+            {unreachable && (
+                <div role="alert" className="mt-1 text-xs text-red-400">
+                    {t('ai.codeBlock.reopenEditor')}
+                </div>
+            )}
 
             {/* Diff preview (rendered below <pre> in the parent group div) */}
             {showDiff && diffOriginal !== null && (

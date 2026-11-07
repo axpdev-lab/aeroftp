@@ -349,6 +349,16 @@ pub struct PeerRuntime {
     inbound_rate: std::sync::Arc<std::sync::Mutex<HashMap<String, Vec<u64>>>>,
 }
 
+/// Cancels a publish task that never made it into the share registry and
+/// waits for it to end, so nothing serves the drive once the start failed.
+async fn stop_unregistered_publisher(
+    cancel: &CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+) {
+    cancel.cancel();
+    let _ = task.await;
+}
+
 impl PeerRuntime {
     /// Idempotently ensure the replication task for the drive described by a
     /// peer `ProviderConfig` is running (the `provider_connect` seam).
@@ -475,12 +485,15 @@ impl PeerRuntime {
         drive_name: &str,
         identity_secret: &[u8],
     ) -> Result<(String, String, zeroize::Zeroizing<Vec<u8>>), String> {
-        // Reuse a live publish of the same folder.
+        // Reuse a live publish of the same folder. Both key lookups below are
+        // the starting account's: under another one active meanwhile the key is
+        // missing, and the resume would re-key the drive out from under the
+        // grants made with it.
         {
             let shares = self.shares.read().await;
             if let Some((ns, handle)) = shares.iter().find(|(_, h)| h.dir == dir) {
                 if handle.is_live() {
-                    let (_uid, key) = crate::user_partitions::gui_peer_drive_load(app, ns)?
+                    let key = crate::user_partitions::gui_peer_drive_load_as(app, user_id, ns)?
                         .ok_or_else(|| {
                             format!("the live drive {ns} has no content key in the vault")
                         })?;
@@ -511,11 +524,11 @@ impl PeerRuntime {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .and_then(|prev_ns| {
-                crate::user_partitions::gui_peer_drive_load(app, &prev_ns).transpose()
+                crate::user_partitions::gui_peer_drive_load_as(app, user_id, &prev_ns).transpose()
             })
             .transpose()?
         {
-            Some((_uid, existing)) => (existing, false),
+            Some(existing) => (existing, false),
             None => (
                 zeroize::Zeroizing::new(crate::peer::fresh_content_key().to_vec()),
                 true,
@@ -563,14 +576,20 @@ impl PeerRuntime {
         // ready). Failing to custody the key would strand the drive -> error.
         // The account that started the share, captured before the wait above:
         // another one may be active by now.
+        // A refusal (the account locked meanwhile) stops the publisher before
+        // it returns: unregistered, it would keep serving where Stop cannot
+        // find it.
         if key_is_fresh {
-            crate::user_partitions::gui_peer_drive_store_as(
+            if let Err(e) = crate::user_partitions::gui_peer_drive_store_as(
                 app,
                 user_id,
                 &published.namespace_id,
                 "publisher",
                 &content_key,
-            )?;
+            ) {
+                stop_unregistered_publisher(&cancel, task).await;
+                return Err(e);
+            }
         }
         if let Err(e) = std::fs::write(&namespace_sidecar, &published.namespace_id) {
             tracing::warn!(
@@ -1410,5 +1429,39 @@ mod tests {
             .find("\n    pub ")
             .map_or(body.len(), |end| end + 1)];
         assert!(!start_share.contains("gui_peer_drive_store("));
+        // Both key lookups are the starting account's too, and a refused
+        // custody stops the publisher before the error returns.
+        assert!(!start_share.contains("gui_peer_drive_load("));
+        assert_eq!(
+            start_share
+                .matches("gui_peer_drive_load_as(app, user_id,")
+                .count(),
+            2
+        );
+        let refused = &start_share[custody..];
+        let stop = refused
+            .find("stop_unregistered_publisher(&cancel, task).await;")
+            .expect("the publisher stopped on a refused custody");
+        assert!(stop < refused.find("return Err(e);").expect("the error returned"));
+    }
+
+    /// A publisher that never reached the registry is cancelled and awaited,
+    /// so nothing keeps serving once the start has failed.
+    #[tokio::test]
+    async fn an_unregistered_publisher_is_stopped_before_the_start_fails() {
+        let cancel = CancellationToken::new();
+        let ended = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task = {
+            let cancel = cancel.clone();
+            let ended = std::sync::Arc::clone(&ended);
+            tokio::spawn(async move {
+                cancel.cancelled().await;
+                tokio::task::yield_now().await;
+                ended.store(true, std::sync::atomic::Ordering::SeqCst);
+            })
+        };
+        stop_unregistered_publisher(&cancel, task).await;
+        assert!(cancel.is_cancelled());
+        assert!(ended.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

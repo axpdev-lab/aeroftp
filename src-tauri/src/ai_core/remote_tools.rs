@@ -4886,6 +4886,9 @@ mod tests {
         }
         async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
             let result = self.conditional_result.clone().ok_or("unavailable")?;
+            if let Some(hook) = &self.on_upload {
+                hook();
+            }
             if result == Ok(true) {
                 let bytes = std::fs::read(local).map_err(|e| e.to_string())?;
                 self.uploads.lock().unwrap().push((remote.into(), bytes));
@@ -5015,6 +5018,9 @@ mod tests {
             let outcome = self.bulk_outcome.as_ref()?;
             if items.is_empty() {
                 return Some(Ok(Vec::new()));
+            }
+            if let Some(hook) = &self.on_upload {
+                hook();
             }
             self.bulk_calls
                 .lock()
@@ -5280,6 +5286,95 @@ mod tests {
             "{err}"
         );
         assert!(err.to_string().contains(&path), "{err}");
+    }
+
+    /// A hook that replaces `path` with another file of the same content,
+    /// the way a download over it would while its upload runs.
+    #[cfg(unix)]
+    fn replaces(path: std::path::PathBuf) -> Option<Arc<dyn Fn() + Send + Sync>> {
+        Some(Arc::new(move || {
+            let swap = path.with_extension("swap");
+            std::fs::write(&swap, std::fs::read(&path).unwrap()).unwrap();
+            std::fs::rename(&swap, &path).unwrap();
+        }))
+    }
+
+    /// The same for the server-side no-clobber upload: a source replaced
+    /// while it was sent is an error that names it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_conditional_upload_whose_source_is_replaced_meanwhile_is_not_reported_as_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("report.pdf");
+        std::fs::write(&local, b"checked").unwrap();
+        let path = local.to_string_lossy().to_string();
+        let mut fake = FakeBackend::sample();
+        fake.conditional_result = Some(Ok(true));
+        fake.on_upload = replaces(local.clone());
+        let err = upload_file(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "srv", "local_path": path, "remote_path": "/root/report.pdf", "no_clobber": true}),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("changed during the upload"),
+            "{err}"
+        );
+        assert!(err.to_string().contains(&path), "{err}");
+    }
+
+    /// A native bulk that completed every file still reports, alone, the one
+    /// whose source was replaced while it ran; the others are uploaded.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_completed_bulk_reports_the_member_whose_source_was_replaced() {
+        let names = ["n0.txt", "n1.txt", "n2.txt"];
+        let (dir, items) = bulk_fixture(&names);
+        let mut fake = bulk_backend(|_| BulkTransferOutcome::Completed);
+        fake.on_upload = replaces(dir.path().join("n1.txt"));
+        let fake = Arc::new(fake);
+        let report = upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(fake.bulk_calls.lock().unwrap().len(), 1);
+        let results = report["results"].as_array().unwrap();
+        assert_eq!(results[0]["uploaded"], true, "{report}");
+        assert_eq!(results[2]["uploaded"], true, "{report}");
+        assert_eq!(results[1]["uploaded"], false, "{report}");
+        let error = results[1]["error"].as_str().unwrap();
+        assert!(error.contains("changed during the upload"), "{error}");
+        assert_eq!(report["summary"]["errors"], 1);
+    }
+
+    /// The member left alone in its group (the other one already exists, so
+    /// no-clobber skips it) takes the single-file write, and a replacement
+    /// during it is reported the same way.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_lone_pending_bulk_member_whose_source_was_replaced_is_not_reported_as_done() {
+        let (dir, items) = bulk_fixture(&["a.txt", "fresh1.txt"]);
+        let mut fake = bulk_backend(|_| BulkTransferOutcome::Completed);
+        fake.on_upload = replaces(dir.path().join("fresh1.txt"));
+        let fake = Arc::new(fake);
+        let report = upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items, "no_clobber": true}),
+        )
+        .await
+        .unwrap();
+        assert!(fake.bulk_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            *fake.local_uploads.lock().unwrap(),
+            vec!["/root/fresh1.txt"]
+        );
+        assert_eq!(report["results"][0]["skipped"], true, "{report}");
+        assert_eq!(report["results"][1]["uploaded"], false, "{report}");
+        let error = report["results"][1]["error"].as_str().unwrap();
+        assert!(error.contains("changed during the upload"), "{error}");
     }
 
     /// Local files named as their remote leaves under `/root`, the shape a

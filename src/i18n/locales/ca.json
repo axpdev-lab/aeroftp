@@ -766,8 +766,9 @@
             "stagedCount": "Preparats: {count}",
             "pendingCount": "Pendents: {count}",
             "failedCount": "Fallits: {count}",
-            "queuedForAnotherServer": "No s'ha iniciat: aquesta transferència estava a la cua per a un altre servidor. Torneu a la pestanya d'aquest servidor i torneu-ho a provar.",
-            "queuedOverlayChanged": "No s'ha iniciat: l'overlay xifrat sota el qual es va posar en cua aquesta transferència està bloquejat o ja no cobreix aquesta carpeta. Desbloqueja'l en aquell servidor i torna-ho a provar."
+            "queuedForAnotherServer": "No iniciat: aquesta transferència estava a la cua per a un altre servidor o compte. Torna a la seva pestanya i reintenta.",
+            "queuedOverlayChanged": "No s'ha iniciat: l'overlay xifrat sota el qual es va posar en cua aquesta transferència està bloquejat o ja no cobreix aquesta carpeta. Desbloqueja'l en aquell servidor i torna-ho a provar.",
+            "pasteFromAnotherServer": "No enganxat: aquests fitxers es van retallar o copiar en un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i enganxa de nou."
         },
         "settings": {
             "title": "Configuració",
@@ -1753,7 +1754,8 @@
             "createFailed": "Ha fallat la creació",
             "unknownServer": "Desconegut",
             "scpModeTitle": "Connectat amb SCP",
-            "scpModeBody": "{host} no té SFTP, així que AeroFTP fa servir SCP a la mateixa connexió."
+            "scpModeBody": "{host} no té SFTP, així que AeroFTP fa servir SCP a la mateixa connexió.",
+            "saveOnAnotherServer": "No desat: aquest fitxer es va obrir des d'un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i desa de nou."
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -3070,7 +3072,8 @@
                 "diff": "Comparar amb l'original",
                 "diffNoFile": "No hi ha cap fitxer obert per comparar",
                 "commandBlocked": "Ordre bloquejada: potencialment destructiva",
-                "confirmRun": "Confirmi l'execució: {command}"
+                "confirmRun": "Confirmi l'execució: {command}",
+                "reopenEditor": "Mostra l'editor amb aquest fitxer obert i torna-ho a provar."
             },
             "thinkingBlock": {
                 "thinking": "Pensant...",

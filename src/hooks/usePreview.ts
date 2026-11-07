@@ -20,6 +20,8 @@ import { LocalFile, RemoteFile } from '../types';
 import { PreviewFile } from '../components/DevTools';
 import { PreviewFileData, getPreviewCategory } from '../components/Preview';
 import { logger } from '../utils/logger';
+import type { QueuedTarget } from '../utils/queuedTarget';
+import { useLatestCallback } from './useLatestCallback';
 import { buildGallery, galleryStep, parentDir, sortByName } from '../components/Preview/utils/gallery';
 import DOMPurify from 'dompurify';
 
@@ -48,9 +50,14 @@ interface UsePreviewProps {
   toast: {
     removeToast: (id: string) => void;
   };
+  /** The live server, account and overlay, kept on a remote file the editor
+   *  opens so its save can refuse another server. */
+  remoteTarget: () => QueuedTarget;
 }
 
-export const usePreview = ({ notify, toast }: UsePreviewProps) => {
+export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => {
+  // The latest one, from a stable function: the editor's openers are memoized.
+  const liveRemoteTarget = useLatestCallback(remoteTarget);
   // Sidebar preview
   const [showLocalPreview, setShowLocalPreview] = useState(false);
   const [previewFile, setPreviewFile] = useState<LocalFile | null>(null);
@@ -138,6 +145,8 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
   const openDevToolsPreview = useCallback(async (file: RemoteFile | LocalFile, isRemote: boolean) => {
     try {
       let content = '';
+      // Taken before the read: the file is that server's, and its save goes there.
+      const target = isRemote ? liveRemoteTarget() : null;
       if (isRemote) {
         const remotePath = (file as RemoteFile).path;
         content = await invoke<string>('preview_remote_file', { path: remotePath });
@@ -153,6 +162,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
         mimeType: 'text/plain',
         size: file.size || 0,
         isRemote,
+        target,
       });
       setDevToolsOpen(true);
     } catch (error) {
@@ -165,6 +175,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
   // surfaces an Edit button that routes here.
   const openDevToolsFromData = useCallback(async (pf: PreviewFileData) => {
     try {
+      const target = pf.isRemote ? liveRemoteTarget() : null;
       const content = pf.isRemote
         ? await invoke<string>('preview_remote_file', { path: pf.path })
         : await invoke<string>('read_local_file', { path: pf.path });
@@ -175,6 +186,7 @@ export const usePreview = ({ notify, toast }: UsePreviewProps) => {
         mimeType: 'text/plain',
         size: pf.size || 0,
         isRemote: pf.isRemote,
+        target,
       });
       setDevToolsOpen(true);
     } catch (error) {

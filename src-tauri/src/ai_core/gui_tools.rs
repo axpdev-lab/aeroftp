@@ -759,8 +759,7 @@ pub async fn dispatch_gui_tool(
                 } else {
                     Err("Not connected to any server".to_string())
                 };
-                let result =
-                    result.and_then(|()| source.verify_unchanged().map_err(|e| e.to_string()));
+                let result = source.settle_upload(result);
 
                 match result {
                     Ok(_) => uploaded.push(display_name),

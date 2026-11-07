@@ -766,8 +766,9 @@
             "stagedCount": "Disiapkan: {count}",
             "pendingCount": "Menunggu: {count}",
             "failedCount": "Gagal: {count}",
-            "queuedForAnotherServer": "Belum dimulai: transfer ini diantrekan untuk server lain. Beralih kembali ke tab server tersebut, lalu coba lagi.",
-            "queuedOverlayChanged": "Belum dimulai: overlay terenkripsi tempat transfer ini diantrekan terkunci atau tidak lagi mencakup folder ini. Buka kunci di server tersebut, lalu coba lagi."
+            "queuedForAnotherServer": "Tidak dimulai: transfer ini diantrekan untuk server atau akun lain. Kembali ke tab-nya, lalu coba lagi.",
+            "queuedOverlayChanged": "Belum dimulai: overlay terenkripsi tempat transfer ini diantrekan terkunci atau tidak lagi mencakup folder ini. Buka kunci di server tersebut, lalu coba lagi.",
+            "pasteFromAnotherServer": "Tidak ditempel: file ini dipotong atau disalin di server, akun, atau overlay terenkripsi yang tidak aktif saat ini. Kembali ke tab-nya, lalu tempel lagi."
         },
         "settings": {
             "title": "Pengaturan",
@@ -1753,7 +1754,8 @@
             "createFailed": "Gagal membuat",
             "unknownServer": "Tidak diketahui",
             "scpModeTitle": "Terhubung dengan SCP",
-            "scpModeBody": "{host} tidak memiliki SFTP, jadi AeroFTP menggunakan SCP pada koneksi yang sama."
+            "scpModeBody": "{host} tidak memiliki SFTP, jadi AeroFTP menggunakan SCP pada koneksi yang sama.",
+            "saveOnAnotherServer": "Tidak disimpan: file ini dibuka dari server, akun, atau overlay terenkripsi yang tidak aktif saat ini. Kembali ke tab-nya, lalu simpan lagi."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -3070,7 +3072,8 @@
                 "diff": "Diff dengan Asli",
                 "diffNoFile": "Tidak ada file terbuka untuk diff",
                 "commandBlocked": "Perintah diblokir: berpotensi merusak",
-                "confirmRun": "Konfirmasi jalankan: {command}"
+                "confirmRun": "Konfirmasi jalankan: {command}",
+                "reopenEditor": "Tampilkan editor dengan file ini terbuka, lalu coba lagi."
             },
             "thinkingBlock": {
                 "thinking": "Berpikir...",

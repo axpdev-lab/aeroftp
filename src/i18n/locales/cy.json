@@ -766,8 +766,9 @@
             "stagedCount": "Wedi'u llwyfannu: {count}",
             "pendingCount": "Yn aros: {count}",
             "failedCount": "Wedi methu: {count}",
-            "queuedForAnotherServer": "Heb ddechrau: roedd y trosglwyddiad hwn wedi'i ciwio ar gyfer gweinydd arall. Newidiwch yn ôl i dab y gweinydd hwnnw, yna ceisiwch eto.",
-            "queuedOverlayChanged": "Heb ddechrau: mae'r troshaen wedi'i amgryptio y cafodd y trosglwyddiad hwn ei ciwio oddi tano wedi'i gloi neu nid yw'n cwmpasu'r ffolder hon mwyach. Datgloi ef ar y gweinydd hwnnw, yna ceisiwch eto."
+            "queuedForAnotherServer": "Heb ddechrau: roedd y trosglwyddiad hwn wedi'i roi mewn ciw ar gyfer gweinydd neu gyfrif arall. Ewch yn ôl i'w dab, yna ceisiwch eto.",
+            "queuedOverlayChanged": "Heb ddechrau: mae'r troshaen wedi'i amgryptio y cafodd y trosglwyddiad hwn ei ciwio oddi tano wedi'i gloi neu nid yw'n cwmpasu'r ffolder hon mwyach. Datgloi ef ar y gweinydd hwnnw, yna ceisiwch eto.",
+            "pasteFromAnotherServer": "Heb ludo: cafodd y ffeiliau hyn eu torri neu eu copïo ar weinydd, cyfrif neu droshaen amgryptiedig nad yw'n weithredol nawr. Ewch yn ôl i'w dab, yna gludwch eto."
         },
         "settings": {
             "title": "Gosodiadau",
@@ -1753,7 +1754,8 @@
             "createFailed": "Methodd y creu",
             "unknownServer": "Anhysbys",
             "scpModeTitle": "Wedi cysylltu gydag SCP",
-            "scpModeBody": "Does gan {host} ddim SFTP, felly mae AeroFTP yn defnyddio SCP ar yr un cysylltiad."
+            "scpModeBody": "Does gan {host} ddim SFTP, felly mae AeroFTP yn defnyddio SCP ar yr un cysylltiad.",
+            "saveOnAnotherServer": "Heb gadw: agorwyd y ffeil hon o weinydd, cyfrif neu droshaen amgryptiedig nad yw'n weithredol nawr. Ewch yn ôl i'w dab, yna cadwch eto."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",
@@ -3070,7 +3072,8 @@
                 "diff": "Cymharu â'r gwreiddiol",
                 "diffNoFile": "Dim ffeil ar agor ar gyfer cymharu",
                 "commandBlocked": "Gorchymyn wedi'i rwystro: gallai fod yn ddinistriol",
-                "confirmRun": "Cadarnhau rhedeg: {command}"
+                "confirmRun": "Cadarnhau rhedeg: {command}",
+                "reopenEditor": "Dangoswch y golygydd gyda'r ffeil hon ar agor, yna ceisiwch eto."
             },
             "thinkingBlock": {
                 "thinking": "Yn meddwl...",

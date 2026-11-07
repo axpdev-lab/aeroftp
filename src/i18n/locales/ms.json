@@ -766,8 +766,9 @@
             "stagedCount": "Disediakan: {count}",
             "pendingCount": "Menunggu: {count}",
             "failedCount": "Gagal: {count}",
-            "queuedForAnotherServer": "Belum dimulakan: pemindahan ini telah disusun dalam baris gilir untuk pelayan lain. Tukar kembali ke tab pelayan itu, kemudian cuba lagi.",
-            "queuedOverlayChanged": "Belum dimulakan: overlay disulitkan yang menjadi asas pemindahan ini dibaris gilir telah dikunci atau tidak lagi meliputi folder ini. Buka kuncinya pada pelayan itu, kemudian cuba lagi."
+            "queuedForAnotherServer": "Tidak dimulakan: pemindahan ini diberi baris gilir untuk pelayan atau akaun lain. Kembali ke tabnya, kemudian cuba lagi.",
+            "queuedOverlayChanged": "Belum dimulakan: overlay disulitkan yang menjadi asas pemindahan ini dibaris gilir telah dikunci atau tidak lagi meliputi folder ini. Buka kuncinya pada pelayan itu, kemudian cuba lagi.",
+            "pasteFromAnotherServer": "Tidak ditampal: fail ini dipotong atau disalin pada pelayan, akaun atau tindanan disulitkan yang tidak aktif sekarang. Kembali ke tabnya, kemudian tampal semula."
         },
         "settings": {
             "title": "Tetapan",
@@ -1753,7 +1754,8 @@
             "createFailed": "Gagal mencipta",
             "unknownServer": "Tidak diketahui",
             "scpModeTitle": "Disambungkan dengan SCP",
-            "scpModeBody": "{host} tiada SFTP, jadi AeroFTP menggunakan SCP pada sambungan yang sama."
+            "scpModeBody": "{host} tiada SFTP, jadi AeroFTP menggunakan SCP pada sambungan yang sama.",
+            "saveOnAnotherServer": "Tidak disimpan: fail ini dibuka daripada pelayan, akaun atau tindanan disulitkan yang tidak aktif sekarang. Kembali ke tabnya, kemudian simpan semula."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -3070,7 +3072,8 @@
                 "diff": "Beza dengan asal",
                 "diffNoFile": "Tiada fail dibuka untuk perbandingan",
                 "commandBlocked": "Arahan disekat: berpotensi merosakkan",
-                "confirmRun": "Sahkan jalankan: {command}"
+                "confirmRun": "Sahkan jalankan: {command}",
+                "reopenEditor": "Tunjukkan editor dengan fail ini dibuka, kemudian cuba lagi."
             },
             "thinkingBlock": {
                 "thinking": "Berfikir...",

@@ -766,8 +766,9 @@
             "stagedCount": "Hazırlanan: {count}",
             "pendingCount": "Bekleyen: {count}",
             "failedCount": "Başarısız: {count}",
-            "queuedForAnotherServer": "Başlatılmadı: bu aktarım başka bir sunucu için kuyruğa alınmıştı. O sunucunun sekmesine geri dönün, ardından yeniden deneyin.",
-            "queuedOverlayChanged": "Başlatılmadı: bu aktarımın kuyruğa alındığı şifreli overlay kilitli veya artık bu klasörü kapsamıyor. Onu o sunucuda kilidini açın, ardından tekrar deneyin."
+            "queuedForAnotherServer": "Başlatılmadı: bu aktarım başka bir sunucu veya hesap için kuyruğa alınmıştı. Sekmesine geri dönün, ardından yeniden deneyin.",
+            "queuedOverlayChanged": "Başlatılmadı: bu aktarımın kuyruğa alındığı şifreli overlay kilitli veya artık bu klasörü kapsamıyor. Onu o sunucuda kilidini açın, ardından tekrar deneyin.",
+            "pasteFromAnotherServer": "Yapıştırılmadı: bu dosyalar şu anda etkin olmayan bir sunucuda, hesapta veya şifreli katmanda kesildi ya da kopyalandı. Sekmesine geri dönün, ardından yeniden yapıştırın."
         },
         "settings": {
             "title": "Ayarlar",
@@ -1753,7 +1754,8 @@
             "createFailed": "Oluşturma başarısız",
             "unknownServer": "Bilinmeyen",
             "scpModeTitle": "SCP ile bağlandı",
-            "scpModeBody": "{host} sunucusunda SFTP yok, bu yüzden AeroFTP aynı bağlantıda SCP kullanıyor."
+            "scpModeBody": "{host} sunucusunda SFTP yok, bu yüzden AeroFTP aynı bağlantıda SCP kullanıyor.",
+            "saveOnAnotherServer": "Kaydedilmedi: bu dosya şu anda etkin olmayan bir sunucudan, hesaptan veya şifreli katmandan açıldı. Sekmesine geri dönün, ardından yeniden kaydedin."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -3070,7 +3072,8 @@
                 "diff": "Orijinalle karşılaştır",
                 "diffNoFile": "Karşılaştırma için açık dosya yok",
                 "commandBlocked": "Komut engellendi: yıkıcı olabilir",
-                "confirmRun": "Çalıştırmayı onayla: {command}"
+                "confirmRun": "Çalıştırmayı onayla: {command}",
+                "reopenEditor": "Düzenleyiciyi bu dosya açık olarak gösterin, ardından yeniden deneyin."
             },
             "thinkingBlock": {
                 "thinking": "Düşünülüyor...",

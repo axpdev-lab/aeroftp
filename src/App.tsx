@@ -50,13 +50,6 @@ import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
 import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
 import { cryptSyncBoundaryActive, planProviderSyncMirror, syncMirrorConflictText } from './utils/syncNavigationMirror';
 
-/** What a queued transfer is bound to: the server it was queued for and the
- *  crypt overlay over it (its vault, `null` without one). */
-interface QueuedTarget {
-  params: ConnectionParams;
-  overlayVault: string | null;
-}
-
 interface DownloadFolderParams {
   remote_path: string;
   local_path: string;
@@ -226,7 +219,7 @@ import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
-import { DevToolsV2, isPreviewable } from './components/DevTools';
+import { DevToolsV2, isPreviewable, type PreviewFile } from './components/DevTools';
 import { UniversalPreview, isPreviewable as isMediaPreviewable } from './components/Preview';
 // GAP-1: legacy connected-remote sync engine, restored as a safety net
 // while the unified AeroSync modal absorbs delete/verify/journal/retry
@@ -528,6 +521,7 @@ import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, sameQuickConnectTarget } from './utils/probeAliveArgs';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
@@ -1817,6 +1811,9 @@ const App: React.FC = () => {
     sourceDir: string;
     isRemote: boolean;
     operation: 'cut' | 'copy';
+    // The server (and crypt overlay) remote files were cut or copied on:
+    // their paths name files there, and nowhere else.
+    target: QueuedTarget | null;
   } | null>(null);
   const [hasClipboard, setHasClipboard] = React.useState(false);
 
@@ -2640,7 +2637,8 @@ const App: React.FC = () => {
   }, []);
 
   // Preview: handled by usePreview hook
-  const preview = usePreview({ notify, toast });
+  // Called on a click, long after the render that declares snapshotQueuedTarget.
+  const preview = usePreview({ notify, toast, remoteTarget: () => snapshotQueuedTarget() });
   const {
     showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
     devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview, openDevToolsFromData,
@@ -10607,7 +10605,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }): Promise<boolean> => {
+  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }, onTarget?: () => void): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -10619,8 +10617,12 @@ const App: React.FC = () => {
     // True only when the file or folder actually landed: a "cut" paste deletes
     // the source on this answer, so a skip, a cancel or an error must say no.
     let completed = false;
+    // Bound to the server live now, unless the caller bound it earlier: the
+    // overwrite question below gives the user time to switch tabs.
+    const checkTarget = onTarget ?? queuedTargetGuard(snapshotQueuedTarget());
 
     const assertOwnership = () => {
+      checkTarget();
       if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
         throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
       }
@@ -10785,11 +10787,16 @@ const App: React.FC = () => {
     explicitRemoteDir?: string,
     onError: TransferErrorMode = 'notify',
     ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean },
+    // The caller's target check, run with the ownership one right before each
+    // write (see `queuedTargetGuard`); by default the server live at the call.
+    onTarget?: () => void,
   ): Promise<boolean> => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
     let completed = false;
+    const checkTarget = onTarget ?? queuedTargetGuard(snapshotQueuedTarget());
     const assertOwnership = () => {
+      checkTarget();
       if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
         throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
       }
@@ -10933,7 +10940,7 @@ const App: React.FC = () => {
             workingBranch: gitHubRepoInfo.workingBranch || undefined,
             onCommit: (message: string) => {
               setGitHubCommitDialog(null);
-              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership);
+              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership, checkTarget);
             },
           });
           // Deferred to the commit dialog: not uploaded yet.
@@ -11144,12 +11151,15 @@ const App: React.FC = () => {
   // provider is not wrapped (no overlay, or one locked or left out of scope).
   const liveOverlayVault = useLatestCallback((): string | null =>
     sessions.find(session => session.id === activeSessionId)?.cryptOverlay?.vaultId ?? null);
+  const liveProfileId = useLatestCallback((): string | null =>
+    savedProfileIdOf(liveConnectionParams, sessions.find(session => session.id === activeSessionId)));
 
-  /** What a batch is queued for: the live server and the overlay over it,
-   *  taken when the batch starts, before a destination listing or an overwrite
-   *  question gives the user time to switch tabs. */
+  /** What a batch is queued for: the live server, its account and the overlay
+   *  over it, taken when the batch starts, before a destination listing or an
+   *  overwrite question gives the user time to switch tabs. */
   const snapshotQueuedTarget = useLatestCallback((): QueuedTarget => ({
     params: { ...liveConnectionParams },
+    profileId: liveProfileId(),
     overlayVault: liveOverlayVault(),
   }));
 
@@ -11160,15 +11170,71 @@ const App: React.FC = () => {
    *  was locked an encrypted upload went out in plaintext. It now fails with
    *  the reason instead, and runs again once that target is live. */
   const boundToQueuedServer = useLatestCallback((queuedFor: QueuedTarget, id: string, run: () => unknown): (() => Promise<void>) => async () => {
-    if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) {
-      transferQueue.failTransfer(id, t('transfer.queuedForAnotherServer'));
-      return;
-    }
-    if (liveOverlayVault() !== queuedFor.overlayVault) {
-      transferQueue.failTransfer(id, t('transfer.queuedOverlayChanged'));
+    const problem = queuedTargetProblem(queuedFor);
+    if (problem) {
+      transferQueue.failTransfer(id, t(problem));
       return;
     }
     await run();
+  });
+
+  /** Why the live connection is no longer the target a batch was queued for,
+   *  as the message key, or `null` when it still is. */
+  const queuedTargetProblem = useLatestCallback((queuedFor: QueuedTarget): string | null => {
+    if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) return 'transfer.queuedForAnotherServer';
+    // The same server fields can reach another account: FileLu's API key is
+    // the password, and an OAuth account is told apart only by its profile.
+    if ((liveConnectionParams.password || '') !== (queuedFor.params.password || '')
+      || liveProfileId() !== queuedFor.profileId) return 'transfer.queuedForAnotherServer';
+    if (liveOverlayVault() !== queuedFor.overlayVault) return 'transfer.queuedOverlayChanged';
+    return null;
+  });
+
+  /** The check a batch runs right before each write, after every await: a
+   *  check at the start alone left the overwrite question, the destination
+   *  listing and the files before it as windows in which the user could switch
+   *  to another server, and the write then went there. */
+  const queuedTargetGuard = (queuedFor: QueuedTarget) => () => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (problem) throw new QueuedTargetChangedError(t(problem));
+  };
+
+  /** Fails the rows from `from` on when the batch's target is gone, so the
+   *  files left neither ask their overwrite question nor start; true when it
+   *  did. */
+  const failQueuedRestIfRetargeted = (queuedFor: QueuedTarget, items: { id: string }[], from: number): boolean => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (!problem) return false;
+    for (let j = from; j < items.length; j++) transferQueue.failTransfer(items[j].id, t(problem));
+    return true;
+  };
+
+  /** The editor's save: a local file to its path, a remote one to its own
+   *  server only (see `PreviewFile.target`). */
+  const saveDevToolsFile = useLatestCallback(async (content: string, file: PreviewFile) => {
+    // A remote file is its server's: saved after a switch to another
+    // tab, the content went to the file at the same path there.
+    if (file.isRemote && (!file.target || queuedTargetProblem(file.target))) {
+      notify.error(t('toast.saveFailed'), t('toast.saveOnAnotherServer'));
+      return;
+    }
+    const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
+    try {
+      if (file.isRemote) {
+        await invoke('save_remote_file', { path: file.path, content });
+        humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
+        notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
+        await loadRemoteFiles(undefined, true);
+      } else {
+        await invoke('save_local_file', { path: file.path, content });
+        humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
+        notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
+        await refreshLocalPanelForPath(parentDir(file.path));
+      }
+    } catch (error) {
+      humanLog.logError('UPLOAD', { filename: file.name }, logId);
+      notify.error(t('toast.saveFailed'), String(error));
+    }
   });
 
   const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay = restoredTransferRequiresOverlay(profile, profile.initialPath || '/')): Promise<boolean> => {
@@ -11610,7 +11676,7 @@ const App: React.FC = () => {
   const formatClipboardFileCount = (count: number) => count === 1 ? '1 file' : `${count} files`;
 
   const clipboardCopy = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
-    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy' };
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy', target: isRemote ? snapshotQueuedTarget() : null };
     setHasClipboard(true);
     notify.success(t('contextMenu.copied') || 'Copied', formatClipboardFileCount(files.length));
   };
@@ -12864,7 +12930,7 @@ const App: React.FC = () => {
   ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
-    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut', target: isRemote ? snapshotQueuedTarget() : null };
     setHasClipboard(true);
     notify.success(t('contextMenu.cut') || 'Cut', formatClipboardFileCount(files.length));
   };
@@ -12874,6 +12940,25 @@ const App: React.FC = () => {
     if (!cb) return;
 
     const { files, isRemote: sourceIsRemote, operation, sourceDir } = cb;
+    // Remote files pasted after a switch to another server named that
+    // server's files at the same paths, and a cut then deleted or moved them
+    // there. The paste waits, clipboard kept, until their server is live.
+    if (cb.target && queuedTargetProblem(cb.target)) {
+      notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
+      return;
+    }
+    // The server of the paste: the source's, or the destination live now. Each
+    // remote write below checks it again, since every await is a window.
+    const pasteTarget = cb.target ?? snapshotQueuedTarget();
+    const onPasteTarget = queuedTargetGuard(pasteTarget);
+    /** True, said once, when the paste's server is no longer live. */
+    let retargetNotified = false;
+    const pasteRetargeted = () => {
+      if (!queuedTargetProblem(pasteTarget)) return false;
+      if (!retargetNotified) notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
+      retargetNotified = true;
+      return true;
+    };
 
     // Cross-panel paste → upload or download using clipboard paths directly
     if (sourceIsRemote !== targetIsRemote) {
@@ -12910,7 +12995,7 @@ const App: React.FC = () => {
             };
           }),
           targetDir,
-          { allowStaging: false },
+          { allowStaging: false, queuedTarget: pasteTarget },
         );
         const landedSources = new Set(outcome.succeededSources);
         for (const file of pasteBatch) {
@@ -12921,13 +13006,13 @@ const App: React.FC = () => {
       const pasteItems = stopAfterBatch ? [] : pasteBatch.length > 0 ? pasteRest : files;
 
       for (const file of pasteItems) {
-        if (batchCancelledRef.current) break;
+        if (batchCancelledRef.current || pasteRetargeted()) break;
         try {
           const ok = sourceIsRemote
             // Remote → Local: download into the paste target panel path (not always panel 1)
-            ? await downloadFile(file.path, file.name, targetDir, file.is_dir)
+            ? await downloadFile(file.path, file.name, targetDir, file.is_dir, undefined, false, 'notify', undefined, onPasteTarget)
             // Local → Remote: upload each file using stored path (not current listing)
-            : await uploadFile(file.path, file.name, file.is_dir);
+            : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'notify', undefined, onPasteTarget);
           if (ok) landed.push(file);
         } catch (e) {
           if (!batchCancelledRef.current) {
@@ -12938,20 +13023,26 @@ const App: React.FC = () => {
       if (sourceIsRemote) await refreshLocalPanelForPath(targetDir);
       else loadRemoteFiles();
 
+      // The sources deleted: a remote one only while its server is live.
+      let moved = 0;
       if (operation === 'cut' && landed.length > 0) {
         // Delete source after successful transfer, and only those sources.
         if (sourceIsRemote && aeroVaultOverlaySession?.sessionId) {
-          try {
-            await invoke<number>('aerovault_overlay_delete_entries', {
-              sessionId: aeroVaultOverlaySession?.sessionId,
-              entryPaths: landed.map((f) => f.path),
-              recursive: true,
-            });
-          } catch (e) {
-            console.error('Failed to delete overlay source after cut', e);
+          if (!pasteRetargeted()) {
+            try {
+              await invoke<number>('aerovault_overlay_delete_entries', {
+                sessionId: aeroVaultOverlaySession?.sessionId,
+                entryPaths: landed.map((f) => f.path),
+                recursive: true,
+              });
+              moved = landed.length;
+            } catch (e) {
+              console.error('Failed to delete overlay source after cut', e);
+            }
           }
         } else {
           for (const file of landed) {
+            if (sourceIsRemote && pasteRetargeted()) break;
             try {
               if (sourceIsRemote) {
                 const protocol = liveConnectionParams.protocol;
@@ -12963,6 +13054,7 @@ const App: React.FC = () => {
               } else {
                 await invoke('delete_local_file', { path: file.path });
               }
+              moved++;
             } catch (e) {
               console.error(`Failed to delete source after cut: ${file.name}`, e);
             }
@@ -12971,9 +13063,9 @@ const App: React.FC = () => {
         if (sourceIsRemote) loadRemoteFiles(undefined, true);
         else await refreshLocalPanelForPath(sourceDir);
       }
-      if (operation === 'cut' && landed.length < files.length) {
+      if (operation === 'cut' && moved < files.length) {
         notify.warning(
-          t('toast.cutPartial', { moved: landed.length, total: files.length }),
+          t('toast.cutPartial', { moved, total: files.length }),
         );
       }
     }
@@ -12986,6 +13078,7 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = targetIsRemote && !!aeroVaultOverlaySession?.sessionId;
 
         for (const file of files) {
+          if (targetIsRemote && pasteRetargeted()) break;
           const sep = targetIsRemote ? '/' : (targetDir.includes('\\') ? '\\' : '/');
           const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
           try {
@@ -13051,6 +13144,10 @@ const App: React.FC = () => {
           // Remote copy via server-side copy API
           let anyFailed = false;
           for (const file of files) {
+            if (pasteRetargeted()) {
+              anyFailed = true;
+              break;
+            }
             const destPath = `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
             const from = file.path || `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
             // Same directory: add " (copy)" suffix
@@ -13154,11 +13251,13 @@ const App: React.FC = () => {
     targetDir: string,
     // Clipboard paste and the planner never staged (they run, then maybe
     // delete the source); only the panel entry points honour auto-start OFF.
-    options: { allowStaging?: boolean } = {},
+    // A paste passes the server its files were cut or copied on.
+    options: { allowStaging?: boolean; queuedTarget?: QueuedTarget } = {},
   ): Promise<FileBatchResult> => {
     // Taken before any await: the listing and the overwrite questions below
     // give the user time to switch to another server.
-    const queuedTarget = snapshotQueuedTarget();
+    const queuedTarget = options.queuedTarget ?? snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     const isDownload = direction === 'download';
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = liveConnectionParams.protocol;
@@ -13208,6 +13307,16 @@ const App: React.FC = () => {
       return result;
     }
     for (let i = 0; i < items.length; i++) {
+      // After a switch the questions left would be about the other server's
+      // folder: the batch stops as a failed preflight does, before any row.
+      const retargeted = queuedTargetProblem(queuedTarget);
+      if (retargeted) {
+        resetOverwriteSettings();
+        result.failed = items.length - result.skipped;
+        result.aborted = true;
+        notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), t(retargeted));
+        return result;
+      }
       const item = items[i];
       let overwriteResult: Awaited<ReturnType<typeof checkOverwrite>>;
       try {
@@ -13292,6 +13401,8 @@ const App: React.FC = () => {
       if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return;
       const command = protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy';
       for (const entry of landedEntries) {
+        // Privacy is set on the server the batch was queued for, or not at all.
+        if (queuedTargetProblem(queuedTarget)) return;
         try {
           await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false });
         } catch { /* already private, or removed meanwhile */ }
@@ -13321,6 +13432,7 @@ const App: React.FC = () => {
         } : {}),
       };
       try {
+        onQueuedTarget();
         if (isProvider) {
           const outcome = await invoke<{
             completed: number; failed: number; cancelled: boolean; message: string; succeeded: number[];
@@ -13368,6 +13480,7 @@ const App: React.FC = () => {
         result.sent++;
         transferQueue.startTransfer(queueIds[i]);
         try {
+          onQueuedTarget();
           if (isDownload) {
             await invoke('provider_download_file', {
               remotePath: entry.remote_path,
@@ -13442,6 +13555,7 @@ const App: React.FC = () => {
     if (!isConnected) return;
     // The target its Start and Retry are bound to, taken before any await.
     const queuedTarget = snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     // A timeout or 5xx can follow a committed upload. Providers own their safe
     // transport retries; the GUI must not start that write again automatically.
     // The queue's explicit Retry remains available to the user.
@@ -13597,7 +13711,7 @@ const App: React.FC = () => {
           retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
               transferQueue.completeTransfer(id);
             } catch (error) {
               // Stopped during this Retry: the file reads as cancelled and the
@@ -13640,6 +13754,7 @@ const App: React.FC = () => {
             const kept: typeof queueItems = [];
             let skippedInCommit = 0;
             for (let i = 0; i < queueItems.length; i++) {
+              if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
               const item = queueItems[i];
               const remainingInQueue = queueItems.length - i - 1;
               let action: string;
@@ -13679,6 +13794,7 @@ const App: React.FC = () => {
             const keptFiles = kept.filter(i => !i.file.is_dir);
             if (keptFiles.length > 0) {
               try {
+                onQueuedTarget();
                 const files = keptFiles.map(item => ({
                   localPath: item.filePath,
                   remotePath: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${item.fileName}`,
@@ -13706,7 +13822,7 @@ const App: React.FC = () => {
             for (const item of kept.filter(i => i.file.is_dir)) {
               transferQueue.startTransfer(item.id);
               try {
-                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
                 transferQueue.completeTransfer(item.id);
               } catch (error) {
                 transferQueue.failTransfer(item.id, String(error));
@@ -13728,6 +13844,7 @@ const App: React.FC = () => {
         // Upload sequentially with queue tracking and overwrite checking
         let skippedCount = 0;
         for (let i = 0; i < queueItems.length; i++) {
+          if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
           const item = queueItems[i];
           const remainingInQueue = queueItems.length - i - 1;
 
@@ -13841,7 +13958,7 @@ const App: React.FC = () => {
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw');
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
               if (attempt > 0) transferQueue.retryItem(item.id);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
@@ -13854,7 +13971,7 @@ const App: React.FC = () => {
               }
               // A folder with failed files is not sent again, nor counted
               // toward the pause: its command has retried each file.
-              const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+              const result = error instanceof FolderTransferFailedError || error instanceof QueuedTargetChangedError ? null : circuitBreaker.recordFailure(String(error));
               if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
                 transferQueue.failTransfer(item.id, String(error));
                 notify.error(t('toast.uploadFailed'), String(error));
@@ -13942,7 +14059,7 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -13964,6 +14081,7 @@ const App: React.FC = () => {
       }
 
       for (let i = 0; i < queueItems.length; i++) {
+        if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
@@ -14058,7 +14176,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -14069,8 +14187,9 @@ const App: React.FC = () => {
               transferQueue.failTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
-            const result = circuitBreaker.recordFailure(String(error));
-            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
+            // A target that changed is not retried, nor counted toward the pause.
+            const result = error instanceof QueuedTargetChangedError ? null : circuitBreaker.recordFailure(String(error));
+            if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.uploadFailed'), String(error));
               break;
@@ -14092,6 +14211,7 @@ const App: React.FC = () => {
     if (!isConnected) return;
     // The target its Start and Retry are bound to, taken before any await.
     const queuedTarget = snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -14163,7 +14283,7 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw');
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -14194,6 +14314,7 @@ const App: React.FC = () => {
       // Download sequentially with queue tracking and overwrite checking
       let skippedCount = 0;
       for (let i = 0; i < queueItems.length; i++) {
+        if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
@@ -14314,7 +14435,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw');
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw', undefined, onQueuedTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -14327,7 +14448,7 @@ const App: React.FC = () => {
             }
             // A folder with failed files is not downloaded again, nor counted
             // toward the pause: its command has retried each file.
-            const result = error instanceof FolderTransferFailedError ? null : circuitBreaker.recordFailure(String(error));
+            const result = error instanceof FolderTransferFailedError || error instanceof QueuedTargetChangedError ? null : circuitBreaker.recordFailure(String(error));
             if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.downloadFailed'), String(error));
@@ -21249,25 +21370,7 @@ const App: React.FC = () => {
               }
             }, 300);
           }}
-          onSaveFile={async (content, file) => {
-            const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
-            try {
-              if (file.isRemote) {
-                await invoke('save_remote_file', { path: file.path, content });
-                humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
-                notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
-                await loadRemoteFiles(undefined, true);
-              } else {
-                await invoke('save_local_file', { path: file.path, content });
-                humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
-                notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
-                await refreshLocalPanelForPath(parentDir(file.path));
-              }
-            } catch (error) {
-              humanLog.logError('UPLOAD', { filename: file.name }, logId);
-              notify.error(t('toast.saveFailed'), String(error));
-            }
-          }}
+          onSaveFile={saveDevToolsFile}
         />
 
         <GuiControllerBanner lease={guiController.lease} preferences={settings.guiPresentation} onSpeed={guiController.setSpeed} onPause={guiController.setPaused} onStop={() => { void guiController.stop(); }} />

@@ -766,8 +766,9 @@
             "stagedCount": "Đã chuẩn bị: {count}",
             "pendingCount": "Đang chờ: {count}",
             "failedCount": "Thất bại: {count}",
-            "queuedForAnotherServer": "Chưa bắt đầu: lượt truyền này được xếp hàng cho một máy chủ khác. Hãy quay lại tab của máy chủ đó, rồi thử lại.",
-            "queuedOverlayChanged": "Chưa bắt đầu: overlay được mã hóa mà lượt truyền này được xếp hàng đợi bên dưới đang bị khóa hoặc không còn bao phủ thư mục này. Hãy mở khóa nó trên máy chủ đó, rồi thử lại."
+            "queuedForAnotherServer": "Chưa bắt đầu: lượt truyền này đã được xếp hàng cho máy chủ hoặc tài khoản khác. Hãy quay lại tab của nó, rồi thử lại.",
+            "queuedOverlayChanged": "Chưa bắt đầu: overlay được mã hóa mà lượt truyền này được xếp hàng đợi bên dưới đang bị khóa hoặc không còn bao phủ thư mục này. Hãy mở khóa nó trên máy chủ đó, rồi thử lại.",
+            "pasteFromAnotherServer": "Chưa dán: các tệp này đã được cắt hoặc sao chép trên máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi dán lại."
         },
         "settings": {
             "title": "Cài đặt",
@@ -1753,7 +1754,8 @@
             "createFailed": "Tạo thất bại",
             "unknownServer": "Không xác định",
             "scpModeTitle": "Đã kết nối bằng SCP",
-            "scpModeBody": "{host} không có SFTP, nên AeroFTP đang dùng SCP trên cùng kết nối."
+            "scpModeBody": "{host} không có SFTP, nên AeroFTP đang dùng SCP trên cùng kết nối.",
+            "saveOnAnotherServer": "Chưa lưu: tệp này đã được mở từ máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi lưu lại."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -3070,7 +3072,8 @@
                 "diff": "So sánh với bản gốc",
                 "diffNoFile": "Không có tệp nào mở để so sánh",
                 "commandBlocked": "Lệnh bị chặn: có thể gây phá hủy",
-                "confirmRun": "Xác nhận chạy: {command}"
+                "confirmRun": "Xác nhận chạy: {command}",
+                "reopenEditor": "Hiển thị trình soạn thảo với tệp này đang mở, rồi thử lại."
             },
             "thinkingBlock": {
                 "thinking": "Đang suy nghĩ...",

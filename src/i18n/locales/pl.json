@@ -766,8 +766,9 @@
             "stagedCount": "Przygotowane: {count}",
             "pendingCount": "Oczekujące: {count}",
             "failedCount": "Nieudane: {count}",
-            "queuedForAnotherServer": "Nie rozpoczęto: ten transfer był w kolejce dla innego serwera. Wróć do karty tego serwera, a następnie spróbuj ponownie.",
-            "queuedOverlayChanged": "Nie rozpoczęto: zaszyfrowany overlay, pod którym ten transfer został umieszczony w kolejce, jest zablokowany lub nie obejmuje już tego folderu. Odblokuj go na tym serwerze, a następnie spróbuj ponownie."
+            "queuedForAnotherServer": "Nie rozpoczęto: ten transfer czekał w kolejce dla innego serwera lub konta. Wróć do jego karty i spróbuj ponownie.",
+            "queuedOverlayChanged": "Nie rozpoczęto: zaszyfrowany overlay, pod którym ten transfer został umieszczony w kolejce, jest zablokowany lub nie obejmuje już tego folderu. Odblokuj go na tym serwerze, a następnie spróbuj ponownie.",
+            "pasteFromAnotherServer": "Nie wklejono: te pliki zostały wycięte lub skopiowane na serwerze, koncie lub zaszyfrowanej nakładce, które nie są teraz aktywne. Wróć do jego karty i wklej ponownie."
         },
         "settings": {
             "title": "Ustawienia",
@@ -1753,7 +1754,8 @@
             "createFailed": "Tworzenie nie powiodło się",
             "unknownServer": "nieznanym serwerem",
             "scpModeTitle": "Połączono przez SCP",
-            "scpModeBody": "{host} nie ma SFTP, więc AeroFTP używa SCP w tym samym połączeniu."
+            "scpModeBody": "{host} nie ma SFTP, więc AeroFTP używa SCP w tym samym połączeniu.",
+            "saveOnAnotherServer": "Nie zapisano: ten plik został otwarty z serwera, konta lub zaszyfrowanej nakładki, które nie są teraz aktywne. Wróć do jego karty i zapisz ponownie."
         },
         "about": {
             "tagline": "Więcej niż FTP. Kompletny zestaw narzędzi dla deweloperów.",
@@ -3070,7 +3072,8 @@
                 "diff": "Porównaj z oryginałem",
                 "diffNoFile": "Brak pliku do porównania",
                 "commandBlocked": "Polecenie zablokowane: potencjalnie destrukcyjne",
-                "confirmRun": "Potwierdź uruchomienie: {command}"
+                "confirmRun": "Potwierdź uruchomienie: {command}",
+                "reopenEditor": "Pokaż edytor z otwartym tym plikiem i spróbuj ponownie."
             },
             "thinkingBlock": {
                 "thinking": "Myślę...",

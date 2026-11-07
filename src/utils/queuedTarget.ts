@@ -1,0 +1,35 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+import type { ConnectionParams } from '../types';
+
+/** What a queued write is bound to, taken when it starts: the server, the
+ *  account on it and the crypt overlay over it. A remote file opened in the
+ *  editor and remote files cut or copied keep one too. */
+export interface QueuedTarget {
+  params: ConnectionParams;
+  /** The saved profile the connection was opened from, `null` for a quick
+   *  connect. Two accounts of one provider can share every connection field
+   *  (an OAuth token is not in the params): their profiles differ. */
+  profileId: string | null;
+  /** The crypt overlay's vault, `null` without one. */
+  overlayVault: string | null;
+}
+
+/**
+ * A queued write refused because the live connection is no longer the server,
+ * or the crypt overlay, the batch was queued for. Retrying cannot help until
+ * the user switches back, so the batch loops neither retry it nor count it
+ * toward the circuit breaker's pause, which would reconnect the other server.
+ */
+export class QueuedTargetChangedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'QueuedTargetChangedError';
+  }
+
+  /** The reason alone, as the queue row and the toast show it. */
+  override toString(): string {
+    return this.message;
+  }
+}

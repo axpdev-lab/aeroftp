@@ -766,8 +766,9 @@
             "stagedCount": "Klaargezet: {count}",
             "pendingCount": "{count} in wachtrij",
             "failedCount": "Mislukt: {count}",
-            "queuedForAnotherServer": "Niet gestart: deze overdracht stond in de wachtrij voor een andere server. Schakel terug naar het tabblad van die server en probeer het opnieuw.",
-            "queuedOverlayChanged": "Niet gestart: de versleutelde overlay waaronder deze overdracht in de wachtrij was gezet, is vergrendeld of dekt deze map niet meer. Ontgrendel hem op die server en probeer het opnieuw."
+            "queuedForAnotherServer": "Niet gestart: deze overdracht stond in de wachtrij voor een andere server of een ander account. Ga terug naar het tabblad ervan en probeer het opnieuw.",
+            "queuedOverlayChanged": "Niet gestart: de versleutelde overlay waaronder deze overdracht in de wachtrij was gezet, is vergrendeld of dekt deze map niet meer. Ontgrendel hem op die server en probeer het opnieuw.",
+            "pasteFromAnotherServer": "Niet geplakt: deze bestanden zijn geknipt of gekopieerd op een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en plak opnieuw."
         },
         "settings": {
             "title": "Instellingen",
@@ -1753,7 +1754,8 @@
             "createFailed": "Aanmaken mislukt",
             "unknownServer": "Onbekend",
             "scpModeTitle": "Verbonden met SCP",
-            "scpModeBody": "{host} heeft geen SFTP, dus AeroFTP gebruikt SCP op dezelfde verbinding."
+            "scpModeBody": "{host} heeft geen SFTP, dus AeroFTP gebruikt SCP op dezelfde verbinding.",
+            "saveOnAnotherServer": "Niet opgeslagen: dit bestand is geopend vanaf een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en sla opnieuw op."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -3070,7 +3072,8 @@
                 "diff": "Vergelijken met origineel",
                 "diffNoFile": "Geen bestand geopend om te vergelijken",
                 "commandBlocked": "Opdracht geblokkeerd: mogelijk destructief",
-                "confirmRun": "Uitvoeren bevestigen: {command}"
+                "confirmRun": "Uitvoeren bevestigen: {command}",
+                "reopenEditor": "Toon de editor met dit bestand geopend en probeer het opnieuw."
             },
             "thinkingBlock": {
                 "thinking": "Nadenken...",

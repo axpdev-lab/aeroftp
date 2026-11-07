@@ -766,8 +766,9 @@
             "stagedCount": "Paruošta: {count}",
             "pendingCount": "Laukia: {count}",
             "failedCount": "Nepavyko: {count}",
-            "queuedForAnotherServer": "Nepaleista: šis perkėlimas buvo įtrauktas į eilę kitam serveriui. Grįžkite į to serverio kortelę ir bandykite dar kartą.",
-            "queuedOverlayChanged": "Nepradėta: užšifruotas overlay, pagal kurį šis perdavimas buvo įtrauktas į eilę, yra užrakintas arba nebedengia šio aplanko. Atrakinkite jį tame serveryje ir bandykite dar kartą."
+            "queuedForAnotherServer": "Nepradėta: šis perkėlimas buvo įtrauktas į eilę kitam serveriui ar paskyrai. Grįžkite į jo skirtuką ir bandykite dar kartą.",
+            "queuedOverlayChanged": "Nepradėta: užšifruotas overlay, pagal kurį šis perdavimas buvo įtrauktas į eilę, yra užrakintas arba nebedengia šio aplanko. Atrakinkite jį tame serveryje ir bandykite dar kartą.",
+            "pasteFromAnotherServer": "Neįklijuota: šie failai buvo iškirpti arba nukopijuoti serveryje, paskyroje ar šifruotame sluoksnyje, kuris dabar neaktyvus. Grįžkite į jo skirtuką ir įklijuokite dar kartą."
         },
         "settings": {
             "title": "Nustatymai",
@@ -1753,7 +1754,8 @@
             "createFailed": "Sukurti nepavyko",
             "unknownServer": "nežinomo serverio",
             "scpModeTitle": "Prisijungta per SCP",
-            "scpModeBody": "{host} neturi SFTP, todėl AeroFTP naudoja SCP tuo pačiu ryšiu."
+            "scpModeBody": "{host} neturi SFTP, todėl AeroFTP naudoja SCP tuo pačiu ryšiu.",
+            "saveOnAnotherServer": "Neišsaugota: šis failas buvo atidarytas iš serverio, paskyros ar šifruoto sluoksnio, kuris dabar neaktyvus. Grįžkite į jo skirtuką ir išsaugokite dar kartą."
         },
         "about": {
             "tagline": "Daugiau nei FTP. Pilnas kūrėjų įrankių rinkinys.",
@@ -3070,7 +3072,8 @@
                 "diff": "Palyginti su originalu",
                 "diffNoFile": "Nėra atidaryto failo palyginimui",
                 "commandBlocked": "Komanda užblokuota: gali būti destruktyvi",
-                "confirmRun": "Patvirtinti vykdymą: {command}"
+                "confirmRun": "Patvirtinti vykdymą: {command}",
+                "reopenEditor": "Parodykite redaktorių su atidarytu šiuo failu ir bandykite dar kartą."
             },
             "thinkingBlock": {
                 "thinking": "Mąstoma...",
