@@ -5,7 +5,7 @@ import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import overwriteHook from '../hooks/useOverwriteCheck.ts?raw';
 import { vi } from 'vitest';
-import { usesProviderApi, type LocalFile, type RemoteFile } from '../types';
+import { isFourSharedProvider, isOAuthProvider, usesProviderApi, type LocalFile, type RemoteFile } from '../types';
 import { loadOverwriteDestination } from '../utils/overwriteDestination';
 import { FolderTransferFailedError, fileBatchCommand, folderTransferFailure, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from '../utils/fileBatchRouting';
 import type { FolderTransferOutcome } from '../utils/fileBatchRouting';
@@ -228,7 +228,7 @@ export function fixture(options: Options = {}) {
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
     sessions: [{ id: 'A', connectionParams: liveConnectionParams }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, savedProfileIdOf,
+    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
     humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, cancelLevelRef: { current: 0 },
@@ -285,5 +285,5 @@ export function fixture(options: Options = {}) {
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { switchServer, liveConnectionParams, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

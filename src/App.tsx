@@ -11262,9 +11262,14 @@ const App: React.FC = () => {
     // the password, and an OAuth account is told apart only by its profile.
     // A Quick Connect queued with no profile may be linked to a saved one by a
     // reconnect: with every field and the key unchanged it is the same
-    // account, so only a profile it was queued under has to match.
+    // account, so only a profile it was queued under has to match. Not for
+    // OAuth: its account is in a token the params do not carry, so the same
+    // fields can be another account and only the profile tells them apart.
+    const queuedProtocol = queuedFor.params.protocol as ProviderType | undefined;
+    const accountInParams = !queuedProtocol || !(isOAuthProvider(queuedProtocol) || isFourSharedProvider(queuedProtocol));
+    const profileMustMatch = queuedFor.profileId !== null || !accountInParams;
     if ((liveConnectionParams.password || '') !== (queuedFor.params.password || '')
-      || (queuedFor.profileId !== null && liveProfileId() !== queuedFor.profileId)) {
+      || (profileMustMatch && liveProfileId() !== queuedFor.profileId)) {
       return 'transfer.queuedForAnotherServer';
     }
     if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';

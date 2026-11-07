@@ -14,6 +14,7 @@ import PREVIEW from '../hooks/usePreview.ts?raw';
 import DRAG from '../hooks/useDragAndDrop.ts?raw';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, local, remote } from '../components/appTransfers.testkit';
 import { isSameConnection, savedProfileIdOf } from './liveConnection';
+import { isFourSharedProvider, isOAuthProvider } from '../types';
 
 /**
  * Requested 184: an action landed on the wrong target. "Apply" on a code block
@@ -117,6 +118,8 @@ describe('a queued transfer', () => {
             liveConnectionParams: session.connectionParams,
             isSameConnection,
             savedProfileIdOf,
+            isOAuthProvider,
+            isFourSharedProvider,
             transferQueue: { failTransfer: vi.fn() },
             t: (key: string) => key,
         };
@@ -145,7 +148,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
@@ -167,7 +170,7 @@ describe('a queued transfer', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
         };
@@ -190,6 +193,51 @@ describe('a queued transfer', () => {
         expect(target.profileId).toBeNull();
         Object.assign(session.connectionParams, change);
         expect(fns.queuedTargetProblem(target)).toBe(outcome);
+    });
+
+    // An OAuth account is in a token the params do not carry: two accounts of
+    // one provider share every field, and only the profile tells them apart.
+    it('an OAuth Quick Connect queued under no profile refuses a profile linked later', async () => {
+        const oauth = { server: '', protocol: 'googledrive', port: 443, username: '', password: '' };
+        const { fns, session } = await targetChecks(oauth);
+        const target = fns.snapshotQueuedTarget();
+        expect(target.profileId).toBeNull();
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+        Object.assign(session.connectionParams, { savedServerId: 'profile-other-account' });
+        expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+    });
+
+    // End to end: an actual Retry and an actual editor read, through App's own
+    // check, while a tab switch is still reconnecting the backend.
+    it('a Retry clicked while a switch reconnects the backend uploads nothing', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, fail: (command, call) => (command === 'provider_upload_file' && call === 1 ? 'Connection reset' : undefined) });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        f.connectPhase.current = 'switch';
+        await f.retryAllFailedItems();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file')).toHaveLength(1);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedForAnotherServer' });
+        f.connectPhase.current = false;
+        await f.retryAllFailedItems();
+        expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    });
+
+    it('an editor opened while a switch reconnects the backend reads nothing', async () => {
+        const { fns, ctx } = await targetChecks(queued);
+        const source = between(PREVIEW, '  const readForEditor = useLatestCallback(', '\n  });\n') + '\n  });';
+        const invoke = vi.fn(async (command: string) => (command === 'provider_connection_generation' ? 7 : 'old server'));
+        const remoteTarget = {
+            snapshot: () => fns.snapshotQueuedTarget(),
+            changedSince: (target: unknown) => fns.queuedTargetProblem(target) !== null,
+            changedMessage: () => 'toast.openedOnAnotherServer',
+        };
+        const { code } = await transformWithOxc(source, 'read-for-editor.ts');
+        const readForEditor = new Function('useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+            (fn: unknown) => fn, invoke, remoteTarget);
+        ctx.remoteConnectPhaseRef.current = 'switch';
+        await expect(readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
+        expect(invoke).not.toHaveBeenCalledWith('preview_remote_file', expect.anything());
+        ctx.remoteConnectPhaseRef.current = false;
+        await expect(readForEditor('/srv/a.txt', true)).resolves.toMatchObject({ content: 'old server' });
     });
 
     it('still refuses a profile changed from the one a batch was queued under', async () => {
@@ -566,7 +614,7 @@ describe('a direct remote action', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
         const { code } = await transformWithOxc(source, 'action-guard.ts');
