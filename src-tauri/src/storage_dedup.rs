@@ -198,6 +198,7 @@ pub fn is_s3_preset(provider_id: Option<&str>) -> bool {
                 | "filebase"
                 | "ibm-cos"
                 | "tigris"
+                | "fastly"
         )
     )
 }
@@ -282,6 +283,14 @@ pub fn is_native_api_protocol(proto: &str) -> bool {
 /// cross-user soft-warning path also filters empty-key S3 *before* tagging
 /// (F5, EF-19(a)) — see `cross_user_dedup_matches`.
 pub fn dedup_key(profile: &ProfileView<'_>) -> String {
+    // A stored alias (`fastly-object-storage`) keys like its preset, or one
+    // account would count twice, once per spelling.
+    let profile = &ProfileView {
+        provider_id: profile
+            .provider_id
+            .map(crate::connection_manifest::canonical_preset_id),
+        ..profile.clone()
+    };
     let proto = profile.protocol;
     let user_norm = normalize_user(profile.username);
     let user_or_id = || -> String {
@@ -565,6 +574,7 @@ mod tests {
             "filebase",
             "ibm-cos",
             "tigris",
+            "fastly",
         ] {
             assert!(is_s3_preset(Some(preset)), "{preset} must be an S3 preset");
         }
@@ -802,6 +812,54 @@ mod tests {
         let key = dedup_key(&profiles[0]);
         assert!(key.starts_with("oauth:googledrive:"));
         assert!(key.contains("user@gmail.com"));
+    }
+
+    #[test]
+    fn a_stored_preset_alias_keys_like_its_preset() {
+        // fastly-object-storage, backblaze-b2 and azure-blob are manifest
+        // aliases. One account spelled both ways is one drive, and its cached
+        // quota counts once.
+        for (canonical, alias, host) in [
+            (
+                "fastly",
+                "fastly-object-storage",
+                "eu-central-1.object.fastlystorage.app",
+            ),
+            (
+                "backblaze",
+                "backblaze-b2",
+                "s3.us-west-004.backblazeb2.com",
+            ),
+        ] {
+            let profiles = [
+                ProfileView {
+                    id: "one",
+                    protocol: "s3",
+                    provider_id: Some(canonical),
+                    host,
+                    port: 443,
+                    username: "ALIASEXAMPLEKEY01",
+                    used: Some(1_000_000_000),
+                    total: Some(5_000_000_000),
+                },
+                ProfileView {
+                    id: "two",
+                    protocol: "s3",
+                    provider_id: Some(alias),
+                    host,
+                    port: 443,
+                    username: "ALIASEXAMPLEKEY01",
+                    used: Some(1_000_000_000),
+                    total: Some(5_000_000_000),
+                },
+            ];
+            assert_eq!(dedup_key(&profiles[0]), dedup_key(&profiles[1]), "{alias}");
+            assert!(dedup_key(&profiles[1]).starts_with(&format!("s3:{canonical}:")));
+            let summary = aggregate(&profiles);
+            assert_eq!(summary.profiles, 2);
+            assert_eq!(summary.unique_count, 1, "{alias}");
+            assert_eq!(summary.total_used, 1_000_000_000, "{alias}");
+        }
     }
 
     #[test]

@@ -670,6 +670,33 @@
     ]
   },
   {
+    "company": "Fastly",
+    "logoId": "fastly",
+    "country": "US",
+    "freeGb": 5,
+    "freeNote": "card req.",
+    "freeRequiresCard": true,
+    "regions": [
+      "US",
+      "GB",
+      "FR",
+      "DE",
+      "IT",
+      "JP",
+      "AU"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "fastly",
+        "paid": true,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "IBM Cloud Object Storage",
     "logoId": "ibm-cos",
     "country": "US",

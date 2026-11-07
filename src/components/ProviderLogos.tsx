@@ -155,6 +155,17 @@ export const TigrisLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Fastly: PNG brand mark, rendered as img like Filebase and Tigris
+export const FastlyLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/fastly.png"
+        alt="Fastly"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Yandex Cloud: blue arrows logo (for S3 Object Storage preset)
 export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -608,6 +619,7 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'idrive-e2': IDriveLogo,
     'filebase': FilebaseLogo,
     'tigris': TigrisLogo,
+    'fastly': FastlyLogo,
     'nextcloud': NextcloudLogo,
     'koofr': KoofrLogo,
     'opendrive': OpenDriveLogo,

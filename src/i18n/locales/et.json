@@ -2365,7 +2365,8 @@
             "allowScpFallback": "Luba SCP varulahendusena",
             "allowScpFallbackHint": "Kui serveril pole SFTP-d, jätkatakse SCP kaudu sama ühendusega, nagu teeb WinSCP.",
             "discoverScp": "Failide kopeerimine SSH kaudu serveritele, millel pole SFTP-d",
-            "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)"
+            "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)",
+            "discoverFastly": "Fastly Object Storage: S3-ühilduv salvestusruum 12 piirkonnas (5 GB tasuta, vajalik on kaart)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

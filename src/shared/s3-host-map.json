@@ -10,6 +10,7 @@
     { "providerId": "backblaze", "preset": true, "domains": ["backblazeb2.com"] },
     { "providerId": "cloudflare-r2", "preset": true, "domains": ["r2.cloudflarestorage.com"] },
     { "providerId": "digitalocean-spaces", "preset": true, "domains": ["digitaloceanspaces.com"] },
+    { "providerId": "fastly", "preset": true, "domains": ["object.fastlystorage.app"] },
     { "providerId": "filebase", "preset": true, "domains": ["s3.filebase.io"] },
     { "providerId": "filelu-s3", "preset": true, "domains": ["s5lu.com", "filelu.com"] },
     { "providerId": "filen-desktop-s3", "preset": true, "domains": ["local.s3.filen.io"] },
@@ -54,6 +55,9 @@
     { "host": "gateway.storjshare.io", "providerId": "storj" },
     { "host": "oss-us-west-1.aliyuncs.com", "providerId": "alibaba-oss" },
     { "host": "cos.ap-guangzhou.myqcloud.com", "providerId": "tencent-cos" },
+    { "host": "eu-central-1.object.fastlystorage.app", "providerId": "fastly" },
+    { "host": "us-east.object.fastlystorage.app", "providerId": "fastly" },
+    { "host": "backblaze-backups.us-east.object.fastlystorage.app", "providerId": "fastly" },
     { "host": "t3.storage.dev", "providerId": "tigris" },
     { "host": "backblaze-backups.t3.storage.dev", "providerId": "tigris" },
     { "host": "my-bucket.fly.storage.tigris.dev", "providerId": "tigris" },
@@ -70,6 +74,7 @@
     { "host": "wasabisys.com.example", "providerId": null },
     { "host": "notmega.io", "providerId": null },
     { "host": "t3.storage.dev.example", "providerId": null },
+    { "host": "eu-central-1.object.fastlystorage.app.example", "providerId": null },
     { "host": "myidrivee2-2.com.evil", "providerId": null },
     { "host": "minio.example.com", "providerId": null }
   ]

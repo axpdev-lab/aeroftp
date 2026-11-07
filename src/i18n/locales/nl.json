@@ -2365,7 +2365,8 @@
             "allowScpFallback": "SCP als terugvaloptie toestaan",
             "allowScpFallbackHint": "Als de server geen SFTP heeft, gaat de verbinding verder via SCP, zoals WinSCP doet.",
             "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP",
-            "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)"
+            "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)",
+            "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

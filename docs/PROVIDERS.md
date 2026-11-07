@@ -30,6 +30,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Drime | FR | 20 GB | API |
 | DriveHQ | US | 5 GB | WebDAV |
 | Dropbox | US | 2 GB | OAuth |
+| Fastly | US | 5 GB (card req.) | S3* |
 | Felicloud | EU | 10 GB (Nextcloud host) | WebDAV |
 | Filebase | US | 5 GB | S3 |
 | FileLu | US | 1 GB | API, FTP, WebDAV, S5 (S3) |
@@ -75,7 +76,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>57 providers, 71 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>58 providers, 72 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

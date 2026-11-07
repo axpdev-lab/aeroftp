@@ -2365,7 +2365,8 @@
             "allowScpFallback": "Caniatáu SCP wrth gefn",
             "allowScpFallbackHint": "Os nad oes gan y gweinydd SFTP, parhau dros SCP ar yr un cysylltiad, fel y mae WinSCP yn ei wneud.",
             "discoverScp": "Copïo ffeiliau dros SSH ar gyfer gweinyddion heb SFTP",
-            "discoverTigris": "Tigris: storfa wedi'i dosbarthu'n fyd-eang sy'n gydnaws ag S3, dim ffioedd all-drosglwyddo data (5 GB am ddim)"
+            "discoverTigris": "Tigris: storfa wedi'i dosbarthu'n fyd-eang sy'n gydnaws ag S3, dim ffioedd all-drosglwyddo data (5 GB am ddim)",
+            "discoverFastly": "Fastly Object Storage: storfa sy'n gydnaws ag S3 mewn 12 rhanbarth (5 GB am ddim, mae angen cerdyn)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",

@@ -23,7 +23,12 @@ to the caller instead of repeating the write.
   Retry-After when that header parses, otherwise the shared backoff. Any
   other HTTP response, including a 5xx, is not replayed by that rebuild.
   S3 single PUT also retries 503 SlowDown under the same bound, and leaves
-  every other 503 in place. GitLab's byte-backed commit stays on
+  every other 503 in place. On Fastly Object Storage the single PUT and each
+  multipart part also repeat a 408, which Fastly answers when a request ran
+  past its 120-second limit and was not completed. The repeat targets the same
+  key, so it overwrites rather than stores twice; a single PUT reads the open
+  file again on each attempt, so an in-place edit during the wait changes the
+  bytes (no snapshot, as above). GitLab's byte-backed commit stays on
   `send_with_retry`.
 
 Streaming request rebuilders for pCloud, 4shared, Azure, kDrive, Koofr,
@@ -56,7 +61,7 @@ this is not a promise that the failed write left the remote unchanged.
 | kDrive | GET listing, metadata and downloads | POST mkdir, copy, share and restore/version commands do not replay 5xx. The streaming upload opens the file once and streams that cursor. It retries a connection refusal before send and an HTTP 429. |
 | Koofr | GET listing, info, downloads | POST mkdir/share/restore and other writes do not replay 5xx. The streaming upload opens the file once and streams that cursor. It retries a connection refusal before send and an HTTP 429. |
 | Azure | GET/HEAD | PUT create/copy and mutations do not replay ambiguous 5xx at the shared layer. Single Put Blob opens the file once and streams that cursor, signs a fresh date on each attempt, and retries a connection refusal before send and an HTTP 429. A non-timeout send error omits the request URL, so a SAS query stays out of the message. Put Block stays on the byte-body path. |
-| S3 | GET/HEAD incl. range reads | PUT object/copy/part and POST multipart completion do not replay 5xx at the shared layer. The single PUT rebuilds and signs the stream and retries a connection refusal before send, an HTTP 429, and 503 SlowDown. Every other 503 stays on that response. The baseline digest belongs to the attempt that completed. Multipart parts stay on the signed byte-body path. |
+| S3 | GET/HEAD incl. range reads | PUT object/copy/part and POST multipart completion do not replay 5xx at the shared layer. The single PUT rebuilds and signs the stream and retries a connection refusal before send, an HTTP 429, and 503 SlowDown. Every other 503 stays on that response. Fastly Object Storage adds one case: the single PUT and each multipart part repeat a 408 (request not completed in time), bounded by the same allowance. The baseline digest belongs to the attempt that completed. Multipart parts stay on the signed byte-body path. |
 | Swift | GET/HEAD | PUT object/container, POST metadata and DELETE do not replay 5xx. One retry after explicit 401 and reauthentication remains. |
 | Internxt | Drive/network GET reads | POST/PATCH/PUT writes do not replay 5xx. Refresh GET rotates credentials, so refusals only. Upload-session allocation no longer has a second outer replay on 5xx, timeout or malformed success. All existing names, including empty files, are refused with AlreadyExists before allocation; there is no UUID replacement or delete/create fallback. A concurrent create refusal is AlreadyExists. One explicit 401 recovery remains. |
 | Twake | GET listing and reads | POST mkdir/copy/share/restore and PUT/PATCH do not replay 5xx. Explicit 401 recovery remains. The file upload retries a connection refusal before send and an HTTP 429; one 401 refresh and one 409 lookup stay outside that retry. The digest compared with the server belongs to the attempt that completed. |

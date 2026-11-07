@@ -2365,7 +2365,8 @@
             "allowScpFallback": "Cho phép dự phòng bằng SCP",
             "allowScpFallbackHint": "Nếu máy chủ không có SFTP, kết nối sẽ tiếp tục qua SCP, như WinSCP vẫn làm.",
             "discoverScp": "Sao chép tệp qua SSH cho máy chủ không có SFTP",
-            "discoverTigris": "Tigris: lưu trữ phân tán toàn cầu tương thích S3, không tính phí băng thông ra (5 GB miễn phí)"
+            "discoverTigris": "Tigris: lưu trữ phân tán toàn cầu tương thích S3, không tính phí băng thông ra (5 GB miễn phí)",
+            "discoverFastly": "Fastly Object Storage: lưu trữ tương thích S3 tại 12 khu vực (miễn phí 5 GB, cần thẻ)"
         },
         "shortcuts": {
             "title": "Phím tắt",

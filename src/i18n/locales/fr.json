@@ -2365,7 +2365,8 @@
             "allowScpFallback": "Autoriser le repli sur SCP",
             "allowScpFallbackHint": "Si le serveur n'a pas de SFTP, la connexion continue en SCP, comme le fait WinSCP.",
             "discoverScp": "Copie de fichiers via SSH pour les serveurs sans SFTP",
-            "discoverTigris": "Tigris : stockage compatible S3 distribué à l'échelle mondiale, sans frais de sortie de données (5 GB gratuits)"
+            "discoverTigris": "Tigris : stockage compatible S3 distribué à l'échelle mondiale, sans frais de sortie de données (5 GB gratuits)",
+            "discoverFastly": "Fastly Object Storage : stockage compatible S3 dans 12 régions (5 GB gratuits, carte requise)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

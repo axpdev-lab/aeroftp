@@ -2365,7 +2365,8 @@
             "allowScpFallback": "Izinkan SCP sebagai cadangan",
             "allowScpFallbackHint": "Jika server tidak memiliki SFTP, lanjutkan melalui SCP pada koneksi yang sama, seperti yang dilakukan WinSCP.",
             "discoverScp": "Salin file melalui SSH untuk server tanpa SFTP",
-            "discoverTigris": "Tigris: penyimpanan terdistribusi global yang kompatibel dengan S3, tanpa biaya egress (5 GB gratis)"
+            "discoverTigris": "Tigris: penyimpanan terdistribusi global yang kompatibel dengan S3, tanpa biaya egress (5 GB gratis)",
+            "discoverFastly": "Fastly Object Storage: penyimpanan kompatibel S3 di 12 wilayah (5 GB gratis, perlu kartu)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
