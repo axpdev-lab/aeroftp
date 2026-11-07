@@ -3186,7 +3186,9 @@ const App: React.FC = () => {
 
     'Escape': () => {
       if (quickLookOpen) setQuickLookOpen(false);
-      else if (universalPreviewOpen) closeUniversalPreview();
+      // The preview answers ESC itself, through its unsaved-edits guard
+      // (Discussion #1527: closing it here dropped AeroImage edits unasked).
+      else if (universalPreviewOpen) return;
       else if (showCyberTools) setShowCyberTools(false);
       else if (showShortcutsDialog) setShowShortcutsDialog(false);
       else if (showAboutDialog) setShowAboutDialog(false);
