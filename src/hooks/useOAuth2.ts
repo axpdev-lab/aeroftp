@@ -8,6 +8,7 @@
 
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { countedOAuthLogin } from '../utils/oauthLogins';
 
 export type OAuthProvider = 'google_drive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zoho_workdrive' | 'yandexdisk';
 
@@ -54,7 +55,7 @@ export function useOAuth2(): UseOAuth2Return {
     
     try {
       // Use the new full auth flow that handles everything automatically
-      const result = await invoke<string>('oauth2_full_auth', { params });
+      const result = await countedOAuthLogin(() => invoke<string>('oauth2_full_auth', { params }));
       // Return a mock result since full_auth completes the flow
       return { auth_url: '', state: result };
     } catch (e) {

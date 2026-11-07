@@ -2,6 +2,7 @@ import * as React from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
+import { countedOAuthLogin } from '../../utils/oauthLogins';
 import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, PencilLine, ArrowUpRight, ArrowDownLeft, Globe, Cloud, Camera, Code, Gauge, HardDrive, LogOut, Scissors, Folder, FolderPlus, Check, UserPlus, FileKey, Download } from 'lucide-react';
 import { Bucket } from '../connectionMethodIcons';
 import { AeroCryptRecoveryKitModal } from '../AeroCryptRecoveryKitModal';
@@ -1164,14 +1165,14 @@ export function MyServersPanel({
                 // in-flight backend call, matching the credential providers.
                 const doOAuthConnect = async (connectToken?: string) => {
                     const params = connectToken ? { ...baseParams, connect_token: connectToken } : baseParams;
-                    if (!hasTokens) await connectScope.step(() => invoke('oauth2_full_auth', { params }));
+                    if (!hasTokens) await connectScope.step(() => countedOAuthLogin(() => invoke('oauth2_full_auth', { params })));
                     try {
                         return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params }));
                     } catch (connectErr) { connectScope.assert();
                         const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
                         const lower = errMsg.toLowerCase();
                         if (lower.includes('token expired') || (lower.includes('token') && lower.includes('refresh')) || lower.includes('authentication failed') || (lower.includes('invalid') && lower.includes('access_token'))) {
-                            await connectScope.step(() => invoke('oauth2_full_auth', { params }));
+                            await connectScope.step(() => countedOAuthLogin(() => invoke('oauth2_full_auth', { params })));
                             return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params }));
                         }
                         throw connectErr;
@@ -1244,13 +1245,13 @@ export function MyServersPanel({
                     const params = connectToken
                         ? { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id, connect_token: connectToken }
                         : { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id };
-                    if (!hasTokens) await connectScope.step(() => invoke('fourshared_full_auth', { params }));
+                    if (!hasTokens) await connectScope.step(() => countedOAuthLogin(() => invoke('fourshared_full_auth', { params })));
                     try {
                         return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params }));
                     } catch (error) { connectScope.assert();
                         connectScope.assert();
                         if (isConnectCancelledError(error)) throw error;
-                        await connectScope.step(() => invoke('fourshared_full_auth', { params }));
+                        await connectScope.step(() => countedOAuthLogin(() => invoke('fourshared_full_auth', { params })));
                         return await connectScope.step(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', { params }));
                     }
                 };

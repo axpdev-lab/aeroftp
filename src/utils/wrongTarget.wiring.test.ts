@@ -26,6 +26,8 @@ import { isFourSharedProvider, isOAuthProvider } from '../types';
 // A pin reads the code alone: a comment may name a call, say "await" or
 // mention what a check looks for. Code run by a test keeps its comments.
 // App's own list of the account-key options, read from its source.
+// Interactive OAuth logins, as App's counter sees them; a test can add one.
+const oauthLogins = { count: 0 };
 const ACCOUNT_KEY_OPTIONS = new Function(`return ${APP.match(/const ACCOUNT_KEY_OPTIONS = (\[[^\]]*\])/)![1]};`)() as string[];
 
 const codeOnly = (source: string) => source.split('\n').filter(line => !/^\s*(\/\/|\/\*|\*)/.test(line)).join('\n');
@@ -125,6 +127,7 @@ describe('a queued transfer', () => {
             isFourSharedProvider,
             connectionNumberOf,
             ACCOUNT_KEY_OPTIONS,
+            oauthLoginCount: () => oauthLogins.count,
             transferQueue: { failTransfer: vi.fn() },
             t: (key: string) => key,
         };
@@ -153,7 +156,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: () => oauthLogins.count, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
@@ -175,7 +178,7 @@ describe('a queued transfer', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: () => oauthLogins.count, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
         };
@@ -225,6 +228,30 @@ describe('a queued transfer', () => {
         // A batch queued in another tab, now looked at from this one.
         expect(fns.queuedTargetProblem({ ...target, sessionId: 'B' })).toBe('transfer.queuedForAnotherServer');
         // The same connection, untouched: still its own.
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+    });
+
+    // Switching back to an OAuth tab whose token expired logs in again on the
+    // same tab and the same params object, and the user can pick another
+    // account there: an OAuth target taken before a login is refused.
+    it.each([
+        ['with a saved profile', { savedServerId: 'gdrive-1' }],
+        ['without one', {}],
+    ])('an OAuth target %s refuses a Retry after a login on the same tab', async (_name, linked) => {
+        const oauth = { server: '', protocol: 'googledrive', port: 443, username: '', password: '', ...linked };
+        const { fns } = await targetChecks(oauth);
+        const target = fns.snapshotQueuedTarget();
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+        oauthLogins.count += 1;
+        expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+        // A target taken after the login is the account chosen there.
+        expect(fns.queuedTargetProblem(fns.snapshotQueuedTarget())).toBeNull();
+    });
+
+    it('a target whose account is in the params is not refused by an OAuth login elsewhere', async () => {
+        const { fns } = await targetChecks(queued);
+        const target = fns.snapshotQueuedTarget();
+        oauthLogins.count += 1;
         expect(fns.queuedTargetProblem(target)).toBeNull();
     });
 
@@ -701,7 +728,7 @@ describe('a direct remote action', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: () => oauthLogins.count, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
         const { code } = await transformWithOxc(source, 'action-guard.ts');

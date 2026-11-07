@@ -17,6 +17,9 @@ export interface QueuedTarget {
    *  saved profile, since their token is not in the params. */
   sessionId: string | null;
   connection: number;
+  /** The interactive OAuth logins counted when it was taken: a login since
+   *  may have picked another account on the same connection. */
+  oauthLogins: number;
   /** The crypt overlay over the connection, as its vault, kind and scope
    *  (`null` without one): a vault id is the kind and the owner, so another
    *  vault of the same kind in the same session has the same one. */

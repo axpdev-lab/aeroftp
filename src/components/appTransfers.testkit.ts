@@ -39,6 +39,8 @@ function closure(name: string, endMarker: string) {
   return app.slice(start, end);
 }
 // App's own list of the account-key options, read from its source.
+// Interactive OAuth logins, as App's counter sees them; a test can add one.
+const oauthLogins = { count: 0 };
 const ACCOUNT_KEY_OPTIONS = new Function(`return ${app.match(/const ACCOUNT_KEY_OPTIONS = (\[[^\]]*\])/)![1]};`)() as string[];
 
 const dropStart = app.indexOf('\n    crossPanelDropRef.current = async (');
@@ -231,7 +233,7 @@ export function fixture(options: Options = {}) {
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
     sessions: [{ id: 'A', connectionParams: liveConnectionParams }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS,
+    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: () => oauthLogins.count,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
     humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, cancelLevelRef: { current: 0 },
