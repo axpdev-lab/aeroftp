@@ -12,6 +12,8 @@ import { useTranslation } from '../i18n';
 import { formatDate } from '../utils';
 import { ServerProfile, isOAuthProvider, isFourSharedProvider } from '../types';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { copyText } from '../utils/clipboard';
 
 interface CheckDetail {
@@ -349,9 +351,17 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
     const degraded = Array.from(results.values()).filter(r => r.status === 'degraded').length;
     const unreachable = Array.from(results.values()).filter(r => r.status === 'unreachable' || r.status === 'error').length;
 
+    // While servers are probed the backdrop is inert and the X asks first; the
+    // results of a check are kept from the backdrop too (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: allChecking || checking.size > 0 ? 'busy' : null,
+        onClose,
+        backdrop: results.size > 0 ? 'never' : 'idle',
+    });
+
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm animate-fade-in"
-            onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+            onClick={guarded.onBackdropClick}>
             <div
                 {...modalDrag.panelProps}
                 className="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-scale-in"
@@ -409,7 +419,7 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                                 {t('healthCheck.checkAll')}
                             </button>
                         )}
-                        <button onClick={onClose}
+                        <button onClick={guarded.requestClose}
                             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
                             <X size={18} />
                         </button>
@@ -585,6 +595,14 @@ export const ServerHealthCheck: React.FC<ServerHealthCheckProps> = ({ servers, o
                     })}
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

@@ -21,6 +21,8 @@ import {
 import { useTranslation } from '../i18n';
 import { useTauriListener } from '../hooks/useTauriListener';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import {
     SpeedTestCompareResult,
     SpeedTestDialogProps,
@@ -481,21 +483,16 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         return () => document.removeEventListener('mousedown', onDocClick);
     }, [exportMenuOpen]);
 
-    // Esc closes the dialog when idle, cancels when running
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key !== 'Escape') return;
-            if (anyRunning) {
-                e.preventDefault();
-                void handleCancel();
-            } else {
-                e.preventDefault();
-                onClose();
-            }
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [anyRunning, handleCancel, onClose]);
+    // While a test runs, the backdrop is inert and ESC asks whether to stop it
+    // (a stray ESC used to cancel it outright). Its results are kept from the
+    // backdrop: only the X or ESC close them (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: anyRunning ? 'busy' : null,
+        onClose,
+        onAbort: () => { void handleCancel(); },
+        backdrop: result || compareResult ? 'never' : 'idle',
+        escape: true,
+    });
 
     const selectedSizeLabel = formatBytes(effectiveSize);
     const totalPhasePct = phase === 'idle'
@@ -980,7 +977,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center pt-[2vh] pb-[2vh] bg-black/50 backdrop-blur-sm animate-fade-in"
-            onClick={(e) => { if (e.target === e.currentTarget && !anyRunning) onClose(); }}
+            onClick={guarded.onBackdropClick}
         >
             <div
                 {...modalDrag.panelProps}
@@ -1109,6 +1106,14 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                     </>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
