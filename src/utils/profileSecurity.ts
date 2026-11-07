@@ -103,8 +103,29 @@ export const loadedOption = (options: object | null | undefined, key: string): u
     if (!options || typeof options !== 'object') return undefined;
     const values = options as Record<string, unknown>;
     const rule = rules.find(r => r.key === key);
-    const present = (rule ? spellings(rule) : [key]).filter(k => k in values).sort();
+    const present = (rule ? spellings(rule) : [key])
+        .filter(k => k in values)
+        .filter(k => values[k] !== null && ['string', 'boolean', 'number'].includes(typeof values[k]))
+        .sort();
     return present.length > 0 ? values[present[present.length - 1]] : undefined;
+};
+
+/** The WebDAV scheme under every spelling the loader accepts. */
+export const loadedWebdavScheme = (options: object | null | undefined): string | undefined => {
+    const value = loadedOption(options, 'webdavScheme');
+    return typeof value === 'string' ? value : undefined;
+};
+
+/** Hydrate one canonical spelling per guarded option and drop competing aliases. */
+export const canonicalOptionsForEdit = (options: object | null | undefined, protocol?: string): Record<string, unknown> => {
+    const normalized = { ...(options ?? {}) } as Record<string, unknown>;
+    for (const rule of rules) {
+        if (rule.key === 'webdavScheme' && protocol && protocol !== 'webdav' && protocol !== 'webdavs') continue;
+        const value = loadedOption(options, rule.key);
+        for (const key of spellings(rule)) delete normalized[key];
+        if (value !== undefined) normalized[rule.key] = value;
+    }
+    return normalized;
 };
 
 /** An off-by-default switch, read as the providers read it: on only for `true`. */

@@ -1696,7 +1696,7 @@ fn apply_profile_decisions(
     inputs: &PlanInputs,
     choices: ProfileChoices<'_>,
     blob_before_import: Option<String>,
-) -> Result<u32, String> {
+) -> Result<(u32, Vec<serde_json::Value>), String> {
     let outcome = keystore_profile_plan::apply(
         inputs,
         choices.decisions,
@@ -1748,7 +1748,7 @@ fn apply_profile_decisions(
     })();
 
     match applied {
-        Ok(()) => Ok(outcome.profiles.len() as u32),
+        Ok(()) => Ok((outcome.profiles.len() as u32, outcome.profiles)),
         Err(e) => {
             let failures = restore_profile_step(store, db.as_deref(), &snapshot);
             if failures.is_empty() {
@@ -1862,7 +1862,7 @@ fn import_keystore_with_store(
     // vault section writes, merged or not, takes no relaxing option from the
     // backup (CodeRabbit on #1524).
     let mut security_reset = if sections.vault {
-        reset_backup_vault_list(&mut payload.vault_entries)
+        reset_backup_vault_list(&mut payload.vault_entries)?
     } else {
         Vec::new()
     };
@@ -2264,13 +2264,21 @@ fn import_keystore_with_store(
     if partition_in_restore {
         if let Some(cfg) = config_dir {
             put_right_restored_profile_names(store, cfg);
-            // Restored whole, with no plan to write it: every profile in it is
-            // the backup's, and each is brought to its safe state before the
-            // blob mirrors the list. With a plan, its own (safe) list is
-            // written last and this device's profiles keep their options.
-            if profile_plan.is_none() {
-                security_reset.extend(reset_restored_partition_relaxations(store, cfg));
-            }
+            // Every restored account is reset. With a plan the active account is
+            // excluded here because its chosen list is written last; the other
+            // accounts have no such later write and are reset now.
+            let except_user = if profile_plan.is_some() {
+                rusqlite::Connection::open(cfg.join("user_partitions.db"))
+                    .ok()
+                    .and_then(|conn| crate::user_partitions::active_user_id(&conn).ok().flatten())
+            } else {
+                None
+            };
+            security_reset.extend(reset_restored_partition_relaxations(
+                store,
+                cfg,
+                except_user,
+            ));
             restored_list_unread =
                 !refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
         }
@@ -2346,7 +2354,11 @@ fn import_keystore_with_store(
     let mut profile_decisions_error = None;
     if let Some((inputs, choices)) = &profile_plan {
         match apply_profile_decisions(store, config_dir, inputs, *choices, blob_before_import) {
-            Ok(count) => profiles_after_decisions = Some(count),
+            Ok((count, profiles)) => {
+                profiles_after_decisions = Some(count);
+                security_reset =
+                    resets_not_left_relaxed(std::mem::take(&mut security_reset), &profiles);
+            }
             Err(e) => {
                 tracing::error!("Keystore import: profile decisions not applied: {e}");
                 profile_decisions_error = Some(e);
@@ -2447,46 +2459,74 @@ fn refresh_legacy_profiles_blob(
 }
 
 /// Bring the backup's vault copy of the server list to its safe state, in
-/// place, and return what was reset. A list that does not parse is left as it
-/// is, for the import to handle as before.
+/// place, and return what was reset. A list this parser cannot read rejects
+/// the import before any write: the GUI must not fall back to an unsafe list.
 fn reset_backup_vault_list(
     entries: &mut HashMap<String, String>,
-) -> Vec<crate::profile_security::ProfileReset> {
+) -> Result<Vec<crate::profile_security::ProfileReset>, KeystoreExportError> {
     let Some(raw) = entries.get("config_server_profiles") else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
-    let Ok(mut list) = serde_json::from_str::<Vec<serde_json::Value>>(raw) else {
-        return Vec::new();
-    };
+    let mut list = serde_json::from_str::<Vec<serde_json::Value>>(raw)?;
     let reset = crate::profile_security::make_profile_list_safe(&mut list);
     if !reset.is_empty() {
-        if let Ok(safe) = serde_json::to_string(&list) {
-            entries.insert("config_server_profiles".to_string(), safe);
-        }
+        let safe = serde_json::to_string(&list)?;
+        entries.insert("config_server_profiles".to_string(), safe);
     }
-    reset
+    Ok(reset)
 }
 
 /// Bring every profile of a partition restored whole to its safe state.
 fn reset_restored_partition_relaxations(
     store: &crate::credential_store::CredentialStore,
     config_dir: &Path,
+    except_user: Option<i64>,
 ) -> Vec<crate::profile_security::ProfileReset> {
     let db_path = config_dir.join("user_partitions.db");
-    match crate::user_partitions::reset_profile_relaxations_in_db(store, &db_path) {
-        Ok((reset, 0)) => reset,
-        Ok((reset, left)) => {
-            tracing::warn!(
-                "Keystore import: {left} passphrase account(s) keep their restored \
-                 security options until unlocked"
-            );
-            reset
+    match crate::user_partitions::reset_profile_relaxations_in_db(store, &db_path, except_user) {
+        Ok(report) => {
+            if report.left > 0 || report.failed > 0 {
+                tracing::warn!(
+                    "Keystore import: {} account(s) reset at unlock, {} reset failure(s)",
+                    report.left,
+                    report.failed
+                );
+            }
+            report.reset
         }
         Err(e) => {
             tracing::warn!("Keystore import: restored security options not checked: {e}");
             Vec::new()
         }
     }
+}
+
+/// Drop reset notices for options still relaxed in the final list: a rejected
+/// backup profile kept this device's version, so no such reset happened.
+fn resets_not_left_relaxed(
+    resets: Vec<crate::profile_security::ProfileReset>,
+    profiles: &[serde_json::Value],
+) -> Vec<crate::profile_security::ProfileReset> {
+    resets
+        .into_iter()
+        .filter_map(|reset| {
+            let Some(profile) = profiles.iter().find(|profile| {
+                profile.get("name").and_then(serde_json::Value::as_str) == Some(reset.name.as_str())
+            }) else {
+                return Some(reset);
+            };
+            let left = crate::profile_security::security_relaxations(profile);
+            let keys = reset
+                .keys
+                .into_iter()
+                .filter(|key| !left.iter().any(|item| &item.key == key))
+                .collect::<Vec<_>>();
+            (!keys.is_empty()).then_some(crate::profile_security::ProfileReset {
+                name: reset.name,
+                keys,
+            })
+        })
+        .collect()
 }
 
 /// One entry per profile name, its keys merged in order: the vault copy and the
@@ -3467,6 +3507,27 @@ mod tests {
                 keys: vec!["trustUnknownHosts".into()]
             }]
         );
+    }
+
+    #[test]
+    fn a_vault_list_the_reset_parser_cannot_read_is_refused() {
+        let depth = 128;
+        let raw = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        let mut entries = HashMap::from([("config_server_profiles".to_string(), raw)]);
+        assert!(reset_backup_vault_list(&mut entries).is_err());
+    }
+
+    #[test]
+    fn a_reset_notice_omits_a_rejected_profile_that_kept_local_relaxations() {
+        let resets = vec![crate::profile_security::ProfileReset {
+            name: "lab".into(),
+            keys: vec!["trustUnknownHosts".into()],
+        }];
+        let local = serde_json::json!({
+            "name": "lab", "protocol": "sftp", "host": "sftp.example.com",
+            "options": {"trustUnknownHosts": true}
+        });
+        assert!(resets_not_left_relaxed(resets, &[local]).is_empty());
     }
 
     #[test]

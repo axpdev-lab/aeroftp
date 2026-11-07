@@ -17,7 +17,8 @@ import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
-import { loadedCertificateCheck, loadedOptionOn } from './utils/profileSecurity';
+import { loadedCertificateCheck, loadedOption, loadedOptionOn } from './utils/profileSecurity';
+import { keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
@@ -2328,7 +2329,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const protocol = liveConnectionParams.protocol;
     const isFtpFamily = protocol === 'ftp' || protocol === 'ftps';
-    const insecureEnabled = isFtpFamily && liveConnectionParams.options?.verifyCert === false;
+    const insecureEnabled = isFtpFamily && !loadedCertificateCheck(liveConnectionParams.options);
 
     if (insecureEnabled && !insecureCertPreviouslyEnabledRef.current) {
       logActivity(
@@ -2342,7 +2343,7 @@ const App: React.FC = () => {
     }
 
     insecureCertPreviouslyEnabledRef.current = insecureEnabled;
-  }, [liveConnectionParams.protocol, liveConnectionParams.options?.verifyCert, liveConnectionParams.server, logActivity, t]);
+  }, [liveConnectionParams.protocol, liveConnectionParams.options, liveConnectionParams.server, logActivity, t]);
 
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
@@ -7630,10 +7631,11 @@ const App: React.FC = () => {
       timeout: effectiveParams.options?.timeout || 30,
       ...scpFallbackConnectParam(protocol, effectiveParams.options),
       tls_mode: protocol === 'webdav'
-        ? effectiveParams.options?.webdavScheme
+        ? (loadedOption(effectiveParams.options, 'webdavScheme') as string | undefined)
         : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
       verify_cert: loadedCertificateCheck(effectiveParams.options),
       trust_pasv_address: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
+      allow_cleartext_endpoint: loadedOptionOn(effectiveParams.options, 'allowCleartextEndpoint'),
       allow_cleartext_storage: loadedOptionOn(effectiveParams.options, 'allowCleartextStorage'),
       two_factor_code: effectiveParams.options?.two_factor_code || null,
       totp_secret: effectiveParams.options?.totp_secret || null,
@@ -9720,6 +9722,7 @@ const App: React.FC = () => {
             : { endpoint: (cloudServer.options?.endpoint as string | undefined) || null, signingRegion: cloudServer.options?.region as string | undefined };
           const providerParams = {
             protocol,
+            provider_id: cloudServer.providerId || null,
             profile_id: cloudServer.id || null,
             server: cloudServer.host,
             port: cloudServer.port || (isSshProtocol(protocol) ? 22 : 443),
@@ -9736,9 +9739,12 @@ const App: React.FC = () => {
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,
             ...scpFallbackConnectParam(protocol, cloudServer.options),
-            tls_mode: cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
+            tls_mode: protocol === 'webdav'
+              ? (loadedOption(cloudServer.options, 'webdavScheme') as string | undefined)
+              : cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
             verify_cert: loadedCertificateCheck(cloudServer.options),
             trust_pasv_address: loadedOptionOn(cloudServer.options, 'trustPasvAddress'),
+            allow_cleartext_endpoint: loadedOptionOn(cloudServer.options, 'allowCleartextEndpoint'),
             allow_cleartext_storage: loadedOptionOn(cloudServer.options, 'allowCleartextStorage'),
             two_factor_code: cloudServer.options?.two_factor_code || null,
             totp_secret: cloudServer.options?.totp_secret || null,
@@ -16049,6 +16055,7 @@ const App: React.FC = () => {
             userPartitionsUnreadable?: number;
             userPartitionsBackupPath?: string;
             sqliteDbsFailed?: string[];
+            securityReset?: { name: string; keys: string[] }[];
           }>('import_keystore', {
             password,
             filePath,
@@ -16083,7 +16090,8 @@ const App: React.FC = () => {
             (result.userPartitionsUnreadable ?? 0) > 0 ||
             (result.userPartitionsRekeyed ?? 0) > 0 ||
             !!result.userPartitionsBackupPath ||
-            !!result.sqliteDbsFailed?.length;
+            !!result.sqliteDbsFailed?.length ||
+            !!result.securityReset?.length;
           if (needsModal) {
             setKeystoreImportResult({
               imported: result.imported,
@@ -16093,11 +16101,12 @@ const App: React.FC = () => {
               userPartitionsUnreadable: result.userPartitionsUnreadable,
               userPartitionsBackupPath: result.userPartitionsBackupPath,
               sqliteDbsFailed: result.sqliteDbsFailed,
+              securityReset: result.securityReset,
             });
           } else {
             notify.success(
               t('settings.importKeystore') || 'Import Keystore',
-              t('settings.keystoreImported', { imported: result.imported, skipped: result.skipped }),
+              keystoreImportSummary(result, null, t).text,
             );
           }
         } catch (err) {
@@ -21316,7 +21325,7 @@ const App: React.FC = () => {
             connectionSecurity={isConnected ? (() => {
               const protocol = liveConnectionParams.protocol;
               const opts = liveConnectionParams.options;
-              const verifyCert = opts?.verifyCert ?? true;
+              const verifyCert = loadedCertificateCheck(opts);
               if (protocol === 'ftp') {
                 const tlsMode = opts?.tlsMode ?? 'explicit';
                 if (tlsMode === 'none') return 'insecure' as const;

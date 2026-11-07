@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { CheckCircle2, AlertTriangle, RefreshCw, KeyRound, Archive } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { RELAXATION_LABEL_KEYS } from '../utils/profileSecurity';
 
 /**
  * Post-import summary modal (F-012 W1 + W2). Replaces the old fire-and-forget
@@ -31,6 +32,7 @@ export interface KeystoreImportResult {
     userPartitionsUnreadable?: number;
     userPartitionsBackupPath?: string;
     sqliteDbsFailed?: string[];
+    securityReset?: { name: string; keys: string[] }[];
 }
 
 interface KeystoreImportResultModalProps {
@@ -107,6 +109,15 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
                                 <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
                                 <span>{t('settings.keystoreDatabasesFailed', { names: failedDatabases.join(', ') })}</span>
                             </div>
+                        </div>
+                    )}
+
+                    {result.securityReset && result.securityReset.length > 0 && (
+                        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200">
+                            {t('settings.keystoreSecurityReset', {
+                                count: result.securityReset.length,
+                                details: result.securityReset.map(r => `${r.name} (${r.keys.map(k => t(RELAXATION_LABEL_KEYS[k] ?? k)).join(', ')})`).join('; '),
+                            })}
                         </div>
                     )}
 

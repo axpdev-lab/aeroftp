@@ -373,9 +373,16 @@ pub fn make_profile_list_safe(list: &mut [Value]) -> Vec<ProfileReset> {
 /// profiles).
 static STRICT_PROFILES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-/// Turn strict mode on for saved profiles.
+/// Turn strict mode on for saved profiles. Tests must call
+/// `strict_profile_refusal_when` instead: this process-wide flag is shared by
+/// parallel tests.
 pub fn set_strict_profiles(on: bool) {
     STRICT_PROFILES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Whether this process was started in strict mode, for child commands too.
+pub fn strict_profiles_enabled() -> bool {
+    STRICT_PROFILES.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// In strict mode, the refusal for a saved profile whose options turn a

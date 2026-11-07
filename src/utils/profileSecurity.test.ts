@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import table from '../shared/profile-security-relaxations.json';
-import { endpointStaysOnThisMachine, loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe, securityRelaxations } from './profileSecurity';
+import { canonicalOptionsForEdit, endpointStaysOnThisMachine, loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe, securityRelaxations } from './profileSecurity';
 
 interface Case {
     name: string;
@@ -86,6 +86,14 @@ describe('loadedOption', () => {
         expect(loadedOption(options, 'trustPasvAddress')).toBe(true);
         expect(loadedOptionOn(options, 'trustPasvAddress')).toBe(true);
         expect(loadedOptionOn({ trustPasvAddress: true, trust_pasv_address: 'false' }, 'trustPasvAddress')).toBe(false);
+    });
+
+    it('skips values the loader ignores and normalizes aliases for an edit', () => {
+        const options = { trustPasvAddress: true, trust_pasv_address: null, verify_cert: false };
+        expect(loadedOption(options, 'trustPasvAddress')).toBe(true);
+        expect(canonicalOptionsForEdit(options)).toEqual({ trustPasvAddress: true, verifyCert: false });
+        expect(loadedCertificateCheck(canonicalOptionsForEdit(options))).toBe(false);
+        expect(canonicalOptionsForEdit({ tlsMode: 'explicit' }, 'ftp')).toEqual({ tlsMode: 'explicit' });
     });
 
     it('reads a kept string value as the providers do', () => {

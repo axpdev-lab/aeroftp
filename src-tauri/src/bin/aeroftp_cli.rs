@@ -7643,7 +7643,7 @@ fn aeroftp_strict_env() -> bool {
     strict_env_truthy(std::env::var("AEROFTP_STRICT").ok().as_deref())
 }
 
-use ftp_client_gui_lib::profile_security::{strict_profile_refusal, strict_profile_violation};
+use ftp_client_gui_lib::profile_security::strict_profile_refusal;
 
 /// Strict-mode guard (security-audit rec: `--strict` / `AEROFTP_STRICT=1`).
 ///
@@ -26185,7 +26185,19 @@ fn parse_interactive_token(s: &str) -> Option<(usize, char)> {
 /// Re-invoke the running binary with the given arguments, inheriting stdio.
 /// Used by the interactive loop so `l` / `t` produce output identical to the
 /// standalone subcommand. Returns the child exit code (clamped to i32 :: 99).
+fn self_subcommand_args<'a>(args: &[&'a str], strict: bool) -> Vec<&'a str> {
+    let mut args = args.to_vec();
+    if strict && !args.contains(&"--strict") {
+        args.push("--strict");
+    }
+    args
+}
+
 fn run_self_subcommand(args: &[&str]) -> i32 {
+    let args = self_subcommand_args(
+        args,
+        ftp_client_gui_lib::profile_security::strict_profiles_enabled(),
+    );
     let exe = match std::env::current_exe() {
         Ok(p) => p,
         Err(e) => {
@@ -26205,6 +26217,29 @@ fn run_self_subcommand(args: &[&str]) -> i32 {
             eprintln!("Subcommand failed to spawn: {}", e);
             99
         }
+    }
+}
+
+#[cfg(test)]
+mod self_subcommand_tests {
+    #[test]
+    fn strict_mode_reaches_interactive_child_commands_once() {
+        let args = super::self_subcommand_args(&["ls", "/", "--profile", "lab"], true);
+        assert_eq!(args, ["ls", "/", "--profile", "lab", "--strict"]);
+        assert_eq!(
+            super::self_subcommand_args(&args, true),
+            ["ls", "/", "--profile", "lab", "--strict"]
+        );
+        assert_eq!(
+            super::self_subcommand_args(&["tree", "/"], false),
+            ["tree", "/"]
+        );
+        let mut argv = vec!["aeroftp-cli"];
+        argv.extend(args);
+        super::on_big_stack(move || {
+            let parsed = <super::Cli as clap::Parser>::try_parse_from(argv).unwrap();
+            assert!(parsed.strict);
+        });
     }
 }
 
@@ -85479,6 +85514,8 @@ mod tests {
     /// in the message, and a clean one passes.
     #[test]
     fn strict_refuses_a_saved_profile_that_turns_a_check_off() {
+        use ftp_client_gui_lib::profile_security::strict_profile_violation;
+
         let relaxed = serde_json::json!({
             "name": "lab", "host": "files.example.com", "protocol": "sftp",
             "options": {"trustUnknownHosts": true}

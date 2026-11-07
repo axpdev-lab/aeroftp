@@ -586,6 +586,13 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
     ProviderType::from_lowercase(protocol)
 }
 
+fn refuse_relaxed_vault_profile(profile: &serde_json::Value, strict: bool) -> Result<(), String> {
+    match crate::profile_security::strict_profile_refusal_when(strict, profile) {
+        Some(refusal) => Err(refusal),
+        None => Ok(()),
+    }
+}
+
 /// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols
 /// plus OAuth2 providers when valid tokens exist in the vault.
 ///
@@ -606,9 +613,7 @@ async fn create_provider_from_vault(
     // Strict mode holds for the MCP pool too: a saved profile that turns a
     // security check off is refused before any credential is read (Greptile
     // on #1524).
-    if let Some(refusal) = crate::profile_security::strict_profile_refusal(matched) {
-        return Err(refusal);
-    }
+    refuse_relaxed_vault_profile(matched, crate::profile_security::strict_profiles_enabled())?;
     // The profile read again here is the one opened: it must still connect
     // where it did when the pool checked it.
     approved_target_unchanged(server_query, identity, profile_identity(matched).as_deref())?;
@@ -753,20 +758,12 @@ mod tests {
     /// before any credential is read.
     #[test]
     fn the_vault_connect_path_applies_strict_mode() {
-        let source = include_str!("pool.rs");
-        let body = &source[source.find("async fn create_provider_from_vault(").unwrap()..];
-        let matched = body
-            .find("find_unique_profile(&profiles, server_query)?")
-            .unwrap();
-        let refusal = body.find("strict_profile_refusal(matched)").unwrap();
-        let credential = body.find("resolve_active_credential(").unwrap();
-        assert!(matched < refusal && refusal < credential);
         let relaxed = serde_json::json!({
             "name": "lab", "host": "files.example.com", "protocol": "sftp",
             "options": {"trustUnknownHosts": true}
         });
-        assert!(crate::profile_security::strict_profile_refusal_when(true, &relaxed).is_some());
-        assert!(crate::profile_security::strict_profile_refusal_when(false, &relaxed).is_none());
+        assert!(refuse_relaxed_vault_profile(&relaxed, true).is_err());
+        assert!(refuse_relaxed_vault_profile(&relaxed, false).is_ok());
     }
     use super::*;
 

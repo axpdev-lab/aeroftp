@@ -36,6 +36,7 @@ export interface UserUnlockStatus {
     activeUserId?: number | null;
     unlockedUserId?: number | null;
     isUnlocked: boolean;
+    securityReset?: { name: string; keys: string[] }[];
 }
 
 export interface UserStorageStats {
