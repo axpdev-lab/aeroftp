@@ -40,9 +40,9 @@ case "$(basename "$0")" in
         fi
         if [ "$1" = "-l" ] && [ "$2" = "/" ]; then
             echo 'FLAGS VERS SIZE DATE TIME NAME'
-            echo '----  1  3  15Jan2026  14:30  a.txt'
-            echo '----  1  3  15Jan2026  14:30  b.txt'
-            echo 'd---  -  -  15Jan2026  14:30  d'
+            echo '----  1  3  15Jan2026  14:30 a.txt'
+            echo '----  1  3  15Jan2026  14:30 b.txt'
+            echo 'd---  -  -  15Jan2026  14:30 d'
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "/f.dat" ]; then

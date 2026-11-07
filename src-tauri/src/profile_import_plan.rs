@@ -612,8 +612,17 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
     // as true), or a backup could weaken a connection under the other
     // spelling and keep the saved secret (CodeRabbit on #1524).
     let effective = |p: &serde_json::Value| {
+        // An absent protocol is FTP here, as `protocol` below reads it, so it
+        // gets the same FTP defaults as one that says "ftp".
+        let mut p = p.clone();
+        if p.is_object()
+            && (matches!(p.get("protocol"), None | Some(serde_json::Value::Null))
+                || p.get("protocol").and_then(|v| v.as_str()) == Some(""))
+        {
+            p["protocol"] = serde_json::json!("ftp");
+        }
         let mut extra = std::collections::HashMap::new();
-        crate::profile_loader::apply_profile_options(&mut extra, p);
+        crate::profile_loader::apply_profile_options(&mut extra, &p);
         extra
     };
     let (loaded_a, loaded_b) = (effective(a), effective(b));

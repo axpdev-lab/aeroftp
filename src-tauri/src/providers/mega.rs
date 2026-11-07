@@ -1946,18 +1946,6 @@ fn name_after_columns(line: &str, columns: usize) -> &str {
         .trim_end_matches(['\r', '\n'])
 }
 
-/// What follows the first `columns` whitespace-separated columns of `line`
-/// and the whitespace after them, with its own spaces kept.
-fn rest_after_columns(line: &str, columns: usize) -> &str {
-    let mut rest = line;
-    for _ in 0..columns {
-        rest = rest.trim_start();
-        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-        rest = &rest[end..];
-    }
-    rest.trim_start()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
