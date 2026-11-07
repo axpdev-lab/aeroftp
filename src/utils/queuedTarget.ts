@@ -12,6 +12,11 @@ export interface QueuedTarget {
    *  connect. Two accounts of one provider can share every connection field
    *  (an OAuth token is not in the params): their profiles differ. */
   profileId: string | null;
+  /** The session tab and the connection it opened, as `connectionNumberOf`
+   *  numbers it: what tells two OAuth accounts apart when neither has a
+   *  saved profile, since their token is not in the params. */
+  sessionId: string | null;
+  connection: number;
   /** The crypt overlay over the connection, as its vault, kind and scope
    *  (`null` without one): a vault id is the kind and the owner, so another
    *  vault of the same kind in the same session has the same one. */

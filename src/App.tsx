@@ -563,6 +563,10 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 // backstop well above any legitimate slow login (real logins are seconds), not
 // a policy timeout; the "Keep waiting" button re-arms it for another window.
 const CONNECT_HARD_TIMEOUT_MS = 120000;
+// Connection options that are credentials picking the account, compared on
+// their own by the queued-target check (isSameConnection leaves them out).
+const ACCOUNT_KEY_OPTIONS = ['filen_api_key', 'accessKey', 'apiKey', 'clientSecret', 'sasToken'] as const;
+
 // How long a cancelled connect's or switch's backend teardown may run before
 // the backend is treated as uncertain (the backend's own gates wait 30 s).
 const BACKEND_TEARDOWN_BOUND_MS = 30000;
@@ -11225,6 +11229,8 @@ const App: React.FC = () => {
   const snapshotQueuedTarget = useLatestCallback((): QueuedTarget => ({
     params: { ...liveConnectionParams },
     profileId: liveProfileId(),
+    sessionId: activeSessionId,
+    connection: connectionNumberOf(liveConnectionParams),
     overlay: liveOverlay(),
   }));
 
@@ -11242,6 +11248,16 @@ const App: React.FC = () => {
     }
     await run();
   });
+
+  /** Whether two connections log in with other account keys: the options the
+   *  target comparison leaves out as credentials, yet that pick the account
+   *  (Filen's API key, an S3 access key, an API key, a client secret, a SAS
+   *  token). Absent and empty are the same absence. */
+  const accountKeysDiffer = (live: ConnectionParams, queued: ConnectionParams) => {
+    const liveOptions = (live.options ?? {}) as Record<string, unknown>;
+    const queuedOptions = (queued.options ?? {}) as Record<string, unknown>;
+    return ACCOUNT_KEY_OPTIONS.some(key => (liveOptions[key] || '') !== (queuedOptions[key] || ''));
+  };
 
   /** Whether the backend serves the live tab now: not while a connect or a
    *  tab switch runs (the tab is the new one, the backend not yet), while a
@@ -11277,7 +11293,15 @@ const App: React.FC = () => {
     const accountInParams = !queuedProtocol || !(isOAuthProvider(queuedProtocol) || isFourSharedProvider(queuedProtocol));
     const profileMustMatch = queuedFor.profileId !== null || !accountInParams;
     if ((liveConnectionParams.password || '') !== (queuedFor.params.password || '')
+      || accountKeysDiffer(liveConnectionParams, queuedFor.params)
       || (profileMustMatch && liveProfileId() !== queuedFor.profileId)) {
+      return 'transfer.queuedForAnotherServer';
+    }
+    // An OAuth connection with no saved profile has nothing in the params that
+    // names its account: only the very connection it was queued on is known
+    // to be that account, so another tab or a new login is refused.
+    if (!accountInParams && queuedFor.profileId === null
+      && (activeSessionId !== queuedFor.sessionId || connectionNumberOf(liveConnectionParams) !== queuedFor.connection)) {
       return 'transfer.queuedForAnotherServer';
     }
     if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';

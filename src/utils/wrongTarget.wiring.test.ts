@@ -13,7 +13,7 @@ import MARKDOWN from '../components/DevTools/MarkdownRenderer.tsx?raw';
 import PREVIEW from '../hooks/usePreview.ts?raw';
 import DRAG from '../hooks/useDragAndDrop.ts?raw';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, local, remote } from '../components/appTransfers.testkit';
-import { isSameConnection, savedProfileIdOf } from './liveConnection';
+import { connectionNumberOf, isSameConnection, savedProfileIdOf } from './liveConnection';
 import { isFourSharedProvider, isOAuthProvider } from '../types';
 
 /**
@@ -25,6 +25,9 @@ import { isFourSharedProvider, isOAuthProvider } from '../types';
 
 // A pin reads the code alone: a comment may name a call, say "await" or
 // mention what a check looks for. Code run by a test keeps its comments.
+// App's own list of the account-key options, read from its source.
+const ACCOUNT_KEY_OPTIONS = new Function(`return ${APP.match(/const ACCOUNT_KEY_OPTIONS = (\[[^\]]*\])/)![1]};`)() as string[];
+
 const codeOnly = (source: string) => source.split('\n').filter(line => !/^\s*(\/\/|\/\*|\*)/.test(line)).join('\n');
 const APP_CODE = codeOnly(APP);
 
@@ -120,6 +123,8 @@ describe('a queued transfer', () => {
             savedProfileIdOf,
             isOAuthProvider,
             isFourSharedProvider,
+            connectionNumberOf,
+            ACCOUNT_KEY_OPTIONS,
             transferQueue: { failTransfer: vi.fn() },
             t: (key: string) => key,
         };
@@ -148,7 +153,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
@@ -170,7 +175,7 @@ describe('a queued transfer', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
         };
@@ -207,6 +212,33 @@ describe('a queued transfer', () => {
         expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
     });
 
+    // Two OAuth Quick Connects of one provider with no saved profile share
+    // every field: only the connection a batch was queued on is its account.
+    it('an unlinked OAuth target refuses another unlinked OAuth connection of the same provider', async () => {
+        const oauth = { server: '', protocol: 'googledrive', port: 443, username: '', password: '' };
+        const { fns } = await targetChecks(oauth);
+        const target = fns.snapshotQueuedTarget();
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+        // Another login with the same fields: a connection of its own.
+        const anotherLogin = await targetChecks(oauth);
+        expect(anotherLogin.fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+        // A batch queued in another tab, now looked at from this one.
+        expect(fns.queuedTargetProblem({ ...target, sessionId: 'B' })).toBe('transfer.queuedForAnotherServer');
+        // The same connection, untouched: still its own.
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+    });
+
+    // Filen logs in with an API key the target comparison leaves out as a
+    // credential: another key is another account.
+    it.each(['filen_api_key', 'accessKey', 'apiKey', 'clientSecret', 'sasToken'])('refuses another %s, which picks the account', async (key) => {
+        const params = { ...queued, options: { bucket: 'b1', [key]: 'key-a' } };
+        const { fns, session } = await targetChecks(params);
+        const target = fns.snapshotQueuedTarget();
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+        session.connectionParams.options = { bucket: 'b1', [key]: 'key-b' };
+        expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+    });
+
     // End to end: an actual Retry and an actual editor read, through App's own
     // check, while a tab switch is still reconnecting the backend.
     it('a Retry clicked while a switch reconnects the backend uploads nothing', async () => {
@@ -217,6 +249,19 @@ describe('a queued transfer', () => {
         expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file')).toHaveLength(1);
         expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedForAnotherServer' });
         f.connectPhase.current = false;
+        await f.retryAllFailedItems();
+        expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    });
+
+    it('a Retry clicked while a cancelled switch still tears the backend down uploads nothing', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, fail: (command, call) => (command === 'provider_upload_file' && call === 1 ? 'Connection reset' : undefined) });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        // The switch's phase is over; its teardown is still running.
+        f.teardowns.current = 1;
+        await f.retryAllFailedItems();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file')).toHaveLength(1);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedForAnotherServer' });
+        f.teardowns.current = 0;
         await f.retryAllFailedItems();
         expect(f.row('q0')).toMatchObject({ status: 'completed' });
     });
@@ -311,6 +356,20 @@ describe('a queued transfer', () => {
         // The phase is over, the teardown is not.
         expect(ctx.remoteConnectPhaseRef.current).toBe(false);
         expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+        // End to end: the hook's own editor read, through App's own check,
+        // reads nothing while the teardown is paused.
+        const source = between(PREVIEW, '  const readForEditor = useLatestCallback(', '\n  });\n') + '\n  });';
+        const invoke = vi.fn(async (command: string) => (command === 'provider_connection_generation' ? 7 : 'old server'));
+        const remoteTarget = {
+            snapshot: () => fns.snapshotQueuedTarget(),
+            changedSince: (queuedFor: unknown) => fns.queuedTargetProblem(queuedFor) !== null,
+            changedMessage: () => 'toast.openedOnAnotherServer',
+        };
+        const { code } = await transformWithOxc(source, 'read-for-editor.ts');
+        const readForEditor = new Function('useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+            (fn: unknown) => fn, invoke, remoteTarget);
+        await expect(readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
+        expect(invoke).not.toHaveBeenCalledWith('preview_remote_file', expect.anything());
         teardownDone(true);
         await aborting;
         expect(fns.queuedTargetProblem(target)).toBeNull();
@@ -642,7 +701,7 @@ describe('a direct remote action', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
         const { code } = await transformWithOxc(source, 'action-guard.ts');

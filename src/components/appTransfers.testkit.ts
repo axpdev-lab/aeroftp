@@ -15,7 +15,7 @@ import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErr
 import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import { QueuedTargetChangedError, type QueuedTarget } from '../utils/queuedTarget';
 import type { PreviewFile } from './DevTools/types';
-import { isSameConnection, savedProfileIdOf } from '../utils/liveConnection';
+import { connectionNumberOf, isSameConnection, savedProfileIdOf } from '../utils/liveConnection';
 import type { ConnectionParams } from '../types';
 import { withTransferRun } from '../utils/transferRun';
 import { createFileBatchDispatcher, rearmedOnUserAction, updateTransferStatus } from './transferQueueActions';
@@ -38,6 +38,9 @@ function closure(name: string, endMarker: string) {
   if (start < 0 || end < 0) throw new Error(`Missing App closure: ${name}`);
   return app.slice(start, end);
 }
+// App's own list of the account-key options, read from its source.
+const ACCOUNT_KEY_OPTIONS = new Function(`return ${app.match(/const ACCOUNT_KEY_OPTIONS = (\[[^\]]*\])/)![1]};`)() as string[];
+
 const dropStart = app.indexOf('\n    crossPanelDropRef.current = async (');
 const dropEnd = app.indexOf('\n  });', dropStart);
 if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPanelDropRef');
@@ -228,7 +231,7 @@ export function fixture(options: Options = {}) {
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
     sessions: [{ id: 'A', connectionParams: liveConnectionParams }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider,
+    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
     humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, cancelLevelRef: { current: 0 },
@@ -285,5 +288,5 @@ export function fixture(options: Options = {}) {
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }
