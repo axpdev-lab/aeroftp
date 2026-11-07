@@ -41,6 +41,7 @@ export interface Relaxation {
 /** The parts of a saved profile the rules read. */
 export interface ProfileSecurityInput {
     host?: string;
+    port?: number;
     providerId?: string;
     protocol?: string;
     options?: Record<string, unknown> | null;
@@ -183,12 +184,15 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
         if (actual === undefined) continue;
         found.push({ key: rule.key, value: typeof actual === 'string' ? actual : String(actual) });
     }
-    // A WebDAV host written as http:// is plain HTTP whatever the scheme
-    // option says: the host prefix wins when the connection is built.
+    // The host prefix wins; otherwise port 80 with a missing or automatic
+    // scheme resolves to plain HTTP in WebDavConfig.
     const webdavRule = rules.find(r => r.key === WEBDAV_SCHEME_KEY);
-    if (protocol === 'webdav' && hostIsPlainHttp(profile.host)
+    const hostHttp = hostIsPlainHttp(profile.host);
+    const hostHttps = /^\s*https:\/\//i.test(profile.host ?? '');
+    const automaticHttp = !hostHttp && !hostHttps && profile.port === 80 && loadedWebdavScheme(options)?.trim().toLowerCase() !== 'https';
+    if (protocol === 'webdav' && (hostHttp || automaticHttp)
         && !found.some(r => r.key === WEBDAV_SCHEME_KEY) && webdavRule && !exempt(webdavRule)) {
-        found.push({ key: WEBDAV_SCHEME_KEY, value: 'http (host)' });
+        found.push({ key: WEBDAV_SCHEME_KEY, value: hostHttp ? 'http (host)' : 'http (auto, port 80)' });
     }
     return found;
 };

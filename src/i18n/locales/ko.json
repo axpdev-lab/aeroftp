@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTPS 대신 일반 HTTP",
             "importSecurityPasvAddress": "서버가 지정한 주소로 데이터 연결 (PASV)",
             "importSecurityUnknownHostKeys": "알 수 없는 SSH 호스트 키 허용",
-            "keystoreSecurityReset": "복원된 서버 {count}개에 보안 검사를 끄는 옵션이 있었습니다. 해당 옵션은 안전한 설정으로 되돌려졌습니다: {details}."
+            "keystoreSecurityReset": "복원된 서버 {count}개에 보안 검사를 끄는 옵션이 있었습니다. 해당 옵션은 안전한 설정으로 되돌려졌습니다: {details}.",
+            "keystoreSecurityResetFailed": "복원된 계정 {count}개의 보안 설정을 확인하거나 재설정할 수 없었습니다. 알림 없이 활성 상태로 남겨 두는 대신 여기에 나열됩니다."
         },
         "devtools": {
             "title": "AeroTools",

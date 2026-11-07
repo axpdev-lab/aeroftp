@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTPS এর বদলে সাধারণ HTTP",
             "importSecurityPasvAddress": "সার্ভারের নির্দেশিত ঠিকানায় ডেটা সংযোগ (PASV)",
             "importSecurityUnknownHostKeys": "অজানা SSH হোস্ট কী গ্রহণ করা হয়েছে",
-            "keystoreSecurityReset": "পুনরুদ্ধার করা {count}টি সার্ভারে এমন বিকল্প ছিল যা একটি নিরাপত্তা পরীক্ষা বন্ধ করে দেয়; সেগুলি নিরাপদ সেটিংয়ে ফিরিয়ে আনা হয়েছে: {details}।"
+            "keystoreSecurityReset": "পুনরুদ্ধার করা {count}টি সার্ভারে এমন বিকল্প ছিল যা একটি নিরাপত্তা পরীক্ষা বন্ধ করে দেয়; সেগুলি নিরাপদ সেটিংয়ে ফিরিয়ে আনা হয়েছে: {details}।",
+            "keystoreSecurityResetFailed": "{count}টি পুনরুদ্ধার করা অ্যাকাউন্টের নিরাপত্তা সেটিংস পরীক্ষা বা রিসেট করা যায়নি। সেগুলো নিঃশব্দে সক্রিয় রাখার পরিবর্তে এখানে দেখানো হয়েছে।"
         },
         "devtools": {
             "title": "AeroTools",

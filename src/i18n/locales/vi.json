@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP thường thay vì HTTPS",
             "importSecurityPasvAddress": "Kết nối dữ liệu tới địa chỉ do máy chủ chỉ định (PASV)",
             "importSecurityUnknownHostKeys": "Chấp nhận khóa máy chủ SSH không xác định",
-            "keystoreSecurityReset": "{count} máy chủ được khôi phục có tùy chọn tắt kiểm tra bảo mật; chúng đã được đặt lại về cài đặt an toàn: {details}."
+            "keystoreSecurityReset": "{count} máy chủ được khôi phục có tùy chọn tắt kiểm tra bảo mật; chúng đã được đặt lại về cài đặt an toàn: {details}.",
+            "keystoreSecurityResetFailed": "Không thể kiểm tra hoặc đặt lại cài đặt bảo mật của {count} tài khoản đã khôi phục. Các tài khoản này được liệt kê tại đây thay vì tiếp tục hoạt động mà không có cảnh báo."
         },
         "devtools": {
             "title": "AeroTools",

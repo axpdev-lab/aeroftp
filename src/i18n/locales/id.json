@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP biasa, bukan HTTPS",
             "importSecurityPasvAddress": "Koneksi data ke alamat yang disebutkan server (PASV)",
             "importSecurityUnknownHostKeys": "Kunci host SSH tidak dikenal diterima",
-            "keystoreSecurityReset": "{count} server yang dipulihkan memiliki opsi yang menonaktifkan pemeriksaan keamanan; server itu dikembalikan ke pengaturan aman: {details}."
+            "keystoreSecurityReset": "{count} server yang dipulihkan memiliki opsi yang menonaktifkan pemeriksaan keamanan; server itu dikembalikan ke pengaturan aman: {details}.",
+            "keystoreSecurityResetFailed": "Pengaturan keamanan {count} akun yang dipulihkan tidak dapat diperiksa atau direset. Akun tersebut dicantumkan di sini alih-alih dibiarkan aktif tanpa pemberitahuan."
         },
         "devtools": {
             "title": "AeroTools",

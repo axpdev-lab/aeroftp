@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP ya kawaida badala ya HTTPS",
             "importSecurityPasvAddress": "Muunganisho wa data kwa anwani inayotajwa na seva (PASV)",
             "importSecurityUnknownHostKeys": "Funguo za mwenyeji wa SSH zisizojulikana zimekubaliwa",
-            "keystoreSecurityReset": "Seva {count} zilizorejeshwa zilikuwa na chaguo zinazozima ukaguzi wa usalama; zilirudishwa kwenye mpangilio salama: {details}."
+            "keystoreSecurityReset": "Seva {count} zilizorejeshwa zilikuwa na chaguo zinazozima ukaguzi wa usalama; zilirudishwa kwenye mpangilio salama: {details}.",
+            "keystoreSecurityResetFailed": "Mipangilio ya usalama ya akaunti {count} zilizorejeshwa haikuweza kukaguliwa au kuwekwa upya. Zimeorodheshwa hapa badala ya kuachwa zikifanya kazi bila onyo."
         },
         "devtools": {
             "title": "AeroTools",

@@ -17,7 +17,7 @@ import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
-import { loadedCertificateCheck, loadedOption, loadedOptionOn } from './utils/profileSecurity';
+import { loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS } from './utils/profileSecurity';
 import { keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
@@ -312,6 +312,7 @@ import { LockScreen } from './components/LockScreen';
 import { AccountLockScreen } from './components/AccountLockScreen';
 import {
     ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT,
+    SECURITY_RESET_EVENT,
     decideBootAccountAction,
     defaultUserIdFromList,
     getUnlockStatus,
@@ -2437,6 +2438,22 @@ const App: React.FC = () => {
       return showToastNotifications ? toastWarning(title, message) : null;
     }
   }), [showToastNotifications, toastSuccess, toastError, toastInfo, toastWarning, logActivity]);
+
+  useEffect(() => {
+    const report = (event: Event) => {
+      const resets = (event as CustomEvent<{ name: string; keys: string[] }[]>).detail;
+      if (!resets?.length) return;
+      const details = resets
+        .map(r => `${r.name} (${r.keys.map(k => t(RELAXATION_LABEL_KEYS[k] ?? k)).join(', ')})`)
+        .join('; ');
+      notify.success(
+        t('settings.importKeystore'),
+        t('settings.keystoreSecurityReset', { count: resets.length, details }),
+      );
+    };
+    window.addEventListener(SECURITY_RESET_EVENT, report);
+    return () => window.removeEventListener(SECURITY_RESET_EVENT, report);
+  }, [notify, t]);
 
   // ── W3 (#270.5 / #275.9): cancellable connect + "still connecting" modal ──
   // A connect is a single awaited invoke with no abort path. These refs/state
@@ -16056,6 +16073,7 @@ const App: React.FC = () => {
             userPartitionsBackupPath?: string;
             sqliteDbsFailed?: string[];
             securityReset?: { name: string; keys: string[] }[];
+            securityResetFailed?: number;
           }>('import_keystore', {
             password,
             filePath,
@@ -16091,6 +16109,7 @@ const App: React.FC = () => {
             (result.userPartitionsRekeyed ?? 0) > 0 ||
             !!result.userPartitionsBackupPath ||
             !!result.sqliteDbsFailed?.length ||
+            (result.securityResetFailed ?? 0) > 0 ||
             !!result.securityReset?.length;
           if (needsModal) {
             setKeystoreImportResult({
@@ -16102,6 +16121,7 @@ const App: React.FC = () => {
               userPartitionsBackupPath: result.userPartitionsBackupPath,
               sqliteDbsFailed: result.sqliteDbsFailed,
               securityReset: result.securityReset,
+              securityResetFailed: result.securityResetFailed,
             });
           } else {
             notify.success(

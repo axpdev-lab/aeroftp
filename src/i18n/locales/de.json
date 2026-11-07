@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Einfaches HTTP statt HTTPS",
             "importSecurityPasvAddress": "Datenverbindung zur vom Server genannten Adresse (PASV)",
             "importSecurityUnknownHostKeys": "Unbekannte SSH-Hostschlüssel akzeptiert",
-            "keystoreSecurityReset": "{count} wiederhergestellte Server hatten Optionen, die eine Sicherheitsprüfung deaktivieren; sie wurden auf die sichere Einstellung zurückgesetzt: {details}."
+            "keystoreSecurityReset": "{count} wiederhergestellte Server hatten Optionen, die eine Sicherheitsprüfung deaktivieren; sie wurden auf die sichere Einstellung zurückgesetzt: {details}.",
+            "keystoreSecurityResetFailed": "Die Sicherheitseinstellungen von {count} wiederhergestellten Konten konnten nicht überprüft oder zurückgesetzt werden. Sie werden hier aufgeführt, anstatt ohne Hinweis aktiv zu bleiben."
         },
         "devtools": {
             "title": "AeroTools",

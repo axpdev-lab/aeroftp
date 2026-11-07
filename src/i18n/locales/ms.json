@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP biasa dan bukannya HTTPS",
             "importSecurityPasvAddress": "Sambungan data ke alamat yang dinyatakan oleh pelayan (PASV)",
             "importSecurityUnknownHostKeys": "Kunci hos SSH tidak dikenali diterima",
-            "keystoreSecurityReset": "{count} pelayan yang dipulihkan mempunyai pilihan yang mematikan semakan keselamatan; pelayan itu dikembalikan kepada tetapan selamat: {details}."
+            "keystoreSecurityReset": "{count} pelayan yang dipulihkan mempunyai pilihan yang mematikan semakan keselamatan; pelayan itu dikembalikan kepada tetapan selamat: {details}.",
+            "keystoreSecurityResetFailed": "Tetapan keselamatan {count} akaun yang dipulihkan tidak dapat disemak atau ditetapkan semula. Akaun tersebut disenaraikan di sini dan bukannya dibiarkan aktif tanpa pemberitahuan."
         },
         "devtools": {
             "title": "AeroTools",

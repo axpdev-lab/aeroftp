@@ -20,6 +20,7 @@ export interface KeystoreImportOutcome {
     sqliteDbsFailed?: string[];
     /** Restored profiles whose security-relaxing options were put back to safe. */
     securityReset?: { name: string; keys: string[] }[];
+    securityResetFailed?: number;
 }
 
 /** What the caller knows about the import that the result does not carry. */
@@ -89,6 +90,9 @@ export function keystoreImportSummary(
             .join('; ');
         extraNotes.push(t('settings.keystoreSecurityReset', { count: result.securityReset.length, details }));
     }
+    if ((result.securityResetFailed ?? 0) > 0) {
+        extraNotes.push(t('settings.keystoreSecurityResetFailed', { count: result.securityResetFailed ?? 0 }));
+    }
     if (result.sqliteDbsFailed?.length) {
         extraNotes.push(t('settings.keystoreDatabasesFailed', { names: result.sqliteDbsFailed.join(', ') }));
     }
@@ -102,6 +106,7 @@ export function keystoreImportSummary(
         || !!result.profilePartitionSkipped
         || !!result.requiresRestart
         || !!result.profileDecisionsError
+        || (result.securityResetFailed ?? 0) > 0
         || !!result.sqliteDbsFailed?.length
         || !!preferencesError;
     return {

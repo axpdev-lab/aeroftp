@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP simplu în loc de HTTPS",
             "importSecurityPasvAddress": "Conexiune de date la adresa indicată de server (PASV)",
             "importSecurityUnknownHostKeys": "Chei de gazdă SSH necunoscute acceptate",
-            "keystoreSecurityReset": "{count} servere restaurate aveau opțiuni care dezactivează o verificare de securitate; au fost readuse la setarea sigură: {details}."
+            "keystoreSecurityReset": "{count} servere restaurate aveau opțiuni care dezactivează o verificare de securitate; au fost readuse la setarea sigură: {details}.",
+            "keystoreSecurityResetFailed": "Setările de securitate pentru {count} conturi restaurate nu au putut fi verificate sau resetate. Acestea sunt listate aici în loc să rămână active fără avertisment."
         },
         "devtools": {
             "title": "AeroTools",

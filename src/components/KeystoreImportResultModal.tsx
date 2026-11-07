@@ -33,6 +33,7 @@ export interface KeystoreImportResult {
     userPartitionsBackupPath?: string;
     sqliteDbsFailed?: string[];
     securityReset?: { name: string; keys: string[] }[];
+    securityResetFailed?: number;
 }
 
 interface KeystoreImportResultModalProps {
@@ -118,6 +119,12 @@ export const KeystoreImportResultModal: React.FC<KeystoreImportResultModalProps>
                                 count: result.securityReset.length,
                                 details: result.securityReset.map(r => `${r.name} (${r.keys.map(k => t(RELAXATION_LABEL_KEYS[k] ?? k)).join(', ')})`).join('; '),
                             })}
+                        </div>
+                    )}
+
+                    {(result.securityResetFailed ?? 0) > 0 && (
+                        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200">
+                            {t('settings.keystoreSecurityResetFailed', { count: result.securityResetFailed ?? 0 })}
                         </div>
                     )}
 

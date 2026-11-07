@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Vanlig HTTP i stedet for HTTPS",
             "importSecurityPasvAddress": "Datatilkobling til adressen serveren oppgir (PASV)",
             "importSecurityUnknownHostKeys": "Ukjente SSH-vertsnøkler godtatt",
-            "keystoreSecurityReset": "{count} gjenopprettede servere hadde alternativer som slår av en sikkerhetskontroll; de ble satt tilbake til den sikre innstillingen: {details}."
+            "keystoreSecurityReset": "{count} gjenopprettede servere hadde alternativer som slår av en sikkerhetskontroll; de ble satt tilbake til den sikre innstillingen: {details}.",
+            "keystoreSecurityResetFailed": "Sikkerhetsinnstillingene for {count} gjenopprettede kontoer kunne ikke kontrolleres eller tilbakestilles. De er oppført her i stedet for å forbli aktive uten varsel."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "使用普通 HTTP 而非 HTTPS",
             "importSecurityPasvAddress": "连接到服务器指定地址的数据连接 (PASV)",
             "importSecurityUnknownHostKeys": "接受未知的 SSH 主机密钥",
-            "keystoreSecurityReset": "已恢复的 {count} 台服务器含有会关闭安全检查的选项；这些选项已改回安全设置：{details}。"
+            "keystoreSecurityReset": "已恢复的 {count} 台服务器含有会关闭安全检查的选项；这些选项已改回安全设置：{details}。",
+            "keystoreSecurityResetFailed": "无法检查或重置 {count} 个已恢复账户的安全设置。这些账户已列在此处，而不是在没有警告的情况下保持启用状态。"
         },
         "devtools": {
             "title": "AeroTools",

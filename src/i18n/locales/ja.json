@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTPS ではなく通常の HTTP",
             "importSecurityPasvAddress": "サーバーが指定したアドレスへのデータ接続 (PASV)",
             "importSecurityUnknownHostKeys": "未知の SSH ホストキーを受け入れる",
-            "keystoreSecurityReset": "復元された {count} 台のサーバーに、セキュリティチェックを無効にするオプションがありました。安全な設定に戻しました: {details}。"
+            "keystoreSecurityReset": "復元された {count} 台のサーバーに、セキュリティチェックを無効にするオプションがありました。安全な設定に戻しました: {details}。",
+            "keystoreSecurityResetFailed": "{count} 件の復元されたアカウントのセキュリティ設定を確認またはリセットできませんでした。通知なく有効なままにせず、ここに一覧表示しています。"
         },
         "devtools": {
             "title": "AeroTools",

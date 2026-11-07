@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Obični HTTP umjesto HTTPS-a",
             "importSecurityPasvAddress": "Podatkovna veza na adresu koju navodi poslužitelj (PASV)",
             "importSecurityUnknownHostKeys": "Prihvaćeni nepoznati SSH ključevi poslužitelja",
-            "keystoreSecurityReset": "{count} vraćenih poslužitelja imalo je opcije koje isključuju sigurnosnu provjeru; vraćeni su na sigurnu postavku: {details}."
+            "keystoreSecurityReset": "{count} vraćenih poslužitelja imalo je opcije koje isključuju sigurnosnu provjeru; vraćeni su na sigurnu postavku: {details}.",
+            "keystoreSecurityResetFailed": "Sigurnosne postavke {count} obnovljenih računa nije bilo moguće provjeriti ili resetirati. Navedeni su ovdje umjesto da ostanu aktivni bez upozorenja."
         },
         "devtools": {
             "title": "AeroTools",

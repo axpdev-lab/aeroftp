@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Almindelig HTTP i stedet for HTTPS",
             "importSecurityPasvAddress": "Dataforbindelse til den adresse, serveren angiver (PASV)",
             "importSecurityUnknownHostKeys": "Ukendte SSH-værtsnøgler accepteret",
-            "keystoreSecurityReset": "{count} gendannede servere havde indstillinger, der slår en sikkerhedskontrol fra; de blev sat tilbage til den sikre indstilling: {details}."
+            "keystoreSecurityReset": "{count} gendannede servere havde indstillinger, der slår en sikkerhedskontrol fra; de blev sat tilbage til den sikre indstilling: {details}.",
+            "keystoreSecurityResetFailed": "Sikkerhedsindstillingerne for {count} gendannede konti kunne ikke kontrolleres eller nulstilles. De er angivet her i stedet for at forblive aktive uden varsel."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP plaen yn lle HTTPS",
             "importSecurityPasvAddress": "Cysylltiad data â'r cyfeiriad y mae'r gweinydd yn ei enwi (PASV)",
             "importSecurityUnknownHostKeys": "Allweddi gwesteiwr SSH anhysbys wedi'u derbyn",
-            "keystoreSecurityReset": "Roedd gan {count} gweinydd a adferwyd opsiynau sy'n diffodd gwiriad diogelwch; cawsant eu rhoi yn ôl i'r gosodiad diogel: {details}."
+            "keystoreSecurityReset": "Roedd gan {count} gweinydd a adferwyd opsiynau sy'n diffodd gwiriad diogelwch; cawsant eu rhoi yn ôl i'r gosodiad diogel: {details}.",
+            "keystoreSecurityResetFailed": "Nid oedd modd gwirio nac ailosod gosodiadau diogelwch {count} o gyfrifon wedi'u hadfer. Maent wedi'u rhestru yma yn hytrach na'u gadael yn weithredol heb rybudd."
         },
         "devtools": {
             "title": "AeroTools",

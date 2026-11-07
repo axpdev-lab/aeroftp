@@ -19344,6 +19344,7 @@ fn prepare_import(
         let server = &mut servers[planned.index];
         let mut relaxations = profile_security::security_relaxations_of(
             &server.host,
+            u16::try_from(server.port).ok(),
             server.provider_id.as_deref(),
             server.protocol.as_deref(),
             server.options.as_ref(),

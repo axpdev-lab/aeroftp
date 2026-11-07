@@ -1515,11 +1515,17 @@ fn with_user_dek<R>(
             if !user_crypto::verify_dek(dek, &row.dek_verifier)? {
                 return Err("DEK_VERIFIER_MISMATCH".to_string());
             }
+            if security_reset_pending(conn, user_id)? {
+                return Err("SECURITY_RESET_PENDING".to_string());
+            }
             f(user_id, dek)
         });
     }
 
     let dek = unwrap_user_dek_with_key(&row, root_key)?;
+    if security_reset_pending(conn, user_id)? {
+        return Err("SECURITY_RESET_PENDING".to_string());
+    }
     f(user_id, &dek)
 }
 
@@ -1541,6 +1547,9 @@ fn resolve_user_dek_scoped(
     passphrase: Option<&str>,
 ) -> Result<SecretKey, String> {
     let row = read_user_key_row(conn, user_id)?;
+    if security_reset_pending(conn, user_id)? {
+        return Err("SECURITY_RESET_PENDING".to_string());
+    }
     if row.has_passphrase {
         check_lockout(conn, user_id)?;
         let passphrase = passphrase.ok_or_else(|| "TARGET_PASSPHRASE_REQUIRED".to_string())?;
@@ -4553,18 +4562,39 @@ fn unlock_user_inner(
         set_active_user_row(conn, user_id)?;
     }
     let security_reset = if security_reset_pending(conn, user_id)? {
-        let _reset_lock = ProfileListLock::acquire(conn)?;
-        let mut profiles = read_profiles_with_dek(conn, user_id, &dek)?;
-        let reset = crate::profile_security::make_profile_list_safe(&mut profiles);
-        if !reset.is_empty() {
-            insert_profiles_with_dek(conn, &root_secret, user_id, &dek, &profiles)?;
+        let _reset_lock = if _lock.is_none() {
+            Some(ProfileListLock::acquire(conn)?)
+        } else {
+            None
+        };
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| format!("Begin security reset: {e}"))?;
+        let result = (|| {
+            let mut profiles = read_profiles_with_dek(conn, user_id, &dek)?;
+            let reset = crate::profile_security::make_profile_list_safe(&mut profiles);
+            if !reset.is_empty() {
+                insert_profiles_with_dek(conn, &root_secret, user_id, &dek, &profiles)?;
+            }
+            conn.execute(
+                "DELETE FROM global_state WHERE key = ?1",
+                params![security_reset_pending_key(user_id)],
+            )
+            .map_err(|e| format!("Clear pending security reset: {e}"))?;
+            Ok(reset)
+        })();
+        match result {
+            Ok(reset) => {
+                if let Err(e) = conn.execute_batch("COMMIT") {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(format!("Commit security reset: {e}"));
+                }
+                reset
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
         }
-        conn.execute(
-            "DELETE FROM global_state WHERE key = ?1",
-            params![security_reset_pending_key(user_id)],
-        )
-        .map_err(|e| format!("Clear pending security reset: {e}"))?;
-        reset
     } else {
         Vec::new()
     };
@@ -7788,6 +7818,7 @@ mod tests {
             false
         );
 
+        store_profiles_as_an_older_build(&conn, &root, bob.id, &relaxed("b2", "Bob again"));
         conn.execute(
             "UPDATE server_profiles SET encrypted_blob = X'00' WHERE user_id = ?1",
             params![default],
@@ -7795,7 +7826,8 @@ mod tests {
         .unwrap();
         let report = reset_profile_relaxations(&mut conn, &root, None).unwrap();
         assert_eq!(report.failed, 1);
-        assert_eq!(report.reset.len(), 0, "Bob is already safe");
+        assert_eq!(report.reset.len(), 1, "the later account is still reset");
+        assert_eq!(report.reset[0].name, "Bob again");
         assert_eq!(report.left, 0);
     }
 
@@ -7834,6 +7866,84 @@ mod tests {
                 ["trustUnknownHosts"],
             false
         );
+    }
+
+    #[test]
+    fn a_file_backed_switch_enforces_and_resets_a_pending_account_with_a_live_session() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(DB_FILENAME);
+        let mut conn = open_or_init_path(path).unwrap();
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let locked =
+            create_user(&mut conn, &root, "Locked", None, None, Some("passphrase")).unwrap();
+        let row = read_user_key_row(&conn, locked.id).unwrap();
+        let dek = unwrap_user_dek_with_passphrase(&row, "passphrase").unwrap();
+        insert_profile_rows(
+            &conn,
+            &user_crypto::secret_key_from_bytes(&root),
+            locked.id,
+            &dek,
+            &[json!({
+                "id": "live", "name": "Live", "protocol": "sftp", "host": "sftp.example.com",
+                "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        unlock_user(&conn, &root, locked.id, Some("passphrase")).unwrap();
+        let report = reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        assert_eq!(report.left, 1);
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, locked.id).unwrap_err(),
+            "SECURITY_RESET_PENDING"
+        );
+        let status = unlock_user(&conn, &root, locked.id, Some("passphrase")).unwrap();
+        assert_eq!(status.security_reset.len(), 1);
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, locked.id).unwrap()[0]["options"]
+                ["trustUnknownHosts"],
+            false
+        );
+    }
+
+    #[test]
+    fn a_failed_unlock_reset_rolls_back_profiles_and_keeps_the_marker() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().unwrap();
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let locked =
+            create_user(&mut conn, &root, "Locked", None, None, Some("passphrase")).unwrap();
+        let row = read_user_key_row(&conn, locked.id).unwrap();
+        let dek = unwrap_user_dek_with_passphrase(&row, "passphrase").unwrap();
+        insert_profile_rows(
+            &conn,
+            &user_crypto::secret_key_from_bytes(&root),
+            locked.id,
+            &dek,
+            &[json!({
+                "id": "safe-from-loss", "name": "Still here", "protocol": "sftp",
+                "host": "sftp.example.com", "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_security_reset BEFORE INSERT ON server_profiles BEGIN SELECT RAISE(FAIL, 'forced insert failure'); END;",
+        )
+        .unwrap();
+        assert!(unlock_user(&conn, &root, locked.id, Some("passphrase")).is_err());
+        conn.execute_batch("DROP TRIGGER fail_security_reset")
+            .unwrap();
+        assert!(security_reset_pending(&conn, locked.id).unwrap());
+        let profiles = read_profiles_with_dek(&conn, locked.id, &dek).unwrap();
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0]["name"], "Still here");
+        assert_eq!(profiles[0]["options"]["trustUnknownHosts"], true);
+        assert!(unlock_user(&conn, &root, locked.id, Some("passphrase")).is_ok());
     }
 
     /// A database written whole (a restored backup from an older build) is put

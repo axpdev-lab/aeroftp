@@ -42165,6 +42165,7 @@ fn rclone_import_security(
         .filter_map(|(file_index, server)| {
             let relaxations = security_relaxations_of(
                 &server.host,
+                u16::try_from(server.port).ok(),
                 server.provider_id.as_deref(),
                 server.protocol.as_deref(),
                 server.options.as_ref(),

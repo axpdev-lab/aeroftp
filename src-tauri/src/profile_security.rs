@@ -88,8 +88,8 @@ fn shown(value: &Value) -> String {
     }
 }
 
-/// The relaxing options of a profile given by its parts: the host it connects
-/// to, its preset id, its protocol and its saved options. The loopback
+/// The relaxing options of a profile given by its parts: the host and port it
+/// connects to, its preset id, its protocol and its saved options. The loopback
 /// exemption holds only when every address the profile names stays on this
 /// machine, its `host` and its `options.endpoint` alike: a loopback endpoint
 /// beside a remote host exempts nothing, since WebDAV, FTP and SFTP connect to
@@ -99,6 +99,7 @@ fn shown(value: &Value) -> String {
 /// `WebDavConfig`.
 pub fn security_relaxations_of(
     host: &str,
+    port: Option<u16>,
     provider_id: Option<&str>,
     protocol: Option<&str>,
     options: Option<&Value>,
@@ -143,14 +144,25 @@ pub fn security_relaxations_of(
     let webdav = protocol
         .and_then(crate::connection_manifest::connection_spec)
         .is_some_and(|spec| spec.token == "webdav");
+    let host_http = host_is_plain_http(host);
+    let host_https = host
+        .trim()
+        .get(..8)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"));
+    let automatic_http =
+        !host_http && !host_https && port == Some(80) && !webdav_scheme_is_https(options);
     if webdav
-        && host_is_plain_http(host)
+        && (host_http || automatic_http)
         && !found.iter().any(|r| r.key == WEBDAV_SCHEME_KEY)
         && rule(WEBDAV_SCHEME_KEY).is_some_and(|rule| !exempt(rule))
     {
         found.push(Relaxation {
             key: WEBDAV_SCHEME_KEY.to_string(),
-            value: "http (host)".to_string(),
+            value: if host_http {
+                "http (host)".to_string()
+            } else {
+                "http (auto, port 80)".to_string()
+            },
         });
     }
     found
@@ -246,6 +258,23 @@ fn host_is_plain_http(host: &str) -> bool {
         .is_some_and(|scheme| scheme.eq_ignore_ascii_case("http://"))
 }
 
+fn webdav_scheme_is_https(options: &serde_json::Map<String, Value>) -> bool {
+    let Some(rule) = rule(WEBDAV_SCHEME_KEY) else {
+        return false;
+    };
+    let mut values: Vec<_> = options
+        .iter()
+        .filter(|(key, value)| {
+            rule.names(key) && matches!(value, Value::String(_) | Value::Bool(_) | Value::Number(_))
+        })
+        .collect();
+    values.sort_by_key(|(key, _)| *key);
+    values
+        .last()
+        .and_then(|(_, value)| value.as_str())
+        .is_some_and(|scheme| scheme.trim().eq_ignore_ascii_case("https"))
+}
+
 /// One relaxing option the user chose to keep on an import: the profile's
 /// place in the file and the option key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -283,11 +312,15 @@ impl RelaxationPolicy {
     }
 }
 
-/// [`security_relaxations_of`] for a profile stored as JSON (`host`,
+/// [`security_relaxations_of`] for a profile stored as JSON (`host`, `port`,
 /// `providerId`, `protocol`, `options`).
 pub fn security_relaxations(profile: &Value) -> Vec<Relaxation> {
     security_relaxations_of(
         profile.get("host").and_then(Value::as_str).unwrap_or(""),
+        profile
+            .get("port")
+            .and_then(Value::as_u64)
+            .and_then(|port| u16::try_from(port).ok()),
         profile.get("providerId").and_then(Value::as_str),
         profile.get("protocol").and_then(Value::as_str),
         profile.get("options"),
@@ -641,16 +674,22 @@ mod tests {
                 .unwrap()
                 .allow_cleartext_storage_endpoint
         );
-        let port_80 = safe(
-            json!({"host": "dav.example.com", "port": 80, "protocol": "webdav",
-            "options": {"webdavScheme": "http"}}),
-        );
-        assert!(
-            WebDavConfig::from_provider_config(&effective(&port_80, ProviderType::WebDav))
-                .unwrap()
-                .url
-                .starts_with("https://")
-        );
+        for options in [
+            json!({"webdavScheme": "http"}),
+            json!({"webdavScheme": "auto"}),
+            json!({}),
+        ] {
+            let port_80 = json!({"host": "dav.example.com", "port": 80,
+                "protocol": "webdav", "options": options});
+            assert!(strict_profile_violation(&port_80).is_some());
+            let port_80 = safe(port_80);
+            assert!(
+                WebDavConfig::from_provider_config(&effective(&port_80, ProviderType::WebDav))
+                    .unwrap()
+                    .url
+                    .starts_with("https://")
+            );
+        }
         let prefixed = safe(
             json!({"host": "http://dav.example.com:8080", "protocol": "webdav",
             "options": {"webdavScheme": "https"}}),

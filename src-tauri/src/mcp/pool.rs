@@ -593,6 +593,15 @@ fn refuse_relaxed_vault_profile(profile: &serde_json::Value, strict: bool) -> Re
     }
 }
 
+fn credential_after_strict_check<T>(
+    profile: &serde_json::Value,
+    strict: bool,
+    read: impl FnOnce() -> T,
+) -> Result<T, String> {
+    refuse_relaxed_vault_profile(profile, strict)?;
+    Ok(read())
+}
+
 /// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols
 /// plus OAuth2 providers when valid tokens exist in the vault.
 ///
@@ -610,10 +619,6 @@ async fn create_provider_from_vault(
     let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
-    // Strict mode holds for the MCP pool too: a saved profile that turns a
-    // security check off is refused before any credential is read (Greptile
-    // on #1524).
-    refuse_relaxed_vault_profile(matched, crate::profile_security::strict_profiles_enabled())?;
     // The profile read again here is the one opened: it must still connect
     // where it did when the pool checked it.
     approved_target_unchanged(server_query, identity, profile_identity(matched).as_deref())?;
@@ -646,14 +651,22 @@ async fn create_provider_from_vault(
     // profile listing above already unlocked a passphrase account from
     // AEROFTP_USER_PASSPHRASE, so this resolves its own `server_<id>` row;
     // otherwise the dual-written vault copy still answers.
-    let raw_cred = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("server_{}", profile_id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .unwrap_or_default();
+    // Strict mode holds here too: the read is never attempted for a relaxed
+    // saved profile when strict mode is active.
+    let raw_cred = credential_after_strict_check(
+        matched,
+        crate::profile_security::strict_profiles_enabled(),
+        || {
+            crate::user_partitions::resolve_active_credential(
+                &store,
+                &format!("server_{}", profile_id),
+            )
+            .ok()
+            .flatten()
+            .map(|s| s.to_string())
+            .unwrap_or_default()
+        },
+    )?;
 
     let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
 
@@ -762,8 +775,22 @@ mod tests {
             "name": "lab", "host": "files.example.com", "protocol": "sftp",
             "options": {"trustUnknownHosts": true}
         });
-        assert!(refuse_relaxed_vault_profile(&relaxed, true).is_err());
-        assert!(refuse_relaxed_vault_profile(&relaxed, false).is_ok());
+        let read = std::cell::Cell::new(false);
+        let refused = credential_after_strict_check(&relaxed, true, || {
+            read.set(true);
+            "secret"
+        });
+        assert!(refused.is_err());
+        assert!(
+            !read.get(),
+            "strict refusal happens before credential resolution"
+        );
+        let allowed = credential_after_strict_check(&relaxed, false, || {
+            read.set(true);
+            "secret"
+        });
+        assert_eq!(allowed.unwrap(), "secret");
+        assert!(read.get());
     }
     use super::*;
 

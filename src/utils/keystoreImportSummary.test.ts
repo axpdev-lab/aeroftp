@@ -33,6 +33,12 @@ describe('keystoreImportSummary', () => {
         );
     });
 
+    it('reports reset failures instead of hiding them in logs', () => {
+        const summary = keystoreImportSummary({ imported: 2, skipped: 0, securityResetFailed: 1 }, null, t);
+        expect(summary.type).toBe('info');
+        expect(summary.text).toContain('settings.keystoreSecurityResetFailed(count=1)');
+    });
+
     it('reports the databases that could not be restored, by name', () => {
         const summary = keystoreImportSummary({ imported: 12, skipped: 0, sqliteDbsFailed: ['ai_chat.db', 'file_tags.db'] }, null, t);
         expect(summary.type).toBe('info');

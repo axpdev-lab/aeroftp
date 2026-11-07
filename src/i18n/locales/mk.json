@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Обичен HTTP наместо HTTPS",
             "importSecurityPasvAddress": "Врска за податоци до адресата што ја наведува серверот (PASV)",
             "importSecurityUnknownHostKeys": "Прифатени се непознати SSH клучеви на домаќинот",
-            "keystoreSecurityReset": "{count} вратени сервери имаа опции што исклучуваат безбедносна проверка; тие беа вратени на безбедното поставување: {details}."
+            "keystoreSecurityReset": "{count} вратени сервери имаа опции што исклучуваат безбедносна проверка; тие беа вратени на безбедното поставување: {details}.",
+            "keystoreSecurityResetFailed": "Безбедносните поставки на {count} вратени сметки не можеа да се проверат или ресетираат. Тие се наведени тука наместо да останат активни без предупредување."
         },
         "devtools": {
             "title": "AeroTools",

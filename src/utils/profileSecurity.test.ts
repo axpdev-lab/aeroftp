@@ -7,7 +7,7 @@ import { canonicalOptionsForEdit, endpointStaysOnThisMachine, loadedCertificateC
 
 interface Case {
     name: string;
-    profile: { host?: string; providerId?: string; protocol?: string; options?: Record<string, unknown> };
+    profile: { host?: string; port?: number; providerId?: string; protocol?: string; options?: Record<string, unknown> };
     relaxed: string[];
 }
 
@@ -42,6 +42,9 @@ describe('makeSafe', () => {
         const port80 = makeSafe({ host: 'dav.example.com', options: { webdavScheme: 'http', tls_mode: 'HTTP' } });
         expect(port80.removed).toEqual(['webdavScheme']);
         expect(port80.profile.options).toEqual({ webdavScheme: 'https' });
+        const automatic = makeSafe({ host: 'dav.example.com', port: 80, protocol: 'webdav', options: { webdavScheme: 'auto' } });
+        expect(automatic.removed).toEqual(['webdavScheme']);
+        expect(automatic.profile.options).toEqual({ webdavScheme: 'https' });
     });
 
     it('rewrites a WebDAV host written as http:// to https://', () => {
@@ -94,6 +97,10 @@ describe('loadedOption', () => {
         expect(canonicalOptionsForEdit(options)).toEqual({ trustPasvAddress: true, verifyCert: false });
         expect(loadedCertificateCheck(canonicalOptionsForEdit(options))).toBe(false);
         expect(canonicalOptionsForEdit({ tlsMode: 'explicit' }, 'ftp')).toEqual({ tlsMode: 'explicit' });
+        const before = { trustPasvAddress: true, trust_pasv_address: null };
+        const after = { trustPasvAddress: true, trust_pasv_address: true };
+        expect(loadedOptionOn(before, 'trustPasvAddress')).toBe(true);
+        expect(loadedOptionOn(after, 'trustPasvAddress')).toBe(true);
     });
 
     it('reads a kept string value as the providers do', () => {

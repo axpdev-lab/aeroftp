@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP arrunta HTTPS-ren ordez",
             "importSecurityPasvAddress": "Datu-konexioa zerbitzariak adierazten duen helbidera (PASV)",
             "importSecurityUnknownHostKeys": "SSH ostalari-gako ezezagunak onartuta",
-            "keystoreSecurityReset": "Berrezarritako {count} zerbitzarik segurtasun-egiaztapen bat desaktibatzen duten aukerak zituzten; ezarpen seguruan jarri dira berriro: {details}."
+            "keystoreSecurityReset": "Berrezarritako {count} zerbitzarik segurtasun-egiaztapen bat desaktibatzen duten aukerak zituzten; ezarpen seguruan jarri dira berriro: {details}.",
+            "keystoreSecurityResetFailed": "Ezin izan dira {count} berreskuratutako kontuen segurtasun-ezarpenak egiaztatu edo berrezarri. Hemen zerrendatzen dira, oharrik gabe aktibo uztearen ordez."
         },
         "devtools": {
             "title": "AeroTools",

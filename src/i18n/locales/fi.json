@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Pelkkä HTTP HTTPS:n sijaan",
             "importSecurityPasvAddress": "Tietoyhteys palvelimen ilmoittamaan osoitteeseen (PASV)",
             "importSecurityUnknownHostKeys": "Tuntemattomat SSH-isäntäavaimet hyväksytty",
-            "keystoreSecurityReset": "{count} palautetulla palvelimella oli asetuksia, jotka poistavat turvatarkistuksen käytöstä; ne palautettiin turvalliseen asetukseen: {details}."
+            "keystoreSecurityReset": "{count} palautetulla palvelimella oli asetuksia, jotka poistavat turvatarkistuksen käytöstä; ne palautettiin turvalliseen asetukseen: {details}.",
+            "keystoreSecurityResetFailed": "{count} palautetun tilin suojausasetuksia ei voitu tarkistaa tai nollata. Ne on lueteltu tässä sen sijaan, että ne jäisivät aktiivisiksi ilman ilmoitusta."
         },
         "devtools": {
             "title": "AeroTools",

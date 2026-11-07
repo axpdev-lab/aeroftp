@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Paprastas HTTP vietoj HTTPS",
             "importSecurityPasvAddress": "Duomenų ryšys su serverio nurodytu adresu (PASV)",
             "importSecurityUnknownHostKeys": "Priimami nežinomi SSH pagrindinio kompiuterio raktai",
-            "keystoreSecurityReset": "{count} atkurtų serverių turėjo parinkčių, išjungiančių saugumo patikrą; jos buvo grąžintos į saugų nustatymą: {details}."
+            "keystoreSecurityReset": "{count} atkurtų serverių turėjo parinkčių, išjungiančių saugumo patikrą; jos buvo grąžintos į saugų nustatymą: {details}.",
+            "keystoreSecurityResetFailed": "Nepavyko patikrinti arba iš naujo nustatyti {count} atkurtų paskyrų saugos nustatymų. Jos pateikiamos čia, o ne paliekamos aktyvios be įspėjimo."
         },
         "devtools": {
             "title": "AeroTools",

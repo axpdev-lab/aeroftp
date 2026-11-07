@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "HTTP simple en lloc d'HTTPS",
             "importSecurityPasvAddress": "Connexió de dades a l'adreça que indica el servidor (PASV)",
             "importSecurityUnknownHostKeys": "Claus d'amfitrió SSH desconegudes acceptades",
-            "keystoreSecurityReset": "{count} servidors restaurats tenien opcions que desactiven una comprovació de seguretat; s'han tornat a la configuració segura: {details}."
+            "keystoreSecurityReset": "{count} servidors restaurats tenien opcions que desactiven una comprovació de seguretat; s'han tornat a la configuració segura: {details}.",
+            "keystoreSecurityResetFailed": "No s'han pogut comprovar ni restablir els paràmetres de seguretat de {count} comptes restaurats. Es mostren aquí en lloc de deixar-los actius sense avís."
         },
         "devtools": {
             "title": "AeroTools",

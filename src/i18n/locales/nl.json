@@ -1384,7 +1384,8 @@
             "importSecurityPlainHttp": "Gewoon HTTP in plaats van HTTPS",
             "importSecurityPasvAddress": "Dataverbinding naar het adres dat de server opgeeft (PASV)",
             "importSecurityUnknownHostKeys": "Onbekende SSH-hostsleutels geaccepteerd",
-            "keystoreSecurityReset": "{count} herstelde servers hadden opties die een beveiligingscontrole uitschakelen; ze zijn teruggezet naar de veilige instelling: {details}."
+            "keystoreSecurityReset": "{count} herstelde servers hadden opties die een beveiligingscontrole uitschakelen; ze zijn teruggezet naar de veilige instelling: {details}.",
+            "keystoreSecurityResetFailed": "De beveiligingsinstellingen van {count} herstelde accounts konden niet worden gecontroleerd of opnieuw ingesteld. Ze worden hier vermeld in plaats van zonder waarschuwing actief te blijven."
         },
         "devtools": {
             "title": "AeroTools",

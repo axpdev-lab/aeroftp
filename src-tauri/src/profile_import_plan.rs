@@ -1045,6 +1045,17 @@ mod tests {
         assert!(!same_target(&stored, &both));
     }
 
+    #[test]
+    fn an_overwrite_with_a_null_alias_matches_the_gui_pasv_value() {
+        let existing = json!({
+            "host": "ftp.example.com", "protocol": "ftp",
+            "options": {"trustPasvAddress": true, "trust_pasv_address": null}
+        });
+        let mut incoming = existing.clone();
+        incoming["options"]["trust_pasv_address"] = json!(true);
+        assert!(same_target(&existing, &incoming));
+    }
+
     /// Greptile on #1524: a guarded value is compared as the provider reads
     /// it, untrimmed and case-sensitive. `"explicit "` is no TLS for
     /// `FtpConfig`, so it is another connection than `"explicit"`.

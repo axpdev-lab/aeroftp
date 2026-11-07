@@ -5,7 +5,7 @@ import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import { expect, it, vi } from 'vitest';
 import { scpFallbackConnectParam } from './scpFallback';
-import { loadedCertificateCheck, loadedOption, loadedOptionOn } from './profileSecurity';
+import { loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe } from './profileSecurity';
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 import { isSshProtocol } from '../types';
 
@@ -148,4 +148,7 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
   expect(await connectWith('webdav', 'custom-webdav', { tls_mode: 'https' })).toMatchObject({ tls_mode: 'https', provider_id: 'custom-webdav' });
   expect(await connectWith('s3', 'custom-s3', { allowCleartextEndpoint: true })).toMatchObject({ allow_cleartext_endpoint: true, provider_id: 'custom-s3' });
   expect(await connectWith('swift', 'blomp', {})).toMatchObject({ provider_id: 'blomp' });
+  const reset = makeSafe({ host: 'dav.example.test', protocol: 'webdav', options: { webdavScheme: 'http' } }).profile;
+  expect(reset.options).toMatchObject({ webdavScheme: 'https' });
+  expect(await connectWith('webdav', 'custom-webdav', reset.options)).toMatchObject({ tls_mode: 'https' });
 });
