@@ -212,13 +212,20 @@ fn profile_preset(
     protocol: Option<&str>,
     provider_id: Option<&str>,
 ) -> Option<&'static crate::connection_manifest::ConnectionPreset> {
-    let provider_id = match protocol {
+    let (token, provider_id) = match protocol {
         Some(protocol) => {
-            crate::connection_manifest::canonical_protocol_and_provider(protocol, provider_id).1
+            let (token, provider_id) =
+                crate::connection_manifest::canonical_protocol_and_provider(protocol, provider_id);
+            (Some(token), provider_id)
         }
-        None => provider_id,
+        None => (None, provider_id),
     };
-    provider_id.and_then(crate::connection_manifest::preset)
+    // A preset applies only to the protocol it belongs to, as the loader
+    // checks (`profile_connection_extra`): an S3 preset named on a WebDAV
+    // profile lends it nothing (CodeRabbit on #1524).
+    provider_id
+        .and_then(crate::connection_manifest::preset)
+        .filter(|preset| token.is_none_or(|token| preset.protocol == token))
 }
 
 /// Whether `value` for option `key` is one the table calls relaxed, the test a

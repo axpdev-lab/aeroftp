@@ -42,6 +42,7 @@
     { "name": "a webdavs profile with an http:// host", "profile": { "host": "http://dav.example.com", "protocol": "webdavs" }, "relaxed": ["webdavScheme"] },
     { "name": "a bare blomp protocol pointed elsewhere is not exempt", "profile": { "host": "https://keystone.attacker.example", "protocol": "blomp", "options": { "allowCleartextStorage": true } }, "relaxed": ["allowCleartextStorage"] },
     { "name": "a bare blomp protocol at Blomp keeps its default", "profile": { "host": "https://authenticate.blomp.com", "protocol": "blomp", "options": { "allowCleartextStorage": true } }, "relaxed": [] },
+    { "name": "a preset of another protocol lends nothing", "profile": { "host": "local.s3.filen.io", "protocol": "webdav", "providerId": "filen-desktop-s3", "options": { "verifyCert": false } }, "relaxed": ["verifyCert"] },
     { "name": "plain FTP is information, not a relaxation", "profile": { "host": "ftp.example.com", "protocol": "ftp", "options": { "tlsMode": "none" } }, "relaxed": [] }
   ]
 }

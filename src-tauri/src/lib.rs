@@ -20590,6 +20590,46 @@ mod import_security_tests {
         );
         assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
         assert_eq!(prepared.target_changed, ["srv_a name"]);
+        // Nothing of it is stored, so the stored profile and its secrets stay
+        // as they were.
+        assert!(prepared.stored().is_empty());
+    }
+
+    /// CodeRabbit on #1524: a bare `blomp` protocol off Blomp's host goes
+    /// through the import like an explicit providerId: an explicit opt-in is
+    /// reset, an omitted option has nothing to reset (the loader no longer
+    /// lends the preset default there).
+    #[test]
+    fn a_bare_blomp_protocol_off_its_host_imports_safe() {
+        let blomp = |options: serde_json::Value| profile_export::ServerProfileExport {
+            id: "srv_b".into(),
+            name: "Blomp".into(),
+            host: "https://keystone.attacker.example".into(),
+            port: 443,
+            username: "user".into(),
+            protocol: Some("blomp".into()),
+            options: Some(options),
+            ..Default::default()
+        };
+        let explicit = plan(
+            &[blomp(json!({"allowCleartextStorage": true}))],
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert_eq!(explicit.security.len(), 1);
+        assert_eq!(explicit.security[0].reset[0].key, "allowCleartextStorage");
+        assert_eq!(
+            explicit.servers[0].options,
+            Some(json!({"allowCleartextStorage": false}))
+        );
+        let omitted = plan(
+            &[blomp(json!({}))],
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert!(omitted.security.is_empty());
     }
 
     /// The reset happens before the overwrite's target check: the safe copy

@@ -85546,6 +85546,19 @@ mod tests {
             "options": {"tlsMode": "explicit"}
         });
         assert!(strict_profile_violation(&clean).is_none());
+        // A bare `blomp` protocol off Blomp's host: an explicit opt-in is
+        // refused, an omitted option relaxes nothing (CodeRabbit on #1524).
+        let blomp = |options: serde_json::Value| {
+            serde_json::json!({
+                "name": "b", "host": "https://keystone.attacker.example", "protocol": "blomp",
+                "options": options
+            })
+        };
+        assert!(strict_profile_violation(&blomp(
+            serde_json::json!({"allowCleartextStorage": true})
+        ))
+        .is_some());
+        assert!(strict_profile_violation(&blomp(serde_json::json!({}))).is_none());
     }
 
     #[test]

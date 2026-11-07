@@ -92,7 +92,12 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
     // one a protocol alias names (a bare `blomp` protocol is the Blomp preset).
     const presetId = profile.providerId
         ?? (profile.protocol ? connectionManifest.aliases[profile.protocol.trim().toLowerCase()]?.providerId : undefined);
-    const presetDefaults = presetId ? getConnectionPreset(presetId)?.defaults : undefined;
+    // A preset applies only to its own protocol, as the loader checks.
+    const preset = presetId ? getConnectionPreset(presetId) : undefined;
+    const profileToken = profile.protocol ? connectionProtocol(profile.protocol)?.token : undefined;
+    const presetDefaults = preset && (!profileToken || connectionProtocol(preset.protocol)?.token === profileToken)
+        ? preset.defaults
+        : undefined;
     const addresses = [profile.host, options.endpoint]
         .filter((a): a is string => typeof a === 'string' && a.trim() !== '');
     const protocol = profile.protocol ? connectionProtocol(profile.protocol)?.token : undefined;

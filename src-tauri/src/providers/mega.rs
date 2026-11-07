@@ -1467,8 +1467,10 @@ impl StorageProvider for MegaCmdProvider {
 
         let mut entries = Vec::new();
         for line in output.lines() {
-            let line = line.trim();
-            if line.is_empty() {
+            // A path keeps its own spaces: `report ` and `report` are two
+            // nodes (CodeRabbit on #1524). Only a line ending is dropped.
+            let line = line.trim_end_matches(['\r', '\n']);
+            if line.trim().is_empty() {
                 continue;
             }
 
@@ -2700,6 +2702,90 @@ mod tests {
         .unwrap();
         assert_eq!(entry.name, " a?.txt");
         assert_eq!(entry.path, "/ a?.txt");
+    }
+
+    /// A MEGAcmd stand-in for the operations that address a source by
+    /// handle: `/` holds a folder `a?`, the folder a file `b?`; `mega-ls`
+    /// prints handles only when asked, as MEGAcmd does, and anything else it
+    /// is asked for is not there. The other commands record their arguments.
+    #[cfg(unix)]
+    fn wildcard_operations_standin(dir: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let script = "#!/bin/sh\n\
+            echo \"$(basename \"$0\") $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
+            for last; do :; done\n\
+            case \"$(basename \"$0\")\" in\n\
+            mega-ls)\n\
+              case \" $* \" in *' --show-handles '*) h='H:dir00001 '; f='H:file0001 ';; *) h=''; f='';; esac\n\
+              echo 'FLAGS VERS      SIZE            DATE          NAME'\n\
+              case \"$last\" in\n\
+              /) echo \"d---    -            - 06Nov2026 12:20:41 ${h}a?\" ;;\n\
+              H:dir00001) echo \"----    1            5 06Nov2026 12:20:41 ${f}b?\" ;;\n\
+              *) exit 1 ;;\n\
+              esac ;;\n\
+            mega-du) echo '5' ;;\n\
+            esac\n";
+        for name in ["mega-ls", "mega-mv", "mega-cp", "mega-export", "mega-du"] {
+            let path = dir.join(name);
+            std::fs::write(&path, script).unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+    }
+
+    /// CodeRabbit on #1524: every operation that takes an existing
+    /// wildcard-named node addresses it by handle, never by a path MEGAcmd
+    /// would expand.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn wildcard_named_sources_go_by_handle_in_every_operation() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        wildcard_operations_standin(dir.path());
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        provider.rename("/a?/b?", "/renamed").await.expect("rename");
+        provider
+            .replace("/a?/b?", "/replaced")
+            .await
+            .expect("replace");
+        provider
+            .server_side_copy("/a?/b?", "/copied")
+            .await
+            .expect("copy");
+        provider.remove_share_link("/a?/b?").await.expect("unshare");
+        assert_eq!(provider.disk_usage("/a?").await.expect("du"), 5);
+        let argv = std::fs::read_to_string(dir.path().join("argv.log")).unwrap();
+        for expected in [
+            "mega-mv H:file0001 /renamed",
+            "mega-mv H:file0001 /replaced",
+            "mega-cp H:file0001 /copied",
+            "mega-export -d H:file0001",
+            "mega-du H:dir00001",
+        ] {
+            assert!(argv.contains(expected), "{expected}: {argv}");
+        }
+        for line in argv.lines().filter(|l| !l.starts_with("mega-ls")) {
+            assert!(!line.contains('?'), "a wildcard reached MEGAcmd: {line}");
+        }
+    }
+
+    /// CodeRabbit on #1524: a find result keeps its own spaces.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn find_keeps_the_spaces_of_a_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("mega-find");
+        std::fs::write(
+            &path,
+            "#!/bin/sh\nprintf '/dir/report \\n/dir/report\\r\\n'\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let found = provider.find("/dir", "report*").await.unwrap();
+        let paths: Vec<&str> = found.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["/dir/report ", "/dir/report"]);
     }
 
     /// CodeRabbit on #1524: a direct bulk call with a wildcard in a parent

@@ -1674,7 +1674,7 @@ impl StorageProvider for FtpProvider {
                     // profile with no TLS mode now requires TLS everywhere).
                     ProviderError::ConnectionFailed(format!(
                         "TLS upgrade failed: {e}. The server did not accept explicit TLS, so \
-                         nothing was sent in the clear. To connect without encryption on \
+                         no credentials were sent. To connect without encryption on \
                          purpose, set the profile's encryption to None in the connection \
                          form, or pass --tls none to the CLI."
                     ))
