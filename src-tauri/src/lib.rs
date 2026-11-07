@@ -275,6 +275,7 @@ pub mod proc_stats;
 pub mod profile_auth_state;
 pub mod profile_export;
 pub mod profile_import_plan;
+pub mod profile_security;
 mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
 // consent, and they share the predicate with the S3 provider rather than
@@ -1623,6 +1624,10 @@ pub struct ConnectionParams {
     /// so legacy callers that omit it keep working.
     #[serde(default, alias = "connectToken")]
     connect_token: Option<String>,
+    /// The profile's "use the address the server gives for passive data
+    /// connections" option (#1506 Requested 188); absent means off.
+    #[serde(default, alias = "trustPasvAddress")]
+    trust_pasv_address: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -3510,6 +3515,7 @@ async fn connect_ftp_inner(
         .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     let mut ftp_manager = state.ftp_manager.lock().await;
+    ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
     let do_connect = async {
         ftp_manager
@@ -19210,8 +19216,13 @@ async fn import_server_profiles(
     file_path: String,
     password: String,
     existing: Option<profile_import_plan::ExistingProfileMode>,
+    keep_relaxed: Option<Vec<profile_security::KeptRelaxation>>,
+    reviewed_digest: Option<String>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     only_main_window(webview.label(), "import_server_profiles")?;
+    // A security-relaxing option of the file comes in safe unless the user
+    // ticked it in the preview (#1506 Requested 198).
+    let policy = profile_security::RelaxationPolicy::Keep(keep_relaxed.unwrap_or_default());
     // Argon2id and blocking vault, lock and database work, off the async workers
     // like the keystore commands (AUDIT 2026-05-11 M1).
     tokio::task::spawn_blocking(move || {
@@ -19220,10 +19231,76 @@ async fn import_server_profiles(
         let user = user_partitions::cli_get_active_user(&store)
             .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
             .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
-        import_server_profiles_blocking(file_path, password, existing.unwrap_or_default(), user.id)
+        import_server_profiles_blocking(
+            file_path,
+            password,
+            existing.unwrap_or_default(),
+            &policy,
+            reviewed_digest.as_deref(),
+            user.id,
+        )
     })
     .await
     .map_err(|e| format!("Import task failed: {e}"))?
+}
+
+/// GUI My Servers > Import, before the import: what the file would do to the
+/// active user's list, with the security-relaxing options it carries, so the
+/// user can choose which to keep. Nothing is written.
+#[tauri::command]
+async fn preview_server_import(
+    webview: tauri::Webview,
+    file_path: String,
+    password: String,
+    existing: Option<profile_import_plan::ExistingProfileMode>,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    only_main_window(webview.label(), "preview_server_import")?;
+    tokio::task::spawn_blocking(move || {
+        let store =
+            credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
+        let user = user_partitions::cli_get_active_user(&store)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
+            .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
+        let (current, _) = user_partitions::cli_read_active_profiles_at_revision(&store, user.id)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
+        preview_server_profiles(
+            &file_path,
+            &password,
+            existing.unwrap_or_default(),
+            &profile_security::RelaxationPolicy::ResetAll,
+            &current,
+        )
+    })
+    .await
+    .map_err(|e| format!("Import preview task failed: {e}"))?
+}
+
+/// The file changed between its review and the import.
+const IMPORT_FILE_CHANGED: &str =
+    "IMPORT_FILE_CHANGED: The backup file changed since its review, so nothing was imported; review it again";
+
+/// Read an import file once: the same bytes are hashed for the review and
+/// decrypted for the import, so a file swapped between the two cannot slip in
+/// (Greptile on #1524).
+fn read_import_file(path: &str) -> Result<Vec<u8>, String> {
+    std::fs::read(path).map_err(|e| format!("Cannot read the backup file: {e}"))
+}
+
+/// SHA-256 of an import file's bytes, hex.
+fn import_bytes_digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(bytes))
+}
+
+/// Refuse bytes that are not the file the user reviewed. No digest (the CLI,
+/// a preview, an import with nothing to review) checks nothing.
+fn check_reviewed_file(bytes: &[u8], reviewed: Option<&str>) -> Result<(), String> {
+    match reviewed {
+        Some(reviewed) if import_bytes_digest(bytes) != reviewed => {
+            Err(IMPORT_FILE_CHANGED.to_string())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Without an unlocked vault neither the list nor the secrets can be reached,
@@ -19243,6 +19320,9 @@ struct PreparedImport {
     provider_secrets: std::collections::HashMap<String, profile_export::ProviderSecrets>,
     plan: Vec<profile_import_plan::PlannedProfile>,
     target_changed: Vec<String>,
+    /// The security-relaxing options found per planned profile, and what the
+    /// policy did with them.
+    security: Vec<profile_import_plan::ImportedSecurity>,
 }
 
 impl PreparedImport {
@@ -19267,6 +19347,7 @@ fn prepare_import(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     current: &[serde_json::Value],
 ) -> PreparedImport {
     use profile_import_plan::{ImportCandidate, ImportOutcome};
@@ -19289,6 +19370,52 @@ fn prepare_import(
         profile_import_plan::new_profile_id,
     );
     drop(candidates);
+
+    // An imported file is untrusted: an option that turns a check off (TLS
+    // certificate, SSH host key, PASV address, cleartext consent) comes in its
+    // safe state unless the policy keeps it (#1506 Requested 198). Done before
+    // the target comparison, so an overwrite is judged on what will be stored.
+    // An overwrite that brings a setting the profile already has, same key and
+    // value, imports nothing new: it is neither reported nor reset, so it
+    // compares like with like (Greptile on #1506 Requested 198).
+    let mut security = Vec::new();
+    for planned in plan.iter().filter(|p| p.outcome != ImportOutcome::Skipped) {
+        let server = &mut servers[planned.index];
+        let mut relaxations = profile_security::security_relaxations_of(
+            &server.host,
+            u16::try_from(server.port).ok(),
+            server.provider_id.as_deref(),
+            server.protocol.as_deref(),
+            server.options.as_ref(),
+        );
+        if planned.outcome == ImportOutcome::Overwritten {
+            if let Some(existing) = current
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(planned.id.as_str()))
+            {
+                relaxations = profile_security::new_relaxations(relaxations, existing);
+            }
+        }
+        if relaxations.is_empty() {
+            continue;
+        }
+        let keep = policy.kept_keys(planned.index, &relaxations);
+        let removed = profile_security::make_parts_safe(
+            &mut server.host,
+            &mut server.options,
+            &relaxations,
+            &keep,
+        );
+        let (reset, kept) = relaxations
+            .into_iter()
+            .partition(|relaxation| removed.contains(&relaxation.key));
+        security.push(profile_import_plan::ImportedSecurity {
+            file_index: planned.index,
+            name: profile_import_plan::display_name(&server.name, &server.host),
+            reset,
+            kept,
+        });
+    }
 
     let mut target_changed = Vec::new();
     for planned in plan
@@ -19337,6 +19464,7 @@ fn prepare_import(
         provider_secrets,
         plan,
         target_changed,
+        security,
     }
 }
 
@@ -19366,6 +19494,18 @@ fn import_report(
         target_changed: prepared.target_changed.clone(),
         total_in_file: prepared.servers.len(),
         metadata,
+        file_digest: None,
+        security: prepared
+            .security
+            .iter()
+            .filter(|found| {
+                prepared
+                    .plan
+                    .iter()
+                    .any(|p| p.index == found.file_index && p.outcome != ImportOutcome::Skipped)
+            })
+            .cloned()
+            .collect(),
     };
     for planned in &prepared.plan {
         let server = &prepared.servers[planned.index];
@@ -19402,6 +19542,7 @@ fn import_report(
         }
         let mut profile = redact_imported_server(server, &restored);
         profile["importOutcome"] = serde_json::json!(planned.outcome);
+        profile["fileIndex"] = serde_json::json!(planned.index);
         report.servers.push(profile);
     }
     report
@@ -19413,20 +19554,24 @@ pub fn preview_server_profiles(
     file_path: &str,
     password: &str,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     current: &[serde_json::Value],
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let bytes = read_import_file(file_path)?;
+    let file_digest = import_bytes_digest(&bytes);
     let (servers, provider_secrets, metadata) =
-        profile_export::import_profiles(std::path::Path::new(file_path), password)
-            .map_err(|e| e.to_string())?;
-    let prepared = prepare_import(&servers, &provider_secrets, mode, current);
-    Ok(import_report(
+        profile_export::import_profiles_from_bytes(&bytes, password).map_err(|e| e.to_string())?;
+    let prepared = prepare_import(&servers, &provider_secrets, mode, policy, current);
+    let mut report = import_report(
         &prepared,
         &[],
         SharedImportSecrets::default(),
         current.to_vec(),
         Vec::new(),
         serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
-    ))
+    );
+    report.file_digest = Some(file_digest);
+    Ok(report)
 }
 
 /// Import a `.aeroftp` file into `user`, who must be the active account, as one
@@ -19458,20 +19603,24 @@ pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
-    import_server_profiles_blocking(file_path, password, mode, user)
+    import_server_profiles_blocking(file_path, password, mode, policy, None, user)
 }
 
 fn import_server_profiles_blocking(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
+    reviewed_digest: Option<&str>,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let bytes = read_import_file(&file_path)?;
+    check_reviewed_file(&bytes, reviewed_digest)?;
     let (servers, provider_secrets, metadata) =
-        profile_export::import_profiles(std::path::Path::new(&file_path), &password)
-            .map_err(|e| e.to_string())?;
+        profile_export::import_profiles_from_bytes(&bytes, &password).map_err(|e| e.to_string())?;
     let metadata = serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null);
     let store = credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
     user_partitions::init_or_migrate_cli(&store)
@@ -19496,7 +19645,7 @@ fn import_server_profiles_blocking(
                     format!("{IMPORT_NEEDS_PARTITION}: {e}")
                 }
             })?;
-        let prepared = prepare_import(&servers, &provider_secrets, mode, &current);
+        let prepared = prepare_import(&servers, &provider_secrets, mode, policy, &current);
         let stored = prepared.stored();
         if stored.is_empty() {
             return Ok(import_report(
@@ -20585,6 +20734,328 @@ async fn mount_open_quick(id: String) -> Result<(), String> {
 pub fn install_crypto_provider() -> bool {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     rustls::crypto::CryptoProvider::get_default().is_some()
+}
+
+#[cfg(test)]
+mod import_security_tests {
+    use super::*;
+    use profile_import_plan::{ExistingProfileMode, ImportOutcome};
+    use profile_security::{KeptRelaxation, RelaxationPolicy};
+    use serde_json::json;
+
+    fn relaxed(id: &str) -> profile_export::ServerProfileExport {
+        profile_export::ServerProfileExport {
+            id: id.into(),
+            name: format!("{id} name"),
+            host: "files.example.com".into(),
+            port: 21,
+            username: "user".into(),
+            protocol: Some("ftp".into()),
+            options: Some(json!({"trustPasvAddress": true, "verifyCert": false, "timeout": 30})),
+            ..Default::default()
+        }
+    }
+
+    fn plan(
+        servers: &[profile_export::ServerProfileExport],
+        mode: ExistingProfileMode,
+        policy: &RelaxationPolicy,
+        current: &[serde_json::Value],
+    ) -> PreparedImport {
+        prepare_import(servers, &Default::default(), mode, policy, current)
+    }
+
+    /// #1506 Requested 198: a backup is untrusted input, so an option that
+    /// turns a check off comes in safe unless the user keeps it, per profile
+    /// and per key.
+    #[test]
+    fn an_import_brings_relaxing_options_in_safe_unless_kept() {
+        let servers = vec![relaxed("srv_a"), relaxed("srv_b")];
+
+        let reset = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        for server in &reset.servers {
+            assert_eq!(
+                server.options,
+                Some(json!({"timeout": 30, "verifyCert": true, "trustPasvAddress": false}))
+            );
+        }
+        assert_eq!(reset.security.len(), 2);
+        for entry in &reset.security {
+            assert!(entry.kept.is_empty());
+            let keys: Vec<&str> = entry.reset.iter().map(|r| r.key.as_str()).collect();
+            assert_eq!(keys, ["verifyCert", "trustPasvAddress"]);
+        }
+
+        let keep_one = RelaxationPolicy::Keep(vec![KeptRelaxation {
+            file_index: 1,
+            key: "trustPasvAddress".into(),
+        }]);
+        let partial = plan(&servers, ExistingProfileMode::Skip, &keep_one, &[]);
+        assert_eq!(
+            partial.servers[0].options,
+            Some(json!({"timeout": 30, "verifyCert": true, "trustPasvAddress": false}))
+        );
+        assert_eq!(
+            partial.servers[1].options,
+            Some(json!({"trustPasvAddress": true, "timeout": 30, "verifyCert": true}))
+        );
+        assert_eq!(partial.security[1].kept.len(), 1);
+
+        let all = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::KeepAll,
+            &[],
+        );
+        assert_eq!(all.servers[0].options, servers[0].options);
+        assert!(all.security.iter().all(|e| e.reset.is_empty()));
+    }
+
+    #[test]
+    fn a_skipped_profile_is_not_reported_or_changed() {
+        let current = vec![
+            json!({"id": "srv_a", "host": "files.example.com", "port": 21, "username": "user"}),
+        ];
+        let servers = vec![relaxed("srv_a"), relaxed("srv_b")];
+        let prepared = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.servers[0].options, servers[0].options);
+        let report = import_report(
+            &prepared,
+            &[],
+            SharedImportSecrets::default(),
+            current.clone(),
+            Vec::new(),
+            serde_json::Value::Null,
+        );
+        let indices: Vec<usize> = report.security.iter().map(|e| e.file_index).collect();
+        assert_eq!(indices, [1]);
+        assert_eq!(report.servers[0]["fileIndex"], json!(1));
+    }
+
+    /// The digest a review is bound to changes with the file (CodeRabbit on
+    /// #1524): the import compares it before it reads the file again.
+    #[test]
+    fn the_review_digest_follows_the_file() {
+        let first = import_bytes_digest(b"first");
+        assert_eq!(first.len(), 64);
+        assert!(check_reviewed_file(b"first", Some(&first)).is_ok());
+        assert!(check_reviewed_file(b"second", None).is_ok());
+        let changed = check_reviewed_file(b"second", Some(&first)).unwrap_err();
+        assert!(changed.starts_with("IMPORT_FILE_CHANGED"), "{changed}");
+        assert!(read_import_file("/nonexistent/aeroftp-import.aeroftp").is_err());
+    }
+
+    /// Greptile round 1 on #1506 Requested 198: an overwrite that brings the
+    /// relaxed setting the profile already has imports nothing new, so it is
+    /// neither reset nor reported, and it lands instead of being skipped.
+    #[test]
+    fn an_overwrite_with_a_relaxation_the_profile_already_has_lands() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"verifyCert": false}
+        })];
+        let mut server = relaxed("srv_a");
+        server.options = Some(json!({"verifyCert": false, "timeout": 30}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Overwritten);
+        assert!(prepared.target_changed.is_empty());
+        assert!(prepared.security.is_empty());
+        assert_eq!(
+            prepared.servers[0].options,
+            Some(json!({"verifyCert": false, "timeout": 30}))
+        );
+    }
+
+    /// CodeRabbit on #1524: a kept backup that carries two spellings of one
+    /// option, the safe-looking one first, still loads as the weaker one, so
+    /// its overwrite is refused and the stored profile keeps its secrets.
+    #[test]
+    fn an_overwrite_with_conflicting_spellings_is_refused() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 22, "username": "user",
+            "protocol": "sftp", "options": {}
+        })];
+        let mut server = relaxed("srv_a");
+        server.port = 22;
+        server.protocol = Some("sftp".into());
+        server.options = Some(json!({"trustUnknownHosts": false, "trust_unknown_hosts": true}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::KeepAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.target_changed, ["srv_a name"]);
+        // Nothing of it is stored, so the stored profile and its secrets stay
+        // as they were.
+        assert!(prepared.stored().is_empty());
+    }
+
+    /// Greptile on #1524: a backup whose `tlsMode` is "explicit " (which FTP
+    /// reads as no TLS) does not overwrite a profile saved with "explicit", so
+    /// the saved password never goes out over plain FTP.
+    #[test]
+    fn an_overwrite_with_a_padded_tls_mode_is_refused() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"tlsMode": "explicit"}
+        })];
+        let mut server = relaxed("srv_a");
+        server.options = Some(json!({"tlsMode": "explicit "}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.target_changed, ["srv_a name"]);
+        assert!(prepared.stored().is_empty());
+    }
+
+    /// CodeRabbit on #1524: a bare `blomp` protocol off Blomp's host goes
+    /// through the import like an explicit providerId: an explicit opt-in is
+    /// reset, an omitted option has nothing to reset (the loader no longer
+    /// lends the preset default there).
+    #[test]
+    fn a_bare_blomp_protocol_off_its_host_imports_safe() {
+        let blomp = |options: serde_json::Value| profile_export::ServerProfileExport {
+            id: "srv_b".into(),
+            name: "Blomp".into(),
+            host: "https://keystone.attacker.example".into(),
+            port: 443,
+            username: "user".into(),
+            protocol: Some("blomp".into()),
+            options: Some(options),
+            ..Default::default()
+        };
+        let explicit = plan(
+            &[blomp(json!({"allowCleartextStorage": true}))],
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert_eq!(explicit.security.len(), 1);
+        assert_eq!(explicit.security[0].reset[0].key, "allowCleartextStorage");
+        assert_eq!(
+            explicit.servers[0].options,
+            Some(json!({"allowCleartextStorage": false}))
+        );
+        let omitted = plan(
+            &[blomp(json!({}))],
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert!(omitted.security.is_empty());
+    }
+
+    /// The reset happens before the overwrite's target check: the safe copy
+    /// overwrites as before, while a kept PASV trust is a weaker connection
+    /// the stored secrets were not saved for, so that overwrite is refused.
+    #[test]
+    fn an_overwrite_is_judged_on_the_options_it_stores() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"timeout": 30}
+        })];
+        let servers = vec![relaxed("srv_a")];
+        let safe = plan(
+            &servers,
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(safe.plan[0].outcome, ImportOutcome::Overwritten);
+        assert!(safe.target_changed.is_empty());
+        let kept = plan(
+            &servers,
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::KeepAll,
+            &current,
+        );
+        assert_eq!(kept.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(kept.target_changed, ["srv_a name"]);
+    }
+
+    #[test]
+    fn retained_s3_consent_survives_the_native_file_and_effective_config() {
+        use crate::providers::{ProviderConfig, ProviderType, S3Config};
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("s3-consent.aeroftp");
+        let server = profile_export::ServerProfileExport {
+            id: "srv_s3".into(),
+            name: "S3 fixture".into(),
+            host: "minio.example.com".into(),
+            port: 9000,
+            username: "user".into(),
+            protocol: Some("s3".into()),
+            options: Some(json!({
+                "bucket": "backups",
+                "endpoint": "http://minio.example.com:9000",
+                "allowCleartextEndpoint": true
+            })),
+            ..Default::default()
+        };
+        profile_export::export_profiles(
+            vec![server],
+            Default::default(),
+            "fixture-password",
+            &file,
+        )
+        .unwrap();
+        let report = preview_server_profiles(
+            file.to_str().unwrap(),
+            "fixture-password",
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::Keep(vec![KeptRelaxation {
+                file_index: 0,
+                key: "allowCleartextEndpoint".into(),
+            }]),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(report.security[0].kept[0].key, "allowCleartextEndpoint");
+        let imported = &report.servers[0];
+        assert_eq!(imported["options"]["allowCleartextEndpoint"], json!(true));
+        let (extra, host) = profile_loader::profile_connection_extra(
+            imported,
+            ProviderType::S3,
+            imported["host"].as_str().unwrap(),
+        );
+        let effective = S3Config::from_provider_config(&ProviderConfig {
+            name: "fixture".into(),
+            provider_type: ProviderType::S3,
+            host,
+            port: imported["port"]
+                .as_u64()
+                .and_then(|p| u16::try_from(p).ok()),
+            username: Some("user".into()),
+            password: Some("fixture-secret".into()),
+            initial_path: None,
+            extra,
+        })
+        .unwrap();
+        assert!(effective.allow_cleartext_endpoint);
+    }
 }
 
 #[cfg(test)]
@@ -22297,6 +22768,7 @@ pub fn run() {
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,
+            preview_server_import,
             // Generic profile bridge (12 expansion sources)
             bridge_commands::detect_bridge_config,
             bridge_commands::bridge_source_meta,

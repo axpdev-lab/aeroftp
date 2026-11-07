@@ -464,7 +464,13 @@ async fn import_over(
     dry_run: bool,
 ) -> Result<crate::profile_import_plan::ProfileImportReport, String> {
     if dry_run {
-        return crate::preview_server_profiles(&file, &password, mode, list);
+        return crate::preview_server_profiles(
+            &file,
+            &password,
+            mode,
+            &crate::profile_security::RelaxationPolicy::KeepAll,
+            list,
+        );
     }
     let user = match user {
         Some(user) => user,
@@ -474,7 +480,14 @@ async fn import_over(
         *stored = list.to_vec();
         true
     })?;
-    crate::import_server_profiles_with_mode(file, password, mode, user).await
+    crate::import_server_profiles_with_mode(
+        file,
+        password,
+        mode,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
+        user,
+    )
+    .await
 }
 
 /// Durable profile-auth secrets through copy, export, purge and every import
@@ -753,6 +766,37 @@ async fn durable_profile_auth_lifecycle(
     .unwrap();
     assert!(weaker.servers.is_empty());
     assert_eq!(weaker.target_changed, [field(&export_profile, "name")]);
+    // Two spellings of one guarded option, the safe-looking one first: the
+    // loader applies the second, so the overwrite is refused and the stored
+    // password stays (CodeRabbit on #1524).
+    let mut conflicting = export_profile.clone();
+    conflicting["options"] = json!({"trustUnknownHosts": false, "trust_unknown_hosts": true});
+    let conflicting_file = directory.path().join("conflicting.aeroftp");
+    crate::export_server_profiles_core(
+        json!([conflicting]).to_string(),
+        "fixture-export-password".into(),
+        false,
+        conflicting_file.to_string_lossy().into_owned(),
+    )
+    .await
+    .unwrap();
+    let conflicting = import_over(
+        store,
+        conflicting_file.to_string_lossy().into_owned(),
+        "fixture-export-password".into(),
+        ExistingProfileMode::Overwrite,
+        &current,
+        active,
+        false,
+    )
+    .await
+    .unwrap();
+    assert!(conflicting.servers.is_empty());
+    assert_eq!(conflicting.target_changed, [field(&export_profile, "name")]);
+    assert_eq!(
+        read(&format!("server_{source}")).unwrap().as_str(),
+        "stored-password"
+    );
     assert_eq!(refused.target_changed, [field(&export_profile, "name")]);
     assert_eq!(refused.skipped, [field(&export_profile, "name")]);
     assert_eq!(read(&stale_key).unwrap().as_str(), "stale-local");
@@ -783,6 +827,7 @@ async fn durable_profile_auth_lifecycle(
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Duplicate,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
         other_id,
     )
     .await
@@ -1283,6 +1328,7 @@ async fn durable_profile_auth_lifecycle(
         file.to_string_lossy().into_owned(),
         "fixture-export-password".into(),
         ExistingProfileMode::Overwrite,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
         active_id,
     )
     .await
@@ -1594,6 +1640,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         file.to_string_lossy().into_owned(),
         "native-fixture-export-password".into(),
         crate::profile_import_plan::ExistingProfileMode::Skip,
+        &crate::profile_security::RelaxationPolicy::KeepAll,
         selected_id,
     )
     .await

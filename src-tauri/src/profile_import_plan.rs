@@ -437,6 +437,28 @@ pub struct ProfileImportReport {
     pub total_in_file: usize,
     /// The file's public envelope metadata.
     pub metadata: serde_json::Value,
+    /// The stored (or, on a preview, to be stored) profiles that carried a
+    /// security-relaxing option ([`crate::profile_security`]): which ones came
+    /// in their safe state and which were kept because the caller asked.
+    pub security: Vec<ImportedSecurity>,
+    /// SHA-256 of the file a preview read, so the import the user then
+    /// confirms can refuse a file changed since its review (CodeRabbit on
+    /// #1524). `None` outside a preview.
+    pub file_digest: Option<String>,
+}
+
+/// The security-relaxing options of one imported profile.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportedSecurity {
+    /// The profile's place in the file, the key a kept option is given by.
+    pub file_index: usize,
+    /// Its name (see [`display_name`]).
+    pub name: String,
+    /// Options removed, so the check they turned off is on again.
+    pub reset: Vec<crate::profile_security::Relaxation>,
+    /// Options kept on purpose.
+    pub kept: Vec<crate::profile_security::Relaxation>,
 }
 
 /// A new profile id in the frontend's `srv_<millis>_<9 chars>` shape.
@@ -509,7 +531,7 @@ fn stored_sas_applies(
 /// A bucket or a container is not here: it is a place on the same server, for
 /// the same account, over the same connection ([`stored_sas_applies`] is the one
 /// secret bound to it).
-const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 13] = [
+const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 15] = [
     "endpoint",
     "region",
     "accountId",
@@ -523,6 +545,17 @@ const OPTIONS_THAT_GUARD_THE_SECRET: [&str; 13] = [
     "verifyCert",
     "allowCleartextEndpoint",
     "allowCleartextStorage",
+    "trustPasvAddress",
+    "trustUnknownHosts",
+];
+
+/// Guarded options whose default, when left out, is off: a stored `false`
+/// reads as the absence it means.
+const OPTIONS_OFF_WHEN_ABSENT: [&str; 4] = [
+    "allowCleartextEndpoint",
+    "allowCleartextStorage",
+    "trustPasvAddress",
+    "trustUnknownHosts",
 ];
 
 /// Whether a stored secret may go where `b` connects, having been saved for
@@ -572,12 +605,43 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         serde_json::Value::Null => serde_json::json!("ftp"),
         value => value,
     };
-    let option =
-        |p: &serde_json::Value, key: &str| match present(p.get("options").and_then(|o| o.get(key)))
+    // A guarded option is compared on the value the connection loader ends
+    // up with (`apply_profile_options`): under every spelling it reads, and
+    // with the one that wins when a profile carries two
+    // (`trustUnknownHosts: false` beside `trust_unknown_hosts: true` loads
+    // as true), or a backup could weaken a connection under the other
+    // spelling and keep the saved secret (CodeRabbit on #1524).
+    let effective = |p: &serde_json::Value| {
+        // An absent protocol is FTP here, as `protocol` below reads it, so it
+        // gets the same FTP defaults as one that says "ftp".
+        let mut p = p.clone();
+        if p.is_object()
+            && (matches!(p.get("protocol"), None | Some(serde_json::Value::Null))
+                || p.get("protocol").and_then(|v| v.as_str()) == Some(""))
         {
-            serde_json::Value::Bool(true) if key == "verifyCert" => serde_json::Value::Null,
-            value => value,
-        };
+            p["protocol"] = serde_json::json!("ftp");
+        }
+        let mut extra = std::collections::HashMap::new();
+        crate::profile_loader::apply_profile_options(&mut extra, &p);
+        extra
+    };
+    let (loaded_a, loaded_b) = (effective(a), effective(b));
+    // The values are compared exactly as the loader hands them to the
+    // providers, which read them as they are: `FtpConfig` takes
+    // `"explicit "` for no TLS at all, so a trimmed comparison would let such a
+    // backup keep a password saved for an explicit-TLS connection (Greptile on
+    // #1524). Only the spellings every reader takes for the default equal an
+    // absent option: `verifyCert` "true", and "false" for an option that is off
+    // when absent. Any other difference drops the saved secret.
+    let option = |loaded: &std::collections::HashMap<String, String>, key: &str| {
+        let canonical = crate::profile_loader::canonicalize_profile_option_key(key);
+        match loaded.get(&canonical).map(String::as_str) {
+            None | Some("") => serde_json::Value::Null,
+            Some("true") if key == "verifyCert" => serde_json::Value::Null,
+            Some("false") if OPTIONS_OFF_WHEN_ABSENT.contains(&key) => serde_json::Value::Null,
+            Some(v) => serde_json::Value::String(v.to_string()),
+        }
+    };
     host(a) == host(b)
         && protocol(a) == protocol(b)
         && ["port", "username", "providerId"]
@@ -585,7 +649,7 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
             .all(|key| present(a.get(key)) == present(b.get(key)))
         && OPTIONS_THAT_GUARD_THE_SECRET
             .iter()
-            .all(|key| option(a, key) == option(b, key))
+            .all(|key| option(&loaded_a, key) == option(&loaded_b, key))
 }
 
 /// The profile an overwrite stores: `existing` with the fields of `imported`
@@ -953,6 +1017,79 @@ mod tests {
         let named = json!({"host": "ftp.example:443", "port": 443, "username": "u"});
         let plain = json!({"host": "ftp.example", "port": 443, "username": "u"});
         assert!(same_target(&named, &plain));
+    }
+
+    /// A guarded option under the loader's snake_case spelling still guards
+    /// the stored secret (CodeRabbit on #1524).
+    #[test]
+    fn same_target_reads_a_guarded_option_under_any_loader_spelling() {
+        let stored = json!({"host": "sftp.example.com", "protocol": "sftp", "options": {}});
+        for (key, value) in [
+            ("trust_unknown_hosts", json!(true)),
+            ("verify_cert", json!(false)),
+            ("trust_pasv_address", json!(true)),
+            ("allow_cleartext_endpoint", json!(true)),
+        ] {
+            let mut imported = stored.clone();
+            imported["options"][key] = value;
+            assert!(!same_target(&stored, &imported), "{key}");
+        }
+        let mut same = stored.clone();
+        same["options"]["trust_unknown_hosts"] = json!(false);
+        assert!(same_target(&stored, &same));
+        // Two spellings of one option: the one the loader applies last wins,
+        // so the safe-looking first one cannot hide a weaker connection.
+        let mut both = stored.clone();
+        both["options"]["trustUnknownHosts"] = json!(false);
+        both["options"]["trust_unknown_hosts"] = json!(true);
+        assert!(!same_target(&stored, &both));
+    }
+
+    #[test]
+    fn an_overwrite_with_a_null_alias_matches_the_gui_pasv_value() {
+        let existing = json!({
+            "host": "ftp.example.com", "protocol": "ftp",
+            "options": {"trustPasvAddress": true, "trust_pasv_address": null}
+        });
+        let mut incoming = existing.clone();
+        incoming["options"]["trust_pasv_address"] = json!(true);
+        assert!(same_target(&existing, &incoming));
+    }
+
+    /// Greptile on #1524: a guarded value is compared as the provider reads
+    /// it, untrimmed and case-sensitive. `"explicit "` is no TLS for
+    /// `FtpConfig`, so it is another connection than `"explicit"`.
+    #[test]
+    fn same_target_compares_a_guarded_value_as_the_provider_reads_it() {
+        let ftp = |tls: &str| {
+            json!({"host": "ftp.example.com", "port": 21, "username": "u",
+                "protocol": "ftp", "options": {"tlsMode": tls}})
+        };
+        assert!(same_target(&ftp("explicit"), &ftp("explicit")));
+        for variant in ["explicit ", " explicit", "Explicit", "EXPLICIT"] {
+            assert!(!same_target(&ftp("explicit"), &ftp(variant)), "{variant:?}");
+        }
+        // Only the exact default spellings equal an absent option.
+        let sftp = |options: serde_json::Value| json!({"host": "sftp.example.com", "protocol": "sftp", "options": options});
+        assert!(same_target(
+            &sftp(json!({})),
+            &sftp(json!({"verifyCert": "true"}))
+        ));
+        assert!(same_target(
+            &sftp(json!({})),
+            &sftp(json!({"trustUnknownHosts": "false"}))
+        ));
+        for options in [
+            json!({"verifyCert": "TRUE"}),
+            json!({"verifyCert": "true "}),
+            json!({"trustUnknownHosts": "False"}),
+            json!({"trustUnknownHosts": " false"}),
+        ] {
+            assert!(
+                !same_target(&sftp(json!({})), &sftp(options.clone())),
+                "{options}"
+            );
+        }
     }
 
     #[test]

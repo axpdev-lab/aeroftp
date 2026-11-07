@@ -329,11 +329,17 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
     let mut options = serde_json::Map::new();
 
     match protocol {
-        "webdav"
-            // Ftps=1 means HTTPS for WebDAV
-            if ftps == 1 => {
-                options.insert("useSsl".to_string(), serde_json::Value::Bool(true));
-            }
+        // Ftps=1 means HTTPS for WebDAV, 0 plain HTTP. Stored as
+        // `webdavScheme`, the key the connection reads: the `useSsl` written
+        // before was read by nothing but this file's own export, so an HTTPS
+        // site on another port than 443 connected as the host's auto default.
+        "webdav" => {
+            let scheme = if ftps == 1 { "https" } else { "http" };
+            options.insert(
+                "webdavScheme".to_string(),
+                serde_json::Value::String(scheme.to_string()),
+            );
+        }
         "ftps" => {
             // Implicit vs explicit, under `tlsMode`: the key the GUI stores
             // and the connection reads (an `ftpsMode` was read by nothing, so
@@ -608,12 +614,19 @@ pub fn export_winscp(
                 _ => (5, 0),
             },
             "webdav" => {
-                let use_ssl = server
+                // The scheme the profile connects with: its saved
+                // `webdavScheme`, else HTTPS except on port 80.
+                let saved = server
                     .options
                     .as_ref()
-                    .and_then(|o| o.get("useSsl"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(server.port == 443);
+                    .and_then(|o| o.get("webdavScheme"))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_ascii_lowercase);
+                let use_ssl = match saved.as_deref() {
+                    Some("https") => true,
+                    Some("http") => false,
+                    _ => server.port != 80,
+                };
                 if use_ssl {
                     (6, 1)
                 } else {
@@ -997,6 +1010,29 @@ FSProtocol=1
         let mapped = map_session("test", &fields).unwrap();
         assert_eq!(mapped.protocol, "webdav");
         assert_eq!(mapped.port, 443);
+        let scheme = |mapped: &MappedProfile| {
+            mapped
+                .options
+                .as_ref()
+                .and_then(|o| o.get("webdavScheme"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        assert_eq!(scheme(&mapped).as_deref(), Some("https"));
+        assert!(mapped.options.as_ref().unwrap().get("useSsl").is_none());
+
+        // An HTTPS site on another port keeps HTTPS, and plain HTTP is kept
+        // as such (an import then offers to reset it, #1506 Requested 198).
+        fields.insert("PortNumber".to_string(), "8443".to_string());
+        assert_eq!(
+            scheme(&map_session("test", &fields).unwrap()).as_deref(),
+            Some("https")
+        );
+        fields.insert("Ftps".to_string(), "0".to_string());
+        assert_eq!(
+            scheme(&map_session("test", &fields).unwrap()).as_deref(),
+            Some("http")
+        );
     }
 
     #[test]

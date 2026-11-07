@@ -1057,7 +1057,7 @@ mod tests {
             let (mut provider, dir) = provider_on_bulk_stand_in();
             std::fs::write(
                 dir.path().join("listing.txt"),
-                b"----  1  5  15Jan2026  14:30  taken.bin\n",
+                b"----  1  5  15Jan2026  14:30 taken.bin\n",
             )
             .unwrap();
             for (flag, content) in [
@@ -1141,7 +1141,7 @@ mod tests {
         fn downloads(dir: &Path, local: &Path, names: &[&str], size: u64) -> Vec<BulkTransferItem> {
             let listing: String = names
                 .iter()
-                .map(|name| format!("----  1  {size}  15Jan2026  14:30  {name}\n"))
+                .map(|name| format!("----  1  {size}  15Jan2026  14:30 {name}\n"))
                 .collect();
             std::fs::write(dir.join("listing.txt"), listing).unwrap();
             names
@@ -1265,8 +1265,8 @@ mod tests {
             let local = tempfile::tempdir().unwrap();
             let items = downloads(dir.path(), local.path(), &["a.bin", "b.bin"], 8);
             for extra in [
-                "----  1  8  15Jan2026  14:30  unselected.bin\n",
-                "d---  -  -  15Jan2026  14:30  sub\n",
+                "----  1  8  15Jan2026  14:30 unselected.bin\n",
+                "d---  -  -  15Jan2026  14:30 sub\n",
             ] {
                 let mut listing = read(&dir.path().join("listing.txt"));
                 listing.push_str(extra);
@@ -1328,7 +1328,7 @@ mod tests {
             assert!(pays(&mut provider, &items, false).await);
             // The folder holds one more file than the selection.
             let mut listing = read(&dir.path().join("listing.txt"));
-            listing.push_str("----  1  8  15Jan2026  14:30  unselected.bin\n");
+            listing.push_str("----  1  8  15Jan2026  14:30 unselected.bin\n");
             std::fs::write(dir.path().join("listing.txt"), listing).unwrap();
             assert!(!pays(&mut provider, &items, false).await);
             // 300 files: the engine forms groups of 256 and 44, neither the
@@ -1350,7 +1350,7 @@ mod tests {
             assert!(pays(&mut provider, &files, true).await);
             std::fs::write(
                 dir.path().join("listing.txt"),
-                b"----  1  6  15Jan2026  14:30  n2.bin\n",
+                b"----  1  6  15Jan2026  14:30 n2.bin\n",
             )
             .unwrap();
             assert!(!pays(&mut provider, &files, true).await);

@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names}, bu cihazda o sağlayıcı için bulunandan farklı bir özel OAuth uygulamasıyla geldi. Kayıtlı uygulama korundu, bu yüzden bu profiller bağlanmayı bırakırsa yeniden oturum açın.",
             "importTargetChanged": "{names} üzerine yazılmadı: dosya bunları başka bir sunucuya yönlendiriyor ve kayıtlı parolalarıyla belirteçlerinin oraya gitmemesi gerekir. Dosyadaki kopyayı eklemek için Çoğalt ile içe aktarın veya önce profili silin.",
             "importSharedSecretsFailed": "{names} içe aktarıldı, ancak dosyadaki paylaşılan bir gizli bilgi veya oturum saklanamadı. Bağlanmazlarsa bu profillerde yeniden oturum açın.",
-            "keystoreDatabasesFailed": "İçe aktarma tamamlandı ancak bu veritabanları geri yüklenemedi ve önceki içeriklerini koruyor: {names}."
+            "keystoreDatabasesFailed": "İçe aktarma tamamlandı ancak bu veritabanları geri yüklenemedi ve önceki içeriklerini koruyor: {names}.",
+            "importSecurityTitle": "Bu yedekteki güvenlik ayarları",
+            "importSecurityHelp": "Bu seçenekler bir güvenlik denetimini kapatır. Her biri, dosyadaki haliyle korumak için işaretlemediğiniz sürece güvenli durumda içe aktarılır.",
+            "importSecurityVerifyCert": "Sertifika denetimi kapalı",
+            "importSecurityCleartextEndpoint": "Şifrelenmemiş S3 uç noktasına izin verildi",
+            "importSecurityCleartextStorage": "Şifrelenmemiş depolama adresine izin verildi",
+            "importSecurityPlainHttp": "HTTPS yerine düz HTTP",
+            "importSecurityPasvAddress": "Sunucunun belirttiği adrese veri bağlantısı (PASV)",
+            "importSecurityUnknownHostKeys": "Bilinmeyen SSH ana makine anahtarları kabul edildi",
+            "keystoreSecurityReset": "Geri yüklenen {count} sunucuda bir güvenlik denetimini kapatan seçenekler vardı; bunlar güvenli ayara geri döndürüldü: {details}.",
+            "keystoreSecurityResetFailed": "{count} geri yüklenen hesabın güvenlik ayarları denetlenemedi veya sıfırlanamadı. Bu hesaplar, uyarı verilmeden etkin bırakılmak yerine burada listeleniyor.",
+            "keystoreSecurityResetQuarantine": "Geri yüklenen hesap veritabanı güvenceye alınamadı ve {path} olarak karantinaya alındı. Hiçbir geri yüklenen hesap etkin değil. Disk veya izin sorununu giderin, ardından yedeği yeniden geri yükleyin. Karantinaya alınan dosya kurtarma için erişilebilir durumda kalır."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "SCP'ye geri dönüşe izin ver",
             "allowScpFallbackHint": "Sunucuda SFTP yoksa, WinSCP'nin yaptığı gibi aynı bağlantıda SCP ile devam edilir.",
             "discoverScp": "SFTP'si olmayan sunucular için SSH üzerinden dosya kopyalama",
-            "discoverTigris": "Tigris: küresel olarak dağıtık, S3 uyumlu depolama, çıkış ücreti yok (5 GB ücretsiz)"
+            "discoverTigris": "Tigris: küresel olarak dağıtık, S3 uyumlu depolama, çıkış ücreti yok (5 GB ücretsiz)",
+            "trustPasvAddress": "Sunucunun verdiği pasif adresi kullan",
+            "trustPasvAddressHelp": "Kapalı: veri bağlantıları, curl gibi bağlandığınız ana makineye gider. Yalnızca verileri başka bir adresten gönderen sunucu için açın."
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

@@ -605,6 +605,8 @@
             "encryptionImplicit": "Richiedi FTP implicito su TLS",
             "encryptionExplicitIfAvailable": "Usa FTP esplicito su TLS se disponibile",
             "acceptInvalidCerts": "Accetta certificati non validi o autofirmati",
+            "trustPasvAddress": "Usa l'indirizzo passivo indicato dal server",
+            "trustPasvAddressHelp": "Disattivato: le connessioni dati vanno all'host a cui ti sei connesso, come fa curl. Attivalo solo per un server che invia i dati da un altro indirizzo.",
             "selectRegion": "Seleziona regione...",
             "providerDocumentation": "Documentazione {name}",
             "webdavExampleLabel": "Esempio:",
@@ -1860,7 +1862,18 @@
             "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta: accedi di nuovo se questi profili smettono di connettersi.",
             "importTargetChanged": "{names} non sono stati sovrascritti: il file li fa puntare a un altro server, e le password e i token memorizzati non devono arrivarci. Importa con Duplica per aggiungere la copia dal file, oppure elimina prima il profilo.",
             "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono.",
-            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}."
+            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}.",
+            "importSecurityTitle": "Impostazioni di sicurezza in questo backup",
+            "importSecurityHelp": "Queste opzioni disattivano un controllo di sicurezza. Ognuna viene importata nello stato sicuro, a meno che tu non la spunti per mantenerla com'è nel file.",
+            "importSecurityVerifyCert": "Controllo del certificato disattivato",
+            "importSecurityCleartextEndpoint": "Endpoint S3 non cifrato consentito",
+            "importSecurityCleartextStorage": "Indirizzo di archiviazione non cifrato consentito",
+            "importSecurityPlainHttp": "HTTP semplice invece di HTTPS",
+            "importSecurityPasvAddress": "Connessione dati all'indirizzo indicato dal server (PASV)",
+            "importSecurityUnknownHostKeys": "Chiavi host SSH sconosciute accettate",
+            "keystoreSecurityReset": "{count} server ripristinati avevano opzioni che disattivano un controllo di sicurezza; sono state riportate all'impostazione sicura: {details}.",
+            "keystoreSecurityResetFailed": "Impossibile controllare o reimpostare le impostazioni di sicurezza di {count} account ripristinati. Sono elencati qui invece di essere lasciati attivi senza avviso.",
+            "keystoreSecurityResetQuarantine": "Non è stato possibile proteggere il database degli account ripristinato, che è stato messo in quarantena come {path}. Nessun account ripristinato è attivo. Correggi il problema del disco o delle autorizzazioni, quindi ripristina di nuovo il backup. Il file in quarantena rimane disponibile per il recupero."
         },
         "appearance": {
             "patternCross": "Croce",

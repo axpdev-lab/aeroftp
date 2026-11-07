@@ -158,6 +158,7 @@ async fn provider_with(script: Script) -> (FtpProvider, Arc<Mutex<Wire>>) {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: Some("/".to_string()),
+        trust_pasv_address: false,
     };
     let mut provider = FtpProvider::new(config);
     provider
@@ -461,6 +462,7 @@ async fn a_provider_that_never_connected_has_nothing_to_send_on() {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: None,
+        trust_pasv_address: false,
     });
     let run = run_site_command(&mut provider, "WHO", &quick()).await;
     assert_eq!(

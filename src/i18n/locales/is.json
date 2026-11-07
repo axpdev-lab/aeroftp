@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} komu með annað sérsniðið OAuth-forrit en það sem þetta tæki hefur fyrir þann þjónustuaðila. Vistaða forritið var varðveitt, svo skráðu þig inn aftur ef þessi snið hætta að tengjast.",
             "importTargetChanged": "{names} voru ekki skrifuð yfir: skráin beinir þeim á annan netþjón og vistuð lykilorð þeirra og tókenar mega ekki fara þangað. Fluttu inn með Afrita til að bæta við afritinu úr skránni, eða eyddu sniðinu fyrst.",
             "importSharedSecretsFailed": "{names} voru flutt inn, en ekki tókst að vista sameiginlegt leyndarmál eða lotu úr skránni. Skráðu þig aftur inn á þessi snið ef þau tengjast ekki.",
-            "keystoreDatabasesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta þessa gagnagrunna og þeir halda því sem þeir höfðu að geyma: {names}."
+            "keystoreDatabasesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta þessa gagnagrunna og þeir halda því sem þeir höfðu að geyma: {names}.",
+            "importSecurityTitle": "Öryggisstillingar í þessu afriti",
+            "importSecurityHelp": "Þessir valkostir slökkva á öryggisathugun. Hver er fluttur inn í öruggu ástandi nema þú hakir við hann til að halda honum eins og hann er í skránni.",
+            "importSecurityVerifyCert": "Slökkt á vottorðsathugun",
+            "importSecurityCleartextEndpoint": "Ódulkóðaður S3 endapunktur leyfður",
+            "importSecurityCleartextStorage": "Ódulkóðað geymsluvistfang leyft",
+            "importSecurityPlainHttp": "Venjulegt HTTP í stað HTTPS",
+            "importSecurityPasvAddress": "Gagnatenging við vistfangið sem þjónninn gefur upp (PASV)",
+            "importSecurityUnknownHostKeys": "Óþekktir SSH hýsillyklar samþykktir",
+            "keystoreSecurityReset": "{count} endurheimtir netþjónar voru með valkosti sem slökkva á öryggisathugun; þeir voru færðir aftur í öruggar stillingar: {details}.",
+            "keystoreSecurityResetFailed": "Ekki var hægt að athuga eða endurstilla öryggisstillingar {count} endurheimtra reikninga. Þeir eru taldir upp hér í stað þess að vera áfram virkir án viðvarunar.",
+            "keystoreSecurityResetQuarantine": "Ekki var hægt að tryggja endurheimta reikningagagnagrunninn og hann var einangraður sem {path}. Enginn endurheimtur reikningur er virkur. Leystu vandamálið með diskinn eða heimildir og endurheimttu síðan afritið aftur. Skráin í einangrun er áfram tiltæk til endurheimtar."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Leyfa SCP til vara",
             "allowScpFallbackHint": "Ef netþjónninn hefur ekki SFTP er haldið áfram um SCP á sömu tengingu, eins og WinSCP gerir.",
             "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP",
-            "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)"
+            "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)",
+            "trustPasvAddress": "Nota óvirka vistfangið sem þjónninn gefur upp",
+            "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi."
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

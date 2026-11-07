@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} OAuth aplikazio pertsonalizatu desberdin batekin iritsi dira, gailu honek hornitzaile horretarako duenarekin alderatuta. Gordetako aplikazioa mantendu da, beraz, hasi saioa berriro profil hauek konektatzeari uzten badiote.",
             "importTargetChanged": "{names} ez dira gainidatzi: fitxategiak beste zerbitzari batera bideratzen ditu, eta gordetako pasahitzak eta tokenak ez dira hara joan behar. Inportatu Bikoiztu aukerarekin fitxategiko kopia gehitzeko, edo ezabatu lehenengo profila.",
             "importSharedSecretsFailed": "{names} inportatu dira, baina fitxategiko partekatutako sekretu bat edo saio bat ezin izan da gorde. Hasi saioa berriro profil hauetan, konektatzen ez badira.",
-            "keystoreDatabasesFailed": "Inportazioa amaitu da, baina datu-base hauek ezin izan dira berrezarri eta lehen zutena gordetzen dute: {names}."
+            "keystoreDatabasesFailed": "Inportazioa amaitu da, baina datu-base hauek ezin izan dira berrezarri eta lehen zutena gordetzen dute: {names}.",
+            "importSecurityTitle": "Babeskopia honetako segurtasun-ezarpenak",
+            "importSecurityHelp": "Aukera hauek segurtasun-egiaztapen bat desaktibatzen dute. Bakoitza egoera seguruan inportatuko da, fitxategian dagoen bezala mantentzeko markatzen ez baduzu.",
+            "importSecurityVerifyCert": "Ziurtagiriaren egiaztapena desaktibatuta",
+            "importSecurityCleartextEndpoint": "Zifratu gabeko S3 amaiera-puntua baimenduta",
+            "importSecurityCleartextStorage": "Zifratu gabeko biltegiratze-helbidea baimenduta",
+            "importSecurityPlainHttp": "HTTP arrunta HTTPS-ren ordez",
+            "importSecurityPasvAddress": "Datu-konexioa zerbitzariak adierazten duen helbidera (PASV)",
+            "importSecurityUnknownHostKeys": "SSH ostalari-gako ezezagunak onartuta",
+            "keystoreSecurityReset": "Berrezarritako {count} zerbitzarik segurtasun-egiaztapen bat desaktibatzen duten aukerak zituzten; ezarpen seguruan jarri dira berriro: {details}.",
+            "keystoreSecurityResetFailed": "Ezin izan dira {count} berreskuratutako kontuen segurtasun-ezarpenak egiaztatu edo berrezarri. Hemen zerrendatzen dira, oharrik gabe aktibo uztearen ordez.",
+            "keystoreSecurityResetQuarantine": "Berreskuratutako kontuen datu-basea ezin izan da babestu, eta {path} gisa isolatu da. Ez dago berreskuratutako konturik aktibo. Konpondu diskoaren edo baimenen arazoa, eta berreskuratu berriro babeskopia. Isolatutako fitxategia berreskuratzeko erabilgarri dago oraindik."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Baimendu SCP ordezko gisa",
             "allowScpFallbackHint": "Zerbitzariak SFTPrik ez badu, SCP bidez jarraitzen du konexio berean, WinSCPk egiten duen bezala.",
             "discoverScp": "Fitxategiak kopiatzea SSH bidez SFTPrik gabeko zerbitzarietarako",
-            "discoverTigris": "Tigris: mundu osoan banatutako S3-rekin bateragarria den biltegiratzea, datu-irteeren kosturik gabe (5 GB doan)"
+            "discoverTigris": "Tigris: mundu osoan banatutako S3-rekin bateragarria den biltegiratzea, datu-irteeren kosturik gabe (5 GB doan)",
+            "trustPasvAddress": "Erabili zerbitzariak emandako helbide pasiboa",
+            "trustPasvAddressHelp": "Desaktibatuta: datu-konexioak konektatu zaren ostalarira doaz, curl-ek egiten duen bezala. Aktibatu soilik datuak beste helbide batetik bidaltzen dituen zerbitzari baterako."
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} przyszły z inną niestandardową aplikacją OAuth niż ta, którą to urządzenie ma dla tego dostawcy. Zapisana aplikacja została zachowana, więc zaloguj się ponownie, jeśli te profile przestaną się łączyć.",
             "importTargetChanged": "{names} nie zostały nadpisane: plik kieruje je na inny serwer, a ich zapisane hasła i tokeny nie mogą tam trafić. Zaimportuj z opcją Duplikuj, aby dodać kopię z pliku, lub najpierw usuń profil.",
             "importSharedSecretsFailed": "Zaimportowano {names}, ale nie udało się zapisać współdzielonego sekretu ani sesji z pliku. Zaloguj się ponownie do tych profili, jeśli się nie łączą.",
-            "keystoreDatabasesFailed": "Import zakończył się, ale nie udało się przywrócić tych baz danych i zachowują one dotychczasową zawartość: {names}."
+            "keystoreDatabasesFailed": "Import zakończył się, ale nie udało się przywrócić tych baz danych i zachowują one dotychczasową zawartość: {names}.",
+            "importSecurityTitle": "Ustawienia zabezpieczeń w tej kopii zapasowej",
+            "importSecurityHelp": "Te opcje wyłączają kontrolę bezpieczeństwa. Każda jest importowana w stanie bezpiecznym, chyba że ją zaznaczysz, aby zachować ją tak, jak jest w pliku.",
+            "importSecurityVerifyCert": "Sprawdzanie certyfikatu wyłączone",
+            "importSecurityCleartextEndpoint": "Dozwolony niezaszyfrowany punkt końcowy S3",
+            "importSecurityCleartextStorage": "Dozwolony niezaszyfrowany adres magazynu",
+            "importSecurityPlainHttp": "Zwykły HTTP zamiast HTTPS",
+            "importSecurityPasvAddress": "Połączenie danych z adresem podanym przez serwer (PASV)",
+            "importSecurityUnknownHostKeys": "Akceptowane nieznane klucze hosta SSH",
+            "keystoreSecurityReset": "{count} przywróconych serwerów miało opcje wyłączające kontrolę bezpieczeństwa; przywrócono dla nich bezpieczne ustawienie: {details}.",
+            "keystoreSecurityResetFailed": "Nie udało się sprawdzić ani zresetować ustawień zabezpieczeń {count} przywróconych kont. Zostały one wymienione tutaj zamiast pozostać aktywne bez ostrzeżenia.",
+            "keystoreSecurityResetQuarantine": "Nie udało się zabezpieczyć przywróconej bazy danych kont i została ona umieszczona w kwarantannie jako {path}. Żadne przywrócone konto nie jest aktywne. Rozwiąż problem z dyskiem lub uprawnieniami, a następnie ponownie przywróć kopię zapasową. Plik w kwarantannie pozostaje dostępny do odzyskania."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Zezwalaj na awaryjne użycie SCP",
             "allowScpFallbackHint": "Jeśli serwer nie ma SFTP, połączenie jest kontynuowane przez SCP, tak jak robi to WinSCP.",
             "discoverScp": "Kopiowanie plików przez SSH dla serwerów bez SFTP",
-            "discoverTigris": "Tigris: globalnie rozproszona pamięć masowa zgodna z S3, bez opłat za transfer wychodzący (5 GB za darmo)"
+            "discoverTigris": "Tigris: globalnie rozproszona pamięć masowa zgodna z S3, bez opłat za transfer wychodzący (5 GB za darmo)",
+            "trustPasvAddress": "Użyj adresu pasywnego podanego przez serwer",
+            "trustPasvAddressHelp": "Wyłączone: połączenia danych idą do hosta, z którym się połączyłeś, tak jak robi to curl. Włącz tylko dla serwera, który wysyła dane z innego adresu."
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

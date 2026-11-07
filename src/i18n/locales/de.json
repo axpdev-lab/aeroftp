@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} kamen mit einer anderen benutzerdefinierten OAuth-App als die, die dieses Gerät für diesen Anbieter hat. Die gespeicherte App wurde beibehalten. Melden Sie sich erneut an, falls diese Profile keine Verbindung mehr herstellen.",
             "importTargetChanged": "{names} wurden nicht überschrieben: Die Datei verweist sie auf einen anderen Server, und ihre gespeicherten Passwörter und Tokens dürfen nicht dorthin gelangen. Importieren Sie mit Duplizieren, um die Kopie aus der Datei hinzuzufügen, oder löschen Sie zuerst das Profil.",
             "importSharedSecretsFailed": "{names} wurden importiert, aber ein geteiltes Geheimnis oder eine Sitzung aus der Datei konnte nicht gespeichert werden. Melden Sie sich bei diesen Profilen erneut an, wenn sie keine Verbindung herstellen.",
-            "keystoreDatabasesFailed": "Der Import ist abgeschlossen, aber diese Datenbanken konnten nicht wiederhergestellt werden und behalten ihren bisherigen Inhalt: {names}."
+            "keystoreDatabasesFailed": "Der Import ist abgeschlossen, aber diese Datenbanken konnten nicht wiederhergestellt werden und behalten ihren bisherigen Inhalt: {names}.",
+            "importSecurityTitle": "Sicherheitseinstellungen in dieser Sicherung",
+            "importSecurityHelp": "Diese Optionen schalten eine Sicherheitsprüfung ab. Jede wird im sicheren Zustand importiert, es sei denn, Sie haken sie an, um sie wie in der Datei beizubehalten.",
+            "importSecurityVerifyCert": "Zertifikatsprüfung ausgeschaltet",
+            "importSecurityCleartextEndpoint": "Unverschlüsselter S3-Endpunkt erlaubt",
+            "importSecurityCleartextStorage": "Unverschlüsselte Speicheradresse erlaubt",
+            "importSecurityPlainHttp": "Einfaches HTTP statt HTTPS",
+            "importSecurityPasvAddress": "Datenverbindung zur vom Server genannten Adresse (PASV)",
+            "importSecurityUnknownHostKeys": "Unbekannte SSH-Hostschlüssel akzeptiert",
+            "keystoreSecurityReset": "{count} wiederhergestellte Server hatten Optionen, die eine Sicherheitsprüfung deaktivieren; sie wurden auf die sichere Einstellung zurückgesetzt: {details}.",
+            "keystoreSecurityResetFailed": "Die Sicherheitseinstellungen von {count} wiederhergestellten Konten konnten nicht überprüft oder zurückgesetzt werden. Sie werden hier aufgeführt, anstatt ohne Hinweis aktiv zu bleiben.",
+            "keystoreSecurityResetQuarantine": "Die wiederhergestellte Kontodatenbank konnte nicht gesichert werden und wurde als {path} unter Quarantäne gestellt. Kein wiederhergestelltes Konto ist aktiv. Behebe das Datenträger- oder Berechtigungsproblem und stelle dann die Sicherung erneut wieder her. Die unter Quarantäne gestellte Datei bleibt zur Wiederherstellung verfügbar."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "SCP als Ausweichlösung erlauben",
             "allowScpFallbackHint": "Hat der Server kein SFTP, geht es über SCP auf derselben Verbindung weiter, wie bei WinSCP.",
             "discoverScp": "Dateikopie über SSH für Server ohne SFTP",
-            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)"
+            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)",
+            "trustPasvAddress": "Vom Server genannte passive Adresse verwenden",
+            "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet."
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

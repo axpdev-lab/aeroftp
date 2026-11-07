@@ -594,6 +594,17 @@ pub struct KeystoreImportResult {
     /// Databases of the backup that could not be written: each keeps what it held.
     #[serde(default)]
     pub sqlite_dbs_failed: Vec<String>,
+    /// The restored profiles whose options that turn a security check off
+    /// were put back to their safe state, with the options reset, so the
+    /// result can say so (CodeRabbit on #1524).
+    #[serde(default)]
+    pub security_reset: Vec<crate::profile_security::ProfileReset>,
+    /// Accounts whose restored options could not be checked or reset.
+    #[serde(default)]
+    pub security_reset_failed: usize,
+    /// The preserved account database set aside when no reset marker persisted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub security_reset_quarantine: Option<PathBuf>,
 }
 
 /// User-facing selectivity for import. All flags default to `true` so
@@ -1494,6 +1505,14 @@ fn profile_plan_inputs(
         source = ProfileListSource::Partition;
         backup.get_or_insert_with(Vec::new);
     }
+    // A restore takes no option that turns a security check off from the
+    // backup: the backup's profiles reach the plan, its preview and its
+    // fingerprint in their safe state (CodeRabbit on #1524). This device's own
+    // profiles keep what the user chose here.
+    let security_reset = backup
+        .as_mut()
+        .map(|list| crate::profile_security::make_profile_list_safe(list))
+        .unwrap_or_default();
     let replaces_list = match source {
         ProfileListSource::Partition => true,
         ProfileListSource::Vault => merge_strategy == "overwrite",
@@ -1565,6 +1584,7 @@ fn profile_plan_inputs(
         keep_local_by_default: merge_strategy == "skip_existing",
         local_secrets,
         backup_secrets,
+        security_reset,
     })
 }
 
@@ -1682,7 +1702,7 @@ fn apply_profile_decisions(
     inputs: &PlanInputs,
     choices: ProfileChoices<'_>,
     blob_before_import: Option<String>,
-) -> Result<u32, String> {
+) -> Result<(u32, Vec<serde_json::Value>), String> {
     let outcome = keystore_profile_plan::apply(
         inputs,
         choices.decisions,
@@ -1734,7 +1754,7 @@ fn apply_profile_decisions(
     })();
 
     match applied {
-        Ok(()) => Ok(outcome.profiles.len() as u32),
+        Ok(()) => Ok((outcome.profiles.len() as u32, outcome.profiles)),
         Err(e) => {
             let failures = restore_profile_step(store, db.as_deref(), &snapshot);
             if failures.is_empty() {
@@ -1844,6 +1864,16 @@ fn import_keystore_with_store(
 ) -> Result<KeystoreImportResult, KeystoreExportError> {
     let merge_strategy = normalize_merge_strategy(merge_strategy)?;
     let mut payload = open_backup(password, file_path, on_progress)?;
+    // The backup's vault copy of the server list, in its safe state: what the
+    // vault section writes, merged or not, takes no relaxing option from the
+    // backup (CodeRabbit on #1524).
+    let mut security_reset = if sections.vault {
+        reset_backup_vault_list(&mut payload.vault_entries)?
+    } else {
+        Vec::new()
+    };
+    let mut security_reset_failed = 0usize;
+    let mut security_reset_quarantine = None;
     // From the first read of this device's list to the last write: the plan below
     // reads it, the partition file may be replaced with its journals removed, and
     // the decisions are written from that read. No other writer may land between.
@@ -1916,6 +1946,9 @@ fn import_keystore_with_store(
         }
         None => None,
     };
+    if let Some((inputs, _)) = &profile_plan {
+        security_reset.extend(inputs.security_reset.iter().cloned());
+    }
     // Under "Skip existing", reviewed or not: the decisions are written into
     // the partition this device keeps, where they can be, not into one that
     // opens nothing here. "Overwrite" restores the backup's partition whole,
@@ -2076,6 +2109,9 @@ fn import_keystore_with_store(
     // restore where the user has their servers but their AI chat DB
     // failed to write is strictly more useful than a "nothing happened
     // because one file was locked" outcome.
+    let mut user_partitions_rekeyed = 0u32;
+    let mut user_partitions_unreadable = 0u32;
+    let mut partition_in_restore = false;
     let mut sqlite_dbs_restored = 0u32;
     let mut sqlite_dbs_failed: Vec<String> = Vec::new();
     let mut files_restored = 0u32;
@@ -2163,11 +2199,44 @@ fn import_keystore_with_store(
                     // explicitly remove them so SQLite does not try
                     // to replay a journal that refers to a different
                     // page layout.
+                    // Never publish the backup's partition before its security
+                    // reset succeeds. A marker or quarantine failure must leave
+                    // only a recovery copy, even after all process memory is lost.
+                    let mut prepared_partition = None;
+                    let bytes = if name == "user_partitions.db" {
+                        match prepare_partition_restore(
+                            store,
+                            cfg,
+                            &bytes,
+                            payload.user_partition_transport.as_ref(),
+                            password,
+                            &mut security_reset_quarantine,
+                        ) {
+                            Ok((bytes, rekey, reset)) => {
+                                prepared_partition = Some((rekey, reset));
+                                bytes
+                            }
+                            Err(e) => {
+                                tracing::warn!("Partition restore not published: {e}");
+                                security_reset_failed += 1;
+                                sqlite_dbs_failed.push(name.clone());
+                                continue;
+                            }
+                        }
+                    } else {
+                        bytes
+                    };
                     match atomic_write_synced(&target, &bytes) {
                         Ok(_) => {
                             let _ = std::fs::remove_file(cfg.join(format!("{name}-wal")));
                             let _ = std::fs::remove_file(cfg.join(format!("{name}-shm")));
                             sqlite_dbs_restored += 1;
+                            if let Some((rekey, reset)) = prepared_partition {
+                                partition_in_restore = true;
+                                user_partitions_rekeyed = rekey.rekeyed;
+                                user_partitions_unreadable = rekey.unreadable;
+                                security_reset.extend(reset.reset);
+                            }
                             if let Some(cb) = &on_progress {
                                 cb("sqlite", idx as u32 + 1, total_dbs);
                             }
@@ -2189,43 +2258,6 @@ fn import_keystore_with_store(
         }
     }
 
-    // F-012: a blind whole-file overwrite of user_partitions.db carries the
-    // source machine's machine-bound DEK wraps, which are inert here. Re-key
-    // the passphrase-less partitions to THIS machine's local root_key using
-    // the transport sidecar, and count any that cannot be recovered so the UI
-    // can warn instead of silently showing an empty "My Servers".
-    let mut user_partitions_rekeyed = 0u32;
-    let mut user_partitions_unreadable = 0u32;
-    let partition_in_restore = sections.sqlite_dbs
-        && payload.sqlite_dumps.contains_key("user_partitions.db")
-        && !profile_partition_skipped;
-    if partition_in_restore {
-        if let Some(cfg) = config_dir {
-            let db_path = cfg.join("user_partitions.db");
-            if db_path.is_file() {
-                match rekey_imported_user_partitions(
-                    store,
-                    &db_path,
-                    payload.user_partition_transport.as_ref(),
-                    password,
-                ) {
-                    Ok(report) => {
-                        user_partitions_rekeyed = report.rekeyed;
-                        user_partitions_unreadable = report.unreadable;
-                        tracing::info!(
-                            "F-012 re-key: rekeyed={} already_local={} unreadable={} passphrase_protected={}",
-                            report.rekeyed,
-                            report.already_local,
-                            report.unreadable,
-                            report.passphrase_protected
-                        );
-                    }
-                    Err(e) => tracing::warn!("F-012 re-key step failed: {e}"),
-                }
-            }
-        }
-    }
-
     // #736: a restored and readable user_partitions.db is the authoritative
     // profile list, and it wins over the vault blob the same backup carries.
     // The blob is copied into the active partition at the end of this import;
@@ -2235,10 +2267,9 @@ fn import_keystore_with_store(
     // transport key, a locked passphrase partition) the blob is left as the
     // backup carried it, which is the only list available. A partition left
     // out of the restore is written by the plan below, blob included.
-    let mut restored_list_unread = false;
+    let mut restored_list_unread = restores_partition && !partition_in_restore;
     if partition_in_restore {
         if let Some(cfg) = config_dir {
-            put_right_restored_profile_names(store, cfg);
             restored_list_unread =
                 !refresh_legacy_profiles_blob(store, cfg, "import (after restore)");
         }
@@ -2314,7 +2345,11 @@ fn import_keystore_with_store(
     let mut profile_decisions_error = None;
     if let Some((inputs, choices)) = &profile_plan {
         match apply_profile_decisions(store, config_dir, inputs, *choices, blob_before_import) {
-            Ok(count) => profiles_after_decisions = Some(count),
+            Ok((count, profiles)) => {
+                profiles_after_decisions = Some(count);
+                security_reset =
+                    resets_not_left_relaxed(std::mem::take(&mut security_reset), &profiles);
+            }
             Err(e) => {
                 tracing::error!("Keystore import: profile decisions not applied: {e}");
                 profile_decisions_error = Some(e);
@@ -2383,6 +2418,9 @@ fn import_keystore_with_store(
         profiles_after_decisions,
         profile_decisions_error,
         sqlite_dbs_failed,
+        security_reset: dedup_resets(security_reset),
+        security_reset_failed,
+        security_reset_quarantine,
     })
 }
 
@@ -2411,6 +2449,127 @@ fn refresh_legacy_profiles_blob(
             false
         }
     }
+}
+
+/// Bring the backup's vault copy of the server list to its safe state, in
+/// place, and return what was reset. A list this parser cannot read rejects
+/// the import before any write: the GUI must not fall back to an unsafe list.
+fn reset_backup_vault_list(
+    entries: &mut HashMap<String, String>,
+) -> Result<Vec<crate::profile_security::ProfileReset>, KeystoreExportError> {
+    let Some(raw) = entries.get("config_server_profiles") else {
+        return Ok(Vec::new());
+    };
+    let mut list = serde_json::from_str::<Vec<serde_json::Value>>(raw)?;
+    let reset = crate::profile_security::make_profile_list_safe(&mut list);
+    if !reset.is_empty() {
+        let safe = serde_json::to_string(&list)?;
+        entries.insert("config_server_profiles".to_string(), safe);
+    }
+    Ok(reset)
+}
+
+/// Prepare a partition outside its live path. Neither a failed SQL reset,
+/// sidecar creation nor quarantine rename can expose this copy on restart.
+/// The original encrypted backup and the staged DB remain available for recovery.
+fn prepare_partition_restore(
+    store: &crate::credential_store::CredentialStore,
+    config_dir: &Path,
+    bytes: &[u8],
+    transport: Option<&UserPartitionTransport>,
+    password: &str,
+    recovery: &mut Option<PathBuf>,
+) -> Result<
+    (
+        Vec<u8>,
+        crate::user_partitions::TransportRekeyReport,
+        crate::user_partitions::ProfileResetReport,
+    ),
+    String,
+> {
+    let staging = tempfile::Builder::new()
+        .prefix(".aeroftp-partition-restore-")
+        .tempdir_in(config_dir)
+        .map_err(|e| format!("Stage restored partition: {e}"))?;
+    let db_path = staging.path().join("user_partitions.db");
+    let mut preserved_path = db_path.clone();
+    let prepared = (|| {
+        atomic_write_synced(&db_path, bytes).map_err(|e| format!("Stage partition: {e}"))?;
+        let rekey = rekey_imported_user_partitions(store, &db_path, transport, password)?;
+        put_right_restored_profile_names(store, staging.path());
+        // Include the active account: profile decisions are applied afterwards,
+        // but a crash before that write must still leave a safe partition.
+        let reset = crate::user_partitions::reset_profile_relaxations_in_db(store, &db_path, None)?;
+        if let Some(path) = &reset.quarantine_path {
+            preserved_path = path.clone();
+        }
+        if reset.failed > 0 {
+            return Err(format!("{} account security reset(s) failed", reset.failed));
+        }
+        // VACUUM includes committed WAL pages; copying the main file alone can
+        // lose a passphrase account's pending reset marker.
+        let snapshot = snapshot_sqlite_db(&db_path)
+            .map_err(|e| format!("Snapshot prepared partition: {e}"))?
+            .ok_or_else(|| "Prepared partition missing".to_string())?;
+        let bytes = B64
+            .decode(snapshot)
+            .map_err(|e| format!("Read prepared partition: {e}"))?;
+        Ok((bytes, rekey, reset))
+    })();
+    if prepared.is_err() {
+        let _ = staging.keep();
+        *recovery = Some(preserved_path);
+    }
+    prepared
+}
+
+/// Drop reset notices for options still relaxed in the final list: a rejected
+/// backup profile kept this device's version, so no such reset happened.
+fn resets_not_left_relaxed(
+    resets: Vec<crate::profile_security::ProfileReset>,
+    profiles: &[serde_json::Value],
+) -> Vec<crate::profile_security::ProfileReset> {
+    resets
+        .into_iter()
+        .filter_map(|reset| {
+            let Some(profile) = profiles.iter().find(|profile| {
+                profile.get("name").and_then(serde_json::Value::as_str) == Some(reset.name.as_str())
+            }) else {
+                return Some(reset);
+            };
+            let left = crate::profile_security::security_relaxations(profile);
+            let keys = reset
+                .keys
+                .into_iter()
+                .filter(|key| !left.iter().any(|item| &item.key == key))
+                .collect::<Vec<_>>();
+            (!keys.is_empty()).then_some(crate::profile_security::ProfileReset {
+                name: reset.name,
+                keys,
+            })
+        })
+        .collect()
+}
+
+/// One entry per profile name, its keys merged in order: the vault copy and the
+/// partition can both report the same profile.
+fn dedup_resets(
+    resets: Vec<crate::profile_security::ProfileReset>,
+) -> Vec<crate::profile_security::ProfileReset> {
+    let mut out: Vec<crate::profile_security::ProfileReset> = Vec::new();
+    for reset in resets {
+        match out.iter_mut().find(|r| r.name == reset.name) {
+            Some(existing) => {
+                for key in reset.keys {
+                    if !existing.keys.contains(&key) {
+                        existing.keys.push(key);
+                    }
+                }
+            }
+            None => out.push(reset),
+        }
+    }
+    out
 }
 
 /// A restored `user_partitions.db` was written whole, not through the
@@ -3291,6 +3450,263 @@ mod tests {
         let expected = vec![profile("srv_a", "Lab"), profile("srv_b", "lab (1)")];
         assert_eq!(my_servers(&same_machine, &restored_cfg), expected);
         assert_eq!(blob_of(&same_machine), expected);
+    }
+
+    /// CodeRabbit on #1524: a restore takes no option that turns a security
+    /// check off from the backup. `relaxed` carries one; the restored copy has
+    /// it in its safe state, wherever the list lands, and the result names it.
+    fn relaxed(id: &str, name: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": id, "name": name, "protocol": "sftp", "host": "example.invalid",
+            "options": {"trustUnknownHosts": true, "timeout": 30}
+        })
+    }
+
+    fn safe_copy(id: &str, name: &str) -> serde_json::Value {
+        serde_json::json!({
+            "id": id, "name": name, "protocol": "sftp", "host": "example.invalid",
+            "options": {"trustUnknownHosts": false, "timeout": 30}
+        })
+    }
+
+    fn partition_with(
+        store: &crate::credential_store::CredentialStore,
+        cfg: &Path,
+        list: &[serde_json::Value],
+    ) {
+        std::fs::create_dir_all(cfg).unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        let json = serde_json::to_string(list).unwrap();
+        let mut conn = rusqlite::Connection::open(cfg.join("user_partitions.db")).unwrap();
+        crate::user_partitions::migrate_legacy_payloads(&mut conn, Some(&json), None, &root)
+            .unwrap();
+    }
+
+    #[test]
+    fn failed_reset_marker_and_quarantine_cannot_publish_an_unsafe_partition() {
+        let _guard = crate::user_partitions::test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let source_cfg = dir.path().join("source");
+        partition_with(&store, &source_cfg, &[relaxed("unsafe", "Imported")]);
+        let db = source_cfg.join("user_partitions.db");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_reset BEFORE INSERT ON server_profiles BEGIN SELECT RAISE(FAIL, 'forced reset failure'); END;
+             CREATE TRIGGER fail_marker BEFORE INSERT ON global_state BEGIN SELECT RAISE(FAIL, 'forced SQL marker failure'); END;",
+        ).unwrap();
+        drop(conn);
+        let mut payload = ExportPayload::default();
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&db).unwrap().unwrap(),
+        );
+        let backup = dir.path().join("failure.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        for has_existing_database in [false, true] {
+            let cfg = dir
+                .path()
+                .join(format!("destination-{has_existing_database}"));
+            let original = vec![profile("local", "Existing")];
+            if has_existing_database {
+                partition_with(&store, &cfg, &original);
+            }
+            // Both filesystem fallbacks fail, as does the SQL pending marker.
+            crate::user_partitions::RESET_PERSISTENCE_FAILURES.set(0);
+            crate::user_partitions::FAIL_RESET_PERSISTENCE.set(true);
+            let result = import_keystore_with_store(
+                &store,
+                PASSWORD_736,
+                &backup,
+                "overwrite",
+                ImportSections::default(),
+                Some(&cfg),
+                None,
+                None,
+            );
+            crate::user_partitions::FAIL_RESET_PERSISTENCE.set(false);
+            let result = result.unwrap();
+            assert_eq!(
+                crate::user_partitions::RESET_PERSISTENCE_FAILURES.get(),
+                3,
+                "exercise both failed filesystem fallbacks, after the SQL failure"
+            );
+            assert_eq!(result.security_reset_failed, 1);
+            assert_eq!(result.sqlite_dbs_restored, 0);
+            assert_eq!(result.sqlite_dbs_failed, ["user_partitions.db"]);
+            let recovery = result.security_reset_quarantine.unwrap();
+            assert!(
+                recovery.is_file(),
+                "preserve the imported database for recovery"
+            );
+            // Simulate a new process, with neither its session nor its blocks.
+            crate::user_partitions::forget_security_reset_blocks_for_tests();
+            if has_existing_database {
+                assert_eq!(my_servers(&store, &cfg), original);
+            } else {
+                assert!(!cfg.join("user_partitions.db").exists());
+            }
+            let conn = rusqlite::Connection::open(&recovery).unwrap();
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM server_profiles", [], |r| r.get(0))
+                .unwrap();
+            assert_eq!(count, 1, "recovery must not discard the restored profile");
+        }
+    }
+
+    #[test]
+    fn an_overwrite_restore_brings_the_backup_profiles_back_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let source = throwaway_store(dir.path(), "vault.db");
+        let source_cfg = dir.path().join("source");
+        let list = vec![relaxed("srv_lab", "lab")];
+        partition_with(&source, &source_cfg, &list);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_cfg.join("user_partitions.db"))
+                .unwrap()
+                .unwrap(),
+        );
+        let backup = dir.path().join("relaxed.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let restored_cfg = dir.path().join("restored");
+        let same_machine = throwaway_store(dir.path(), "same-vault.db");
+        let result = import_keystore_with_store(
+            &same_machine,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&restored_cfg),
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            my_servers(&same_machine, &restored_cfg),
+            vec![safe_copy("srv_lab", "lab")]
+        );
+        assert_eq!(blob_of(&same_machine), vec![safe_copy("srv_lab", "lab")]);
+        assert_eq!(
+            result.security_reset,
+            vec![crate::profile_security::ProfileReset {
+                name: "lab".into(),
+                keys: vec!["trustUnknownHosts".into()]
+            }]
+        );
+    }
+
+    #[test]
+    fn a_vault_list_the_reset_parser_cannot_read_is_refused() {
+        let depth = 128;
+        let raw = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        let mut entries = HashMap::from([("config_server_profiles".to_string(), raw)]);
+        assert!(reset_backup_vault_list(&mut entries).is_err());
+    }
+
+    #[test]
+    fn a_reset_notice_omits_a_rejected_profile_that_kept_local_relaxations() {
+        let resets = vec![crate::profile_security::ProfileReset {
+            name: "lab".into(),
+            keys: vec!["trustUnknownHosts".into()],
+        }];
+        let local = serde_json::json!({
+            "name": "lab", "protocol": "sftp", "host": "sftp.example.com",
+            "options": {"trustUnknownHosts": true}
+        });
+        assert!(resets_not_left_relaxed(resets, &[local]).is_empty());
+    }
+
+    #[test]
+    fn a_vault_only_restore_brings_the_backup_profiles_back_safe() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&vec![relaxed("srv_lab", "lab")]).unwrap(),
+        );
+        let backup = dir.path().join("vault-relaxed.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let other_machine = throwaway_store(dir.path(), "other-vault.db");
+        let result = import_keystore_with_store(
+            &other_machine,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            None,
+            None,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(blob_of(&other_machine), vec![safe_copy("srv_lab", "lab")]);
+        assert_eq!(result.security_reset.len(), 1);
+    }
+
+    /// "Skip existing" over a partition goes through the plan: the backup's
+    /// new profile comes back safe, while a profile of this device keeps the
+    /// option its user chose here.
+    #[test]
+    fn a_merged_restore_resets_only_the_backup_profiles() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        let mine = serde_json::json!({
+            "id": "srv_mine", "name": "mine", "protocol": "ftp", "host": "ftp.example.invalid",
+            "options": {"trustPasvAddress": true}
+        });
+        partition_with(&store, &cfg, std::slice::from_ref(&mine));
+        store
+            .store(
+                "config_server_profiles",
+                &serde_json::to_string(&vec![mine.clone()]).unwrap(),
+            )
+            .unwrap();
+        let source_cfg = dir.path().join("source");
+        let backup_list = vec![relaxed("srv_lab", "lab")];
+        partition_with(&store, &source_cfg, &backup_list);
+        let mut payload = ExportPayload::default();
+        payload.vault_entries.insert(
+            "config_server_profiles".to_string(),
+            serde_json::to_string(&backup_list).unwrap(),
+        );
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".to_string(),
+            snapshot_sqlite_db(&source_cfg.join("user_partitions.db"))
+                .unwrap()
+                .unwrap(),
+        );
+        let backup = dir.path().join("merge-relaxed.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "skip_existing",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            None,
+        )
+        .unwrap();
+
+        let servers = my_servers(&store, &cfg);
+        let by_id = |id: &str| servers.iter().find(|p| p["id"] == id).cloned().unwrap();
+        assert_eq!(by_id("srv_mine"), mine);
+        assert_eq!(by_id("srv_lab"), safe_copy("srv_lab", "lab"));
+        assert_eq!(result.security_reset.len(), 1);
+        assert_eq!(result.security_reset[0].name, "lab");
     }
 
     /// The same backup without a partition (vault only): the blob it carries

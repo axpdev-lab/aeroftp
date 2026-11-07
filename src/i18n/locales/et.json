@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} tulid teistsuguse kohandatud OAuth-rakendusega kui see, mis sellel seadmel selle pakkuja jaoks on. Salvestatud rakendus jäeti alles, nii et logige uuesti sisse, kui need profiilid enam ühendust ei loo.",
             "importTargetChanged": "{names} ei kirjutatud üle: fail suunab need teisele serverile ja nende salvestatud paroole ja tokeneid ei tohi sinna saata. Importige valikuga Dubleeri, et lisada faili koopia, või kustutage esmalt profiil.",
             "importSharedSecretsFailed": "{names} imporditi, kuid failist ei õnnestunud salvestada jagatud saladust ega seanssi. Logige nendesse profiilidesse uuesti sisse, kui need ei ühendu.",
-            "keystoreDatabasesFailed": "Import lõppes, kuid neid andmebaase ei õnnestunud taastada ja need säilitavad oma senise sisu: {names}."
+            "keystoreDatabasesFailed": "Import lõppes, kuid neid andmebaase ei õnnestunud taastada ja need säilitavad oma senise sisu: {names}.",
+            "importSecurityTitle": "Selle varukoopia turvaseaded",
+            "importSecurityHelp": "Need valikud lülitavad turvakontrolli välja. Iga valik imporditakse turvalises olekus, kui te ei märgi seda, et jätta see samaks nagu failis.",
+            "importSecurityVerifyCert": "Sertifikaadi kontroll on välja lülitatud",
+            "importSecurityCleartextEndpoint": "Krüptimata S3 lõpp-punkt on lubatud",
+            "importSecurityCleartextStorage": "Krüptimata salvestusaadress on lubatud",
+            "importSecurityPlainHttp": "Lihtne HTTP HTTPS-i asemel",
+            "importSecurityPasvAddress": "Andmeühendus serveri nimetatud aadressile (PASV)",
+            "importSecurityUnknownHostKeys": "Tundmatud SSH hostivõtmed on aktsepteeritud",
+            "keystoreSecurityReset": "{count} taastatud serveril olid suvandid, mis lülitavad turvakontrolli välja; need seati tagasi turvalisele seadele: {details}.",
+            "keystoreSecurityResetFailed": "{count} taastatud konto turbesätteid ei õnnestunud kontrollida ega lähtestada. Need on loetletud siin, selle asemel et jääda ilma hoiatuseta aktiivseks.",
+            "keystoreSecurityResetQuarantine": "Taastatud kontode andmebaasi ei õnnestunud kaitsta ja see pandi karantiini nimega {path}. Ükski taastatud konto pole aktiivne. Parandage ketta- või õigustega seotud probleem ja taastage seejärel varukoopia uuesti. Karantiini pandud fail jääb taastamiseks kättesaadavaks."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Luba SCP varulahendusena",
             "allowScpFallbackHint": "Kui serveril pole SFTP-d, jätkatakse SCP kaudu sama ühendusega, nagu teeb WinSCP.",
             "discoverScp": "Failide kopeerimine SSH kaudu serveritele, millel pole SFTP-d",
-            "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)"
+            "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)",
+            "trustPasvAddress": "Kasuta serveri antud passiivset aadressi",
+            "trustPasvAddressHelp": "Väljas: andmeühendused lähevad hostile, millega ühendusid, nagu curl teeb. Lülita sisse ainult serveri jaoks, mis saadab andmeid mujalt aadressilt."
         },
         "shortcuts": {
             "title": "Kiirklahvid",

@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} tuli mukana eri mukautetun OAuth-sovelluksen kanssa kuin mikä tällä laitteella on kyseiselle palveluntarjoajalle. Tallennettu sovellus säilytettiin, joten kirjaudu uudelleen, jos nämä profiilit lakkaavat yhdistämästä.",
             "importTargetChanged": "{names} ei korvattu: tiedosto ohjaa ne toiselle palvelimelle, eikä niiden tallennettuja salasanoja ja tokeneita saa lähettää sinne. Tuo Monista-valinnalla lisätäksesi tiedoston kopion tai poista profiili ensin.",
             "importSharedSecretsFailed": "{names} tuotiin, mutta tiedoston jaettua salaisuutta tai istuntoa ei voitu tallentaa. Kirjaudu näihin profiileihin uudelleen, jos ne eivät yhdistä.",
-            "keystoreDatabasesFailed": "Tuonti valmistui, mutta näitä tietokantoja ei voitu palauttaa, ja ne säilyttävät aiemman sisältönsä: {names}."
+            "keystoreDatabasesFailed": "Tuonti valmistui, mutta näitä tietokantoja ei voitu palauttaa, ja ne säilyttävät aiemman sisältönsä: {names}.",
+            "importSecurityTitle": "Tämän varmuuskopion suojausasetukset",
+            "importSecurityHelp": "Nämä asetukset poistavat suojaustarkistuksen käytöstä. Jokainen tuodaan turvallisessa tilassa, ellet valitse sitä säilyttääksesi sen tiedoston mukaisena.",
+            "importSecurityVerifyCert": "Varmenteen tarkistus poistettu käytöstä",
+            "importSecurityCleartextEndpoint": "Salaamaton S3-päätepiste sallittu",
+            "importSecurityCleartextStorage": "Salaamaton tallennusosoite sallittu",
+            "importSecurityPlainHttp": "Pelkkä HTTP HTTPS:n sijaan",
+            "importSecurityPasvAddress": "Tietoyhteys palvelimen ilmoittamaan osoitteeseen (PASV)",
+            "importSecurityUnknownHostKeys": "Tuntemattomat SSH-isäntäavaimet hyväksytty",
+            "keystoreSecurityReset": "{count} palautetulla palvelimella oli asetuksia, jotka poistavat turvatarkistuksen käytöstä; ne palautettiin turvalliseen asetukseen: {details}.",
+            "keystoreSecurityResetFailed": "{count} palautetun tilin suojausasetuksia ei voitu tarkistaa tai nollata. Ne on lueteltu tässä sen sijaan, että ne jäisivät aktiivisiksi ilman ilmoitusta.",
+            "keystoreSecurityResetQuarantine": "Palautettua tilitietokantaa ei voitu suojata, ja se asetettiin karanteeniin nimellä {path}. Yksikään palautettu tili ei ole aktiivinen. Korjaa levy- tai käyttöoikeusongelma ja palauta sitten varmuuskopio uudelleen. Karanteeniin asetettu tiedosto on edelleen käytettävissä palauttamista varten."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Salli SCP-varatoiminto",
             "allowScpFallbackHint": "Jos palvelimella ei ole SFTP:tä, jatketaan SCP:llä samassa yhteydessä, kuten WinSCP tekee.",
             "discoverScp": "Tiedostojen kopiointi SSH:n kautta palvelimille, joissa ei ole SFTP:tä",
-            "discoverTigris": "Tigris: maailmanlaajuisesti hajautettu S3-yhteensopiva tallennustila, ei lähtevän liikenteen maksuja (5 GB ilmaiseksi)"
+            "discoverTigris": "Tigris: maailmanlaajuisesti hajautettu S3-yhteensopiva tallennustila, ei lähtevän liikenteen maksuja (5 GB ilmaiseksi)",
+            "trustPasvAddress": "Käytä palvelimen antamaa passiivista osoitetta",
+            "trustPasvAddressHelp": "Pois: tietoyhteydet menevät isäntään, johon yhdistit, kuten curl tekee. Ota käyttöön vain palvelimelle, joka lähettää dataa toisesta osoitteesta."
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

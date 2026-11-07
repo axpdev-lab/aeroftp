@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} kom med en annan anpassad OAuth-app än den som den här enheten har för den leverantören. Den lagrade appen behölls, så logga in igen om dessa profiler slutar ansluta.",
             "importTargetChanged": "{names} skrevs inte över: filen pekar dem mot en annan server, och deras sparade lösenord och token får inte skickas dit. Importera med Duplicera för att lägga till kopian från filen, eller ta bort profilen först.",
             "importSharedSecretsFailed": "{names} importerades, men en delad hemlighet eller session från filen kunde inte sparas. Logga in på dessa profiler igen om de inte ansluter.",
-            "keystoreDatabasesFailed": "Importen är klar, men dessa databaser kunde inte återställas och behåller sitt innehåll: {names}."
+            "keystoreDatabasesFailed": "Importen är klar, men dessa databaser kunde inte återställas och behåller sitt innehåll: {names}.",
+            "importSecurityTitle": "Säkerhetsinställningar i den här säkerhetskopian",
+            "importSecurityHelp": "De här alternativen stänger av en säkerhetskontroll. Varje alternativ importeras i sitt säkra läge, om du inte kryssar i det för att behålla det som i filen.",
+            "importSecurityVerifyCert": "Certifikatkontroll avstängd",
+            "importSecurityCleartextEndpoint": "Okrypterad S3-slutpunkt tillåten",
+            "importSecurityCleartextStorage": "Okrypterad lagringsadress tillåten",
+            "importSecurityPlainHttp": "Vanlig HTTP i stället för HTTPS",
+            "importSecurityPasvAddress": "Dataanslutning till adressen som servern anger (PASV)",
+            "importSecurityUnknownHostKeys": "Okända SSH-värdnycklar accepteras",
+            "keystoreSecurityReset": "{count} återställda servrar hade alternativ som stänger av en säkerhetskontroll; de sattes tillbaka till den säkra inställningen: {details}.",
+            "keystoreSecurityResetFailed": "Säkerhetsinställningarna för {count} återställda konton kunde inte kontrolleras eller återställas. De listas här i stället för att förbli aktiva utan varning.",
+            "keystoreSecurityResetQuarantine": "Den återställda kontodatabasen kunde inte skyddas och sattes i karantän som {path}. Inget återställt konto är aktivt. Åtgärda problemet med disken eller behörigheterna och återställ sedan säkerhetskopian igen. Filen i karantän är fortfarande tillgänglig för återställning."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Tillåt SCP som reserv",
             "allowScpFallbackHint": "Om servern saknar SFTP fortsätter anslutningen via SCP, som WinSCP gör.",
             "discoverScp": "Filkopiering via SSH för servrar utan SFTP",
-            "discoverTigris": "Tigris: globalt distribuerad S3-kompatibel lagring, utan avgifter för utgående data (5 GB gratis)"
+            "discoverTigris": "Tigris: globalt distribuerad S3-kompatibel lagring, utan avgifter för utgående data (5 GB gratis)",
+            "trustPasvAddress": "Använd den passiva adress servern anger",
+            "trustPasvAddressHelp": "Av: dataanslutningar går till värden du anslöt till, som curl gör. Slå bara på för en server som skickar data från en annan adress."
         },
         "shortcuts": {
             "title": "Kortkommandon",

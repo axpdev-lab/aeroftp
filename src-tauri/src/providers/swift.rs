@@ -72,6 +72,18 @@ fn preset_publishes_cleartext_storage(provider_id: &str) -> bool {
     matches!(provider_id, "blomp")
 }
 
+/// Whether the configured auth host is the preset's own server. A profile can
+/// name the Blomp preset and point at another Keystone (an imported file sets
+/// both, #1506 Requested 198); that one gets no cleartext exemption. The host
+/// compared is the one the user configured, never the catalog's answer.
+fn preset_owns_auth_host(provider_id: &str, host: &str) -> bool {
+    let own = crate::connection_manifest::preset(provider_id)
+        .and_then(|preset| preset.defaults.get("server"))
+        .and_then(|server| server.as_str())
+        .and_then(crate::util::endpoint::endpoint_host);
+    own.is_some() && own == crate::util::endpoint::endpoint_host(host)
+}
+
 impl SwiftConfig {
     pub fn from_provider_config(config: &super::ProviderConfig) -> Result<Self, ProviderError> {
         let auth_url = if config.host.starts_with("http") {
@@ -109,7 +121,10 @@ impl SwiftConfig {
                     .extra
                     .get("provider_id")
                     .map(String::as_str)
-                    .is_some_and(preset_publishes_cleartext_storage),
+                    .is_some_and(|id| {
+                        preset_publishes_cleartext_storage(id)
+                            && preset_owns_auth_host(id, &config.host)
+                    }),
         })
     }
 }
@@ -3380,6 +3395,17 @@ mod tests {
         assert!(
             swift.allow_cleartext_storage_endpoint,
             "the Blomp preset has to carry its own exemption"
+        );
+        // Only at Blomp's own auth host: the preset named on another server
+        // keeps the check armed (#1506 Requested 198).
+        let elsewhere = super::super::ProviderConfig {
+            host: "https://keystone.attacker.example".to_string(),
+            ..config.clone()
+        };
+        assert!(
+            !SwiftConfig::from_provider_config(&elsewhere)
+                .expect("swift config")
+                .allow_cleartext_storage_endpoint
         );
 
         // And it is the preset, not Swift in general: another Swift profile with

@@ -55,6 +55,7 @@ import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDef
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
+import { canonicalOptionsForEdit } from '../utils/profileSecurity';
 import { createProfileCredentialJournal, type ProfileCredentialJournal, type ProfileCredentialWriter } from '../utils/profileCredentialJournal';
 import { loadSavedServerProfiles, readSavedServerProfilesForWrite, revertConvertedProfile, storeSavedServerProfiles, type SavedProfilesRead } from '../utils/serverProfileStore';
 import { carryFavoriteServer } from '../utils/favoriteServers';
@@ -1340,9 +1341,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // MTP save requires a fingerprint (from Detect or hydrated edit profile).
         if (protocol === 'mtp' && !mtpFingerprint?.canonical) return;
 
-        const optionsToSave = protocol === 'mega'
+        const optionsToSave = canonicalOptionsForEdit(protocol === 'mega'
             ? normalizeMegaOptions(connectionParams.options)
-            : { ...connectionParams.options };
+            : connectionParams.options, protocol) as ProviderOptions;
         // Persist default tlsMode for FTP/FTPS so saved servers show correct badge
         if ((protocol === 'ftp' || protocol === 'ftps') && !optionsToSave.tlsMode) {
             optionsToSave.tlsMode = protocol === 'ftps' ? 'implicit' : 'explicit';
@@ -2229,7 +2230,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSelectedProviderId(profile.providerId || null);
 
         // Resolve endpoint and accountId from registry for S3 profiles
-        let profileOptions = profile.options || {};
+        let profileOptions = canonicalOptionsForEdit(profile.options, profile.protocol) as ProviderOptions;
         if (profile.protocol === 's3' && profile.providerId) {
             const provider = getProviderById(profile.providerId);
             if (provider) {

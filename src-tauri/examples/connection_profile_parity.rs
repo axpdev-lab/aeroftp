@@ -338,6 +338,7 @@ async fn main() {
         &export.to_string_lossy(),
         "synthetic profile parity export",
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &ftp_client_gui_lib::profile_security::RelaxationPolicy::KeepAll,
         &[],
     )
     .expect("read actual encrypted export without restoring credentials");

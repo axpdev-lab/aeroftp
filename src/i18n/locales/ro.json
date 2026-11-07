@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} au venit cu o aplicație OAuth personalizată diferită de cea pe care acest dispozitiv o are pentru furnizorul respectiv. Aplicația stocată a fost păstrată, așa că autentificați-vă din nou dacă aceste profiluri nu se mai conectează.",
             "importTargetChanged": "{names} nu au fost suprascrise: fișierul le îndreaptă către alt server, iar parolele și token-urile lor salvate nu trebuie să ajungă acolo. Importați cu Duplicați pentru a adăuga copia din fișier sau ștergeți mai întâi profilul.",
             "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează.",
-            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}."
+            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}.",
+            "importSecurityTitle": "Setări de securitate în această copie de rezervă",
+            "importSecurityHelp": "Aceste opțiuni dezactivează o verificare de securitate. Fiecare se importă în starea sigură, dacă nu o bifați pentru a o păstra așa cum este în fișier.",
+            "importSecurityVerifyCert": "Verificarea certificatului este dezactivată",
+            "importSecurityCleartextEndpoint": "Punct final S3 necriptat permis",
+            "importSecurityCleartextStorage": "Adresă de stocare necriptată permisă",
+            "importSecurityPlainHttp": "HTTP simplu în loc de HTTPS",
+            "importSecurityPasvAddress": "Conexiune de date la adresa indicată de server (PASV)",
+            "importSecurityUnknownHostKeys": "Chei de gazdă SSH necunoscute acceptate",
+            "keystoreSecurityReset": "{count} servere restaurate aveau opțiuni care dezactivează o verificare de securitate; au fost readuse la setarea sigură: {details}.",
+            "keystoreSecurityResetFailed": "Setările de securitate pentru {count} conturi restaurate nu au putut fi verificate sau resetate. Acestea sunt listate aici în loc să rămână active fără avertisment.",
+            "keystoreSecurityResetQuarantine": "Baza de date restaurată a conturilor nu a putut fi securizată și a fost pusă în carantină ca {path}. Niciun cont restaurat nu este activ. Remediați problema de disc sau de permisiuni, apoi restaurați din nou copia de rezervă. Fișierul aflat în carantină rămâne disponibil pentru recuperare."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Permite revenirea la SCP",
             "allowScpFallbackHint": "Dacă serverul nu are SFTP, conexiunea continuă prin SCP, așa cum face WinSCP.",
             "discoverScp": "Copiere de fișiere prin SSH pentru servere fără SFTP",
-            "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)"
+            "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)",
+            "trustPasvAddress": "Folosește adresa pasivă indicată de server",
+            "trustPasvAddressHelp": "Dezactivat: conexiunile de date merg la gazda la care te-ai conectat, ca la curl. Activează doar pentru un server care trimite datele de la altă adresă."
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

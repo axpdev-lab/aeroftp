@@ -214,6 +214,7 @@ async fn connected(port: u16) -> FtpProvider {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: Some("/".to_string()),
+        trust_pasv_address: false,
     };
     let mut provider = FtpProvider::new(config);
     provider

@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} kom med en anden brugerdefineret OAuth-app end den, som denne enhed har til den udbyder. Den gemte app blev beholdt, så log ind igen, hvis disse profiler holder op med at oprette forbindelse.",
             "importTargetChanged": "{names} blev ikke overskrevet: filen peger dem på en anden server, og deres gemte adgangskoder og tokens må ikke sendes dertil. Importér med Dupliker for at tilføje kopien fra filen, eller slet profilen først.",
             "importSharedSecretsFailed": "{names} blev importeret, men en delt hemmelighed eller session fra filen kunne ikke gemmes. Log ind på disse profiler igen, hvis de ikke forbinder.",
-            "keystoreDatabasesFailed": "Importen er færdig, men disse databaser kunne ikke gendannes og beholder det, de indeholdt: {names}."
+            "keystoreDatabasesFailed": "Importen er færdig, men disse databaser kunne ikke gendannes og beholder det, de indeholdt: {names}.",
+            "importSecurityTitle": "Sikkerhedsindstillinger i denne sikkerhedskopi",
+            "importSecurityHelp": "Disse indstillinger slår en sikkerhedskontrol fra. Hver enkelt importeres i sin sikre tilstand, medmindre du markerer den for at beholde den, som den er i filen.",
+            "importSecurityVerifyCert": "Certifikatkontrol slået fra",
+            "importSecurityCleartextEndpoint": "Ukrypteret S3-slutpunkt tilladt",
+            "importSecurityCleartextStorage": "Ukrypteret lageradresse tilladt",
+            "importSecurityPlainHttp": "Almindelig HTTP i stedet for HTTPS",
+            "importSecurityPasvAddress": "Dataforbindelse til den adresse, serveren angiver (PASV)",
+            "importSecurityUnknownHostKeys": "Ukendte SSH-værtsnøgler accepteret",
+            "keystoreSecurityReset": "{count} gendannede servere havde indstillinger, der slår en sikkerhedskontrol fra; de blev sat tilbage til den sikre indstilling: {details}.",
+            "keystoreSecurityResetFailed": "Sikkerhedsindstillingerne for {count} gendannede konti kunne ikke kontrolleres eller nulstilles. De er angivet her i stedet for at forblive aktive uden varsel.",
+            "keystoreSecurityResetQuarantine": "Den gendannede kontodatabase kunne ikke sikres og blev sat i karantæne som {path}. Ingen gendannet konto er aktiv. Løs problemet med disken eller tilladelserne, og gendan derefter sikkerhedskopien igen. Den fil, der er sat i karantæne, er stadig tilgængelig til gendannelse."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Tillad SCP som reserve",
             "allowScpFallbackHint": "Hvis serveren ikke har SFTP, fortsættes via SCP på samme forbindelse, som WinSCP gør.",
             "discoverScp": "Filkopiering via SSH til servere uden SFTP",
-            "discoverTigris": "Tigris: globalt distribueret S3-kompatibel lagring, ingen gebyrer for udgående data (5 GB gratis)"
+            "discoverTigris": "Tigris: globalt distribueret S3-kompatibel lagring, ingen gebyrer for udgående data (5 GB gratis)",
+            "trustPasvAddress": "Brug den passive adresse, serveren angiver",
+            "trustPasvAddressHelp": "Fra: dataforbindelser går til den vært, du har forbundet til, som curl gør. Slå kun til for en server, der sender data fra en anden adresse."
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

@@ -36,6 +36,7 @@ export interface UserUnlockStatus {
     activeUserId?: number | null;
     unlockedUserId?: number | null;
     isUnlocked: boolean;
+    securityReset?: { name: string; keys: string[] }[];
 }
 
 export interface UserStorageStats {
@@ -127,11 +128,18 @@ const changingAccount = async <T>(run: () => Promise<T>): Promise<T> => {
     }
 };
 
-export const unlockUser = (
+export const SECURITY_RESET_EVENT = 'aeroftp-security-reset';
+
+export const unlockUser = async (
     userId: number,
     passphrase?: string | null,
-): Promise<UserUnlockStatus> =>
-    changingAccount(() => invoke<UserUnlockStatus>('user_partitions_unlock_user', { userId, passphrase }));
+): Promise<UserUnlockStatus> => {
+    const status = await changingAccount(() => invoke<UserUnlockStatus>('user_partitions_unlock_user', { userId, passphrase }));
+    if (status.securityReset?.length) {
+        window.dispatchEvent(new CustomEvent(SECURITY_RESET_EVENT, { detail: status.securityReset }));
+    }
+    return status;
+};
 
 export const lockUserSession = (): Promise<void> =>
     changingAccount(() => invoke<void>('user_partitions_lock_session'));

@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} atnāca ar citu pielāgotu OAuth lietotni nekā tā, kas šai ierīcei ir šim pakalpojumu sniedzējam. Saglabātā lietotne tika paturēta, tāpēc piesakieties vēlreiz, ja šie profili pārstāj savienoties.",
             "importTargetChanged": "{names} netika pārrakstīti: fails tos virza uz citu serveri, un to saglabātās paroles un pilnvaras nedrīkst nonākt tur. Importējiet ar Dublēt, lai pievienotu kopiju no faila, vai vispirms dzēsiet profilu.",
             "importSharedSecretsFailed": "{names} tika importēti, taču no faila nevarēja saglabāt kopīgu noslēpumu vai sesiju. Ja šie profili neizveido savienojumu, pierakstieties tajos vēlreiz.",
-            "keystoreDatabasesFailed": "Importēšana ir pabeigta, bet šīs datubāzes neizdevās atjaunot, un tajās saglabājies iepriekšējais saturs: {names}."
+            "keystoreDatabasesFailed": "Importēšana ir pabeigta, bet šīs datubāzes neizdevās atjaunot, un tajās saglabājies iepriekšējais saturs: {names}.",
+            "importSecurityTitle": "Drošības iestatījumi šajā dublējumā",
+            "importSecurityHelp": "Šīs opcijas izslēdz drošības pārbaudi. Katra tiek importēta drošā stāvoklī, ja vien to neatzīmējat, lai paturētu, kā tas ir failā.",
+            "importSecurityVerifyCert": "Sertifikāta pārbaude izslēgta",
+            "importSecurityCleartextEndpoint": "Atļauts nešifrēts S3 galapunkts",
+            "importSecurityCleartextStorage": "Atļauta nešifrēta krātuves adrese",
+            "importSecurityPlainHttp": "Parasts HTTP HTTPS vietā",
+            "importSecurityPasvAddress": "Datu savienojums ar adresi, ko norāda serveris (PASV)",
+            "importSecurityUnknownHostKeys": "Pieņemtas nezināmas SSH resursdatora atslēgas",
+            "keystoreSecurityReset": "{count} atjaunotiem serveriem bija opcijas, kas izslēdz drošības pārbaudi; tie tika atgriezti drošajā iestatījumā: {details}.",
+            "keystoreSecurityResetFailed": "Neizdevās pārbaudīt vai atiestatīt {count} atjaunoto kontu drošības iestatījumus. Tie ir uzskaitīti šeit, nevis atstāti aktīvi bez brīdinājuma.",
+            "keystoreSecurityResetQuarantine": "Atjaunoto kontu datubāzi neizdevās aizsargāt, un tā tika izolēta kā {path}. Neviens atjaunots konts nav aktīvs. Novērsiet diska vai atļauju problēmu, pēc tam vēlreiz atjaunojiet dublējumu. Izolētais fails joprojām ir pieejams atkopšanai."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2365,7 +2376,9 @@
             "allowScpFallback": "Atļaut SCP rezerves režīmu",
             "allowScpFallbackHint": "Ja serverim nav SFTP, savienojums turpinās ar SCP, kā to dara WinSCP.",
             "discoverScp": "Failu kopēšana caur SSH serveriem bez SFTP",
-            "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)"
+            "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)",
+            "trustPasvAddress": "Izmantot servera norādīto pasīvo adresi",
+            "trustPasvAddressHelp": "Izslēgts: datu savienojumi iet uz resursdatoru, ar kuru izveidojāt savienojumu, kā to dara curl. Ieslēdziet tikai serverim, kas sūta datus no citas adreses."
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
