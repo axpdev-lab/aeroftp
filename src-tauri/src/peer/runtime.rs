@@ -559,13 +559,13 @@ impl PeerRuntime {
         {
             Ok(Ok(published)) => published,
             Ok(Err(_)) => {
-                cancel.cancel();
+                stop_unregistered_publisher(&cancel, task).await;
                 return Err(
                     "publish ended before it was ready (see peer://share-status)".to_string(),
                 );
             }
             Err(_) => {
-                cancel.cancel();
+                stop_unregistered_publisher(&cancel, task).await;
                 return Err(format!(
                     "publish not ready within {PUBLISH_READY_TIMEOUT_SECS}s (folder too large for P1?)"
                 ));
@@ -1420,17 +1420,20 @@ mod tests {
         let wait = body
             .find("PUBLISH_READY_TIMEOUT_SECS")
             .expect("the publication wait");
-        let custody = body
-            .find("gui_peer_drive_store_as(")
-            .expect("custody under an explicit account");
-        assert!(wait < custody);
-        assert!(body[custody..custody + 120].contains("user_id,"));
         let start_share = &body[..body[1..]
             .find("\n    pub ")
             .map_or(body.len(), |end| end + 1)];
+        // The custody call, up to its closing parenthesis (its arguments hold
+        // none): its account is the one that started the share.
+        let custody = start_share
+            .find("gui_peer_drive_store_as(")
+            .expect("custody under an explicit account");
+        assert!(wait < custody);
+        let call = &start_share[custody..];
+        let call = &call[..call.find(')').expect("the end of the call")];
+        assert!(call.contains("user_id"), "{call}");
         assert!(!start_share.contains("gui_peer_drive_store("));
-        // Both key lookups are the starting account's too, and a refused
-        // custody stops the publisher before the error returns.
+        // Both key lookups are the starting account's too.
         assert!(!start_share.contains("gui_peer_drive_load("));
         assert_eq!(
             start_share
@@ -1438,11 +1441,27 @@ mod tests {
                 .count(),
             2
         );
-        let refused = &start_share[custody..];
-        let stop = refused
-            .find("stop_unregistered_publisher(&cancel, task).await;")
-            .expect("the publisher stopped on a refused custody");
-        assert!(stop < refused.find("return Err(e);").expect("the error returned"));
+        // Every way out between the spawn and the registry (the publication
+        // ending early, its timeout, a refused custody) stops the publisher
+        // first, so none leaves it serving outside the registry.
+        let spawned = start_share
+            .find("tokio::spawn(share_loop(")
+            .expect("the publisher");
+        let registered = start_share.find("shares.insert(").expect("the registry");
+        let unregistered = &start_share[spawned..registered];
+        let exits: Vec<usize> = unregistered
+            .match_indices("return Err")
+            .map(|(at, _)| at)
+            .collect();
+        assert_eq!(exits.len(), 3, "{unregistered}");
+        for at in exits {
+            assert!(
+                unregistered[..at]
+                    .trim_end()
+                    .ends_with("stop_unregistered_publisher(&cancel, task).await;"),
+                "an exit that leaves the publisher running"
+            );
+        }
     }
 
     /// A publisher that never reached the registry is cancelled and awaited,

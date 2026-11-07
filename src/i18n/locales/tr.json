@@ -1755,7 +1755,8 @@
             "unknownServer": "Bilinmeyen",
             "scpModeTitle": "SCP ile bağlandı",
             "scpModeBody": "{host} sunucusunda SFTP yok, bu yüzden AeroFTP aynı bağlantıda SCP kullanıyor.",
-            "saveOnAnotherServer": "Kaydedilmedi: bu dosya şu anda etkin olmayan bir sunucudan, hesaptan veya şifreli katmandan açıldı. Sekmesine geri dönün, ardından yeniden kaydedin."
+            "saveOnAnotherServer": "Kaydedilmedi: bu dosya şu anda etkin olmayan bir sunucudan, hesaptan veya şifreli katmandan açıldı. Sekmesine geri dönün, ardından yeniden kaydedin.",
+            "openedOnAnotherServer": "Açılmadı: dosya okunurken sunucu değişti. Tekrar açın."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",

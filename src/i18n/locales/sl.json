@@ -1755,7 +1755,8 @@
             "unknownServer": "neznanim strežnikom",
             "scpModeTitle": "Povezano prek SCP",
             "scpModeBody": "{host} nima SFTP, zato AeroFTP uporablja SCP na isti povezavi.",
-            "saveOnAnotherServer": "Ni shranjeno: ta datoteka je bila odprta s strežnika, računa ali šifriranega sloja, ki trenutno ni aktiven. Vrnite se na njegov zavihek in shranite znova."
+            "saveOnAnotherServer": "Ni shranjeno: ta datoteka je bila odprta s strežnika, računa ali šifriranega sloja, ki trenutno ni aktiven. Vrnite se na njegov zavihek in shranite znova.",
+            "openedOnAnotherServer": "Ni odprto: strežnik se je spremenil med branjem datoteke. Odprite jo znova."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",

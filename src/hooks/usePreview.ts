@@ -51,13 +51,37 @@ interface UsePreviewProps {
     removeToast: (id: string) => void;
   };
   /** The live server, account and overlay, kept on a remote file the editor
-   *  opens so its save can refuse another server. */
-  remoteTarget: () => QueuedTarget;
+   *  opens so its save can refuse another server: `snapshot` takes it,
+   *  `changedSince` says whether another one is live now, and `changedMessage`
+   *  is what the user is told when the server changed during the read. */
+  remoteTarget: {
+    snapshot: () => QueuedTarget;
+    changedSince: (target: QueuedTarget) => boolean;
+    changedMessage: () => string;
+  };
 }
 
 export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => {
-  // The latest one, from a stable function: the editor's openers are memoized.
-  const liveRemoteTarget = useLatestCallback(remoteTarget);
+  // The editor's read of a file, with the server it came from. A remote read
+  // is bound to the connection live when it starts: the backend holds that
+  // connection for the read and refuses one swapped in before, and a switch
+  // the read did not see (the tab changed, then the connection) is caught by
+  // the check after it. Without both, a file read on another server would be
+  // saved, later, to the file of the same path on this one.
+  const readForEditor = useLatestCallback(async (path: string, isRemote: boolean): Promise<{ content: string; target: QueuedTarget | null }> => {
+    if (!isRemote) return { content: await invoke<string>('read_local_file', { path }), target: null };
+    const target = remoteTarget.snapshot();
+    const expectedGeneration = await invoke<number>('provider_connection_generation');
+    let content: string;
+    try {
+      content = await invoke<string>('preview_remote_file', { path, expectedGeneration });
+    } catch (error) {
+      if (String(error).includes('CONNECTION_CHANGED')) throw new Error(remoteTarget.changedMessage());
+      throw error;
+    }
+    if (remoteTarget.changedSince(target)) throw new Error(remoteTarget.changedMessage());
+    return { content, target };
+  });
   // Sidebar preview
   const [showLocalPreview, setShowLocalPreview] = useState(false);
   const [previewFile, setPreviewFile] = useState<LocalFile | null>(null);
@@ -144,20 +168,10 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
   // Open code preview in DevTools
   const openDevToolsPreview = useCallback(async (file: RemoteFile | LocalFile, isRemote: boolean) => {
     try {
-      let content = '';
-      // Taken before the read: the file is that server's, and its save goes there.
-      const target = isRemote ? liveRemoteTarget() : null;
-      if (isRemote) {
-        const remotePath = (file as RemoteFile).path;
-        content = await invoke<string>('preview_remote_file', { path: remotePath });
-      } else {
-        const localPath = (file as LocalFile).path;
-        content = await invoke<string>('read_local_file', { path: localPath });
-      }
-
+      const { content, target } = await readForEditor(file.path, isRemote);
       setDevToolsPreviewFile({
         name: file.name,
-        path: isRemote ? (file as RemoteFile).path : (file as LocalFile).path,
+        path: file.path,
         content,
         mimeType: 'text/plain',
         size: file.size || 0,
@@ -175,10 +189,7 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
   // surfaces an Edit button that routes here.
   const openDevToolsFromData = useCallback(async (pf: PreviewFileData) => {
     try {
-      const target = pf.isRemote ? liveRemoteTarget() : null;
-      const content = pf.isRemote
-        ? await invoke<string>('preview_remote_file', { path: pf.path })
-        : await invoke<string>('read_local_file', { path: pf.path });
+      const { content, target } = await readForEditor(pf.path, pf.isRemote);
       setDevToolsPreviewFile({
         name: pf.name,
         path: pf.path,

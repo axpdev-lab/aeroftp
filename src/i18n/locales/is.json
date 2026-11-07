@@ -1755,7 +1755,8 @@
             "unknownServer": "Óþekkt",
             "scpModeTitle": "Tengt með SCP",
             "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu.",
-            "saveOnAnotherServer": "Ekki vistað: þessi skrá var opnuð frá netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og vistaðu aftur."
+            "saveOnAnotherServer": "Ekki vistað: þessi skrá var opnuð frá netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og vistaðu aftur.",
+            "openedOnAnotherServer": "Ekki opnað: þjóninum var breytt meðan skráin var lesin. Opnaðu hana aftur."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",

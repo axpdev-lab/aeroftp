@@ -1755,7 +1755,8 @@
             "unknownServer": "nepoznatim poslužiteljem",
             "scpModeTitle": "Povezano putem SCP-a",
             "scpModeBody": "{host} nema SFTP, pa AeroFTP koristi SCP na istoj vezi.",
-            "saveOnAnotherServer": "Nije spremljeno: ova je datoteka otvorena s poslužitelja, računa ili šifriranog sloja koji trenutno nije aktivan. Vratite se na njegovu karticu pa ponovno spremite."
+            "saveOnAnotherServer": "Nije spremljeno: ova je datoteka otvorena s poslužitelja, računa ili šifriranog sloja koji trenutno nije aktivan. Vratite se na njegovu karticu pa ponovno spremite.",
+            "openedOnAnotherServer": "Nije otvoreno: poslužitelj se promijenio tijekom čitanja datoteke. Otvorite je ponovno."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",

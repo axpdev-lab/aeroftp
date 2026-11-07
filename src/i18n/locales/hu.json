@@ -1755,7 +1755,8 @@
             "unknownServer": "Ismeretlen",
             "scpModeTitle": "Csatlakozva SCP-vel",
             "scpModeBody": "A(z) {host} szerveren nincs SFTP, ezért az AeroFTP SCP-t használ ugyanazon a kapcsolaton.",
-            "saveOnAnotherServer": "Nincs mentve: ezt a fájlt egy most nem aktív szerverről, fiókból vagy titkosított rétegből nyitották meg. Váltson vissza a lapjára, majd mentse újra."
+            "saveOnAnotherServer": "Nincs mentve: ezt a fájlt egy most nem aktív szerverről, fiókból vagy titkosított rétegből nyitották meg. Váltson vissza a lapjára, majd mentse újra.",
+            "openedOnAnotherServer": "Nincs megnyitva: a szerver megváltozott a fájl olvasása közben. Nyissa meg újra."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",

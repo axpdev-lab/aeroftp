@@ -95,7 +95,7 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
     folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
     // One server for the whole run (the server check is pinned in wrongTarget.wiring.test.ts).
     boundToQueuedServer: (_target: unknown, _id: string, run: () => unknown) => async () => { await run(); },
-    snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlayVault: null }),
+    snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlay: null }),
     queuedTargetProblem: () => null,
     queuedTargetGuard: () => () => undefined,
     failQueuedRestIfRetargeted: () => false,
@@ -151,7 +151,7 @@ describe('a file of panel 2 brings its own size and modified date to the overwri
       remoteFiles: [], localFiles: [file('a.bin', 1)], sortedLocalFiles: [], localFiles2: panel2, sortedLocalFiles2: panel2,
       loadRemoteFiles: vi.fn(), notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn() }, t: (key: string) => key,
       // One server for the whole paste (the clipboard's server check is in wrongTarget.wiring.test.ts).
-      snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlayVault: null }),
+      snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlay: null }),
       queuedTargetProblem: () => null, queuedTargetGuard: () => () => undefined,
     };
     const { clipboardPaste } = new Function(...Object.keys(context), `${pasteCode}; return { clipboardPaste };`)(...Object.values(context));

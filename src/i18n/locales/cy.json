@@ -1755,7 +1755,8 @@
             "unknownServer": "Anhysbys",
             "scpModeTitle": "Wedi cysylltu gydag SCP",
             "scpModeBody": "Does gan {host} ddim SFTP, felly mae AeroFTP yn defnyddio SCP ar yr un cysylltiad.",
-            "saveOnAnotherServer": "Heb gadw: agorwyd y ffeil hon o weinydd, cyfrif neu droshaen amgryptiedig nad yw'n weithredol nawr. Ewch yn ôl i'w dab, yna cadwch eto."
+            "saveOnAnotherServer": "Heb gadw: agorwyd y ffeil hon o weinydd, cyfrif neu droshaen amgryptiedig nad yw'n weithredol nawr. Ewch yn ôl i'w dab, yna cadwch eto.",
+            "openedOnAnotherServer": "Heb ei agor: newidiodd y gweinydd tra oedd y ffeil yn cael ei darllen. Agorwch hi eto."
         },
         "about": {
             "tagline": "Mwy na FTP. Pecyn datblygu cyflawn.",

@@ -1755,7 +1755,8 @@
             "unknownServer": "Tuntematon",
             "scpModeTitle": "Yhdistetty SCP:llä",
             "scpModeBody": "Palvelimella {host} ei ole SFTP:tä, joten AeroFTP käyttää SCP:tä samassa yhteydessä.",
-            "saveOnAnotherServer": "Ei tallennettu: tämä tiedosto avattiin palvelimelta, tililtä tai salatulta kerrokselta, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja tallenna uudelleen."
+            "saveOnAnotherServer": "Ei tallennettu: tämä tiedosto avattiin palvelimelta, tililtä tai salatulta kerrokselta, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja tallenna uudelleen.",
+            "openedOnAnotherServer": "Ei avattu: palvelin vaihtui tiedoston lukemisen aikana. Avaa se uudelleen."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",

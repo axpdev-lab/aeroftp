@@ -12,8 +12,10 @@ export interface QueuedTarget {
    *  connect. Two accounts of one provider can share every connection field
    *  (an OAuth token is not in the params): their profiles differ. */
   profileId: string | null;
-  /** The crypt overlay's vault, `null` without one. */
-  overlayVault: string | null;
+  /** The crypt overlay over the connection, as its vault, kind and scope
+   *  (`null` without one): a vault id is the kind and the owner, so another
+   *  vault of the same kind in the same session has the same one. */
+  overlay: string | null;
 }
 
 /**

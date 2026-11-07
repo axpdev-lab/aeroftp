@@ -1755,7 +1755,8 @@
             "unknownServer": "Desconegut",
             "scpModeTitle": "Connectat amb SCP",
             "scpModeBody": "{host} no té SFTP, així que AeroFTP fa servir SCP a la mateixa connexió.",
-            "saveOnAnotherServer": "No desat: aquest fitxer es va obrir des d'un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i desa de nou."
+            "saveOnAnotherServer": "No desat: aquest fitxer es va obrir des d'un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i desa de nou.",
+            "openedOnAnotherServer": "No s'ha obert: el servidor ha canviat mentre es llegia el fitxer. Torna a obrir-lo."
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",

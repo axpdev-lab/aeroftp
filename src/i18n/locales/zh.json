@@ -1755,7 +1755,8 @@
             "unknownServer": "未知服务器",
             "scpModeTitle": "已通过 SCP 连接",
             "scpModeBody": "{host} 没有 SFTP，因此 AeroFTP 正在同一连接上使用 SCP。",
-            "saveOnAnotherServer": "未保存：此文件是从当前未激活的服务器、账户或加密叠加层打开的。请切回其标签页，然后再次保存。"
+            "saveOnAnotherServer": "未保存：此文件是从当前未激活的服务器、账户或加密叠加层打开的。请切回其标签页，然后再次保存。",
+            "openedOnAnotherServer": "未打开：读取文件时服务器已更改。请重新打开。"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",

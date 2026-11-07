@@ -5840,10 +5840,15 @@ pub fn gui_peer_drive_load(
     app: &AppHandle,
     namespace_id: &str,
 ) -> Result<Option<ActiveUserDriveKey>, String> {
+    let store = CredentialStore::from_cache().ok_or_else(|| "STORE_NOT_READY".to_string())?;
     init_or_migrate(app)?;
     let conn = open_or_init(app)?;
     let user = get_active_user(&conn)?.ok_or_else(|| "NO_ACTIVE_USER".to_string())?;
-    gui_peer_drive_load_as(app, user.id, namespace_id).map(|opt| opt.map(|key| (user.id, key)))
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+    let result = peer_drive_load_for(&conn, &root_secret, user.id, namespace_id);
+    root_key.zeroize();
+    result.map(|opt| opt.map(|key| (user.id, key)))
 }
 
 /// [`gui_peer_drive_load`] for the account `user_id`, whichever is active now:

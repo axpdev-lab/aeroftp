@@ -244,6 +244,29 @@ impl ProviderState {
         Ok(Some(pin))
     }
 
+    /// Holds the connection whose generation is `expected` until the guard is
+    /// dropped: swaps and disconnects take the write side of the gate first,
+    /// so they wait. An error when another connection is live already. A read
+    /// for the editor takes it, so the content it returns is that
+    /// connection's and not one switched to while the read ran.
+    pub(crate) async fn pin_connection_generation(
+        &self,
+        expected: u64,
+    ) -> Result<RwLockReadGuard<'_, ()>, String> {
+        let pin = self.transfer_owner_gate.read().await;
+        // Read under the provider lock, which every bump also holds.
+        let live = {
+            let _slot = self.provider.lock().await;
+            self.connection_generation.load(Ordering::SeqCst)
+        };
+        if live != expected {
+            return Err(format!(
+                "{CONNECTION_CHANGED_MARKER}: the server changed while the file was opened; nothing was read"
+            ));
+        }
+        Ok(pin)
+    }
+
     /// Writers leave the current connection/overlay untouched if a pinned
     /// transfer cannot finish within the bound. In particular, scoped cleanup
     /// must never cancel somebody else's active transfer to obtain this lock.
@@ -14836,6 +14859,68 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The editor's remote read is bound to the connection it was opened on:
+    /// refused once another connection took the slot, and while it holds the
+    /// connection a swap waits for it instead of changing what it reads.
+    #[tokio::test]
+    async fn a_read_pinned_to_a_connection_holds_it_and_refuses_another() {
+        let state = ProviderState::new();
+        let opened_on = state.connection_generation.load(Ordering::SeqCst);
+        let pin = state
+            .pin_connection_generation(opened_on)
+            .await
+            .expect("the live connection");
+        assert!(
+            state
+                .transfer_owner_write(Duration::from_millis(50))
+                .await
+                .is_err(),
+            "a swap waits while the read holds the connection"
+        );
+        drop(pin);
+        state.invalidate_overlay_key_cache();
+        let refused = state
+            .pin_connection_generation(opened_on)
+            .await
+            .unwrap_err();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        assert!(state.pin_connection_generation(opened_on + 1).await.is_ok());
+    }
+
+    /// A preview and a session switch racing, over and over: the read takes
+    /// the gate then the provider lock, and so does a swap, so neither waits
+    /// on the other for good. Each read either ran before the swap or was
+    /// refused after it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_pinned_read_racing_a_session_switch_never_deadlocks() {
+        let state = ProviderState::new();
+        let raced = tokio::time::timeout(Duration::from_secs(10), async {
+            for _ in 0..200 {
+                let opened_on = state.connection_generation.load(Ordering::SeqCst);
+                let read = async {
+                    let pin = state.pin_connection_generation(opened_on).await?;
+                    let _slot = state.provider.lock().await;
+                    tokio::task::yield_now().await;
+                    drop(pin);
+                    Ok::<(), String>(())
+                };
+                let switch = async {
+                    let _change = state.transfer_owner_write(Duration::from_secs(5)).await?;
+                    let _slot = state.provider.lock().await;
+                    state.invalidate_overlay_key_cache();
+                    Ok::<(), String>(())
+                };
+                let (read, switch) = tokio::join!(read, switch);
+                switch.expect("the switch completes");
+                if let Err(refused) = read {
+                    assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+                }
+            }
+        })
+        .await;
+        assert!(raced.is_ok(), "a preview and a session switch deadlocked");
+    }
 
     #[test]
     fn a_cancelled_download_removes_only_what_it_wrote() {

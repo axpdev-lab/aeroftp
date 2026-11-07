@@ -1755,7 +1755,8 @@
             "unknownServer": "Ezezaguna",
             "scpModeTitle": "SCP bidez konektatuta",
             "scpModeBody": "{host} zerbitzariak ez du SFTPrik, beraz AeroFTP SCP erabiltzen ari da konexio berean.",
-            "saveOnAnotherServer": "Ez da gorde: fitxategi hau orain aktibo ez dagoen zerbitzari, kontu edo geruza zifratu batetik ireki zen. Itzuli bere fitxara eta gorde berriro."
+            "saveOnAnotherServer": "Ez da gorde: fitxategi hau orain aktibo ez dagoen zerbitzari, kontu edo geruza zifratu batetik ireki zen. Itzuli bere fitxara eta gorde berriro.",
+            "openedOnAnotherServer": "Ez da ireki: zerbitzaria aldatu da fitxategia irakurtzen ari zen bitartean. Ireki berriro."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",

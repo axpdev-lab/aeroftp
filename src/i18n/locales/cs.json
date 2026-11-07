@@ -1755,7 +1755,8 @@
             "unknownServer": "neznámému serveru",
             "scpModeTitle": "Připojeno přes SCP",
             "scpModeBody": "{host} nemá SFTP, proto AeroFTP používá SCP na stejném připojení.",
-            "saveOnAnotherServer": "Neuloženo: tento soubor byl otevřen ze serveru, účtu nebo šifrované vrstvy, která teď není aktivní. Vraťte se na její kartu a uložte jej znovu."
+            "saveOnAnotherServer": "Neuloženo: tento soubor byl otevřen ze serveru, účtu nebo šifrované vrstvy, která teď není aktivní. Vraťte se na její kartu a uložte jej znovu.",
+            "openedOnAnotherServer": "Neotevřeno: server se změnil během čtení souboru. Otevřete ho znovu."
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",

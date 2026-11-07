@@ -11159,7 +11159,14 @@ async fn preview_remote_file(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
+    expected_generation: Option<u64>,
 ) -> Result<String, String> {
+    // The editor's read, bound to the connection it was opened on: held for
+    // the whole read, so a switch waits for it, and refused if one came first.
+    let _pin = match expected_generation {
+        Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
+        None => None,
+    };
     let temp_path = std::env::temp_dir().join(format!(
         "aeroftp_preview_{}",
         chrono::Utc::now().timestamp_millis()

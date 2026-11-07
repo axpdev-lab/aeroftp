@@ -5,7 +5,7 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EDITOR_APPLY_EVENT, type EditorApplyDetail } from '../../utils/editorBuffer';
+import { EDITOR_APPLY_EVENT, EDITOR_READ_EVENT, type EditorApplyDetail, type EditorReadDetail } from '../../utils/editorBuffer';
 
 const fs = vi.hoisted(() => ({ writeTextFile: vi.fn(), readTextFile: vi.fn() }));
 vi.mock('@tauri-apps/plugin-fs', () => fs);
@@ -55,6 +55,38 @@ describe('Apply and Diff on a remote file whose editor is not open', () => {
         expect(buttons()[2].className).toContain('text-red-400');
         expect(buttons()[1].className).not.toContain('text-red-400');
         expect(fs.readTextFile).not.toHaveBeenCalled();
+    });
+
+    // The diff of the open file, then the editor hidden before Apply in the diff.
+    const diffApply = () => [...host.querySelectorAll('button')].find(b => b.textContent === 'ai.diff.apply');
+    const openDiff = async () => {
+        const read = (event: Event) => (event as CustomEvent<EditorReadDetail>).detail.reply('old');
+        window.addEventListener(EDITOR_READ_EVENT, read);
+        try {
+            await click(buttons()[2]);
+        } finally {
+            window.removeEventListener(EDITOR_READ_EVENT, read);
+        }
+        expect(diffApply()).toBeDefined();
+    };
+
+    it('keeps the diff open when its Apply cannot reach the editor', async () => {
+        await openDiff();
+        await click(diffApply()!);
+        expect(diffApply()).toBeDefined();
+        expect(alert()).toBe('ai.codeBlock.reopenEditor');
+    });
+
+    it('closes the diff once its Apply lands in the editor', async () => {
+        await openDiff();
+        const accept = (event: Event) => (event as CustomEvent<EditorApplyDetail>).detail.accept();
+        window.addEventListener(EDITOR_APPLY_EVENT, accept);
+        try {
+            await click(diffApply()!);
+        } finally {
+            window.removeEventListener(EDITOR_APPLY_EVENT, accept);
+        }
+        expect(diffApply()).toBeUndefined();
     });
 
     it('says nothing when the editor takes the code', async () => {

@@ -1755,7 +1755,8 @@
             "unknownServer": "Ukjent",
             "scpModeTitle": "Koblet til med SCP",
             "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruker SCP på samme tilkobling.",
-            "saveOnAnotherServer": "Ikke lagret: denne filen ble åpnet fra en server, konto eller kryptert overlegg som ikke er aktivt nå. Bytt tilbake til fanen og lagre på nytt."
+            "saveOnAnotherServer": "Ikke lagret: denne filen ble åpnet fra en server, konto eller kryptert overlegg som ikke er aktivt nå. Bytt tilbake til fanen og lagre på nytt.",
+            "openedOnAnotherServer": "Ikke åpnet: serveren ble endret mens filen ble lest. Åpne den på nytt."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",

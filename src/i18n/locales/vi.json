@@ -1755,7 +1755,8 @@
             "unknownServer": "Không xác định",
             "scpModeTitle": "Đã kết nối bằng SCP",
             "scpModeBody": "{host} không có SFTP, nên AeroFTP đang dùng SCP trên cùng kết nối.",
-            "saveOnAnotherServer": "Chưa lưu: tệp này đã được mở từ máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi lưu lại."
+            "saveOnAnotherServer": "Chưa lưu: tệp này đã được mở từ máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi lưu lại.",
+            "openedOnAnotherServer": "Chưa mở: máy chủ đã thay đổi trong khi đọc tệp. Hãy mở lại."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",

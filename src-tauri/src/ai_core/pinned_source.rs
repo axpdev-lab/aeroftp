@@ -291,33 +291,45 @@ mod tests {
         assert!(err.to_string().contains("not a regular file"), "{err}");
     }
 
-    /// The GUI's `upload_files` settles each upload through `settle_upload`: a
-    /// source replaced while it was sent is an error naming it, never a file
-    /// reported as uploaded, and the upload's own error stays its own.
+    /// The GUI's `upload_files` reports each file through
+    /// `record_upload_outcome`: a file that went through unchanged is
+    /// uploaded, the upload's own error stays its own, and a source replaced
+    /// while it was sent is an error naming it, never a file reported as
+    /// uploaded.
     #[cfg(unix)]
     #[test]
-    fn an_upload_of_a_source_replaced_after_the_pin_settles_as_an_error() {
+    fn the_gui_upload_reports_a_source_replaced_after_the_pin_as_an_error() {
+        use crate::ai_core::gui_tools::record_upload_outcome;
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("data.bin");
         std::fs::write(&file, b"original").unwrap();
         let path = file.to_string_lossy().to_string();
         let pinned = PinnedSource::pin(&path, "path", allow).unwrap();
-        pinned.settle_upload(Ok(())).unwrap();
-        assert_eq!(
-            pinned
-                .settle_upload(Err("quota exceeded".into()))
-                .unwrap_err(),
-            "quota exceeded"
-        );
+        let (mut uploaded, mut errors) = (Vec::new(), Vec::new());
 
+        record_upload_outcome(&pinned, Ok(()), "sent".into(), &mut uploaded, &mut errors);
+        let quota = Err("quota exceeded".into());
+        record_upload_outcome(&pinned, quota, "full".into(), &mut uploaded, &mut errors);
         let other = dir.path().join("other.bin");
         std::fs::write(&other, b"original").unwrap();
         std::fs::rename(&other, &file).unwrap();
-        let err = pinned.settle_upload(Ok(())).unwrap_err();
-        assert!(err.contains("changed during the upload"), "{err}");
-        assert!(err.contains(&path), "{err}");
-        let gui = include_str!("gui_tools.rs");
-        assert!(gui.contains("let result = source.settle_upload(result);"));
+        record_upload_outcome(
+            &pinned,
+            Ok(()),
+            "replaced".into(),
+            &mut uploaded,
+            &mut errors,
+        );
+
+        assert_eq!(uploaded, vec!["sent".to_string()]);
+        assert_eq!(
+            errors[0],
+            serde_json::json!({"file": "full", "error": "quota exceeded"})
+        );
+        assert_eq!(errors[1]["file"], "replaced");
+        let error = errors[1]["error"].as_str().unwrap();
+        assert!(error.contains("changed during the upload"), "{error}");
+        assert!(error.contains(&path), "{error}");
     }
 
     /// Without `O_NONBLOCK` the open of a FIFO waits for a writer, and a file

@@ -44,7 +44,7 @@ if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPan
 
 const { code } = await transformWithOxc(
   closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
-  + closure('liveOverlayVault', '\n  const connectSavedProfileForResume')
+  + closure('liveOverlay', '\n  const connectSavedProfileForResume')
   + closure('downloadFile', '\n  const uploadFile =')
   + closure('uploadFile', '\n  const retryRestoredEntry =')
   + closure('withBatchLatch', '\n  const uploadMultipleFiles =')
@@ -54,7 +54,7 @@ const { code } = await transformWithOxc(
   + closure('retryAllFailedItems', '\n  // ======== File Clipboard')
   + closure('formatClipboardFileCount', '\n  /**')
   + closure('clipboardCut', '\n  // openDevToolsPreview, openUniversalPreview')
-  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, snapshotQueuedTarget, saveDevToolsFile };',
+  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks: { snapshotQueuedTarget, boundToQueuedServer, queuedTargetProblem, queuedTargetGuard, failQueuedRestIfRetargeted, fileBatchSessionFlags, runFileBatch } };',
   'drop-on-folder-row.ts',
 );
 const { code: overwriteCode } = await transformWithOxc(
@@ -256,13 +256,15 @@ export function fixture(options: Options = {}) {
     parentDir: (path: string) => path.slice(0, path.lastIndexOf('/')) || '/',
   };
   type ClipboardFiles = { name: string; path: string; is_dir: boolean }[];
-  const { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, snapshotQueuedTarget, saveDevToolsFile } = new Function(...Object.keys(context), code)(...Object.values(context)) as {
+  const { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks } = new Function(...Object.keys(context), code)(...Object.values(context)) as {
     retryAllFailedItems: () => Promise<void>; downloadFile: (...args: any[]) => Promise<boolean>; uploadFile: (...args: any[]) => Promise<boolean>;
     clipboardCopy: (files: ClipboardFiles, isRemote: boolean, sourceDir: string) => void;
     clipboardCut: (files: ClipboardFiles, isRemote: boolean, sourceDir: string) => void;
     clipboardPaste: (targetIsRemote: boolean, targetDir: string) => Promise<void>;
-    snapshotQueuedTarget: () => QueuedTarget;
     saveDevToolsFile: (content: string, file: PreviewFile) => Promise<void>;
+    /** App's own target checks and file batch, for a test that runs another
+     *  App closure over this fixture's live connection. */
+    targetChecks: Record<string, unknown> & { snapshotQueuedTarget: () => QueuedTarget };
   };
 
   /** Where each write lands: the backend path of every single and batch write. */
@@ -281,5 +283,5 @@ export function fixture(options: Options = {}) {
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { switchServer, snapshotQueuedTarget, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { switchServer, liveConnectionParams, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

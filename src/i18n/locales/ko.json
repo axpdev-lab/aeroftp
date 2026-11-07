@@ -1755,7 +1755,8 @@
             "unknownServer": "알 수 없는 서버",
             "scpModeTitle": "SCP로 연결됨",
             "scpModeBody": "{host}에 SFTP가 없어 AeroFTP가 같은 연결에서 SCP를 사용합니다.",
-            "saveOnAnotherServer": "저장되지 않음: 이 파일은 현재 활성 상태가 아닌 서버, 계정 또는 암호화 오버레이에서 열렸습니다. 해당 탭으로 돌아간 다음 다시 저장하세요."
+            "saveOnAnotherServer": "저장되지 않음: 이 파일은 현재 활성 상태가 아닌 서버, 계정 또는 암호화 오버레이에서 열렸습니다. 해당 탭으로 돌아간 다음 다시 저장하세요.",
+            "openedOnAnotherServer": "열지 못했습니다: 파일을 읽는 동안 서버가 변경되었습니다. 다시 열어 주세요."
         },
         "about": {
             "tagline": "FTP 그 이상. 완벽한 개발자 툴킷.",

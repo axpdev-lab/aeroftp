@@ -2637,8 +2637,16 @@ const App: React.FC = () => {
   }, []);
 
   // Preview: handled by usePreview hook
-  // Called on a click, long after the render that declares snapshotQueuedTarget.
-  const preview = usePreview({ notify, toast, remoteTarget: () => snapshotQueuedTarget() });
+  // Called on a click, long after the render that declares these.
+  const preview = usePreview({
+    notify,
+    toast,
+    remoteTarget: {
+      snapshot: () => snapshotQueuedTarget(),
+      changedSince: (target: QueuedTarget) => queuedTargetProblem(target) !== null,
+      changedMessage: () => t('toast.openedOnAnotherServer'),
+    },
+  });
   const {
     showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
     devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview, openDevToolsFromData,
@@ -11149,8 +11157,13 @@ const App: React.FC = () => {
 
   // The crypt overlay over the live connection, by its vault: `null` when the
   // provider is not wrapped (no overlay, or one locked or left out of scope).
-  const liveOverlayVault = useLatestCallback((): string | null =>
-    sessions.find(session => session.id === activeSessionId)?.cryptOverlay?.vaultId ?? null);
+  // The overlay as a queued write is bound to it: the vault, its kind and the
+  // scope it covers. The same vault unlocked again matches, so a Retry after a
+  // relock still runs; another vault of the same kind does not.
+  const liveOverlay = useLatestCallback((): string | null => {
+    const overlay = sessions.find(session => session.id === activeSessionId)?.cryptOverlay;
+    return overlay ? JSON.stringify([overlay.vaultId, overlay.kind, overlay.remoteScope ?? null]) : null;
+  });
   const liveProfileId = useLatestCallback((): string | null =>
     savedProfileIdOf(liveConnectionParams, sessions.find(session => session.id === activeSessionId)));
 
@@ -11160,7 +11173,7 @@ const App: React.FC = () => {
   const snapshotQueuedTarget = useLatestCallback((): QueuedTarget => ({
     params: { ...liveConnectionParams },
     profileId: liveProfileId(),
-    overlayVault: liveOverlayVault(),
+    overlay: liveOverlay(),
   }));
 
   /** A queued transfer's Start or Retry, bound to the server it was queued
@@ -11186,7 +11199,7 @@ const App: React.FC = () => {
     // the password, and an OAuth account is told apart only by its profile.
     if ((liveConnectionParams.password || '') !== (queuedFor.params.password || '')
       || liveProfileId() !== queuedFor.profileId) return 'transfer.queuedForAnotherServer';
-    if (liveOverlayVault() !== queuedFor.overlayVault) return 'transfer.queuedOverlayChanged';
+    if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';
     return null;
   });
 
@@ -13251,7 +13264,8 @@ const App: React.FC = () => {
     targetDir: string,
     // Clipboard paste and the planner never staged (they run, then maybe
     // delete the source); only the panel entry points honour auto-start OFF.
-    // A paste passes the server its files were cut or copied on.
+    // A caller that started before a wait (a picker, a listing, a paste of
+    // files cut earlier) passes the target it took then.
     options: { allowStaging?: boolean; queuedTarget?: QueuedTarget } = {},
   ): Promise<FileBatchResult> => {
     // Taken before any await: the listing and the overwrite questions below
@@ -13656,6 +13670,7 @@ const App: React.FC = () => {
               modified: file.modified || null,
             })),
             remoteDir,
+            { queuedTarget },
           );
           if (outcome.aborted) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
@@ -14018,7 +14033,9 @@ const App: React.FC = () => {
       const { batch: pickedBatch } = splitForFileBatch(picked, fileBatchSessionFlags('upload'));
       if (pickedBatch.length > 0) {
         resetOverwriteSettings();
-        const outcome = await runFileBatch('upload', pickedBatch, remoteDir);
+        // The target taken before the picker opened: the user can switch tabs
+        // while it is open.
+        const outcome = await runFileBatch('upload', pickedBatch, remoteDir, { queuedTarget });
         if (!outcome.aborted && !outcome.staged) loadRemoteFiles();
         return;
       }
@@ -14237,6 +14254,7 @@ const App: React.FC = () => {
           'download',
           batchFiles.map(f => ({ name: f.name, sourcePath: f.path, size: f.size || 0, modified: f.modified || null })),
           localDir,
+          { queuedTarget },
         );
         if (outcome.aborted) return;
         batchStaged = outcome.staged;

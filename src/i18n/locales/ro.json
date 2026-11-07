@@ -1755,7 +1755,8 @@
             "unknownServer": "Necunoscut",
             "scpModeTitle": "Conectat cu SCP",
             "scpModeBody": "{host} nu are SFTP, așa că AeroFTP folosește SCP pe aceeași conexiune.",
-            "saveOnAnotherServer": "Nu a fost salvat: acest fișier a fost deschis dintr-un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi salvați din nou."
+            "saveOnAnotherServer": "Nu a fost salvat: acest fișier a fost deschis dintr-un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi salvați din nou.",
+            "openedOnAnotherServer": "Nedeschis: serverul s-a schimbat în timpul citirii fișierului. Deschide-l din nou."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",

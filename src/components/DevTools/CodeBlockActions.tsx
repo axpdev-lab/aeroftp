@@ -77,7 +77,8 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
         }
     }, [code]);
 
-    const handleApplyToFile = useCallback(async () => {
+    // Whether the code landed: the diff closes only then.
+    const handleApplyToFile = useCallback(async (): Promise<boolean> => {
         try {
             if (editorFilePath && editorFileIsRemote) {
                 // A remote file's path names no local file: writing it through
@@ -86,10 +87,11 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                 // left unsaved; the editor's save uploads it to its own server.
                 if (!applyToEditorBuffer({ path: editorFilePath, isRemote: true }, code)) {
                     showUnreachable('apply');
-                    return;
+                    return false;
                 }
                 setApplied(true);
                 setTimeout(() => setApplied(false), 2000);
+                return true;
             } else if (editorFilePath) {
                 // Write to the currently open file in editor
                 await writeTextFile(editorFilePath, code);
@@ -97,6 +99,7 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                 window.dispatchEvent(new CustomEvent('file-changed', { detail: { path: editorFilePath } }));
                 setApplied(true);
                 setTimeout(() => setApplied(false), 2000);
+                return true;
             } else {
                 // No file open: show save dialog
                 const ext = language || 'txt';
@@ -113,11 +116,14 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
                     await writeTextFile(savePath, code);
                     setApplied(true);
                     setTimeout(() => setApplied(false), 2000);
+                    return true;
                 }
+                return false;
             }
         } catch {
             setApplyError(true);
             setTimeout(() => setApplyError(false), 2000);
+            return false;
         }
     }, [code, language, editorFilePath, editorFileIsRemote, showUnreachable]);
 
@@ -173,7 +179,9 @@ export const CodeBlockActions: React.FC<CodeBlockActionsProps> = ({
     }, [editorFilePath, editorFileIsRemote, showDiff, showUnreachable]);
 
     const handleDiffApply = useCallback(async () => {
-        await handleApplyToFile();
+        // Not applied (no editor for the file, a write that failed): the diff
+        // stays open, so the comparison is not lost while the user recovers.
+        if (!(await handleApplyToFile())) return;
         setShowDiff(false);
         setDiffOriginal(null);
     }, [handleApplyToFile]);

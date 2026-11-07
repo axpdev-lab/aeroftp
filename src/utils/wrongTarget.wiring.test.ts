@@ -85,18 +85,23 @@ describe('a queued transfer', () => {
     // A Retry runs App's own target check (the testkit runs the same
     // closures), with the real comparison of connections.
     const queued = { server: 'a.example', protocol: 'sftp' as const, port: 22, username: 'u', password: 'key-1', savedServerId: 'profile-1', options: { bucket: 'b1' } };
+    // A vault id is the overlay's kind and owner: two vaults of one kind share it.
+    type Overlay = { vaultId: string; kind: 'aerocrypt' | 'rclone-crypt'; remoteScope?: string } | null;
+    const vault: Overlay = { vaultId: 'aerocrypt:owner', kind: 'aerocrypt', remoteScope: '/Vault' };
     it.each([
-        ['runs on its server, account and overlay', {}, 'vault-1', 'run'],
-        ['fails on another host', { server: 'b.example' }, 'vault-1', 'transfer.queuedForAnotherServer'],
-        ['fails on the same host with another port', { port: 2222 }, 'vault-1', 'transfer.queuedForAnotherServer'],
-        ['fails on the same host with another bucket', { options: { bucket: 'b2' } }, 'vault-1', 'transfer.queuedForAnotherServer'],
-        ['fails on the same fields with another API key (FileLu)', { password: 'key-2' }, 'vault-1', 'transfer.queuedForAnotherServer'],
-        ['fails on the same fields with another profile (OAuth)', { savedServerId: 'profile-2' }, 'vault-1', 'transfer.queuedForAnotherServer'],
+        ['runs on its server, account and overlay', {}, vault, 'run'],
+        ['runs on the same vault unlocked again', {}, { ...vault! }, 'run'],
+        ['fails on another host', { server: 'b.example' }, vault, 'transfer.queuedForAnotherServer'],
+        ['fails on the same host with another port', { port: 2222 }, vault, 'transfer.queuedForAnotherServer'],
+        ['fails on the same host with another bucket', { options: { bucket: 'b2' } }, vault, 'transfer.queuedForAnotherServer'],
+        ['fails on the same fields with another API key (FileLu)', { password: 'key-2' }, vault, 'transfer.queuedForAnotherServer'],
+        ['fails on the same fields with another profile (OAuth)', { savedServerId: 'profile-2' }, vault, 'transfer.queuedForAnotherServer'],
         ['fails when its overlay was locked', {}, null, 'transfer.queuedOverlayChanged'],
-    ] as const)('%s', async (_name, change, liveVault, outcome) => {
-        const source = between(APP, '  const liveOverlayVault = useLatestCallback(', '\n  const queuedTargetGuard =');
+        ['fails under another vault of the same kind', {}, { ...vault!, remoteScope: '/Other' }, 'transfer.queuedOverlayChanged'],
+    ] as const)('%s', async (_name, change, liveOverlay, outcome) => {
+        const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
         const run = vi.fn();
-        const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: { vaultId: 'vault-1' } as { vaultId: string } | null };
+        const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: vault as Overlay };
         const ctx = {
             useLatestCallback: (fn: unknown) => fn,
             isConnected: true,
@@ -113,7 +118,7 @@ describe('a queued transfer', () => {
         const queuedFor = fns.snapshotQueuedTarget();
         // The switch: the same session object as App's state would hold after it.
         Object.assign(session.connectionParams, change);
-        session.cryptOverlay = liveVault ? { vaultId: liveVault } : null;
+        session.cryptOverlay = liveOverlay;
         await fns.boundToQueuedServer(queuedFor, 'item-1', run)();
         if (outcome === 'run') {
             expect(run).toHaveBeenCalledTimes(1);
@@ -327,15 +332,48 @@ describe('the editor\'s save of a remote file', () => {
         expect(f.invoke.mock.calls.filter(([command]) => command === 'save_local_file')).toHaveLength(1);
     });
 
-    it('takes the server when the editor reads the file, before the read', () => {
+    // The editor's read, bound to the connection it starts on (the hook's own
+    // `readForEditor`, with the IPC mocked).
+    const reader = async (read: (path: string) => string, generation: () => number, changed: () => boolean) => {
+        const source = between(PREVIEW, '  const readForEditor = useLatestCallback(', '\n  });\n') + '\n  });';
+        const invoke = vi.fn(async (command: string, args?: { path: string; expectedGeneration?: number }) => {
+            if (command === 'provider_connection_generation') return generation();
+            if (command === 'preview_remote_file') return read(args!.path);
+            throw new Error(`Unexpected IPC: ${command}`);
+        });
+        const target = { params: { server: 'a.example' }, profileId: 'p1', overlay: null };
+        const remoteTarget = { snapshot: () => target, changedSince: changed, changedMessage: () => 'toast.openedOnAnotherServer' };
+        const { code } = await transformWithOxc(source, 'read-for-editor.ts');
+        const readForEditor = new Function('useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+            (fn: unknown) => fn, invoke, remoteTarget);
+        return { readForEditor, invoke, target };
+    };
+
+    it('reads a remote file on the connection it was opened on, and keeps its server', async () => {
+        const r = await reader(path => `content of ${path}`, () => 7, () => false);
+        expect(await r.readForEditor('/srv/a.txt', true)).toEqual({ content: 'content of /srv/a.txt', target: r.target });
+        expect(r.invoke).toHaveBeenCalledWith('preview_remote_file', { path: '/srv/a.txt', expectedGeneration: 7 });
+    });
+
+    it('refuses the content when the backend saw another connection', async () => {
+        const r = await reader(() => { throw 'CONNECTION_CHANGED: the server changed while the file was opened; nothing was read'; }, () => 7, () => false);
+        await expect(r.readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
+    });
+
+    it('refuses the content when the tab changed while it was read', async () => {
+        let switched = false;
+        const r = await reader(() => { switched = true; return 'other server'; }, () => 7, () => switched);
+        await expect(r.readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
+    });
+
+    it('opens both editor entry points through the bound read', () => {
         for (const opener of ['const openDevToolsPreview = useCallback(', 'const openDevToolsFromData = useCallback(']) {
             const body = between(PREVIEW, opener, '}, [notify]);');
-            const target = body.indexOf('liveRemoteTarget()');
-            expect(target).toBeGreaterThan(0);
-            expect(target).toBeLessThan(body.indexOf("invoke<string>('preview_remote_file'"));
+            expect(body).toContain('await readForEditor(');
+            expect(body).not.toContain("invoke<string>('preview_remote_file'");
             expect(body).toContain('        target,\n');
         }
-        expect(APP).toContain('usePreview({ notify, toast, remoteTarget: () => snapshotQueuedTarget() })');
+        expect(APP).toContain('snapshot: () => snapshotQueuedTarget(),');
         expect(APP).toContain('onSaveFile={saveDevToolsFile}');
     });
 });

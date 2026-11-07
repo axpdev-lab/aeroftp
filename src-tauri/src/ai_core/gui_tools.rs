@@ -142,6 +142,22 @@ async fn publish_remote_edit_on_ftp_manager(
     publish_remote_edit(&mut lease.provider, local_temp, path, allow_non_atomic).await
 }
 
+/// One file of `upload_files`: reported as uploaded only when the upload went
+/// through and its source is still the file the policy checked, else as an
+/// error naming it.
+pub(crate) fn record_upload_outcome(
+    source: &PinnedSource,
+    sent: Result<(), String>,
+    name: String,
+    uploaded: &mut Vec<String>,
+    errors: &mut Vec<Value>,
+) {
+    match source.settle_upload(sent) {
+        Ok(()) => uploaded.push(name),
+        Err(e) => errors.push(json!({ "file": name, "error": e })),
+    }
+}
+
 pub async fn dispatch_gui_tool(
     ctx: &dyn crate::ai_core::tools::ToolCtx,
     tool_name: &str,
@@ -759,12 +775,7 @@ pub async fn dispatch_gui_tool(
                 } else {
                     Err("Not connected to any server".to_string())
                 };
-                let result = source.settle_upload(result);
-
-                match result {
-                    Ok(_) => uploaded.push(display_name),
-                    Err(e) => errors.push(json!({ "file": display_name, "error": e })),
-                }
+                record_upload_outcome(&source, result, display_name, &mut uploaded, &mut errors);
             }
 
             Ok(json!({

@@ -1755,7 +1755,8 @@
             "unknownServer": "Desconhecido",
             "scpModeTitle": "Conectado com SCP",
             "scpModeBody": "{host} não tem SFTP, então o AeroFTP está usando SCP na mesma conexão.",
-            "saveOnAnotherServer": "Não guardado: este ficheiro foi aberto a partir de um servidor, conta ou sobreposição cifrada que não está ativa agora. Volte ao separador dele e guarde novamente."
+            "saveOnAnotherServer": "Não guardado: este ficheiro foi aberto a partir de um servidor, conta ou sobreposição cifrada que não está ativa agora. Volte ao separador dele e guarde novamente.",
+            "openedOnAnotherServer": "Não aberto: o servidor mudou durante a leitura do ficheiro. Abra-o novamente."
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",

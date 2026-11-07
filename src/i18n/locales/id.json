@@ -1755,7 +1755,8 @@
             "unknownServer": "Tidak diketahui",
             "scpModeTitle": "Terhubung dengan SCP",
             "scpModeBody": "{host} tidak memiliki SFTP, jadi AeroFTP menggunakan SCP pada koneksi yang sama.",
-            "saveOnAnotherServer": "Tidak disimpan: file ini dibuka dari server, akun, atau overlay terenkripsi yang tidak aktif saat ini. Kembali ke tab-nya, lalu simpan lagi."
+            "saveOnAnotherServer": "Tidak disimpan: file ini dibuka dari server, akun, atau overlay terenkripsi yang tidak aktif saat ini. Kembali ke tab-nya, lalu simpan lagi.",
+            "openedOnAnotherServer": "Tidak dibuka: server berubah saat file sedang dibaca. Buka lagi."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
