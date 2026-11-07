@@ -19,6 +19,8 @@ import { open as shellOpen } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface GitLabReleaseBrowserProps {
   isOpen: boolean;
@@ -85,6 +87,11 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
   const [formBody, setFormBody] = useState('');
   const [creating, setCreating] = useState(false);
   const [importingChangelog, setImportingChangelog] = useState(false);
+  // A release create already sent goes on after a close, and a create form with typed content is unsaved: the
+  // backdrop is inert in both cases and the X asks first (Discussion #1527).
+  const formDirty = view === 'create' && (formTag.trim() !== '' || formName.trim() !== '' || formBody.trim() !== '');
+  const createGuard = creating ? 'busy' : formDirty ? 'dirty' : null;
+  const guarded = useGuardedClose({ guard: createGuard, onClose });
 
   const suggestedTag = React.useMemo(() => {
     if (releases.length === 0) return 'v1.0.0';
@@ -159,12 +166,12 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (view === 'create') setView('list'); else onClose();
+        if (view === 'create') setView('list'); else guarded.requestClose();
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen, view, onClose]);
+  }, [isOpen, view, guarded.requestClose]);
 
   const handleToggleExpand = useCallback(async (tag: string) => {
     if (expandedTag === tag) { setExpandedTag(null); return; }
@@ -262,7 +269,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]" role="dialog" aria-modal="true" aria-label={t('gitlab.releases') || 'GitLab Releases'}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={view === 'create' ? () => setView('list') : onClose} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={view === 'create' ? () => { if (!createGuard) setView('list'); } : guarded.requestBackdropClose} />
 
       <div
         {...modalDrag.panelProps}
@@ -293,7 +300,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
                 <Plus size={12} /><span>{t('gitlab.createRelease') || 'Create'}</span>
               </button>
             )}
-            <button onClick={onClose} className="p-1 rounded transition-colors hover:opacity-80" style={{ color: 'var(--color-text-secondary)' }}><X size={16} /></button>
+            <button onClick={guarded.requestClose} className="p-1 rounded transition-colors hover:opacity-80" style={{ color: 'var(--color-text-secondary)' }}><X size={16} /></button>
           </div>
         </div>
 
@@ -474,6 +481,9 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
       )}
     </div>
   );

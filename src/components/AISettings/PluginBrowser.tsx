@@ -7,6 +7,8 @@ import { X, Download, Star, ExternalLink, RefreshCw, Package, Puzzle } from 'luc
 import { useTranslation } from '../../i18n';
 import { SearchBox } from '../SearchBox';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 
 interface RegistryFile {
     path: string;
@@ -60,6 +62,8 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [registryDisabled, setRegistryDisabled] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
+    // An install already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+    const guarded = useGuardedClose({ guard: installing !== null ? 'busy' : null, onClose });
 
     // Fetch registry on open
     useEffect(() => {
@@ -76,11 +80,11 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
     useEffect(() => {
         if (!isOpen) return;
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') guarded.requestClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    }, [isOpen, guarded.requestClose]);
 
     const fetchRegistry = async () => {
         setLoading(true);
@@ -141,11 +145,10 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
     return (
         <div
             className="fixed inset-0 z-[60] flex items-center justify-center p-4"
-            onClick={onClose}
             role="dialog"
             aria-modal="true"
         >
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
             <div
                 {...modalDrag.panelProps}
                 className="relative w-full max-w-3xl max-h-[80vh] rounded-lg overflow-hidden
@@ -174,7 +177,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
                             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                         </button>
                         <button
-                            onClick={onClose}
+                            onClick={guarded.requestClose}
                             className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 transition-colors"
                             title={t('common.close')}
                         >
@@ -320,6 +323,9 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
                     )}
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+              <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+            )}
         </div>
     );
 };

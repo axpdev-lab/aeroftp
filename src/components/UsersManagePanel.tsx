@@ -57,6 +57,8 @@ import { ConfirmOverlay } from './common/ConfirmOverlay';
 import { MODAL_Z } from '../utils/modalLayers';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface UsersManagePanelProps {
     isOpen: boolean;
@@ -224,14 +226,24 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         if (isOpen) void refresh();
     }, [isOpen, refresh]);
 
+    // An account change in flight goes on after a close, and a new account,
+    // a rename or a passphrase change being typed would be lost: the backdrop
+    // is inert then, and the X and ESC ask first (Discussion #1527).
+    const formTyped = newName.trim() !== '' || newPassphrase !== '' || newConfirmPassphrase !== ''
+        || editingUserId !== null || passphraseForm !== null;
+    const guarded = useGuardedClose({
+        guard: busyUserId !== null || avatarSaving ? 'busy' : formTyped ? 'dirty' : null,
+        onClose,
+    });
+
     React.useEffect(() => {
         if (!isOpen) return;
         const handleKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') onClose();
+            if (event.key === 'Escape') guarded.requestClose();
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
-    }, [isOpen, onClose]);
+    }, [isOpen, guarded.requestClose]);
 
     if (!isOpen) return null;
 
@@ -484,7 +496,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 type="button"
                 aria-label={t('manageUsers.closePanel')}
                 className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-                onClick={onClose}
+                onClick={guarded.requestBackdropClose}
             />
             <div
                 {...modalDrag.panelProps}
@@ -500,7 +512,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                     </div>
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                         aria-label={t('manageUsers.close')}
                     >
@@ -1096,6 +1108,14 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                     onConfirm={pendingConfirm.onConfirm}
                     onCancel={() => setPendingConfirm(null)}
                     zClass={MODAL_Z.modalConfirm}
+                />
+            )}
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
                 />
             )}
         </div>

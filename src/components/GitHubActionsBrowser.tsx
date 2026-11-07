@@ -18,6 +18,8 @@ import { formatDate } from '../utils';
 import { GitHubActionsIcon } from './icons/GitHubActionsIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface WorkflowRun {
   id: number;
@@ -90,6 +92,8 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
+  // A cancel or re-run already sent to GitHub goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+  const guarded = useGuardedClose({ guard: actionInProgress !== null ? 'busy' : null, onClose });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchRuns = useCallback(async () => {
@@ -130,14 +134,14 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
     if (!isOpen) return;
     document.documentElement.classList.add('modal-open');
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => {
       document.documentElement.classList.remove('modal-open');
       window.removeEventListener('keydown', handleKey);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, guarded.requestClose]);
 
   const runAction = async (command: string, runId: number) => {
     setActionInProgress(runId);
@@ -161,8 +165,8 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
   const hasActiveRuns = runs.some(r => r.status === 'in_progress' || r.status === 'queued');
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
       <div
         {...modalDrag.panelProps}
         className="relative w-full max-w-2xl max-h-[75vh] overflow-hidden rounded-lg shadow-2xl flex flex-col animate-scale-in"
@@ -191,7 +195,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
             >
               <X size={16} />
@@ -317,6 +321,9 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
           )}
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 };

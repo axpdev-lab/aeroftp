@@ -8,6 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { loadS3Tags, saveS3Tags, S3_MAX_TAGS, type TagRow } from '../utils/cloudTiers';
 
 interface S3TagsDialogProps {
@@ -28,22 +30,27 @@ export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [loadedRows, setLoadedRows] = useState<TagRow[] | null>(null);
+  // A save already sent goes on after a close, and rows edited since the load are unsaved: the backdrop is inert
+  // in both cases and the X asks first (Discussion #1527).
+  const rowsChanged = rows !== null && loadedRows !== null && JSON.stringify(rows) !== JSON.stringify(loadedRows);
+  const guarded = useGuardedClose({ guard: saving ? 'busy' : rowsChanged ? 'dirty' : null, onClose });
 
   // A failed load leaves `rows` null, which keeps Save disabled: an empty
   // editor would save as "no tags" and delete the ones the object has.
   useEffect(() => {
     let cancelled = false;
     loadS3Tags(invoke, path)
-      .then((r) => { if (!cancelled) setRows(r); })
+      .then((r) => { if (!cancelled) { setRows(r); setLoadedRows(r); } })
       .catch((err) => { if (!cancelled) setLoadError(String(err)); });
     return () => { cancelled = true; };
   }, [path, attempt]);
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') guarded.requestClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose]);
 
   const update = (i: number, field: keyof TagRow, value: string) =>
     setRows((prev) => (prev ?? []).map((r, j) => (j === i ? { ...r, [field]: value } : r)));
@@ -65,7 +72,7 @@ export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         {...modalDrag.panelProps}
         ref={panelRef}
@@ -79,7 +86,7 @@ export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps
             <Tag size={16} className="text-cyan-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('s3.objectTags')}</h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
             <X size={16} className="text-gray-500" />
           </button>
         </div>
@@ -155,6 +162,9 @@ export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps
           </button>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }

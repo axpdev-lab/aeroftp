@@ -10,10 +10,12 @@
  * the ConnectionScreen peer-ADD path so there is ONE form body, no duplication.
  */
 
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { X, Share2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose, type GuardKind } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 import type { ServerProfile } from '../../types';
 import {
   AeroShareHandshakeBody,
@@ -52,15 +54,26 @@ export function AeroShareDialog({
 }: AeroShareDialogProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
+  // A handshake in flight goes on after a close, a pasted link or a typed
+  // recipient would be lost, and a share link still has to reach the
+  // receiver: the backdrop keeps them, and the X and ESC ask while
+  // something runs or was typed (Discussion #1527).
+  const [bodyGuard, setBodyGuard] = useState<{ guard: GuardKind | null; keepResult: boolean }>({ guard: null, keepResult: false });
+  const onCloseGuardChange = useCallback((guard: GuardKind | null, keepResult: boolean) => setBodyGuard({ guard, keepResult }), []);
+  const guarded = useGuardedClose({
+    guard: bodyGuard.guard,
+    onClose,
+    backdrop: bodyGuard.keepResult ? 'never' : 'idle',
+  });
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') guarded.requestClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [guarded.requestClose]);
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[520px] max-h-[90vh] flex flex-col animate-scale-in"
@@ -79,7 +92,7 @@ export function AeroShareDialog({
               {t('aeroShare.experimentalTag')}
             </span>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400">
+          <button onClick={guarded.requestClose} className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400">
             <X size={14} />
           </button>
         </div>
@@ -93,8 +106,17 @@ export function AeroShareDialog({
           onFriendSaved={onFriendSaved}
           onConnectFriend={onConnectFriend}
           onClose={onClose}
+          onCloseGuardChange={onCloseGuardChange}
         />
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm
+          kind={guarded.confirmKind}
+          canAbort={guarded.canAbort}
+          onKeep={guarded.cancelConfirm}
+          onConfirm={guarded.confirmAndClose}
+        />
+      )}
     </div>
   );
 }
