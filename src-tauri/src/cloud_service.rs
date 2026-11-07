@@ -3703,10 +3703,7 @@ pub async fn sync_one_config(
     // scanning. Without it the floor (Tigris, Fastly: 30 minutes) is not known
     // when the first scan of a pair is a manual one, and a short configured
     // interval could scan again at once.
-    crate::cloud_scan_schedule::ledger().learn(
-        &crate::cloud_scan_schedule::pair_key(&config),
-        ProviderScanTraits::of(&*provider),
-    );
+    remember_scan_traits(&config, &*provider);
 
     // NOTE: explicit cd/mkdir that used to sit between wrap and service here
     // (and in the old inner) has been removed: build_sync_plan_with_provider
@@ -3824,6 +3821,17 @@ pub struct ProviderScanTraits {
     /// incremental pass reads local sizes against the baseline only when it
     /// is true.
     pub exact_sizes: bool,
+}
+
+/// Tell the shared scan ledger what a connected provider said about scanning
+/// (its full-scan floor, exact sizes), under the pair's key. The background
+/// cycle reports the same traits through its report; a manual "Sync now"
+/// connects on its own path and uses this.
+pub(crate) fn remember_scan_traits(config: &CloudConfig, provider: &dyn StorageProvider) {
+    crate::cloud_scan_schedule::ledger().learn(
+        &crate::cloud_scan_schedule::pair_key(config),
+        ProviderScanTraits::of(provider),
+    );
 }
 
 impl ProviderScanTraits {

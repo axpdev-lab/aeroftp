@@ -14374,6 +14374,43 @@ mod tests {
         assert_eq!(tigris_requests(&log, "DELETE").len(), 1);
     }
 
+    /// A manual "Sync now" teaches the shared scheduler the Fastly floor: after
+    /// it, a scheduled tick with a 5 minute interval does not scan the pair
+    /// again for 30 minutes. (Before the learn call existed, the floor was not
+    /// known when the first scan of a pair was a manual one.)
+    #[test]
+    fn a_manual_sync_teaches_the_scheduler_the_fastly_floor() {
+        let config = crate::cloud_config::CloudConfig {
+            local_folder: std::path::PathBuf::from("/tmp/fastly-floor-test-local"),
+            remote_folder: "/fastly-floor-test-remote".to_string(),
+            ..Default::default()
+        };
+        let key = crate::cloud_scan_schedule::pair_key(&config);
+        let start = std::time::Instant::now();
+        crate::cloud_scan_schedule::ledger().record_full_scan(&key, start);
+        crate::cloud_service::remember_scan_traits(
+            &config,
+            &make_provider(Some("https://eu-central-1.object.fastlystorage.app")),
+        );
+        let five_minutes = std::time::Duration::from_secs(300);
+        let ledger = crate::cloud_scan_schedule::ledger();
+        for minutes in [5u64, 29] {
+            assert!(
+                !ledger.scheduled_full_scan_due(
+                    &key,
+                    start + std::time::Duration::from_secs(minutes * 60),
+                    five_minutes
+                ),
+                "{minutes} min after a manual scan"
+            );
+        }
+        assert!(ledger.scheduled_full_scan_due(
+            &key,
+            start + std::time::Duration::from_secs(30 * 60),
+            five_minutes
+        ));
+    }
+
     /// What `sync_one_config` hands the scheduler for a Fastly profile.
     #[test]
     fn a_fastly_provider_reports_the_thirty_minute_floor_as_scan_traits() {
