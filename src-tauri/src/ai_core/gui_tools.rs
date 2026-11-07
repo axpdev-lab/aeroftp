@@ -1264,12 +1264,14 @@ mod tests {
     }
 
     /// Records what `upload_one_file` asks of the remote side.
+    #[cfg(unix)]
     #[derive(Default)]
     struct RecordingRemote {
         mkdirs: Vec<String>,
         uploads: Vec<(String, String)>,
     }
 
+    #[cfg(unix)]
     #[async_trait::async_trait]
     impl super::UploadRemote for RecordingRemote {
         async fn mkdir(&mut self, path: &str) {
