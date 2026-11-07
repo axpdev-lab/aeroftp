@@ -10,6 +10,8 @@ import { useTranslation } from '../i18n';
 import { formatSize } from '../utils/formatters';
 import { mapVaultError } from './vault/useVaultState';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface VaultSyncDialogProps {
     vaultPath: string;
@@ -158,8 +160,17 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
         }
     };
 
+    // Comparing or applying is busy: the backdrop is inert and the X asks
+    // first. A comparison to review, or the result of applying it, is kept
+    // from the backdrop (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: step === 'comparing' || step === 'applying' ? 'busy' : null,
+        onClose,
+        backdrop: comparison || result ? 'never' : 'idle',
+    });
+
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" onClick={guarded.onBackdropClick}>
             <div {...modalDrag.panelProps} className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg shadow-xl w-[640px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border)]">
@@ -167,7 +178,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                         <ArrowUpDown size={16} className="text-blue-400" />
                         <span className="font-medium text-sm">{t('vaultSync.title')}</span>
                     </div>
-                    <button onClick={onClose} className="p-1 hover:bg-[var(--color-bg-tertiary)] rounded" title={t('common.close')}><X size={16} /></button>
+                    <button onClick={guarded.requestClose} className="p-1 hover:bg-[var(--color-bg-tertiary)] rounded" title={t('common.close')}><X size={16} /></button>
                 </div>
 
                 {/* Content */}
@@ -342,11 +353,19 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
                             <ArrowUpDown size={14} /> {t('vaultSync.applySync')}
                         </button>
                     )}
-                    <button onClick={onClose} className="px-3 py-1.5 text-xs bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] rounded">
+                    <button onClick={guarded.requestClose} className="px-3 py-1.5 text-xs bg-[var(--color-bg-tertiary)] hover:bg-[var(--color-surface-hover)] rounded">
                         {step === 'done' ? t('vaultSync.close') : t('vault.cancel')}
                     </button>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

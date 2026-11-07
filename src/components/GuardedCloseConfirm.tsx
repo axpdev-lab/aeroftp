@@ -20,11 +20,16 @@ interface GuardedCloseConfirmProps {
   onKeep: () => void;
   /** Stop and close (busy) / discard and close (dirty). */
   onConfirm: () => void;
+  /** For 'busy': whether closing stops the operation (default true). An
+   *  operation that cannot be stopped goes on after the close, and the
+   *  confirm says so instead of offering to stop it. */
+  canAbort?: boolean;
 }
 
-export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, onKeep, onConfirm }) => {
+export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, onKeep, onConfirm, canAbort = true }) => {
   const t = useTranslation();
   const busy = kind === 'busy';
+  const keepsRunning = busy && !canAbort;
 
   // Esc keeps working (the safe default); it never confirms the destructive action.
   useEffect(() => {
@@ -55,7 +60,7 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
               {busy ? t('modalGuard.busyTitle') : t('modalGuard.dirtyTitle')}
             </h3>
             <p className="mt-1 text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
-              {busy ? t('modalGuard.busyBody') : t('modalGuard.dirtyBody')}
+              {keepsRunning ? t('modalGuard.busyBodyKeepsRunning') : busy ? t('modalGuard.busyBody') : t('modalGuard.dirtyBody')}
             </p>
           </div>
         </div>
@@ -72,7 +77,7 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
             onClick={onConfirm}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-500 text-white transition-colors"
           >
-            {busy ? t('modalGuard.stopAndClose') : t('modalGuard.discardAndClose')}
+            {keepsRunning ? t('modalGuard.closeAnyway') : busy ? t('modalGuard.stopAndClose') : t('modalGuard.discardAndClose')}
           </button>
         </div>
       </div>
