@@ -677,8 +677,13 @@ pub async fn import_bridge_config(
     } else {
         None
     };
-    let policy = crate::profile_security::RelaxationPolicy::Keep(keep_relaxed.unwrap_or_default());
-    finish_bridge_import_with_policy(&source, &value, secret_failures, vault, &policy)
+    match keep_relaxed {
+        Some(keep) => {
+            let policy = crate::profile_security::RelaxationPolicy::Keep(keep);
+            finish_bridge_import_with_policy(&source, &value, secret_failures, vault, &policy)
+        }
+        None => finish_bridge_import(&source, &value, secret_failures, vault),
+    }
 }
 
 /// One vault write: the entry's key and its secret.
