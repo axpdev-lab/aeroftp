@@ -109,7 +109,7 @@ interface DiscoverPanelProps {
     onQueryChange: (value: string) => void;
 }
 
-function ServiceCard({
+export function ServiceCard({
     item,
     onSelect,
     healthStatus,
@@ -167,7 +167,7 @@ function ServiceCard({
                     {item.name}
                 </div>
                 {item.description && (
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                    <div className="text-[11px] leading-snug break-words text-gray-500 dark:text-gray-400">
                         {DISCOVER_DESC_KEYS[item.id] ? t(DISCOVER_DESC_KEYS[item.id]) : item.description}
                     </div>
                 )}

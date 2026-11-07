@@ -916,6 +916,54 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://cloud.ibm.com/registration',
     },
     {
+        id: 'fastly',
+        name: 'Fastly Object Storage',
+        description: 'S3-compatible object storage, path-style (5 GB free, card required)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#FF282D',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'Fastly control panel → Object Storage → Access keys → Access key ID' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown once when the access key is created' },
+            { ...COMMON_FIELDS.bucket, helpText: 'Fastly control panel → Object Storage → Buckets → Bucket name. A bucket lives in one region: pick the region it was created in. Listing counts as a billed request, so AeroCloud scans a pair at most every 30 minutes.' },
+            {
+                key: 'region',
+                label: 'Region',
+                type: 'select',
+                required: true,
+                // The twelve regions of the Fastly Object Storage docs, each served at
+                // https://<region>.object.fastlystorage.app (verified by DNS, 2026-11-05).
+                // The region id is also the SigV4 signing region. us-east, us-west and
+                // eu-central (no -1) are separate, older regions, not aliases of the -1
+                // ones. fastlyRegions.test.ts pins the list.
+                options: [
+                    { value: 'eu-central-1', label: 'Frankfurt (eu-central-1)' },
+                    { value: 'us-east-1', label: 'Virginia (us-east-1)' },
+                    { value: 'us-central-1', label: 'Texas (us-central-1)' },
+                    { value: 'us-west-1', label: 'Oregon (us-west-1)' },
+                    { value: 'us-east', label: 'US East (us-east)' },
+                    { value: 'us-west', label: 'US West (us-west)' },
+                    { value: 'uk-east-1', label: 'London (uk-east-1)' },
+                    { value: 'eu-west-1', label: 'Paris (eu-west-1)' },
+                    { value: 'eu-south-1', label: 'Milan (eu-south-1)' },
+                    { value: 'eu-central', label: 'EU Central (eu-central)' },
+                    { value: 'jp-central-1', label: 'Tokyo (jp-central-1)' },
+                    { value: 'au-east-1', label: 'Sydney (au-east-1)' },
+                ],
+                group: 'server',
+            },
+        ],
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        healthCheckUrl: 'https://us-east-1.object.fastlystorage.app/',
+        helpUrl: 'https://www.fastly.com/documentation/guides/platform/object-storage/',
+        signupUrl: 'https://manage.fastly.com/resources/object-storage',
+    },
+    {
         id: 'storj',
         name: 'Storj',
         description: 'Decentralized S3-compatible cloud storage',

@@ -44,6 +44,12 @@ export const connectionProtocol = (token: string): ConnectionProtocol | undefine
     return connectionManifest.protocols.find(row => normalize(row.token) === key || row.aliases.some(a => normalize(a) === key));
 };
 
+/** The canonical preset id for a stored provider id: a manifest alias
+ *  (`fastly-object-storage`, `backblaze-b2`, `azure-blob`) becomes its target,
+ *  anything else comes back unchanged. Mirrors `canonical_preset_id` in Rust. */
+export const canonicalPresetId = (id: string | null | undefined): string | null | undefined =>
+    id ? (connectionManifest.presetAliases[id] ?? id) : id;
+
 export const getConnectionPreset = (id: string): ConnectionPreset | undefined =>
     connectionManifest.presets.find(p => p.id === (connectionManifest.presetAliases[id] ?? id));
 

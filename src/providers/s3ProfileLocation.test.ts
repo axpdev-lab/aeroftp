@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
+import { getConnectionPreset } from './connectionManifest';
 import { getProviderById, presetDefaultS3Region, resolveProfileS3Location } from './registry';
 
 // One rule for every GUI path that turns a saved S3 profile into an address
@@ -91,6 +92,25 @@ describe('Tigris static endpoint', () => {
     });
 });
 
+describe('Fastly regional endpoint', () => {
+    it('resolves the template with the default Frankfurt region, path-style on', () => {
+        expect(resolveProfileS3Location('fastly', {}, ''))
+            .toEqual({ endpoint: 'https://eu-central-1.object.fastlystorage.app', region: 'eu-central-1', signingRegion: 'eu-central-1' });
+        expect(getProviderById('fastly')?.defaults?.pathStyle).toBe(true);
+    });
+
+    it('signs with the region it was given, which is also the host label', () => {
+        expect(resolveProfileS3Location('fastly', { region: 'us-east' }, ''))
+            .toEqual({ endpoint: 'https://us-east.object.fastlystorage.app', region: 'us-east', signingRegion: 'us-east' });
+        expect(resolveProfileS3Location('fastly', { region: 'us-east-1' }, ''))
+            .toEqual({ endpoint: 'https://us-east-1.object.fastlystorage.app', region: 'us-east-1', signingRegion: 'us-east-1' });
+    });
+
+    it('answers to the alias used by imports', () => {
+        expect(getConnectionPreset('fastly-object-storage')?.id).toBe('fastly');
+    });
+});
+
 describe('signing region read back from an explicit endpoint', () => {
     // Same case table as s3_region_is_read_back_from_a_regional_endpoint in
     // src-tauri/src/profile_loader.rs: the two sides must agree.
@@ -119,6 +139,15 @@ describe('signing region read back from an explicit endpoint', () => {
         ['backblaze', 's3.eu-central-003.backblazeb2.com', undefined],
         ['tigris', 'https://t3.storage.dev', undefined],
         ['tigris', 'https://fly.storage.tigris.dev', undefined],
+        // Fastly: the region is the first host label. The original regions have
+        // no -1 and are not prefixes of each other's answer (us-east is not
+        // us-east-1, eu-central is not eu-central-1).
+        ['fastly', 'https://us-east.object.fastlystorage.app', 'us-east'],
+        ['fastly', 'https://us-east-1.object.fastlystorage.app', 'us-east-1'],
+        ['fastly', 'https://eu-central.object.fastlystorage.app', 'eu-central'],
+        ['fastly', 'eu-central-1.object.fastlystorage.app', 'eu-central-1'],
+        ['fastly', 'https://JP-CENTRAL-1.object.fastlystorage.app:443', 'jp-central-1'],
+        ['fastly', 'https://bucket.eu-west-1.object.fastlystorage.app', undefined],
     ];
     it.each(cases)('%s %s -> %s', (preset, endpoint, readBack) => {
         // Through both explicit forms: stored endpoint option and host. A host

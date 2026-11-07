@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { canonicalPresetId } from './providers/connectionManifest';
+
 // Remote file from FTP server
 export interface RemoteFile {
   name: string;
@@ -358,6 +360,24 @@ export const s3PresetReportsUsage = (
   protocol?: string | null,
   providerId?: string | null,
 ): boolean => protocol === "s3" && providerId === "tigris";
+
+/**
+ * S3 presets that have no object tagging: Fastly Object Storage answers 501
+ * NotImplemented to the tagging calls (Tier 0, 2026-11-06), and the backend
+ * refuses them as not supported. The file menu does not offer "Object Tags"
+ * for these. A profile saved from the Custom S3 form carries no preset id and
+ * still offers it; the backend refusal answers there.
+ */
+const S3_PRESETS_WITHOUT_OBJECT_TAGS = new Set<string>(["fastly"]);
+
+export const s3PresetOffersObjectTags = (providerId?: string | null): boolean => {
+  const preset = canonicalPresetId(providerId);
+  return !preset || !S3_PRESETS_WITHOUT_OBJECT_TAGS.has(preset);
+};
+
+/** Fastly has no object versions, so it has no version-based trash view. */
+export const s3PresetOffersTrash = (providerId?: string | null): boolean =>
+  canonicalPresetId(providerId) !== "fastly";
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {

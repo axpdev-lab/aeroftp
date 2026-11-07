@@ -4,14 +4,14 @@
   "counts": {
     "transport_protocols": 8,
     "native_integrations": 26,
-    "presets": 48,
-    "presets_over_transport": 44,
-    "connection_forms": 53,
+    "presets": 49,
+    "presets_over_transport": 45,
+    "connection_forms": 54,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 57,
-    "connection_methods": 71,
-    "catalog_services": 79
+    "providers": 58,
+    "connection_methods": 72,
+    "catalog_services": 80
   },
   "transport_protocols": [
     "ftp",
@@ -72,6 +72,7 @@
       "backblaze",
       "cloudflare-r2",
       "digitalocean-spaces",
+      "fastly",
       "filebase",
       "filelu-s3",
       "filen-desktop-s3",
@@ -124,7 +125,7 @@
   ],
   "catalog_categories": {
     "protocols": 8,
-    "object-storage": 23,
+    "object-storage": 24,
     "webdav": 19,
     "cloud-storage": 20,
     "media-services": 5,
@@ -215,6 +216,12 @@
       "id": "dropbox",
       "protocols": [
         "dropbox"
+      ]
+    },
+    {
+      "id": "fastly",
+      "protocols": [
+        "s3"
       ]
     },
     {

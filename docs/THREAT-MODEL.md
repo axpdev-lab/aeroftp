@@ -87,7 +87,7 @@ profiles and shares the foreground run's budget and cancellation.
 | OAuth access/refresh tokens | Critical | In-memory SecretString, vault.db |
 | SSH private keys | Critical | vault.db (encrypted PEM) |
 | Local files | High | User filesystem |
-| Remote files | High | 56 providers in `docs/PROVIDER-INVENTORY.json` on this revision |
+| Remote files | High | 58 providers in `docs/PROVIDER-INVENTORY.json` on this revision |
 | Agent memory | Medium | SQLite (agent_memory.db) |
 | Chat history | Medium | SQLite (chat_history.db) |
 | TOTP secrets | Critical | vault.db |
