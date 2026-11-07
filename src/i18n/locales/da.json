@@ -6668,7 +6668,9 @@
             "dirtyTitle": "Ugemte ændringer",
             "dirtyBody": "Du har ugemte ændringer. Kassér og luk?",
             "keepEditing": "Fortsæt redigering",
-            "discardAndClose": "Kassér og luk"
+            "discardAndClose": "Kassér og luk",
+            "busyBodyKeepsRunning": "En handling kører stadig. Den fortsætter, når dette vindue er lukket, og resultatet vises ikke her. Luk alligevel?",
+            "closeAnyway": "Luk alligevel"
         },
         "modalView": {
             "listView": "Listevisning",
