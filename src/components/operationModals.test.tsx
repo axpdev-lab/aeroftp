@@ -73,6 +73,7 @@ import { TotpSetup } from './TotpSetup';
 import { ServerHealthCheck } from './ServerHealthCheck';
 import VaultSyncDialog from './VaultSyncDialog';
 import { UnifiedTransferPlanDialog } from './UnifiedTransferPlanDialog';
+import { ConfirmDialog, InputDialog } from './Dialogs';
 import { VaultPanel } from './VaultPanel';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -605,6 +606,28 @@ describe('UnifiedTransferPlanDialog (Discussion #1527)', () => {
         await clickBackdrop();
         expect(onClose).not.toHaveBeenCalled();
         expect(xButton().disabled).toBe(true);
+    });
+
+    it('lets ESC decline an overwrite question asked over the executing plan, and leaves the plan open', async () => {
+        const onClose = vi.fn();
+        const onCancel = vi.fn();
+        const executing = <UnifiedTransferPlanDialog plan={plan} executing onExecute={vi.fn()} onClose={onClose} />;
+        await render(executing);
+        await render(<>{executing}<ConfirmDialog message="sentinel.txt exists. Overwrite?" onConfirm={vi.fn()} onCancel={onCancel} /></>);
+        await escape();
+        expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('lets ESC cancel a name asked over the plan', async () => {
+        const onClose = vi.fn();
+        const onCancel = vi.fn();
+        const idle = <UnifiedTransferPlanDialog plan={plan} onExecute={vi.fn()} onClose={onClose} />;
+        await render(idle);
+        await render(<>{idle}<InputDialog title="sentinel name" defaultValue="" onConfirm={vi.fn()} onCancel={onCancel} /></>);
+        await escape();
+        expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('closes on ESC like the X, does nothing on ESC while it executes, and keeps ESC from the app shortcut', async () => {
