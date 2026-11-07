@@ -1501,6 +1501,9 @@ fn with_user_dek<R>(
     user_id: i64,
     f: impl FnOnce(i64, &SecretKey) -> Result<R, String>,
 ) -> Result<R, String> {
+    if security_reset_blocked(conn, user_id) {
+        return Err("SECURITY_RESET_PENDING".to_string());
+    }
     let row = read_user_key_row(conn, user_id)?;
     if row.has_passphrase {
         let _session = hold_session()?;
@@ -1546,6 +1549,9 @@ fn resolve_user_dek_scoped(
     user_id: i64,
     passphrase: Option<&str>,
 ) -> Result<SecretKey, String> {
+    if security_reset_blocked(conn, user_id) {
+        return Err("SECURITY_RESET_PENDING".to_string());
+    }
     let row = read_user_key_row(conn, user_id)?;
     if security_reset_pending(conn, user_id)? {
         return Err("SECURITY_RESET_PENDING".to_string());
@@ -2133,6 +2139,36 @@ fn security_reset_pending(conn: &Connection, user_id: i64) -> Result<bool, Strin
     .map_err(|e| format!("Read pending security reset: {e}"))
 }
 
+static SECURITY_RESET_BLOCKS: std::sync::LazyLock<Mutex<HashSet<(String, i64)>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+
+fn security_reset_block_key(conn: &Connection, user_id: i64) -> (String, i64) {
+    let database = conn
+        .path()
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("memory:{:p}", conn));
+    (database, user_id)
+}
+
+fn block_security_reset(conn: &Connection, user_id: i64) {
+    if let Ok(mut blocks) = SECURITY_RESET_BLOCKS.lock() {
+        blocks.insert(security_reset_block_key(conn, user_id));
+    }
+}
+
+fn unblock_security_reset(conn: &Connection, user_id: i64) {
+    if let Ok(mut blocks) = SECURITY_RESET_BLOCKS.lock() {
+        blocks.remove(&security_reset_block_key(conn, user_id));
+    }
+}
+
+fn security_reset_blocked(conn: &Connection, user_id: i64) -> bool {
+    SECURITY_RESET_BLOCKS
+        .lock()
+        .map(|blocks| blocks.contains(&security_reset_block_key(conn, user_id)))
+        .unwrap_or(true)
+}
+
 fn mark_security_reset_pending(conn: &mut Connection, user_id: i64) -> Result<(), String> {
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
@@ -2195,6 +2231,7 @@ fn reset_profile_relaxations(
                     });
             if let Err(e) = marked {
                 report.failed += 1;
+                block_security_reset(conn, user.id);
                 clear_user_session();
                 tracing::warn!("Security reset marker: account {}: {e}", user.id);
             }
@@ -2228,6 +2265,7 @@ fn reset_profile_relaxations(
         if let Err(e) = written {
             drop(tx);
             report.failed += 1;
+            block_security_reset(conn, user.id);
             clear_user_session();
             tracing::warn!("Security reset: account {}: {e}", user.id);
             if let Err(e) = mark_security_reset_pending(conn, user.id) {
@@ -2236,9 +2274,13 @@ fn reset_profile_relaxations(
             continue;
         }
         match tx.commit() {
-            Ok(_) => report.reset.extend(changed),
+            Ok(_) => {
+                unblock_security_reset(conn, user.id);
+                report.reset.extend(changed);
+            }
             Err(e) => {
                 report.failed += 1;
+                block_security_reset(conn, user.id);
                 clear_user_session();
                 tracing::warn!("Security reset: account {}: {e}", user.id);
                 if let Err(e) = mark_security_reset_pending(conn, user.id) {
@@ -4589,43 +4631,45 @@ fn unlock_user_inner(
     if promote_to_active {
         set_active_user_row(conn, user_id)?;
     }
-    let security_reset = if security_reset_pending(conn, user_id)? {
-        let _reset_lock = if _lock.is_none() {
-            Some(ProfileListLock::acquire(conn)?)
-        } else {
-            None
-        };
-        conn.execute_batch("BEGIN IMMEDIATE")
-            .map_err(|e| format!("Begin security reset: {e}"))?;
-        let result = (|| {
-            let mut profiles = read_profiles_with_dek(conn, user_id, &dek)?;
-            let reset = crate::profile_security::make_profile_list_safe(&mut profiles);
-            if !reset.is_empty() {
-                insert_profiles_with_dek(conn, &root_secret, user_id, &dek, &profiles)?;
-            }
-            conn.execute(
-                "DELETE FROM global_state WHERE key = ?1",
-                params![security_reset_pending_key(user_id)],
-            )
-            .map_err(|e| format!("Clear pending security reset: {e}"))?;
-            Ok(reset)
-        })();
-        match result {
-            Ok(reset) => {
-                if let Err(e) = conn.execute_batch("COMMIT") {
-                    let _ = conn.execute_batch("ROLLBACK");
-                    return Err(format!("Commit security reset: {e}"));
+    let security_reset =
+        if security_reset_pending(conn, user_id)? || security_reset_blocked(conn, user_id) {
+            let _reset_lock = if _lock.is_none() {
+                Some(ProfileListLock::acquire(conn)?)
+            } else {
+                None
+            };
+            conn.execute_batch("BEGIN IMMEDIATE")
+                .map_err(|e| format!("Begin security reset: {e}"))?;
+            let result = (|| {
+                let mut profiles = read_profiles_with_dek(conn, user_id, &dek)?;
+                let reset = crate::profile_security::make_profile_list_safe(&mut profiles);
+                if !reset.is_empty() {
+                    insert_profiles_with_dek(conn, &root_secret, user_id, &dek, &profiles)?;
                 }
-                reset
+                conn.execute(
+                    "DELETE FROM global_state WHERE key = ?1",
+                    params![security_reset_pending_key(user_id)],
+                )
+                .map_err(|e| format!("Clear pending security reset: {e}"))?;
+                Ok(reset)
+            })();
+            match result {
+                Ok(reset) => {
+                    if let Err(e) = conn.execute_batch("COMMIT") {
+                        let _ = conn.execute_batch("ROLLBACK");
+                        return Err(format!("Commit security reset: {e}"));
+                    }
+                    unblock_security_reset(conn, user_id);
+                    reset
+                }
+                Err(e) => {
+                    let _ = conn.execute_batch("ROLLBACK");
+                    return Err(e);
+                }
             }
-            Err(e) => {
-                let _ = conn.execute_batch("ROLLBACK");
-                return Err(e);
-            }
-        }
-    } else {
-        Vec::new()
-    };
+        } else {
+            Vec::new()
+        };
     if row.has_passphrase {
         set_user_session(user_id, dek)?;
     }
@@ -8083,6 +8127,53 @@ mod tests {
         let retry = reset_profile_relaxations(&mut conn, &root, None).unwrap();
         assert_eq!(retry.reset.len(), 1);
         assert!(!security_reset_pending(&conn, user).unwrap());
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, user).unwrap()[0]["options"]
+                ["trustUnknownHosts"],
+            false
+        );
+    }
+
+    #[test]
+    fn a_double_write_failure_blocks_a_passphrase_free_account_until_reset() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().unwrap();
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let user = active_user_id(&conn).unwrap().unwrap();
+        let row = read_user_key_row(&conn, user).unwrap();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let dek = unwrap_user_dek_with_key(&row, &root_secret).unwrap();
+        insert_profile_rows(
+            &conn,
+            &root_secret,
+            user,
+            &dek,
+            &[json!({
+                "id": "relaxed", "name": "Relaxed", "protocol": "sftp",
+                "host": "sftp.example.com", "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_restore_reset BEFORE INSERT ON server_profiles BEGIN SELECT RAISE(FAIL, 'forced reset failure'); END;
+             CREATE TRIGGER fail_pending_marker BEFORE INSERT ON global_state BEGIN SELECT RAISE(FAIL, 'forced marker failure'); END;",
+        )
+        .unwrap();
+        let report = reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        assert_eq!(report.failed, 1);
+        assert!(!security_reset_pending(&conn, user).unwrap());
+        assert!(security_reset_blocked(&conn, user));
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, user).unwrap_err(),
+            "SECURITY_RESET_PENDING"
+        );
+        conn.execute_batch("DROP TRIGGER fail_restore_reset; DROP TRIGGER fail_pending_marker;")
+            .unwrap();
+        let status = unlock_user(&conn, &root, user, None).unwrap();
+        assert_eq!(status.security_reset.len(), 1);
+        assert!(!security_reset_blocked(&conn, user));
         assert_eq!(
             list_server_profiles_for(&conn, &root, user).unwrap()[0]["options"]
                 ["trustUnknownHosts"],
