@@ -9500,10 +9500,12 @@ fn fastly_region_label(endpoint: &str) -> Option<String> {
 
 /// The endpoint's region label when it differs from the configured signing
 /// region. Fastly signs with the host label as the region, so a profile with
-/// another value (an empty one included) gets a 400 `InvalidRequest`.
+/// another value (an empty one included) gets a 400 `InvalidRequest`. The
+/// comparison is exact, because the request is signed with the region as
+/// stored: `EU-CENTRAL-1` is refused like `us-east-1`.
 fn fastly_region_mismatch(endpoint: &str, region: &str) -> Option<String> {
     let label = fastly_region_label(endpoint)?;
-    (!region.trim().eq_ignore_ascii_case(&label)).then_some(label)
+    (region.trim() != label).then_some(label)
 }
 
 /// The `<Code>` of an S3 XML error body, `None` when there is none.
@@ -13269,7 +13271,12 @@ mod tests {
             Some("us-east")
         );
         assert_eq!(fastly_region_mismatch(host, "eu-central-1"), None);
-        assert_eq!(fastly_region_mismatch(host, " EU-Central-1 "), None);
+        // Surrounding spaces do not count; the case does, as it is signed as stored.
+        assert_eq!(fastly_region_mismatch(host, " eu-central-1 "), None);
+        assert_eq!(
+            fastly_region_mismatch(host, "EU-Central-1").as_deref(),
+            Some("eu-central-1")
+        );
         // Not a Fastly regional host: nothing to compare.
         assert_eq!(
             fastly_region_mismatch("https://s3.us-east-1.amazonaws.com", ""),
