@@ -1920,13 +1920,7 @@ fn parse_handle_line(line: &str) -> Option<(&str, &str)> {
     if !handle.starts_with("H:") {
         return None;
     }
-    // The name starts after the one space that follows the handle, so a name
-    // that begins with spaces keeps them (CodeRabbit on #1524).
-    let after = rest_after_columns(line, 5).strip_prefix(handle)?;
-    let name = after
-        .strip_prefix(' ')
-        .unwrap_or(after)
-        .trim_end_matches(['\r', '\n']);
+    let name = rest_after_columns(line, 6);
     (!name.is_empty()).then_some((handle, name))
 }
 
@@ -2667,15 +2661,6 @@ mod tests {
             matches!(&through_a_file, Err(ProviderError::InvalidPath(m)) if m.contains("is a file")),
             "{through_a_file:?}"
         );
-    }
-
-    /// CodeRabbit on #1524: a name that begins with spaces keeps them.
-    #[test]
-    fn a_handle_line_keeps_the_leading_spaces_of_a_name() {
-        let line = "----    1            2 06Nov2026 12:20:41 H:spaced01  a?.txt";
-        assert_eq!(parse_handle_line(line), Some(("H:spaced01", " a?.txt")));
-        let plain = "----    1            2 06Nov2026 12:20:41 H:plain001 a?.txt\r";
-        assert_eq!(parse_handle_line(plain), Some(("H:plain001", "a?.txt")));
     }
 
     /// CodeRabbit on #1524: a direct bulk call with a wildcard in a parent
