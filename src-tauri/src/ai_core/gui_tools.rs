@@ -978,7 +978,7 @@ pub async fn dispatch_gui_tool(
             // content in clear: it is created private (0600) and new, never
             // through a name someone else could have placed (deep-scan 90).
             let staged = stage_private_temp("aeroftp_", new_content.as_bytes())?;
-            let tmp_path = staged.path().to_string_lossy().to_string();
+            let tmp_path = staged_path(&staged)?.to_string();
 
             let allow_non_atomic = args
                 .get("allow_non_atomic")
@@ -1043,6 +1043,18 @@ pub async fn dispatch_gui_tool(
 /// A new private temporary file (0600 where the platform has modes, created
 /// with `O_EXCL`) holding `content`. The file is removed when the returned
 /// handle is dropped. #1506 Requested 186.
+/// The path of a staged temporary as the upload APIs take it. A temp folder
+/// whose path is not UTF-8 is reported, instead of handing on an empty or
+/// lossily rewritten path that names some other file.
+pub(crate) fn staged_path(staged: &tempfile::NamedTempFile) -> Result<&str, String> {
+    staged.path().to_str().ok_or_else(|| {
+        format!(
+            "The temporary folder path is not valid UTF-8: {}",
+            staged.path().display()
+        )
+    })
+}
+
 pub(crate) fn stage_private_temp(
     prefix: &str,
     content: &[u8],

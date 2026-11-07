@@ -502,7 +502,7 @@ impl RemoteBackend for TauriRemoteBackend {
                 let mut mgr = app_state.ftp_manager.lock().await;
                 let staged =
                     crate::ai_core::gui_tools::stage_private_temp("aeroftp_upload_", data)?;
-                mgr.upload_file(staged.path().to_str().unwrap_or(""), path)
+                mgr.upload_file(crate::ai_core::gui_tools::staged_path(&staged)?, path)
                     .await
                     .map_err(|e| e.to_string())
             }
@@ -950,7 +950,7 @@ async fn upload_provider_bytes(
     // predictable and the mode the default before, deep-scan 96), upload,
     // and let the handle remove it.
     let staged = crate::ai_core::gui_tools::stage_private_temp("aeroftp_upload_", data)?;
-    p.upload(staged.path().to_str().unwrap_or(""), path, None)
+    p.upload(crate::ai_core::gui_tools::staged_path(&staged)?, path, None)
         .await
         .map_err(|e| e.to_string())
 }
