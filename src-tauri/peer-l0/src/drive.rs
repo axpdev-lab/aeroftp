@@ -68,12 +68,106 @@ fn link_on_the_way(out_path: &Path, target: &Path) -> std::io::Result<Option<Pat
         at.push(part);
         match std::fs::symlink_metadata(&at) {
             Ok(meta) if meta.file_type().is_symlink() => return Ok(Some(at)),
+            Ok(meta) if meta.is_dir() => refuse_world_writable_folder(&at, &meta)?,
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e),
         }
     }
     Ok(None)
+}
+
+/// A folder any user can write into (o+w, sticky or not) lets another user plant a link
+/// in it between a check and the I/O that follows; the replica refuses to write through
+/// one. The error names the folder, its mode and the fix.
+fn refuse_world_writable_folder(folder: &Path, meta: &std::fs::Metadata) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = meta.permissions().mode() & 0o7777;
+        if mode & 0o002 != 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!(
+                    "refusing the replica folder {}: it is writable by every user (mode {:o}), so another user could place a link in it; run `chmod o-w {}`",
+                    folder.display(),
+                    mode,
+                    folder.display()
+                ),
+            ));
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = (folder, meta);
+    Ok(())
+}
+
+/// Check the replica root before anything is written: the root must not be writable by
+/// every user, and no folder above it may be (a sticky one, like /tmp, is fine there: no
+/// other user can rename or replace the entry it holds). A root writable by its group is
+/// allowed, with a warning: its group members are trusted with it, as with any
+/// group-writable folder of the user's.
+pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
+    let root = std::fs::canonicalize(out_path)?;
+    let meta = std::fs::metadata(&root)?;
+    refuse_world_writable_folder(&root, &meta)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = meta.permissions().mode() & 0o7777;
+        if mode & 0o020 != 0 {
+            eprintln!(
+                "warning: the replica folder {} is writable by its group (mode {:o}); its members are trusted with the replica",
+                root.display(),
+                mode
+            );
+        }
+        for ancestor in root.ancestors().skip(1) {
+            let mode = std::fs::metadata(ancestor)?.permissions().mode() & 0o7777;
+            if mode & 0o002 != 0 && mode & 0o1000 == 0 {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing the replica folder {}: the folder above it, {}, is writable by every user and not sticky (mode {:o}), so another user could replace the replica folder; run `chmod o-w {}` or `chmod +t {}`",
+                        root.display(),
+                        ancestor.display(),
+                        mode,
+                        ancestor.display(),
+                        ancestor.display()
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Make the folders from `out_path` down to `folder` that do not exist yet, private to the
+/// user (0700 on unix): under a umask of 002 they would otherwise come out 0775, writable by
+/// the group.
+fn create_replica_folders(out_path: &Path, folder: &Path) -> std::io::Result<()> {
+    let rel = folder.strip_prefix(out_path).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("{} is not under the replica folder", folder.display()),
+        )
+    })?;
+    let mut at = out_path.to_path_buf();
+    for part in rel.components() {
+        at.push(part);
+        let mut builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        match builder.create(&at) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 fn refuse_link_on_the_way(out_path: &Path, target: &Path) -> std::io::Result<()> {
@@ -100,7 +194,7 @@ pub(crate) fn write_replica_file(
     use std::io::Write;
     refuse_link_on_the_way(out_path, target)?;
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)?;
+        create_replica_folders(out_path, parent)?;
     }
     refuse_link_on_the_way(out_path, target)?;
     if target.file_name().is_none() {
@@ -111,20 +205,30 @@ pub(crate) fn write_replica_file(
     }
     // A short name of its own, not derived from the key's: a valid name near the
     // filesystem's 255-byte limit must not fail for the length of its temporary.
+    // A rewrite keeps the access the replica had; a new replica, which holds decrypted
+    // plaintext, is private to the user (0600). Reading what stands at the name may fail
+    // only because nothing is there yet.
+    let keep = match std::fs::symlink_metadata(target) {
+        Ok(existing) if existing.is_file() => Some(existing.permissions()),
+        Ok(_) => None,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e),
+    };
     let temp = target.with_file_name(format!(".replica-{:016x}.tmp", rand::random::<u64>()));
     let written = (|| {
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)?;
-        // A rewrite keeps the access the replica had (a 0600 file stays 0600), set
-        // before any plaintext is written; `fs::write` used to keep it in place.
-        if let Ok(existing) = std::fs::symlink_metadata(target) {
-            if existing.is_file() {
-                file.set_permissions(existing.permissions())?;
-            }
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Created private, so no other user can open it while the plaintext is written.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
         }
+        let mut file = options.open(&temp)?;
         file.write_all(data)?;
+        if let Some(permissions) = &keep {
+            file.set_permissions(permissions.clone())?;
+        }
         file.sync_all()?;
         std::fs::rename(&temp, target)
     })();
@@ -171,6 +275,28 @@ pub(crate) fn remove_replica_file(out_path: &Path, target: &Path) -> std::io::Re
         }
         other => other,
     }
+}
+
+/// How long the watch waits before trying the current version again while one of its keys
+/// is unapplied.
+const UNAPPLIED_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Whether the file of `key` must be (re)written: unless the last applied state holds this
+/// very hash for it and the file is on disk. A key a previous version failed to apply holds
+/// no hash, so it is written again even when the hash has not changed.
+pub(crate) fn needs_write(
+    applied_state: &std::collections::HashMap<String, String>,
+    key: &str,
+    hash: &str,
+    on_disk: bool,
+) -> bool {
+    !(on_disk && applied_state.get(key).is_some_and(|h| h == hash))
+}
+
+/// Whether a key of the state is still to apply (written or deleted): the watch does not
+/// report "live" until there is none, and retries the current version meanwhile.
+pub(crate) fn still_unapplied(applied_state: &std::collections::HashMap<String, String>) -> bool {
+    applied_state.values().any(|hash| hash.is_empty())
 }
 
 /// The state the next version compares against. A key whose file this version neither
@@ -1031,6 +1157,7 @@ pub async fn run_docs_replicate(
         // === DRIVE MODE ===
         let out_path = Path::new(&out_dir);
         std::fs::create_dir_all(out_path)?;
+        check_replica_root(out_path)?;
 
         // 1. Wait for + fetch + decrypt manifest (reuse the async-blob retry pattern)
         let manifest_key = b"__drive_manifest__.json";
@@ -1227,10 +1354,12 @@ pub async fn run_docs_replicate(
             // on entering the watch and again after any converge settles, and
             // "syncing" when a delta lands. `live_announced` de-dups the emit.
             let mut live_announced = false;
+            let mut unapplied = false;
             loop {
                 if !live_announced {
+                    // Not "live" while a key of the current version is unapplied.
                     if let Some(f) = &on_status {
-                        f("live");
+                        f(if unapplied { "syncing" } else { "live" });
                     }
                     live_announced = true;
                 }
@@ -1238,187 +1367,195 @@ pub async fn run_docs_replicate(
                 if rem.is_zero() {
                     break;
                 }
-                match tokio::time::timeout(rem, events.next()).await {
+                // While a key of the current version is unapplied, the wait for the next
+                // event ends early and the current version is tried again.
+                let wait = if unapplied {
+                    rem.min(UNAPPLIED_RETRY)
+                } else {
+                    rem
+                };
+                let mut retrying = false;
+                let trigger = match tokio::time::timeout(wait, events.next()).await {
+                    Err(_) if unapplied && wait < rem => {
+                        retrying = true;
+                        true
+                    }
                     Err(_) => break,
                     Ok(None) => break,
-                    Ok(Some(Ok(ev))) => {
-                        let trigger = match &ev {
-                            LiveEvent::InsertRemote { entry, .. } => {
-                                entry.key() == b"__drive_manifest__.json"
-                            }
-                            LiveEvent::PendingContentReady => true,
-                            _ => false,
-                        };
-                        if trigger {
-                            // A new version is converging: flip the host UI back
-                            // to "syncing"; the next loop-top re-announces "live".
-                            if let Some(f) = &on_status {
-                                f("syncing");
-                            }
-                            live_announced = false;
-                            // Re-read the manifest (with retry helpers); if version advanced, apply diff:
-                            // - skip unchanged (same blake3 in prev_files AND file exists on disk)
-                            // - pull/decrypt/verify/write only for changed or added
-                            // - delete local files for keys present in prev but absent from new manifest
-                            let manifest_hash = match wait_entry_hash(&doc, manifest_key, 20).await
-                            {
-                                Some(h) => h,
-                                None => continue,
-                            };
-                            let mblob = match blobs.fetch_retry(manifest_hash, 60).await {
-                                Some(b) => b,
-                                None => {
-                                    eprintln!("converge: manifest blob not available yet");
-                                    continue;
-                                }
-                            };
-                            if mblob.len() < n {
-                                continue;
-                            }
-                            let (mn, mc) = mblob.split_at(n);
-                            let mpt = match decrypt_blob(&drive_key, mn, mc) {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    eprintln!("converge: manifest decrypt failed: {e}");
-                                    continue;
-                                }
-                            };
-                            let new_m: serde_json::Value = match serde_json::from_slice(&mpt) {
-                                Ok(v) => v,
-                                Err(e) => {
-                                    eprintln!("converge: manifest JSON parse failed: {e}");
-                                    continue;
-                                }
-                            };
-                            let new_ver =
-                                new_m["drive_version"].as_u64().unwrap_or(current_version);
-                            if new_ver <= current_version {
-                                continue;
-                            }
+                    Ok(Some(Ok(ev))) => match &ev {
+                        LiveEvent::InsertRemote { entry, .. } => {
+                            entry.key() == b"__drive_manifest__.json"
+                        }
+                        LiveEvent::PendingContentReady => true,
+                        _ => false,
+                    },
+                    Ok(Some(Err(_))) => false,
+                };
+                if trigger {
+                    // A new version is converging: flip the host UI back
+                    // to "syncing"; the next loop-top re-announces "live".
+                    if let Some(f) = &on_status {
+                        f("syncing");
+                    }
+                    live_announced = false;
+                    // Re-read the manifest (with retry helpers); if version advanced, apply diff:
+                    // - skip unchanged (same blake3 in prev_files AND file exists on disk)
+                    // - pull/decrypt/verify/write only for changed or added
+                    // - delete local files for keys present in prev but absent from new manifest
+                    let manifest_hash = match wait_entry_hash(&doc, manifest_key, 20).await {
+                        Some(h) => h,
+                        None => continue,
+                    };
+                    let mblob = match blobs.fetch_retry(manifest_hash, 60).await {
+                        Some(b) => b,
+                        None => {
+                            eprintln!("converge: manifest blob not available yet");
+                            continue;
+                        }
+                    };
+                    if mblob.len() < n {
+                        continue;
+                    }
+                    let (mn, mc) = mblob.split_at(n);
+                    let mpt = match decrypt_blob(&drive_key, mn, mc) {
+                        Ok(p) => p,
+                        Err(e) => {
+                            eprintln!("converge: manifest decrypt failed: {e}");
+                            continue;
+                        }
+                    };
+                    let new_m: serde_json::Value = match serde_json::from_slice(&mpt) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            eprintln!("converge: manifest JSON parse failed: {e}");
+                            continue;
+                        }
+                    };
+                    let new_ver = new_m["drive_version"].as_u64().unwrap_or(current_version);
+                    if new_ver < current_version || (new_ver == current_version && !retrying) {
+                        continue;
+                    }
 
-                            let old_ver = current_version;
-                            let new_files = new_m["files"].as_array().cloned().unwrap_or_default();
-                            let new_k = new_files.len();
+                    let old_ver = current_version;
+                    let new_files = new_m["files"].as_array().cloned().unwrap_or_default();
+                    let new_k = new_files.len();
 
-                            // Build new_state (key -> blake3) from the incoming manifest for fast lookup
-                            let mut new_state: std::collections::HashMap<String, String> =
-                                std::collections::HashMap::new();
-                            for f in &new_files {
-                                let rkey = f["key"].as_str().unwrap_or("").to_string();
-                                let eblake =
-                                    f["plaintext_blake3"].as_str().unwrap_or("").to_string();
-                                new_state.insert(rkey, eblake);
-                            }
+                    // Build new_state (key -> blake3) from the incoming manifest for fast lookup
+                    let mut new_state: std::collections::HashMap<String, String> =
+                        std::collections::HashMap::new();
+                    for f in &new_files {
+                        let rkey = f["key"].as_str().unwrap_or("").to_string();
+                        let eblake = f["plaintext_blake3"].as_str().unwrap_or("").to_string();
+                        new_state.insert(rkey, eblake);
+                    }
 
-                            let old_file_count = prev_files.len();
-                            let mut written = 0usize;
-                            let mut deleted = 0usize;
-                            let mut applied = std::collections::HashSet::new();
-                            let mut undeleted: Vec<String> = Vec::new();
+                    let old_file_count = prev_files.len();
+                    let mut written = 0usize;
+                    let mut deleted = 0usize;
+                    let mut applied = std::collections::HashSet::new();
+                    let mut undeleted: Vec<String> = Vec::new();
 
-                            // Process new/current files: skip if unchanged+exists, else pull+write (changed/added/new)
-                            for f in &new_files {
-                                let rkey = f["key"].as_str().unwrap_or("").to_string();
-                                let ept_len = f["plaintext_len"].as_u64().unwrap_or(0);
-                                let eblake =
-                                    f["plaintext_blake3"].as_str().unwrap_or("").to_string();
+                    // Process new/current files: skip if unchanged+exists, else pull+write (changed/added/new)
+                    for f in &new_files {
+                        let rkey = f["key"].as_str().unwrap_or("").to_string();
+                        let ept_len = f["plaintext_len"].as_u64().unwrap_or(0);
+                        let eblake = f["plaintext_blake3"].as_str().unwrap_or("").to_string();
 
-                                // Security: same containment check as the initial pass; reject
-                                // keys that would escape the replica root before any I/O.
-                                let target = match safe_replica_path(out_path, &rkey) {
-                                    Some(p) => p,
-                                    None => {
-                                        eprintln!("converge: unsafe key rejected {rkey}");
-                                        continue;
-                                    }
-                                };
-
-                                let is_unchanged =
-                                    prev_files.get(&rkey).is_some_and(|h| h == &eblake);
-                                if is_unchanged && target.exists() {
-                                    println!("skip unchanged {}", rkey);
-                                    applied.insert(rkey.clone());
-                                    continue;
-                                }
-
-                                let fch = match wait_entry_hash(&doc, rkey.as_bytes(), 20).await {
-                                    Some(h) => h,
-                                    None => {
-                                        eprintln!("converge: entry {rkey} not found");
-                                        continue;
-                                    }
-                                };
-                                let fblob = match blobs.fetch_retry(fch, 60).await {
-                                    Some(b) => b,
-                                    None => {
-                                        eprintln!("converge: blob for {rkey} not available");
-                                        continue;
-                                    }
-                                };
-                                if fblob.len() < n {
-                                    eprintln!("converge: blob for {rkey} too short");
-                                    continue;
-                                }
-                                let (fnc, fcc) = fblob.split_at(n);
-                                let ptt = match decrypt_blob(&drive_key, fnc, fcc) {
-                                    Ok(p) => p,
-                                    Err(e) => {
-                                        eprintln!("converge: decrypt {rkey} failed: {e}");
-                                        continue;
-                                    }
-                                };
-                                if blake3::hash(&ptt).to_hex().to_string() != eblake
-                                    || ptt.len() as u64 != ept_len
-                                {
-                                    eprintln!("converge: integrity check failed for {rkey}");
-                                    continue;
-                                }
-                                // target was containment-checked above.
-                                if !write_replica_or_skip(out_path, &target, &ptt, |e| {
-                                    eprintln!("converge: write {rkey} refused: {e}")
-                                }) {
-                                    continue;
-                                }
+                        // Security: same containment check as the initial pass; reject
+                        // keys that would escape the replica root before any I/O.
+                        let target = match safe_replica_path(out_path, &rkey) {
+                            Some(p) => p,
+                            None => {
+                                eprintln!("converge: unsafe key rejected {rkey}");
+                                // Never written, so never retried: it is settled.
                                 applied.insert(rkey.clone());
-                                written += 1;
+                                continue;
                             }
+                        };
 
-                            // Deletions: any key in prev_files that is absent from the new manifest -> rm local file
-                            for old_key in prev_files.keys() {
-                                if !new_state.contains_key(old_key) {
-                                    // Security: never let a publisher-controlled key drive a
-                                    // remove_file outside the replica root. Keys reach prev_files
-                                    // only after passing the guard, but re-check defensively.
-                                    if let Some(target) = safe_replica_path(out_path, old_key) {
-                                        match remove_replica_file(out_path, &target) {
-                                            Ok(()) => deleted += 1,
-                                            Err(e) => {
-                                                eprintln!(
-                                                    "converge: delete {old_key} refused: {e}"
-                                                );
-                                                undeleted.push(old_key.clone());
-                                            }
-                                        }
+                        if !needs_write(&prev_files, &rkey, &eblake, target.exists()) {
+                            println!("skip unchanged {}", rkey);
+                            applied.insert(rkey.clone());
+                            continue;
+                        }
+
+                        let fch = match wait_entry_hash(&doc, rkey.as_bytes(), 20).await {
+                            Some(h) => h,
+                            None => {
+                                eprintln!("converge: entry {rkey} not found");
+                                continue;
+                            }
+                        };
+                        let fblob = match blobs.fetch_retry(fch, 60).await {
+                            Some(b) => b,
+                            None => {
+                                eprintln!("converge: blob for {rkey} not available");
+                                continue;
+                            }
+                        };
+                        if fblob.len() < n {
+                            eprintln!("converge: blob for {rkey} too short");
+                            continue;
+                        }
+                        let (fnc, fcc) = fblob.split_at(n);
+                        let ptt = match decrypt_blob(&drive_key, fnc, fcc) {
+                            Ok(p) => p,
+                            Err(e) => {
+                                eprintln!("converge: decrypt {rkey} failed: {e}");
+                                continue;
+                            }
+                        };
+                        if blake3::hash(&ptt).to_hex().to_string() != eblake
+                            || ptt.len() as u64 != ept_len
+                        {
+                            eprintln!("converge: integrity check failed for {rkey}");
+                            continue;
+                        }
+                        // target was containment-checked above.
+                        if !write_replica_or_skip(out_path, &target, &ptt, |e| {
+                            eprintln!("converge: write {rkey} refused: {e}")
+                        }) {
+                            continue;
+                        }
+                        applied.insert(rkey.clone());
+                        written += 1;
+                    }
+
+                    // Deletions: any key in prev_files that is absent from the new manifest -> rm local file
+                    for old_key in prev_files.keys() {
+                        if !new_state.contains_key(old_key) {
+                            // Security: never let a publisher-controlled key drive a
+                            // remove_file outside the replica root. Keys reach prev_files
+                            // only after passing the guard, but re-check defensively.
+                            if let Some(target) = safe_replica_path(out_path, old_key) {
+                                match remove_replica_file(out_path, &target) {
+                                    Ok(()) => deleted += 1,
+                                    Err(e) => {
+                                        eprintln!("converge: delete {old_key} refused: {e}");
+                                        undeleted.push(old_key.clone());
                                     }
                                 }
                             }
-
-                            // A file whose deletion was refused stays known (with no hash), so
-                            // the next version tries to delete it again.
-                            for key in undeleted {
-                                new_state.insert(key, String::new());
-                            }
-                            mark_not_applied(&mut new_state, &applied);
-                            prev_files = new_state;
-                            current_version = new_ver;
-                            println!("DRIVE UPDATED: v{} -> v{}: {} written, {} deleted (file_count {} -> {})", old_ver, new_ver, written, deleted, old_file_count, new_k);
-                            // Stage 10: flush after each live-converged version so a restart of the
-                            // persistent replicator can resume at the latest version from disk (not
-                            // an earlier one). The initial flush after DRIVE REPLICATED (S9) is kept.
-                            blobs.flush().await;
                         }
                     }
-                    Ok(Some(Err(_))) => {}
+
+                    // A file whose deletion was refused stays known (with no hash), so
+                    // the next version tries to delete it again.
+                    for key in undeleted {
+                        new_state.insert(key, String::new());
+                    }
+                    mark_not_applied(&mut new_state, &applied);
+                    unapplied = still_unapplied(&new_state);
+                    prev_files = new_state;
+                    current_version = new_ver;
+                    println!(
+                        "DRIVE UPDATED: v{} -> v{}: {} written, {} deleted (file_count {} -> {})",
+                        old_ver, new_ver, written, deleted, old_file_count, new_k
+                    );
+                    // Stage 10: flush after each live-converged version so a restart of the
+                    // persistent replicator can resume at the latest version from disk (not
+                    // an earlier one). The initial flush after DRIVE REPLICATED (S9) is kept.
+                    blobs.flush().await;
                 }
             }
         }
@@ -1654,5 +1791,102 @@ mod replica_path_tests {
         mark_not_applied(&mut state, &applied);
         assert_eq!(state["written"], "h1");
         assert_eq!(state["refused"], "");
+    }
+
+    /// A new replica file and the folders the replica makes are private to the user; a
+    /// rewrite keeps the mode an existing replica had.
+    #[cfg(unix)]
+    #[test]
+    fn replica_files_and_folders_are_created_private() {
+        use crate::drive::write_replica_file;
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let fresh = safe_replica_path(&out, "a/b/new.txt").unwrap();
+        write_replica_file(&out, &fresh, b"plain").unwrap();
+        assert_eq!(mode(&fresh), 0o600);
+        assert_eq!(mode(&out.join("a")), 0o700);
+        assert_eq!(mode(&out.join("a/b")), 0o700);
+
+        let shared = safe_replica_path(&out, "shared.txt").unwrap();
+        std::fs::write(&shared, b"old").unwrap();
+        std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_replica_file(&out, &shared, b"new").unwrap();
+        assert_eq!(mode(&shared), 0o644);
+    }
+
+    /// The replica refuses a folder every user can write into: the root, a folder above it
+    /// that is not sticky, and a folder on a key's path. A group-writable root is allowed.
+    #[cfg(unix)]
+    #[test]
+    fn world_writable_replica_folders_are_refused() {
+        use crate::drive::{check_replica_root, write_replica_file};
+        use std::os::unix::fs::PermissionsExt;
+        let set = |p: &Path, m: u32| {
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(m)).unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+
+        let open_root = dir.path().join("open_root");
+        std::fs::create_dir(&open_root).unwrap();
+        set(&open_root, 0o777);
+        assert!(check_replica_root(&open_root).is_err());
+
+        let open_parent = dir.path().join("open_parent");
+        std::fs::create_dir_all(open_parent.join("root")).unwrap();
+        set(&open_parent, 0o777);
+        set(&open_parent.join("root"), 0o755);
+        assert!(check_replica_root(&open_parent.join("root")).is_err());
+        set(&open_parent, 0o1777);
+        assert!(
+            check_replica_root(&open_parent.join("root")).is_ok(),
+            "a sticky parent is fine"
+        );
+        set(&open_parent, 0o755);
+
+        let group_root = dir.path().join("group_root");
+        std::fs::create_dir(&group_root).unwrap();
+        set(&group_root, 0o775);
+        assert!(
+            check_replica_root(&group_root).is_ok(),
+            "group-writable warns only"
+        );
+
+        let plain_root = dir.path().join("plain_root");
+        std::fs::create_dir(&plain_root).unwrap();
+        set(&plain_root, 0o755);
+        assert!(check_replica_root(&plain_root).is_ok());
+
+        std::fs::create_dir(plain_root.join("open")).unwrap();
+        set(&plain_root.join("open"), 0o777);
+        let through = safe_replica_path(&plain_root, "open/x.txt").unwrap();
+        assert!(write_replica_file(&plain_root, &through, b"x").is_err());
+        assert!(!through.exists());
+    }
+
+    /// A key a version failed to apply is written again by a later version with the same
+    /// hash, and the watch is not "live" while any key is unapplied.
+    #[test]
+    fn a_failed_write_is_retried_and_holds_back_live() {
+        use crate::drive::{mark_not_applied, needs_write, still_unapplied};
+        let mut state = std::collections::HashMap::from([
+            ("ok".to_string(), "h1".to_string()),
+            ("failed".to_string(), "h2".to_string()),
+        ]);
+        let applied = std::collections::HashSet::from(["ok".to_string()]);
+        mark_not_applied(&mut state, &applied);
+        assert!(still_unapplied(&state), "not live while a key is unapplied");
+        // The next version carries the same hashes: the failed key is written again.
+        assert!(needs_write(&state, "failed", "h2", true));
+        assert!(!needs_write(&state, "ok", "h1", true));
+        assert!(
+            needs_write(&state, "ok", "h1", false),
+            "a missing file is rewritten"
+        );
+        state.insert("failed".to_string(), "h2".to_string());
+        assert!(!still_unapplied(&state));
     }
 }
