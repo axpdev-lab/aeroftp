@@ -18,8 +18,9 @@ describe('the interactive OAuth logins', () => {
         await expect(countedOAuthLogin(work, async () => { throw new Error('cancelled'); })).rejects.toThrow('cancelled');
         expect(oauthLoginCount(work)).toBe(before + 2);
         expect(oauthLoginCount(personal)).toBe(0);
-        // The OAuth calls and the connections spell Google Drive differently.
+        // The OAuth calls and the connections spell some providers differently.
         expect(oauthLoginKey('google_drive', 'work')).toBe(work);
+        expect(oauthLoginKey('zoho_workdrive', null)).toBe(oauthLoginKey('zohoworkdrive', null));
     });
 
     // A login that is not counted lets a queued OAuth write survive an

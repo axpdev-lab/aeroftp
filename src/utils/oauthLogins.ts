@@ -16,9 +16,10 @@ const logins = new Map<string, number>();
 
 /** The token owner a login and a target are counted under. */
 export function oauthLoginKey(protocol: string | undefined, profileId: string | null | undefined): string {
-  // The OAuth calls name Google Drive `google_drive`, its connections `googledrive`.
-  const owner = protocol === 'google_drive' ? 'googledrive' : protocol;
-  return `${owner ?? ''}:${profileId ?? ''}`;
+  // The OAuth calls spell some providers with an underscore (`google_drive`,
+  // `zoho_workdrive`) that their connections' protocol does not have.
+  const owner = (protocol ?? '').replace(/_/g, '');
+  return `${owner}:${profileId ?? ''}`;
 }
 
 /** The logins counted so far on `key`'s token. */

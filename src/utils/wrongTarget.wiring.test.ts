@@ -254,6 +254,17 @@ describe('a queued transfer', () => {
         expect(fns.queuedTargetProblem(fns.snapshotQueuedTarget())).toBeNull();
     });
 
+    // CodeRabbit on #1526: a Quick Connect login names Zoho `zoho_workdrive`,
+    // its connection `zohoworkdrive`; the two must be the same token owner.
+    it('an unlinked Zoho target refuses a Retry after a login spelled the OAuth way', async () => {
+        const zoho = { server: '', protocol: 'zohoworkdrive', port: 443, username: '', password: '' };
+        const { fns } = await targetChecks(zoho);
+        const target = fns.snapshotQueuedTarget();
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+        loginOn(oauthLoginKey('zoho_workdrive', undefined));
+        expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+    });
+
     it('a target whose account is in the params is not refused by an OAuth login elsewhere', async () => {
         const { fns } = await targetChecks(queued);
         const target = fns.snapshotQueuedTarget();

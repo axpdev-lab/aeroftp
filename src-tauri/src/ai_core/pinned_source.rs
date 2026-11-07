@@ -84,8 +84,11 @@ pub(crate) struct PinnedSource {
 }
 
 impl PinnedSource {
-    /// Open `path`, run `policy` on its canonical form, and require that
-    /// form to name the opened file. Only a regular file can be pinned.
+    /// Open `path`, run `policy` on it as given and on its canonical form,
+    /// and require that form to name the opened file. Only a regular file
+    /// can be pinned. Both forms are judged: a link under a protected folder
+    /// (`~/.ssh/id_ed25519` pointing elsewhere) resolves to a path the policy
+    /// would let through, and a path that resolves into one is refused too.
     pub(crate) fn pin(
         path: &str,
         label: &str,
@@ -107,6 +110,7 @@ impl PinnedSource {
                 "{label}: {path} is not a regular file"
             )));
         }
+        policy(path, label)?;
         let canonical =
             std::fs::canonicalize(path).map_err(|e| ToolError::Exec(format!("{label}: {e}")))?;
         policy(&canonical.to_string_lossy(), label)?;
@@ -205,6 +209,33 @@ mod tests {
         assert_eq!(pinned.size(), 6);
         assert_eq!(pinned.path(), file.to_string_lossy());
         pinned.verify_unchanged().unwrap();
+    }
+
+    /// CodeRabbit on #1526: a link inside a protected folder that points to
+    /// a file outside it resolves to a path the policy allows. The path as
+    /// given is judged as well, so the link is refused and nothing is pinned.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_under_a_protected_folder_is_refused_whatever_it_points_to() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, b"x").unwrap();
+        let protected = dir.path().join("protected");
+        std::fs::create_dir(&protected).unwrap();
+        let link = protected.join("id_ed25519");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let deny_protected = |p: &str, _: &str| {
+            if p.contains("/protected/") {
+                Err(ToolError::Denied(format!("{p} is protected")))
+            } else {
+                Ok(())
+            }
+        };
+        let refused = PinnedSource::pin(&link.to_string_lossy(), "local_path", deny_protected);
+        assert!(matches!(refused, Err(ToolError::Denied(_))));
+        assert!(
+            PinnedSource::pin(&outside.to_string_lossy(), "local_path", deny_protected).is_ok()
+        );
     }
 
     #[test]
