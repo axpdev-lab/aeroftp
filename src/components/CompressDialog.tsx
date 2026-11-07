@@ -301,8 +301,16 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     const progress = useArchiveProgress(compressing);
     // Lock the modal while compressing: inert backdrop + confirm on X, so a stray
     // click can't abandon an in-flight big-file compression (same pattern as AeroSync,
-    // CrossProfile, AeroVault).
-    const guarded = useGuardedClose({ guard: compressing ? 'busy' : null, onClose });
+    // CrossProfile, AeroVault). Closing does not stop it (there is no abort), and the
+    // confirm says so. Before it starts, any option changed from the defaults (a
+    // password above all) keeps the backdrop inert and the X asks before dropping
+    // it (Discussion #1527).
+    const optionsChanged = !result && (
+        format !== 'zip' || archiveName !== defaultName || compressionLevel !== 5
+        || password !== '' || confirmPassword !== '' || encryptFileNames
+        || advMethod !== 'lzma2' || advDictionary !== undefined || advThreads !== undefined || advSolid
+    );
+    const guarded = useGuardedClose({ guard: compressing ? 'busy' : optionsChanged ? 'dirty' : null, onClose });
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {
@@ -409,12 +417,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label={t('compress.title')} onClick={(e) => {
-            // Once a password has been typed (encrypted archive) the backdrop is
-            // inert, so a stray click outside cannot discard it and force retyping.
-            // The X is the only way out then. Other states still close on click.
-            if (e.target === e.currentTarget && !password) guarded.requestBackdropClose();
-        }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/60" role="dialog" aria-modal="true" aria-label={t('compress.title')} onClick={guarded.onBackdropClick}>
             <div
                 {...modalDrag.panelProps}
                 className="compress-dialog rounded-lg shadow-2xl w-[600px] max-h-[90vh] flex flex-col animate-scale-in"
@@ -823,6 +826,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
             {guarded.confirmOpen && guarded.confirmKind && (
                 <GuardedCloseConfirm
                     kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
                     onKeep={guarded.cancelConfirm}
                     onConfirm={guarded.confirmAndClose}
                 />

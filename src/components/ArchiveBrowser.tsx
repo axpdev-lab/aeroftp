@@ -152,8 +152,15 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     // Real byte-true extract progress (>=10MB only); RAR reports indeterminate.
     const progress = useArchiveProgress(extracting !== null);
     // Lock the modal during an extraction so a stray click / reflexive X can't abandon
-    // a big-file extract mid-flight (same pattern as the compressor + AeroVault modals).
-    const guarded = useGuardedClose({ guard: extracting !== null ? 'busy' : null, onClose });
+    // a big-file extract mid-flight (same pattern as the compressor + AeroVault modals);
+    // closing does not stop it, and the confirm says so. A password typed in the prompt
+    // asks before it is dropped, and an archive opened with one is kept from the
+    // backdrop, so a stray click never forces retyping it (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: extracting !== null ? 'busy' : needsPassword && password !== '' ? 'dirty' : null,
+        onClose,
+        backdrop: !needsPassword && password !== '' ? 'never' : 'idle',
+    });
     const tempPreviewPathsRef = useRef<string[]>([]);
     const archivePasswordRef = useRef<HTMLInputElement>(null);
 
@@ -345,7 +352,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             role="dialog"
             aria-modal="true"
             aria-labelledby="archive-browser-title"
-            onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}
+            onClick={guarded.onBackdropClick}
         >
             <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[840px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
@@ -524,6 +531,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             {guarded.confirmOpen && guarded.confirmKind && (
                 <GuardedCloseConfirm
                     kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
                     onKeep={guarded.cancelConfirm}
                     onConfirm={guarded.confirmAndClose}
                 />

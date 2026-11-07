@@ -44,6 +44,8 @@ import { useTranslation } from '../../i18n';
 import { AEROAGENT_VERSION } from '../../utils/aeroagentVersion';
 import { createTauriListener } from '../../hooks/useTauriListener';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 import { AI_SETTINGS_EVENT, AI_SETTINGS_KEY, AI_SETTINGS_OPEN_EVENT, updateAiSettingsBlob } from '../../utils/aiSettingsStore';
 import { DirtyApiKeyEdits, mergeAiSettingsDraft } from '../../utils/aiSettingsDraft';
 
@@ -128,7 +130,7 @@ interface ModelEditModalProps {
 const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, provider, isNew, onSave, onClose }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const [formData, setFormData] = useState({
+    const [initialForm] = useState(() => ({
         name: model?.name || '',
         displayName: model?.displayName || '',
         maxTokens: model?.maxTokens || 4096,
@@ -138,6 +140,13 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, prov
         supportsVision: model?.supportsVision ?? false,
         supportsThinking: model?.supportsThinking ?? false,
         isEnabled: model?.isEnabled ?? true,
+    }));
+    const [formData, setFormData] = useState(initialForm);
+    // A click outside dropped the model being added or edited; while the form
+    // differs from what it opened with, only Cancel closes it (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: JSON.stringify(formData) !== JSON.stringify(initialForm) ? 'dirty' : null,
+        onClose,
     });
 
     const handleNameChange = (name: string) => {
@@ -175,7 +184,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, prov
 
     return (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label={t('ai.settings.modelEditorAria')}>
-            <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/60" onClick={guarded.requestBackdropClose} />
             <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-800 rounded-lg shadow-2xl w-full max-w-md p-6 animate-scale-in">
                 <h3 {...modalDrag.dragHandleProps} className="text-lg font-semibold mb-4 flex items-center gap-2 cursor-grab active:cursor-grabbing select-none">
                     <Cpu size={20} className="text-purple-400" />
@@ -318,6 +327,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     // Ollama pull model state
     const [pullModelName, setPullModelName] = useState('');
     const [isPulling, setIsPulling] = useState(false);
+    // Closing drops the pull progress while Ollama goes on downloading: the backdrop is inert during a pull and the
+    // X or Done asks first (Discussion #1527).
+    const guarded = useGuardedClose({ guard: isPulling ? 'busy' : null, onClose });
     const [pullProgress, setPullProgress] = useState<{
         status: string;
         percent: number;
@@ -915,7 +927,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
     return (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-4" role="dialog" aria-modal="true"
             data-gui-owned="settings" data-gui-area="ai" data-gui-safe={['providers', 'models', 'advanced'].includes(activeTab)}>
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
 
             <div {...modalDrag.panelProps} className="ai-settings-panel relative bg-gray-900 text-gray-100 rounded-lg shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col animate-scale-in">
                 {/* Header (drag handle: move the modal like the other draggable modals) */}
@@ -924,7 +936,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                         <Cpu className="text-purple-400" size={24} />
                         <h2 className="text-xl font-semibold">{t('ai.settings.title')}</h2>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-lg transition-colors">
+                    <button onClick={guarded.requestClose} className="p-2 hover:bg-gray-700 rounded-lg transition-colors">
                         <X size={20} />
                     </button>
                 </div>
@@ -2159,7 +2171,7 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                             })}
                         </span>
                     </div>
-                    <button onClick={onClose} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition-colors">
+                    <button onClick={guarded.requestClose} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg text-sm transition-colors">
                         {t('ai.settings.done')}
                     </button>
                 </div>
@@ -2254,6 +2266,9 @@ export const AISettingsPanel: React.FC<AISettingsPanelProps> = ({ isOpen, onClos
                     }
                 }}
             />
+            {guarded.confirmOpen && guarded.confirmKind && (
+              <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+            )}
         </div>
     );
 };

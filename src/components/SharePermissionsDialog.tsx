@@ -6,6 +6,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { X, UserPlus, Trash2, RefreshCw, Users } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface SharePermission {
   role: string;
@@ -35,6 +37,9 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
   const [newRole, setNewRole] = useState('reader');
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  // A share or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
+  // inert in both cases and the X asks first (Discussion #1527).
+  const guarded = useGuardedClose({ guard: adding || removing !== null ? 'busy' : newEmail.trim() ? 'dirty' : null, onClose });
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -96,7 +101,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[480px] max-h-[70vh] flex flex-col animate-scale-in"
@@ -108,7 +113,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
             <Users size={18} className="text-blue-500" />
             <h3 className="font-semibold text-sm">{t('sharing.title') || 'Sharing'}</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button onClick={guarded.requestClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X size={16} />
           </button>
         </div>
@@ -181,6 +186,9 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
           )}
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }

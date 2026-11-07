@@ -45,6 +45,7 @@ import {
   type PeerFriend, type PeerShareStarted, type PeerDriveAdded,
 } from '../../utils/aeroShare';
 import { copyText } from '../../utils/clipboard';
+import type { GuardKind } from '../../hooks/useGuardedClose';
 
 export type AeroShareMode = 'receive' | 'share' | 'contacts';
 
@@ -88,6 +89,10 @@ export interface AeroShareHandshakeBodyProps {
   /** Persist a peer-card edit. Required when editConnection is set; the host
    *  (ConnectionScreen) owns the saved-profile write. */
   onSaveEdit?: (values: { alias: string; localFolder: string; customIconUrl?: string }) => void | Promise<void>;
+  /** Tells a modal host what a close would lose: a handshake in flight
+   *  ('busy'), a pasted link or a typed recipient ('dirty'), and whether a
+   *  share link to send back is on screen (`keepResult`). */
+  onCloseGuardChange?: (guard: GuardKind | null, keepResult: boolean) => void;
 }
 
 interface PeerShareEvent {
@@ -170,6 +175,7 @@ export function AeroShareHandshakeBody({
   prefillShareFolder,
   editConnection,
   onSaveEdit,
+  onCloseGuardChange,
 }: AeroShareHandshakeBodyProps) {
   const t = useTranslation();
   const isPage = variant === 'page';
@@ -215,6 +221,16 @@ export function AeroShareHandshakeBody({
   const [shareError, setShareError] = useState('');
   const [shareResult, setShareResult] = useState<PeerShareStarted | null>(null);
   const [liveStatus, setLiveStatus] = useState('');
+
+  const closeGuard: GuardKind | null = recvPhase === 'working' || sharePhase === 'working'
+    ? 'busy'
+    : (recvPhase !== 'done' && link.trim() !== '') || (sharePhase !== 'done' && recipientAfid.trim() !== (prefillAfid ?? ''))
+      ? 'dirty'
+      : null;
+  const keepShareResult = sharePhase === 'done' && shareResult !== null;
+  useEffect(() => {
+    onCloseGuardChange?.(closeGuard, keepShareResult);
+  }, [onCloseGuardChange, closeGuard, keepShareResult]);
 
   // Load my AFID + saved friends on open. autoCreate so the receiver always
   // has an ID to show (handoff §2 step 1). Skipped in edit mode: it shows the
