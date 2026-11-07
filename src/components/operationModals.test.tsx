@@ -252,6 +252,27 @@ describe('CrossProfilePanel (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('answers ESC like the X: a ready plan closes, a running transfer asks first', async () => {
+        const onClose = vi.fn();
+        await planReady(onClose);
+        const execution = deferred<unknown>();
+        mocks.handlers.cross_profile_execute = () => execution.promise;
+        await click('transfer.crossProfile.executeTransfer');
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(true);
+        await click('modalGuard.wait');
+        expect(confirmOpen()).toBe(false);
+        expect(mocks.invoke).not.toHaveBeenCalledWith('cross_profile_cancel', expect.anything());
+    });
+
+    it('closes from ESC once a plan is shown', async () => {
+        const onClose = vi.fn();
+        await planReady(onClose);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('closes from the backdrop while only the setup is shown', async () => {
         const onClose = vi.fn();
         await open(onClose);
@@ -526,6 +547,20 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await click('common.close');
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers ESC like the X: an opened vault closes, an operation asks first', async () => {
+        const onClose = vi.fn();
+        vault('open');
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+        onClose.mockClear();
+        vault('open', true);
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(true);
     });
 
     it('closes from the backdrop on the home screen, unless an operation runs', async () => {

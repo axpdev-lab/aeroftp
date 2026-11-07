@@ -110,10 +110,12 @@ it('places all five named tools after Compare/Plan with one divider and mounts t
     }
     expect(invoke).toHaveBeenCalledWith('get_multi_path_config', { localPath: '/local', remotePath: '/remote' });
     expect(invoke).toHaveBeenCalledWith('get_sync_schedule_cmd');
-    // Embedded panes do not register the old child-dialog Escape callbacks.
+    // Embedded panes do not register the old child-dialog Escape callbacks:
+    // ESC switches no tab, and only the dialog's own ESC answers, closing it
+    // once (Discussion #1527 gave AeroSync its ESC).
     await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
     expect(tab('Scheduler').getAttribute('aria-selected')).toBe('true');
-    expect(props.onClose).not.toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalledTimes(1);
 });
 
 it('preserves an unsaved Multi-Path draft across tabs, and saves the displayed pair', async () => {

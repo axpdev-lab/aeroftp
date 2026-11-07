@@ -370,6 +370,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
         onClose,
         onAbort: phase === 'executing' ? handleCancel : undefined,
         backdrop: plan || summary ? 'never' : 'idle',
+        escape: true,
     });
 
     return (

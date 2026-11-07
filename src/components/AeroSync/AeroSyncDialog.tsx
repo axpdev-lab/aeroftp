@@ -92,6 +92,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             if (compareScanning) onStopCompare?.();
         },
         backdrop: context.compareResult ? 'never' : 'idle',
+        escape: isOpen,
     });
 
     // The settings the Plan and Sync tabs hold, kept alive across a tab switch

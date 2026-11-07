@@ -99,6 +99,29 @@ describe('useGuardedClose', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('answers ESC only for the modal opened last', () => {
+        const onUnder = vi.fn();
+        const onOver = vi.fn();
+        const Two = ({ over }: { over: boolean }) => {
+            useGuardedClose({ guard: null, onClose: onUnder, escape: true });
+            return over ? <Over /> : null;
+        };
+        const Over = () => {
+            useGuardedClose({ guard: null, onClose: onOver, escape: true });
+            return null;
+        };
+        // The panel opens first, the prompt over it later, as in the app.
+        act(() => root.render(<Two over={false} />));
+        act(() => root.render(<Two over />));
+        escape();
+        expect(onOver).toHaveBeenCalledTimes(1);
+        expect(onUnder).not.toHaveBeenCalled();
+        // Once the prompt over it is gone, the panel underneath answers again.
+        act(() => root.render(<Two over={false} />));
+        escape();
+        expect(onUnder).toHaveBeenCalledTimes(1);
+    });
+
     it('leaves ESC to an inner handler that took it', () => {
         render({ guard: null, escape: true });
         act(() => {

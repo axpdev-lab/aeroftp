@@ -67,6 +67,7 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         guard: state.loading ? 'busy' : null,
         onClose,
         backdrop: state.mode === 'home' ? 'idle' : 'never',
+        escape: true,
     });
 
     // Unified tabbed shell (owner-locked layout, 2026-06-24): the standalone intro
