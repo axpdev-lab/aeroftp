@@ -6694,7 +6694,9 @@
             "dirtyTitle": "Newidiadau heb eu cadw",
             "dirtyBody": "Mae gennych newidiadau heb eu cadw. Eu taflu a chau?",
             "keepEditing": "Parhau i olygu",
-            "discardAndClose": "Taflu a chau"
+            "discardAndClose": "Taflu a chau",
+            "busyBodyKeepsRunning": "Mae gweithrediad yn dal i redeg. Mae'n parhau ar ôl i'r ffenestr hon gau, ac nid yw'r canlyniad yn cael ei ddangos yma. Cau beth bynnag?",
+            "closeAnyway": "Cau beth bynnag"
         },
         "modalView": {
             "listView": "Golwg rhestr",

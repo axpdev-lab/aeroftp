@@ -6675,7 +6675,9 @@
             "dirtyTitle": "Mabadiliko hayajahifadhiwa",
             "dirtyBody": "Una mabadiliko ambayo hayajahifadhiwa. Tupa na funga?",
             "keepEditing": "Endelea kuhariri",
-            "discardAndClose": "Tupa na funga"
+            "discardAndClose": "Tupa na funga",
+            "busyBodyKeepsRunning": "Operesheni bado inaendelea. Itaendelea baada ya dirisha hili kufungwa, na matokeo yake hayataonyeshwa hapa. Funga hata hivyo?",
+            "closeAnyway": "Funga hata hivyo"
         },
         "modalView": {
             "listView": "Mwonekano wa orodha",

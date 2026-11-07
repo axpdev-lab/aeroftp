@@ -27,6 +27,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -70,6 +72,9 @@ jobs:
       - name: Snap stale-package audit reads every staged package
         run: node --test .github/scripts/test-snap-stale-packages.mjs
 
+      - name: Security report counts each OSV finding once across lockfiles
+        run: node --test .github/scripts/test-security-report.mjs
+
       # Two checks that read a git command through a command substitution,
       # which hides its exit status: each now fails when git does.
       - name: DCO check fails when git cannot read the commit range
@@ -77,6 +82,14 @@ jobs:
 
       - name: Emitter guard fails when git status fails
         run: python3 -m unittest discover -s .github/scripts -p test_aerorsync_emit_guard.py -v
+
+      # Workflow hardening: an action input reaches the shell as data, and no
+      # checkout leaves its token in .git/config for the steps after it.
+      - name: apt-install keeps the cache prefix literal and single-line
+        run: python3 .github/scripts/test-apt-cache-promotion.py -v
+
+      - name: Every checkout sets persist-credentials false
+        run: python3 -m unittest discover -s .github/scripts -p test_workflow_checkout_credentials.py -v
 
       # The snap gate's two passes, with stub snapcraft and unsquashfs: a gpu:
       # finding fails it, and a linter that never ran is UNVERIFIED, never OK.

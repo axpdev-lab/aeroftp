@@ -205,6 +205,9 @@ function wait(ms: number) {
 }
 
 interface MyServersPanelProps {
+    /** False while the panel stays mounted but out of sight (another hub tab,
+     *  or a session in the foreground). Default true. */
+    visible?: boolean;
     registerProfileConnector?: RegisterProfileConnector;
     onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string, scope?: ConnectScope) => void | Promise<void | ProfileConnectOutcome>;
     /** Run a connect phase under a cancel token so Esc / "still connecting"
@@ -259,6 +262,7 @@ const EMPTY_STATE_CATEGORIES: { id: CatalogCategoryId; labelKey: string; icon: R
 ];
 
 export function MyServersPanel({
+    visible = true,
     onConnect,
     registerProfileConnector,
     cancellableConnect,
@@ -2035,6 +2039,7 @@ export function MyServersPanel({
                     servers={servers}
                     initialServerId={speedTestTarget || undefined}
                     onClose={() => setSpeedTestTarget(false)}
+                    active={visible}
                 />
             )}
             {recoveryKitTarget && (

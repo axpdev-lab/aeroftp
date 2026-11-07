@@ -6675,7 +6675,9 @@
             "dirtyTitle": "Neuložené zmeny",
             "dirtyBody": "Máte neuložené zmeny. Zahodiť a zavrieť?",
             "keepEditing": "Pokračovať v úpravách",
-            "discardAndClose": "Zahodiť a zavrieť"
+            "discardAndClose": "Zahodiť a zavrieť",
+            "busyBodyKeepsRunning": "Operácia stále prebieha. Bude pokračovať aj po zavretí tohto okna a jej výsledok sa tu nezobrazí. Napriek tomu zavrieť?",
+            "closeAnyway": "Napriek tomu zavrieť"
         },
         "modalView": {
             "listView": "Zobrazenie zoznamu",

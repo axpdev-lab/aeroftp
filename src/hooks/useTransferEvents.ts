@@ -936,14 +936,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // Mark the queue item as failed
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
         if (queueId) {
-          transferQueue.failTransfer(queueId, cancelledMsg);
+          transferQueue.cancelTransfer(queueId, cancelledMsg);
           transferIdToQueueId.current.delete(data.transfer_id);
         }
         transferIdToDisplayPath.current.delete(data.transfer_id);
 
         cleanupTrackedTransferEntries(
           data.transfer_id,
-          (orphanQueueId) => transferQueue.failTransfer(orphanQueueId, cancelledMsg),
+          (orphanQueueId) => transferQueue.cancelTransfer(orphanQueueId, cancelledMsg),
           (orphanLogId) => activityLog.updateEntry(orphanLogId, { status: 'error', message: cancelledMsg })
         );
 

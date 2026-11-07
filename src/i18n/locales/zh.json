@@ -6675,7 +6675,9 @@
             "dirtyTitle": "未保存的更改",
             "dirtyBody": "您有未保存的更改。放弃并关闭？",
             "keepEditing": "继续编辑",
-            "discardAndClose": "放弃并关闭"
+            "discardAndClose": "放弃并关闭",
+            "busyBodyKeepsRunning": "操作仍在进行。关闭此窗口后它会继续运行，其结果不会在此处显示。仍要关闭吗？",
+            "closeAnyway": "仍然关闭"
         },
         "modalView": {
             "listView": "列表视图",

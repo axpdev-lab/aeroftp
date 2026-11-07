@@ -2737,6 +2737,35 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
     }
 }
 
+/// The login folder of the live connection, which a `~` Remote Path or
+/// Overlays Path (the rclone import writes `~/docs` for an SFTP `nas:docs`)
+/// is placed under. Only the session knows it: read as a path, `~/docs` was
+/// `/~/docs`, a folder nobody wrote to.
+#[tauri::command]
+pub async fn provider_login_folder(state: State<'_, ProviderState>) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    crate::crypt_overlay_provider::login_folder(&mut **provider).await
+}
+
+/// The connect's start folder as the absolute folder it opened, for the
+/// window to list once: a relative `docs` listed as given resolved against
+/// the folder the connect had already opened (`docs/docs`). See
+/// [`crate::crypt_overlay_provider::place_start_folder`].
+#[tauri::command]
+pub async fn provider_start_folder(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    crate::crypt_overlay_provider::place_start_folder(&mut **provider, &path).await
+}
+
 /// How long the liveness probe may take, its listing included. A server that
 /// does not answer in time counts as not alive: the switch then falls back to a real
 /// reconnect, whose listing has a spinner and a Cancel, instead of waiting on
@@ -5939,6 +5968,44 @@ fn unverified_parent_error<'a>(
     unverified_dirs.get(parent)
 }
 
+/// Whether the upload's root folder is there after its mkdir failed. The
+/// error variant says so when the provider maps it (`AlreadyExists`); any
+/// other error is checked by looking at the path. The message is not read:
+/// it is the server's or the OS's text, often translated, and the old
+/// substring checks went both ways wrong ("existiert nicht" and "no existe"
+/// contain "exist", so a missing parent was ignored; "esiste già" does not,
+/// so an existing folder failed the upload). #1506 row 164.
+async fn folder_is_there_after_failed_mkdir(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+    err: &ProviderError,
+) -> bool {
+    // Only a directory of exactly this name lets the upload go on: an
+    // `AlreadyExists` can name a file of that name (MEGA native), a stat can
+    // answer for another letter case (Drime), and a stat that fails says
+    // nothing either way (CodeRabbit, #1520). A stat that does not confirm
+    // it is followed by one listing of the parent.
+    let _ = err;
+    let leaf = path
+        .trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or_default();
+    if let Ok(entry) = provider.stat(path).await {
+        if entry.is_dir && (entry.name.is_empty() || entry.name == leaf) {
+            return true;
+        }
+    }
+    let parent = match path.trim_end_matches('/').rsplit_once('/') {
+        Some(("", _)) | None => "/".to_string(),
+        Some((parent, _)) => parent.to_string(),
+    };
+    matches!(
+        provider.list(&parent).await,
+        Ok(entries) if entries.iter().any(|entry| entry.is_dir && entry.name == leaf)
+    )
+}
+
 async fn provider_upload_folder_inner(
     app: &AppHandle,
     state: &State<'_, ProviderState>,
@@ -6004,26 +6071,19 @@ async fn provider_upload_folder_inner(
             .as_mut()
             .ok_or("Not connected to any provider")?;
 
-        if is_plain_github_provider(provider.as_mut()) {
+        let created = if is_plain_github_provider(provider.as_mut()) {
             let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
                 .as_any_mut()
                 .downcast_mut::<crate::providers::github::GitHubProvider>()
                 .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-            if let Err(e) = github
+            github
                 .create_directory(remote_path, commit_message.as_deref())
                 .await
-            {
-                let err_str = e.to_string().to_lowercase();
-                if !err_str.contains("exist")
-                    && !err_str.contains("409")
-                    && !err_str.contains("already")
-                {
-                    return Err(format!("Failed to create directory: {}", e));
-                }
-            }
-        } else if let Err(e) = provider.mkdir(remote_path).await {
-            let err_str = e.to_string().to_lowercase();
-            if !err_str.contains("exist") && !err_str.contains("409") && !err_str.contains("550") {
+        } else {
+            provider.mkdir(remote_path).await
+        };
+        if let Err(e) = created {
+            if !folder_is_there_after_failed_mkdir(provider.as_mut(), remote_path, &e).await {
                 return Err(format!("Failed to create directory: {}", e));
             }
         }
@@ -17744,6 +17804,235 @@ mod tests {
         }
         fn peak(&self) -> usize {
             self.peak.load(Ordering::SeqCst)
+        }
+    }
+
+    /// A provider whose mkdir fails with a given error and whose folder is
+    /// or is not there, for `folder_is_there_after_failed_mkdir`.
+    struct MkdirRefusal {
+        folder: Option<bool>,
+        stat_supported: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for MkdirRefusal {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "mkdir-refusal".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(match self.folder {
+                Some(true) => vec![RemoteEntry::directory("up".to_string(), "/up".to_string())],
+                Some(false) => vec![RemoteEntry::file("up".to_string(), "/up".to_string(), 1)],
+                None => Vec::new(),
+            })
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            if !self.stat_supported {
+                return Err(ProviderError::NotSupported("stat".to_string()));
+            }
+            match self.folder {
+                Some(true) => Ok(RemoteEntry::directory("up".to_string(), path.to_string())),
+                Some(false) => Ok(RemoteEntry::file("up".to_string(), path.to_string(), 1)),
+                None => Err(ProviderError::NotFound(path.to_string())),
+            }
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(self.folder.is_some())
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("mkdir-refusal".to_string())
+        }
+    }
+
+    /// #1506 row 164: after a failed mkdir of the upload's root folder, the
+    /// upload goes on only when the folder is there. Decided by the error
+    /// variant or by looking, never by the message, which is translated: the
+    /// old substring check took a German or Spanish "does not exist" for
+    /// "already exists" and an Italian "already exists" (also the Windows
+    /// OS text) for a failure.
+    #[tokio::test]
+    async fn a_failed_mkdir_is_judged_by_the_folder_not_by_its_message() {
+        let io = |text: &str| ProviderError::IoError(std::io::Error::other(text.to_string()));
+        let cases: Vec<(&str, ProviderError, Option<bool>, bool, bool)> = vec![
+            // (case, mkdir error, folder there?, stat supported, upload goes on)
+            (
+                "de, missing parent",
+                ProviderError::ServerError("Übergeordnetes Verzeichnis existiert nicht".into()),
+                None,
+                true,
+                false,
+            ),
+            (
+                "es, missing parent",
+                ProviderError::ServerError("La carpeta principal no existe".into()),
+                None,
+                true,
+                false,
+            ),
+            (
+                "en, missing parent",
+                ProviderError::ServerError("Parent folder does not exist".into()),
+                None,
+                true,
+                false,
+            ),
+            (
+                "it, already there",
+                ProviderError::ServerError(
+                    "Esiste già un file o una cartella con quel nome".into(),
+                ),
+                Some(true),
+                true,
+                true,
+            ),
+            (
+                "Windows it, os error 183",
+                io("Impossibile creare un file, se il file esiste già. (os error 183)"),
+                Some(true),
+                true,
+                true,
+            ),
+            (
+                "FTP 550, refused",
+                ProviderError::ServerError("550 Zugriff verweigert".into()),
+                None,
+                true,
+                false,
+            ),
+            (
+                "a file of that name",
+                ProviderError::ServerError("409 Conflict".into()),
+                Some(false),
+                true,
+                false,
+            ),
+            // GitHub has no folders: mkdir PUTs a `.gitkeep`, refused (422)
+            // when it is there, and `stat` answers a directory from the
+            // Contents API.
+            (
+                "GitHub, existing folder",
+                ProviderError::ServerError(
+                    "422 Unprocessable Entity: \"sha\" wasn't supplied".into(),
+                ),
+                Some(true),
+                true,
+                true,
+            ),
+            (
+                "typed AlreadyExists, a folder",
+                ProviderError::AlreadyExists("/up".into()),
+                Some(true),
+                true,
+                true,
+            ),
+            // CodeRabbit (#1520): AlreadyExists for a file of that name is no
+            // folder to upload into, nor is an AlreadyExists nothing confirms.
+            (
+                "typed AlreadyExists, a file",
+                ProviderError::AlreadyExists("/up".into()),
+                Some(false),
+                true,
+                false,
+            ),
+            (
+                "typed AlreadyExists, nothing there",
+                ProviderError::AlreadyExists("/up".into()),
+                None,
+                true,
+                false,
+            ),
+            (
+                "no stat, a file of that name",
+                ProviderError::ServerError("Ordner bereits vorhanden".into()),
+                Some(false),
+                false,
+                false,
+            ),
+            (
+                "no stat, folder there",
+                ProviderError::ServerError("Ordner bereits vorhanden".into()),
+                Some(true),
+                false,
+                true,
+            ),
+        ];
+        for (case, err, folder, stat_supported, goes_on) in cases {
+            let mut provider = MkdirRefusal {
+                folder,
+                stat_supported,
+            };
+            assert_eq!(
+                super::folder_is_there_after_failed_mkdir(&mut provider, "/up", &err).await,
+                goes_on,
+                "{case}: {err}"
+            );
         }
     }
 

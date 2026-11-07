@@ -224,6 +224,7 @@ fn basename(path: &str) -> Result<&str, ProviderError> {
 }
 
 /// A failed command as the error the caller can act on.
+// Kept as text (#1506 row 164): POSIX tools exit 1 for every refusal; the remote runs under LC_ALL=C, which pins the wording.
 fn command_error(what: &str, path: &str, out: &Output) -> ProviderError {
     let msg = out.stderr_text();
     // `Permission denied` first: an unreadable operand can print both, and

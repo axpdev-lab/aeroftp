@@ -6675,7 +6675,9 @@
             "dirtyTitle": "Neuložené změny",
             "dirtyBody": "Máte neuložené změny. Zahodit a zavřít?",
             "keepEditing": "Pokračovat v úpravách",
-            "discardAndClose": "Zahodit a zavřít"
+            "discardAndClose": "Zahodit a zavřít",
+            "busyBodyKeepsRunning": "Operace stále probíhá. Bude pokračovat i po zavření tohoto okna a její výsledek se zde nezobrazí. Přesto zavřít?",
+            "closeAnyway": "Přesto zavřít"
         },
         "modalView": {
             "listView": "Zobrazení seznamu",

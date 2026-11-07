@@ -40,7 +40,7 @@ import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, modeLabel, r
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
-import { isValidOverlayScope, normalizeRemotePath, resolveOverlayScope } from '../utils/overlayScope';
+import { isValidOverlayScope, loginRelativeForm, normalizeOverlayAnchor, resolveOverlayScope } from '../utils/overlayScope';
 import { overlayEditDiffers } from '../utils/overlayEditDiff';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
@@ -515,10 +515,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Validate the RESOLVED scope: a bare subfolder name is nested under the
         // Remote Path (#369 relative UX), so it is always in scope and the error
         // never fires for normal input; the guard only survives as a safety net.
-        const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
+        const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir, protocol), quickConnectDirs.remoteDir, protocol);
         setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [overlaysRemotePath, quickConnectDirs.remoteDir, t]);
+    }, [overlaysRemotePath, quickConnectDirs.remoteDir, protocol, t]);
 
     // The overlay section back to the fresh-form default. A profile made after
     // an edit session must not inherit that session's overlay: its locked
@@ -1010,10 +1010,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // land somewhere else. It stays editable, with one rule: it must remain the
     // Overlays Path or one of its parents, otherwise the encrypted folder would
     // sit outside the session and the vault would look empty.
-    const pinnedOverlayAnchor = overlayFieldsLocked ? normalizeRemotePath(overlaysRemotePath) : '';
+    const pinnedOverlayAnchor = overlayFieldsLocked ? normalizeOverlayAnchor(overlaysRemotePath) : '';
     const remotePathEscapesOverlay =
         !!pinnedOverlayAnchor
-        && !isValidOverlayScope(pinnedOverlayAnchor, quickConnectDirs.remoteDir);
+        && !isValidOverlayScope(pinnedOverlayAnchor, quickConnectDirs.remoteDir, protocol);
     // Node 2: enabling an overlay on an EXISTING profile that had none means its
     // remote may already hold plaintext files; those stay unencrypted and render
     // as an undecryptable mix under the overlay. Warn (do not block: a brand-new
@@ -1105,7 +1105,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // so it persists identically to how the backend reads it. A blank
                 // or "/" scope collapses to '' and falls back to the Remote Path,
                 // preserving today's behavior and every existing profile (#369).
-                remoteScope: resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir),
+                remoteScope: resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir, protocol),
                 localScope: quickConnectDirs.localDir || '',
                 filenameEncryption: isRclone ? aeroCryptFilenameEnc : 'standard',
                 ...(isRclone ? { directoryNameEncryption: aeroCryptDirNameEnc } : {}),
@@ -1849,6 +1849,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     directoryNameEncryption: aeroCryptDirNameEnc,
                     overlaysRemotePath,
                     remoteDir: quickConnectDirs.remoteDir || '',
+                    protocol,
                     password: aeroCryptPassword,
                     salt: aeroCryptSalt,
                     keyfilePath: aeroCryptKeyfilePath,
@@ -2342,7 +2343,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // Remote Path". The Remote Path is editable from here on, and a
                 // blank anchor would silently follow it and orphan the encrypted
                 // data; pinning it makes the anchor independent of that edit.
-                setOverlaysRemotePath(overlayBinding.remoteScope || profileRemote);
+                // On SFTP and SCP a relative Remote Path is under the login folder.
+                setOverlaysRemotePath(overlayBinding.remoteScope || loginRelativeForm(profileRemote, profile.protocol));
             } else {
                 setOverlaysRemotePath('');
             }
@@ -3162,7 +3164,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onChange={(e) => {
                                     const v = e.target.value;
                                     setOverlaysRemotePath(v);
-                                    const valid = isValidOverlayScope(resolveOverlayScope(v, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
+                                    const valid = isValidOverlayScope(resolveOverlayScope(v, quickConnectDirs.remoteDir, protocol), quickConnectDirs.remoteDir, protocol);
                                     setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
                                 }}
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"

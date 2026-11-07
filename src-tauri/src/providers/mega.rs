@@ -116,6 +116,24 @@ impl MegaCmdProvider {
         }
     }
 
+    /// The outcome MEGAcmd states with its exit status, where that is
+    /// enough to classify. The codes are MEGAcmd's own
+    /// (`src/megacmdcommonutils.h`: MCMD_NOTFOUND = -53, MCMD_NOTPERMITTED
+    /// = -56, MCMD_NOTLOGGEDIN = -57, MCMD_EXISTS = -64), and the client exits
+    /// with the positive value on every platform (`megacmdclient.cpp`: "do
+    /// always return positive error codes"). The text is read only for the
+    /// other codes: a path quoted in the message ("/not found/a.txt")
+    /// classified a refusal as a missing file. #1506 row 164.
+    fn classify_mega_exit(code: Option<i32>, stderr: &str) -> Option<ProviderError> {
+        Some(match code? {
+            53 => ProviderError::NotFound(stderr.to_string()),
+            56 => ProviderError::PermissionDenied(stderr.to_string()),
+            57 => ProviderError::AuthenticationFailed(format!("MEGAcmd: {}", stderr)),
+            64 => ProviderError::AlreadyExists(stderr.to_string()),
+            _ => return None,
+        })
+    }
+
     /// Classify MEGAcmd stderr into typed ProviderError (ERR-01).
     fn classify_mega_error(stderr: &str) -> ProviderError {
         let lower = stderr.to_lowercase();
@@ -151,6 +169,7 @@ impl MegaCmdProvider {
     }
 
     /// Check if an error is transient and worth retrying (ERR-02).
+    // Kept as text (#1506 row 164): MEGAcmd has no exit status for a transient failure.
     fn is_transient_error(stderr: &str) -> bool {
         let lower = stderr.to_lowercase();
         lower.contains("temporarily unavailable")
@@ -279,6 +298,12 @@ impl MegaCmdProvider {
                 err_msg
             };
             self.log_debug(&format!("[CMD FAILURE] {}", final_err));
+
+            // A stated outcome (not found, not permitted, not logged in,
+            // exists) is final and never retried as transient.
+            if let Some(stated) = Self::classify_mega_exit(output.status.code(), &final_err) {
+                return Err(stated);
+            }
 
             // ERR-02: Retry on transient errors
             if Self::is_transient_error(&final_err) && attempt < MAX_RETRIES {
@@ -1305,8 +1330,12 @@ impl StorageProvider for MegaCmdProvider {
             Ok(out) => out,
             Err(e) => {
                 let err_msg = e.to_string();
-                // If already exported, remove old link and re-export
-                if err_msg.contains("already exported") {
+                // If already exported, remove old link and re-export. The
+                // typed AlreadyExists (exit status 64, MCMD_EXISTS) decides
+                // first; the phrase stays for a client that exits otherwise.
+                if matches!(e, ProviderError::AlreadyExists(_))
+                    || err_msg.contains("already exported")
+                {
                     tracing::info!(target: "mega", "Link already exported, re-exporting: {}", abs_path);
                     let _ = self
                         .run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path])
@@ -1769,6 +1798,100 @@ mod tests {
         assert!(
             matches!(never, Err(ProviderError::NotConnected)),
             "nor must a session that was never opened: {never:?}"
+        );
+    }
+
+    /// #1506 row 164 (Greptile, #1520): an export refused with exit 64
+    /// (MCMD_EXISTS) in words no phrase knows removes the old link and
+    /// returns the new one.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_share_link_refused_as_existing_by_exit_status_is_made_again() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("mega-export");
+        std::fs::write(
+            &script,
+            concat!(
+                "#!/bin/sh\n",
+                "d=$(dirname \"$0\")\n",
+                "echo \"$1\" >> \"$d/calls.log\"\n",
+                "if [ \"$1\" = -d ]; then rm -f \"$d/exported\"; exit 0; fi\n",
+                "if [ -e \"$d/exported\" ]; then echo 'Ya existe un enlace' >&2; exit 64; fi\n",
+                "touch \"$d/exported\"\n",
+                "echo \"Exported $2: https://mega.nz/file/AbC#key\"\n",
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.path().join("exported"), b"").unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let link = provider
+            .create_share_link("/doc.pdf", ShareLinkOptions::default())
+            .await
+            .expect("re-exported");
+        assert_eq!(link.url, "https://mega.nz/file/AbC#key");
+        let calls = std::fs::read_to_string(dir.path().join("calls.log")).unwrap();
+        assert_eq!(calls.lines().collect::<Vec<_>>(), ["-a", "-d", "-a"]);
+    }
+
+    /// #1506 row 164: MEGAcmd's exit status classifies before its text. A
+    /// stand-in exits with each code and a message that would mislead the
+    /// text checks (a quoted path, wording no needle knows).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn megacmd_exit_codes_classify_before_the_message() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("mega-exit");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\ncat \"$(dirname \"$0\")/stderr.txt\" >&2\nexit $(cat \"$(dirname \"$0\")/code.txt\")\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let run = |code: &str, stderr: &str| {
+            std::fs::write(dir.path().join("code.txt"), code).unwrap();
+            std::fs::write(dir.path().join("stderr.txt"), stderr).unwrap();
+        };
+
+        run("56", "[err: Operation not allowed] /not found/a.txt");
+        let refused = provider.run_mega_cmd("mega-exit", &[]).await;
+        assert!(
+            matches!(refused, Err(ProviderError::PermissionDenied(_))),
+            "{refused:?}"
+        );
+
+        run("53", "[API:err: 2026-11-06] Ressource introuvable: /x");
+        let missing = provider.run_mega_cmd("mega-exit", &[]).await;
+        assert!(
+            matches!(missing, Err(ProviderError::NotFound(_))),
+            "{missing:?}"
+        );
+
+        run("57", "Sitzung abgelaufen");
+        let signed_out = provider.run_mega_cmd("mega-exit", &[]).await;
+        assert!(
+            matches!(signed_out, Err(ProviderError::AuthenticationFailed(_))),
+            "{signed_out:?}"
+        );
+
+        run("64", "Esiste già: /d");
+        let exists = provider.run_mega_cmd("mega-exit", &[]).await;
+        assert!(
+            matches!(exists, Err(ProviderError::AlreadyExists(_))),
+            "{exists:?}"
+        );
+
+        // Any other code still goes by the text, as before.
+        run("1", "Couldn't find /y");
+        let by_text = provider.run_mega_cmd("mega-exit", &[]).await;
+        assert!(
+            matches!(by_text, Err(ProviderError::NotFound(_))),
+            "{by_text:?}"
         );
     }
 

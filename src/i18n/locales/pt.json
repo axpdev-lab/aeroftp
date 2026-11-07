@@ -6675,7 +6675,9 @@
             "dirtyTitle": "Alterações não salvas",
             "dirtyBody": "Você tem alterações não salvas. Descartar e fechar?",
             "keepEditing": "Continuar editando",
-            "discardAndClose": "Descartar e fechar"
+            "discardAndClose": "Descartar e fechar",
+            "busyBodyKeepsRunning": "Há uma operação em curso. Continua depois de fechar esta janela e o seu resultado não é mostrado aqui. Fechar mesmo assim?",
+            "closeAnyway": "Fechar mesmo assim"
         },
         "modalView": {
             "listView": "Visualização de lista",

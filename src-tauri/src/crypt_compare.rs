@@ -228,6 +228,7 @@ pub fn normalize_remote_entries(
 
 /// Overlay binding fields the CLI / MCP need to unlock crypt-compare keys
 /// outside the GUI (the GUI already has unlocked vault state).
+#[derive(Clone)]
 pub struct OverlayUnlockParams {
     /// "rclone-crypt" or "aerocrypt".
     pub kind: String,

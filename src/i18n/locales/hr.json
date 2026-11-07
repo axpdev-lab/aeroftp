@@ -6675,7 +6675,9 @@
             "dirtyTitle": "Nespremljene promjene",
             "dirtyBody": "Imate nespremljene promjene. Odbaciti i zatvoriti?",
             "keepEditing": "Nastavi uređivanje",
-            "discardAndClose": "Odbaci i zatvori"
+            "discardAndClose": "Odbaci i zatvori",
+            "busyBodyKeepsRunning": "Operacija je još u tijeku. Nastavit će se nakon zatvaranja ovog prozora, a njezin rezultat neće biti prikazan ovdje. Ipak zatvoriti?",
+            "closeAnyway": "Ipak zatvori"
         },
         "modalView": {
             "listView": "Prikaz popisa",

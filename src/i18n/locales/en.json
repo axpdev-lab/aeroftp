@@ -9,8 +9,10 @@
         "modalGuard": {
             "busyTitle": "Operation in progress",
             "busyBody": "An operation is still running. Stop it and close, or keep it running?",
+            "busyBodyKeepsRunning": "An operation is still running. It goes on after this window closes, and its result is not shown here. Close anyway?",
             "wait": "Keep running",
             "stopAndClose": "Stop and close",
+            "closeAnyway": "Close anyway",
             "dirtyTitle": "Unsaved changes",
             "dirtyBody": "You have unsaved changes. Discard them and close?",
             "keepEditing": "Keep editing",

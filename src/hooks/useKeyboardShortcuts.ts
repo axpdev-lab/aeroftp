@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import React, { useEffect, useRef } from 'react';
+import { isEscapeClaimed } from './useGuardedClose';
 
 type KeyHandler = (e: KeyboardEvent) => void;
 
@@ -88,6 +89,11 @@ export const useKeyboardShortcuts = (config: ShortcutConfig, deps: React.Depende
 
             // Debug
             // console.log('Key pressed:', combo);
+
+            // An open modal answers ESC itself (useGuardedClose); taking the
+            // key here would close what is underneath it, or swallow it
+            // (Discussion #1527).
+            if (combo === 'Escape' && isEscapeClaimed()) return;
 
             const handler = configRef.current[combo];
             if (handler) {

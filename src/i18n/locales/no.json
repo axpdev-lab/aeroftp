@@ -6694,7 +6694,9 @@
             "dirtyTitle": "Ulagrede endringer",
             "dirtyBody": "Du har ulagrede endringer. Forkast og lukk?",
             "keepEditing": "Fortsett redigering",
-            "discardAndClose": "Forkast og lukk"
+            "discardAndClose": "Forkast og lukk",
+            "busyBodyKeepsRunning": "En operasjon pågår fortsatt. Den fortsetter etter at dette vinduet er lukket, og resultatet vises ikke her. Lukk likevel?",
+            "closeAnyway": "Lukk likevel"
         },
         "modalView": {
             "listView": "Listevisning",

@@ -6675,7 +6675,9 @@
             "dirtyTitle": "Nesaglabātas izmaiņas",
             "dirtyBody": "Tev ir nesaglabātas izmaiņas. Atmest un aizvērt?",
             "keepEditing": "Turpināt rediģēšanu",
-            "discardAndClose": "Atmest un aizvērt"
+            "discardAndClose": "Atmest un aizvērt",
+            "busyBodyKeepsRunning": "Darbība joprojām notiek. Tā turpināsies pēc šī loga aizvēršanas, un tās rezultāts šeit netiks rādīts. Tomēr aizvērt?",
+            "closeAnyway": "Tomēr aizvērt"
         },
         "modalView": {
             "listView": "Saraksta skats",

@@ -6835,6 +6835,28 @@ async fn delete_local_file(
     result
 }
 
+/// Whether a local delete of `path` walks into it as a folder: only a real
+/// directory, never a link to one (`symlink_metadata` does not follow it).
+fn local_delete_walks_into(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
+}
+
+/// Remove a file, or a link as itself. Windows removes a link to a folder
+/// (a directory symlink or junction) with `remove_dir`, which does not touch
+/// the target; elsewhere `remove_file` removes any link.
+async fn remove_local_file_or_link(path: &std::path::Path) -> std::io::Result<()> {
+    match tokio::fs::remove_file(path).await {
+        Err(err)
+            if cfg!(windows)
+                && std::fs::symlink_metadata(path)
+                    .is_ok_and(|meta| meta.file_type().is_symlink()) =>
+        {
+            tokio::fs::remove_dir(path).await.map_err(|_| err)
+        }
+        other => other,
+    }
+}
+
 async fn delete_local_file_inner(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -6848,7 +6870,10 @@ async fn delete_local_file_inner(
         .unwrap_or_else(|| path.clone());
 
     let delete_id = format!("del-local-{}", chrono::Utc::now().timestamp_millis());
-    let is_dir = path_buf.is_dir();
+    // `is_dir()` follows a link: deleting a link to a folder walked the
+    // target and deleted its files, outside what the user selected
+    // (deep-scan 38). A link is deleted as itself.
+    let is_dir = local_delete_walks_into(&path_buf);
 
     if !is_dir {
         // Single file delete
@@ -6867,7 +6892,7 @@ async fn delete_local_file_inner(
             },
         );
 
-        match tokio::fs::remove_file(&path).await {
+        match remove_local_file_or_link(&path_buf).await {
             Ok(_) => {
                 crate::transfer_event_sink::emit_gui_transfer_event(
                     &app,
@@ -7191,8 +7216,37 @@ async fn copy_then_delete_local(
     from: &std::path::Path,
     to: &std::path::Path,
 ) -> Result<(), String> {
-    if from.is_dir() {
-        copy_dir_recursive(from, to, 0).await?;
+    // What stands at the destination is replaced as rename replaces it: a
+    // link there is removed as itself, never written through to the file it
+    // names (deep-scan 39, 40).
+    if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        remove_local_file_or_link(to)
+            .await
+            .map_err(|e| format!("Failed to replace the link at the destination: {}", e))?;
+    }
+    let source = std::fs::symlink_metadata(from)
+        .map_err(|e| format!("Failed to read the source of a cross-device move: {}", e))?;
+    // A link is moved as rename moves it: the same link at the destination,
+    // never a copy of what it points to.
+    if source.file_type().is_symlink() {
+        let target = tokio::fs::read_link(from)
+            .await
+            .map_err(|e| format!("Failed to read the link for a cross-device move: {}", e))?;
+        if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.is_file()) {
+            tokio::fs::remove_file(to)
+                .await
+                .map_err(|e| format!("Failed to replace the destination: {}", e))?;
+        }
+        recreate_link(&source, &target, to).await?;
+        remove_local_file_or_link(from)
+            .await
+            .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
+        return Ok(());
+    }
+    if local_delete_walks_into(from) {
+        // The links inside the folder move with it, as rename moves them: the
+        // copy recreates each, and the source is removed only after.
+        copy_dir_recursive(from, to, 0, NestedLinks::Recreate).await?;
         tokio::fs::remove_dir_all(from)
             .await
             .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
@@ -7249,7 +7303,7 @@ async fn rename_local_file_inner(
     // (cross-panel move, inline/batch rename), refuse if `to` already exists so
     // the frontend can prompt. Existing callers omit the flag -> None -> preserve
     // the historical overwrite behavior. (CLAUDE-AV-B1-10)
-    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+    if overwrite == Some(false) && local_entry_present(std::path::Path::new(&to)) {
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
 
@@ -7277,12 +7331,13 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
     }
     // See rename_local_file: refuse a silent overwrite when the caller opts out.
     // (CLAUDE-AV-B1-10)
-    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+    if overwrite == Some(false) && local_entry_present(std::path::Path::new(&to)) {
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
+    refuse_link_destination(std::path::Path::new(&to))?;
     if from_path.is_dir() {
         // Recursive directory copy
-        copy_dir_recursive(from_path, std::path::Path::new(&to), 0).await?;
+        copy_dir_recursive(from_path, std::path::Path::new(&to), 0, NestedLinks::Skip).await?;
     } else {
         tokio::fs::copy(&from, &to)
             .await
@@ -7291,14 +7346,68 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
     Ok(())
 }
 
+/// Whether anything is at `path`, a dangling link included: `exists()`
+/// follows a link and says false for one whose target is gone, and a copy
+/// with no overwrite then wrote through it (deep-scan 40).
+fn local_entry_present(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+/// A local copy never writes through a link at its destination: the data
+/// would land wherever the link points, outside the chosen folder
+/// (deep-scan 39, 40). The link is reported instead.
+fn refuse_link_destination(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => Err(format!(
+            "Refusing to write through a link at the destination: {}",
+            path.display()
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// What a folder copy does with a link inside the tree: a copy skips it, as
+/// it always has; a cross-device move recreates it as the same link, since
+/// the source is deleted afterwards and the link would otherwise be lost.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NestedLinks {
+    Skip,
+    Recreate,
+}
+
+/// Make at `to` the same link as the one `source` describes, pointing at `target`.
+async fn recreate_link(
+    source: &std::fs::Metadata,
+    target: &std::path::Path,
+    to: &std::path::Path,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    let made = {
+        let _ = source;
+        tokio::fs::symlink(target, to).await
+    };
+    #[cfg(windows)]
+    let made = {
+        use std::os::windows::fs::FileTypeExt;
+        if source.file_type().is_symlink_dir() {
+            tokio::fs::symlink_dir(target, to).await
+        } else {
+            tokio::fs::symlink_file(target, to).await
+        }
+    };
+    made.map_err(|e| format!("Failed to recreate the link for a cross-device move: {}", e))
+}
+
 async fn copy_dir_recursive(
     src: &std::path::Path,
     dst: &std::path::Path,
     depth: u32,
+    links: NestedLinks,
 ) -> Result<(), String> {
     if depth > 50 {
         return Err("Directory nesting too deep (max 50 levels)".to_string());
     }
+    refuse_link_destination(dst)?;
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|e| format!("Failed to create directory: {}", e))?;
@@ -7317,18 +7426,183 @@ async fn copy_dir_recursive(
             .await
             .map_err(|e| format!("Failed to read metadata: {}", e))?;
         if metadata.is_symlink() {
-            // Skip symlinks for security
+            // A copy skips links for security; a move keeps them as links,
+            // never by copying what they point to.
+            if links == NestedLinks::Recreate {
+                refuse_link_destination(&dst_path)?;
+                let target = tokio::fs::read_link(&src_path)
+                    .await
+                    .map_err(|e| format!("Failed to read link: {}", e))?;
+                recreate_link(&metadata, &target, &dst_path).await?;
+            }
             continue;
         }
         if metadata.is_dir() {
-            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1)).await?;
+            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1, links)).await?;
         } else {
+            refuse_link_destination(&dst_path)?;
             tokio::fs::copy(&src_path, &dst_path)
                 .await
                 .map_err(|e| format!("Failed to copy file: {}", e))?;
         }
     }
     Ok(())
+}
+
+/// Deep-scan 38, 39, 40: local delete and copy never act through a link.
+#[cfg(all(test, unix))]
+mod local_link_tests {
+    use super::{
+        copy_dir_recursive, copy_local_file, copy_then_delete_local, local_delete_walks_into,
+        remove_local_file_or_link,
+    };
+
+    /// Deep-scan 39, 40: a folder moved across devices arrives with the links
+    /// inside it, as links, and their targets are left alone; a copy still
+    /// skips them.
+    #[tokio::test]
+    async fn a_cross_device_folder_move_keeps_the_links_inside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+        let from = dir.path().join("from");
+        std::fs::create_dir_all(from.join("sub")).unwrap();
+        std::fs::write(from.join("plain.txt"), b"plain").unwrap();
+        std::os::unix::fs::symlink(&target, from.join("sub/file_link")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, from.join("dir_link")).unwrap();
+
+        let copied = dir.path().join("copied");
+        copy_dir_recursive(&from, &copied, 0, super::NestedLinks::Skip)
+            .await
+            .unwrap();
+        assert!(std::fs::symlink_metadata(copied.join("sub/file_link")).is_err());
+
+        let to = dir.path().join("to");
+        copy_then_delete_local(&from, &to).await.unwrap();
+        assert!(std::fs::symlink_metadata(&from).is_err());
+        assert_eq!(std::fs::read(to.join("plain.txt")).unwrap(), b"plain");
+        assert_eq!(
+            std::fs::read_link(to.join("sub/file_link")).unwrap(),
+            target
+        );
+        assert_eq!(std::fs::read_link(to.join("dir_link")).unwrap(), elsewhere);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+        assert!(elsewhere.is_dir());
+    }
+
+    /// Deep-scan 39, 40: the cross-device move keeps a link a link, and
+    /// replaces a link at the destination instead of writing through it.
+    #[tokio::test]
+    async fn a_cross_device_move_moves_links_as_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let folder = dir.path().join("folder");
+        std::fs::create_dir(&folder).unwrap();
+
+        let file_link = dir.path().join("file_link");
+        std::os::unix::fs::symlink(&target, &file_link).unwrap();
+        let moved = dir.path().join("moved_file_link");
+        copy_then_delete_local(&file_link, &moved).await.unwrap();
+        assert!(std::fs::symlink_metadata(&file_link).is_err());
+        assert!(std::fs::symlink_metadata(&moved)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_link(&moved).unwrap(), target);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+
+        let dir_link = dir.path().join("dir_link");
+        std::os::unix::fs::symlink(&folder, &dir_link).unwrap();
+        let moved_dir = dir.path().join("moved_dir_link");
+        copy_then_delete_local(&dir_link, &moved_dir).await.unwrap();
+        assert_eq!(std::fs::read_link(&moved_dir).unwrap(), folder);
+        assert!(folder.is_dir());
+
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, b"outside").unwrap();
+        let dest = dir.path().join("dest.txt");
+        std::os::unix::fs::symlink(&outside, &dest).unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"moved").unwrap();
+        copy_then_delete_local(&src, &dest).await.unwrap();
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+        assert!(!std::fs::symlink_metadata(&dest)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"moved");
+    }
+
+    #[tokio::test]
+    async fn a_link_to_a_folder_is_deleted_as_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("keep.txt"), b"keep").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(local_delete_walks_into(&target));
+        assert!(!local_delete_walks_into(&link), "a link is not walked into");
+        remove_local_file_or_link(&link).await.unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link).is_err(),
+            "the link is gone"
+        );
+        assert_eq!(std::fs::read(target.join("keep.txt")).unwrap(), b"keep");
+    }
+
+    #[tokio::test]
+    async fn a_copy_with_no_overwrite_sees_a_dangling_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"new").unwrap();
+        let elsewhere = dir.path().join("elsewhere.txt");
+        let to = dir.path().join("to.txt");
+        std::os::unix::fs::symlink(&elsewhere, &to).unwrap();
+        let refused = copy_local_file(
+            src.to_string_lossy().into(),
+            to.to_string_lossy().into(),
+            Some(false),
+        )
+        .await;
+        assert!(refused.is_err(), "{refused:?}");
+        let through = copy_local_file(
+            src.to_string_lossy().into(),
+            to.to_string_lossy().into(),
+            None,
+        )
+        .await;
+        assert!(through.is_err(), "{through:?}");
+        assert!(!elsewhere.exists(), "nothing written through the link");
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_refuses_a_link_at_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::write(src.join("a.txt"), b"a").unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let dst = dir.path().join("dst");
+        std::fs::create_dir(&dst).unwrap();
+        std::os::unix::fs::symlink(outside.join("a.txt"), dst.join("a.txt")).unwrap();
+        assert!(copy_dir_recursive(&src, &dst, 0, super::NestedLinks::Skip)
+            .await
+            .is_err());
+        assert!(!outside.join("a.txt").exists(), "nothing written outside");
+        let dst_link = dir.path().join("dst_link");
+        std::os::unix::fs::symlink(&outside, &dst_link).unwrap();
+        assert!(
+            copy_dir_recursive(&src, &dst_link, 0, super::NestedLinks::Skip)
+                .await
+                .is_err()
+        );
+        assert!(!outside.join("a.txt").exists());
+    }
 }
 
 #[cfg(test)]
@@ -10907,6 +11181,174 @@ fn detect_desktop_lang() -> String {
     "en".to_string()
 }
 
+/// A second launch: its arguments and its working folder.
+type Launch = (Vec<String>, String);
+
+/// Whether this process owns the UI origin, and the second launch that came
+/// while that was not known yet. A second launch handed to a process that
+/// does not own the origin must open nothing: every window would load the
+/// origin another process serves (Requested 137). One that comes during the
+/// ownership check is kept (the last one) and handled once it ends, so a
+/// double-click at start still opens its file; after a refused start it is
+/// dropped. One lock for both, so a launch cannot slip between the check
+/// ending and the kept launch being taken.
+#[derive(Default)]
+struct SecondLaunchGate {
+    owned: bool,
+    pending: Option<Launch>,
+}
+
+impl SecondLaunchGate {
+    /// A second launch: handle it now if the origin is ours, else keep it.
+    fn offer(&mut self, launch: Launch) -> Option<Launch> {
+        if self.owned {
+            return Some(launch);
+        }
+        log::info!("A second launch came before the UI origin was verified: kept until it is");
+        self.pending = Some(launch);
+        None
+    }
+
+    /// The origin is ours: the launch kept meanwhile is handled now.
+    fn own(&mut self) -> Option<Launch> {
+        self.owned = true;
+        self.pending.take()
+    }
+
+    /// The start was refused: the launch kept meanwhile opens nothing. Only
+    /// the Linux ownership check of the fixed UI port refuses a start.
+    #[cfg(target_os = "linux")]
+    fn refuse(&mut self) {
+        if self.pending.take().is_some() {
+            log::warn!("A second launch reached a process that refused to start: dropped");
+        }
+    }
+}
+
+static SECOND_LAUNCH_GATE: std::sync::Mutex<SecondLaunchGate> =
+    std::sync::Mutex::new(SecondLaunchGate {
+        owned: false,
+        pending: None,
+    });
+
+fn second_launch_gate() -> std::sync::MutexGuard<'static, SecondLaunchGate> {
+    SECOND_LAUNCH_GATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Whether this process owns the UI origin yet.
+fn ui_origin_owned() -> bool {
+    second_launch_gate().owned
+}
+
+/// What a second launch can open in the running process.
+trait SecondLaunch {
+    fn open_extract(&mut self, mode: &str, path: &str);
+    fn raise_main(&mut self);
+    fn deliver(&mut self, argv: &[String], cwd: &str);
+}
+
+/// The running app, as a second launch reaches it.
+struct AppSecondLaunch<'a>(&'a AppHandle);
+
+impl SecondLaunch for AppSecondLaunch<'_> {
+    fn open_extract(&mut self, mode: &str, path: &str) {
+        open_extract_window(self.0, mode, path);
+    }
+    fn raise_main(&mut self) {
+        open_request::raise_main_window(self.0);
+    }
+    fn deliver(&mut self, argv: &[String], cwd: &str) {
+        // Every openable path: an associated format, or "Open with AeroFTP"
+        // on any other file, which opens in AeroFile (#347). A relative path
+        // is the second instance's, read against its folder.
+        open_request::deliver(
+            self.0,
+            open_request::from_argv(argv, (!cwd.is_empty()).then(|| std::path::Path::new(cwd))),
+        );
+    }
+}
+
+/// Handles a second launch once the UI origin is known to be ours (see
+/// [`SecondLaunchGate`]). Otherwise the
+/// OS "Extract here / to folder" verb (Deliverable G) opens only the
+/// dedicated extract window, leaving the main window exactly as the user left
+/// it (possibly hidden); any other launch raises the main window and opens
+/// the paths it names.
+fn handle_second_launch(argv: &[String], cwd: &str, to: &mut impl SecondLaunch) {
+    if let Some((mode, path)) = parse_extract_intent(argv) {
+        to.open_extract(&mode, &path);
+        return;
+    }
+    to.raise_main();
+    to.deliver(argv, cwd);
+}
+
+/// How long a refusal to start may wait for its answer before the process
+/// ends anyway: without a display, or with a dialog GTK could not show,
+/// nothing else would end it.
+#[cfg(target_os = "linux")]
+const REFUSAL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Ends the process once `deadline` has passed, whatever the main thread is
+/// waiting on. `end` is `std::process::exit` outside the tests.
+#[cfg(target_os = "linux")]
+fn end_after(
+    deadline: std::time::Duration,
+    end: impl FnOnce() + Send + 'static,
+) -> std::thread::JoinHandle<()> {
+    std::thread::spawn(move || {
+        std::thread::sleep(deadline);
+        log::error!("AeroFTP could not start and its refusal was not answered: exiting");
+        end();
+    })
+}
+
+/// Tells the user why AeroFTP cannot start, and ends the process once they
+/// have read it.
+///
+/// This runs in `setup`, on the main thread, before any window. It used
+/// `blocking_show`, which builds the dialog through the main thread and then
+/// blocks that same thread waiting for the answer: GTK never ran again, so
+/// the dialog was mapped but never painted (a black window) and the process
+/// never ended, in every package (Requested 137, seen with the snap next to
+/// the .deb). The dialog is now shown without blocking, `setup` returns
+/// without a window so the event loop can draw it, and its answer ends the
+/// process. The same text also goes out as a desktop notification, and
+/// [`REFUSAL_DEADLINE`] ends the process if the dialog is never answered.
+#[cfg(target_os = "linux")]
+fn refuse_to_start(app: &tauri::AppHandle, reason: &str) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    use tauri_plugin_notification::NotificationExt;
+    if let Err(error) = app
+        .notification()
+        .builder()
+        .title("AeroFTP cannot start")
+        .body(reason)
+        .show()
+    {
+        log::warn!("The start refusal notification failed: {error}");
+    }
+    end_after(REFUSAL_DEADLINE, || std::process::exit(1));
+    app.dialog()
+        .message(format!("AeroFTP cannot start safely. {reason}"))
+        .title("AeroFTP UI port unavailable")
+        .kind(MessageDialogKind::Error)
+        .buttons(MessageDialogButtons::Ok)
+        .show(refusal_answered(|| std::process::exit(1)));
+}
+
+/// What the refusal's dialog does with its answer: whatever the button, the
+/// process ends. `end` is `std::process::exit` outside the tests.
+#[cfg(target_os = "linux")]
+fn refusal_answered(end: impl FnOnce() + Send + 'static) -> impl FnOnce(bool) + Send + 'static {
+    move |_| {
+        log::info!("The start refusal was answered: exiting");
+        end();
+    }
+}
+
 /// URL of one of the app's own HTML pages for a secondary window. Release
 /// builds on Linux serve the frontend from the local server on 14321, like the
 /// main window; elsewhere the page comes from the bundled assets.
@@ -10986,6 +11428,12 @@ fn open_extract_window(app: &AppHandle, mode: &str, path: &str) {
 }
 
 fn open_extract_window_on_main(app: &AppHandle, mode: &str, path: &str) {
+    // A build queued before the origin was known to be ours (a second launch
+    // during the ownership check) must not load it.
+    if !ui_origin_owned() {
+        log::warn!("An extract window was asked for before the UI origin was verified: not opened");
+        return;
+    }
     let payload = serde_json::json!({ "mode": mode, "path": path, "lang": detect_desktop_lang() })
         .to_string();
     let init = format!("window.__AEROFTP_EXTRACT__ = {payload};");
@@ -11178,10 +11626,15 @@ async fn read_remote_file_for_preview(
         Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
         None => None,
     };
-    let temp_path = std::env::temp_dir().join(format!(
-        "aeroftp_preview_{}",
-        chrono::Utc::now().timestamp_millis()
-    ));
+    // The preview lands in clear on disk: in a private folder (0700, a name
+    // no one can predict) rather than at a timestamped name in the shared
+    // temp folder with the default mode (deep-scan 105). The folder goes
+    // away with `preview_dir`.
+    let preview_dir = tempfile::Builder::new()
+        .prefix("aeroftp_preview_")
+        .tempdir()
+        .map_err(|e| format!("Failed to create preview folder: {}", e))?;
+    let temp_path = preview_dir.path().join("content");
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
     // Try provider path first (cloud providers, GitHub, etc.)
@@ -20530,25 +20983,10 @@ pub fn run() {
             // marshals its WebviewWindowBuilder::build; window show/unminimize/focus
             // go through Tauri's main-thread message path. Keep all GTK work off this
             // D-Bus/zbus worker so a second-instance raise cannot poison GLib.
-            // OS "Extract here / to folder" verb (Deliverable G): open the dedicated
-            // extract window WITHOUT raising or booting the main app, then stop. The
-            // main window must stay exactly as the user left it (possibly hidden).
-            if let Some((mode, path)) = parse_extract_intent(&argv) {
-                open_extract_window(app, &mode, &path);
-                return;
+            let offered = second_launch_gate().offer((argv, cwd));
+            if let Some((argv, cwd)) = offered {
+                handle_second_launch(&argv, &cwd, &mut AppSecondLaunch(app));
             }
-            // When a second instance is launched, show and focus the existing window
-            open_request::raise_main_window(app);
-            // Every openable path: an associated format, or "Open with AeroFTP"
-            // on any other file, which opens in AeroFile (#347). A relative path
-            // is the second instance's, read against its folder.
-            open_request::deliver(
-                app,
-                open_request::from_argv(
-                    &argv,
-                    (!cwd.is_empty()).then(|| std::path::Path::new(&cwd)),
-                ),
-            );
         }))
         .plugin(
             tauri_plugin_window_state::Builder::new()
@@ -20627,17 +21065,23 @@ pub fn run() {
                 if let Err(reason) =
                     localhost_security::wait_for_owned_server(port, &localhost_nonce)
                 {
-                    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
                     log::error!("Cannot start AeroFTP UI: {reason}");
-                    app.dialog()
-                        .message(format!("AeroFTP cannot start safely. {reason}"))
-                        .title("AeroFTP UI port unavailable")
-                        .kind(MessageDialogKind::Error)
-                        .buttons(MessageDialogButtons::Ok)
-                        .blocking_show();
-                    return Err(reason.into());
+                    second_launch_gate().refuse();
+                    refuse_to_start(app.handle(), &reason);
+                    // No window and no error: the event loop has to run for
+                    // the refusal's dialog to draw, and its answer ends the
+                    // process. An error here would end it before the user
+                    // could read why.
+                    return Ok(());
                 }
                 log::info!("Verified AeroFTP UI server on 127.0.0.1:{port}");
+            }
+            // The origin is ours from here on: release builds on Linux just
+            // verified it, and the others have no shared origin to check. A
+            // second launch that came during the check is handled now.
+            let kept = second_launch_gate().own();
+            if let Some((argv, cwd)) = kept {
+                handle_second_launch(&argv, &cwd, &mut AppSecondLaunch(app.handle()));
             }
 
             // OS "Extract here / to folder" verb on a COLD launch (no instance was
@@ -22073,6 +22517,8 @@ pub fn run() {
             provider_commands::provider_lock_crypt_overlay,
             provider_commands::provider_rearm_cached_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
+            provider_commands::provider_login_folder,
+            provider_commands::provider_start_folder,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
@@ -27038,5 +27484,174 @@ mod legacy_ftp_walk_tests {
         let planned = outcome.expect("case-distinct names on a case-sensitive destination");
         assert_eq!(planned.entries.len(), 2);
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod start_refusal_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn an_unanswered_refusal_ends_the_process_once_its_deadline_passes() {
+        let (ended, was_ended) = std::sync::mpsc::channel();
+        let started = Instant::now();
+        end_after(Duration::from_millis(50), move || ended.send(()).unwrap());
+        was_ended
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the refusal ended the process");
+        assert!(started.elapsed() >= Duration::from_millis(50));
+        assert_eq!(REFUSAL_DEADLINE, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn an_answered_refusal_ends_the_process_whatever_the_button() {
+        for button in [true, false] {
+            let (ended, was_ended) = std::sync::mpsc::channel();
+            refusal_answered(move || ended.send(()).unwrap())(button);
+            was_ended
+                .recv_timeout(Duration::from_secs(1))
+                .expect("the answer ended the process");
+        }
+    }
+
+    // Requested 137: `blocking_show` on the main thread, in `setup`, blocked
+    // the GTK loop that had to draw the dialog: a black window and a process
+    // that never ended. The refusal shows its dialog without blocking, after
+    // the notification and the deadline, and `setup` returns without a window
+    // so the loop runs.
+    #[test]
+    fn a_refused_start_does_not_block_the_loop_that_draws_its_dialog() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+        let start = src.find("fn refuse_to_start(").expect("refuse_to_start");
+        let body = &src[start..start + src[start..].find("\n}\n").expect("end of fn")];
+        let notified = body.find(".notification()").expect("notification");
+        let bounded = body.find("end_after(REFUSAL_DEADLINE").expect("deadline");
+        let shown = body
+            .find(".show(refusal_answered(")
+            .expect("a dialog shown without blocking");
+        assert!(notified < bounded && bounded < shown);
+        assert!(!body.contains(".blocking_show"));
+        let check = src
+            .find("localhost_security::wait_for_owned_server(port, &localhost_nonce)")
+            .expect("ownership check");
+        let refusal = &src[check..check + 900];
+        let refused = refusal
+            .find("refuse_to_start(app.handle(), &reason);")
+            .expect("refusal");
+        assert!(refusal[refused..].contains("return Ok(());"));
+        assert!(!refusal.contains("return Err(reason.into());"));
+    }
+
+    /// Records what a second launch opened.
+    #[derive(Default)]
+    struct Opened(Vec<String>);
+
+    impl SecondLaunch for Opened {
+        fn open_extract(&mut self, mode: &str, _path: &str) {
+            self.0.push(format!("extract:{mode}"));
+        }
+        fn raise_main(&mut self) {
+            self.0.push("raise".to_string());
+        }
+        fn deliver(&mut self, argv: &[String], _cwd: &str) {
+            self.0.push(format!("deliver:{}", argv.len()));
+        }
+    }
+
+    fn launches(dir: &std::path::Path) -> (Vec<String>, Vec<String>) {
+        let archive = dir.join("a.zip");
+        std::fs::write(&archive, b"PK").unwrap();
+        let path = archive.to_string_lossy().to_string();
+        (
+            vec![
+                "aeroftp".to_string(),
+                "--extract-here".to_string(),
+                path.clone(),
+            ],
+            vec!["aeroftp".to_string(), path],
+        )
+    }
+
+    // A second launch during the ownership check is kept and handled once the
+    // origin is ours: a double-click at start still opens its file.
+    #[test]
+    fn a_launch_during_the_check_opens_once_the_origin_is_owned() {
+        let dir = tempfile::tempdir().unwrap();
+        let (extract, open) = launches(dir.path());
+        let mut gate = SecondLaunchGate::default();
+        assert!(gate.offer((open.clone(), String::new())).is_none());
+        assert!(
+            gate.offer((extract.clone(), String::new())).is_none(),
+            "the last one is kept"
+        );
+        let kept = gate.own().expect("the kept launch");
+        let mut opened = Opened::default();
+        handle_second_launch(&kept.0, &kept.1, &mut opened);
+        assert_eq!(opened.0, ["extract:here"]);
+        // Once owned, a launch is handled at once, and nothing stays kept.
+        assert!(gate.own().is_none());
+        let now = gate
+            .offer((open.clone(), String::new()))
+            .expect("handled now");
+        let mut opened = Opened::default();
+        handle_second_launch(&now.0, &now.1, &mut opened);
+        assert_eq!(opened.0, ["raise", "deliver:2"]);
+    }
+
+    // After a refused start this process never owns the origin: the launch
+    // kept during the check, and any later one, opens nothing.
+    #[test]
+    fn a_launch_to_a_process_that_refused_to_start_opens_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let (extract, open) = launches(dir.path());
+        let mut gate = SecondLaunchGate::default();
+        assert!(gate.offer((extract, String::new())).is_none());
+        gate.refuse();
+        assert!(gate.pending.is_none());
+        assert!(gate.offer((open, String::new())).is_none());
+        assert!(!gate.owned);
+    }
+
+    // #1519 review: a launch that arrived during the ownership check queued an
+    // extract window the event loop then built. The hook goes through the
+    // gate, the refusal and the verified check settle it, and the queued
+    // extract build asks it again.
+    #[test]
+    fn every_window_waits_for_the_ui_origin_to_be_owned() {
+        let src = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"));
+        let production = &src[..src.find("mod start_refusal_tests").expect("tests")];
+        let hook = production
+            .find("tauri_plugin_single_instance::init(|app, argv, cwd| {")
+            .expect("hook");
+        let offer = production[hook..]
+            .find("second_launch_gate().offer((argv, cwd))")
+            .expect("the hook offers to the gate");
+        assert!(
+            offer
+                < production[hook..]
+                    .find("handle_second_launch(")
+                    .expect("handled")
+        );
+        let check = production
+            .find("localhost_security::wait_for_owned_server(port, &localhost_nonce)")
+            .expect("ownership check");
+        let after = &production[check..];
+        let refuse = after
+            .find("second_launch_gate().refuse();")
+            .expect("refused");
+        let refusal = after
+            .find("refuse_to_start(app.handle(), &reason);")
+            .expect("refusal");
+        let verified = after.find("Verified AeroFTP UI server").expect("verified");
+        let own = after
+            .find("second_launch_gate().own()")
+            .expect("owned once verified");
+        assert!(refuse < refusal && refusal < verified && verified < own);
+        assert_eq!(production.matches(".own()").count(), 1);
+        let build = production
+            .find("fn open_extract_window_on_main(")
+            .expect("queued extract build");
+        assert!(production[build..build + 400].contains("if !ui_origin_owned() {"));
     }
 }

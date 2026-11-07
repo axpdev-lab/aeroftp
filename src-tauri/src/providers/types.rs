@@ -1844,7 +1844,70 @@ pub fn reason_without_the_echoed_path(reply: &str, path: &str) -> String {
     reply.replace(path, " ")
 }
 
+/// The kind of the OS error a message carries, read from its code.
+///
+/// `std::io::Error` prints an OS error as "{text} (os error {code})". The text
+/// is the operating system's own and follows the user's language (Windows
+/// "Spazio su disco insufficiente. (os error 112)", glibc in a GTK process
+/// "Permesso negato (os error 13)"), so no English needle sees it; the code
+/// is the same in every language. It is mapped by `std` for the platform this
+/// build runs on, which is where the error was made. #1506 row 164.
+///
+/// Only the suffix as std prints it counts: a space before it, and after it
+/// the end, a space or punctuation, so a file named `(os error 28).txt` or
+/// `/x/(os error 28)` is not a code. When the message holds two different
+/// codes, neither is trusted: a file name can carry one before or after the
+/// real cause (Greptile and CodeRabbit, #1517/#1520), and the text then
+/// decides as before. Callers that know the path should remove it first, as
+/// `classify_sync_error` does.
+pub fn os_error_kind(message: &str) -> Option<std::io::ErrorKind> {
+    const MARK: &str = "(os error ";
+    let mut from = 0;
+    let mut found_code: Option<i32> = None;
+    while let Some(found) = message[from..].find(MARK) {
+        let start = from + found;
+        from = start + MARK.len();
+        let spaced = start == 0 || message[..start].ends_with(' ');
+        let rest = &message[from..];
+        let Some(close) = rest.find(')') else {
+            continue;
+        };
+        let after = rest[close + 1..].chars().next();
+        let ends =
+            after.is_none_or(|c| c.is_whitespace() || matches!(c, ',' | ';' | ':' | ')' | ']'));
+        if !spaced || !ends {
+            continue;
+        }
+        if let Ok(code) = rest[..close].trim().parse::<i32>() {
+            match found_code {
+                None => found_code = Some(code),
+                Some(earlier) if earlier == code => {}
+                Some(_) => return None,
+            }
+        }
+    }
+    found_code.map(|code| std::io::Error::from_raw_os_error(code).kind())
+}
+
+/// An OS error kind that means the connection is gone.
+pub fn os_error_kind_closes_the_session(kind: std::io::ErrorKind) -> bool {
+    use std::io::ErrorKind as K;
+    matches!(
+        kind,
+        K::ConnectionReset
+            | K::ConnectionAborted
+            | K::BrokenPipe
+            | K::NotConnected
+            | K::UnexpectedEof
+    )
+}
+
 pub fn message_names_a_missing_path(message: &str) -> bool {
+    // An OS code decides on its own: it names the cause in every language,
+    // and a translated text is invisible to the needles below.
+    if let Some(kind) = os_error_kind(message) {
+        return kind == std::io::ErrorKind::NotFound;
+    }
     let lowered = message.to_ascii_lowercase();
     if [
         // The specific forms rather than a bare "no such". The bare version was
@@ -2294,6 +2357,11 @@ pub const SESSION_CLOSED_NEEDLES: &[&str] = &[
 /// string when the SFTP channel is dead) into [`ProviderError::ConnectionLost`]
 /// so the command layer can attempt a silent reconnect.
 pub fn is_session_closed_error_message(msg: &str) -> bool {
+    // The OS code first: Windows "(os error 10054)" or a translated glibc
+    // "Connessione azzerata dal corrispondente" carries no English needle.
+    if os_error_kind(msg).is_some_and(os_error_kind_closes_the_session) {
+        return true;
+    }
     let m = msg.to_lowercase();
     SESSION_CLOSED_NEEDLES.iter().any(|p| m.contains(p))
 }

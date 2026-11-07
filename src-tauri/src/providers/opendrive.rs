@@ -478,15 +478,26 @@ fn normalize_path(path: &str) -> Result<String, ProviderError> {
         return Err(ProviderError::InvalidPath("Path contains null byte".into()));
     }
 
+    // `\` is still read as a separator (a typed Windows-style path), but a
+    // `.` or `..` that only a backslash split out is refused: a name such as
+    // `a\..\..\secret.txt` would otherwise climb out of its folder and an
+    // action on it reach a different file (deep-scan 67).
     let mut segments = Vec::new();
-    let normalized_path = path.replace('\\', "/");
-    for segment in normalized_path.split('/') {
-        match segment {
-            "" | "." => {}
-            ".." => {
-                let _ = segments.pop();
+    for slash_segment in path.split('/') {
+        let from_backslash = slash_segment.contains('\\');
+        for segment in slash_segment.split('\\') {
+            match segment {
+                "." | ".." if from_backslash => {
+                    return Err(ProviderError::InvalidPath(format!(
+                        "OpenDrive path has a `{segment}` between backslashes, which cannot be addressed safely: {path}"
+                    )));
+                }
+                "" | "." => {}
+                ".." => {
+                    let _ = segments.pop();
+                }
+                value => segments.push(value),
             }
-            value => segments.push(value),
         }
     }
 
@@ -1316,6 +1327,7 @@ impl OpenDriveProvider {
         match move_result {
             Ok(()) => Ok(()),
             Err(ProviderError::InvalidPath(message))
+                // Kept as text (#1506 row 164): OpenDrive's error.code is 400 for every invalid argument.
                 if message.contains("Invalid value specified for `move`") =>
             {
                 self.move_file_via_temp_copy(&from_resolved, &to_resolved, overwrite)
@@ -2715,6 +2727,30 @@ impl StorageProvider for OpenDriveProvider {
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 67: a `.` or `..` that a backslash split out is refused,
+    /// never resolved into a path outside the name's folder.
+    #[test]
+    fn a_dot_segment_between_backslashes_is_refused() {
+        assert!(matches!(
+            super::normalize_path("/docs/a\\..\\..\\secret.txt"),
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert!(matches!(
+            super::normalize_path("/docs/..\\x"),
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert!(matches!(
+            super::normalize_path("/docs\\.\\x"),
+            Err(ProviderError::InvalidPath(_))
+        ));
+        // A plain backslash is still a separator (pinned by the tests below).
+        assert_eq!(super::normalize_path("/docs\\x").unwrap(), "/docs/x");
+        assert_eq!(
+            super::normalize_path("/docs/./a/../b.txt").unwrap(),
+            "/docs/b.txt"
+        );
+    }
+
     #[tokio::test]
     async fn probe_contract_opendrive_settles_400_with_an_exact_parent_listing() {
         use crate::providers::upload_progress::fixture::{serve, Route};

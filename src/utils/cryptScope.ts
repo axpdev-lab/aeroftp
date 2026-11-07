@@ -16,7 +16,9 @@ import type { ServerProfile } from '../types';
 // the badge reads it on every render and the difference between "no anchor" and
 // "the anchor is the whole remote" is not observable from the rendered tree.
 
-import { normalizeRemotePath } from './overlayScope';
+import { isLoginRelativeScope, loginRelativeForm, normalizeRemotePath } from './overlayScope';
+
+export { isLoginRelativeScope };
 
 // Match the backend anchor exactly, including literal leading/trailing spaces.
 export const normCryptScope = (s?: string | null): string => normalizeRemotePath(s || '');
@@ -28,6 +30,30 @@ export const normCryptScope = (s?: string | null): string => normalizeRemotePath
  * root ('').
  */
 export const normLandingPath = (s?: string | null): string => normCryptScope(s);
+
+/**
+ * A login-relative path placed under the login folder the session reported
+ * (`provider_login_folder`), as the backend places it; any other path, or no
+ * login folder, comes back as given.
+ */
+export const placeUnderLoginFolder = (path: string | null | undefined, loginFolder: string | null | undefined): string | null => {
+  if (!path || !loginFolder || !isLoginRelativeScope(path)) return path ?? null;
+  const segments = path === '~' ? [] : path.slice(2).split('/');
+  // A `..` would leave the login folder: left unplaced, so it anchors nothing.
+  if (segments.includes('..')) return path;
+  // `.` and empty segments name the same folder, written as the server lists it.
+  const rest = segments.filter((segment) => segment !== '' && segment !== '.').join('/');
+  const base = loginFolder.replace(/\/+$/, '');
+  return rest ? `${base}/${rest}` : base || '/';
+};
+
+/**
+ * A binding's scope as the app can read it before the session resolves it:
+ * a login-relative scope reads as '' (the whole remote), so every path counts
+ * as inside until the applied anchor replaces it (fail closed).
+ */
+export const knownCryptScope = (s?: string | null): string =>
+  isLoginRelativeScope(s) ? '' : normCryptScope(s);
 
 export const resolveUsernameTemplate = (
   path: string | null | undefined,
@@ -53,6 +79,11 @@ export const connectLandsOutsideOverlay = (
 ): boolean => {
   const island = normCryptScope(overlayPath);
   if (!island) return false;
+  // An island under the login folder compares only with a landing under it,
+  // and a landing under it that the session could not place compares with no
+  // absolute island: where it stands is known once connected, so the connect
+  // unlocks and the backend anchors it (fail closed).
+  if (isLoginRelativeScope(overlayPath) !== isLoginRelativeScope(remotePath)) return false;
   // The folder the connect opens, read as navigation reads it: `/Crypt ` is
   // another folder than an island at `/Crypt`, and opens outside it.
   const landing = normLandingPath(remotePath);
@@ -90,23 +121,44 @@ export const resolveBoundCryptScope = (
   session: { cryptOverlay?: { remoteScope?: string } | null; cryptOverlayScope?: string | null } | null | undefined,
 ): string => normCryptScope(session?.cryptOverlay?.remoteScope ?? session?.cryptOverlayScope ?? '');
 
+/**
+ * The folder a profile's overlay is bound to: its Overlays Path, or its
+ * Remote Path when the binding names none, with the `{username}` template
+ * resolved. The one place that fallback lives, so the anchor, the badge and
+ * restored transfers read the same folder. On SFTP and SCP a relative folder
+ * opens under the login folder, so it comes back as `~/...`: read as `/docs`,
+ * the anchor was a folder the session never opened.
+ */
+export const profileOverlayScope = (
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username' | 'protocol'>,
+): string => loginRelativeForm(
+  resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username)
+    || resolveUsernameTemplate(profile.initialPath, profile.username) || '',
+  profile.protocol,
+);
+
 /** A restored path outside the encrypted island is ordinary plaintext. Unknown
  * relative paths fail closed; the persisted absolute remote path retains the
- * plaintext anchor even when its encrypted tail is opaque.
+ * plaintext anchor even when its encrypted tail is opaque. A scope under the
+ * login folder is placed where the live session reports it (`loginFolder`,
+ * from `provider_login_folder`): the backend compares the active overlay's
+ * absolute anchor, so the unplaced `~/docs` refused every restored retry.
+ * Without a login folder it reads as the whole remote (fail closed).
  */
 export const restoredTransferCryptScope = (
-  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username' | 'protocol'>,
+  loginFolder?: string | null,
 ): string | undefined => profile.aeroCryptOverlay?.enabled
-  ? normCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay.remoteScope, profile.username)
-    || resolveUsernameTemplate(profile.initialPath, profile.username) || '')
+  ? knownCryptScope(placeUnderLoginFolder(profileOverlayScope(profile), loginFolder))
   : undefined;
 
 export const restoredTransferRequiresOverlay = (
-  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username'>,
+  profile: Pick<ServerProfile, 'aeroCryptOverlay' | 'initialPath' | 'username' | 'protocol'>,
   remotePath: string | null | undefined,
+  loginFolder?: string | null,
 ): boolean => {
   if (!profile.aeroCryptOverlay?.enabled) return false;
   if (!remotePath?.startsWith('/')) return true;
-  const scope = restoredTransferCryptScope(profile);
+  const scope = restoredTransferCryptScope(profile, loginFolder);
   return isWithinCryptScope(scope, remotePath);
 };

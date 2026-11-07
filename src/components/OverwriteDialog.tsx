@@ -12,6 +12,7 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { AlertTriangle, File, Clock, HardDrive, ArrowRight, X, Check, SkipForward, Edit3, PlayCircle } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 import type { TranslationFunction } from '../i18n';
 import { formatBytes, getUiLocale } from '../utils/formatters';
 import { Checkbox } from './ui/Checkbox';
@@ -104,6 +105,15 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
         }
     }, [isOpen, source?.name]);
 
+    // A question about a file: the backdrop is inert and ESC is the safe
+    // answer, cancel, which writes nothing (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: null,
+        onClose: () => { onDecision('cancel', false); onCancel(); },
+        backdrop: 'never',
+        escape: isOpen && !!source && !!destination,
+    });
+
     // Early return if not open or missing data
     if (!isOpen || !source || !destination) return null;
 
@@ -126,7 +136,7 @@ export const OverwriteDialog: React.FC<OverwriteDialogProps> = ({
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center" data-testid={TID.overwriteDialog} role="dialog" aria-modal="true" aria-label={t('overwrite.dialogLabel')}>
             {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCancel} />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
 
             {/* Dialog */}
             <div {...modalDrag.panelProps} className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">

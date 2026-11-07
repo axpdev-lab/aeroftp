@@ -6675,7 +6675,9 @@
             "dirtyTitle": "Nem mentett változások",
             "dirtyBody": "Nem mentett változásai vannak. Elveti és bezárja?",
             "keepEditing": "Szerkesztés folytatása",
-            "discardAndClose": "Elvetés és bezárás"
+            "discardAndClose": "Elvetés és bezárás",
+            "busyBodyKeepsRunning": "Egy művelet még folyamatban van. Az ablak bezárása után is tovább fut, az eredménye pedig nem jelenik meg itt. Mégis bezárja?",
+            "closeAnyway": "Bezárás mégis"
         },
         "modalView": {
             "listView": "Listanézet",
