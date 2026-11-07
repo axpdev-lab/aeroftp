@@ -102,6 +102,7 @@ describe('signing region read back from an explicit endpoint', () => {
         // Internal and accelerate endpoints (Greptile on #1525).
         ['alibaba-oss', 'https://oss-cn-hangzhou-internal.aliyuncs.com', 'cn-hangzhou'],
         ['alibaba-oss', 'https://oss-accelerate.aliyuncs.com', undefined],
+        ['alibaba-oss', 'https://oss-accelerate-overseas.aliyuncs.com', undefined],
         ['tencent-cos', 'https://cos.accelerate.myqcloud.com', undefined],
         ['ibm-cos', 'https://s3.private.us-south.cloud-object-storage.appdomain.cloud', undefined],
         ['wasabi', 's3.wasabisys.com', undefined],
@@ -209,6 +210,7 @@ describe('MEGA S4 preset', () => {
         ['wasabi', 'https://storage.example.com', ' us-west-1 ', 'us-west-1'],
         ['alibaba-oss', 'https://oss-cn-hangzhou-internal.aliyuncs.com', 'cn-hangzhou', 'cn-hangzhou'],
         ['alibaba-oss', 'https://oss-accelerate.aliyuncs.com', 'cn-shanghai', 'cn-shanghai'],
+        ['alibaba-oss', 'https://oss-accelerate-overseas.aliyuncs.com', 'cn-shanghai', 'cn-shanghai'],
     ])('%s %s with stored %s signs %s', (provider, endpoint, region, expected) => {
         const location = resolveProfileS3Location(provider, { endpoint, region }, '');
         expect(location.region).toBe(expected);

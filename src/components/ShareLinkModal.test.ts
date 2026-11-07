@@ -9,7 +9,9 @@ import { expiresSoonerThanChosen, ShareLinkModal } from './ShareLinkModal';
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
-vi.mock('../i18n', () => ({ useTranslation: () => (key: string) => key }));
+vi.mock('../i18n', () => ({
+    useTranslation: () => (key: string, params?: { count?: number }) => params?.count != null ? `${key}:${params.count}` : key,
+}));
 vi.mock('../hooks/useHumanizedLog', () => ({
     useHumanizedLog: () => ({ logRaw: () => 'log-id', updateEntry: () => {} }),
 }));
@@ -64,7 +66,13 @@ describe('Share Link modal on a provider with an expiry limit', () => {
         const advanced = [...host.querySelectorAll('button')].find(b => b.textContent === 'shareLinkModal.showAdvanced');
         await act(async () => advanced!.click());
         expect(buttons()).not.toContain('shareLinkModal.expirationNever');
-        expect(buttons().filter(b => b.startsWith('shareLinkModal.expiration'))).toHaveLength(3);
+        // The choices themselves, not only their number (CodeRabbit on #1525):
+        // the seven-day cap keeps 1 hour, 24 hours and 7 days, never 30 days.
+        expect(buttons().filter(b => b.startsWith('shareLinkModal.expiration'))).toEqual([
+            'shareLinkModal.expirationHoursOne:1',
+            'shareLinkModal.expirationHoursMany:24',
+            'shareLinkModal.expirationDaysMany:7',
+        ]);
         const create = [...host.querySelectorAll('button')].find(b => b.textContent === 'shareLinkModal.generateWithOptions');
         await act(async () => create!.click());
         expect(creates()[0][1]).toMatchObject({ expiresInSecs: 604800 });

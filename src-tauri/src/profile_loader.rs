@@ -963,6 +963,11 @@ mod tests {
                 Some("cn-hangzhou"),
             ),
             ("alibaba-oss", "https://oss-accelerate.aliyuncs.com", None),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate-overseas.aliyuncs.com",
+                None,
+            ),
             ("tencent-cos", "https://cos.accelerate.myqcloud.com", None),
             (
                 "ibm-cos",
@@ -1142,6 +1147,13 @@ mod tests {
             (
                 "alibaba-oss",
                 "https://oss-accelerate.aliyuncs.com",
+                Some("cn-shanghai"),
+                "cn-shanghai",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate-overseas.aliyuncs.com",
                 Some("cn-shanghai"),
                 "cn-shanghai",
                 "profile",

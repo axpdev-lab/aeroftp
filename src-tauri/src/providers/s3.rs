@@ -6711,6 +6711,13 @@ impl StorageProvider for S3Provider {
             .as_ref()
             .and_then(|creds| creds.expiration)
             .map(|expiration| (expiration - now).num_seconds().max(1) as u64);
+        // SigV4 needs at least one second; a zero would sign a link that is
+        // dead on arrival (CodeRabbit on #1525).
+        if options.expires_in_secs == Some(0) {
+            return Err(ProviderError::InvalidConfig(
+                "A share link needs an expiry of at least one second".to_string(),
+            ));
+        }
         let expires = options
             .expires_in_secs
             .unwrap_or(3600)
@@ -14236,8 +14243,40 @@ mod tests {
             expires_at <= session_end,
             "{expires_at} after {session_end}"
         );
-        assert!(!link.url.contains("X-Amz-Expires=604800"), "{}", link.url);
+        // The whole remaining session, not merely less than asked
+        // (CodeRabbit on #1525): signed and reported for about an hour.
+        assert!(
+            expires_at >= session_end - chrono::Duration::seconds(5),
+            "{expires_at} well before {session_end}"
+        );
+        let signed: u64 = link
+            .url
+            .split("X-Amz-Expires=")
+            .nth(1)
+            .and_then(|rest| rest.split('&').next())
+            .and_then(|secs| secs.parse().ok())
+            .expect("X-Amz-Expires in the URL");
+        assert!((3595..=3600).contains(&signed), "{signed}");
         assert!(link.url.contains("X-Amz-Security-Token="), "{}", link.url);
+    }
+
+    #[tokio::test]
+    async fn a_share_link_with_no_lifetime_is_refused() {
+        let mut provider = aws_doc_provider(false);
+        let refused = provider
+            .create_share_link(
+                "/test.txt",
+                ShareLinkOptions {
+                    expires_in_secs: Some(0),
+                    password: None,
+                    permissions: None,
+                },
+            )
+            .await;
+        assert!(
+            matches!(refused, Err(ProviderError::InvalidConfig(_))),
+            "{refused:?}"
+        );
     }
 
     #[tokio::test]
