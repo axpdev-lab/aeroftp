@@ -1010,8 +1010,9 @@ const App: React.FC = () => {
   // not what the backend serves.
   const backendTeardownsRef = useRef(0);
   // A teardown that did not end within its bound: the backend's state is
-  // unknown, so nothing is bound to the live tab until the next connect or
-  // switch replaces the connection (instead of until a restart).
+  // unknown, so nothing is bound to the live tab until a connect or a switch
+  // has connected the backend to a tab again (instead of until a restart). A
+  // connect that fails before that leaves it set.
   const backendUncertainRef = useRef(false);
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
@@ -5126,6 +5127,8 @@ const App: React.FC = () => {
 
       // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
       // savedServerId makes activeProfileIds pulse the My Servers card.
+      // The backend is connected to this tab's server: no longer uncertain.
+      backendUncertainRef.current = false;
       const newSession: FtpSession = {
         id: `session_mtp_${Date.now()}`,
         serverId: displayName,
@@ -6751,8 +6754,6 @@ const App: React.FC = () => {
       releaseRemoteNavigation();
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
       remoteConnectPhaseRef.current = 'connect';
-      // This connect replaces the connection a hung teardown left unknown.
-      backendUncertainRef.current = false;
       connectStartSessionsRef.current = { phaseVersion, ids: new Set(sessions.map(s => s.id)) };
       try {
         const scope = args[args.length - 1];
@@ -8401,6 +8402,8 @@ const App: React.FC = () => {
             setActiveSessionId(reusable.id);
             setConnectionParams(reusable.connectionParams);
             setSessions(prev => prev.map(s => s.id === reusable.id ? { ...s, status: 'connected' } : s));
+            // The backend is connected to this tab's server: no longer uncertain.
+            backendUncertainRef.current = false;
             setIsConnected(true);
             setShowRemotePanel(true);
             setShowLocalPreview(false);
@@ -8859,6 +8862,8 @@ const App: React.FC = () => {
       }
     } catch { /* ignore */ }
 
+    // The backend is connected to this tab's server: no longer uncertain.
+    backendUncertainRef.current = false;
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
       serverId: serverName,
@@ -9034,8 +9039,6 @@ const App: React.FC = () => {
     // session down rather than leaving the user staring at stale files.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
     remoteConnectPhaseRef.current = 'switch';
-    // This switch replaces the connection a hung teardown left unknown.
-    backendUncertainRef.current = false;
     const listWithSpinner = <T,>(fn: () => Promise<T>): Promise<T> =>
       withRemoteListSpinner(fn, listingReason(targetSession.remotePath));
 
@@ -9325,6 +9328,8 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
+      // The backend is connected to this tab's server: no longer uncertain.
+      backendUncertainRef.current = false;
       // The tab bar calls here directly, and a parked tab left the workspace
       // marked disconnected. It reads as connected again only now: earlier,
       // its cached files would take remote actions while another server still
@@ -10166,8 +10171,8 @@ const App: React.FC = () => {
   // keeps every healthy tab).
   /** The teardown of a cancelled connect or switch, counted while it runs
    *  (nothing is bound to the live tab meanwhile) and bounded: one that hangs
-   *  leaves the backend marked uncertain, which the next connect or switch
-   *  clears, and reports not dropped. */
+   *  while it still owns the backend leaves it marked uncertain, which only a
+   *  connection confirmed afterwards clears, and reports not dropped. */
   const boundedTeardown = async (owns: () => boolean): Promise<boolean> => {
     backendTeardownsRef.current += 1;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -10177,7 +10182,10 @@ const App: React.FC = () => {
         new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), BACKEND_TEARDOWN_BOUND_MS); }),
       ]);
       if (outcome === 'timeout') {
-        backendUncertainRef.current = true;
+        // Only while this teardown still owns the backend: a newer connect or
+        // switch since then has its own outcome, which an old timeout must
+        // not overrule.
+        if (owns()) backendUncertainRef.current = true;
         return false;
       }
       return outcome;

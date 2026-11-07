@@ -267,8 +267,36 @@ describe('a queued transfer', () => {
         } finally {
             vi.useRealTimers();
         }
-        // Both ways a new connection starts clear it.
-        expect(APP_CODE.match(/remoteConnectPhaseRef\.current = '(connect|switch)';\n\s+backendUncertainRef\.current = false;/g)).toHaveLength(2);
+        // A connect or switch that only starts does not clear it (one that fails
+        // early, on a missing field or a refused host key, replaced nothing):
+        // the points where a tab is confirmed connected do, and only they.
+        expect(APP_CODE).not.toMatch(/remoteConnectPhaseRef\.current = '(connect|switch)';\n\s+backendUncertainRef\.current = false;/);
+        expect(APP_CODE.match(/backendUncertainRef\.current = false;/g)).toHaveLength(4);
+        for (const confirmed of [
+            /backendUncertainRef\.current = false;\n\s+const newSession: FtpSession = \{\n\s+id: `session_mtp_/,
+            /backendUncertainRef\.current = false;\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
+            /s\.id === reusable\.id \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+backendUncertainRef\.current = false;/,
+            /s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+backendUncertainRef\.current = false;/,
+        ]) expect(APP_CODE).toMatch(confirmed);
+    });
+
+    it('lets a teardown that timed out after a newer connection took over leave it alone', async () => {
+        vi.useFakeTimers();
+        try {
+            const { fns, ctx } = await targetChecks(queued, { withAbort: true });
+            const target = fns.snapshotQueuedTarget();
+            let owner = true;
+            const aborting = fns.abortSwitchAfterCancel(() => owner);
+            // A newer connect takes the backend over before the bound ends.
+            owner = false;
+            await vi.advanceTimersByTimeAsync(30000);
+            await aborting;
+            expect(ctx.backendUncertainRef.current).toBe(false);
+            expect(ctx.backendTeardownsRef.current).toBe(0);
+            expect(fns.queuedTargetProblem(target)).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     // A cancelled switch ends its phase, then drops the half-open backend:
