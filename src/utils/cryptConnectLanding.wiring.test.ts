@@ -11,7 +11,8 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { connectLandsOutsideOverlay, isWithinCryptScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
+import { connectLandsOutsideOverlay, isLoginRelativeScope, isWithinCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, resolveUsernameTemplate } from './cryptScope';
+import { loginRelativeForm } from './overlayScope';
 import { refusalFor } from './overlayRefusal';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
 
@@ -250,27 +251,58 @@ describe('crypt overlay deferred connect unlock', () => {
         const start = app.indexOf('const getProfileOverlayHint = async (');
         const end = app.indexOf('// Open and Create from', start);
         if (start < 0 || end < 0) throw new Error('profile overlay hint block not found in App.tsx');
-        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt') => execute(app.slice(start, end), {
+        const hintFor = (landingPath?: string, profilePath = '/', overlayScope: string | null = '/Crypt', loginFolder: string | null = '/home/alice', protocol = 'ftp') => execute(app.slice(start, end), {
             landingPath,
             loadSavedServerProfiles: async () => [{
                 id: 'srv_1',
+                protocol,
                 initialPath: profilePath,
                 username: 'alice',
                 hasStoredAeroCryptPassword: true,
                 aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: overlayScope },
             }],
             resolveUsernameTemplate,
+            loginRelativeForm,
             connectLandsOutsideOverlay,
+            isLoginRelativeScope,
+            placeUnderLoginFolder,
+            profileOverlayScope,
+            invoke: async (command: string) => {
+                if (command !== 'provider_login_folder') throw new Error(`unexpected ${command}`);
+                if (!loginFolder) throw new Error('not reported');
+                return loginFolder;
+            },
         }, "return getProfileOverlayHint('srv_1', landingPath);");
 
         await expect(hintFor()).resolves.toMatchObject({ opensOutside: true });
         await expect(hintFor('/Crypt')).resolves.toMatchObject({ opensOutside: false });
         await expect(hintFor('/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', opensOutside: true });
+        // An SFTP crypt imported from `nas:docs`: `~/docs` is placed under the
+        // login folder the session reports, landing and anchor alike.
+        await expect(hintFor(undefined, '~/docs', '~/docs')).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false, loginFolder: '/home/alice' });
+        await expect(hintFor(undefined, '~', '~/docs')).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: true });
+        await expect(hintFor('/home/alice/docs/sub', '/', '~/docs')).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false });
+        // Not reported: no anchor, and the connect unlocks (fail closed).
+        await expect(hintFor(undefined, '~/docs', '~/docs', null)).resolves.toMatchObject({ anchor: null, opensOutside: false, loginFolder: null });
+        // Nothing under the login folder asks the session for it.
+        await expect(hintFor(undefined, '/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', loginFolder: null });
+        // #1523 Greptile: SFTP and SCP open a relative Remote Path under the
+        // login folder, and an empty Overlays Path is that folder. Read from
+        // the root it was `/docs`, the opening fell outside and the connect
+        // skipped the unlock.
+        for (const protocol of ['sftp', 'scp']) {
+            await expect(hintFor('/home/alice/docs', 'docs', '', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false, loginFolder: '/home/alice' });
+            await expect(hintFor(undefined, 'docs', '', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false });
+            await expect(hintFor('/home/alice/docs', 'docs', 'docs/sub', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs/sub', opensOutside: true });
+        }
+        // Elsewhere a relative folder keeps its meaning, and no login folder is asked.
+        await expect(hintFor('/docs', 'docs', '', null, 'ftp')).resolves.toMatchObject({ anchor: 'docs', opensOutside: false, loginFolder: null });
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
-        expect(app).toContain('getProfileOverlayHint(overlaySavedId, resolvedRemoteDir)');
+        expect(app).toContain('getProfileOverlayHint(overlaySavedId, startFolder)');
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');
         expect(app).toContain('savedOverlayHint ? savedOauthInitialPath : undefined');
-        expect(app).toContain("overlayHint ? resolvedSavedInitialPath || '/' : undefined");
+        // Both provider connect flows, Quick Connect and saved.
+        expect(app.split("overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined")).toHaveLength(3);
     });
 });
 
@@ -278,9 +310,9 @@ describe('crypt overlay deferred connect unlock', () => {
 describe('new overlay connection replaces stale frontend vault mirrors', () => {
     const starts = [
         ['Quick Connect OAuth', "const overlayAnchor = overlayHint.anchor || oauthResponse?.current_path || '/';", 'overlaySavedId'],
-        ['Quick Connect provider', 'const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;', 'overlaySavedId'],
+        ['Quick Connect provider', 'const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, startFolder) : null;', 'overlaySavedId'],
         ['saved OAuth', "const savedOverlayAnchor = savedOverlayHint.anchor || savedOauthResp?.current_path || '/';", 'savedOverlaySavedId'],
-        ['saved provider', 'const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));', 'overlaySavedId'],
+        ['saved provider', 'const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId, startFolder));', 'overlaySavedId'],
     ] as const;
 
     for (const [index, [label, marker, ownerKey]] of starts.entries()) {
@@ -357,6 +389,7 @@ describe('outside-scope provider landing survives Refresh', () => {
                     overlayHint: hint,
                     resolvedRemoteDir: '/Parent',
                     resolvedSavedInitialPath: '/Parent',
+                    startFolder: '/Parent',
                     connectScope: { step: (op: () => Promise<unknown>) => op() },
                     withRemoteListSpinner: (op: () => Promise<unknown>) => op(),
                     listingReason: () => undefined,
@@ -378,6 +411,41 @@ describe('outside-scope provider landing survives Refresh', () => {
     }
 });
 
+
+// A relative start folder is listed once, as the absolute folder the connect
+// opened: listed as given, `docs` read `docs/docs` under a `docs` header.
+describe('a relative start folder is listed once', () => {
+    for (const saved of [false, true]) {
+        it(`${saved ? 'saved' : 'Quick Connect'} lists the placed folder`, () => {
+            const raw = saved ? 'resolvedSavedInitialPath' : 'resolvedRemoteDir';
+            const placed = saved
+                ? 'const startFolder = await connectScope.step(() => placeStartFolder(resolvedSavedInitialPath));'
+                : 'const startFolder = await placeStartFolder(resolvedRemoteDir);';
+            const at = app.indexOf(placed);
+            expect(at).toBeGreaterThan(0);
+            const listing = app.slice(at + placed.length, app.indexOf('const files = response.files.map', at));
+            expect(listing).toContain("path: overlayHint?.opensOutside ? startFolder || '/' : startFolder || null");
+            expect(listing).not.toContain(raw);
+        });
+    }
+    it('places only a folder that is not absolute, and keeps it when the session cannot', async () => {
+        const start = app.indexOf('const placeStartFolder = async (');
+        const end = app.indexOf('const placeLoginRelativeScope', start);
+        const calls: string[] = [];
+        const place = (path: string | null, answer: () => Promise<string>) => execute<string | null>(app.slice(start, end), {
+            isLoginRelativeScope,
+            invoke: async (_command: string, args: { path: string }) => { calls.push(args.path); return answer(); },
+        }, `return placeStartFolder(${JSON.stringify(path)});`);
+        await expect(place('docs', async () => '/home/u/docs')).resolves.toBe('/home/u/docs');
+        await expect(place('~/docs', async () => '/home/u/docs')).resolves.toBe('/home/u/docs');
+        // Not placed: the folder the connect opened (null), never `docs` again.
+        await expect(place('docs', async () => { throw new Error('gone'); })).resolves.toBeNull();
+        await expect(place('~/docs', async () => { throw new Error('gone'); })).resolves.toBe('~/docs');
+        await expect(place('/srv', async () => 'never')).resolves.toBe('/srv');
+        await expect(place(null, async () => 'never')).resolves.toBeNull();
+        expect(calls).toEqual(['docs', '~/docs', 'docs', '~/docs']);
+    });
+});
 
 describe('OAuth landing probe recovers the current provider directory', () => {
     for (const saved of [false, true]) {

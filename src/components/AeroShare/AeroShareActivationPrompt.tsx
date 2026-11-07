@@ -9,13 +9,15 @@
  * started silently: the user explicitly opts IN ("Turn on receiving") or OUT
  * ("Not now"). The choice is recorded so the prompt never shows again
  * (`aeroShareReceivePrompted`); both receiving and auto-accept stay changeable
- * from Settings afterwards.
+ * from Settings afterwards. Dismissing it (the X or ESC) answers nothing and
+ * records nothing, so it asks again next time; the backdrop is inert.
  */
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Inbox, X } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
 import { AERO_SHARE_ACTIVATED_EVENT, patchAeroShareSettings } from '../../utils/aeroShare';
 import { secureGetWithFallback } from '../../utils/secureStorage';
 
@@ -64,12 +66,15 @@ export function AeroShareActivationPrompt() {
     }
   };
 
+  // Not now, for this time only: a decline is recorded only from its button.
+  const guarded = useGuardedClose({ guard: null, onClose: () => setOpen(false), backdrop: 'never', escape: open && !busy });
+
   if (!open) return null;
 
   return createPortal(
     <div
       className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/50"
-      onClick={() => void answer(false)}
+      onClick={guarded.onBackdropClick}
     >
       <div
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[440px] max-w-[92vw] flex flex-col animate-scale-in"
@@ -90,9 +95,10 @@ export function AeroShareActivationPrompt() {
             </p>
           </div>
           <button
-            onClick={() => void answer(false)}
+            onClick={guarded.requestClose}
+            disabled={busy}
             className="shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors"
-            title={t('aeroShare.activate.notNow')}
+            title={t('common.close')}
           >
             <X size={18} />
           </button>

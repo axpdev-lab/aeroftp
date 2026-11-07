@@ -10,6 +10,8 @@ import { PasswordInput } from './common/PasswordInput';
 import { ConfirmOverlay } from './common/ConfirmOverlay';
 import { MODAL_Z } from '../utils/modalLayers';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { getUiLocale } from '../utils/formatters';
 import { copyText } from '../utils/clipboard';
@@ -73,6 +75,9 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   const [caps, setCaps] = useState<ShareLinkCapabilities>(NO_SHARE_LINK_CAPABILITIES);
 
   const [state, setState] = useState<ModalState>('loading');
+  // A link request in flight, apart from the capability lookup that also
+  // shows 'loading': closing then does not stop the provider creating it.
+  const [creating, setCreating] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [sharePassword, setSharePassword] = useState<string | null>(null);
   // When the created link expires, and whether that is sooner than asked (a
@@ -143,6 +148,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
 
   const generateLink = useCallback(async (opts?: { password?: string; expiresInSecs?: number | null; permissions?: string }) => {
     setState('loading');
+    setCreating(true);
     setError('');
     setLinkCopied(false);
     setPasswordCopied(false);
@@ -176,6 +182,8 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
       setError(String(err));
       setState('error');
       log.updateEntry(logId, { status: 'error', message: t('activity.share_link_failed', { provider: providerName, filename: fileName }) });
+    } finally {
+      setCreating(false);
     }
   }, [path, providerName, fileName, t]);
 
@@ -200,13 +208,21 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  // Discussion #1527: a click outside threw away a link being created, a
+  // generated link with its one-time password, or the options typed in. A
+  // request in flight or a revoke asks first (the provider finishes it
+  // anyway); options typed in ask before they are dropped; a generated link
+  // stays until the X, Close or ESC.
+  const optionsTyped = state === 'options' && (optPassword !== '' || optExpiration !== null || optPermissions !== 'view');
+  const guarded = useGuardedClose({
+    guard: creating || revokingId !== null ? 'busy' : optionsTyped ? 'dirty' : null,
+    onClose,
+    backdrop: state === 'success' ? 'never' : 'idle',
+    // The revoke confirm answers ESC itself while it is open; the modal keeps
+    // its place under any prompt opened meanwhile.
+    escape: true,
+    escapeSuspended: pendingRevokeId !== null,
+  });
 
   const handleGenerate = () => {
     generateLink({
@@ -235,7 +251,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[480px] flex flex-col animate-scale-in"
@@ -254,7 +270,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
               </h2>
             </div>
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
             >
               <X size={14} />
@@ -558,7 +574,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
               </div>
               <div className="flex justify-end gap-2 mt-4">
                 <button
-                  onClick={onClose}
+                  onClick={guarded.requestClose}
                   className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                 >
                   {t('shareLinkModal.close')}
@@ -667,7 +683,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
         {state === 'success' && (
           <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700 flex justify-end">
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="px-4 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >
               {t('shareLinkModal.close')}
@@ -686,6 +702,14 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
           }}
           onCancel={() => setPendingRevokeId(null)}
           zClass={MODAL_Z.elevatedConfirm}
+        />
+      )}
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm
+          kind={guarded.confirmKind}
+          canAbort={guarded.canAbort}
+          onKeep={guarded.cancelConfirm}
+          onConfirm={guarded.confirmAndClose}
         />
       )}
     </div>

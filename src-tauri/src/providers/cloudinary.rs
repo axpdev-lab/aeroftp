@@ -381,6 +381,7 @@ impl CloudinaryProvider {
             StatusCode::CONFLICT => ProviderError::AlreadyExists(msg),
             // A rename onto a public id taken since the destination check is
             // a 400 whose message says so: a taken name, not a bad config.
+            // Kept as text (#1506 row 164): Cloudinary's error JSON has a message and no code.
             s if s.is_client_error() && msg.to_ascii_lowercase().contains("already exist") => {
                 ProviderError::AlreadyExists(msg)
             }

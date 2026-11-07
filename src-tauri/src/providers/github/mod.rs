@@ -572,11 +572,32 @@ impl GitHubProvider {
             .await
         {
             Ok(_) => Ok(()),
-            Err(GitHubError::Unprocessable(message))
-                if message.to_lowercase().contains("reference already exists") =>
+            // GitHub refuses a ref that already exists with a 422, which the
+            // client maps to `ApiError { status: 422 }`: the arm that read
+            // "reference already exists" off `Unprocessable` never matched,
+            // and a branch created meanwhile (another device, another tab)
+            // failed the write. The branch is looked up again instead of
+            // reading the message. #1506 row 164.
+            Err(
+                refused @ (GitHubError::Unprocessable(_)
+                | GitHubError::ApiError { status: 422, .. }),
+            ) => match self
+                .client
+                .get_json::<GitHubBranch>(&self.branch_api_url(branch))
+                .await
             {
-                Ok(())
-            }
+                Ok(_) => Ok(()),
+                // Not there: the refusal stands. Any other failure of the
+                // lookup (a timeout, a login) is the caller's to handle, not
+                // hidden behind the refusal (CodeRabbit, #1520).
+                Err(
+                    GitHubError::PathNotFound(_)
+                    | GitHubError::RepoNotFound
+                    | GitHubError::BranchNotFound(_)
+                    | GitHubError::NotFound(_),
+                ) => Err(ProviderError::from(refused)),
+                Err(lookup) => Err(ProviderError::from(lookup)),
+            },
             Err(e) => Err(ProviderError::from(e)),
         }
     }
@@ -1985,6 +2006,181 @@ mod tests {
         assert!(!provider.exists("/missing").await.unwrap());
         assert!(provider.exists("/denied").await.is_err());
         server.abort();
+    }
+
+    /// #1506 row 164: a spent primary quota is read from
+    /// `x-ratelimit-remaining: 0`, whatever the message says; a 403 without
+    /// it stays a permission refusal.
+    #[tokio::test]
+    async fn a_spent_quota_is_read_from_the_header_not_the_message() {
+        use axum::response::IntoResponse;
+        let app =
+            axum::Router::new().fallback(axum::routing::get(|uri: axum::http::Uri| async move {
+                let message = if uri.path().ends_with("/secondary") {
+                    "You have exceeded a secondary rate limit"
+                } else {
+                    "Kontingent für API-Anfragen erschöpft"
+                };
+                // GitHub answers a spent primary quota with 403 or 429.
+                let status = if uri.path().ends_with("/spent429") {
+                    axum::http::StatusCode::TOO_MANY_REQUESTS
+                } else {
+                    axum::http::StatusCode::FORBIDDEN
+                };
+                let mut response = (
+                    status,
+                    axum::Json(serde_json::json!({ "message": message })),
+                )
+                    .into_response();
+                let remaining =
+                    if uri.path().ends_with("/spent") || uri.path().ends_with("/spent429") {
+                        Some("0")
+                    } else if uri.path().ends_with("/secondary") {
+                        Some("4999")
+                    } else {
+                        None
+                    };
+                if let Some(remaining) = remaining {
+                    response.headers_mut().insert(
+                        "x-ratelimit-remaining",
+                        axum::http::HeaderValue::from_static(remaining),
+                    );
+                }
+                response
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = GitHubProvider::new(
+            GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/"))).unwrap(),
+        )
+        .unwrap();
+        provider.client.api_origin_override = Some(format!("http://{addr}"));
+        let base = provider.client.api_base();
+        let spent = provider
+            .client
+            .get_json::<serde_json::Value>(&format!("{base}/spent"))
+            .await;
+        let refused = provider
+            .client
+            .get_json::<serde_json::Value>(&format!("{base}/refused"))
+            .await;
+        // A 429 with the quota spent is the primary limit too (CodeRabbit,
+        // #1520). `execute` directly: the retry wrapper waits on a 429.
+        let spent429_request = provider
+            .client
+            .request(reqwest::Method::GET, &format!("http://{addr}/spent429"));
+        let spent429 = provider.client.execute(spent429_request, None).await;
+        assert!(
+            matches!(spent429, Err(GitHubError::PrimaryRateLimit { .. })),
+            "{:?}",
+            spent429.err()
+        );
+        // Quota left and "rate limit" in the message: the secondary limit,
+        // retried after a wait (Greptile, #1520). `execute` directly, since
+        // `get_json` would sleep for the retry.
+        let secondary_request = provider
+            .client
+            .request(reqwest::Method::GET, &format!("http://{addr}/secondary"));
+        let secondary = provider.client.execute(secondary_request, None).await;
+        server.abort();
+        assert!(
+            matches!(secondary, Err(GitHubError::SecondaryRateLimit { .. })),
+            "{:?}",
+            secondary.err()
+        );
+        assert!(
+            matches!(spent, Err(GitHubError::PrimaryRateLimit { .. })),
+            "{spent:?}"
+        );
+        assert!(
+            matches!(refused, Err(GitHubError::InsufficientPermissions(_))),
+            "{refused:?}"
+        );
+    }
+
+    /// #1506 row 164: a branch that appears between the lookup and the
+    /// create (422 from git/refs) is found by a second lookup, not by the
+    /// message; a 422 for any other reason still fails.
+    #[tokio::test]
+    async fn a_branch_created_meanwhile_is_found_again_not_read_from_the_refusal() {
+        use axum::response::IntoResponse;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        // The second lookup: the branch is there; it is not (404, the refusal
+        // stands); it fails otherwise (401, that failure reaches the caller,
+        // CodeRabbit #1520).
+        for (second, expect_ok) in [("found", true), ("absent", false), ("unauthorized", false)] {
+            let lookups = Arc::new(AtomicUsize::new(0));
+            let seen = lookups.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let seen = seen.clone();
+                    async move {
+                        if method == axum::http::Method::POST && uri.path().ends_with("/git/refs") {
+                            return (
+                                axum::http::StatusCode::UNPROCESSABLE_ENTITY,
+                                axum::Json(
+                                    serde_json::json!({"message": "Riferimento già esistente"}),
+                                ),
+                            )
+                                .into_response();
+                        }
+                        if uri.path().contains("/branches/") {
+                            let n = seen.fetch_add(1, Ordering::SeqCst);
+                            if n > 0 && second == "found" {
+                                return axum::Json(serde_json::json!({
+                                    "name": "aeroftp/u/main", "protected": false,
+                                    "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
+                                }))
+                                .into_response();
+                            }
+                            if n > 0 && second == "unauthorized" {
+                                return (
+                                    axum::http::StatusCode::UNAUTHORIZED,
+                                    axum::Json(serde_json::json!({"message": "Bad credentials"})),
+                                )
+                                    .into_response();
+                            }
+                        }
+                        (
+                            axum::http::StatusCode::NOT_FOUND,
+                            axum::Json(serde_json::json!({"message": "Not Found"})),
+                        )
+                            .into_response()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut provider = GitHubProvider::new(
+                GitHubConfig::from_provider_config(&provider_config("o/r", None, Some("/")))
+                    .unwrap(),
+            )
+            .unwrap();
+            provider.connected = true;
+            provider.client.api_origin_override = Some(format!("http://{addr}"));
+            let outcome = provider
+                .ensure_branch_exists_from_sha(
+                    "aeroftp/u/main",
+                    "0123456789abcdef0123456789abcdef01234567",
+                )
+                .await;
+            server.abort();
+            assert_eq!(outcome.is_ok(), expect_ok, "{second}: {outcome:?}");
+            if second == "unauthorized" {
+                assert!(
+                    matches!(outcome, Err(ProviderError::AuthenticationFailed(_))),
+                    "the lookup's own failure, not the 422: {outcome:?}"
+                );
+            }
+            assert_eq!(
+                lookups.load(Ordering::SeqCst),
+                2,
+                "one lookup before, one after the 422"
+            );
+        }
     }
 
     /// The folder of a search reads as `list` reads it: a relative one from the

@@ -6688,7 +6688,9 @@
             "dirtyTitle": "Canvis sense desar",
             "dirtyBody": "Té canvis sense desar. Descartar-los i tancar?",
             "keepEditing": "Continua editant",
-            "discardAndClose": "Descarta i tanca"
+            "discardAndClose": "Descarta i tanca",
+            "busyBodyKeepsRunning": "Hi ha una operació en curs. Continuarà després de tancar aquesta finestra i el resultat no es mostrarà aquí. Tancar igualment?",
+            "closeAnyway": "Tanca igualment"
         },
         "modalView": {
             "listView": "Vista de llista",

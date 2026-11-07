@@ -6669,7 +6669,9 @@
             "dirtyTitle": "Neshranjene spremembe",
             "dirtyBody": "Imate neshranjene spremembe. Zavreči in zapreti?",
             "keepEditing": "Nadaljuj urejanje",
-            "discardAndClose": "Zavrzi in zapri"
+            "discardAndClose": "Zavrzi in zapri",
+            "busyBodyKeepsRunning": "Operacija še poteka. Nadaljevala se bo po zaprtju tega okna, njen rezultat pa tu ne bo prikazan. Vseeno zapreti?",
+            "closeAnyway": "Vseeno zapri"
         },
         "modalView": {
             "listView": "Seznamski pogled",

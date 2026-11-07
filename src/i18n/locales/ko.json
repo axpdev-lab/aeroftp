@@ -6669,7 +6669,9 @@
             "dirtyTitle": "저장되지 않은 변경 사항",
             "dirtyBody": "저장되지 않은 변경 사항이 있습니다. 취소하고 닫을까요?",
             "keepEditing": "계속 편집",
-            "discardAndClose": "취소하고 닫기"
+            "discardAndClose": "취소하고 닫기",
+            "busyBodyKeepsRunning": "작업이 아직 실행 중입니다. 이 창을 닫아도 계속 실행되며, 결과는 여기에 표시되지 않습니다. 그래도 닫을까요?",
+            "closeAnyway": "그래도 닫기"
         },
         "modalView": {
             "listView": "목록 보기",

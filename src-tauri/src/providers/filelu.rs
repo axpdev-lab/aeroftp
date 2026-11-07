@@ -584,6 +584,7 @@ fn filelu_name_refusal(name: &str, op: NameOp) -> Option<String> {
 /// the caller and the user need; any other error passes through unchanged.
 fn name_missing_path(err: ProviderError, path: &str) -> ProviderError {
     match err {
+        // Kept as text (#1506 row 164): FileLu's fixed API string; the mutation path pairs it with status 404.
         ProviderError::ServerError(msg) if msg.trim() == "No file found in specified folder" => {
             ProviderError::NotFound(path.to_string())
         }

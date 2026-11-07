@@ -99,7 +99,7 @@ impl Drop for ComGuard {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 fn map_com(err: windows::core::Error, ctx: &str) -> ProviderError {
-    super::backend::native_command_error(ctx, &err.message())
+    super::backend::native_command_error(ctx, &err.message(), Some(err.code().0))
 }
 
 fn transfer_err(err: windows::core::Error, ctx: &str) -> ProviderError {

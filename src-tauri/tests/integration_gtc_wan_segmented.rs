@@ -286,7 +286,12 @@ async fn gtc_gui_sftp_segmented_byte_identical_vs_single_stream() {
     };
 
     // Stage local fixture (64 MiB pseudo-random bytes).
-    let src_dir = std::env::temp_dir().join("gtc-gui-sftp-byteid-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-sftp-byteid-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -309,7 +314,12 @@ async fn gtc_gui_sftp_segmented_byte_identical_vs_single_stream() {
     );
     seed_remote(&mut base, &src).await.expect("seed");
 
-    let dst_root = std::env::temp_dir().join("gtc-gui-sftp-byteid-dst");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_root_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-sftp-byteid-dst-")
+        .tempdir()
+        .unwrap();
+    let dst_root = dst_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
 
@@ -396,7 +406,12 @@ async fn gtc_aerosync_sftp_segmented_download_byte_identity_speed_band() {
         return;
     };
 
-    let src_dir = std::env::temp_dir().join("gtc-aerosync-sftp-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-aerosync-sftp-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -407,8 +422,18 @@ async fn gtc_aerosync_sftp_segmented_download_byte_identity_speed_band() {
     base.connect().await.expect("base SFTP connect");
     seed_remote(&mut base, &src).await.expect("seed");
 
-    let single_root = std::env::temp_dir().join("gtc-aerosync-sftp-single");
-    let segmented_root = std::env::temp_dir().join("gtc-aerosync-sftp-segmented");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let single_root_guard = tempfile::Builder::new()
+        .prefix("gtc-aerosync-sftp-single-")
+        .tempdir()
+        .unwrap();
+    let single_root = single_root_guard.path().to_path_buf();
+    // A private folder with an unpredictable name (deep-scan 123).
+    let segmented_root_guard = tempfile::Builder::new()
+        .prefix("gtc-aerosync-sftp-segmented-")
+        .tempdir()
+        .unwrap();
+    let segmented_root = segmented_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&single_root);
     let _ = std::fs::remove_dir_all(&segmented_root);
     std::fs::create_dir_all(&single_root).unwrap();
@@ -485,7 +510,12 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_temporary() {
 
     // Reuse the same remote fixture seeded by the byte-id test if it
     // ran first; otherwise seed our own.
-    let src_dir = std::env::temp_dir().join("gtc-gui-sftp-cancel-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-sftp-cancel-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -495,7 +525,12 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_temporary() {
     base.connect().await.expect("base SFTP connect");
     seed_remote(&mut base, &src).await.expect("seed");
 
-    let dst_root = std::env::temp_dir().join("gtc-gui-sftp-cancel-dst");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_root_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-sftp-cancel-dst-")
+        .tempdir()
+        .unwrap();
+    let dst_root = dst_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
     let dst = dst_root.join("cancelled.bin");
@@ -563,8 +598,12 @@ async fn gtc_gui_sftp_segmented_cancel_leaves_no_temporary() {
 #[tokio::test]
 async fn gtc_eligibility_gate_blocks_below_floor_locally() {
     // 4 MiB file with 4 segments requested -> floor (8 MiB) -> None.
-    let f = std::env::temp_dir().join("gtc-eligibility-noop.bin");
-    let _ = std::fs::remove_file(&f);
+    // A private folder with an unpredictable name (deep-scan 123).
+    let f_guard = tempfile::Builder::new()
+        .prefix("gtc-eligibility-noop-")
+        .tempdir()
+        .unwrap();
+    let f = f_guard.path().join("noop.bin");
     std::fs::write(&f, vec![0u8; 4 * 1024 * 1024]).unwrap();
 
     let mut base = SftpProvider::new(SftpConfig {
@@ -591,7 +630,6 @@ async fn gtc_eligibility_gate_blocks_below_floor_locally() {
         "unconnected SFTP must NOT be eligible",
     );
 
-    let _ = std::fs::remove_file(&f);
     // Silence unused-mut warning on `base`.
     let _ = &mut base;
 
@@ -655,7 +693,12 @@ async fn gtc_gui_ftp_segmented_byte_identical_vs_single_stream() {
         return;
     };
 
-    let src_dir = std::env::temp_dir().join("gtc-gui-ftp-byteid-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-ftp-byteid-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -677,7 +720,12 @@ async fn gtc_gui_ftp_segmented_byte_identical_vs_single_stream() {
     );
     seed_remote_ftp(&mut base, &src).await.expect("seed FTP");
 
-    let dst_root = std::env::temp_dir().join("gtc-gui-ftp-byteid-dst");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_root_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-ftp-byteid-dst-")
+        .tempdir()
+        .unwrap();
+    let dst_root = dst_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
 
@@ -795,8 +843,12 @@ fn s3_config(secret: String) -> S3Config {
 }
 
 async fn verify_s3_object_sha(base: &S3Provider, key: &str, expected_sha: &str, label: &str) {
-    let dst = std::env::temp_dir().join(format!("gtc4-verify-{label}.bin"));
-    let _ = std::fs::remove_file(&dst);
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_guard = tempfile::Builder::new()
+        .prefix("gtc4-verify-")
+        .tempdir()
+        .unwrap();
+    let dst = dst_guard.path().join(format!("{label}.bin"));
     let mut worker = base.clone_for_transfer().expect("clone S3 verifier");
     worker
         .download(key, dst.to_str().unwrap(), None)
@@ -822,7 +874,12 @@ async fn gtc_cross_profile_sftp_to_s3_parallel_byte_identity_speed_band() {
         return;
     };
 
-    let src_dir = std::env::temp_dir().join("gtc4-cross-profile-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc4-cross-profile-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
 
@@ -968,7 +1025,12 @@ async fn gtc_gui_s3_segmented_byte_identical_vs_single_stream() {
         return;
     };
 
-    let src_dir = std::env::temp_dir().join("gtc-gui-s3-byteid-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-s3-byteid-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -995,7 +1057,12 @@ async fn gtc_gui_s3_segmented_byte_identical_vs_single_stream() {
         .await
         .expect("seed S3 upload");
 
-    let dst_root = std::env::temp_dir().join("gtc-gui-s3-byteid-dst");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_root_guard = tempfile::Builder::new()
+        .prefix("gtc-gui-s3-byteid-dst-")
+        .tempdir()
+        .unwrap();
+    let dst_root = dst_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
 
@@ -1136,7 +1203,12 @@ async fn gtc_dag_sftp_single_file_byte_identical() {
         return;
     };
 
-    let src_dir = std::env::temp_dir().join("gtc-dag-sftp-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-dag-sftp-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -1147,7 +1219,12 @@ async fn gtc_dag_sftp_single_file_byte_identical() {
     base.connect().await.expect("base SFTP connect");
     seed_remote(&mut base, &src).await.expect("seed SFTP");
 
-    let dst_root = std::env::temp_dir().join("gtc-dag-sftp-dst");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_root_guard = tempfile::Builder::new()
+        .prefix("gtc-dag-sftp-dst-")
+        .tempdir()
+        .unwrap();
+    let dst_root = dst_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
 
@@ -1198,7 +1275,12 @@ async fn gtc_dag_ftp_single_file_byte_identical() {
         return;
     };
 
-    let src_dir = std::env::temp_dir().join("gtc-dag-ftp-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-dag-ftp-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -1209,7 +1291,12 @@ async fn gtc_dag_ftp_single_file_byte_identical() {
     base.connect().await.expect("base FTP connect");
     seed_remote_ftp(&mut base, &src).await.expect("seed FTP");
 
-    let dst_root = std::env::temp_dir().join("gtc-dag-ftp-dst");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_root_guard = tempfile::Builder::new()
+        .prefix("gtc-dag-ftp-dst-")
+        .tempdir()
+        .unwrap();
+    let dst_root = dst_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
 
@@ -1254,7 +1341,12 @@ async fn gtc_dag_s3_single_file_byte_identical() {
         return;
     };
 
-    let src_dir = std::env::temp_dir().join("gtc-dag-s3-src");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let src_dir_guard = tempfile::Builder::new()
+        .prefix("gtc-dag-s3-src-")
+        .tempdir()
+        .unwrap();
+    let src_dir = src_dir_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&src_dir);
     std::fs::create_dir_all(&src_dir).unwrap();
     let src = src_dir.join("64MiB.bin");
@@ -1268,7 +1360,12 @@ async fn gtc_dag_s3_single_file_byte_identical() {
         .await
         .expect("seed S3 upload");
 
-    let dst_root = std::env::temp_dir().join("gtc-dag-s3-dst");
+    // A private folder with an unpredictable name (deep-scan 123).
+    let dst_root_guard = tempfile::Builder::new()
+        .prefix("gtc-dag-s3-dst-")
+        .tempdir()
+        .unwrap();
+    let dst_root = dst_root_guard.path().to_path_buf();
     let _ = std::fs::remove_dir_all(&dst_root);
     std::fs::create_dir_all(&dst_root).unwrap();
 

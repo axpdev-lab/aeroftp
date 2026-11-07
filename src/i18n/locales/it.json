@@ -6678,7 +6678,9 @@
             "dirtyTitle": "Modifiche non salvate",
             "dirtyBody": "Hai modifiche non salvate. Scartarle e chiudere?",
             "keepEditing": "Continua a modificare",
-            "discardAndClose": "Scarta e chiudi"
+            "discardAndClose": "Scarta e chiudi",
+            "busyBodyKeepsRunning": "C'è ancora un'operazione in corso. Continuerà dopo la chiusura di questa finestra e il suo risultato non verrà mostrato qui. Chiudere comunque?",
+            "closeAnyway": "Chiudi comunque"
         },
         "modalView": {
             "listView": "Vista elenco",

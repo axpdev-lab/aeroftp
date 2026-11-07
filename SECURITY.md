@@ -118,13 +118,16 @@ Findings not yet addressed are surfaced as **open**. Findings accepted with writ
 
 | Month | Version | Open | Suppressed (justified) | Report |
 |---|---|---|---|---|
-| Jun 2026 | v4.0.7 | **0** | 28 | [HTML](docs/security/security-report-latest.html) |
+| Nov 2026 | v4.2.6 (`main` at `9fe735ab8` plus this audit's changes) | **0** | 25 | [HTML](docs/security/security-report-latest.html) |
+| Jun 2026 | v4.0.7 | **0** | 28 | [HTML](https://github.com/axpdev-lab/aeroftp/blob/aa0e4774541c8eeafe14b33b0c92427d7621e7d8/docs/security/security-report-latest.html) |
 | May 2026 | v3.8.0 | **0** | 26 | archived |
+
+Only the newest row links `security-report-latest.html`. The next audit replaces that file, so the same pull request repins this row to the blob of the last `main` commit that carries it, as the June row is pinned to `aa0e477`. Dated copies under `docs/security/` are not committed (`.gitignore`). Counts: a suppressed finding is one package version and one advisory, counted once across lockfiles (since November 2026; earlier rows counted one per lockfile record).
 
 #### Third-party tooling
 
 - **[Socket.dev](https://socket.dev)**: Supply chain SCA monitoring on every push - dependency risk scoring, typosquatting detection
-- **[Snyk](https://snyk.io)**: Continuous vulnerability scanning for npm and Cargo dependencies with automated fix PRs
+- **[Snyk](https://snyk.io)**: pull-request checks and recurring tests on `main`. Snyk Open Source checks the npm manifests and opens automated fix PRs; Snyk Code runs static analysis on the Rust, TypeScript, JavaScript and Python source. Snyk does not read Cargo manifests, so the Rust dependencies are covered by `cargo audit` and `osv-scanner` above. The first Snyk Code run (November 2026, `main` at `d508eb0fe`) reported 236 findings; each was reviewed and none is exploitable in the shipped app
 - **[CodeRabbit](https://www.coderabbit.ai)** and **Greptile**: pull-request review. They are not a vulnerability scan and not a substitute for `cargo audit`
 - **GitHub Dependabot**: Native alerts and auto-PRs cross-referenced against the self-hosted audit suppression list
 - **[Aikido Security](https://aikido.dev)**: Past audits (February-May 2026) archived - Top 5% benchmark, 0 open issues during the trial period

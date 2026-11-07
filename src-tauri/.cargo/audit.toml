@@ -58,6 +58,19 @@
 #           0.7 line 0.7.5 -> 0.7.6 (russh, rsa, ssh-key, elliptic-curve 0.14). The 0.5.5
 #           copy has no patched 0.5 release and its consumers are at their latest
 #           versions; ignored the ID for that copy only, see the section below.)
+# Reviewed: 2026-11-06 (fresh run of cargo audit, npm audit and osv-scanner on main
+#           ccf3f4be9. REMOVED 16 ignores that no longer match anything: the ten
+#           GTK3 unmaintained IDs RUSTSEC-2024-0411..0420 were withdrawn from the
+#           advisory DB on 2026-08-14, and RUSTSEC-2024-0421 is the idna Punycode
+#           advisory (idna 1.1.0 here is patched), not gdkx11-sys; RUSTSEC-2026-0097
+#           (rand 0.7.3) and RUSTSEC-2025-0057 (fxhash) left the lock with the
+#           Tauri build stack; RUSTSEC-2026-0190 is filed against anyhow
+#           (patched >= 1.0.103, the lock has 1.0.104), not n0-error; the
+#           quick-xml DoS pair RUSTSEC-2026-0194/0195 is patched in 0.41.0 and the
+#           lock now holds only 0.42.0. A run of cargo audit with no ignore list
+#           fires none of them. Also BUMPED tokio 1.53.1 -> 1.54.1 in
+#           tests/portal-chooser/fake-portal/Cargo.lock (RUSTSEC-2026-0386,
+#           AsyncFd I/O safety, test helper only); the app lock already had 1.54.1.)
 
 [advisories]
 ignore = [
@@ -96,30 +109,6 @@ ignore = [
     "RUSTSEC-2023-0071",
 
     # ----------------------------------------------------------------
-    # GTK3 unmaintained (transitive via Tauri / wry)
-    # ----------------------------------------------------------------
-    # `atk`, `atk-sys`, `gdk`, `gdk-sys`, `gdkx11`, `gdkx11-sys`, `gtk`,
-    # `gtk-sys`, `gdk-pixbuf`, `gdk-pixbuf-sys`, `gio`, `gio-sys`, `glib`,
-    # `glib-sys`, `gobject-sys`, `pango`, `pango-sys`, `cairo-rs`, `cairo-sys-rs`
-    # all flagged as unmaintained because gtk-rs upstream paused GTK3
-    # bindings in favour of GTK4. Pulled in by `wry 0.54` <- `tauri-runtime-wry`
-    # <- `tauri 2.x` for the WebKitGTK Linux WebView. AeroFTP cannot
-    # unilaterally migrate to GTK4 — it is a Tauri-stack-wide decision.
-    # Tracked upstream by Tauri team; expected to land with the next
-    # minor (Tauri 2.11+ already in flight, see PR #168).
-    "RUSTSEC-2024-0412",  # gdk
-    "RUSTSEC-2024-0413",  # atk
-    "RUSTSEC-2024-0416",  # atk-sys
-    "RUSTSEC-2024-0418",  # gdk-sys
-    "RUSTSEC-2024-0420",  # gdkx11
-    "RUSTSEC-2024-0421",  # gdkx11-sys
-    "RUSTSEC-2024-0414",  # gtk
-    "RUSTSEC-2024-0415",  # gtk-sys
-    "RUSTSEC-2024-0419",  # gdk-pixbuf
-    "RUSTSEC-2024-0411",  # gdkwayland-sys (via tao)
-    "RUSTSEC-2024-0417",  # gdkx11 (separate ID)
-
-    # ----------------------------------------------------------------
     # proc-macro-error unmaintained (transitive via Tauri / tray-icon)
     # ----------------------------------------------------------------
     # `proc-macro-error 1.0.4` <- `glib-macros 0.18.5` <- `glib 0.18.5` <-
@@ -148,31 +137,13 @@ ignore = [
     # ----------------------------------------------------------------
     # glib 0.18 unsound (transitive via Tauri / wry)
     # ----------------------------------------------------------------
-    # `glib 0.18.5` carries a soundness advisory for unsafe code in
-    # `gobject-sys::g_object_get`. Same supply-chain situation as the
-    # GTK3 unmaintained set above (Tauri 2.x stack). Cannot be dropped
+    # `glib 0.18.5` carries a soundness advisory for `glib::VariantStrIter`:
+    # its iterator passed an immutable reference to a C out-parameter.
+    # AeroFTP never calls `VariantStrIter`. glib comes with the GTK3 stack
+    # of the Tauri 2.x Linux WebView (wry, WebKitGTK). Cannot be dropped
     # without dropping Tauri Linux support entirely. Will be cleared
     # automatically when Tauri ships GTK4-based wry.
     "RUSTSEC-2024-0429",  # glib
-
-    # ----------------------------------------------------------------
-    # rand 0.7.3 unsound (build-dep only via Tauri stack)
-    # ----------------------------------------------------------------
-    # `rand 0.7.3` is a *build-dependency* via:
-    #   rand 0.7.3 <- phf_generator 0.8.0 <- phf_codegen 0.8.0 <-
-    #   selectors 0.24.0 <- kuchikiki 0.8.8-speedreader <- tauri-utils 2.8.3
-    #   <- tauri-build 2.5.6 <- aeroftp (build-deps)
-    # Used at build-time to generate perfect-hash maps for the HTML parser
-    # used by Tauri's CSP injection. NOT included in the runtime binary.
-    # No exploitation surface in shipped artifacts.
-    "RUSTSEC-2026-0097",  # rand 0.7.3
-
-    # ----------------------------------------------------------------
-    # fxhash unmaintained (build-dep only via Tauri stack)
-    # ----------------------------------------------------------------
-    # `fxhash 0.2.1` <- `selectors 0.24.0` <- `kuchikiki` <- `tauri-utils`.
-    # Build-dependency, not in runtime binary. Same Tauri stack situation.
-    "RUSTSEC-2025-0057",  # fxhash
 
     # ----------------------------------------------------------------
     # Tauri 2.11.0 Origin Confusion (Windows/Android only) - intentional pin
@@ -345,56 +316,6 @@ ignore = [
     "RUSTSEC-2024-0436",  # paste unmaintained (compile-time proc-macro, netwatch path)
 
     # ----------------------------------------------------------------
-    # RUSTSEC-2026-0190 - Unsoundness in n0-error `Error::downcast_mut()`
-    # ----------------------------------------------------------------
-    # Freshly published to the advisory DB (loaded 2026-06-29), so it lights up
-    # on the first audit after that date independent of any AeroFTP change. It is
-    # an UNSOUNDNESS report (not an exploitable vulnerability): n0-error's
-    # `Error::downcast_mut()` can hand out a `&mut T` of the wrong type under a
-    # specific generic misuse, which is a soundness hole in that helper, not a
-    # remote/attacker-reachable issue.
-    #
-    #   n0-error 1.0.0 <- iroh-relay 1.0.0 <- iroh 1.0.0 <- iroh-blobs / iroh-docs
-    #     / iroh-mainline-address-lookup <- aeroftp-peer-l0 <- aeroftp
-    #
-    # iroh 1.0.0 pins n0-error 1.0.0 across its whole graph, so there is no
-    # in-tree upgrade until upstream iroh bumps it; AeroFTP never calls
-    # `downcast_mut` on an n0-error and only consumes iroh errors as opaque
-    # `Display` strings on the P2P path. Same accepted-advisory posture as the two
-    # iroh unmaintained ignores above; revisit when iroh ships a fixed n0-error.
-    "RUSTSEC-2026-0190",  # n0-error downcast_mut unsoundness (iroh 1.0 transitive, not reachable)
-
-    # ----------------------------------------------------------------
-    # RUSTSEC-2026-0194 + RUSTSEC-2026-0195 - quick-xml DoS (< 0.41.0)
-    # ----------------------------------------------------------------
-    # Two DoS advisories freshly published 2026-06-29 against quick-xml < 0.41.0:
-    #   0194 quadratic run time checking a start tag for duplicate attribute names,
-    #   0195 unbounded namespace-declaration allocation in `NsReader` (memory
-    #   exhaustion). Both require attacker-controlled XML fed to the parser to bite.
-    #
-    # The reachable attack surface in AeroFTP is the runtime XML parser: WebDAV,
-    # S3, Azure and STS responses arrive from a possibly-hostile server. That path
-    # is our DIRECT dependency, now bumped to the patched quick-xml 0.41.0
-    # (src-tauri/Cargo.toml:109). The real surface is fixed.
-    #
-    # The two instances that remain are Tauri-stack transitive and never parse
-    # untrusted remote XML, so they are ignored pending an upstream bump:
-    #
-    #   quick-xml 0.37.5 <- tauri-winrt-notification <- notify-rust <-
-    #     tauri-plugin-notification <- aeroftp
-    #   Windows toast notifications. It parses AeroFTP's OWN toast-template XML
-    #   (title/body we build), not remote input, and only on Windows.
-    #
-    #   quick-xml 0.39.4 <- plist <- tauri-utils <- tauri(-runtime-wry / codegen)
-    #   Info.plist / bundle-metadata parsing at build time and on macOS. It parses
-    #   app-owned plist files, not remote input.
-    #
-    # Neither can be bumped without a Tauri-stack release (same posture as the other
-    # Tauri-transitive ignores above). Revisit when Tauri bumps notify-rust / plist.
-    "RUSTSEC-2026-0194",  # quick-xml duplicate-attr quadratic DoS (runtime path patched to 0.41; rest Tauri-transitive, app-owned XML)
-    "RUSTSEC-2026-0195",  # quick-xml NsReader memory-exhaustion DoS (runtime path patched to 0.41; rest Tauri-transitive, app-owned XML)
-
-    # ----------------------------------------------------------------
     # zvariant / zbus_names / zvariant_derive unmaintained (folded into zbus 6)
     # ----------------------------------------------------------------
     # RUSTSEC-2026-0370 (zvariant), RUSTSEC-2026-0371 (zbus_names) and
@@ -481,7 +402,7 @@ ignore = [
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
 # a specific RUSTSEC ID with a paragraph explaining the threat-model gap.
-# Severity: do not blanket-ignore "low" or "informational" — review them.
+# Severity: do not blanket-ignore "low" or "informational"; review them.
 
 [output]
 deny = ["unmaintained", "unsound", "yanked"]

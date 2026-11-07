@@ -680,6 +680,8 @@ impl DrimeCloudProvider {
             return Ok(());
         }
         let body = resp.text().await.unwrap_or_default();
+        // Kept as text: this helper has no destination folder to look in,
+        // and the 4xx carries no code for a taken name (#1506 row 164).
         if status.is_client_error() && body.to_ascii_lowercase().contains("already exist") {
             return Err(ProviderError::AlreadyExists(to.to_string()));
         }
@@ -1198,7 +1200,9 @@ impl StorageProvider for DrimeCloudProvider {
             ));
         }
 
-        if status.as_u16() == 401 || body.contains("Unauthenticated") {
+        // 401 decides; Laravel's "Unauthenticated" counts only on a failed
+        // response, never on a 2xx whose body happens to hold the word.
+        if status.as_u16() == 401 || (!status.is_success() && body.contains("Unauthenticated")) {
             return Err(ProviderError::AuthenticationFailed(
                 "Invalid API token. Generate one at app.drime.cloud → Account Settings → Developers".to_string()
             ));
@@ -1662,8 +1666,19 @@ impl StorageProvider for DrimeCloudProvider {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
             let body_lower = body.to_lowercase();
+            // Laravel words the 422 in the account's locale: a folder of
+            // that name in the parent is what proves the name taken. The
+            // English phrase still counts, for a listing not yet indexed.
+            // #1506 row 164.
+            // The English phrase settles it without a request; only a
+            // refusal in other words costs a listing, which can stall
+            // (CodeRabbit, #1520).
             if status == reqwest::StatusCode::UNPROCESSABLE_ENTITY
-                && body_lower.contains("already exists")
+                && (body_lower.contains("already exists")
+                    || matches!(
+                        self.find_exact_in_folder(&parent_id, dir_name).await,
+                        Ok(Some((_, true, _)))
+                    ))
             {
                 return Err(ProviderError::AlreadyExists(resolved));
             }
@@ -2825,6 +2840,10 @@ impl StorageProvider for DrimeCloudProvider {
 
 #[cfg(test)]
 mod tests {
+    std::thread_local! {
+        /// GET requests the Drime double served on this test's thread.
+        static DOUBLE_LISTINGS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
     #[tokio::test]
     async fn probe_contract_drime_root_is_not_a_missing_child() {
         let (mut provider, _) = provider_on_drime(false, 200).await;
@@ -3054,6 +3073,7 @@ mod tests {
                     let ok =
                         || axum::Json(serde_json::json!({ "status": "success" })).into_response();
                     if method == "GET" {
+                        DOUBLE_LISTINGS.with(|n| n.set(n.get() + 1));
                         let parent = query
                             .split('&')
                             .find_map(|pair| pair.strip_prefix("parentIds="))
@@ -3166,6 +3186,20 @@ mod tests {
                             items.push((id, name, parent, "file".to_string()));
                             ok()
                         }
+                        // A folder create refused as Laravel does in an
+                        // Italian account, whatever the name.
+                        ("POST", "/folders") => {
+                            let english = args
+                                .get("name")
+                                .and_then(|n| n.as_str())
+                                .is_some_and(|n| n.starts_with("english"));
+                            let refusal = if english {
+                                r#"{"message":"The name has already been taken.","errors":{"name":["A folder with that name already exists."]}}"#
+                            } else {
+                                r#"{"message":"Il nome è già stato preso.","errors":{"name":["Il nome è già stato preso."]}}"#
+                            };
+                            (axum::http::StatusCode::UNPROCESSABLE_ENTITY, refusal).into_response()
+                        }
                         _ => (axum::http::StatusCode::BAD_REQUEST, "unexpected").into_response(),
                     }
                 }
@@ -3177,6 +3211,93 @@ mod tests {
         let mut provider = test_provider();
         provider.connected = true;
         (provider, store, changes)
+    }
+
+    /// #1506 row 164 (Greptile, #1520): the connection check decides by 401.
+    /// A 2xx whose body happens to hold "Unauthenticated" (here, the user's
+    /// display name) connects; a 401 is a bad token.
+    #[tokio::test]
+    async fn the_connection_check_is_decided_by_the_status_not_the_word() {
+        use axum::response::IntoResponse;
+        for (status, body, connects) in [
+            (
+                axum::http::StatusCode::OK,
+                r#"{"user":{"id":7,"display_name":"Unauthenticated Ursula"}}"#,
+                true,
+            ),
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                r#"{"message":"Unauthenticated."}"#,
+                false,
+            ),
+        ] {
+            let app = axum::Router::new().fallback(axum::routing::any(move || async move {
+                (status, body).into_response()
+            }));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            TEST_API_BASE.with(|base| *base.borrow_mut() = Some(format!("http://{addr}")));
+            let mut provider = test_provider();
+            let outcome = provider.connect().await;
+            server.abort();
+            if connects {
+                outcome.expect("a 2xx connects whatever its body says");
+                assert_eq!(provider.user_id, Some(7));
+            } else {
+                assert!(
+                    matches!(outcome, Err(ProviderError::AuthenticationFailed(_))),
+                    "{outcome:?}"
+                );
+            }
+        }
+    }
+
+    /// CodeRabbit (#1520): an English refusal settles mkdir without the
+    /// listing a refusal in other words costs.
+    #[tokio::test]
+    async fn an_english_mkdir_refusal_needs_no_listing() {
+        let (mut provider, _, _) =
+            provider_on_drime_entries(&[(1, "d", "", "folder"), (2, "sub", "1", "folder")]).await;
+        // Resolve the parent once, so only the refusal's own cost is counted.
+        let _ = provider.mkdir("/d/other").await;
+        let before = DOUBLE_LISTINGS.with(|n| n.get());
+        let english = provider.mkdir("/d/english-taken").await;
+        let english_cost = DOUBLE_LISTINGS.with(|n| n.get()) - before;
+        let before = DOUBLE_LISTINGS.with(|n| n.get());
+        let localized = provider.mkdir("/d/sub").await;
+        let localized_cost = DOUBLE_LISTINGS.with(|n| n.get()) - before;
+        assert!(
+            matches!(english, Err(ProviderError::AlreadyExists(_))),
+            "{english:?}"
+        );
+        assert!(
+            matches!(localized, Err(ProviderError::AlreadyExists(_))),
+            "{localized:?}"
+        );
+        assert!(
+            english_cost < localized_cost,
+            "english {english_cost} vs localized {localized_cost} listings"
+        );
+    }
+
+    /// #1506 row 164: a mkdir refused with a 422 in the account's language
+    /// is AlreadyExists when the parent lists a folder of that name, and
+    /// stays a failure when it does not.
+    #[tokio::test]
+    async fn a_localized_mkdir_refusal_is_already_exists_only_when_the_folder_is_listed() {
+        let (mut provider, _, _) =
+            provider_on_drime_entries(&[(1, "d", "", "folder"), (2, "sub", "1", "folder")]).await;
+        let taken = provider.mkdir("/d/sub").await;
+        assert!(
+            matches!(taken, Err(ProviderError::AlreadyExists(_))),
+            "{taken:?}"
+        );
+        let refused = provider.mkdir("/d/other").await;
+        assert!(
+            matches!(refused, Err(ProviderError::ServerError(_))),
+            "{refused:?}"
+        );
     }
 
     /// Drime's rename and move never overwrite, so the replace behind CLI

@@ -122,3 +122,18 @@ export const PER_FILE_ERROR_KINDS: Set<SyncErrorKind> = new Set([
 export function getErrorKindI18nKey(kind: SyncErrorKind): string {
   return `transfer.errorKind.${kind}`;
 }
+
+/**
+ * Runs async tasks one at a time, in the order they were handed over: a task
+ * starts only when the one before it has settled. The circuit breaker decides
+ * each failure through it, since a decision awaits the backend and two in
+ * flight could otherwise apply out of order (CodeRabbit, #1520).
+ */
+export function serialRunner(): <T>(task: () => Promise<T>) => Promise<T> {
+  let tail: Promise<unknown> = Promise.resolve();
+  return <T>(task: () => Promise<T>): Promise<T> => {
+    const run = tail.then(task);
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}

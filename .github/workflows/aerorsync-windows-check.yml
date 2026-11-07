@@ -34,8 +34,9 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           ref: ${{ github.event.inputs.ref || github.ref }}
 
       - name: Install stable Rust + windows-msvc target
@@ -45,7 +46,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Cargo registry cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
