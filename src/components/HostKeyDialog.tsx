@@ -5,6 +5,7 @@ import React from 'react';
 import { Fingerprint, ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 export interface HostKeyInfo {
     status: 'known' | 'unknown' | 'changed' | 'error';
@@ -32,15 +33,19 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const asking = visible && !!info && (info.status === 'unknown' || info.status === 'changed');
+    // A trust decision: the backdrop is inert, and ESC is the safe answer,
+    // reject, which trusts nothing (Discussion #1527).
+    const guarded = useGuardedClose({ guard: null, onClose: onReject, backdrop: 'never', escape: asking });
 
-    if (!visible || !info || (info.status !== 'unknown' && info.status !== 'changed')) return null;
+    if (!asking || !info) return null;
 
     const isChanged = info.status === 'changed';
 
     return (
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={onReject}
+            onClick={guarded.onBackdropClick}
             role="dialog"
             aria-modal="true"
             aria-label={t('protocol.hostKeyDialogLabel')}

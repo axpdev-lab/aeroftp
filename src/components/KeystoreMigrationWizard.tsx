@@ -11,6 +11,7 @@ import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 interface KeystoreMigrationWizardProps {
     isOpen: boolean;
@@ -168,6 +169,13 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
         setStep(4);
     }, [detected]);
 
+    // The migration writes the credentials into the vault: while it runs,
+    // nothing skips it (it went on writing behind a hidden wizard). The
+    // backdrop never skips and ESC is not a skip either: only the Skip
+    // button and the X do, and not mid-migration (Discussion #1527).
+    const migrating = step === 3 && !migrationError;
+    const guarded = useGuardedClose({ guard: migrating ? 'busy' : null, onClose: onSkip, backdrop: 'never' });
+
     if (!isOpen) return null;
 
     const totalItems = detected
@@ -183,7 +191,7 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
     return (
         <div
             className={`fixed inset-0 ${bgOverlay} flex items-center justify-center z-50`}
-            onClick={e => e.target === e.currentTarget && onSkip()}
+            onClick={guarded.onBackdropClick}
         >
             <div {...modalDrag.panelProps} className={`${bgPanel} rounded-lg shadow-2xl w-[480px] max-h-[90vh] overflow-hidden flex flex-col animate-scale-in`}>
                 {/* Header */}
@@ -201,7 +209,8 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                     </div>
                     <button
                         onClick={onSkip}
-                        className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                        disabled={migrating}
+                        className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         <X size={18} className={textSecondary} />
                     </button>
@@ -343,7 +352,8 @@ export const KeystoreMigrationWizard: React.FC<KeystoreMigrationWizardProps> = (
                 <div className={`flex items-center justify-between px-5 py-4 border-t ${borderColor}`}>
                     <button
                         onClick={onSkip}
-                        className={`text-sm ${textSecondary} hover:underline`}
+                        disabled={migrating}
+                        className={`text-sm ${textSecondary} hover:underline disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline`}
                     >
                         {t('settings.migrationSkip')}
                     </button>

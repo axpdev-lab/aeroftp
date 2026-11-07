@@ -17919,7 +17919,9 @@ const App: React.FC = () => {
           isOpen={!!deltaEligibilityPrompt}
           reason={deltaEligibilityPrompt?.reason || ''}
           serverLabel={deltaEligibilityPrompt?.serverLabel || ''}
-          onClose={(skipFuturePrompts) => {
+          // Cancel drops the queued plan: it runs only on Continue.
+          onCancel={() => setDeltaEligibilityPrompt(null)}
+          onContinue={(skipFuturePrompts) => {
             const prompt = deltaEligibilityPrompt;
             setDeltaEligibilityPrompt(null);
             if (!prompt) return;
