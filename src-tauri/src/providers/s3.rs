@@ -491,9 +491,10 @@ fn s3_slowdown_delay(
 
 /// Delay before another attempt of an upload request that Fastly Object
 /// Storage answered with 408: the request ran past its 120 s limit and was not
-/// completed (RFC 9110 15.5.9). The repeat is safe for a single PUT or one
-/// part, because it carries the same key and bytes (a part overwrites by
-/// number), so nothing is stored twice. Only a 408 qualifies. A plain 503 on a
+/// completed (RFC 9110 15.5.9). The repeat targets the same key (a part
+/// overwrites by number), so nothing is stored twice. A part repeats the same
+/// buffer; a single PUT reads the open file again, so an in-place edit during
+/// the wait changes its bytes, as for every streamed upload. Only a 408 qualifies. A plain 503 on a
 /// write is an uncertain outcome and stays on its response like on every
 /// other S3 endpoint (`docs/HTTP-RETRY-SAFETY.md`); a 429 is already repeated
 /// by the shared layer. Bounded by the shared retry allowance, `Retry-After`
@@ -7999,6 +8000,7 @@ impl StorageProvider for S3Provider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -13923,6 +13925,9 @@ mod tests {
             provider.restore_version("/a.txt", "v1").await,
             provider.delete_version("/a.txt", "v1").await,
             provider.list_object_versions("/", true).await.map(|_| ()),
+            provider
+                .download_version("/a.txt", "v1", "/nonexistent/never-written.bin")
+                .await,
             provider
                 .empty_object_versions("/", true, true)
                 .await

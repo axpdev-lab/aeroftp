@@ -3776,6 +3776,13 @@ pub fn export_rclone(
                         let mut probe: HashMap<String, String> = HashMap::new();
                         if let Some(opts) = options.and_then(|v| v.as_object()) {
                             for (k, v) in opts {
+                                // A blank region is no region: it must not
+                                // reach the preset template, which would build
+                                // an endpoint with an empty label.
+                                if k == "region" && v.as_str().is_some_and(|r| r.trim().is_empty())
+                                {
+                                    continue;
+                                }
                                 crate::profile_loader::insert_profile_option(&mut probe, k, v);
                             }
                         }
@@ -5897,6 +5904,22 @@ force_path_style = false
                 "eu-west-1.object.fastlystorage.app",
             );
             assert!(conf.contains("region = eu-west-1\n"), "{conf}");
+            assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
+        }
+
+        // No host and no endpoint with a blank region: the blank value must not
+        // reach the template (it built `https://.object.fastlystorage.app`).
+        for blank in ["", "   "] {
+            let conf = export(
+                serde_json::json!({ "bucket": "photos", "region": blank }),
+                "",
+            );
+            assert!(
+                conf.contains("endpoint = https://eu-central-1.object.fastlystorage.app\n"),
+                "{blank:?}: {conf}"
+            );
+            assert!(!conf.contains("endpoint = https://.object"), "{conf}");
+            assert!(conf.contains("region = eu-central-1\n"), "{conf}");
             assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
         }
 
