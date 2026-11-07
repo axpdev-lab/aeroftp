@@ -42,6 +42,10 @@ pub struct CodingGitStatusResult {
     pub total: usize,
     pub truncated: bool,
     pub raw: Vec<String>,
+    /// Entries whose path is not UTF-8, staged or conflicted: in no list a
+    /// path is taken from, still counted by the commit guards.
+    pub undecodable_staged: usize,
+    pub undecodable_conflicted: usize,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -264,7 +268,8 @@ pub fn git_commit(req: CodingGitCommitRequest) -> Result<CodingGitCommitResult, 
     let message = validate_commit_message(&req.message)?;
     let before = git_status_for_workspace(&workspace, &[])?;
 
-    if !before.conflicted.is_empty() {
+    // A conflicted or staged path that is not UTF-8 counts here like any other.
+    if !before.conflicted.is_empty() || before.undecodable_conflicted > 0 {
         return Ok(CodingGitCommitResult {
             success: false,
             workspace_root: path_to_string(&workspace.workspace_root),
@@ -280,7 +285,7 @@ pub fn git_commit(req: CodingGitCommitRequest) -> Result<CodingGitCommitResult, 
         });
     }
 
-    if before.staged.is_empty() {
+    if before.staged.is_empty() && before.undecodable_staged == 0 {
         return Ok(CodingGitCommitResult {
             success: false,
             workspace_root: path_to_string(&workspace.workspace_root),
@@ -529,13 +534,18 @@ fn git_status_for_workspace(
     workspace: &GitWorkspace,
     paths: &[String],
 ) -> Result<CodingGitStatusResult, String> {
-    let mut args = literal_git_args([
+    // Quoting forced on: every byte outside ASCII then arrives as an octal
+    // escape `unquote_git_path` reads back exactly. Off, git printed a name's
+    // bytes raw, and the lossy UTF-8 read turned one that is not UTF-8 into
+    // `�`, the name of another file.
+    let mut args = str_git_args(["-c", "core.quotepath=true"]);
+    args.extend(literal_git_args([
         "status",
         "--porcelain=v1",
         "--branch",
         "--untracked-files=all",
         "--no-renames",
-    ]);
+    ]));
     append_pathspecs(&mut args, paths);
     let status = run_git_stdout(&workspace.workspace_root, &args)?;
     let head = run_git_stdout(
@@ -569,6 +579,9 @@ fn parse_status(
     let mut conflicted = Vec::new();
     let mut raw = Vec::new();
     let mut total = 0;
+    let mut undecodable = false;
+    let mut undecodable_staged = 0;
+    let mut undecodable_conflicted = 0;
 
     for line in status.lines().filter(|line| !line.is_empty()) {
         if let Some(branch_line) = line.strip_prefix("## ") {
@@ -589,7 +602,21 @@ fn parse_status(
         let mut chars = line.chars();
         let index = chars.next().unwrap_or(' ');
         let worktree = chars.next().unwrap_or(' ');
-        let path = line[3..].to_string();
+        // After the two status characters and their separator, counted as
+        // characters, never bytes, and decoded from git's quoting: a quoted
+        // path handed back to `git_stage` named another literal path.
+        let rest = chars.as_str();
+        // A name that is not UTF-8 has no `String` that names it: it stays in
+        // `raw` as git printed it, and in no list a path is staged from.
+        let Some(path) = unquote_git_path(rest.strip_prefix(' ').unwrap_or(rest)) else {
+            undecodable = true;
+            if is_conflicted(index, worktree) {
+                undecodable_conflicted += 1;
+            } else if index != ' ' && index != '?' {
+                undecodable_staged += 1;
+            }
+            continue;
+        };
         let entry = CodingGitFileStatus {
             path,
             index_status: index.to_string(),
@@ -610,8 +637,11 @@ fn parse_status(
         }
     }
 
-    let clean =
-        staged.is_empty() && unstaged.is_empty() && untracked.is_empty() && conflicted.is_empty();
+    let clean = !undecodable
+        && staged.is_empty()
+        && unstaged.is_empty()
+        && untracked.is_empty()
+        && conflicted.is_empty();
     let truncated = raw.len() > 100;
     if truncated {
         raw.truncate(100);
@@ -633,6 +663,8 @@ fn parse_status(
         total,
         truncated,
         raw,
+        undecodable_staged,
+        undecodable_conflicted,
     }
 }
 
@@ -870,20 +902,64 @@ fn exit_code(status: &std::process::ExitStatus) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+/// A path as git prints it in `status --porcelain`: as is, or in double
+/// quotes with C-style escapes (`\"`, `\\`, `\t`, `\n`, ...) and octal bytes
+/// (`\303\251` for `é` while `core.quotepath` is on), decoded back to the
+/// path itself. `None` when the bytes are not UTF-8: replacing them would
+/// name another file (`\377.txt` read as `�.txt`).
+fn unquote_git_path(raw: &str) -> Option<String> {
+    let Some(inner) = raw
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+    else {
+        return Some(raw.to_string());
+    };
+    let mut bytes = Vec::with_capacity(inner.len());
+    let mut input = inner.bytes().peekable();
+    while let Some(byte) = input.next() {
+        if byte != b'\\' {
+            bytes.push(byte);
+            continue;
+        }
+        match input.next() {
+            Some(b'a') => bytes.push(0x07),
+            Some(b'b') => bytes.push(0x08),
+            Some(b't') => bytes.push(b'\t'),
+            Some(b'n') => bytes.push(b'\n'),
+            Some(b'v') => bytes.push(0x0b),
+            Some(b'f') => bytes.push(0x0c),
+            Some(b'r') => bytes.push(b'\r'),
+            Some(first @ b'0'..=b'7') => {
+                let mut value = u32::from(first - b'0');
+                for _ in 0..2 {
+                    match input.peek() {
+                        Some(digit @ b'0'..=b'7') => {
+                            value = value * 8 + u32::from(digit - b'0');
+                            input.next();
+                        }
+                        _ => break,
+                    }
+                }
+                bytes.push(value as u8);
+            }
+            Some(other) => bytes.push(other),
+            None => bytes.push(b'\\'),
+        }
+    }
+    String::from_utf8(bytes).ok()
+}
+
 fn truncate_chars(value: &str, max_bytes: usize) -> (String, bool) {
     if value.len() <= max_bytes {
         return (value.to_string(), false);
     }
 
-    let mut end = 0;
-    for (idx, _) in value.char_indices() {
-        if idx > max_bytes {
-            break;
-        }
-        end = idx;
-    }
-    if end == 0 {
-        end = max_bytes.min(value.len());
+    // The longest prefix of whole characters within `max_bytes`. The fallback
+    // cut at `max_bytes` itself, inside a character when the first one was
+    // longer than the limit, and panicked.
+    let mut end = max_bytes.min(value.len());
+    while !value.is_char_boundary(end) {
+        end -= 1;
     }
     (value[..end].to_string(), true)
 }
@@ -897,10 +973,190 @@ mod tests {
     use super::*;
     use std::fs;
 
+    #[test]
+    fn a_diff_is_cut_between_characters_whatever_the_limit() {
+        assert_eq!(truncate_chars("\u{e9}t\u{e9}", 1), (String::new(), true));
+        assert_eq!(truncate_chars("a\u{e9}b", 2), ("a".to_string(), true));
+        assert_eq!(truncate_chars("a\u{e9}b", 3), ("a\u{e9}".to_string(), true));
+        assert_eq!(truncate_chars("abc", 3), ("abc".to_string(), false));
+    }
+
+    #[test]
+    fn a_status_path_is_read_after_the_two_status_characters() {
+        let status = parse_status(
+            "?? citt\u{e0}.txt\n M \u{e9}t\u{e9}/a.txt\n",
+            "/w".into(),
+            "/w".into(),
+            None,
+        );
+        let raw = serde_json::to_string(&status).unwrap();
+        assert!(raw.contains("citt\u{e0}.txt"), "{raw}");
+        assert!(raw.contains("\u{e9}t\u{e9}/a.txt"), "{raw}");
+    }
+
+    #[test]
+    fn a_quoted_status_path_is_decoded() {
+        let decoded = unquote_git_path;
+        assert_eq!(decoded("plain.txt").as_deref(), Some("plain.txt"));
+        assert_eq!(
+            decoded("\"caf\\303\\251 \\\"x\\\".txt\"").as_deref(),
+            Some("caf\u{e9} \"x\".txt")
+        );
+        assert_eq!(decoded("\"tab\\there\"").as_deref(), Some("tab\there"));
+        assert_eq!(decoded("\"back\\\\slash\"").as_deref(), Some("back\\slash"));
+        // A literal U+FFFD is valid UTF-8; a lone 0xff byte is not.
+        assert_eq!(
+            decoded("\"\\357\\277\\275.txt\"").as_deref(),
+            Some("\u{fffd}.txt")
+        );
+        assert_eq!(decoded("\"\\377.txt\""), None);
+    }
+
+    /// A path git prints quoted (a non-ASCII name while `core.quotepath` is
+    /// on, a double quote always) came back to the agent quoted, and
+    /// `git_stage` with it staged nothing or another literal path. Both
+    /// settings, in the repository's own config so no user config decides.
+    #[test]
+    fn a_status_path_round_trips_through_git_stage() {
+        for quotepath in ["true", "false"] {
+            let dir = init_repo();
+            run(dir.path(), &["config", "core.quotepath", quotepath]);
+            // A double quote is not a valid file name character on Windows.
+            let name = if cfg!(windows) {
+                "caf\u{e9} x.txt"
+            } else {
+                "caf\u{e9} \"x\".txt"
+            };
+            fs::write(dir.path().join(name), "x\n").expect("write");
+            let status = git_status(path_to_string(dir.path()), None).expect("status");
+            let listed: Vec<&str> = status.untracked.iter().map(|e| e.path.as_str()).collect();
+            assert_eq!(listed, vec![name], "quotepath {quotepath}");
+            let stage = git_stage(CodingGitStageRequest {
+                workspace_root: path_to_string(dir.path()),
+                paths: vec![listed[0].to_string()],
+                dry_run: false,
+            })
+            .expect("stage the listed path");
+            let after = stage.after.expect("after");
+            let staged: Vec<&str> = after.staged.iter().map(|e| e.path.as_str()).collect();
+            assert_eq!(staged, vec![name], "quotepath {quotepath}");
+        }
+    }
+
+    /// A name git reports as `"\377.txt"` came back as `�.txt`, and staging
+    /// it staged a file of that literal name instead. With both present, only
+    /// the literal one is listed and staged, whatever `core.quotepath` says.
+    /// Linux only: APFS and NTFS refuse a name that is not UTF-8.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_name_that_is_not_utf8_is_never_staged_as_another_file() {
+        use std::os::unix::ffi::OsStrExt;
+        for quotepath in ["true", "false"] {
+            let dir = init_repo();
+            run(dir.path(), &["config", "core.quotepath", quotepath]);
+            let raw_name = std::ffi::OsStr::from_bytes(b"\xff.txt");
+            fs::write(dir.path().join(raw_name), "raw\n").expect("write raw");
+            let literal = "\u{fffd}.txt";
+            fs::write(dir.path().join(literal), "literal\n").expect("write literal");
+            let status = git_status(path_to_string(dir.path()), None).expect("status");
+            let listed: Vec<&str> = status.untracked.iter().map(|e| e.path.as_str()).collect();
+            assert_eq!(listed, vec![literal], "quotepath {quotepath}");
+            assert!(!status.clean);
+            assert!(
+                status.raw.iter().any(|line| line.contains("\\377")),
+                "{:?}",
+                status.raw
+            );
+            git_stage(CodingGitStageRequest {
+                workspace_root: path_to_string(dir.path()),
+                paths: vec![listed[0].to_string()],
+                dry_run: false,
+            })
+            .expect("stage the listed path");
+            let staged = Command::new("git")
+                .args(["diff", "--cached", "--name-only", "-z"])
+                .current_dir(dir.path())
+                .output()
+                .expect("git diff --cached");
+            assert_eq!(
+                staged.stdout,
+                "\u{fffd}.txt\0".as_bytes(),
+                "quotepath {quotepath}"
+            );
+        }
+    }
+
+    /// git with arguments that may not be UTF-8, under the fixture's config.
+    #[cfg(target_os = "linux")]
+    fn run_os(repo: &Path, args: &[&std::ffi::OsStr]) -> std::process::Output {
+        Command::new("git")
+            .args(args)
+            .current_dir(repo)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .expect("run git")
+    }
+
+    /// A staged or conflicted path that is not UTF-8 is in no list, and the
+    /// commit guards missed it: the only staged change read as nothing to
+    /// commit, and a conflict on it let a dry run report success.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_commit_guards_count_paths_that_are_not_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+        let raw_name = std::ffi::OsStr::from_bytes(b"\xff.txt");
+        let os = |arg: &str| std::ffi::OsString::from(arg);
+
+        // Only staged change: the commit runs.
+        let dir = init_repo();
+        fs::write(dir.path().join(raw_name), "a\n").expect("write");
+        assert!(run_os(dir.path(), &[&os("add"), &os("-A")])
+            .status
+            .success());
+        let commit = git_commit(CodingGitCommitRequest {
+            workspace_root: path_to_string(dir.path()),
+            message: "add a raw name".to_string(),
+            dry_run: false,
+        })
+        .expect("commit");
+        assert!(commit.committed, "{}", commit.message);
+
+        // A conflict on it, another file staged: the guard refuses.
+        let dir = init_repo();
+        fs::write(dir.path().join(raw_name), "base\n").expect("write");
+        run(dir.path(), &["add", "-A"]);
+        run(dir.path(), &["commit", "-m", "base"]);
+        run(dir.path(), &["checkout", "-q", "-b", "side"]);
+        fs::write(dir.path().join(raw_name), "side\n").expect("write");
+        run(dir.path(), &["commit", "-q", "-am", "side"]);
+        run(dir.path(), &["checkout", "-q", "-"]);
+        fs::write(dir.path().join(raw_name), "main\n").expect("write");
+        run(dir.path(), &["commit", "-q", "-am", "main"]);
+        let merge = run_os(dir.path(), &[&os("merge"), &os("side")]);
+        assert!(!merge.status.success(), "the merge must conflict");
+        fs::write(dir.path().join("other.txt"), "x\n").expect("write");
+        run(dir.path(), &["add", "other.txt"]);
+        let commit = git_commit(CodingGitCommitRequest {
+            workspace_root: path_to_string(dir.path()),
+            message: "with a conflict".to_string(),
+            dry_run: true,
+        })
+        .expect("commit result");
+        assert!(!commit.success);
+        assert!(commit.message.contains("conflicted"), "{}", commit.message);
+    }
+
     fn run(repo: &Path, args: &[&str]) {
+        // No user or system config reaches the fixture repository.
         let output = Command::new("git")
             .args(args)
             .current_dir(repo)
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
+            .env("GIT_CONFIG_NOSYSTEM", "1")
             .output()
             .expect("run git");
         assert!(

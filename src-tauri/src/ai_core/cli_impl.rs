@@ -8,15 +8,13 @@
 
 use async_trait::async_trait;
 use serde_json::Value;
-use tokio::sync::Mutex;
 
 use super::credential_provider::{
     CredentialProvider, ProviderExtraOptions, ServerCredentials, ServerProfile,
 };
 use super::event_sink::{EventSink, ToolProgress};
-use super::remote_backend::{RemoteBackend, StorageQuota};
+use super::remote_backend::RemoteBackend;
 use crate::ai_stream::StreamChunk;
-use crate::providers::{ProviderType, RemoteEntry, StorageProvider};
 
 /// MUV-3: read a `server_<id>` secret for the active user (per-user partition
 /// with fallback to the legacy vault). The CLI AI-core RemoteBackend has no
@@ -138,31 +136,35 @@ impl EventSink for StdioEventSink {
 /// CLI credential provider: vault cache (if open) → env vars (AEROFTP_HOST/USER/PASS).
 pub struct CliCredentialProvider;
 
+/// The saved servers of the active user, the list every surface resolves a
+/// server name against. AGENT-04: the active user partition (multi-user mode)
+/// first, so discovery matches `profiles --json` and the connect path, then the
+/// global profile list of a single-user install.
+pub(crate) fn active_server_profiles(
+    store: &crate::credential_store::CredentialStore,
+) -> Result<Vec<ServerProfile>, String> {
+    let profiles: Vec<Value> = match crate::user_partitions::cli_list_active_server_profiles(store)
+    {
+        Ok(p) => p,
+        Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
+        Err(_) => match store.get("config_server_profiles") {
+            Ok(json_str) => serde_json::from_str::<Vec<Value>>(&json_str).unwrap_or_default(),
+            Err(_) => return Ok(Vec::new()),
+        },
+    };
+    Ok(profiles
+        .iter()
+        .filter_map(ServerProfile::from_profile_json)
+        .collect())
+}
+
 impl CredentialProvider for CliCredentialProvider {
     fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
-        // Try vault first (may be open from a previous unlock)
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            // AGENT-04: prefer the active user partition (multi-user mode) so agent
-            // discovery matches `profiles --json`, falling back to the global
-            // profile list for single-user installs. Mirrors the connect path.
-            let profiles: Vec<Value> =
-                match crate::user_partitions::cli_list_active_server_profiles(&store) {
-                    Ok(p) => p,
-                    Err(e) if e == "USER_LOCKED" || e == "NO_ACTIVE_USER" => return Err(e),
-                    Err(_) => match store.get("config_server_profiles") {
-                        Ok(json_str) => {
-                            serde_json::from_str::<Vec<Value>>(&json_str).unwrap_or_default()
-                        }
-                        Err(_) => return Ok(Vec::new()),
-                    },
-                };
-            return Ok(profiles
-                .iter()
-                .filter_map(ServerProfile::from_profile_json)
-                .collect());
+        // The vault may be open from a previous unlock; without it, no server.
+        match crate::credential_store::CredentialStore::from_cache() {
+            Some(store) => active_server_profiles(&store),
+            None => Ok(Vec::new()),
         }
-        // No vault: return empty
-        Ok(Vec::new())
     }
 
     fn get_credentials(&self, server_id: &str) -> Result<ServerCredentials, String> {
@@ -236,344 +238,19 @@ impl CredentialProvider for CliCredentialProvider {
     }
 }
 
-// ─── NullRemoteBackend ────────────────────────────────────────────────
-
-/// No-op remote backend: used when no server is connected in CLI mode.
-pub struct NullRemoteBackend;
-
-#[async_trait]
-impl RemoteBackend for NullRemoteBackend {
-    async fn is_connected(&self) -> bool {
-        false
-    }
-    async fn provider_type(&self) -> Option<ProviderType> {
-        None
-    }
-    async fn list(&self, _path: &str) -> Result<Vec<RemoteEntry>, String> {
-        Err("Not connected to any server".into())
-    }
-    async fn stat(&self, _path: &str) -> Result<RemoteEntry, String> {
-        Err("Not connected".into())
-    }
-    async fn download_to_bytes(&self, _path: &str) -> Result<Vec<u8>, String> {
-        Err("Not connected".into())
-    }
-    async fn upload_from_bytes(&self, _data: &[u8], _path: &str) -> Result<(), String> {
-        Err("Not connected".into())
-    }
-    async fn download(&self, _remote: &str, _local: &str) -> Result<(), String> {
-        Err("Not connected".into())
-    }
-    async fn upload(&self, _local: &str, _remote: &str) -> Result<(), String> {
-        Err("Not connected".into())
-    }
-    async fn delete(&self, _path: &str) -> Result<(), String> {
-        Err("Not connected".into())
-    }
-    async fn delete_recursive(&self, _path: &str) -> Result<(), String> {
-        Err("Not connected".into())
-    }
-    async fn mkdir(&self, _path: &str) -> Result<(), String> {
-        Err("Not connected".into())
-    }
-    async fn rename(&self, _from: &str, _to: &str) -> Result<(), String> {
-        Err("Not connected".into())
-    }
-    async fn search(&self, _path: &str, _pattern: &str) -> Result<Vec<RemoteEntry>, String> {
-        Err("Not connected".into())
-    }
-    async fn storage_info(&self) -> Result<StorageQuota, String> {
-        Err("Not connected".into())
-    }
-}
-
-// ─── CliRemoteBackend ─────────────────────────────────────────────────
-
-/// CLI owns a single StorageProvider connection directly.
-pub struct CliRemoteBackend {
-    provider: Mutex<Option<Box<dyn StorageProvider>>>,
-}
-
-impl Default for CliRemoteBackend {
-    fn default() -> Self {
-        Self {
-            provider: Mutex::new(None),
-        }
-    }
-}
-
-impl CliRemoteBackend {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub async fn connect(&self, provider: Box<dyn StorageProvider>) {
-        *self.provider.lock().await = Some(provider);
-    }
-
-    pub async fn disconnect(&self) {
-        *self.provider.lock().await = None;
-    }
-}
-
-const MAX_AI_DOWNLOAD_SIZE: u64 = 50 * 1024 * 1024;
-
-#[async_trait]
-impl RemoteBackend for CliRemoteBackend {
-    async fn is_connected(&self) -> bool {
-        self.provider.lock().await.is_some()
-    }
-
-    async fn provider_type(&self) -> Option<ProviderType> {
-        self.provider
-            .lock()
-            .await
-            .as_ref()
-            .map(|p| p.provider_type())
-    }
-
-    async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected to any server")?;
-        p.list(path).await.map_err(|e| e.to_string())
-    }
-
-    async fn list_for_display(&self, path: &str) -> Result<Vec<RemoteEntry>, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected to any server")?;
-        p.list_for_display(path).await.map_err(|e| e.to_string())
-    }
-
-    async fn supports_upload_if_absent(&self) -> bool {
-        self.provider
-            .lock()
-            .await
-            .as_ref()
-            .is_some_and(|p| p.supports_upload_if_absent())
-    }
-    async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
-        let mut guard = self.provider.lock().await;
-        let provider = guard.as_mut().ok_or("Not connected")?;
-        crate::providers::create_only_upload(provider.as_mut(), local, remote)
-            .await
-            .map_err(|e| e.to_string())
-    }
-    async fn listing_is_authoritative(&self) -> bool {
-        self.provider
-            .lock()
-            .await
-            .as_ref()
-            .is_some_and(|p| p.listing_is_authoritative())
-    }
-
-    async fn stat(&self, path: &str) -> Result<RemoteEntry, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.stat(path).await.map_err(|e| e.to_string())
-    }
-
-    async fn download_to_bytes(&self, path: &str) -> Result<Vec<u8>, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        if let Ok(entry) = p.stat(path).await {
-            if entry.size > MAX_AI_DOWNLOAD_SIZE {
-                return Err(format!(
-                    "File too large ({:.1} MB). Limit is {} MB.",
-                    entry.size as f64 / 1_048_576.0,
-                    MAX_AI_DOWNLOAD_SIZE / 1_048_576
-                ));
-            }
-        }
-        p.download_to_bytes(path).await.map_err(|e| e.to_string())
-    }
-
-    async fn download_to_bytes_capped(
-        &self,
-        path: &str,
-        max_bytes: u64,
-    ) -> Result<Vec<u8>, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.download_to_bytes_capped(path, max_bytes)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn upload_from_bytes(&self, data: &[u8], path: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        use std::io::Write;
-
-        let mut tmp = tempfile::Builder::new()
-            .prefix("aeroftp_cli_upload_")
-            .tempfile()
-            .map_err(|e| e.to_string())?;
-        tmp.write_all(data).map_err(|e| e.to_string())?;
-        tmp.flush().map_err(|e| e.to_string())?;
-        let result = p
-            .upload(tmp.path().to_str().unwrap_or(""), path, None)
-            .await
-            .map_err(|e| e.to_string());
-        result
-    }
-
-    async fn download(&self, remote: &str, local: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.download_checked(remote, local, None, None)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn upload(&self, local: &str, remote: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.upload(local, remote, None)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn upload_bulk(
-        &self,
-        items: &[crate::providers::bulk::BulkTransferItem],
-    ) -> Option<Result<Vec<crate::providers::bulk::BulkTransferOutcome>, String>> {
-        // Not connected: no native bulk, so the per-file uploads report it.
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut()?;
-        super::remote_backend::provider_upload_bulk(p.as_mut(), items)
-            .await
-            .map_err(|e| e.to_string())
-            .transpose()
-    }
-
-    async fn delete(&self, path: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        crate::providers::delete_non_recursive(p.as_mut(), path)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn delete_recursive(&self, path: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        crate::providers::delete_recursive(p.as_mut(), path)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn mkdir(&self, path: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.mkdir(path).await.map_err(|e| e.to_string())
-    }
-
-    async fn rename(&self, from: &str, to: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.rename(from, to).await.map_err(|e| e.to_string())
-    }
-
-    async fn replace(&self, from: &str, to: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.replace(from, to).await.map_err(|e| e.to_string())
-    }
-
-    async fn supports_atomic_replace(&self) -> Result<bool, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.supports_atomic_replace().await.map_err(|e| e.to_string())
-    }
-
-    async fn replace_sets_aside(&self) -> Result<bool, String> {
-        let guard = self.provider.lock().await;
-        let p = guard.as_ref().ok_or("Not connected")?;
-        Ok(p.replace_sets_aside())
-    }
-
-    async fn supports_chmod(&self) -> Result<bool, String> {
-        let guard = self.provider.lock().await;
-        let p = guard.as_ref().ok_or("Not connected")?;
-        Ok(p.supports_chmod())
-    }
-
-    async fn chmod(&self, path: &str, mode: u32) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.chmod(path, mode).await.map_err(|e| e.to_string())
-    }
-
-    async fn search(&self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        crate::providers::find_or_walk(p.as_mut(), path, pattern)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn storage_info(&self) -> Result<StorageQuota, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        let _info = p.server_info().await.map_err(|e| e.to_string())?;
-        Err("Storage quota extraction not yet implemented for this provider".to_string())
-    }
-
-    async fn list_versions(
-        &self,
-        path: &str,
-    ) -> Result<Vec<crate::providers::FileVersion>, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.list_versions(path).await.map_err(|e| e.to_string())
-    }
-
-    async fn restore_version(&self, path: &str, version_id: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.restore_version(path, version_id)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn delete_version(&self, path: &str, version_id: &str) -> Result<(), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.delete_version(path, version_id)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn list_object_versions(
-        &self,
-        prefix: &str,
-        include_noncurrent: bool,
-    ) -> Result<Vec<crate::providers::TrashEntry>, String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.list_object_versions(prefix, include_noncurrent)
-            .await
-            .map_err(|e| e.to_string())
-    }
-
-    async fn empty_object_versions(
-        &self,
-        prefix: &str,
-        include_noncurrent: bool,
-        dry_run: bool,
-    ) -> Result<(u64, u64), String> {
-        let mut guard = self.provider.lock().await;
-        let p = guard.as_mut().ok_or("Not connected")?;
-        p.empty_object_versions(prefix, include_noncurrent, dry_run)
-            .await
-            .map_err(|e| e.to_string())
-    }
-}
-
 // ─── CliToolCtx ───────────────────────────────────────────────────────
 
+use crate::ai_core::mcp_impl::McpRemoteBackend;
 use crate::ai_core::tools::{Surfaces, ToolCtx};
-use std::sync::Arc;
+use crate::mcp::pool::ConnectionPool;
+use std::sync::{Arc, LazyLock};
+
+/// The saved-server connections of the CLI agent, shared by every tool call
+/// of the process the way the MCP server shares its own: the agent reaches a
+/// saved server through the same vault and the same backend as `aeroftp-cli
+/// mcp`, and a second call to one server reuses its connection.
+static CLI_AGENT_POOL: LazyLock<Arc<ConnectionPool>> =
+    LazyLock::new(|| Arc::new(ConnectionPool::new(10, std::time::Duration::from_secs(300))));
 
 pub struct CliToolCtx {
     pub sink: CliEventSink,
@@ -582,6 +259,10 @@ pub struct CliToolCtx {
     /// risolvere path relativi. Mirror del legacy CLI `resolve_path`
     /// che faceva `std::env::current_dir().join(path)`.
     pub cwd: Option<String>,
+    /// The connection identity each approved profile id had when the call
+    /// was approved: the pool refuses to reach a profile that now connects
+    /// elsewhere ([`crate::ai_core::tools::change_targets`]).
+    pub approved_identities: std::collections::HashMap<String, String>,
 }
 
 impl CliToolCtx {
@@ -593,7 +274,22 @@ impl CliToolCtx {
         let cwd = std::env::current_dir()
             .ok()
             .map(|p| p.to_string_lossy().to_string());
-        Self { sink, creds, cwd }
+        Self {
+            sink,
+            creds,
+            cwd,
+            approved_identities: std::collections::HashMap::new(),
+        }
+    }
+
+    /// The context of a call approved for `targets`: each profile it names is
+    /// reached only while it still connects where it did at the approval.
+    pub fn approved_for(mut self, targets: &[crate::ai_core::tools::ApprovedTarget]) -> Self {
+        self.approved_identities = targets
+            .iter()
+            .filter_map(|target| target.profile.clone())
+            .collect();
+        self
     }
 }
 
@@ -605,13 +301,37 @@ impl ToolCtx for CliToolCtx {
     fn credentials(&self) -> &dyn CredentialProvider {
         &self.creds
     }
-    async fn remote_backend(&self, _server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
-        Err("remote_backend not wired in CliToolCtx (Area A)".to_string())
+    async fn remote_backend(&self, server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
+        // Nothing connects here: the pool opens the saved server when a tool
+        // first uses the backend.
+        Ok(Arc::new(
+            McpRemoteBackend::new(Arc::clone(&CLI_AGENT_POOL), server_id.to_string())
+                .expecting(self.approved_identities.get(server_id).cloned()),
+        ))
     }
     fn context_local_path(&self) -> Option<&str> {
         self.cwd.as_deref()
     }
+    fn approved_identity(&self, profile_id: &str) -> Option<&str> {
+        self.approved_identities.get(profile_id).map(String::as_str)
+    }
     fn surface(&self) -> Surfaces {
         Surfaces::CLI
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The remote tools the CLI agent offers found no backend in this context
+    /// and answered "not available in CLI mode". Each now gets one for its
+    /// server over the process-wide pool. The test does not connect: that
+    /// would open the vault.
+    #[tokio::test]
+    async fn the_cli_agent_context_gives_the_remote_tools_a_backend() {
+        let ctx = CliToolCtx::new(CliEventSink { json_mode: true }, CliCredentialProvider);
+        assert!(ctx.remote_backend("srv-a").await.is_ok());
+        assert!(ctx.remote_backend("srv-b").await.is_ok());
     }
 }
