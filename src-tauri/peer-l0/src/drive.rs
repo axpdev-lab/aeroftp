@@ -122,7 +122,26 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
                 mode
             );
         }
-        for ancestor in root.ancestors().skip(1) {
+        // The path as given counts too: a root named through a link, or through folders that
+        // are links, can be replaced in any of those folders even when its target is private.
+        let given = std::path::absolute(out_path)?;
+        // A root that is itself a link must belong to the owner of the folder it names: in
+        // a sticky folder another user could otherwise replace a link of their own.
+        {
+            use std::os::unix::fs::MetadataExt;
+            let link = std::fs::symlink_metadata(&given)?;
+            if link.file_type().is_symlink() && link.uid() != meta.uid() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing the replica folder {}: it is a link owned by another user than the folder it names ({}); give the folder's own path",
+                        given.display(),
+                        root.display()
+                    ),
+                ));
+            }
+        }
+        for ancestor in root.ancestors().skip(1).chain(given.ancestors().skip(1)) {
             let mode = std::fs::metadata(ancestor)?.permissions().mode() & 0o7777;
             if mode & 0o002 != 0 && mode & 0o1000 == 0 {
                 return Err(std::io::Error::new(
@@ -155,12 +174,14 @@ fn create_replica_folders(out_path: &Path, folder: &Path) -> std::io::Result<()>
     let mut at = out_path.to_path_buf();
     for part in rel.components() {
         at.push(part);
-        let mut builder = std::fs::DirBuilder::new();
+        let builder = std::fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
             use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
             builder.mode(0o700);
-        }
+            builder
+        };
         match builder.create(&at) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -208,12 +229,7 @@ pub(crate) fn write_replica_file(
     // A rewrite keeps the access the replica had; a new replica, which holds decrypted
     // plaintext, is private to the user (0600). Reading what stands at the name may fail
     // only because nothing is there yet.
-    let keep = match std::fs::symlink_metadata(target) {
-        Ok(existing) if existing.is_file() => Some(existing.permissions()),
-        Ok(_) => None,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-        Err(e) => return Err(e),
-    };
+    let keep = existing_replica_permissions(target)?;
     let temp = target.with_file_name(format!(".replica-{:016x}.tmp", rand::random::<u64>()));
     let written = (|| {
         let mut options = std::fs::OpenOptions::new();
@@ -225,6 +241,12 @@ pub(crate) fn write_replica_file(
             options.mode(0o600);
         }
         let mut file = options.open(&temp)?;
+        #[cfg(test)]
+        BEFORE_REPLICA_WRITE.with(|hook| {
+            if let Some(hook) = hook.borrow().as_ref() {
+                hook(&temp)
+            }
+        });
         file.write_all(data)?;
         if let Some(permissions) = &keep {
             file.set_permissions(permissions.clone())?;
@@ -236,6 +258,29 @@ pub(crate) fn write_replica_file(
         let _ = std::fs::remove_file(&temp);
     }
     written
+}
+
+/// The permissions of the replica file at `target`, to keep across a rewrite: none when
+/// nothing is there yet. Any other error reading it (a folder that cannot be searched) is
+/// returned, not read as "no file".
+fn existing_replica_permissions(target: &Path) -> std::io::Result<Option<std::fs::Permissions>> {
+    match std::fs::symlink_metadata(target) {
+        Ok(existing) if existing.is_file() => Ok(Some(existing.permissions())),
+        Ok(_) => Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+/// What the replica test seam runs on the new temporary, right before the plaintext is
+/// written into it.
+#[cfg(test)]
+type ReplicaWriteHook = Box<dyn Fn(&Path)>;
+
+#[cfg(test)]
+thread_local! {
+    static BEFORE_REPLICA_WRITE: std::cell::RefCell<Option<ReplicaWriteHook>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Write one replica file, or report why it was refused and answer `false`: the caller skips
@@ -280,6 +325,31 @@ pub(crate) fn remove_replica_file(out_path: &Path, target: &Path) -> std::io::Re
 /// How long the watch waits before trying the current version again while one of its keys
 /// is unapplied.
 const UNAPPLIED_RETRY: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// When the watch next retries the current version: never while every key is applied; else
+/// at the time already set, which events arriving meanwhile do not move, or one interval from
+/// `now` when none is set (a retry that starts sets the next one itself).
+pub(crate) fn next_retry_at(
+    unapplied: bool,
+    retry_at: Option<std::time::Instant>,
+    now: std::time::Instant,
+) -> Option<std::time::Instant> {
+    if !unapplied {
+        return None;
+    }
+    Some(retry_at.unwrap_or(now + UNAPPLIED_RETRY))
+}
+
+/// Record the keys a pass could not apply (absent from `state` after it) with no hash, so
+/// the watch is not "live" until they are and `needs_write` writes them again.
+pub(crate) fn record_unapplied(
+    state: &mut std::collections::HashMap<String, String>,
+    keys: &[String],
+) {
+    for key in keys {
+        state.entry(key.clone()).or_default();
+    }
+}
 
 /// Whether the file of `key` must be (re)written: unless the last applied state holds this
 /// very hash for it and the file is on disk. A key a previous version failed to apply holds
@@ -1222,6 +1292,8 @@ pub async fn run_docs_replicate(
         // Used for skip-unchanged decisions and deletion detection on version bumps.
         let mut prev_files: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
+        // Every safe key of the manifest: one the pass fails to apply is recorded as such.
+        let mut first_pass_keys: Vec<String> = Vec::new();
 
         for f in files {
             let rel_key = f["key"].as_str().unwrap_or("").to_string();
@@ -1241,6 +1313,7 @@ pub async fn run_docs_replicate(
                     continue;
                 }
             };
+            first_pass_keys.push(rel_key.clone());
 
             // Wait for this file's entry
             let mut file_entry = None;
@@ -1326,6 +1399,7 @@ pub async fn run_docs_replicate(
             ok += 1;
             total_bytes += pt.len() as u64;
         }
+        record_unapplied(&mut prev_files, &first_pass_keys);
 
         println!(
             "DRIVE REPLICATED: {}/{} files, all plaintext BLAKE3 verified, total_bytes={}",
@@ -1354,7 +1428,9 @@ pub async fn run_docs_replicate(
             // on entering the watch and again after any converge settles, and
             // "syncing" when a delta lands. `live_announced` de-dups the emit.
             let mut live_announced = false;
-            let mut unapplied = false;
+            // A key the first pass could not apply holds back "live" and is retried.
+            let mut unapplied = still_unapplied(&prev_files);
+            let mut retry_at = next_retry_at(unapplied, None, Instant::now());
             loop {
                 if !live_announced {
                     // Not "live" while a key of the current version is unapplied.
@@ -1367,29 +1443,37 @@ pub async fn run_docs_replicate(
                 if rem.is_zero() {
                     break;
                 }
-                // While a key of the current version is unapplied, the wait for the next
-                // event ends early and the current version is tried again.
-                let wait = if unapplied {
-                    rem.min(UNAPPLIED_RETRY)
-                } else {
-                    rem
+                // While a key of the current version is unapplied, the current version is
+                // tried again at a fixed time, which events arriving meanwhile do not move.
+                let now = Instant::now();
+                let wait = match retry_at {
+                    Some(at) => rem.min(at.saturating_duration_since(now)),
+                    None => rem,
                 };
-                let mut retrying = false;
-                let trigger = match tokio::time::timeout(wait, events.next()).await {
-                    Err(_) if unapplied && wait < rem => {
-                        retrying = true;
-                        true
-                    }
-                    Err(_) => break,
-                    Ok(None) => break,
-                    Ok(Some(Ok(ev))) => match &ev {
-                        LiveEvent::InsertRemote { entry, .. } => {
-                            entry.key() == b"__drive_manifest__.json"
+                let mut retrying = retry_at.is_some_and(|at| now >= at);
+                let trigger = if retrying {
+                    // Due already: retried before any event that is waiting, so a steady
+                    // stream of events cannot hold it back.
+                    retry_at = Some(now + UNAPPLIED_RETRY);
+                    true
+                } else {
+                    match tokio::time::timeout(wait, events.next()).await {
+                        Err(_) if retry_at.is_some_and(|at| Instant::now() >= at) => {
+                            retrying = true;
+                            retry_at = Some(Instant::now() + UNAPPLIED_RETRY);
+                            true
                         }
-                        LiveEvent::PendingContentReady => true,
-                        _ => false,
-                    },
-                    Ok(Some(Err(_))) => false,
+                        Err(_) => break,
+                        Ok(None) => break,
+                        Ok(Some(Ok(ev))) => match &ev {
+                            LiveEvent::InsertRemote { entry, .. } => {
+                                entry.key() == b"__drive_manifest__.json"
+                            }
+                            LiveEvent::PendingContentReady => true,
+                            _ => false,
+                        },
+                        Ok(Some(Err(_))) => false,
+                    }
                 };
                 if trigger {
                     // A new version is converging: flip the host UI back
@@ -1546,6 +1630,7 @@ pub async fn run_docs_replicate(
                     }
                     mark_not_applied(&mut new_state, &applied);
                     unapplied = still_unapplied(&new_state);
+                    retry_at = next_retry_at(unapplied, retry_at, Instant::now());
                     prev_files = new_state;
                     current_version = new_ver;
                     println!(
@@ -1888,5 +1973,104 @@ mod replica_path_tests {
         );
         state.insert("failed".to_string(), "h2".to_string());
         assert!(!still_unapplied(&state));
+    }
+
+    /// A replica root named through a link counts by the path as given: a link in a folder
+    /// every user can write (not sticky) is refused even when it names a private folder.
+    #[cfg(unix)]
+    #[test]
+    fn a_root_named_through_a_link_in_an_open_folder_is_refused() {
+        use crate::drive::check_replica_root;
+        use std::os::unix::fs::PermissionsExt;
+        let set = |p: &Path, m: u32| {
+            std::fs::set_permissions(p, std::fs::Permissions::from_mode(m)).unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let private = dir.path().join("private");
+        std::fs::create_dir(&private).unwrap();
+        set(&private, 0o700);
+        let open = dir.path().join("open");
+        std::fs::create_dir(&open).unwrap();
+        std::os::unix::fs::symlink(&private, open.join("root")).unwrap();
+        set(&open, 0o777);
+        assert!(check_replica_root(&open.join("root")).is_err());
+        assert!(
+            check_replica_root(&private).is_ok(),
+            "the folder's own path is fine"
+        );
+        set(&open, 0o1777);
+        assert!(
+            check_replica_root(&open.join("root")).is_ok(),
+            "a link of the folder's owner in a sticky folder cannot be replaced"
+        );
+        set(&open, 0o755);
+    }
+
+    /// The temporary is already private when the plaintext goes in, and an error reading
+    /// what stands at the name (a folder that cannot be searched) is returned.
+    #[cfg(unix)]
+    #[test]
+    fn the_temporary_is_private_before_any_plaintext_is_written() {
+        use crate::drive::{
+            existing_replica_permissions, write_replica_file, BEFORE_REPLICA_WRITE,
+        };
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let seen = std::rc::Rc::new(std::cell::Cell::new(None));
+        let record = seen.clone();
+        BEFORE_REPLICA_WRITE.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |temp: &Path| {
+                let meta = std::fs::metadata(temp).unwrap();
+                record.set(Some((meta.permissions().mode() & 0o777, meta.len())));
+            }))
+        });
+        let target = safe_replica_path(&out, "secret.txt").unwrap();
+        let written = write_replica_file(&out, &target, b"plaintext");
+        BEFORE_REPLICA_WRITE.with(|hook| *hook.borrow_mut() = None);
+        written.unwrap();
+        assert_eq!(seen.get(), Some((0o600, 0)), "private and still empty");
+
+        let locked = out.join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let bypassed = std::fs::read_dir(&locked).is_ok();
+        let read = existing_replica_permissions(&locked.join("x.txt"));
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
+        if !bypassed {
+            assert!(
+                read.is_err(),
+                "an unreadable folder is reported, not read as no file"
+            );
+        }
+        assert!(existing_replica_permissions(&out.join("missing.txt"))
+            .unwrap()
+            .is_none());
+    }
+
+    /// The retry time is not moved by events arriving meanwhile, and a key the first pass
+    /// could not apply holds back "live" from the start.
+    #[test]
+    fn the_retry_time_holds_and_a_failed_first_write_is_not_live() {
+        use crate::drive::{needs_write, next_retry_at, record_unapplied, still_unapplied};
+        let t0 = std::time::Instant::now();
+        let first = next_retry_at(true, None, t0).unwrap();
+        // Events every 10 s: the retry stays at its first time instead of moving away.
+        for step in 1..=5u64 {
+            let at_event = t0 + std::time::Duration::from_secs(10 * step);
+            assert_eq!(next_retry_at(true, Some(first), at_event), Some(first));
+        }
+        assert_eq!(next_retry_at(false, Some(first), t0), None);
+
+        let mut first_pass =
+            std::collections::HashMap::from([("ok".to_string(), "h1".to_string())]);
+        record_unapplied(&mut first_pass, &["ok".to_string(), "failed".to_string()]);
+        assert!(
+            still_unapplied(&first_pass),
+            "a failed first write is not live"
+        );
+        assert!(needs_write(&first_pass, "failed", "h2", false));
+        assert_eq!(first_pass["ok"], "h1");
     }
 }
