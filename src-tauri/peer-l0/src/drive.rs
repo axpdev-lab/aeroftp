@@ -141,6 +141,24 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
                 ));
             }
         }
+        // A folder named on the way that is itself a link (`/tmp/link/root`) can be replaced
+        // by the link's owner, even in a sticky folder: it must belong to root or the
+        // replica folder's owner.
+        for ancestor in given.ancestors().skip(1) {
+            use std::os::unix::fs::MetadataExt;
+            let entry = std::fs::symlink_metadata(ancestor)?;
+            if !link_is_trusted(entry.file_type().is_symlink(), entry.uid(), meta.uid()) {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    format!(
+                        "refusing the replica folder {}: the folder {} on its path is a link owned by another user (uid {}), who could replace it; give the folder's own path",
+                        given.display(),
+                        ancestor.display(),
+                        entry.uid()
+                    ),
+                ));
+            }
+        }
         for ancestor in root.ancestors().skip(1).chain(given.ancestors().skip(1)) {
             use std::os::unix::fs::MetadataExt;
             let above = std::fs::metadata(ancestor)?;
@@ -171,6 +189,13 @@ pub(crate) fn ancestor_is_safe(mode: u32, owner: u32, trusted: u32) -> bool {
         return true;
     }
     mode & 0o1000 != 0 && (owner == 0 || owner == trusted)
+}
+
+/// Whether a component of the replica root's path as given, owned by `owner`, can be relied
+/// on: a real folder can (its mode is checked separately), and a link only when it belongs to
+/// root or to `trusted` (the replica folder's owner), since a link's owner can replace it.
+pub(crate) fn link_is_trusted(is_link: bool, owner: u32, trusted: u32) -> bool {
+    !is_link || owner == 0 || owner == trusted
 }
 
 /// Make the folders from `out_path` down to `folder` that do not exist yet, private to the
@@ -2109,5 +2134,28 @@ mod replica_path_tests {
             !ancestor_is_safe(0o777, me, me),
             "world-writable, not sticky"
         );
+    }
+
+    /// A link on the root's path as given counts only when it belongs to root or the replica
+    /// folder's owner: another user's link, even in sticky /tmp, can be replaced by them.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_on_the_roots_path_must_belong_to_root_or_the_owner() {
+        use crate::drive::{check_replica_root, link_is_trusted};
+        let me = 1000;
+        assert!(link_is_trusted(false, 4242, me), "a real folder");
+        assert!(link_is_trusted(true, 0, me), "a link of root");
+        assert!(
+            link_is_trusted(true, me, me),
+            "a link of the replica's owner"
+        );
+        assert!(!link_is_trusted(true, 4242, me), "a link of another user");
+
+        // A link of my own on the way is accepted.
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir_all(real.join("root")).unwrap();
+        std::os::unix::fs::symlink(&real, dir.path().join("link")).unwrap();
+        assert!(check_replica_root(&dir.path().join("link").join("root")).is_ok());
     }
 }
