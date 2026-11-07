@@ -2499,12 +2499,19 @@ fn prepare_partition_restore(
         put_right_restored_profile_names(store, staging.path());
         // Include the active account: profile decisions are applied afterwards,
         // but a crash before that write must still leave a safe partition.
-        let reset = crate::user_partitions::reset_profile_relaxations_in_db(store, &db_path, None)?;
+        let mut reset =
+            crate::user_partitions::reset_profile_relaxations_in_db(store, &db_path, None)?;
         if let Some(path) = &reset.quarantine_path {
             preserved_path = path.clone();
         }
         if reset.failed > 0 {
             return Err(format!("{} account security reset(s) failed", reset.failed));
+        }
+        if let Some(completed) =
+            crate::user_partitions::finish_active_profile_reset_in_db(store, &db_path)?
+        {
+            reset.reset.extend(completed);
+            reset.left = reset.left.saturating_sub(1);
         }
         // VACUUM includes committed WAL pages; copying the main file alone can
         // lose a passphrase account's pending reset marker.
@@ -3961,6 +3968,171 @@ mod tests {
             "the preview wrote the vault"
         );
         assert_eq!(store.get("server_srv_drive").unwrap(), "local-password");
+    }
+
+    #[test]
+    fn reviewed_restore_keeps_choices_for_an_unlocked_passphrase_account() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let db = cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let active = crate::user_partitions::create_user(
+            &mut conn,
+            &root,
+            "Protected",
+            None,
+            None,
+            Some("passphrase"),
+        )
+        .unwrap();
+        let other = crate::user_partitions::create_user(
+            &mut conn,
+            &root,
+            "Still locked",
+            None,
+            None,
+            Some("other passphrase"),
+        )
+        .unwrap();
+        crate::user_partitions::unlock_user(&conn, &root, active.id, Some("passphrase")).unwrap();
+        let backup_list = vec![
+            relaxed("srv_drive", "Drive"),
+            relaxed("srv_photos", "Photos"),
+        ];
+        crate::user_partitions::replace_active_server_profiles(&mut conn, &root, &backup_list)
+            .unwrap();
+        drop(conn);
+        write_profile_secret(
+            &store,
+            Some(&db),
+            "server_srv_drive",
+            Some("backup-password"),
+        )
+        .unwrap();
+        write_profile_secret(
+            &store,
+            Some(&db),
+            "server_srv_photos",
+            Some("photos-password"),
+        )
+        .unwrap();
+        let mut payload = ExportPayload::default();
+        payload.sqlite_dumps.insert(
+            "user_partitions.db".into(),
+            snapshot_sqlite_db(&db).unwrap().unwrap(),
+        );
+        payload.vault_entries.insert(
+            "config_server_profiles".into(),
+            serde_json::to_string(&backup_list).unwrap(),
+        );
+        payload
+            .vault_entries
+            .insert("server_srv_drive".into(), "backup-password".into());
+        payload
+            .vault_entries
+            .insert("server_srv_photos".into(), "photos-password".into());
+        let backup = dir.path().join("protected.aeroftp-keystore");
+        seal_backup(&backup, PASSWORD_736, &payload);
+
+        let mut local = relaxed("srv_drive", "Drive");
+        local["host"] = serde_json::json!("local.example.invalid");
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        crate::user_partitions::replace_active_server_profiles(
+            &mut conn,
+            &root,
+            std::slice::from_ref(&local),
+        )
+        .unwrap();
+        drop(conn);
+        write_profile_secret(
+            &store,
+            Some(&db),
+            "server_srv_drive",
+            Some("local-password"),
+        )
+        .unwrap();
+        let fingerprint = previewed(&store, &cfg, &backup, "overwrite");
+        let decisions = [ProfileDecisionInput {
+            id: "srv_drive".into(),
+            decision: keystore_profile_plan::ProfileDecision::Reject,
+            copy_name: None,
+        }];
+        let result = import_keystore_with_store(
+            &store,
+            PASSWORD_736,
+            &backup,
+            "overwrite",
+            ImportSections::default(),
+            Some(&cfg),
+            None,
+            Some(ProfileChoices {
+                decisions: &decisions,
+                fingerprint: &fingerprint,
+            }),
+        )
+        .unwrap();
+        assert_eq!(result.profile_decisions_error, None);
+        assert_eq!(result.profiles_after_decisions, Some(2));
+        let expected = vec![local, safe_copy("srv_photos", "Photos")];
+        assert_eq!(my_servers(&store, &cfg), expected);
+        assert_eq!(blob_of(&store), expected);
+        assert_eq!(
+            effective_secret(&store, &cfg, "server_srv_drive").as_deref(),
+            Some("local-password")
+        );
+        assert_eq!(
+            effective_secret(&store, &cfg, "server_srv_photos").as_deref(),
+            Some("photos-password")
+        );
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        let pending = |user| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM global_state WHERE key = ?1",
+                [format!("security_reset_pending_{user}")],
+                |r| r.get::<_, usize>(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(
+            pending(active.id),
+            0,
+            "the verified live session completed its reset"
+        );
+        assert_eq!(
+            pending(other.id),
+            1,
+            "an account without a session stays guarded"
+        );
+        assert_eq!(
+            result
+                .security_reset
+                .iter()
+                .map(|r| r.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Photos"]
+        );
+        conn.execute("UPDATE users SET dek_verifier = (SELECT dek_verifier FROM users WHERE id = ?1) WHERE id = ?2", [other.id, active.id]).unwrap();
+        conn.execute(
+            "INSERT INTO global_state(key, value, updated_at) VALUES (?1, '1', 0)",
+            [format!("security_reset_pending_{}", active.id)],
+        )
+        .unwrap();
+        assert!(
+            crate::user_partitions::finish_active_profile_reset_in_db(&store, &db)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            pending(active.id),
+            1,
+            "a matching numeric id with another DEK cannot clear the marker"
+        );
+        crate::user_partitions::clear_user_session();
     }
 
     #[test]

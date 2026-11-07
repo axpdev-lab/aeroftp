@@ -4765,35 +4765,7 @@ fn unlock_user_inner(
             } else {
                 None
             };
-            conn.execute_batch("BEGIN IMMEDIATE")
-                .map_err(|e| format!("Begin security reset: {e}"))?;
-            let result = (|| {
-                let mut profiles = read_profiles_with_dek(conn, user_id, &dek)?;
-                let reset = crate::profile_security::make_profile_list_safe(&mut profiles);
-                if !reset.is_empty() {
-                    insert_profiles_with_dek(conn, &root_secret, user_id, &dek, &profiles)?;
-                }
-                conn.execute(
-                    "DELETE FROM global_state WHERE key = ?1",
-                    params![security_reset_pending_key(user_id)],
-                )
-                .map_err(|e| format!("Clear pending security reset: {e}"))?;
-                Ok(reset)
-            })();
-            match result {
-                Ok(reset) => {
-                    if let Err(e) = conn.execute_batch("COMMIT") {
-                        let _ = conn.execute_batch("ROLLBACK");
-                        return Err(format!("Commit security reset: {e}"));
-                    }
-                    unblock_security_reset(conn, user_id);
-                    reset
-                }
-                Err(e) => {
-                    let _ = conn.execute_batch("ROLLBACK");
-                    return Err(e);
-                }
-            }
+            complete_security_reset_with_dek(conn, &root_secret, user_id, &dek)?
         } else {
             Vec::new()
         };
@@ -4803,6 +4775,74 @@ fn unlock_user_inner(
     let mut status = user_unlock_status(conn)?;
     status.security_reset = security_reset;
     Ok(status)
+}
+
+/// The caller holds the profile-list lock (or owns a private staged database)
+/// and has verified this DEK. The pending marker leaves only with a committed reset.
+fn complete_security_reset_with_dek(
+    conn: &Connection,
+    root_secret: &SecretKey,
+    user_id: i64,
+    dek: &SecretKey,
+) -> Result<Vec<crate::profile_security::ProfileReset>, String> {
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|e| format!("Begin security reset: {e}"))?;
+    let result = (|| {
+        let mut profiles = read_profiles_with_dek(conn, user_id, dek)?;
+        let reset = crate::profile_security::make_profile_list_safe(&mut profiles);
+        if !reset.is_empty() {
+            insert_profiles_with_dek(conn, root_secret, user_id, dek, &profiles)?;
+        }
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![security_reset_pending_key(user_id)],
+        )
+        .map_err(|e| format!("Clear pending security reset: {e}"))?;
+        Ok(reset)
+    })();
+    match result {
+        Ok(reset) => {
+            if let Err(e) = conn.execute_batch("COMMIT") {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(format!("Commit security reset: {e}"));
+            }
+            unblock_security_reset(conn, user_id);
+            Ok(reset)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
+    }
+}
+
+/// Complete the staged active account's pending reset only when this process
+/// already holds its verified session key. Other restored accounts stay pending.
+pub(crate) fn finish_active_profile_reset_in_db(
+    store: &CredentialStore,
+    db_path: &std::path::Path,
+) -> Result<Option<Vec<crate::profile_security::ProfileReset>>, String> {
+    let conn = Connection::open(db_path).map_err(|e| format!("Open staged partition: {e}"))?;
+    let Some(user_id) = active_user_id(&conn)? else {
+        return Ok(None);
+    };
+    let row = read_user_key_row(&conn, user_id)?;
+    if !row.has_passphrase || !security_reset_pending(&conn, user_id)? {
+        return Ok(None);
+    }
+    let _session = hold_session()?;
+    HELD_SESSION.with_borrow(|held| {
+        let Some((session_user, dek)) = held.as_ref().and_then(Option::as_ref) else {
+            return Ok(None);
+        };
+        if *session_user != user_id || !user_crypto::verify_dek(dek, &row.dek_verifier)? {
+            return Ok(None);
+        }
+        let mut root_key = store.derive_user_partition_wrapping_key();
+        let root_secret = user_crypto::secret_key_from_bytes(&root_key);
+        root_key.zeroize();
+        complete_security_reset_with_dek(&conn, &root_secret, user_id, dek).map(Some)
+    })
 }
 
 pub fn verify_user_passphrase(
