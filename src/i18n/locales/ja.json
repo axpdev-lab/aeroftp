@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "パスワード保護",
             "expirationHoursOne": "{count} 時間",
             "expirationHoursMany": "{count} 時間",
-            "expirationDaysMany": "{count} 日"
+            "expirationDaysMany": "{count} 日",
+            "expiresSoonerThanChosen": "選択した期間より短い"
         },
         "introHub": {
             "tab": {

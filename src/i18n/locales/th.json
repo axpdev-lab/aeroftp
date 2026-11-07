@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "ป้องกันด้วยรหัสผ่าน",
             "expirationHoursOne": "{count} ชั่วโมง",
             "expirationHoursMany": "{count} ชั่วโมง",
-            "expirationDaysMany": "{count} วัน"
+            "expirationDaysMany": "{count} วัน",
+            "expiresSoonerThanChosen": "สั้นกว่าที่เลือก"
         },
         "introHub": {
             "tab": {

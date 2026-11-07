@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Salasanasuojattu",
             "expirationHoursOne": "{count} tunti",
             "expirationHoursMany": "{count} tuntia",
-            "expirationDaysMany": "{count} päivää"
+            "expirationDaysMany": "{count} päivää",
+            "expiresSoonerThanChosen": "lyhyempi kuin valittu"
         },
         "introHub": {
             "tab": {

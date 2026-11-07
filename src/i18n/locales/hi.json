@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "पासवर्ड सुरक्षित",
             "expirationHoursOne": "{count} घंटा",
             "expirationHoursMany": "{count} घंटे",
-            "expirationDaysMany": "{count} दिन"
+            "expirationDaysMany": "{count} दिन",
+            "expiresSoonerThanChosen": "चुने गए समय से कम"
         },
         "introHub": {
             "tab": {

@@ -5661,7 +5661,8 @@
             "managePasswordProtected": "Lykilordavarinn",
             "expirationHoursOne": "{count} klukkustund",
             "expirationHoursMany": "{count} klukkustundir",
-            "expirationDaysMany": "{count} dagar"
+            "expirationDaysMany": "{count} dagar",
+            "expiresSoonerThanChosen": "styttra en valið"
         },
         "introHub": {
             "tab": {

@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Dilindungi kata laluan",
             "expirationHoursOne": "{count} jam",
             "expirationHoursMany": "{count} jam",
-            "expirationDaysMany": "{count} hari"
+            "expirationDaysMany": "{count} hari",
+            "expiresSoonerThanChosen": "lebih singkat daripada yang dipilih"
         },
         "introHub": {
             "tab": {

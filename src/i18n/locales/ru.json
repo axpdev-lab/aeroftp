@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Защищено паролем",
             "expirationHoursOne": "{count} час",
             "expirationHoursMany": "{count} ч",
-            "expirationDaysMany": "{count} дн."
+            "expirationDaysMany": "{count} дн.",
+            "expiresSoonerThanChosen": "короче выбранного"
         },
         "introHub": {
             "tab": {
