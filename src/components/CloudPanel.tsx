@@ -16,6 +16,7 @@ import {
     Loader2, Shield, History, Link2
 } from 'lucide-react';
 import { useTraySync } from '../hooks/useTraySync';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 import { SyncScheduler } from './SyncScheduler';
 import { WatcherStatus } from './WatcherStatus';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
@@ -365,6 +366,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const [workerErrors, setWorkerErrors] = useState<string[]>([]);
     const cycleErrors = [...new Set([...Object.values(errorsByScope).flat(), ...workerErrors])];
     const [hasCloudPairs, setHasCloudPairs] = useState<boolean | null>(null);
+    // The configuration as it was when the settings view opened. A click
+    // outside the settings closes the whole panel, so while edits are not
+    // saved it does nothing (Discussion #1527); the X and Cancel of the
+    // settings view only leave it, as before.
+    const [settingsBaseline, setSettingsBaseline] = useState<CloudConfig | null>(null);
+    const openSettings = () => { setSettingsBaseline(config); setShowSettings(true); };
+    const settingsEdited = showSettings && JSON.stringify(config) !== JSON.stringify(settingsBaseline);
+    const settingsGuard = useGuardedClose({ guard: settingsEdited ? 'dirty' : null, onClose });
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
     // dedicated aerocloud commands (pause_aerocloud/resume_aerocloud/disable_aerocloud)
@@ -561,7 +570,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         const syncIntervalValue = isHours ? Math.round(syncSecs / 3600) : Math.round(syncSecs / 60);
 
         return (
-            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-start justify-center backdrop-blur-sm overflow-y-auto py-6" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.dialogSettingsLabel')}>
+            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-start justify-center backdrop-blur-sm overflow-y-auto py-6" onClick={settingsGuard.onBackdropClick} role="dialog" aria-modal="true" aria-label={t('cloud.dialogSettingsLabel')}>
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full mx-4 my-auto flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Settings className="text-cyan-500" /> {t('cloud.title')} {t('common.settings')}</h2>
@@ -853,7 +862,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                             <span>{reauthRequired.provider.toUpperCase()}: {t('cloud.reauthRequired')}</span>
                         </div>
                         <button
-                            onClick={() => { setReauthRequired(null); setShowSettings(true); }}
+                            onClick={() => { setReauthRequired(null); openSettings(); }}
                             className="px-3 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700"
                         >
                             {t('cloud.reauthorize') || 'Re-authorize'}
@@ -869,7 +878,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     onResume={handleResume}
                     onDisable={handleDisable}
                     onOpenFolder={handleOpenFolder}
-                    onSettings={() => setShowSettings(true)}
+                    onSettings={openSettings}
                     onManagePairs={() => setShowCloudPairs(true)}
                 />
             </div>
