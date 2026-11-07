@@ -140,13 +140,17 @@ export function NextcloudTrashManager({ providerName, onClose, onRefreshFiles }:
     return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager only when none is pending (Discussion #1527).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') guarded.requestClose();
+      if (e.key !== 'Escape') return;
+      if (pendingEmptyConfirm) { setPendingEmptyConfirm(false); return; }
+      guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [guarded.requestClose]);
+  }, [guarded.requestClose, pendingEmptyConfirm]);
 
   const label = providerName || 'Nextcloud';
 

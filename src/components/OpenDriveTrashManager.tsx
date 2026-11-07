@@ -55,13 +55,17 @@ export function OpenDriveTrashManager({ onClose, onRefreshFiles }: OpenDriveTras
     loadTrash();
   }, [loadTrash]);
 
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager only when none is pending (Discussion #1527).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') guarded.requestClose();
+      if (e.key !== 'Escape') return;
+      if (pendingEmptyConfirm) { setPendingEmptyConfirm(false); return; }
+      guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [guarded.requestClose]);
+  }, [guarded.requestClose, pendingEmptyConfirm]);
 
   const itemId = (item: RemoteFile) => item.metadata?.opendrive_item_id || item.path;
 
