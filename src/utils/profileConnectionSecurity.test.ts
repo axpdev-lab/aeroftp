@@ -6,6 +6,9 @@ import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
 import { loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe } from './profileSecurity';
 import { scpFallbackConnectParam } from './scpFallback';
+import { ConnectScope } from '../gui/connectScope';
+import { resolveProfileS3Location } from '../providers';
+import { keystoreImportModalResult } from './keystoreImportSummary';
 
 const buildStart = app.indexOf('const buildProviderParams =');
 const start = app.indexOf('const providerParams = {', buildStart);
@@ -39,14 +42,38 @@ describe('security options in the normal GUI connection payload', () => {
         expect(payload('webdav', { webdavScheme: 'https', verifyCert: 'false' }).verify_cert).toBe(false);
     });
 
-    it('forwards retained S3 cleartext consent from import to connect', () => {
+    it('forwards retained S3 cleartext consent from import through the full connection builder', async () => {
         expect(payload('s3', { allowCleartextEndpoint: true }).allow_cleartext_endpoint).toBe(true);
         expect(payload('s3', { allow_cleartext_endpoint: true }).allow_cleartext_endpoint).toBe(true);
         const imported = makeSafe({
             host: 'minio.example.test', protocol: 's3',
             options: { endpoint: 'http://minio.example.test:9000', allowCleartextEndpoint: true },
         }, ['allowCleartextEndpoint']).profile;
-        expect(payload('s3', imported.options).allow_cleartext_endpoint).toBe(true);
+
+        const buildEnd = app.indexOf('\n  const refreshGitHubContext', buildStart);
+        if (buildEnd < 0) throw new Error('Missing full provider builder boundary');
+        const { code: builderCode } = await transformWithOxc(app.slice(buildStart, buildEnd), 'full-provider-builder.ts');
+        const context = {
+            useLatestCallback: (fn: unknown) => fn,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            ConnectScope,
+            invoke: vi.fn(),
+            resolveProfileS3Location,
+            loadedCertificateCheck,
+            loadedOption,
+            loadedOptionOn,
+            scpFallbackConnectParam,
+        };
+        const { buildProviderParams } = new Function(...Object.keys(context), `${builderCode}\nreturn { buildProviderParams };`)(...Object.values(context)) as {
+            buildProviderParams: (params: Record<string, unknown>, initialPath: null) => Promise<{ providerParams: Record<string, unknown> }>;
+        };
+        const result = await buildProviderParams({
+            protocol: 's3', providerId: 'custom-s3', savedServerId: 'imported-profile',
+            server: imported.host, port: 9000, username: 'user', password: 'fixture-secret',
+            options: imported.options,
+        }, null);
+        expect(result.providerParams.allow_cleartext_endpoint).toBe(true);
+        expect(result.providerParams.endpoint).toBe('http://minio.example.test:9000');
     });
 
     it.each([
@@ -108,6 +135,7 @@ describe('security options in the normal GUI connection payload', () => {
             notify: { warning: vi.fn(), success: vi.fn(), error: vi.fn() },
             invoke: vi.fn(async () => ({ imported: 1, skipped: 0, securityReset: reset })),
             refreshProfilesFromImportedKeystore: vi.fn(async () => undefined),
+            keystoreImportModalResult,
             setKeystoreImportResult,
         };
         const importFile = new Function(...Object.keys(context), `${code}\nreturn importAeroFtpKeystoreFile;`)(...Object.values(context));

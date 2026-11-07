@@ -14,6 +14,7 @@ export interface KeystoreImportOutcome {
     requiresRestart?: boolean;
     userPartitionsRekeyed?: number;
     userPartitionsUnreadable?: number;
+    userPartitionsBackupPath?: string;
     /** The backup's account partition was left out: unreadable here (review of #980). */
     profilePartitionSkipped?: boolean;
     profileDecisionsError?: string;
@@ -43,6 +44,17 @@ const asSentence = (error: string): string => {
     const trimmed = error.trim();
     return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 };
+
+export function keystoreImportModalResult(result: KeystoreImportOutcome): KeystoreImportOutcome | null {
+    const needed = !!result.requiresRestart
+        || (result.userPartitionsUnreadable ?? 0) > 0
+        || (result.userPartitionsRekeyed ?? 0) > 0
+        || !!result.userPartitionsBackupPath
+        || !!result.sqliteDbsFailed?.length
+        || (result.securityResetFailed ?? 0) > 0
+        || !!result.securityReset?.length;
+    return needed ? { ...result } : null;
+}
 
 /**
  * Build the message for a finished import. `preferencesError` is the failure,

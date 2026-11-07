@@ -75,7 +75,7 @@ import { useI18n, Language, AVAILABLE_LANGUAGES } from '../i18n';
 import { openUrl } from '../utils/openUrl';
 import { KeystoreImportPreview } from './KeystoreImportPreview';
 import { decisionsPayload, defaultDecisions, type ProfileDecision, type ProfilePreview } from '../utils/keystoreImportPreview';
-import { keystoreImportSummary } from '../utils/keystoreImportSummary';
+import { keystoreImportModalResult, keystoreImportSummary } from '../utils/keystoreImportSummary';
 
 import { updateAppSettings } from '../utils/appSettings';
 import { ConnectScope } from '../gui/connectScope';
@@ -3832,22 +3832,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                         // matter (restart needed, cross-machine re-key/unreadable,
                                                                         // or a reversible snapshot was taken). The inline message
                                                                         // above stays as a persistent confirmation.
-                                                                        if (
-                                                                            !!result.requiresRestart ||
-                                                                            (result.userPartitionsUnreadable ?? 0) > 0 ||
-                                                                            (result.userPartitionsRekeyed ?? 0) > 0 ||
-                                                                            !!result.userPartitionsBackupPath ||
-                                                                            !!result.sqliteDbsFailed?.length
-                                                                        ) {
-                                                                            setKeystoreImportResult({
-                                                                                sqliteDbsFailed: result.sqliteDbsFailed,
-                                                                                imported: result.imported,
-                                                                                skipped: result.skipped,
-                                                                                requiresRestart: result.requiresRestart,
-                                                                                userPartitionsRekeyed: result.userPartitionsRekeyed,
-                                                                                userPartitionsUnreadable: result.userPartitionsUnreadable,
-                                                                                userPartitionsBackupPath: result.userPartitionsBackupPath,
-                                                                            });
+                                                                        const modalResult = keystoreImportModalResult(result);
+                                                                        if (modalResult) {
+                                                                            setKeystoreImportResult(modalResult);
                                                                         }
 
                                                                         // Re-query actual vault count + categories (not optimistic)

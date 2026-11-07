@@ -18,7 +18,7 @@ import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
 import { loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS } from './utils/profileSecurity';
-import { keystoreImportSummary } from './utils/keystoreImportSummary';
+import { keystoreImportModalResult, keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
@@ -16491,26 +16491,9 @@ const App: React.FC = () => {
           // F-012 W1/W2: when the import needs a restart or carried cross-machine
           // partitions (re-keyed or unreadable) or snapshotted the local DB,
           // surface a modal that cannot be missed instead of a transient toast.
-          const needsModal =
-            !!result.requiresRestart ||
-            (result.userPartitionsUnreadable ?? 0) > 0 ||
-            (result.userPartitionsRekeyed ?? 0) > 0 ||
-            !!result.userPartitionsBackupPath ||
-            !!result.sqliteDbsFailed?.length ||
-            (result.securityResetFailed ?? 0) > 0 ||
-            !!result.securityReset?.length;
-          if (needsModal) {
-            setKeystoreImportResult({
-              imported: result.imported,
-              skipped: result.skipped,
-              requiresRestart: result.requiresRestart,
-              userPartitionsRekeyed: result.userPartitionsRekeyed,
-              userPartitionsUnreadable: result.userPartitionsUnreadable,
-              userPartitionsBackupPath: result.userPartitionsBackupPath,
-              sqliteDbsFailed: result.sqliteDbsFailed,
-              securityReset: result.securityReset,
-              securityResetFailed: result.securityResetFailed,
-            });
+          const modalResult = keystoreImportModalResult(result);
+          if (modalResult) {
+            setKeystoreImportResult(modalResult);
           } else {
             notify.success(
               t('settings.importKeystore') || 'Import Keystore',

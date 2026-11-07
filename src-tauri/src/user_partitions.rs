@@ -2133,6 +2133,15 @@ fn security_reset_pending(conn: &Connection, user_id: i64) -> Result<bool, Strin
     .map_err(|e| format!("Read pending security reset: {e}"))
 }
 
+fn mark_security_reset_pending(conn: &mut Connection, user_id: i64) -> Result<(), String> {
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Start pending security reset: {e}"))?;
+    upsert_global_state(&tx, &security_reset_pending_key(user_id), "1", now_ms())?;
+    tx.commit()
+        .map_err(|e| format!("Commit pending security reset: {e}"))
+}
+
 pub fn reset_profile_relaxations_in_db(
     store: &CredentialStore,
     db_path: &std::path::Path,
@@ -2186,6 +2195,7 @@ fn reset_profile_relaxations(
                     });
             if let Err(e) = marked {
                 report.failed += 1;
+                clear_user_session();
                 tracing::warn!("Security reset marker: account {}: {e}", user.id);
             }
             continue;
@@ -2208,14 +2218,32 @@ fn reset_profile_relaxations(
         }
         let written = insert_profiles_with_dek(&tx, &root_secret, user.id, &dek, &profiles)
             .and_then(|_| {
-                tx.commit()
-                    .map_err(|e| format!("Commit security options: {e}"))
+                tx.execute(
+                    "DELETE FROM global_state WHERE key = ?1",
+                    params![security_reset_pending_key(user.id)],
+                )
+                .map(|_| ())
+                .map_err(|e| format!("Clear completed security reset: {e}"))
             });
-        match written {
+        if let Err(e) = written {
+            drop(tx);
+            report.failed += 1;
+            clear_user_session();
+            tracing::warn!("Security reset: account {}: {e}", user.id);
+            if let Err(e) = mark_security_reset_pending(conn, user.id) {
+                tracing::warn!("Security reset rollback marker: account {}: {e}", user.id);
+            }
+            continue;
+        }
+        match tx.commit() {
             Ok(_) => report.reset.extend(changed),
             Err(e) => {
                 report.failed += 1;
+                clear_user_session();
                 tracing::warn!("Security reset: account {}: {e}", user.id);
+                if let Err(e) = mark_security_reset_pending(conn, user.id) {
+                    tracing::warn!("Security reset rollback marker: account {}: {e}", user.id);
+                }
             }
         }
     }
@@ -7945,6 +7973,7 @@ mod tests {
         let mut conn = open_or_init_path(path).unwrap();
         let root = test_root();
         migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let default = active_user_id(&conn).unwrap().unwrap();
         let locked =
             create_user(&mut conn, &root, "Locked", None, None, Some("passphrase")).unwrap();
         let row = read_user_key_row(&conn, locked.id).unwrap();
@@ -7967,6 +7996,8 @@ mod tests {
             list_server_profiles_for(&conn, &root, locked.id).unwrap_err(),
             "SECURITY_RESET_PENDING"
         );
+        unlock_user(&conn, &root, default, None).unwrap();
+        assert_eq!(active_user_id(&conn).unwrap(), Some(default));
         let status = unlock_user(&conn, &root, locked.id, Some("passphrase")).unwrap();
         assert_eq!(status.security_reset.len(), 1);
         assert_eq!(
@@ -8012,6 +8043,92 @@ mod tests {
         assert_eq!(profiles[0]["name"], "Still here");
         assert_eq!(profiles[0]["options"]["trustUnknownHosts"], true);
         assert!(unlock_user(&conn, &root, locked.id, Some("passphrase")).is_ok());
+    }
+
+    #[test]
+    fn a_failed_reset_write_marks_the_account_pending_before_a_retry() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().unwrap();
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let user = active_user_id(&conn).unwrap().unwrap();
+        let row = read_user_key_row(&conn, user).unwrap();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let dek = unwrap_user_dek_with_key(&row, &root_secret).unwrap();
+        insert_profile_rows(
+            &conn,
+            &root_secret,
+            user,
+            &dek,
+            &[json!({
+                "id": "relaxed", "name": "Relaxed", "protocol": "sftp",
+                "host": "sftp.example.com", "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_restore_reset BEFORE INSERT ON server_profiles BEGIN SELECT RAISE(FAIL, 'forced insert failure'); END;",
+        )
+        .unwrap();
+        let report = reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        assert_eq!(report.failed, 1);
+        assert!(security_reset_pending(&conn, user).unwrap());
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, user).unwrap_err(),
+            "SECURITY_RESET_PENDING"
+        );
+        conn.execute_batch("DROP TRIGGER fail_restore_reset")
+            .unwrap();
+        let retry = reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        assert_eq!(retry.reset.len(), 1);
+        assert!(!security_reset_pending(&conn, user).unwrap());
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, user).unwrap()[0]["options"]
+                ["trustUnknownHosts"],
+            false
+        );
+    }
+
+    #[test]
+    fn a_failed_pending_marker_invalidates_the_held_session() {
+        let _guard = test_lock();
+        clear_user_session();
+        let mut conn = Connection::open_in_memory().unwrap();
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let locked =
+            create_user(&mut conn, &root, "Locked", None, None, Some("passphrase")).unwrap();
+        let row = read_user_key_row(&conn, locked.id).unwrap();
+        let dek = unwrap_user_dek_with_passphrase(&row, "passphrase").unwrap();
+        insert_profile_rows(
+            &conn,
+            &user_crypto::secret_key_from_bytes(&root),
+            locked.id,
+            &dek,
+            &[json!({
+                "id": "relaxed", "name": "Relaxed", "protocol": "sftp",
+                "host": "sftp.example.com", "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        unlock_user(&conn, &root, locked.id, Some("passphrase")).unwrap();
+        let generation = session_generation();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_pending_marker BEFORE INSERT ON global_state BEGIN SELECT RAISE(FAIL, 'forced marker failure'); END;",
+        )
+        .unwrap();
+        let report = reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        assert_eq!(report.failed, 1);
+        assert!(session_generation() > generation);
+        assert!(list_server_profiles_for(&conn, &root, locked.id).is_err());
+        conn.execute_batch("DROP TRIGGER fail_pending_marker")
+            .unwrap();
+        reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        assert!(security_reset_pending(&conn, locked.id).unwrap());
+        let status = unlock_user(&conn, &root, locked.id, Some("passphrase")).unwrap();
+        assert_eq!(status.security_reset.len(), 1);
+        assert!(!security_reset_pending(&conn, locked.id).unwrap());
     }
 
     /// A database written whole (a restored backup from an older build) is put

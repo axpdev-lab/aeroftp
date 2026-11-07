@@ -20994,6 +20994,68 @@ mod import_security_tests {
         assert_eq!(kept.plan[0].outcome, ImportOutcome::Skipped);
         assert_eq!(kept.target_changed, ["srv_a name"]);
     }
+
+    #[test]
+    fn retained_s3_consent_survives_the_native_file_and_effective_config() {
+        use crate::providers::{ProviderConfig, ProviderType, S3Config};
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("s3-consent.aeroftp");
+        let server = profile_export::ServerProfileExport {
+            id: "srv_s3".into(),
+            name: "S3 fixture".into(),
+            host: "minio.example.com".into(),
+            port: 9000,
+            username: "user".into(),
+            protocol: Some("s3".into()),
+            options: Some(json!({
+                "bucket": "backups",
+                "endpoint": "http://minio.example.com:9000",
+                "allowCleartextEndpoint": true
+            })),
+            ..Default::default()
+        };
+        profile_export::export_profiles(
+            vec![server],
+            Default::default(),
+            "fixture-password",
+            &file,
+        )
+        .unwrap();
+        let report = preview_server_profiles(
+            file.to_str().unwrap(),
+            "fixture-password",
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::Keep(vec![KeptRelaxation {
+                file_index: 0,
+                key: "allowCleartextEndpoint".into(),
+            }]),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(report.security[0].kept[0].key, "allowCleartextEndpoint");
+        let imported = &report.servers[0];
+        assert_eq!(imported["options"]["allowCleartextEndpoint"], json!(true));
+        let (extra, host) = profile_loader::profile_connection_extra(
+            imported,
+            ProviderType::S3,
+            imported["host"].as_str().unwrap(),
+        );
+        let effective = S3Config::from_provider_config(&ProviderConfig {
+            name: "fixture".into(),
+            provider_type: ProviderType::S3,
+            host,
+            port: imported["port"]
+                .as_u64()
+                .and_then(|p| u16::try_from(p).ok()),
+            username: Some("user".into()),
+            password: Some("fixture-secret".into()),
+            initial_path: None,
+            extra,
+        })
+        .unwrap();
+        assert!(effective.allow_cleartext_endpoint);
+    }
 }
 
 #[cfg(test)]

@@ -611,12 +611,35 @@ async fn create_provider_from_vault(
     server_query: &str,
     identity: Option<&str>,
 ) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
+    create_provider_from_vault_with_reader(
+        server_query,
+        identity,
+        crate::user_partitions::mcp_list_active_server_profiles,
+        crate::profile_security::strict_profiles_enabled(),
+        |store, key| {
+            crate::user_partitions::resolve_active_credential(store, key)
+                .ok()
+                .flatten()
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        },
+    )
+    .await
+}
+
+async fn create_provider_from_vault_with_reader(
+    server_query: &str,
+    identity: Option<&str>,
+    read_profiles: impl FnOnce(&CredentialStore) -> Result<Vec<serde_json::Value>, String>,
+    strict: bool,
+    read_credential: impl FnOnce(&CredentialStore, &str) -> String,
+) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
     // MUV-5: active-user profiles (see resolve_profile_target). The transient
     // env-passphrase unlock done inside also primes the session so the
     // `resolve_active_credential` read below decrypts the per-user `server_<id>`.
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
+    let profiles = read_profiles(&store)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
     // The profile read again here is the one opened: it must still connect
@@ -653,20 +676,9 @@ async fn create_provider_from_vault(
     // otherwise the dual-written vault copy still answers.
     // Strict mode holds here too: the read is never attempted for a relaxed
     // saved profile when strict mode is active.
-    let raw_cred = credential_after_strict_check(
-        matched,
-        crate::profile_security::strict_profiles_enabled(),
-        || {
-            crate::user_partitions::resolve_active_credential(
-                &store,
-                &format!("server_{}", profile_id),
-            )
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())
-            .unwrap_or_default()
-        },
-    )?;
+    let raw_cred = credential_after_strict_check(matched, strict, || {
+        read_credential(&store, &format!("server_{}", profile_id))
+    })?;
 
     let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
 
@@ -767,29 +779,54 @@ async fn create_provider_from_vault(
 mod tests {
 
     /// Greptile on #1524: `agent --mcp --strict` connected saved profiles that
-    /// turn a security check off. The vault path refuses them in strict mode,
-    /// before any credential is read.
-    #[test]
-    fn the_vault_connect_path_applies_strict_mode() {
-        let relaxed = serde_json::json!({
-            "name": "lab", "host": "files.example.com", "protocol": "sftp",
+    /// turn a security check off. The full vault path refuses them before any
+    /// credential is read; non-strict mode keeps its existing behavior.
+    #[tokio::test]
+    async fn the_vault_connect_path_applies_strict_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key = [0x24; 32];
+        CredentialStore::write_test_vault(&path, &key);
+        CredentialStore::cache_vault(path, key);
+        struct ClearCache;
+        impl Drop for ClearCache {
+            fn drop(&mut self) {
+                CredentialStore::clear_cache();
+            }
+        }
+        let _clear = ClearCache;
+        let profile = serde_json::json!({
+            "id": "srv_relaxed", "name": "lab", "host": "files.example.com",
+            "port": 22, "username": "user", "protocol": "sftp",
             "options": {"trustUnknownHosts": true}
         });
+
         let read = std::cell::Cell::new(false);
-        let refused = credential_after_strict_check(&relaxed, true, || {
+        let refused = create_provider_from_vault_with_reader(
+            "lab",
+            None,
+            {
+                let profile = profile.clone();
+                move |_| Ok(vec![profile])
+            },
+            true,
+            |_, key| {
+                assert_eq!(key, "server_srv_relaxed");
+                read.set(true);
+                "fixture-secret".to_string()
+            },
+        )
+        .await
+        .err()
+        .expect("strict mode must refuse the relaxed profile");
+        assert!(refused.contains("strict mode"), "{refused}");
+        assert!(!read.get(), "strict refusal precedes credential resolution");
+
+        let allowed = credential_after_strict_check(&profile, false, || {
             read.set(true);
-            "secret"
+            "fixture-secret".to_string()
         });
-        assert!(refused.is_err());
-        assert!(
-            !read.get(),
-            "strict refusal happens before credential resolution"
-        );
-        let allowed = credential_after_strict_check(&relaxed, false, || {
-            read.set(true);
-            "secret"
-        });
-        assert_eq!(allowed.unwrap(), "secret");
+        assert_eq!(allowed.unwrap(), "fixture-secret");
         assert!(read.get());
     }
     use super::*;
