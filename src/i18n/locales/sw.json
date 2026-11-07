@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Inalindwa na nenosiri",
             "expirationHoursOne": "Saa {count}",
             "expirationHoursMany": "Saa {count}",
-            "expirationDaysMany": "Siku {count}"
+            "expirationDaysMany": "Siku {count}",
+            "expiresSoonerThanAsked": "mapema kuliko ilivyochaguliwa: kipindi kilichoitia saini kinaisha kwanza"
         },
         "introHub": {
             "tab": {

@@ -6,7 +6,7 @@
     "cases: hosts with the provider they must map to (null = no provider); both sides test against them. #1506 Requested 173."
   ],
   "providers": [
-    { "providerId": "amazon-s3", "preset": true, "domains": ["amazonaws.com"] },
+    { "providerId": "amazon-s3", "preset": true, "domains": ["amazonaws.com", "amazonaws.com.cn"] },
     { "providerId": "backblaze", "preset": true, "domains": ["backblazeb2.com"] },
     { "providerId": "cloudflare-r2", "preset": true, "domains": ["r2.cloudflarestorage.com"] },
     { "providerId": "digitalocean-spaces", "preset": true, "domains": ["digitaloceanspaces.com"] },
@@ -25,7 +25,7 @@
     { "providerId": "tencent-cos", "preset": true, "domains": ["myqcloud.com"] },
     { "providerId": "tigris", "preset": true, "domains": ["t3.storage.dev", "fly.storage.tigris.dev"] },
     { "providerId": "wasabi", "preset": true, "domains": ["wasabisys.com"] },
-    { "providerId": "yandex-storage", "preset": true, "domains": ["storage.yandexcloud.net"] },
+    { "providerId": "yandex-storage", "preset": true, "domains": ["storage.yandexcloud.net", "storage.yandexcloud.kz"] },
     { "providerId": "linode-object-storage", "preset": false, "domains": ["linodeobjects.com"] },
     { "providerId": "scaleway", "preset": false, "domains": ["scw.cloud"] },
     { "providerId": "ionos-s3", "preset": false, "domains": ["ionoscloud.com"] }
@@ -59,6 +59,10 @@
     { "host": "my-bucket.fly.storage.tigris.dev", "providerId": "tigris" },
     { "host": "s3.eu-central-1.wasabisys.com", "providerId": "wasabi" },
     { "host": "storage.yandexcloud.net", "providerId": "yandex-storage" },
+    { "host": "storage.yandexcloud.kz", "providerId": "yandex-storage" },
+    { "host": "s3.cn-north-1.amazonaws.com.cn", "providerId": "amazon-s3" },
+    { "host": "my-bucket.s3.cn-northwest-1.amazonaws.com.cn", "providerId": "amazon-s3" },
+    { "host": "amazonaws.com.cn.example", "providerId": null },
     { "host": "us-east-1.linodeobjects.com", "providerId": "linode-object-storage" },
     { "host": "s3.fr-par.scw.cloud", "providerId": "scaleway" },
     { "host": "s3-eu-central-1.ionoscloud.com", "providerId": "ionos-s3" },

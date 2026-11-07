@@ -5661,7 +5661,8 @@
             "managePasswordProtected": "Wedi'i ddiogelu gan gyfrinair",
             "expirationHoursOne": "{count} awr",
             "expirationHoursMany": "{count} awr",
-            "expirationDaysMany": "{count} diwrnod"
+            "expirationDaysMany": "{count} diwrnod",
+            "expiresSoonerThanAsked": "yn gynt na'r hyn a ddewiswyd: mae'r sesiwn a'i llofnododd yn dod i ben gyntaf"
         },
         "introHub": {
             "tab": {

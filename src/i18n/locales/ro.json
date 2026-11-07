@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Protejat cu parolă",
             "expirationHoursOne": "{count} oră",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "Zile: {count}"
+            "expirationDaysMany": "Zile: {count}",
+            "expiresSoonerThanAsked": "mai devreme decât s-a ales: sesiunea care l-a semnat expiră prima"
         },
         "introHub": {
             "tab": {

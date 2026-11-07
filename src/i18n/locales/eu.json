@@ -5661,7 +5661,8 @@
             "managePasswordProtected": "Pasahitzez babestuta",
             "expirationHoursOne": "{count} ordu",
             "expirationHoursMany": "{count} ordu",
-            "expirationDaysMany": "{count} egun"
+            "expirationDaysMany": "{count} egun",
+            "expiresSoonerThanAsked": "aukeratutakoa baino lehenago: sinatu zuen saioa lehenago amaitzen da"
         },
         "introHub": {
             "tab": {

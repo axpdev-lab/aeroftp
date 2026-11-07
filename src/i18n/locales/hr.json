@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Zaštićeno lozinkom",
             "expirationHoursOne": "{count} sat",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "{count} d"
+            "expirationDaysMany": "{count} d",
+            "expiresSoonerThanAsked": "prije odabranog: sesija koja ga je potpisala prva istječe"
         },
         "introHub": {
             "tab": {

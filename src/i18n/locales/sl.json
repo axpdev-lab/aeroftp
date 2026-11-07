@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Zaščiteno z geslom",
             "expirationHoursOne": "{count} ura",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "{count} d"
+            "expirationDaysMany": "{count} d",
+            "expiresSoonerThanAsked": "prej, kot je izbrano: seja, ki ga je podpisala, poteče prva"
         },
         "introHub": {
             "tab": {

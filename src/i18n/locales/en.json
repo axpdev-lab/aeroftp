@@ -5868,6 +5868,7 @@
             "manageRevokeConfirm": "Revoke this share link? Anyone with the link will lose access.",
             "manageCreated": "Created",
             "manageExpires": "Expires",
+            "expiresSoonerThanAsked": "shorter than chosen: the session that signed it ends first",
             "manageNeverExpires": "Never",
             "managePasswordProtected": "Password protected",
             "expirationHoursOne": "{count} hour",

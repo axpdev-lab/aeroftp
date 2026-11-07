@@ -6001,7 +6001,8 @@
             "managePasswordProtected": "Protetto da password",
             "expirationHoursOne": "{count} ora",
             "expirationHoursMany": "{count} ore",
-            "expirationDaysMany": "{count} giorni"
+            "expirationDaysMany": "{count} giorni",
+            "expiresSoonerThanAsked": "prima di quanto scelto: la sessione che lo ha firmato termina per prima"
         },
         "introHub": {
             "tab": {

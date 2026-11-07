@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Захищено паролем",
             "expirationHoursOne": "{count} година",
             "expirationHoursMany": "{count} год.",
-            "expirationDaysMany": "{count} дн."
+            "expirationDaysMany": "{count} дн.",
+            "expiresSoonerThanAsked": "раніше за вибране: сесія, яка його підписала, завершується першою"
         },
         "introHub": {
             "tab": {

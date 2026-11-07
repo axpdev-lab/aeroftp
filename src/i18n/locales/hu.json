@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Jelszóval védett",
             "expirationHoursOne": "{count} óra",
             "expirationHoursMany": "{count} óra",
-            "expirationDaysMany": "{count} nap"
+            "expirationDaysMany": "{count} nap",
+            "expiresSoonerThanAsked": "korábban, mint a választott: az aláíró munkamenet előbb lejár"
         },
         "introHub": {
             "tab": {

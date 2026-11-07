@@ -60,6 +60,10 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   const [state, setState] = useState<ModalState>('loading');
   const [shareUrl, setShareUrl] = useState('');
   const [sharePassword, setSharePassword] = useState<string | null>(null);
+  // When the created link expires, and whether that is sooner than asked (a
+  // link signed by a short-lived session ends with the session).
+  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
+  const [shareShortened, setShareShortened] = useState(false);
   const [error, setError] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
@@ -141,6 +145,10 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
       const result = await invoke<ShareLinkResult>('provider_create_share_link', params);
       setShareUrl(result.url);
       setSharePassword(result.password || null);
+      setShareExpiresAt(result.expires_at);
+      const asked = opts?.expiresInSecs;
+      const granted = result.expires_at ? (Date.parse(result.expires_at) - Date.now()) / 1000 : null;
+      setShareShortened(!!asked && granted !== null && granted < asked - 60);
       setState('success');
 
       // Auto-copy link to clipboard
@@ -166,6 +174,12 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     void loadShareLinkCapabilities(invoke).then((loaded) => {
       if (cancelled) return;
       setCaps(loaded);
+      // A provider with a stated limit has no "never": start at the longest
+      // choice it allows.
+      if (loaded.maxExpirationSecs !== null) {
+        const allowed = expirationChoicesWithin(EXPIRATION_PRESETS, loaded);
+        if (allowed.length > 0) setOptExpiration(allowed[allowed.length - 1].value);
+      }
       if (loaded.hasAdvancedOptions) setState('options');
       else generateLink();
     });
@@ -425,7 +439,9 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                         {t('shareLinkModal.expiration')}
                       </label>
                       <div className="flex flex-wrap gap-1.5">
-                        <button
+                        {/* "Never" exists only where the provider states no limit:
+                            an S3 link without an expiry is a one-hour link. */}
+                        {caps.maxExpirationSecs === null && <button
                           onClick={() => setOptExpiration(null)}
                           className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                             optExpiration === null
@@ -434,7 +450,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                           }`}
                         >
                           {t('shareLinkModal.expirationNever')}
-                        </button>
+                        </button>}
                         {expirationChoicesWithin(EXPIRATION_PRESETS, caps).map(preset => (
                           <button
                             key={preset.value}
@@ -573,6 +589,13 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                   </button>
                 </div>
               </div>
+
+              {shareExpiresAt && (
+                <p data-testid="share-link-expiry" className="text-xs text-gray-600 dark:text-gray-400">
+                  {t('shareLinkModal.manageExpires')}: {new Date(shareExpiresAt).toLocaleString(getUiLocale())}
+                  {shareShortened && <> ({t('shareLinkModal.expiresSoonerThanAsked')})</>}
+                </p>
+              )}
 
               {/* Password field (if server returned one) */}
               {sharePassword && (

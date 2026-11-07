@@ -5661,7 +5661,8 @@
             "managePasswordProtected": "Protexida con contrasinal",
             "expirationHoursOne": "{count} hora",
             "expirationHoursMany": "{count} horas",
-            "expirationDaysMany": "{count} días"
+            "expirationDaysMany": "{count} días",
+            "expiresSoonerThanAsked": "antes do escollido: a sesión que o asinou remata primeiro"
         },
         "introHub": {
             "tab": {

@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "পাসওয়ার্ড সুরক্ষিত",
             "expirationHoursOne": "{count} ঘণ্টা",
             "expirationHoursMany": "{count} ঘণ্টা",
-            "expirationDaysMany": "{count} দিন"
+            "expirationDaysMany": "{count} দিন",
+            "expiresSoonerThanAsked": "নির্বাচিত সময়ের আগে: যে সেশন এটি সাইন করেছে সেটি আগে শেষ হয়"
         },
         "introHub": {
             "tab": {

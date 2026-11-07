@@ -5661,7 +5661,8 @@
             "managePasswordProtected": "Passordbeskyttet",
             "expirationHoursOne": "{count} time",
             "expirationHoursMany": "{count} timer",
-            "expirationDaysMany": "{count} dager"
+            "expirationDaysMany": "{count} dager",
+            "expiresSoonerThanAsked": "tidligere enn valgt: økten som signerte den, utløper først"
         },
         "introHub": {
             "tab": {

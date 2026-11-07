@@ -5661,7 +5661,8 @@
             "managePasswordProtected": "Pinoprotektahan ng password",
             "expirationHoursOne": "{count} oras",
             "expirationHoursMany": "{count} oras",
-            "expirationDaysMany": "{count} araw"
+            "expirationDaysMany": "{count} araw",
+            "expiresSoonerThanAsked": "mas maaga kaysa sa pinili: mauuna matapos ang session na pumirma rito"
         },
         "introHub": {
             "tab": {

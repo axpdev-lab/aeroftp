@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Aizsargāts ar paroli",
             "expirationHoursOne": "{count} stunda",
             "expirationHoursMany": "{count} stundas",
-            "expirationDaysMany": "{count} dienas"
+            "expirationDaysMany": "{count} dienas",
+            "expiresSoonerThanAsked": "agrāk nekā izvēlēts: to parakstījusī sesija beidzas pirmā"
         },
         "introHub": {
             "tab": {

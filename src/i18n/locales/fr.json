@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Protégé par mot de passe",
             "expirationHoursOne": "{count} heure",
             "expirationHoursMany": "{count} heures",
-            "expirationDaysMany": "{count} jours"
+            "expirationDaysMany": "{count} jours",
+            "expiresSoonerThanAsked": "plus tôt que choisi : la session qui l'a signé se termine en premier"
         },
         "introHub": {
             "tab": {

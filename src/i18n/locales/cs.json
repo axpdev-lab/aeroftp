@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Chráněno heslem",
             "expirationHoursOne": "{count} hodina",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "{count} d"
+            "expirationDaysMany": "{count} d",
+            "expiresSoonerThanAsked": "dříve, než bylo zvoleno: relace, která odkaz podepsala, skončí první"
         },
         "introHub": {
             "tab": {

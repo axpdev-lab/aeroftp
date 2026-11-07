@@ -5661,7 +5661,8 @@
             "managePasswordProtected": "Lykilordavarinn",
             "expirationHoursOne": "{count} klukkustund",
             "expirationHoursMany": "{count} klukkustundir",
-            "expirationDaysMany": "{count} dagar"
+            "expirationDaysMany": "{count} dagar",
+            "expiresSoonerThanAsked": "fyrr en valið var: lotan sem undirritaði hann rennur út á undan"
         },
         "introHub": {
             "tab": {

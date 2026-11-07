@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Προστασία με κωδικό",
             "expirationHoursOne": "{count} ώρα",
             "expirationHoursMany": "{count} ώρες",
-            "expirationDaysMany": "{count} ημέρες"
+            "expirationDaysMany": "{count} ημέρες",
+            "expiresSoonerThanAsked": "νωρίτερα από την επιλογή: η συνεδρία που το υπέγραψε λήγει πρώτη"
         },
         "introHub": {
             "tab": {

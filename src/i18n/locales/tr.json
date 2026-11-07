@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Şifre korumalı",
             "expirationHoursOne": "{count} saat",
             "expirationHoursMany": "{count} saat",
-            "expirationDaysMany": "{count} gün"
+            "expirationDaysMany": "{count} gün",
+            "expiresSoonerThanAsked": "seçilenden daha erken: bunu imzalayan oturum önce sona eriyor"
         },
         "introHub": {
             "tab": {

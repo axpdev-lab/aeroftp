@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Beveiligd met wachtwoord",
             "expirationHoursOne": "{count} uur",
             "expirationHoursMany": "{count} uur",
-            "expirationDaysMany": "{count} dagen"
+            "expirationDaysMany": "{count} dagen",
+            "expiresSoonerThanAsked": "eerder dan gekozen: de sessie die het ondertekende, eindigt eerst"
         },
         "introHub": {
             "tab": {

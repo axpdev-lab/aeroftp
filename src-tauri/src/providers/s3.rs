@@ -6700,12 +6700,23 @@ impl StorageProvider for S3Provider {
         // answers AuthorizationQueryParametersError above it; R2, B2, MinIO,
         // MEGA S4 and Tigris state the same limit). Asking for more used to
         // build a link that was dead at once on AWS, or clamped without a word.
+        let now: DateTime<Utc> = self.now_adjusted();
+        // A link signed with temporary (STS / AssumeRole) credentials stops
+        // working when they expire, whatever X-Amz-Expires says, so both the
+        // signed expiry and the reported one end there (Greptile on #1525).
+        let session_left = self
+            .temp_credentials
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .and_then(|creds| creds.expiration)
+            .map(|expiration| (expiration - now).num_seconds().max(1) as u64);
         let expires = options
             .expires_in_secs
             .unwrap_or(3600)
-            .min(SIGV4_MAX_PRESIGN_SECS);
+            .min(SIGV4_MAX_PRESIGN_SECS)
+            .min(session_left.unwrap_or(u64::MAX));
 
-        let now: DateTime<Utc> = self.now_adjusted();
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
@@ -14194,6 +14205,39 @@ mod tests {
                 "{asked}"
             );
         }
+    }
+
+    /// Greptile on #1525: a link signed by a one-hour AssumeRole session
+    /// stops working when the session ends, so it is signed and reported for
+    /// at most the session's remaining time, not the seven days asked.
+    #[tokio::test]
+    async fn a_share_link_ends_with_the_session_that_signed_it() {
+        let mut provider = aws_doc_provider(false);
+        let session_end = provider.now_adjusted() + chrono::Duration::seconds(3600);
+        *provider
+            .temp_credentials
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(temp_creds(Some(session_end)));
+        let link = provider
+            .create_share_link(
+                "/test.txt",
+                ShareLinkOptions {
+                    expires_in_secs: Some(604_800),
+                    password: None,
+                    permissions: None,
+                },
+            )
+            .await
+            .expect("presign failed");
+        let expires_at = DateTime::parse_from_rfc3339(link.expires_at.as_deref().unwrap())
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(
+            expires_at <= session_end,
+            "{expires_at} after {session_end}"
+        );
+        assert!(!link.url.contains("X-Amz-Expires=604800"), "{}", link.url);
+        assert!(link.url.contains("X-Amz-Security-Token="), "{}", link.url);
     }
 
     #[tokio::test]

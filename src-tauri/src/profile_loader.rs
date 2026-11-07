@@ -424,12 +424,29 @@ fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
         .next()?
         .to_ascii_lowercase();
     let region = host.strip_prefix(prefix)?.strip_suffix(suffix)?;
+    // Labels a vendor puts where the region goes that are not one (Greptile on
+    // #1525): an internal endpoint (`oss-cn-hangzhou-internal.aliyuncs.com`)
+    // names its region with a suffix, and an accelerate endpoint
+    // (`oss-accelerate.aliyuncs.com`, `cos.accelerate.myqcloud.com`) names
+    // none. Read as a region they would override a correct stored one.
+    let region = region
+        .strip_suffix(S3_INTERNAL_ENDPOINT_SUFFIX)
+        .unwrap_or(region);
     (!region.is_empty()
+        && !S3_NON_REGION_LABELS.contains(&region)
         && region
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-'))
     .then(|| region.to_string())
 }
+
+/// Suffix of an S3 vendor's internal (same-cloud) endpoint label. Mirrored in
+/// `regionFromS3Template` in src/providers/registry.ts.
+const S3_INTERNAL_ENDPOINT_SUFFIX: &str = "-internal";
+
+/// Endpoint labels in a region's place that name no region. Mirrored in
+/// `regionFromS3Template` in src/providers/registry.ts.
+const S3_NON_REGION_LABELS: [&str; 2] = ["accelerate", "accelerate-overseas"];
 
 pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<String> {
     let template = s3_profile_endpoint_template(provider_id)?;
@@ -939,6 +956,19 @@ mod tests {
                 "https://bucket.s3.eu-amsterdam-1.megas4.com",
                 None,
             ),
+            // Internal and accelerate endpoints (Greptile on #1525).
+            (
+                "alibaba-oss",
+                "https://oss-cn-hangzhou-internal.aliyuncs.com",
+                Some("cn-hangzhou"),
+            ),
+            ("alibaba-oss", "https://oss-accelerate.aliyuncs.com", None),
+            ("tencent-cos", "https://cos.accelerate.myqcloud.com", None),
+            (
+                "ibm-cos",
+                "https://s3.private.us-south.cloud-object-storage.appdomain.cloud",
+                None,
+            ),
             (
                 "alibaba-oss",
                 "https://oss-eu-central-1.aliyuncs.com",
@@ -1100,6 +1130,20 @@ mod tests {
                 "https://storage.example.com",
                 Some(" us-west-1 "),
                 "us-west-1",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-cn-hangzhou-internal.aliyuncs.com",
+                Some("cn-hangzhou"),
+                "cn-hangzhou",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate.aliyuncs.com",
+                Some("cn-shanghai"),
+                "cn-shanghai",
                 "profile",
             ),
         ];

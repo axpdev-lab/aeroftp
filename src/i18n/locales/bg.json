@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Защитена с парола",
             "expirationHoursOne": "{count} час",
             "expirationHoursMany": "{count} часа",
-            "expirationDaysMany": "{count} дни"
+            "expirationDaysMany": "{count} дни",
+            "expiresSoonerThanAsked": "по-рано от избраното: сесията, която го е подписала, изтича първа"
         },
         "introHub": {
             "tab": {

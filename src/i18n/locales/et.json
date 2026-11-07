@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Parooliga kaitstud",
             "expirationHoursOne": "{count} tund",
             "expirationHoursMany": "{count} tundi",
-            "expirationDaysMany": "{count} päeva"
+            "expirationDaysMany": "{count} päeva",
+            "expiresSoonerThanAsked": "varem kui valitud: selle allkirjastanud seanss lõpeb esimesena"
         },
         "introHub": {
             "tab": {

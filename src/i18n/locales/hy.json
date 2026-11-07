@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Գաղտնաբառով պաշտպանված",
             "expirationHoursOne": "{count} ժամ",
             "expirationHoursMany": "{count} ժամ",
-            "expirationDaysMany": "{count} օր"
+            "expirationDaysMany": "{count} օր",
+            "expiresSoonerThanAsked": "ընտրվածից շուտ․ այն ստորագրած սեսիան առաջինն է ավարտվում"
         },
         "introHub": {
             "tab": {

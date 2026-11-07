@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "Chroniony hasłem",
             "expirationHoursOne": "{count} godzina",
             "expirationHoursMany": "{count} godz.",
-            "expirationDaysMany": "{count} dni"
+            "expirationDaysMany": "{count} dni",
+            "expiresSoonerThanAsked": "wcześniej niż wybrano: sesja, która go podpisała, kończy się pierwsza"
         },
         "introHub": {
             "tab": {

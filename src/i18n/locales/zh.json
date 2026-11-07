@@ -5642,7 +5642,8 @@
             "managePasswordProtected": "已设置密码保护",
             "expirationHoursOne": "{count} 小时",
             "expirationHoursMany": "{count} 小时",
-            "expirationDaysMany": "{count} 天"
+            "expirationDaysMany": "{count} 天",
+            "expiresSoonerThanAsked": "比所选时间更早:签署该链接的会话会先结束"
         },
         "introHub": {
             "tab": {
