@@ -75887,6 +75887,24 @@ fn cli_tool_definitions() -> Vec<ftp_client_gui_lib::ai::AIToolDefinition> {
 
 /// Execute a CLI tool locally (no Tauri dependency).
 /// Returns JSON result or error string.
+/// The saved profiles the agent's approvals read: the vault's, or in a test
+/// the profiles it scripts on its own thread.
+fn agent_profiles() -> std::sync::Arc<dyn ftp_client_gui_lib::ai_core::CredentialProvider> {
+    #[cfg(test)]
+    if let Some(scripted) = TEST_AGENT_PROFILES.with(|slot| slot.borrow().clone()) {
+        return scripted;
+    }
+    std::sync::Arc::new(ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The profiles a test scripts for [`agent_profiles`], on its own thread.
+    static TEST_AGENT_PROFILES: std::cell::RefCell<
+        Option<std::sync::Arc<dyn ftp_client_gui_lib::ai_core::CredentialProvider>>,
+    > = const { std::cell::RefCell::new(None) };
+}
+
 /// Every tool call that reached dispatch, for the tests that prove a denied
 /// call never does. Test builds only.
 #[cfg(test)]
@@ -76215,8 +76233,9 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         // nothing, is refused before the prompt asks. They are checked again
         // before the call runs, so a profile replaced or edited to another
         // host while the prompt was open is not the one written to.
+        let profiles = agent_profiles();
         let approved_targets = match ftp_client_gui_lib::ai_core::tools::approve_change_targets(
-            &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
+            &*profiles,
             &tc.name,
             &tc.arguments,
         ) {
@@ -76245,7 +76264,7 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         ftp_client_gui_lib::ai_core::runner::check_cancelled(cancel)?;
         if approved
             && ftp_client_gui_lib::ai_core::tools::change_targets(
-                &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
+                &*profiles,
                 &tc.name,
                 &tc.arguments,
             ) != approved_targets

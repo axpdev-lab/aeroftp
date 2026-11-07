@@ -464,6 +464,110 @@ async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
     assert!(prompt.contains("path: /keep/me.txt"), "{prompt}");
 }
 
+/// Saved profiles that change between the agent's reads, the way another
+/// surface deletes and recreates one around an approval: each read takes the
+/// next list, and the last one stays.
+struct ScriptedProfiles(
+    std::sync::Mutex<std::collections::VecDeque<Vec<ftp_client_gui_lib::ai_core::ServerProfile>>>,
+);
+
+impl ftp_client_gui_lib::ai_core::CredentialProvider for ScriptedProfiles {
+    fn list_servers(&self) -> Result<Vec<ftp_client_gui_lib::ai_core::ServerProfile>, String> {
+        let mut lists = self.0.lock().unwrap();
+        Ok(if lists.len() > 1 {
+            lists.pop_front().unwrap()
+        } else {
+            lists.front().cloned().unwrap_or_default()
+        })
+    }
+    fn get_credentials(
+        &self,
+        _: &str,
+    ) -> Result<ftp_client_gui_lib::ai_core::ServerCredentials, String> {
+        Err("not in this test".into())
+    }
+    fn get_extra_options(
+        &self,
+        _: &str,
+    ) -> Result<std::collections::HashMap<String, String>, String> {
+        Ok(std::collections::HashMap::new())
+    }
+}
+
+fn profile(id: &str, name: &str) -> ftp_client_gui_lib::ai_core::ServerProfile {
+    serde_json::from_value(json!({
+        "id": id, "name": name, "host": "h", "port": 22, "username": "u", "protocol": "sftp"
+    }))
+    .unwrap()
+}
+
+/// CodeRabbit on 31e606fee, through the CLI agent's own approval-to-dispatch
+/// path, auto-approved at `all`: a `remote_delete` on `staging` approved for
+/// one profile, which is then recreated under another id before the call
+/// runs, is refused at the recheck and never dispatched; left unchanged, it is
+/// dispatched naming the approved id only, which a recreated profile would
+/// not have.
+#[tokio::test]
+async fn a_profile_recreated_around_the_cli_approval_receives_no_write() {
+    for recreated in [true, false] {
+        let after = if recreated {
+            profile("srv_9", "staging")
+        } else {
+            profile("srv_2", "staging")
+        };
+        let scripted: std::sync::Arc<dyn ftp_client_gui_lib::ai_core::CredentialProvider> =
+            std::sync::Arc::new(ScriptedProfiles(Mutex::new(
+                vec![vec![profile("srv_2", "staging")], vec![after]].into(),
+            )));
+        TEST_AGENT_PROFILES.with(|slot| *slot.borrow_mut() = Some(scripted));
+        let path = format!("/recreated-{recreated}.txt");
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let mut cfg = config(format!("http://{}", listener.local_addr().unwrap()));
+            cfg.approve_level = parse_approve_level("all");
+            let arguments = json!({"server": "staging", "path": path}).to_string();
+            let server = async {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let _ = read_request(&mut socket).await;
+                let call = json!({"choices":[{"delta":{"role":"assistant","tool_calls":[{
+                    "index":0,"id":"delete-R","type":"function",
+                    "function":{"name":"remote_delete","arguments": arguments}
+                }]}}]});
+                let done = json!({"choices":[{"delta":{},"finish_reason":"tool_calls"}]});
+                respond(&mut socket, "200 OK", &format!("data: {call}\n\ndata: {done}\n\ndata: [DONE]\n\n")).await;
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let request = read_request(&mut socket).await;
+                let messages = request["messages"].as_array().unwrap();
+                assert_eq!(messages[3]["tool_call_id"], "delete-R");
+                let content = messages[3]["content"].as_str().unwrap_or_default().to_string();
+                let done = json!({"choices":[{"delta":{"role":"assistant","content":"Done."},"finish_reason":"stop"}]});
+                respond(&mut socket, "200 OK", &format!("data: {done}\n\ndata: [DONE]\n\n")).await;
+                content
+            };
+            let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"delete it"})).unwrap()];
+            let (result, content) = tokio::join!(agent_tool_loop(&cfg, &mut messages, false), server);
+            assert_eq!(result.unwrap(), "Done.");
+            let dispatched: Vec<Value> = CLI_TOOL_DISPATCHES
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .filter(|(name, args)| name == "remote_delete" && args["path"] == path.as_str())
+                .map(|(_, args)| args.clone())
+                .collect();
+            if recreated {
+                assert!(content.starts_with("Tool call refused: a saved server it names changed"), "{content}");
+                assert!(dispatched.is_empty(), "the recreated profile was written to: {dispatched:?}");
+            } else {
+                assert_eq!(dispatched.len(), 1, "{content}");
+                assert_eq!(dispatched[0]["server"], "srv_2", "dispatched by the approved id, never by name");
+            }
+        })
+        .await
+        .unwrap();
+        TEST_AGENT_PROFILES.with(|slot| *slot.borrow_mut() = None);
+    }
+}
+
 /// The approval of a change is checked and bound from one profile read
 /// (`approve_change_targets`, tested with a scripted provider in
 /// `ai_core::tools`), and its refusal comes before the prompt.
