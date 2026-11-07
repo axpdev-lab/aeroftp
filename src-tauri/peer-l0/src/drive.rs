@@ -107,7 +107,11 @@ fn refuse_world_writable_folder(folder: &Path, meta: &std::fs::Metadata) -> std:
 /// other user can rename or replace the entry it holds). A root writable by its group is
 /// allowed, with a warning: its group members are trusted with it, as with any
 /// group-writable folder of the user's.
-pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
+///
+/// Answers the canonical root, which every later operation must use instead of the path as
+/// given: links on the given path are resolved once, here, where the folders above the
+/// canonical root are the ones checked, and a link swapped later cannot redirect the replica.
+pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<PathBuf> {
     let root = std::fs::canonicalize(out_path)?;
     let meta = std::fs::metadata(&root)?;
     refuse_world_writable_folder(&root, &meta)?;
@@ -177,7 +181,7 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
             }
         }
     }
-    Ok(())
+    Ok(root)
 }
 
 /// Whether a folder above the replica root, with `mode` and owned by `owner`, cannot have
@@ -1290,9 +1294,10 @@ pub async fn run_docs_replicate(
 
     if let Some(out_dir) = out {
         // === DRIVE MODE ===
-        let out_path = Path::new(&out_dir);
-        std::fs::create_dir_all(out_path)?;
-        check_replica_root(out_path)?;
+        std::fs::create_dir_all(Path::new(&out_dir))?;
+        // Every operation below uses the checked canonical root, never the path as given.
+        let out_root = check_replica_root(Path::new(&out_dir))?;
+        let out_path = out_root.as_path();
 
         // 1. Wait for + fetch + decrypt manifest (reuse the async-blob retry pattern)
         let manifest_key = b"__drive_manifest__.json";
@@ -2242,5 +2247,25 @@ mod replica_path_tests {
         settle_version(&mut next, &prev, &applied, &mut pending);
         assert!(pending.is_empty());
         assert!(!still_unapplied(&next, &pending));
+    }
+
+    /// A root named through a chain of links (`link -> hop -> private`) is answered as its
+    /// canonical folder, which the replica then uses: a later swap of `hop` cannot redirect
+    /// it (Greptile on #1529).
+    #[cfg(unix)]
+    #[test]
+    fn a_root_through_chained_links_is_used_by_its_canonical_path() {
+        use crate::drive::check_replica_root;
+        let dir = tempfile::tempdir().unwrap();
+        let private = dir.path().join("private");
+        std::fs::create_dir(&private).unwrap();
+        std::os::unix::fs::symlink(&private, dir.path().join("hop")).unwrap();
+        std::os::unix::fs::symlink(dir.path().join("hop"), dir.path().join("link")).unwrap();
+        let root = check_replica_root(&dir.path().join("link")).unwrap();
+        assert_eq!(root, private.canonicalize().unwrap());
+        assert!(!std::fs::symlink_metadata(&root)
+            .unwrap()
+            .file_type()
+            .is_symlink());
     }
 }
