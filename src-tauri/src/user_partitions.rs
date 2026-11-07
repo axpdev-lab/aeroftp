@@ -2141,12 +2141,26 @@ fn security_reset_pending(conn: &Connection, user_id: i64) -> Result<bool, Strin
     .map_err(|e| format!("Read pending security reset: {e}"))
 }
 
+#[cfg(test)]
+thread_local! {
+    pub(crate) static FAIL_RESET_PERSISTENCE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    pub(crate) static RESET_PERSISTENCE_FAILURES: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn forget_security_reset_blocks_for_tests() {
+    assert_test_lock_held();
+    SECURITY_RESET_BLOCKS.lock().unwrap().clear();
+    clear_user_session();
+}
+
 static SECURITY_RESET_BLOCKS: std::sync::LazyLock<Mutex<HashSet<(String, i64)>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
 fn security_reset_block_key(conn: &Connection, user_id: i64) -> (String, i64) {
     let database = conn
         .path()
+        .filter(|database| !database.is_empty())
         .map(str::to_string)
         .unwrap_or_else(|| format!("memory:{:p}", conn));
     (database, user_id)
@@ -2154,12 +2168,18 @@ fn security_reset_block_key(conn: &Connection, user_id: i64) -> (String, i64) {
 
 fn security_reset_marker_path(conn: &Connection, user_id: i64) -> Option<PathBuf> {
     conn.path()
+        .filter(|database| !database.is_empty())
         .map(|database| PathBuf::from(format!("{database}.security-reset-blocked-{user_id}")))
 }
 
 fn block_security_reset(conn: &Connection, user_id: i64) {
     if let Ok(mut blocks) = SECURITY_RESET_BLOCKS.lock() {
         blocks.insert(security_reset_block_key(conn, user_id));
+    }
+    #[cfg(test)]
+    if FAIL_RESET_PERSISTENCE.get() {
+        RESET_PERSISTENCE_FAILURES.set(RESET_PERSISTENCE_FAILURES.get() | 1);
+        return;
     }
     if let Some(path) = security_reset_marker_path(conn, user_id) {
         if let Err(e) = std::fs::OpenOptions::new()
@@ -2209,6 +2229,11 @@ fn mark_security_reset_pending(conn: &mut Connection, user_id: i64) -> Result<()
 }
 
 fn quarantine_security_reset_db(path: &std::path::Path) -> Result<PathBuf, String> {
+    #[cfg(test)]
+    if FAIL_RESET_PERSISTENCE.get() {
+        RESET_PERSISTENCE_FAILURES.set(RESET_PERSISTENCE_FAILURES.get() | 2);
+        return Err("forced quarantine rename failure".to_string());
+    }
     quarantine_security_reset_db_with(path, |source, destination| {
         std::fs::rename(source, destination)
     })
@@ -8192,6 +8217,20 @@ mod tests {
     }
 
     #[test]
+    fn memory_databases_do_not_share_persistent_reset_markers() {
+        let _guard = test_lock();
+        let first = Connection::open_in_memory().unwrap();
+        let second = Connection::open_in_memory().unwrap();
+        assert!(security_reset_marker_path(&first, 1).is_none());
+        assert!(security_reset_marker_path(&second, 1).is_none());
+        block_security_reset(&first, 1);
+        assert!(security_reset_blocked(&first, 1));
+        assert!(!security_reset_blocked(&second, 1));
+        unblock_security_reset(&first, 1);
+        assert!(!security_reset_blocked(&first, 1));
+    }
+
+    #[test]
     fn a_failed_reset_transaction_start_blocks_until_a_successful_unlock() {
         let _guard = test_lock();
         clear_user_session();
@@ -8427,6 +8466,7 @@ mod tests {
         assert!(error.contains("forced rename failure"), "{error}");
         drop(conn);
 
+        forget_security_reset_blocks_for_tests();
         let fresh = open_or_init_path(path.clone()).unwrap();
         assert!(security_reset_blocked(&fresh, user));
         assert_eq!(
