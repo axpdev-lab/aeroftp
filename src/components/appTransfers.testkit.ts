@@ -147,7 +147,14 @@ export function fixture(options: Options = {}) {
       return { completed: 1, skipped: 0, failed: 0, cancelled: false, message: 'Done', ...options.folderOutcome?.(command, calls[command]) };
     }
     if (command === 'github_check_local_sync') return { is_local_repo: false };
-    if (command === 'save_remote_file' || command === 'save_local_file') return undefined;
+    if (command === 'provider_connection_generation') return 7;
+    if (command === 'save_remote_file') {
+      calls[command] = (calls[command] ?? 0) + 1;
+      const error = options.fail?.(command, calls[command]);
+      if (error !== undefined) throw error;
+      return undefined;
+    }
+    if (command === 'save_local_file') return undefined;
     if (command === 'github_batch_upload') return { commit_sha: 'abcdef1234', files_count: args!.files.length };
     if (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy') return undefined;
     // A cut's moves and source deletes.

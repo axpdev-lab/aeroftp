@@ -502,6 +502,9 @@ export const CodeEditor: React.FC<CodeEditorProps> = ({
             await onSave(content);
             setOriginalContent(content);
             setHasChanges(false);
+        } catch {
+            // Refused or failed (the caller has said why): the buffer is
+            // still not saved, so it stays marked modified.
         } finally {
             setIsSaving(false);
         }

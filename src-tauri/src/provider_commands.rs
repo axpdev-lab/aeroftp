@@ -261,7 +261,7 @@ impl ProviderState {
         };
         if live != expected {
             return Err(format!(
-                "{CONNECTION_CHANGED_MARKER}: the server changed while the file was opened; nothing was read"
+                "{CONNECTION_CHANGED_MARKER}: the server changed while the file was open; nothing was done"
             ));
         }
         Ok(pin)
@@ -14910,6 +14910,43 @@ mod tests {
             read.as_ref()
                 .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
             "{read:?}"
+        );
+    }
+
+    /// The editor's save honours the connection it was checked on: a
+    /// generation another connection replaced is refused before anything is
+    /// written, the live one goes on to the write (which fails here: nothing
+    /// is connected).
+    #[tokio::test]
+    async fn the_editor_save_writes_only_on_the_connection_it_was_checked_on() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        let checked_on = state.connection_generation.load(Ordering::SeqCst);
+        state.invalidate_overlay_key_cache();
+        let refused = crate::write_remote_file_from_editor(
+            &app,
+            &state,
+            "/a.txt".into(),
+            "sentinel".into(),
+            Some(checked_on),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        let live = state.connection_generation.load(Ordering::SeqCst);
+        let saved = crate::write_remote_file_from_editor(
+            &app,
+            &state,
+            "/a.txt".into(),
+            "sentinel".into(),
+            Some(live),
+        )
+        .await;
+        assert!(
+            saved
+                .as_ref()
+                .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
+            "{saved:?}"
         );
     }
 

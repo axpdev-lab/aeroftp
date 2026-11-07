@@ -11608,7 +11608,28 @@ async fn save_remote_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
     content: String,
+    expected_generation: Option<u64>,
 ) -> Result<(), String> {
+    write_remote_file_from_editor(&state, &provider_state, path, content, expected_generation).await
+}
+
+/// [`save_remote_file`] without the Tauri state wrappers, so a test can run
+/// it on plain state.
+async fn write_remote_file_from_editor(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    content: String,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
+    // The editor's save, bound to the connection read just before it: held
+    // through the write, so a switch waits for it, and refused if one came
+    // first (Greptile on #1526: the frontend check alone left the gap
+    // between it and the provider lock).
+    let _pin = match expected_generation {
+        Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
+        None => None,
+    };
     // Fail-closed: the remote editor save is a direct provider write, so it must
     // refuse when the session has a crypt overlay that is currently unwrapped
     // (badge locked / stepped outside the encrypted scope). Without this an

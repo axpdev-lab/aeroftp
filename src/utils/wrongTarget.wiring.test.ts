@@ -13,6 +13,7 @@ import MARKDOWN from '../components/DevTools/MarkdownRenderer.tsx?raw';
 import PREVIEW from '../hooks/usePreview.ts?raw';
 import DRAG from '../hooks/useDragAndDrop.ts?raw';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, local, remote } from '../components/appTransfers.testkit';
+import { QueuedTargetChangedError } from './queuedTarget';
 import { connectionNumberOf, isSameConnection, savedProfileIdOf } from './liveConnection';
 import { isFourSharedProvider, isOAuthProvider } from '../types';
 
@@ -583,25 +584,38 @@ describe('the editor\'s save of a remote file', () => {
         const f = fixture();
         const file = opened(f);
         f.switchServer();
-        await f.saveDevToolsFile('new', file);
+        // A refusal rejects, so the editor keeps the buffer marked modified.
+        await expect(f.saveDevToolsFile('new', file)).rejects.toBeInstanceOf(QueuedTargetChangedError);
         expect(saves(f)).toEqual([]);
         expect(f.notify.error).toHaveBeenCalledWith('toast.saveFailed', 'toast.saveOnAnotherServer');
         f.switchServer({ server: 'a.example' });
         await f.saveDevToolsFile('new', file);
-        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new' }]]);
+        // Bound to the connection read just before the write, held by the
+        // backend through it (Greptile on #1526).
+        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new', expectedGeneration: 7 }]]);
+    });
+
+    it('rejects a save the backend refused or failed, saying why once', async () => {
+        const changed = fixture({ fail: (command) => (command === 'save_remote_file' ? 'CONNECTION_CHANGED: the server changed while the file was open; nothing was done' : undefined) });
+        await expect(changed.saveDevToolsFile('new', opened(changed))).rejects.toBeInstanceOf(QueuedTargetChangedError);
+        expect(changed.notify.error).toHaveBeenCalledTimes(1);
+        expect(changed.notify.error).toHaveBeenCalledWith('toast.saveFailed', 'toast.saveOnAnotherServer');
+        const failed = fixture({ fail: (command) => (command === 'save_remote_file' ? 'Permission denied' : undefined) });
+        await expect(failed.saveDevToolsFile('new', opened(failed))).rejects.toBe('Permission denied');
+        expect(failed.notify.error).toHaveBeenCalledWith('toast.saveFailed', 'Permission denied');
     });
 
     it('refuses another account on the same server', async () => {
         const f = fixture();
         const file = opened(f);
         f.switchServer({ password: 'key-2' });
-        await f.saveDevToolsFile('new', file);
+        await expect(f.saveDevToolsFile('new', file)).rejects.toBeInstanceOf(QueuedTargetChangedError);
         expect(saves(f)).toEqual([]);
     });
 
     it('refuses a remote file that does not say which server it came from', async () => {
         const f = fixture();
-        await f.saveDevToolsFile('new', { ...opened(f), target: undefined });
+        await expect(f.saveDevToolsFile('new', { ...opened(f), target: undefined })).rejects.toBeInstanceOf(QueuedTargetChangedError);
         expect(saves(f)).toEqual([]);
     });
 

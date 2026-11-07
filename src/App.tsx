@@ -11338,26 +11338,48 @@ const App: React.FC = () => {
   const saveDevToolsFile = useLatestCallback(async (content: string, file: PreviewFile) => {
     // A remote file is its server's: saved after a switch to another
     // tab, the content went to the file at the same path there.
-    if (file.isRemote && (!file.target || queuedTargetProblem(file.target))) {
+    // A refused or failed save rejects, so the editor keeps the buffer
+    // marked modified: it was not saved.
+    const refuse = (): never => {
       notify.error(t('toast.saveFailed'), t('toast.saveOnAnotherServer'));
-      return;
-    }
+      throw new QueuedTargetChangedError(t('toast.saveOnAnotherServer'));
+    };
+    if (file.isRemote && (!file.target || queuedTargetProblem(file.target))) refuse();
     const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
     try {
       if (file.isRemote) {
-        await invoke('save_remote_file', { path: file.path, content });
+        // The connection read now, between two checks, and held by the
+        // backend through the write: a switch that comes first gets the
+        // save refused, never written to the server now in the slot. Read
+        // at save time, not at open, so a reconnect to the same server in
+        // between does not refuse the save.
+        const expectedGeneration = await invoke<number>('provider_connection_generation');
+        if (!file.target || queuedTargetProblem(file.target)) refuse();
+        try {
+          await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
+        } catch (error) {
+          if (String(error).includes('CONNECTION_CHANGED')) refuse();
+          throw error;
+        }
         humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
         notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
-        await loadRemoteFiles(undefined, true);
       } else {
         await invoke('save_local_file', { path: file.path, content });
         humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
         notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
-        await refreshLocalPanelForPath(parentDir(file.path));
       }
     } catch (error) {
       humanLog.logError('UPLOAD', { filename: file.name }, logId);
-      notify.error(t('toast.saveFailed'), String(error));
+      // A refusal has said why already.
+      if (!(error instanceof QueuedTargetChangedError)) notify.error(t('toast.saveFailed'), String(error));
+      throw error;
+    }
+    // The save is done; a listing that fails to refresh does not undo it.
+    try {
+      if (file.isRemote) await loadRemoteFiles(undefined, true);
+      else await refreshLocalPanelForPath(parentDir(file.path));
+    } catch {
+      // The panel shows its own error; the file was saved.
     }
   });
 
