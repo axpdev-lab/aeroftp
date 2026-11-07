@@ -94,6 +94,9 @@ describe('S3 host map', () => {
     it('maps every listed host case, on the host and on a full endpoint URL', () => {
         for (const { host, providerId } of hostMap.cases) {
             const presetCase = providerId === null || entries.find(e => e.providerId === providerId)?.preset;
+            // The frontend maps only presets: a case for a provider without a
+            // preset expects no match here, and its own mapping is checked by
+            // the bridge mapper's tests, not by this one.
             const expected = presetCase ? (providerId ?? undefined) : undefined;
             expect(deriveProviderId({ name: 'x', host, username: '', protocol: 's3' }), host).toBe(expected);
             expect(

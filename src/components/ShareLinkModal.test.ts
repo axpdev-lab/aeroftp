@@ -5,7 +5,7 @@
 import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { expiresSoonerThanChosen, ShareLinkModal } from './ShareLinkModal';
+import { expiresSoonerThanChosen, formatShareExpiry, ShareLinkModal } from './ShareLinkModal';
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -93,6 +93,23 @@ describe('Share Link modal on a provider with an expiry limit', () => {
         expect(expiresSoonerThanChosen('2026-11-07T11:00:00Z', week, now)).toBe(true);
         expect(expiresSoonerThanChosen(null, week, now)).toBe(false);
         expect(expiresSoonerThanChosen('2026-11-14', null, now)).toBe(false);
+    });
+});
+
+// Greptile and CodeRabbit on #1525: Proton's date-only expiry is a calendar
+// day. Read as a timestamp it was UTC midnight, so New York showed the evening
+// before, with a time Proton never gave.
+describe('Share Link expiry line', () => {
+    const tz = process.env.TZ;
+    beforeEach(() => { process.env.TZ = 'America/New_York'; });
+    afterEach(() => { process.env.TZ = tz; });
+
+    it('shows a date-only expiry on its own day, with no time, west of UTC', () => {
+        expect(formatShareExpiry('2026-11-14', 'en-US')).toBe('11/14/2026');
+    });
+
+    it('keeps the time of a full timestamp', () => {
+        expect(formatShareExpiry('2026-11-14T15:30:00Z', 'en-US')).toBe(new Date('2026-11-14T15:30:00Z').toLocaleString('en-US'));
     });
 });
 

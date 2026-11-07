@@ -67,6 +67,19 @@ export function expiresSoonerThanChosen(expiresAt: string | null, chosenSecs: nu
   return Number.isFinite(granted) && granted < chosen - 60_000;
 }
 
+/**
+ * The expiry line's text. A date-only expiry (Proton returns one) is a
+ * calendar day: it is shown as that day, with no time, in every timezone.
+ * Parsed as a timestamp it would be UTC midnight, the previous evening west of
+ * UTC (Greptile and CodeRabbit on #1525).
+ */
+export function formatShareExpiry(expiresAt: string, locale: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+    return new Date(`${expiresAt}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC' });
+  }
+  return new Date(expiresAt).toLocaleString(locale);
+}
+
 export function ShareLinkModal({ path, fileName, providerName, providerIcon, onClose }: ShareLinkModalProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
@@ -92,6 +105,9 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   // Options form state
   const [optPassword, setOptPassword] = useState('');
   const [optExpiration, setOptExpiration] = useState<number | null>(null);
+  // The expiry the options start from: the longest choice on a provider with
+  // a limit, else none. Only a change from it counts as typed input.
+  const [startExpiration, setStartExpiration] = useState<number | null>(null);
   const [optPermissions, setOptPermissions] = useState<string>('view');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -199,7 +215,11 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
       // choice it allows.
       if (loaded.maxExpirationSecs !== null) {
         const allowed = expirationChoicesWithin(EXPIRATION_PRESETS, loaded);
-        if (allowed.length > 0) setOptExpiration(allowed[allowed.length - 1].value);
+        if (allowed.length > 0) {
+          const longest = allowed[allowed.length - 1].value;
+          setStartExpiration(longest);
+          setOptExpiration(longest);
+        }
       }
       if (loaded.hasAdvancedOptions) setState('options');
       else generateLink();
@@ -213,7 +233,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   // request in flight or a revoke asks first (the provider finishes it
   // anyway); options typed in ask before they are dropped; a generated link
   // stays until the X, Close or ESC.
-  const optionsTyped = state === 'options' && (optPassword !== '' || optExpiration !== null || optPermissions !== 'view');
+  const optionsTyped = state === 'options' && (optPassword !== '' || optExpiration !== startExpiration || optPermissions !== 'view');
   const guarded = useGuardedClose({
     guard: creating || revokingId !== null ? 'busy' : optionsTyped ? 'dirty' : null,
     onClose,
@@ -621,7 +641,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
 
               {shareExpiresAt && (
                 <p data-testid="share-link-expiry" className="text-xs text-gray-600 dark:text-gray-400">
-                  {t('shareLinkModal.manageExpires')}: {new Date(shareExpiresAt).toLocaleString(getUiLocale())}
+                  {t('shareLinkModal.manageExpires')}: {formatShareExpiry(shareExpiresAt, getUiLocale())}
                   {shareShortened && <> ({t('shareLinkModal.expiresSoonerThanChosen')})</>}
                 </p>
               )}
