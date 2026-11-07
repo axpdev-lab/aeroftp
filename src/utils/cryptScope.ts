@@ -79,10 +79,11 @@ export const connectLandsOutsideOverlay = (
 ): boolean => {
   const island = normCryptScope(overlayPath);
   if (!island) return false;
-  // An island under the login folder compares only with a landing under it:
-  // where an absolute one stands is known once connected, so the connect
+  // An island under the login folder compares only with a landing under it,
+  // and a landing under it that the session could not place compares with no
+  // absolute island: where it stands is known once connected, so the connect
   // unlocks and the backend anchors it (fail closed).
-  if (isLoginRelativeScope(overlayPath) && !isLoginRelativeScope(remotePath)) return false;
+  if (isLoginRelativeScope(overlayPath) !== isLoginRelativeScope(remotePath)) return false;
   // The folder the connect opens, read as navigation reads it: `/Crypt ` is
   // another folder than an island at `/Crypt`, and opens outside it.
   const landing = normLandingPath(remotePath);

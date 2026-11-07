@@ -53,7 +53,7 @@ async function fixture() {
 
 it('refuses resume when a swallowed connect failure leaves another profile active', async () => {
     const f = await fixture();
-    await expect(f.connect({ id: 'profile-B', name: 'B', host: 'b.invalid', username: 'fixture', protocol: 'ftp' })).resolves.toBe(false);
+    await expect(f.connect({ id: 'profile-B', name: 'B', host: 'b.invalid', username: 'fixture', protocol: 'ftp' }, false)).resolves.toBe(false);
     expect(f.connectToFtp).toHaveBeenCalledOnce();
     expect(f.readFromOriginalRender('profile-A')).toBe(true);
 });
@@ -63,7 +63,7 @@ it('reads the newly committed session after connecting, not the original render'
     f.connectToFtp.mockImplementation(async () => {
         await f.render({ isConnected: true, activeSessionId: 'B', sessions: [{ id: 'B', savedServerId: 'profile-B', status: 'connected' }] });
     });
-    await expect(f.connect({ id: 'profile-B', name: 'B', host: 'b.invalid', username: 'fixture', protocol: 'ftp' })).resolves.toBe(true);
+    await expect(f.connect({ id: 'profile-B', name: 'B', host: 'b.invalid', username: 'fixture', protocol: 'ftp' }, false)).resolves.toBe(true);
     expect(f.readFromOriginalRender('profile-A')).toBe(false);
 });
 
@@ -129,7 +129,7 @@ it('waits for the overlay commit before resuming an enabled crypt profile', asyn
     });
     let settled = false;
     const pending = f.connect({ id: 'profile-B', name: 'B', host: 'b.invalid', username: 'fixture', protocol: 'ftp',
-        aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' } }).then((ready: boolean) => { settled = true; return ready; });
+        aeroCryptOverlay: { enabled: true, kind: 'aerocrypt' } }, true).then((ready: boolean) => { settled = true; return ready; });
     await reached;
     await Promise.resolve();
     expect(settled).toBe(false);
@@ -191,7 +191,8 @@ it('resumes plaintext siblings immediately while encrypted entries wait for thei
         transferQueue: { clearRestoredFlags }, logResume: vi.fn(), fireRetryCallbacks };
     const resume = new Function(...Object.keys(ctx), `${code}; return resumeOwnedEntries;`)(...Object.values(ctx));
     const pending = resume();
-    await Promise.resolve();
+    // The login folder is asked first; the encrypted entry is still waiting.
+    await new Promise(resolve => setTimeout(resolve, 0));
     expect(fireRetryCallbacks.mock.calls).toEqual([[['plain'], 'A', false]]);
     expect(clearRestoredFlags).toHaveBeenCalledWith(['plain']);
     unlock(true);
@@ -255,4 +256,31 @@ it('asks the session for no login folder when the scope is absolute', async () =
     const unplaced = new Function('invoke', 'isLoginRelativeScope', 'profileOverlayScope',
         `${helper}; return restoredTransferLoginFolder;`)(failing, isLoginRelativeScope, profileOverlayScope);
     expect(await unplaced({ protocol: 'scp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBeNull();
+});
+
+// #1523 CodeRabbit: the resume read the requirement against an unplaced
+// `~/docs`, where every path counts as inside, so a plaintext entry beside the
+// island waited for a vault that never armed and was skipped after 30 s.
+it('resumes a plaintext entry beside an island under the login folder without waiting for its overlay', async () => {
+    const code = (await transformWithOxc(block('      const resumeOwnedEntries =', '      if (isLiveOnProfile(profileId))'), 'resume-login.ts')).code;
+    const helper = (await transformWithOxc(block('  const restoredTransferLoginFolder =', '  const getEnabledProfileOverlay ='), 'resume-login-folder.ts')).code;
+    const invoke = vi.fn(async (cmd: string) => (cmd === 'provider_login_folder' ? '/home/u' : undefined));
+    const restoredTransferLoginFolder = new Function('invoke', 'isLoginRelativeScope', 'profileOverlayScope',
+        `${helper}; return restoredTransferLoginFolder;`)(invoke, isLoginRelativeScope, profileOverlayScope);
+    const fireRetryCallbacks = vi.fn();
+    const waitForLiveProfile = vi.fn(async (_id: string, crypt: boolean) => !crypt);
+    const ctx = { groupIds: ['crypt', 'plain'], profileId: 'S',
+        profile: { name: 'S', username: 'u', protocol: 'sftp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } },
+        journalDescriptorsRef: { current: new Map([['crypt', { remote_path: '/home/u/docs/opaque' }], ['plain', { remote_path: '/home/u/public/f.txt' }]]) },
+        restoredTransferRequiresOverlay, restoredTransferLoginFolder, waitForLiveProfile,
+        transferQueue: { clearRestoredFlags: vi.fn() }, logResume: vi.fn(), fireRetryCallbacks };
+    await new Function(...Object.keys(ctx), `${code}; return resumeOwnedEntries;`)(...Object.values(ctx))();
+    expect(waitForLiveProfile.mock.calls).toEqual(expect.arrayContaining([['S', true], ['S', false]]));
+    expect(fireRetryCallbacks.mock.calls).toEqual([[['plain'], 'S', false]]);
+    expect(invoke).toHaveBeenCalledWith('provider_login_folder');
+});
+
+it('takes the overlay requirement of a resume connect from its caller', () => {
+    expect(block('  const connectSavedProfileForResume =', '): Promise<boolean>')).toContain('requireOverlay: boolean');
+    expect(app).toContain('await connectSavedProfileForResume(profile, false);');
 });

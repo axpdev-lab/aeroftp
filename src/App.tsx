@@ -214,7 +214,7 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { loginRelativeForm } from './utils/overlayScope';
+import { loginRelativeForm, normalizeOverlayAnchor } from './utils/overlayScope';
 import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
@@ -4272,7 +4272,7 @@ const App: React.FC = () => {
   }) => {
     const bound = await getEnabledProfileOverlay(locked.savedServerId);
     const target: CryptUnlockTarget = {
-      scope: overlayAnchor(bound?.anchor),
+      scope: isLoginRelativeScope(bound?.anchor) ? bound!.anchor! : overlayAnchor(bound?.anchor),
       savedServerId: locked.savedServerId,
     };
     if (locked.kind === 'aerocrypt') setShowAeroCryptUnlock(target);
@@ -6326,8 +6326,12 @@ const App: React.FC = () => {
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
       if (!profile || !binding?.enabled) return null;
-      const scope = profileOverlayScope(profile);
-      return { kind: binding.kind, anchor: scope && scope !== '/' && !isLoginRelativeScope(scope) ? scope : null };
+      // A scope under the login folder is placed through the live session, as
+      // on activation. Unplaced it stays `~/...`, which only SFTP and SCP
+      // write and resolve themselves; dropped, the prompt opened at the root.
+      const scope = await placeLoginRelativeScope(profileOverlayScope(profile));
+      if (!scope || scope === '/') return { kind: binding.kind, anchor: null };
+      return { kind: binding.kind, anchor: isLoginRelativeScope(scope) ? normalizeOverlayAnchor(scope) : scope };
     } catch {
       return null;
     }
@@ -11185,7 +11189,9 @@ const App: React.FC = () => {
 
   const { isLiveOnProfile, waitForLiveProfile } = useResumeProfileGuard(isConnected, sessions, activeSessionId);
 
-  const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay = restoredTransferRequiresOverlay(profile, profile.initialPath || '/')): Promise<boolean> => {
+  // `requireOverlay` is the caller's: before the connect no session can place
+  // a scope under the login folder, so a default read here left it unplaced.
+  const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay: boolean): Promise<boolean> => {
     const protocol = (profile.protocol || 'ftp') as ProviderType;
 
     // Reuse an open session tab when one already exists for this profile.
@@ -11439,11 +11445,14 @@ const App: React.FC = () => {
       // Plaintext entries do not wait behind an encrypted sibling. Each
       // callback retains its own requirement through the queued microtask and
       // the backend ownership check, even after the user navigates elsewhere.
+      // The session is live on the profile here, so a scope under the login
+      // folder is placed through it, as on a retry (`retryRestoredEntry`).
       const resumeOwnedEntries = async () => {
+        const loginFolder = await restoredTransferLoginFolder(profile);
         await Promise.all(groupIds.map(async id => {
           const entry = journalDescriptorsRef.current.get(id);
           if (!entry) return;
-          const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path);
+          const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path, loginFolder);
           if (!await waitForLiveProfile(profileId, requireOverlay)) return;
           transferQueue.clearRestoredFlags([id]);
           logResume(1, profile.name);

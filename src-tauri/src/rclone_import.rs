@@ -1916,6 +1916,23 @@ fn map_alias_remote(
     Ok((mapped, base.to_string()))
 }
 
+/// The start folder AeroFTP opens for the path of an rclone sftp target
+/// (`nas:<path>`): `/docs` for `/docs`, `~/docs` for `docs`, `/` for `/`, and
+/// none, the login folder, for an empty path ([`apply_rclone_start_folder`]).
+fn sftp_start_folder(path: &str) -> Option<String> {
+    let path = path.trim_end();
+    let kept = path.trim_end_matches('/');
+    if kept.starts_with('/') {
+        Some(kept.to_string())
+    } else if !kept.is_empty() {
+        Some(format!("~/{kept}"))
+    } else if path.starts_with('/') {
+        Some("/".to_string())
+    } else {
+        None
+    }
+}
+
 /// Make the folder an alias opens the profile's start: the bucket and the
 /// path under it for S3, the absolute folder for SFTP (`nas:/abs`), and a
 /// path under the URL's collection for WebDAV, whose start folder is a path
@@ -1930,14 +1947,8 @@ fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
     // (`nas: docs` is ` docs`, measured with rclone v1.75.2); its config
     // drops only the trailing ones, with the rest of the value.
     if mapped.protocol == "sftp" {
-        let path = path.trim_end();
-        let kept = path.trim_end_matches('/');
-        if kept.starts_with('/') {
-            mapped.initial_path = Some(kept.to_string());
-        } else if !kept.is_empty() {
-            mapped.initial_path = Some(format!("~/{kept}"));
-        } else if path.starts_with('/') {
-            mapped.initial_path = Some("/".to_string());
+        if let Some(start) = sftp_start_folder(path) {
+            mapped.initial_path = Some(start);
         }
         return;
     }
@@ -2783,8 +2794,11 @@ fn crypt_export_remote_target(
     folder: Option<&str>,
     options: &serde_json::Value,
 ) -> String {
+    // A space at the start is part of a folder name (`nas: docs` opens
+    // ` docs`), as in `apply_rclone_start_folder`; trimmed, the alias of
+    // `~/ docs` became `docs` and no longer held a scope inside it.
     let trim = |p: &str| {
-        p.trim()
+        p.trim_end()
             .trim_start_matches('/')
             .trim_end_matches('/')
             .to_string()
@@ -4729,16 +4743,38 @@ pub fn export_rclone(
             // folder), while the alias holds `projects`: taken as written, the
             // crypt opened `/~/projects` inside the start folder. The scope is
             // taken from the login folder whatever the start folder is; where
-            // it lies is settled below.
-            ("sftp", _, Some(o)) => o
-                .get("rcloneCryptOverlayScope")
-                .and_then(|v| v.as_str())
-                .and_then(sftp_login_relative_scope)
-                .map(|scope| {
+            // it lies is settled below. An imported target comes first, as in
+            // `crypt_export_remote_target`: `nas:docs` is under the login
+            // folder too, and taken from the root it became `nas:/docs`, or
+            // `nas-path:/docs` inside the start folder. `nas:/docs` stays
+            // absolute and is written as imported.
+            ("sftp", _, Some(o)) => {
+                let imported = o
+                    .get("rcloneCryptRemote")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty());
+                let from_login = match imported {
+                    Some(target) => {
+                        match sftp_start_folder(target.split_once(':').map_or(target, |(_, p)| p)) {
+                            None => Some("/".to_string()),
+                            Some(start) => sftp_login_relative_scope(&start),
+                        }
+                    }
+                    None => o
+                        .get("rcloneCryptOverlayScope")
+                        .and_then(|v| v.as_str())
+                        .and_then(sftp_login_relative_scope),
+                };
+                from_login.map(|scope| {
                     let mut o = o.clone();
+                    if let Some(map) = o.as_object_mut() {
+                        map.remove("rcloneCryptRemote");
+                    }
                     o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope);
                     o
-                }),
+                })
+            }
             _ => None,
         };
         // A scope under the login folder that is not under the start folder's
@@ -10088,10 +10124,68 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert_eq!(remote_of("/", "~"), "nas:");
         assert_eq!(remote_of("projects", "~/other"), "nas:other");
         assert_eq!(remote_of("~/projects", "~/other"), "nas:other");
+        // A space at the start is part of the folder name.
+        assert_eq!(remote_of("~/ docs", "~/ docs"), "nas-path:");
+        assert_eq!(remote_of("~/ docs", "~/ docs/vault"), "nas-path:/vault");
         // An absolute scope keeps its meaning under an absolute start folder.
         assert_eq!(remote_of("/srv", "/srv/vault"), "nas-path:/vault");
         assert_eq!(sftp_login_relative_scope("/~x/vault"), None);
         assert_eq!(sftp_login_relative_scope("/srv/~"), None);
+    }
+
+    #[test]
+    fn an_imported_sftp_crypt_target_keeps_its_login_or_root_form() {
+        // #1523 CodeRabbit: rclone's sftp opens `nas:docs` under the login
+        // folder and `nas:/docs` from the root. The imported target was taken
+        // from the root (`nas:/docs`), and once a login-relative scope moved
+        // the crypt off the start folder's alias, from inside it
+        // (`nas-path:/docs`, which is `/srv/docs`).
+        let crypt = |start: &str, imported: &str, scope: Option<&str>| {
+            let mut o = serde_json::json!({
+                "initial_path": start,
+                "rcloneCryptEnabled": true,
+                "rcloneCryptRemote": imported,
+                "rcloneCryptPassword": "pw"
+            });
+            if let Some(scope) = scope {
+                o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope.to_string());
+            }
+            server_with("nas", "sftp", "nas.example.test", 22, None, o)
+        };
+        let remote_of = |start: &str, imported: &str, scope: Option<&str>| {
+            let (_, conf) = export_to_string(&[crypt(start, imported, scope)], "crypt-imported");
+            conf.lines()
+                .skip_while(|line| *line != "type = crypt")
+                .find_map(|line| line.strip_prefix("remote = "))
+                .unwrap_or_else(|| panic!("no crypt remote:\n{conf}"))
+                .to_string()
+        };
+        // The absolute form, over an absolute start folder it lies beside,
+        // whatever scope the profile carries: the imported target comes first.
+        assert_eq!(remote_of("/srv", "nas:/docs", Some("~/vault")), "nas:/docs");
+        assert_eq!(remote_of("/srv", "nas:/docs", Some("/docs")), "nas:/docs");
+        assert_eq!(remote_of("/srv", "nas:/docs", None), "nas:/docs");
+        assert_eq!(remote_of("~", "nas:/docs", Some("/docs")), "nas:/docs");
+        assert_eq!(remote_of("/", "nas:/docs", Some("/docs")), "nas-path:/docs");
+        assert_eq!(
+            remote_of("/srv", "nas:/srv/vault", Some("/srv/vault")),
+            "nas-path:/vault"
+        );
+        // The relative form stays under the login folder.
+        assert_eq!(remote_of("/srv", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("/srv", "nas:docs", None), "nas:docs");
+        assert_eq!(remote_of("/", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("~", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("/srv", "nas:", None), "nas:");
+        // As imported: the start folder is the crypt's (`apply_rclone_start_folder`).
+        assert_eq!(remote_of("~/docs", "nas:docs", None), "nas-path:");
+        assert_eq!(remote_of("~/ docs", "nas: docs", None), "nas-path:");
+        assert_eq!(
+            remote_of("~/p", "nas:p/vault", Some("~/p/vault")),
+            "nas-path:/vault"
+        );
+        assert_eq!(remote_of("~", "nas:", None), "nas:");
     }
 
     #[test]

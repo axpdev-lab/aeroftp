@@ -214,6 +214,13 @@ describe('a scope under the login folder', () => {
     expect(connectLandsOutsideOverlay('~/docs/sub', '~/docs')).toBe(false);
     expect(connectLandsOutsideOverlay('~', '~/docs')).toBe(true);
   });
+  // #1523 CodeRabbit: a landing the session could not place (no login folder)
+  // read as outside an absolute island, so the connect skipped the unlock.
+  it('unlocks on connect when an unplaced landing meets an absolute island', () => {
+    expect(connectLandsOutsideOverlay('~/docs', '/home/u/docs')).toBe(false);
+    expect(connectLandsOutsideOverlay('~', '/srv/vault')).toBe(false);
+    expect(connectLandsOutsideOverlay('/srv', '/srv/vault')).toBe(true);
+  });
 });
 
 // The anchor, the badge and restored transfers read one folder: an empty

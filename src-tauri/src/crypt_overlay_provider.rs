@@ -3686,7 +3686,7 @@ pub(crate) fn is_login_relative_scope(scope: &str) -> bool {
 /// `/docs`, a folder the session never opened. Anything else comes back as
 /// given. The window maps a scope the same way (`loginRelativeForm`).
 pub(crate) fn login_relative_form(scope: &str, ssh: bool) -> std::borrow::Cow<'_, str> {
-    if !ssh || scope.trim().is_empty() || scope.starts_with('/') || is_login_relative_scope(scope) {
+    if !ssh || scope.is_empty() || scope.starts_with('/') || is_login_relative_scope(scope) {
         return std::borrow::Cow::Borrowed(scope);
     }
     std::borrow::Cow::Owned(format!("~/{scope}"))
@@ -6341,6 +6341,8 @@ pub(crate) mod tests {
                 ("./docs/", "/home/mem/docs"),
                 ("/docs", "/docs"),
                 ("~/docs", "/home/mem/docs"),
+                // A folder named with spaces is a folder, as the session opens it.
+                ("   ", "/home/mem/   "),
             ] {
                 let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(on(kind)));
                 apply_overlay_in_place(
