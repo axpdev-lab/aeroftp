@@ -2262,13 +2262,34 @@ pub fn change_targets(
     tool_name: &str,
     args: &Value,
 ) -> Vec<ApprovedTarget> {
-    let Some(def) = find_tool(tool_name) else {
-        return Vec::new();
-    };
-    if !matches!(def.danger, DangerLevel::Medium | DangerLevel::High) {
+    if !names_a_change_target(tool_name, args) {
         return Vec::new();
     }
-    let mut saved = None;
+    change_targets_in(&creds.list_servers().unwrap_or_default(), tool_name, args)
+}
+
+/// Whether `args` of `tool_name` change something on a saved server they
+/// name: only then are the saved profiles read.
+fn names_a_change_target(tool_name: &str, args: &Value) -> bool {
+    find_tool(tool_name).is_some_and(|def| {
+        matches!(def.danger, DangerLevel::Medium | DangerLevel::High)
+            && TARGET_PROFILE_KEYS.iter().any(|key| {
+                args.get(*key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|query| !query.trim().is_empty())
+            })
+    })
+}
+
+/// [`change_targets`] over the saved profiles `saved`.
+fn change_targets_in(
+    saved: &[crate::ai_core::ServerProfile],
+    tool_name: &str,
+    args: &Value,
+) -> Vec<ApprovedTarget> {
+    if !names_a_change_target(tool_name, args) {
+        return Vec::new();
+    }
     let mut bound = Vec::new();
     for key in TARGET_PROFILE_KEYS {
         let Some(query) = args.get(key).and_then(Value::as_str) else {
@@ -2277,7 +2298,6 @@ pub fn change_targets(
         if query.trim().is_empty() {
             continue;
         }
-        let saved = saved.get_or_insert_with(|| creds.list_servers().unwrap_or_default());
         // The resolver execution uses, in its order, so the id bound here is
         // the profile the call will run on.
         let id = crate::ai_core::credential_provider::exact_profile_index(saved, query, |p| {
@@ -2303,6 +2323,30 @@ pub fn change_target_ids(
             None => format!("{}=?", target.key),
         })
         .collect()
+}
+
+/// The targets a change is approved for, checked and bound from ONE read of
+/// the saved profiles: every one named exactly and resolved to a profile, or
+/// the reason it cannot be approved. Two separate reads let a profile removed
+/// between them leave the approval bound to nothing, and one recreated with
+/// that name later receive the write. Empty for a call that only reads.
+pub fn approve_change_targets(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Result<Vec<ApprovedTarget>, String> {
+    if !names_a_change_target(tool_name, args) {
+        return Ok(Vec::new());
+    }
+    let saved = creds.list_servers().unwrap_or_default();
+    if let Some(reason) = inexact_change_target_in(&saved, tool_name, args) {
+        return Err(reason);
+    }
+    let targets = change_targets_in(&saved, tool_name, args);
+    match unbound_change_target(&targets, args) {
+        Some(reason) => Err(reason),
+        None => Ok(targets),
+    }
 }
 
 /// Why a change cannot be approved from these targets: one names no saved
@@ -2348,11 +2392,21 @@ pub fn inexact_change_target(
     tool_name: &str,
     args: &Value,
 ) -> Option<String> {
-    let def = find_tool(tool_name)?;
-    if !matches!(def.danger, DangerLevel::Medium | DangerLevel::High) {
+    if !names_a_change_target(tool_name, args) {
         return None;
     }
-    let mut profiles = None;
+    inexact_change_target_in(&creds.list_servers().unwrap_or_default(), tool_name, args)
+}
+
+/// [`inexact_change_target`] over the saved profiles `saved`.
+fn inexact_change_target_in(
+    saved: &[crate::ai_core::ServerProfile],
+    tool_name: &str,
+    args: &Value,
+) -> Option<String> {
+    if !names_a_change_target(tool_name, args) {
+        return None;
+    }
     for key in TARGET_PROFILE_KEYS {
         let Some(query) = args.get(key).and_then(Value::as_str) else {
             continue;
@@ -2360,7 +2414,6 @@ pub fn inexact_change_target(
         if query.trim().is_empty() {
             continue;
         }
-        let saved = profiles.get_or_insert_with(|| creds.list_servers().unwrap_or_default());
         let lower = query.to_lowercase();
         if saved
             .iter()
@@ -2814,6 +2867,102 @@ mod tests {
         ) -> Result<std::collections::HashMap<String, String>, String> {
             Ok(std::collections::HashMap::new())
         }
+    }
+
+    /// Saved profiles that change between reads, the way another surface
+    /// deletes and recreates one while the CLI asks: each read takes the next
+    /// list, and the last one stays. `reads` counts them.
+    struct ScriptedServers {
+        lists: std::sync::Mutex<std::collections::VecDeque<Vec<crate::ai_core::ServerProfile>>>,
+        reads: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ScriptedServers {
+        fn new(lists: Vec<Vec<crate::ai_core::ServerProfile>>) -> Self {
+            ScriptedServers {
+                lists: std::sync::Mutex::new(lists.into()),
+                reads: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl CredentialProvider for ScriptedServers {
+        fn list_servers(&self) -> Result<Vec<crate::ai_core::ServerProfile>, String> {
+            self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut lists = self.lists.lock().unwrap();
+            Ok(if lists.len() > 1 {
+                lists.pop_front().unwrap()
+            } else {
+                lists.front().cloned().unwrap_or_default()
+            })
+        }
+        fn get_credentials(
+            &self,
+            _server_id: &str,
+        ) -> Result<crate::ai_core::ServerCredentials, String> {
+            Err("not in this test".into())
+        }
+        fn get_extra_options(
+            &self,
+            _server_id: &str,
+        ) -> Result<std::collections::HashMap<String, String>, String> {
+            Ok(std::collections::HashMap::new())
+        }
+    }
+
+    /// CodeRabbit on 9bb82cabb: a profile removed and recreated around the
+    /// approval must never receive the write. The CLI's sequence, on profiles
+    /// that change between its reads: the approval is checked and bound from
+    /// one read, checked again after the prompt, and the call runs on the
+    /// approved id only.
+    #[test]
+    fn a_profile_removed_and_recreated_around_the_approval_receives_no_write() {
+        let args = json!({"server": "staging", "path": "/x"});
+        let original = saved("srv_2", "staging");
+        let recreated = saved("srv_9", "staging");
+
+        // Gone at the approval's one read: refused before any prompt, and that
+        // one read is all it takes, so nothing can change between two.
+        let creds = ScriptedServers::new(vec![vec![], vec![recreated.clone()]]);
+        let refused = approve_change_targets(&creds, "remote_delete", &args).unwrap_err();
+        assert!(
+            refused.starts_with("server 'staging' is not the name or id of a saved server"),
+            "{refused}"
+        );
+        assert_eq!(creds.reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        // Present at the approval, then removed, then recreated under another
+        // id: the recheck after the prompt sees another binding either way.
+        for after in [vec![], vec![recreated.clone()]] {
+            let creds = ScriptedServers::new(vec![vec![original.clone()], after]);
+            let approved =
+                approve_change_targets(&creds, "remote_delete", &args).expect("approved");
+            assert_eq!(
+                approved[0].profile.as_ref().map(|(id, _)| id.as_str()),
+                Some("srv_2")
+            );
+            assert_ne!(
+                change_targets(&creds, "remote_delete", &args),
+                approved,
+                "the recheck refuses"
+            );
+            // Had it gone on, the call names the approved id, which the
+            // recreated profile does not have: it cannot be reached.
+            let pinned = args_pinned_to(&args, &approved);
+            assert_eq!(pinned["server"], "srv_2");
+            assert_ne!(pinned["server"], json!(recreated.id));
+        }
+
+        // Unchanged: approved, rechecked equal, and run on its id.
+        let creds = ScriptedServers::new(vec![vec![original.clone()]]);
+        let approved = approve_change_targets(&creds, "remote_delete", &args).expect("approved");
+        assert_eq!(change_targets(&creds, "remote_delete", &args), approved);
+        // A read asks nothing and reads no profile.
+        let reads = ScriptedServers::new(vec![vec![]]);
+        assert!(approve_change_targets(&reads, "remote_list", &args)
+            .unwrap()
+            .is_empty());
+        assert_eq!(reads.reads.load(std::sync::atomic::Ordering::SeqCst), 0);
     }
 
     fn saved(id: &str, name: &str) -> crate::ai_core::ServerProfile {

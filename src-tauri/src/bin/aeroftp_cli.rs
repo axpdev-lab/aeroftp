@@ -76209,33 +76209,20 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         if !printable_tool_name(&tc.name) {
             return Ok("Tool call refused: the tool name holds control characters.".to_string());
         }
-        // A change on a saved server named only in part is refused before the
-        // prompt asks, so no approval is given for a server not named.
-        if let Some(reason) = ftp_client_gui_lib::ai_core::tools::inexact_change_target(
-            &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
-            &tc.name,
-            &tc.arguments,
-        ) {
-            return Ok(format!("Error: {reason}"));
-        }
         // The profiles the approval is given for, by id and by what they
-        // connect to: checked again before the call runs, so a profile replaced
-        // or edited to another host while the prompt was open is not the one
-        // written to.
-        let approved_targets = ftp_client_gui_lib::ai_core::tools::change_targets(
+        // connect to, checked and bound from one read of the saved profiles: a
+        // name that is not exactly a saved profile's, or one that resolves to
+        // nothing, is refused before the prompt asks. They are checked again
+        // before the call runs, so a profile replaced or edited to another
+        // host while the prompt was open is not the one written to.
+        let approved_targets = match ftp_client_gui_lib::ai_core::tools::approve_change_targets(
             &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
             &tc.name,
             &tc.arguments,
-        );
-        // Bound from this one snapshot: a target that resolves to no profile
-        // here (removed since the check above) is refused, not approved for
-        // nothing and later run on a profile recreated with its name.
-        if let Some(reason) = ftp_client_gui_lib::ai_core::tools::unbound_change_target(
-            &approved_targets,
-            &tc.arguments,
         ) {
-            return Ok(format!("Error: {reason}"));
-        }
+            Ok(targets) => targets,
+            Err(reason) => return Ok(format!("Error: {reason}")),
+        };
         // Check approval
         let approved = if is_auto_approved(&tc.name, cfg.approve_level) {
             if is_tty {

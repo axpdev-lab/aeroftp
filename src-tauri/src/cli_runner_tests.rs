@@ -464,9 +464,9 @@ async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
     assert!(prompt.contains("path: /keep/me.txt"), "{prompt}");
 }
 
-/// The approval of a change is bound from one profile snapshot: a target
-/// that resolves to no profile in it is refused before the prompt, so a
-/// profile recreated with its name later never receives the write.
+/// The approval of a change is checked and bound from one profile read
+/// (`approve_change_targets`, tested with a scripted provider in
+/// `ai_core::tools`), and its refusal comes before the prompt.
 #[test]
 fn the_cli_refuses_an_unbound_change_target_before_it_asks() {
     let code: String = include_str!("bin/aeroftp_cli.rs")
@@ -475,11 +475,11 @@ fn the_cli_refuses_an_unbound_change_target_before_it_asks() {
         .collect::<Vec<_>>()
         .join("\n");
     let bound = code
-        .find("let approved_targets = ftp_client_gui_lib::ai_core::tools::change_targets(")
-        .expect("the binding");
+        .find("let approved_targets = match ftp_client_gui_lib::ai_core::tools::approve_change_targets(")
+        .expect("the one-read binding");
     let refused = code[bound..]
-        .find("unbound_change_target(")
-        .expect("the unbound refusal")
+        .find("Err(reason) => return Ok(")
+        .expect("the refusal")
         + bound;
     let asked = code[bound..]
         .find("prompt_tool_approval(&tc.name")
@@ -489,6 +489,8 @@ fn the_cli_refuses_an_unbound_change_target_before_it_asks() {
         refused < asked,
         "an unbound target is refused before the prompt asks"
     );
+    // The exactness check and the binding are not two reads any more.
+    assert!(!code.contains("tools::inexact_change_target("));
 }
 
 /// A tool name from the provider with control characters is refused before
