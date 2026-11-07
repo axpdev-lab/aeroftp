@@ -6688,7 +6688,9 @@
             "dirtyTitle": "Hindi naka-save na mga pagbabago",
             "dirtyBody": "May hindi naka-save na mga pagbabago. Itapon at isara?",
             "keepEditing": "Magpatuloy sa pag-edit",
-            "discardAndClose": "Itapon at isara"
+            "discardAndClose": "Itapon at isara",
+            "busyBodyKeepsRunning": "May operasyong tumatakbo pa. Magpapatuloy ito pagkatapos isara ang window na ito, at hindi ipapakita rito ang resulta nito. Isara pa rin?",
+            "closeAnyway": "Isara pa rin"
         },
         "modalView": {
             "listView": "Tingnan bilang listahan",

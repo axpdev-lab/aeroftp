@@ -12,6 +12,7 @@ import { Folder, AlertTriangle, X, Layers, Clock, FileCheck, SkipForward } from 
 import { useTranslation } from '../i18n';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 export type FolderMergeAction = 'merge_overwrite' | 'merge_skip_identical' | 'merge_overwrite_newer' | 'skip' | 'cancel';
 
@@ -48,6 +49,15 @@ export const FolderOverwriteDialog: React.FC<FolderOverwriteDialogProps> = ({
         }
     }, [isOpen]);
 
+    // A question about a folder: the backdrop is inert and ESC is the safe
+    // answer, cancel, which writes nothing (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: null,
+        onClose: () => { onDecision('cancel', false); onCancel(); },
+        backdrop: 'never',
+        escape: isOpen,
+    });
+
     if (!isOpen) return null;
 
     const handleCancel = () => {
@@ -57,7 +67,7 @@ export const FolderOverwriteDialog: React.FC<FolderOverwriteDialogProps> = ({
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={handleCancel} />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
 
             <div {...modalDrag.panelProps} className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-full max-w-md overflow-hidden animate-scale-in">
                 {/* Header */}

@@ -6669,7 +6669,9 @@
             "dirtyTitle": "Salvestamata muudatused",
             "dirtyBody": "Teil on salvestamata muudatusi. Kas hüljata ja sulgeda?",
             "keepEditing": "Jätka muutmist",
-            "discardAndClose": "Hülga ja sulge"
+            "discardAndClose": "Hülga ja sulge",
+            "busyBodyKeepsRunning": "Toiming on veel pooleli. See jätkub pärast selle akna sulgemist ja selle tulemust siin ei kuvata. Sulgeda ikkagi?",
+            "closeAnyway": "Sulge ikkagi"
         },
         "modalView": {
             "listView": "Loendivaade",

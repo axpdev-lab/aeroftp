@@ -21,6 +21,8 @@ import {
 import { useTranslation } from '../i18n';
 import { useTauriListener } from '../hooks/useTauriListener';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import {
     SpeedTestCompareResult,
     SpeedTestDialogProps,
@@ -207,6 +209,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     initialServerId,
     initialMode = 'single',
     onClose,
+    active = true,
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
@@ -243,6 +246,10 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     const [compareResult, setCompareResult] = useState<SpeedTestCompareResult | null>(null);
     const [compareError, setCompareError] = useState<string | null>(null);
     const compareTestIdsRef = useRef<Map<string, { serverId: string; serverName: string; protocol: string }>>(new Map());
+    // A cancel that lands while the connection is still being prepared finds
+    // no test to stop in the backend: the run checks this before it starts
+    // one, so a "stop and close" during setup starts nothing afterwards.
+    const cancelRequestedRef = useRef(false);
     const [compareProgress, setCompareProgress] = useState<Map<string, SpeedTestProgress>>(new Map());
 
     const running = phase !== 'idle' && phase !== 'done';
@@ -317,9 +324,14 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         setCopied(false);
         setProgress(null);
         setPhase('connecting');
+        cancelRequestedRef.current = false;
 
         try {
             const connection = await buildSpeedTestConnection(selectedServer);
+            if (cancelRequestedRef.current) {
+                setPhase('idle');
+                return;
+            }
             const response = await invoke<SpeedTestResult>('speedtest_run', {
                 request: {
                     connection,
@@ -360,6 +372,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         // exception thrown while building connection payloads can never leave
         // the dialog stuck in compareRunning=true.
         setCompareRunning(true);
+        cancelRequestedRef.current = false;
         try {
             const targetServers = supportedServers.filter(s => compareSelected.has(s.id));
             const tests = await Promise.all(
@@ -383,6 +396,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                 }),
             );
 
+            if (cancelRequestedRef.current) return;
             const response = await invoke<SpeedTestCompareResult>('speedtest_compare', {
                 request: { tests, max_parallel: compareParallel },
             });
@@ -403,6 +417,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     }, [compareParallel, compareRunning, compareSelected, effectiveSize, expertConfirmed, sizeRequiresConfirm, supportedServers, verifyIntegrity, t]);
 
     const handleCancel = useCallback(async () => {
+        cancelRequestedRef.current = true;
         try {
             await invoke('speedtest_cancel');
         } catch {
@@ -481,21 +496,17 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
         return () => document.removeEventListener('mousedown', onDocClick);
     }, [exportMenuOpen]);
 
-    // Esc closes the dialog when idle, cancels when running
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key !== 'Escape') return;
-            if (anyRunning) {
-                e.preventDefault();
-                void handleCancel();
-            } else {
-                e.preventDefault();
-                onClose();
-            }
-        };
-        document.addEventListener('keydown', onKey);
-        return () => document.removeEventListener('keydown', onKey);
-    }, [anyRunning, handleCancel, onClose]);
+    // While a test runs, the backdrop is inert and the X and ESC ask whether
+    // to stop it (a stray ESC used to cancel it outright); Cancel stops it.
+    // Its results are kept from the backdrop: only the X or ESC close them
+    // (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: anyRunning ? 'busy' : null,
+        onClose,
+        onAbort: () => { void handleCancel(); },
+        backdrop: result || compareResult ? 'never' : 'idle',
+        escape: active,
+    });
 
     const selectedSizeLabel = formatBytes(effectiveSize);
     const totalPhasePct = phase === 'idle'
@@ -980,7 +991,7 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center pt-[2vh] pb-[2vh] bg-black/50 backdrop-blur-sm animate-fade-in"
-            onClick={(e) => { if (e.target === e.currentTarget && !anyRunning) onClose(); }}
+            onClick={guarded.onBackdropClick}
         >
             <div
                 {...modalDrag.panelProps}
@@ -1001,9 +1012,10 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                         </div>
                     </div>
                     <button
-                        onClick={anyRunning ? handleCancel : onClose}
+                        onClick={guarded.requestClose}
                         className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                        title={anyRunning ? t('speedTest.cancel') : t('common.close')}
+                        title={t('common.close')}
+                        aria-label={t('common.close')}
                     >
                         <X size={18} />
                     </button>
@@ -1109,6 +1121,14 @@ export const SpeedTestDialog: React.FC<SpeedTestDialogProps> = ({
                     </>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

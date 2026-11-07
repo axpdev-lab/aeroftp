@@ -13,6 +13,7 @@ import { CheckpointEndpoints } from './CheckpointEndpoints';
 import { AeroSharePrivacySettings } from './AeroShare/AeroSharePrivacySettings';
 import type { Theme } from '../hooks/useTheme';
 import { useAppearance } from '../hooks/useAppearance';
+import { isEscapeClaimed } from '../hooks/useGuardedClose';
 import { AppearanceModeControls } from './settings/AppearanceModeControls';
 import { useIconTheme } from '../hooks/useIconTheme';
 import { getIconThemeProvider, type IconTheme } from '../utils/iconThemes';
@@ -1044,6 +1045,9 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
 
     const handlePanelKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         if (e.key === 'Escape') {
+            // A modal opened over the panel (TOTP setup) answers ESC itself
+            // (Discussion #1527).
+            if (isEscapeClaimed()) return;
             e.preventDefault();
             onClose();
             return;

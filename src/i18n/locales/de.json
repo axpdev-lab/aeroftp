@@ -6669,7 +6669,9 @@
             "dirtyTitle": "Nicht gespeicherte Änderungen",
             "dirtyBody": "Es gibt nicht gespeicherte Änderungen. Verwerfen und schließen?",
             "keepEditing": "Weiter bearbeiten",
-            "discardAndClose": "Verwerfen und schließen"
+            "discardAndClose": "Verwerfen und schließen",
+            "busyBodyKeepsRunning": "Ein Vorgang läuft noch. Er läuft nach dem Schließen dieses Fensters weiter, und sein Ergebnis wird hier nicht angezeigt. Trotzdem schließen?",
+            "closeAnyway": "Trotzdem schließen"
         },
         "modalView": {
             "listView": "Listenansicht",

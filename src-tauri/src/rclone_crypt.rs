@@ -98,6 +98,11 @@ pub struct RcloneCryptKeys {
 
 struct OutputPathGuard {
     final_path: PathBuf,
+    /// Where the temporary is renamed to: the output's name in the parent as
+    /// it was resolved and checked (deep-scan 119). The rename by
+    /// `final_path` resolved the parent again, after the check, and a
+    /// parent swapped for a link in between moved the plaintext elsewhere.
+    persist_path: PathBuf,
     temp_file: tempfile::NamedTempFile,
 }
 
@@ -132,9 +137,14 @@ impl OutputPathGuard {
 
         let temp_file = tempfile::NamedTempFile::new_in(&canonical_parent)
             .map_err(|e| format!("failed to create temporary output file: {}", e))?;
+        let file_name = final_path
+            .file_name()
+            .ok_or_else(|| "Output path must name a file".to_string())?;
+        let persist_path = canonical_parent.join(file_name);
 
         Ok(Self {
             final_path,
+            persist_path,
             temp_file,
         })
     }
@@ -151,7 +161,7 @@ impl OutputPathGuard {
             .map_err(|e| format!("failed to flush temporary output: {}", e))?;
 
         self.temp_file
-            .persist(&self.final_path)
+            .persist(&self.persist_path)
             .map_err(|e| format!("failed to persist output file: {}", e.error))?;
 
         Ok(self.final_path.to_string_lossy().to_string())
@@ -1296,6 +1306,26 @@ pub async fn decrypt_and_hash_async<R: tokio::io::AsyncRead + Unpin, H: sha2::di
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 119: the output lands in the folder that was checked, by
+    /// its canonical path, even when it was named through a link.
+    #[cfg(unix)]
+    #[test]
+    fn the_output_is_renamed_into_the_checked_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("real");
+        std::fs::create_dir(&real).unwrap();
+        let alias = dir.path().join("alias");
+        std::os::unix::fs::symlink(&real, &alias).unwrap();
+        let named = alias.join("out.txt");
+        let guard = super::OutputPathGuard::new(named.to_str().unwrap()).unwrap();
+        assert_eq!(
+            guard.persist_path,
+            std::fs::canonicalize(&real).unwrap().join("out.txt")
+        );
+        guard.write_all(b"plain").unwrap();
+        assert_eq!(std::fs::read(real.join("out.txt")).unwrap(), b"plain");
+    }
+
     use super::*;
     use sha2::Digest;
 

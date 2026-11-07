@@ -412,9 +412,20 @@ fn restore_file(target: &Path, file: &StoredFileRow, dry_run: bool) -> Result<()
         return Ok(());
     }
 
-    if target.exists() {
-        let meta = std::fs::symlink_metadata(target)
-            .map_err(|e| format!("Failed to inspect restore target {}: {e}", target.display()))?;
+    // `exists()` follows a link and is false for a dangling one, which then
+    // passed unchecked and was written through (deep-scan 34): the entry at
+    // the name is inspected itself.
+    let present = match std::fs::symlink_metadata(target) {
+        Ok(meta) => Some(meta),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(format!(
+                "Failed to inspect restore target {}: {e}",
+                target.display()
+            ))
+        }
+    };
+    if let Some(meta) = present {
         if meta.file_type().is_symlink() {
             return Err(format!(
                 "Refusing to restore over symlink: {}",
@@ -635,6 +646,28 @@ fn set_unix_mode(_path: &Path, _mode: Option<i64>) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Deep-scan 34: a dangling link at the restore target is refused, and
+    /// nothing is written where it points.
+    #[cfg(unix)]
+    #[test]
+    fn a_restore_refuses_a_dangling_link_at_the_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let elsewhere = dir.path().join("elsewhere.txt");
+        let target = dir.path().join("restored.txt");
+        std::os::unix::fs::symlink(&elsewhere, &target).unwrap();
+        let row = StoredFileRow {
+            path: "restored.txt".into(),
+            existed: true,
+            content: Some(b"old content".to_vec()),
+            size_bytes: 11,
+            sha256: None,
+            unix_mode: None,
+        };
+        let err = restore_file(&target, &row, false).unwrap_err();
+        assert!(err.contains("symlink"), "{err}");
+        assert!(!elsewhere.exists(), "nothing written through the link");
+    }
 
     fn memory_conn() -> Connection {
         let conn = Connection::open_in_memory().expect("open memory db");

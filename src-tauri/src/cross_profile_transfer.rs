@@ -488,6 +488,21 @@ pub async fn plan_transfer(
         // Some providers return canonical paths that differ from the caller input,
         // so we accept both the request path and the provider-reported root path.
         let source_roots = source_root_candidates(&source_path, &root_stat.path);
+        // The relative part comes from the source server's listing. A name
+        // with a `..` or `.` segment would be appended to the destination
+        // as is and land outside it, while the scope check normalizes the
+        // path and passes it (deep-scan 35). Such a plan is refused before
+        // anything is sent.
+        if let Some(escaping) = entries
+            .iter()
+            .chain(directories.iter())
+            .find(|entry| relative_leaves_the_root(&source_roots, &entry.source_path))
+        {
+            return Err(ProviderError::InvalidPath(format!(
+                "Refusing the transfer: the source lists '{}', whose path leaves the folder being copied",
+                escaping.source_path
+            )));
+        }
         for entry in &mut entries {
             entry.dest_path = map_dest_path(&source_roots, &entry.source_path, &request.dest_path);
         }
@@ -827,6 +842,19 @@ fn preserve_temp_mtime(path: &Path, source_modified: Option<&str>) {
     }
 }
 
+/// Whether the part of `source_file` below its root has a segment that moves
+/// out of it (`..`) or is not a name (`.`). Segments are split on `/` and on
+/// `\`, which some destinations take for a separator.
+fn relative_leaves_the_root(source_roots: &[String], source_file: &str) -> bool {
+    let relative = source_roots
+        .iter()
+        .find_map(|root| source_file.strip_prefix(root))
+        .unwrap_or(source_file);
+    relative
+        .split(['/', '\\'])
+        .any(|segment| segment == ".." || segment == ".")
+}
+
 /// Map a source file path to its corresponding destination path.
 ///
 /// For single files: dest_path is used directly.
@@ -1134,6 +1162,87 @@ mod tests {
             map_dest_path(&source_roots, "/data/sub/deep/c.txt", "/backup"),
             "/backup/sub/deep/c.txt"
         );
+    }
+
+    /// Deep-scan 35: a listed name that climbs out of the copied folder is
+    /// caught on the raw relative part, as the destination would see it.
+    #[test]
+    fn a_listed_name_that_leaves_the_copied_folder_is_caught() {
+        let roots = vec!["/data/".to_string()];
+        assert!(!relative_leaves_the_root(&roots, "/data/sub/a.txt"));
+        assert!(!relative_leaves_the_root(&roots, "/data/a..b.txt"));
+        assert!(relative_leaves_the_root(&roots, "/data/../etc/passwd"));
+        assert!(relative_leaves_the_root(&roots, "/data/sub/../../x"));
+        assert!(relative_leaves_the_root(&roots, "/data/sub\\..\\..\\x"));
+        assert!(relative_leaves_the_root(&roots, "/data/./a.txt"));
+    }
+
+    /// Deep-scan 35, through the planner: an entry a listing names outside
+    /// the copied folder is never planned.
+    #[tokio::test]
+    async fn the_planner_refuses_a_listed_name_that_leaves_the_folder() {
+        use crate::providers::RemoteEntry;
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        use std::collections::HashMap;
+        let request = CrossProfileTransferRequest {
+            source_profile: "source".into(),
+            dest_profile: "dest".into(),
+            source_path: "/src".into(),
+            dest_path: "/out".into(),
+            recursive: true,
+            dry_run: true,
+            skip_existing: false,
+        };
+        let mut dest = WalkTreeProvider::new(HashMap::new(), false);
+        let mut source = WalkTreeProvider::new(
+            HashMap::from([(
+                "/src".into(),
+                vec![
+                    RemoteEntry::file("ok".into(), "/src/ok".into(), 1),
+                    RemoteEntry::file("passwd".into(), "/src/../etc/passwd".into(), 1),
+                ],
+            )]),
+            false,
+        );
+        // The source walk refuses a listing that names an entry outside the
+        // path it walks (`outside_root`), and the planner's own check refuses
+        // what reaches it; a walk that dropped the entry would plan only the
+        // rest. In every case it is never planned and nothing is written.
+        match plan_transfer(&mut source, &mut dest, &request).await {
+            Err(ProviderError::InvalidPath(_)) => {}
+            Ok(plan) => {
+                let planned: Vec<_> = plan
+                    .entries
+                    .iter()
+                    .map(|entry| (entry.source_path.as_str(), entry.dest_path.as_str()))
+                    .collect();
+                assert_eq!(planned, [("/src/ok", "/out/ok")]);
+            }
+            Err(other) => assert!(
+                other.to_string().contains("outside the path being walked"),
+                "unexpected error: {other}"
+            ),
+        }
+        assert_eq!(dest.writes.load(std::sync::atomic::Ordering::Relaxed), 0);
+
+        // A `..` the walk resolves inside the folder (`/src/sub/../ok2` is
+        // `/src/ok2` to it) still reaches the planner, whose own check
+        // refuses the plan: the relative part would be appended as is.
+        let mut source = WalkTreeProvider::new(
+            HashMap::from([(
+                "/src".into(),
+                vec![
+                    RemoteEntry::file("ok".into(), "/src/ok".into(), 1),
+                    RemoteEntry::file("ok2".into(), "/src/sub/../ok2".into(), 1),
+                ],
+            )]),
+            false,
+        );
+        assert!(matches!(
+            plan_transfer(&mut source, &mut dest, &request).await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert_eq!(dest.writes.load(std::sync::atomic::Ordering::Relaxed), 0);
     }
 
     #[test]

@@ -16,6 +16,7 @@ import { formatBytes } from '../../utils/formatters';
 import { formatArchiveCipher } from '../../utils/archiveCipher';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
 import { PROFILES_CHANGED_EVENT } from '../../utils/serverProfileStore';
 import { dispatchMasterPasswordChanged } from '../../utils/masterPasswordEvents';
 import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
@@ -121,6 +122,12 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     informational = false,
 }) => {
     const t = useTranslation();
+    // ESC answers "cancel" through the hook, which gives the key to the
+    // topmost modal: the question often opens over a modal that routes ESC
+    // itself (an overwrite asked while a transfer plan executes), and the
+    // app-wide shortcut that used to cancel it leaves the key to such a modal
+    // (Discussion #1527).
+    useGuardedClose({ guard: null, onClose: onCancel, escape: true });
     const colorMap = {
         red: 'bg-red-500 hover:bg-red-600',
         blue: 'bg-blue-500 hover:bg-blue-600',
@@ -188,6 +195,8 @@ export const InputDialog: React.FC<InputDialogProps> = ({
     const t = useTranslation();
     const [value, setValue] = useState(defaultValue);
     const [showPassword, setShowPassword] = useState(false);
+    // ESC cancels through the hook, for the same reason as ConfirmDialog.
+    useGuardedClose({ guard: null, onClose: onCancel, escape: true });
 
     return (
         <div data-testid={isPassword ? undefined : TID.inputDialog} data-agent={isPassword ? 'deny' : undefined} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={title}>
