@@ -121,13 +121,17 @@ export function KoofrTrashManager({ onClose, onRefreshFiles }: KoofrTrashManager
   const isDir = (item: KoofrTrashItem) =>
     item.content_type === null || item.content_type === 'application/x-directory';
 
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager only when none is pending (Discussion #1527).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') guarded.requestClose();
+      if (e.key !== 'Escape') return;
+      if (pendingEmptyConfirm) { setPendingEmptyConfirm(false); return; }
+      guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [guarded.requestClose]);
+  }, [guarded.requestClose, pendingEmptyConfirm]);
 
   // Normalized for the shared trash table (sorting, Type column,
   // Ctrl/Shift and rubber-band selection live there).

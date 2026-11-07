@@ -116,14 +116,17 @@ export function ZohoTrashManager({ onClose, onRefreshFiles }: ZohoTrashManagerPr
     }
   };
 
-  // Escape key handler
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager only when none is pending (Discussion #1527).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') guarded.requestClose();
+      if (e.key !== 'Escape') return;
+      if (pendingDeleteConfirm) { setPendingDeleteConfirm(false); return; }
+      guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [guarded.requestClose]);
+  }, [guarded.requestClose, pendingDeleteConfirm]);
 
   // Normalized for the shared trash table (sorting, Type column,
   // Ctrl/Shift and rubber-band selection live there).

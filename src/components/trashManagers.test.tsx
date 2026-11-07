@@ -190,3 +190,78 @@ describe.each(CASES)('the $name trash manager', ({ Component, restore, selectAll
         expect(button('modalGuard.closeAnyway')).toBeUndefined();
     });
 });
+
+interface ConfirmCase {
+    name: string;
+    Component: React.ComponentType<Props>;
+    /** Button that selects the rows first, when the confirm needs a selection. */
+    selectAll?: string;
+    /** Button (by its text) that opens the manager's own confirmation. */
+    opens: string;
+}
+const del = { selectAll: 'contextMenu.trashSelectAll', opens: 'contextMenu.permanentDelete' };
+const empty = { opens: 'contextMenu.emptyTrash' };
+const CONFIRM_CASES: ConfirmCase[] = [
+    { name: 'Box', Component: BoxTrashManager, ...del },
+    { name: 'Dropbox', Component: withPath(DropboxTrashManager, { currentPath: '/' }), ...del },
+    { name: 'Google Drive', Component: GoogleDriveTrashManager, ...del },
+    { name: 'Jottacloud', Component: JottacloudTrashManager, ...del },
+    { name: 'kDrive', Component: KDriveTrashManager, ...empty },
+    { name: 'Koofr', Component: KoofrTrashManager, ...empty },
+    { name: 'MEGA', Component: MegaTrashManager, ...del },
+    { name: 'Nextcloud', Component: NextcloudTrashManager, ...empty },
+    { name: 'OneDrive', Component: OneDriveTrashManager, ...del },
+    { name: 'OpenDrive', Component: OpenDriveTrashManager, ...empty },
+    { name: 'pCloud', Component: PCloudTrashManager, ...empty },
+    { name: 'S3', Component: S3TrashManager, opens: 'contextMenu.s3TrashPurge' },
+    { name: 'Yandex', Component: YandexTrashManager, ...empty },
+    { name: 'Zoho', Component: ZohoTrashManager, ...del },
+    { name: 'B2 hidden files', Component: withPath(B2HiddenManager, { currentPath: '/' }), ...del },
+];
+
+/**
+ * Discussion #1527: with a delete or empty confirmation open over a trash
+ * manager, one ESC closed the whole manager. ESC now dismisses the
+ * innermost surface: the confirmation first, the manager on the next press.
+ */
+describe.each(CONFIRM_CASES)('ESC in the $name trash manager', ({ Component, selectAll, opens }) => {
+    let host: HTMLDivElement;
+    let root: Root;
+    beforeEach(() => {
+        host = document.createElement('div');
+        document.body.appendChild(host);
+        root = createRoot(host);
+        tauri.invoke.mockImplementation((cmd: string) => {
+            // Dropbox offers a permanent delete only on a business account.
+            if (cmd === 'dropbox_account_type') return Promise.resolve('business');
+            return Promise.resolve(cmd.includes('list') ? [ENTRY] : undefined);
+        });
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        host.remove();
+        vi.clearAllMocks();
+    });
+
+    const flush = () => act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    const button = (label: string) => [...host.querySelectorAll('button')].find(b =>
+        !b.disabled && [...b.childNodes].some(n => n.nodeType === Node.TEXT_NODE && n.textContent?.trim() === label)) as HTMLButtonElement | undefined;
+    const dialogs = () => host.querySelectorAll('[role="dialog"], [role="alertdialog"]').length;
+    const escape = () => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+
+    it('closes the open confirmation first, and the manager on the next press', async () => {
+        const onClose = vi.fn();
+        act(() => root.render(<Component onClose={onClose} />));
+        await flush();
+        const before = dialogs();
+        if (selectAll) act(() => { button(selectAll)!.click(); });
+        act(() => { button(opens)!.click(); });
+        await flush();
+        expect(dialogs()).toBe(before + 1);
+        escape();
+        expect(dialogs()).toBe(before);
+        expect(onClose).not.toHaveBeenCalled();
+        escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+});

@@ -77,13 +77,18 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
     loadTrash();
   }, [loadTrash]);
 
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager only when none is pending (Discussion #1527).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') guarded.requestClose();
+      if (e.key !== 'Escape') return;
+      if (pendingPurge) { setPendingPurge(null); return; }
+      if (emptyPreview) { setEmptyPreview(null); return; }
+      guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [guarded.requestClose]);
+  }, [guarded.requestClose, pendingPurge, emptyPreview]);
 
   const restore = async (entry: TrashEntry, mode: RestoreMode) => {
     setActionKey(entry.version_id);
