@@ -6835,6 +6835,28 @@ async fn delete_local_file(
     result
 }
 
+/// Whether a local delete of `path` walks into it as a folder: only a real
+/// directory, never a link to one (`symlink_metadata` does not follow it).
+fn local_delete_walks_into(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
+}
+
+/// Remove a file, or a link as itself. Windows removes a link to a folder
+/// (a directory symlink or junction) with `remove_dir`, which does not touch
+/// the target; elsewhere `remove_file` removes any link.
+async fn remove_local_file_or_link(path: &std::path::Path) -> std::io::Result<()> {
+    match tokio::fs::remove_file(path).await {
+        Err(err)
+            if cfg!(windows)
+                && std::fs::symlink_metadata(path)
+                    .is_ok_and(|meta| meta.file_type().is_symlink()) =>
+        {
+            tokio::fs::remove_dir(path).await.map_err(|_| err)
+        }
+        other => other,
+    }
+}
+
 async fn delete_local_file_inner(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -6848,7 +6870,10 @@ async fn delete_local_file_inner(
         .unwrap_or_else(|| path.clone());
 
     let delete_id = format!("del-local-{}", chrono::Utc::now().timestamp_millis());
-    let is_dir = path_buf.is_dir();
+    // `is_dir()` follows a link: deleting a link to a folder walked the
+    // target and deleted its files, outside what the user selected
+    // (deep-scan 38). A link is deleted as itself.
+    let is_dir = local_delete_walks_into(&path_buf);
 
     if !is_dir {
         // Single file delete
@@ -6867,7 +6892,7 @@ async fn delete_local_file_inner(
             },
         );
 
-        match tokio::fs::remove_file(&path).await {
+        match remove_local_file_or_link(&path_buf).await {
             Ok(_) => {
                 crate::transfer_event_sink::emit_gui_transfer_event(
                     &app,
@@ -7191,8 +7216,37 @@ async fn copy_then_delete_local(
     from: &std::path::Path,
     to: &std::path::Path,
 ) -> Result<(), String> {
-    if from.is_dir() {
-        copy_dir_recursive(from, to, 0).await?;
+    // What stands at the destination is replaced as rename replaces it: a
+    // link there is removed as itself, never written through to the file it
+    // names (deep-scan 39, 40).
+    if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        remove_local_file_or_link(to)
+            .await
+            .map_err(|e| format!("Failed to replace the link at the destination: {}", e))?;
+    }
+    let source = std::fs::symlink_metadata(from)
+        .map_err(|e| format!("Failed to read the source of a cross-device move: {}", e))?;
+    // A link is moved as rename moves it: the same link at the destination,
+    // never a copy of what it points to.
+    if source.file_type().is_symlink() {
+        let target = tokio::fs::read_link(from)
+            .await
+            .map_err(|e| format!("Failed to read the link for a cross-device move: {}", e))?;
+        if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.is_file()) {
+            tokio::fs::remove_file(to)
+                .await
+                .map_err(|e| format!("Failed to replace the destination: {}", e))?;
+        }
+        recreate_link(&source, &target, to).await?;
+        remove_local_file_or_link(from)
+            .await
+            .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
+        return Ok(());
+    }
+    if local_delete_walks_into(from) {
+        // The links inside the folder move with it, as rename moves them: the
+        // copy recreates each, and the source is removed only after.
+        copy_dir_recursive(from, to, 0, NestedLinks::Recreate).await?;
         tokio::fs::remove_dir_all(from)
             .await
             .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
@@ -7249,7 +7303,7 @@ async fn rename_local_file_inner(
     // (cross-panel move, inline/batch rename), refuse if `to` already exists so
     // the frontend can prompt. Existing callers omit the flag -> None -> preserve
     // the historical overwrite behavior. (CLAUDE-AV-B1-10)
-    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+    if overwrite == Some(false) && local_entry_present(std::path::Path::new(&to)) {
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
 
@@ -7277,12 +7331,13 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
     }
     // See rename_local_file: refuse a silent overwrite when the caller opts out.
     // (CLAUDE-AV-B1-10)
-    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+    if overwrite == Some(false) && local_entry_present(std::path::Path::new(&to)) {
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
+    refuse_link_destination(std::path::Path::new(&to))?;
     if from_path.is_dir() {
         // Recursive directory copy
-        copy_dir_recursive(from_path, std::path::Path::new(&to), 0).await?;
+        copy_dir_recursive(from_path, std::path::Path::new(&to), 0, NestedLinks::Skip).await?;
     } else {
         tokio::fs::copy(&from, &to)
             .await
@@ -7291,14 +7346,68 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
     Ok(())
 }
 
+/// Whether anything is at `path`, a dangling link included: `exists()`
+/// follows a link and says false for one whose target is gone, and a copy
+/// with no overwrite then wrote through it (deep-scan 40).
+fn local_entry_present(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+/// A local copy never writes through a link at its destination: the data
+/// would land wherever the link points, outside the chosen folder
+/// (deep-scan 39, 40). The link is reported instead.
+fn refuse_link_destination(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => Err(format!(
+            "Refusing to write through a link at the destination: {}",
+            path.display()
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// What a folder copy does with a link inside the tree: a copy skips it, as
+/// it always has; a cross-device move recreates it as the same link, since
+/// the source is deleted afterwards and the link would otherwise be lost.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NestedLinks {
+    Skip,
+    Recreate,
+}
+
+/// Make at `to` the same link as the one `source` describes, pointing at `target`.
+async fn recreate_link(
+    source: &std::fs::Metadata,
+    target: &std::path::Path,
+    to: &std::path::Path,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    let made = {
+        let _ = source;
+        tokio::fs::symlink(target, to).await
+    };
+    #[cfg(windows)]
+    let made = {
+        use std::os::windows::fs::FileTypeExt;
+        if source.file_type().is_symlink_dir() {
+            tokio::fs::symlink_dir(target, to).await
+        } else {
+            tokio::fs::symlink_file(target, to).await
+        }
+    };
+    made.map_err(|e| format!("Failed to recreate the link for a cross-device move: {}", e))
+}
+
 async fn copy_dir_recursive(
     src: &std::path::Path,
     dst: &std::path::Path,
     depth: u32,
+    links: NestedLinks,
 ) -> Result<(), String> {
     if depth > 50 {
         return Err("Directory nesting too deep (max 50 levels)".to_string());
     }
+    refuse_link_destination(dst)?;
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|e| format!("Failed to create directory: {}", e))?;
@@ -7317,18 +7426,183 @@ async fn copy_dir_recursive(
             .await
             .map_err(|e| format!("Failed to read metadata: {}", e))?;
         if metadata.is_symlink() {
-            // Skip symlinks for security
+            // A copy skips links for security; a move keeps them as links,
+            // never by copying what they point to.
+            if links == NestedLinks::Recreate {
+                refuse_link_destination(&dst_path)?;
+                let target = tokio::fs::read_link(&src_path)
+                    .await
+                    .map_err(|e| format!("Failed to read link: {}", e))?;
+                recreate_link(&metadata, &target, &dst_path).await?;
+            }
             continue;
         }
         if metadata.is_dir() {
-            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1)).await?;
+            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1, links)).await?;
         } else {
+            refuse_link_destination(&dst_path)?;
             tokio::fs::copy(&src_path, &dst_path)
                 .await
                 .map_err(|e| format!("Failed to copy file: {}", e))?;
         }
     }
     Ok(())
+}
+
+/// Deep-scan 38, 39, 40: local delete and copy never act through a link.
+#[cfg(all(test, unix))]
+mod local_link_tests {
+    use super::{
+        copy_dir_recursive, copy_local_file, copy_then_delete_local, local_delete_walks_into,
+        remove_local_file_or_link,
+    };
+
+    /// Deep-scan 39, 40: a folder moved across devices arrives with the links
+    /// inside it, as links, and their targets are left alone; a copy still
+    /// skips them.
+    #[tokio::test]
+    async fn a_cross_device_folder_move_keeps_the_links_inside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+        let from = dir.path().join("from");
+        std::fs::create_dir_all(from.join("sub")).unwrap();
+        std::fs::write(from.join("plain.txt"), b"plain").unwrap();
+        std::os::unix::fs::symlink(&target, from.join("sub/file_link")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, from.join("dir_link")).unwrap();
+
+        let copied = dir.path().join("copied");
+        copy_dir_recursive(&from, &copied, 0, super::NestedLinks::Skip)
+            .await
+            .unwrap();
+        assert!(std::fs::symlink_metadata(copied.join("sub/file_link")).is_err());
+
+        let to = dir.path().join("to");
+        copy_then_delete_local(&from, &to).await.unwrap();
+        assert!(std::fs::symlink_metadata(&from).is_err());
+        assert_eq!(std::fs::read(to.join("plain.txt")).unwrap(), b"plain");
+        assert_eq!(
+            std::fs::read_link(to.join("sub/file_link")).unwrap(),
+            target
+        );
+        assert_eq!(std::fs::read_link(to.join("dir_link")).unwrap(), elsewhere);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+        assert!(elsewhere.is_dir());
+    }
+
+    /// Deep-scan 39, 40: the cross-device move keeps a link a link, and
+    /// replaces a link at the destination instead of writing through it.
+    #[tokio::test]
+    async fn a_cross_device_move_moves_links_as_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let folder = dir.path().join("folder");
+        std::fs::create_dir(&folder).unwrap();
+
+        let file_link = dir.path().join("file_link");
+        std::os::unix::fs::symlink(&target, &file_link).unwrap();
+        let moved = dir.path().join("moved_file_link");
+        copy_then_delete_local(&file_link, &moved).await.unwrap();
+        assert!(std::fs::symlink_metadata(&file_link).is_err());
+        assert!(std::fs::symlink_metadata(&moved)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_link(&moved).unwrap(), target);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+
+        let dir_link = dir.path().join("dir_link");
+        std::os::unix::fs::symlink(&folder, &dir_link).unwrap();
+        let moved_dir = dir.path().join("moved_dir_link");
+        copy_then_delete_local(&dir_link, &moved_dir).await.unwrap();
+        assert_eq!(std::fs::read_link(&moved_dir).unwrap(), folder);
+        assert!(folder.is_dir());
+
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, b"outside").unwrap();
+        let dest = dir.path().join("dest.txt");
+        std::os::unix::fs::symlink(&outside, &dest).unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"moved").unwrap();
+        copy_then_delete_local(&src, &dest).await.unwrap();
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+        assert!(!std::fs::symlink_metadata(&dest)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"moved");
+    }
+
+    #[tokio::test]
+    async fn a_link_to_a_folder_is_deleted_as_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("keep.txt"), b"keep").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(local_delete_walks_into(&target));
+        assert!(!local_delete_walks_into(&link), "a link is not walked into");
+        remove_local_file_or_link(&link).await.unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link).is_err(),
+            "the link is gone"
+        );
+        assert_eq!(std::fs::read(target.join("keep.txt")).unwrap(), b"keep");
+    }
+
+    #[tokio::test]
+    async fn a_copy_with_no_overwrite_sees_a_dangling_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"new").unwrap();
+        let elsewhere = dir.path().join("elsewhere.txt");
+        let to = dir.path().join("to.txt");
+        std::os::unix::fs::symlink(&elsewhere, &to).unwrap();
+        let refused = copy_local_file(
+            src.to_string_lossy().into(),
+            to.to_string_lossy().into(),
+            Some(false),
+        )
+        .await;
+        assert!(refused.is_err(), "{refused:?}");
+        let through = copy_local_file(
+            src.to_string_lossy().into(),
+            to.to_string_lossy().into(),
+            None,
+        )
+        .await;
+        assert!(through.is_err(), "{through:?}");
+        assert!(!elsewhere.exists(), "nothing written through the link");
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_refuses_a_link_at_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::write(src.join("a.txt"), b"a").unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let dst = dir.path().join("dst");
+        std::fs::create_dir(&dst).unwrap();
+        std::os::unix::fs::symlink(outside.join("a.txt"), dst.join("a.txt")).unwrap();
+        assert!(copy_dir_recursive(&src, &dst, 0, super::NestedLinks::Skip)
+            .await
+            .is_err());
+        assert!(!outside.join("a.txt").exists(), "nothing written outside");
+        let dst_link = dir.path().join("dst_link");
+        std::os::unix::fs::symlink(&outside, &dst_link).unwrap();
+        assert!(
+            copy_dir_recursive(&src, &dst_link, 0, super::NestedLinks::Skip)
+                .await
+                .is_err()
+        );
+        assert!(!outside.join("a.txt").exists());
+    }
 }
 
 #[cfg(test)]
@@ -11334,10 +11608,15 @@ async fn preview_remote_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
 ) -> Result<String, String> {
-    let temp_path = std::env::temp_dir().join(format!(
-        "aeroftp_preview_{}",
-        chrono::Utc::now().timestamp_millis()
-    ));
+    // The preview lands in clear on disk: in a private folder (0700, a name
+    // no one can predict) rather than at a timestamped name in the shared
+    // temp folder with the default mode (deep-scan 105). The folder goes
+    // away with `preview_dir`.
+    let preview_dir = tempfile::Builder::new()
+        .prefix("aeroftp_preview_")
+        .tempdir()
+        .map_err(|e| format!("Failed to create preview folder: {}", e))?;
+    let temp_path = preview_dir.path().join("content");
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
     // Try provider path first (cloud providers, GitHub, etc.)

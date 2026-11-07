@@ -94,7 +94,7 @@ pub trait ReadableVault: Send {
 /// Reject any vault entry path that is absolute or carries a `..` / `.` / root /
 /// prefix component, so a hostile or corrupt container cannot make an export
 /// escape the chosen destination.
-fn validate_rel_path(rel_path: &str) -> Result<(), String> {
+pub(crate) fn validate_rel_path(rel_path: &str) -> Result<(), String> {
     if rel_path.is_empty() {
         return Err("empty entry path".to_string());
     }

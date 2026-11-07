@@ -36,6 +36,28 @@ function computeOutputDimensions(
     return { width: Math.round(w), height: Math.round(h) };
 }
 
+/**
+ * Where "Save Copy" writes: the typed name reduced to its last component, in
+ * the image's own folder. A name holding `/`, `\\` or `..` used to be joined
+ * as typed and the copy landed outside the folder (deep-scan 81); an empty,
+ * `.` or `..` name falls back to the original's base name.
+ */
+export function copyOutputPath(directory: string, name: string, baseName: string, format: string): string {
+    const last = (name.split(/[\\/]/).pop() ?? '').trim();
+    const fallback = baseName.split(/[\\/]/).pop() ?? '';
+    const plain = last === '' || last === '.' || last === '..' ? fallback : last;
+    return `${directory}/${plain}_edited.${format}`;
+}
+
+/**
+ * What the filename field keeps of what is typed or pasted: no `/` or `\\`,
+ * so the name shown is the name the copy gets, never a folder path that
+ * `copyOutputPath` would silently reduce.
+ */
+export function copyNameInput(value: string): string {
+    return value.replace(/[\\/]/g, '');
+}
+
 export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
     isOpen, filePath, fileName, editState, originalDimensions, onSaved, onClose,
 }) => {
@@ -92,7 +114,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
         setError(null);
         const outputPath = mode === 'replace'
             ? filePath
-            : `${directory}/${name}_edited.${format}`;
+            : copyOutputPath(directory, name, baseName, format);
         try {
             const result = await invoke<ImageResult>('process_image', {
                 inputPath: filePath,
@@ -147,7 +169,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     <input
                         className="flex-1 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
                         value={name}
-                        onChange={e => setName(e.target.value)}
+                        onChange={e => setName(copyNameInput(e.target.value))}
                     />
                     <span className="text-sm text-[var(--color-text-secondary)]">.{format}</span>
                 </div>
