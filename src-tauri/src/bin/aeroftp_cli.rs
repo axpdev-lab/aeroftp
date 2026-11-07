@@ -76227,6 +76227,15 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
             &tc.name,
             &tc.arguments,
         );
+        // Bound from this one snapshot: a target that resolves to no profile
+        // here (removed since the check above) is refused, not approved for
+        // nothing and later run on a profile recreated with its name.
+        if let Some(reason) = ftp_client_gui_lib::ai_core::tools::unbound_change_target(
+            &approved_targets,
+            &tc.arguments,
+        ) {
+            return Ok(format!("Error: {reason}"));
+        }
         // Check approval
         let approved = if is_auto_approved(&tc.name, cfg.approve_level) {
             if is_tty {

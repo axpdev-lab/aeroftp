@@ -464,6 +464,33 @@ async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
     assert!(prompt.contains("path: /keep/me.txt"), "{prompt}");
 }
 
+/// The approval of a change is bound from one profile snapshot: a target
+/// that resolves to no profile in it is refused before the prompt, so a
+/// profile recreated with its name later never receives the write.
+#[test]
+fn the_cli_refuses_an_unbound_change_target_before_it_asks() {
+    let code: String = include_str!("bin/aeroftp_cli.rs")
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let bound = code
+        .find("let approved_targets = ftp_client_gui_lib::ai_core::tools::change_targets(")
+        .expect("the binding");
+    let refused = code[bound..]
+        .find("unbound_change_target(")
+        .expect("the unbound refusal")
+        + bound;
+    let asked = code[bound..]
+        .find("prompt_tool_approval(&tc.name")
+        .expect("the prompt")
+        + bound;
+    assert!(
+        refused < asked,
+        "an unbound target is refused before the prompt asks"
+    );
+}
+
 /// A tool name from the provider with control characters is refused before
 /// anything is printed, so an escape sequence cannot rewrite the prompt, and
 /// the call never reaches dispatch.

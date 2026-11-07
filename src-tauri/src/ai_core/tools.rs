@@ -2305,6 +2305,22 @@ pub fn change_target_ids(
         .collect()
 }
 
+/// Why a change cannot be approved from these targets: one names no saved
+/// profile in this snapshot, so it would be approved for nothing and run on
+/// whatever profile has that name when the call is dispatched. `None` when
+/// every target resolved. The check and the binding come from one snapshot,
+/// so a profile removed between an earlier check and this one is refused.
+pub fn unbound_change_target(targets: &[ApprovedTarget], args: &Value) -> Option<String> {
+    targets.iter().find(|target| target.profile.is_none()).map(|target| {
+        let named = args.get(target.key).and_then(Value::as_str).unwrap_or_default();
+        format!(
+            "{} '{named}' is not the name or id of a saved server, and a change runs only on a saved \
+             server named exactly",
+            target.key
+        )
+    })
+}
+
 /// `args` with every approved target replaced by its profile id, so the
 /// backend resolves the profile the approval named and no other: a name
 /// resolved again after the approval could reach a profile replaced since.
@@ -3395,6 +3411,33 @@ mod tests {
                 "{name} must be routed here, or removing its legacy arm makes it unreachable: {outcome:?}"
             );
         }
+    }
+
+    /// CodeRabbit on b1023ea2a: the exactness check and the approval binding
+    /// read the profiles separately, so a profile removed between them left
+    /// the approval bound to nothing, and one recreated with its name before
+    /// dispatch received the write. The binding itself now refuses an
+    /// unresolved target, from the same snapshot it binds.
+    #[test]
+    fn an_approval_snapshot_with_an_unresolved_target_is_refused() {
+        let gone = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let args = json!({"server": "staging", "path": "/x"});
+        // `staging` existed when the exact check ran, and is gone now.
+        let targets = change_targets(&gone, "remote_delete", &args);
+        assert_eq!(targets.len(), 1);
+        assert!(targets[0].profile.is_none());
+        let reason = unbound_change_target(&targets, &args).expect("refused");
+        assert!(
+            reason.starts_with("server 'staging' is not the name or id of a saved server"),
+            "{reason}"
+        );
+        // A snapshot where every target resolves is not refused, and nor is a read.
+        let present = SavedServers(vec![saved("srv_2", "staging")]);
+        assert!(
+            unbound_change_target(&change_targets(&present, "remote_delete", &args), &args)
+                .is_none()
+        );
+        assert!(change_targets(&gone, "remote_list", &args).is_empty());
     }
 
     /// CodeRabbit on #1522: a change naming no saved server was approved for
