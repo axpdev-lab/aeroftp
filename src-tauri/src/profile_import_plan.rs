@@ -1059,18 +1059,25 @@ mod tests {
             assert!(!same_target(&ftp("explicit"), &ftp(variant)), "{variant:?}");
         }
         // Only the exact default spellings equal an absent option.
-        let sftp = |options: serde_json::Value| {
-            json!({"host": "sftp.example.com", "protocol": "sftp", "options": options})
-        };
-        assert!(same_target(&sftp(json!({})), &sftp(json!({"verifyCert": "true"}))));
-        assert!(same_target(&sftp(json!({})), &sftp(json!({"trustUnknownHosts": "false"}))));
+        let sftp = |options: serde_json::Value| json!({"host": "sftp.example.com", "protocol": "sftp", "options": options});
+        assert!(same_target(
+            &sftp(json!({})),
+            &sftp(json!({"verifyCert": "true"}))
+        ));
+        assert!(same_target(
+            &sftp(json!({})),
+            &sftp(json!({"trustUnknownHosts": "false"}))
+        ));
         for options in [
             json!({"verifyCert": "TRUE"}),
             json!({"verifyCert": "true "}),
             json!({"trustUnknownHosts": "False"}),
             json!({"trustUnknownHosts": " false"}),
         ] {
-            assert!(!same_target(&sftp(json!({})), &sftp(options.clone())), "{options}");
+            assert!(
+                !same_target(&sftp(json!({})), &sftp(options.clone())),
+                "{options}"
+            );
         }
     }
 
