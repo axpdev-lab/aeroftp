@@ -24,7 +24,7 @@
  */
 
 import type React from 'react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type GuardKind = 'busy' | 'dirty';
 
@@ -70,8 +70,23 @@ export interface GuardedClose {
   cancelConfirm: () => void;
 }
 
+// The modals that route ESC through this hook, in the order they opened. Only
+// the last one answers a press: window listeners run in registration order,
+// so without this a panel opened first (AeroSync) would take the ESC meant
+// for a prompt opened over it.
+const escapeStack: symbol[] = [];
+
+/** Whether an open modal routes ESC through this hook. A handler that closes
+ *  something underneath (the app-wide ESC shortcut, the Settings panel) must
+ *  leave the key alone then: it would otherwise take or swallow the ESC meant
+ *  for that modal. */
+export function isEscapeClaimed(): boolean {
+  return escapeStack.length > 0;
+}
+
 export function useGuardedClose({ guard, onClose, onAbort, backdrop = 'idle', escape = false }: UseGuardedCloseOptions): GuardedClose {
   const [confirmKind, setConfirmKind] = useState<GuardKind | null>(null);
+  const tokenRef = useRef<symbol | null>(null);
 
   const requestClose = useCallback(() => {
     if (guard) setConfirmKind(guard);
@@ -90,10 +105,23 @@ export function useGuardedClose({ guard, onClose, onAbort, backdrop = 'idle', es
 
   // ESC asks like the X does. The confirm takes ESC first (capture phase), so
   // an open confirm is answered "keep" and the modal stays.
+  // The place in the stack is held for as long as ESC is enabled, across the
+  // confirm, so a modal keeps its rank while it asks.
+  useEffect(() => {
+    if (!escape) return;
+    const token = Symbol('guarded-close');
+    escapeStack.push(token);
+    tokenRef.current = token;
+    return () => {
+      escapeStack.splice(escapeStack.indexOf(token), 1);
+      tokenRef.current = null;
+    };
+  }, [escape]);
   useEffect(() => {
     if (!escape || confirmKind) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (escapeStack[escapeStack.length - 1] !== tokenRef.current) return;
       e.preventDefault();
       requestClose();
     };

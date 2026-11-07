@@ -5,7 +5,8 @@
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useGuardedClose, type BackdropPolicy, type GuardKind, type GuardedClose } from './useGuardedClose';
+import { isEscapeClaimed, useGuardedClose, type BackdropPolicy, type GuardKind, type GuardedClose } from './useGuardedClose';
+import { useKeyboardShortcuts } from './useKeyboardShortcuts';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -97,6 +98,53 @@ describe('useGuardedClose', () => {
         // With the confirm open, ESC belongs to the confirm, not to the modal.
         escape();
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers ESC only for the modal opened last', () => {
+        const onUnder = vi.fn();
+        const onOver = vi.fn();
+        const Two = ({ over }: { over: boolean }) => {
+            useGuardedClose({ guard: null, onClose: onUnder, escape: true });
+            return over ? <Over /> : null;
+        };
+        const Over = () => {
+            useGuardedClose({ guard: null, onClose: onOver, escape: true });
+            return null;
+        };
+        // The panel opens first, the prompt over it later, as in the app.
+        act(() => root.render(<Two over={false} />));
+        act(() => root.render(<Two over />));
+        escape();
+        expect(onOver).toHaveBeenCalledTimes(1);
+        expect(onUnder).not.toHaveBeenCalled();
+        // Once the prompt over it is gone, the panel underneath answers again.
+        act(() => root.render(<Two over={false} />));
+        escape();
+        expect(onUnder).toHaveBeenCalledTimes(1);
+    });
+
+    it('takes ESC before the app-wide shortcut, which answers again once the modal is gone', () => {
+        // The app's shortcut listener is added first, at mount, as in App.tsx;
+        // it called preventDefault on every ESC, so the modal never saw one.
+        const appEscape = vi.fn();
+        const Modal = () => {
+            useGuardedClose({ guard: null, onClose, escape: true });
+            return null;
+        };
+        const AppShell = ({ open }: { open: boolean }) => {
+            useKeyboardShortcuts({ Escape: appEscape }, []);
+            return open ? <Modal /> : null;
+        };
+        act(() => root.render(<AppShell open={false} />));
+        act(() => root.render(<AppShell open />));
+        expect(isEscapeClaimed()).toBe(true);
+        escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(appEscape).not.toHaveBeenCalled();
+        act(() => root.render(<AppShell open={false} />));
+        expect(isEscapeClaimed()).toBe(false);
+        escape();
+        expect(appEscape).toHaveBeenCalledTimes(1);
     });
 
     it('leaves ESC to an inner handler that took it', () => {
