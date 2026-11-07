@@ -11194,6 +11194,10 @@ const App: React.FC = () => {
   /** Why the live connection is no longer the target a batch was queued for,
    *  as the message key, or `null` when it still is. */
   const queuedTargetProblem = useLatestCallback((queuedFor: QueuedTarget): string | null => {
+    // A tab switch or a connect activates the new tab before the backend has
+    // reconnected: until it has, the live tab is not the server the backend
+    // writes to, or reads from.
+    if (remoteConnectPhaseRef.current) return 'transfer.queuedForAnotherServer';
     if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) return 'transfer.queuedForAnotherServer';
     // The same server fields can reach another account: FileLu's API key is
     // the password, and an OAuth account is told apart only by its profile.

@@ -71,7 +71,12 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
   const readForEditor = useLatestCallback(async (path: string, isRemote: boolean): Promise<{ content: string; target: QueuedTarget | null }> => {
     if (!isRemote) return { content: await invoke<string>('read_local_file', { path }), target: null };
     const target = remoteTarget.snapshot();
+    // Not while a switch or a connect is under way: the tab is the new one
+    // already, the backend still the old one, and the generation read now
+    // would be the old connection's under the new server's name.
+    if (remoteTarget.changedSince(target)) throw new Error(remoteTarget.changedMessage());
     const expectedGeneration = await invoke<number>('provider_connection_generation');
+    if (remoteTarget.changedSince(target)) throw new Error(remoteTarget.changedMessage());
     let content: string;
     try {
       content = await invoke<string>('preview_remote_file', { path, expectedGeneration });

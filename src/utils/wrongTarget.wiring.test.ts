@@ -105,6 +105,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn,
             isConnected: true,
+            remoteConnectPhaseRef: { current: false },
             sessions: [session],
             activeSessionId: 'A',
             liveConnectionParams: session.connectionParams,
@@ -127,6 +128,27 @@ describe('a queued transfer', () => {
             expect(run).not.toHaveBeenCalled();
             expect(ctx.transferQueue.failTransfer).toHaveBeenCalledWith('item-1', outcome);
         }
+    });
+
+    // switchSession activates the new tab, then reconnects the backend: in
+    // between, the live tab names the new server while the backend is still
+    // on the old one. Nothing bound to the new tab runs until it has.
+    it('fails while a tab switch or a connect is still reconnecting the backend', async () => {
+        const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
+        const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
+        const ctx = {
+            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' },
+            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
+            isSameConnection, savedProfileIdOf, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+        };
+        const { code } = await transformWithOxc(source, 'bound.ts');
+        const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
+        // The new tab's target, taken while the backend is still the old one's.
+        ctx.remoteConnectPhaseRef.current = 'switch';
+        const target = fns.snapshotQueuedTarget();
+        expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+        ctx.remoteConnectPhaseRef.current = false;
+        expect(fns.queuedTargetProblem(target)).toBeNull();
     });
 
     it.each([
@@ -358,6 +380,20 @@ describe('the editor\'s save of a remote file', () => {
     it('refuses the content when the backend saw another connection', async () => {
         const r = await reader(() => { throw 'CONNECTION_CHANGED: the server changed while the file was opened; nothing was read'; }, () => 7, () => false);
         await expect(r.readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
+    });
+
+    it('reads nothing when the editor opens while a switch is reconnecting the backend', async () => {
+        const r = await reader(() => 'old server', () => 7, () => true);
+        await expect(r.readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
+        expect(r.invoke).not.toHaveBeenCalledWith('preview_remote_file', expect.anything());
+        expect(r.invoke).not.toHaveBeenCalledWith('provider_connection_generation');
+    });
+
+    it('reads nothing when a switch starts while the generation is taken', async () => {
+        let asked = false;
+        const r = await reader(() => 'old server', () => { asked = true; return 7; }, () => asked);
+        await expect(r.readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
+        expect(r.invoke).not.toHaveBeenCalledWith('preview_remote_file', expect.anything());
     });
 
     it('refuses the content when the tab changed while it was read', async () => {

@@ -241,6 +241,7 @@ export function fixture(options: Options = {}) {
     RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
     retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
     QueuedTargetChangedError,
+    remoteConnectPhaseRef: { current: false as false | 'connect' | 'switch' },
     fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, folderTransferFailure, FolderTransferFailedError,
     isCancelledTransferError, createFileBatchDispatcher, rearmedOnUserAction,
     joinRemotePath: (dir: string, name: string) => `${dir}${dir.endsWith('/') ? '' : '/'}${name}`,
