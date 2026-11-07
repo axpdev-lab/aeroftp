@@ -20569,6 +20569,29 @@ mod import_security_tests {
         );
     }
 
+    /// CodeRabbit on #1524: a kept backup that carries two spellings of one
+    /// option, the safe-looking one first, still loads as the weaker one, so
+    /// its overwrite is refused and the stored profile keeps its secrets.
+    #[test]
+    fn an_overwrite_with_conflicting_spellings_is_refused() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 22, "username": "user",
+            "protocol": "sftp", "options": {}
+        })];
+        let mut server = relaxed("srv_a");
+        server.port = 22;
+        server.protocol = Some("sftp".into());
+        server.options = Some(json!({"trustUnknownHosts": false, "trust_unknown_hosts": true}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::KeepAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.target_changed, ["srv_a name"]);
+    }
+
     /// The reset happens before the overwrite's target check: the safe copy
     /// overwrites as before, while a kept PASV trust is a weaker connection
     /// the stored secrets were not saved for, so that overwrite is refused.

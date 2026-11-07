@@ -51,6 +51,16 @@ describe('makeSafe', () => {
         expect(profile.options).toEqual({ webdavScheme: 'https' });
     });
 
+    it('resets the WebDAV scheme stored as ftpsMode and a webdavs http:// host', () => {
+        const ftps = makeSafe({ host: 'dav.example.com', protocol: 'webdav', options: { ftpsMode: 'http' } });
+        expect(ftps.removed).toEqual(['webdavScheme']);
+        expect(ftps.profile.options).toEqual({ webdavScheme: 'https' });
+        const webdavs = makeSafe({ host: 'http://dav.example.com', protocol: 'webdavs', options: {} });
+        expect(webdavs.removed).toEqual(['webdavScheme']);
+        expect(webdavs.profile.host).toBe('https://dav.example.com');
+        expect(webdavs.profile.options).toEqual({ webdavScheme: 'https' });
+    });
+
     it('returns the same profile when nothing relaxes a check', () => {
         const profile = { host: 'files.example.com', options: { timeout: 30 } };
         expect(makeSafe(profile)).toEqual({ profile, removed: [] });

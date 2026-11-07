@@ -605,29 +605,32 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         serde_json::Value::Null => serde_json::json!("ftp"),
         value => value,
     };
-    // An option counts under every spelling the connection loader reads as the
-    // same option (`trust_unknown_hosts` as `trustUnknownHosts`), or a backup
-    // could weaken a connection under the other spelling and keep the saved
-    // secret (CodeRabbit on #1524).
-    let spelled = |p: &serde_json::Value, key: &str| -> Option<serde_json::Value> {
-        let options = p.get("options")?;
-        let canonical = crate::profile_loader::canonicalize_profile_option_key(key);
-        options
-            .get(key)
-            .or_else(|| options.get(canonical.as_str()))
-            .cloned()
+    // A guarded option is compared on the value the connection loader ends
+    // up with (`apply_profile_options`): under every spelling it reads, and
+    // with the one that wins when a profile carries two
+    // (`trustUnknownHosts: false` beside `trust_unknown_hosts: true` loads
+    // as true), or a backup could weaken a connection under the other
+    // spelling and keep the saved secret (CodeRabbit on #1524).
+    let effective = |p: &serde_json::Value| {
+        let mut extra = std::collections::HashMap::new();
+        crate::profile_loader::apply_profile_options(&mut extra, p);
+        extra
     };
-    let option = |p: &serde_json::Value, key: &str| match present(spelled(p, key).as_ref()) {
-        serde_json::Value::Bool(true) if key == "verifyCert" => serde_json::Value::Null,
-        serde_json::Value::Bool(false) if OPTIONS_OFF_WHEN_ABSENT.contains(&key) => {
-            serde_json::Value::Null
+    let (loaded_a, loaded_b) = (effective(a), effective(b));
+    let option = |loaded: &std::collections::HashMap<String, String>, key: &str| {
+        let canonical = crate::profile_loader::canonicalize_profile_option_key(key);
+        match loaded.get(&canonical).map(|v| v.trim()) {
+            None | Some("") => serde_json::Value::Null,
+            Some(v) if key == "verifyCert" && v.eq_ignore_ascii_case("true") => {
+                serde_json::Value::Null
+            }
+            Some(v)
+                if OPTIONS_OFF_WHEN_ABSENT.contains(&key) && v.eq_ignore_ascii_case("false") =>
+            {
+                serde_json::Value::Null
+            }
+            Some(v) => serde_json::Value::String(v.to_string()),
         }
-        serde_json::Value::String(s)
-            if OPTIONS_OFF_WHEN_ABSENT.contains(&key) && s.eq_ignore_ascii_case("false") =>
-        {
-            serde_json::Value::Null
-        }
-        value => value,
     };
     host(a) == host(b)
         && protocol(a) == protocol(b)
@@ -636,7 +639,7 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
             .all(|key| present(a.get(key)) == present(b.get(key)))
         && OPTIONS_THAT_GUARD_THE_SECRET
             .iter()
-            .all(|key| option(a, key) == option(b, key))
+            .all(|key| option(&loaded_a, key) == option(&loaded_b, key))
 }
 
 /// The profile an overwrite stores: `existing` with the fields of `imported`
@@ -1024,6 +1027,12 @@ mod tests {
         let mut same = stored.clone();
         same["options"]["trust_unknown_hosts"] = json!(false);
         assert!(same_target(&stored, &same));
+        // Two spellings of one option: the one the loader applies last wins,
+        // so the safe-looking first one cannot hide a weaker connection.
+        let mut both = stored.clone();
+        both["options"]["trustUnknownHosts"] = json!(false);
+        both["options"]["trust_unknown_hosts"] = json!(true);
+        assert!(!same_target(&stored, &both));
     }
 
     #[test]
