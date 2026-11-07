@@ -26,7 +26,7 @@ import { PDFViewer } from './viewers/PDFViewer';
 import { TextViewer } from './viewers/TextViewer';
 import { useI18n } from '../../i18n';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
-import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { isEscapeClaimed, useGuardedClose } from '../../hooks/useGuardedClose';
 import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 
 export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
@@ -74,7 +74,9 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
         const handleKeyDown = (e: KeyboardEvent) => {
             switch (e.key) {
                 case 'Escape':
-                    guarded.requestClose();
+                    // A modal open over the preview (the image save dialog)
+                    // answers ESC itself (Discussion #1527).
+                    if (!isEscapeClaimed()) guarded.requestClose();
                     break;
                 case 'ArrowLeft':
                     if (hasPrevious && onPrevious && !previewDirty) onPrevious();

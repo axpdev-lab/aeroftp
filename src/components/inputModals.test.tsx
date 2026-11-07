@@ -57,6 +57,7 @@ import CryptomatorCreateDialog from './CryptomatorCreateDialog';
 import { AeroShareDialog } from './AeroShare/AeroShareDialog';
 import { FilenNotesPanel } from './FilenNotesPanel';
 import { ImageSaveDialog } from './Preview/viewers/ImageSaveDialog';
+import { UniversalPreview } from './Preview/UniversalPreview';
 import { GitHubWriteModeIndicator } from './GitHubWriteModeIndicator';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -620,6 +621,21 @@ describe('ImageSaveDialog (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
         await escape();
         expect(onClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('takes ESC before the preview it was opened from', async () => {
+        // The preview listens on document, before the dialog's window
+        // listener: one ESC closed the dialog and asked to close the preview.
+        const onPreviewClose = vi.fn();
+        const onSaveClose = vi.fn();
+        const file = { name: 'sentinel.bin', path: '/sentinel/sentinel.bin', size: 1, isRemote: false };
+        const preview = <UniversalPreview isOpen file={file} onClose={onPreviewClose} />;
+        await render(preview);
+        await render(<>{preview}<ImageSaveDialog isOpen filePath="/sentinel/img/sentinel.png" fileName="sentinel.png" editState={editState}
+            originalDimensions={{ width: 4, height: 2 }} onSaved={() => undefined} onClose={onSaveClose} /></>);
+        await escape();
+        expect(onSaveClose).toHaveBeenCalledTimes(1);
+        expect(onPreviewClose).not.toHaveBeenCalled();
     });
 });
 
