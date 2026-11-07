@@ -12,6 +12,8 @@ import { useModalFileView } from '../modalview/useModalFileView';
 import { ModalViewToolbar } from '../modalview/ModalViewToolbar';
 import { ModalFileGrid, ModalGridItem } from '../modalview/ModalFileGrid';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 import { PasswordStrengthBar } from './PasswordStrengthBar';
 import { PasswordMatchHint } from '../common/PasswordMatchHint';
 import { SaveAllMenu } from '../common/SaveAllMenu';
@@ -28,6 +30,10 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
     const t = useTranslation();
     const scrubDrag = useDraggableModal();
     const repairDrag = useDraggableModal();
+    // A repair in flight writes the vault after a close: the backdrop is inert
+    // while it runs and the X asks first (Discussion #1527).
+    const closeRepair = React.useCallback(() => state.setShowRepairDialog(false), [state]);
+    const repairGuard = useGuardedClose({ guard: state.isRepairing ? 'busy' : null, onClose: closeRepair });
     const modalView = useModalFileView();
     const isZip = state.isPlaintextZip;
 
@@ -571,7 +577,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
 
             {/* P2: Draggable Repair modal (respects themes, draggable header via hook, template consistent with other app modals) */}
             {state.showRepairDialog && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={() => state.setShowRepairDialog(false)}>
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onClick={repairGuard.onBackdropClick}>
                     <div
                         {...repairDrag.panelProps}
                         className="w-[min(92vw,620px)] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden"
@@ -581,7 +587,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                                 <Wrench size={16} className="text-rose-500" /> {t('vault.errorCorrectionRepair')}
                             </div>
-                            <button onClick={() => state.setShowRepairDialog(false)} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
+                            <button onClick={repairGuard.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">✕</button>
                         </div>
                         <div className="p-4 text-sm">
                             <div className="flex items-center gap-2 mb-3">
@@ -610,7 +616,7 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             )}
                         </div>
                         <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex gap-2 justify-end">
-                            <button onClick={() => state.setShowRepairDialog(false)} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('vault.close')}</button>
+                            <button onClick={repairGuard.requestClose} className="px-3 py-1 text-sm rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">{t('vault.close')}</button>
                             <button
                                 onClick={state.handleRepair}
                                 disabled={state.isRepairing || state.loading}
@@ -620,6 +626,14 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
                             </button>
                         </div>
                     </div>
+                    {repairGuard.confirmOpen && repairGuard.confirmKind && (
+                        <GuardedCloseConfirm
+                            kind={repairGuard.confirmKind}
+                            canAbort={repairGuard.canAbort}
+                            onKeep={repairGuard.cancelConfirm}
+                            onConfirm={repairGuard.confirmAndClose}
+                        />
+                    )}
                 </div>
             )}
         </>

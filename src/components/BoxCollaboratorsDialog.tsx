@@ -8,6 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import {
   addBoxCollaborator,
   BOX_ROLES,
@@ -48,6 +50,9 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   const [notice, setNotice] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
+  // An invite or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
+  // inert in both cases and the X asks first (Discussion #1527).
+  const guarded = useGuardedClose({ guard: adding || removingId !== null ? 'busy' : email.trim() ? 'dirty' : null, onClose });
 
   const roleLabel = (r: string) => (r in ROLE_KEY ? t(ROLE_KEY[r as BoxRole]) : r);
 
@@ -67,11 +72,11 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose]);
 
   useModalFocusTrap(panelRef, emailRef);
 
@@ -109,7 +114,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         {...modalDrag.panelProps}
         ref={panelRef}
@@ -123,7 +128,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
             <Users size={16} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('box.collaborators')}</h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
             <X size={16} className="text-gray-500" />
           </button>
         </div>
@@ -186,7 +191,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
 
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-700">
           <button
-            onClick={onClose}
+            onClick={guarded.requestClose}
             className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {t('common.close')}
@@ -201,6 +206,9 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
           </button>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }

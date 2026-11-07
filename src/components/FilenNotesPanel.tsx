@@ -13,6 +13,8 @@ import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { formatDate as formatDateFull } from '../utils';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { changeNoteType, createTagOnNote, deleteTag, renameTag, tagNote, untagNote } from '../utils/filenNoteTags';
 
 // ─── Types ───
@@ -105,6 +107,10 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const [loadingContent, setLoadingContent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // An edited note not yet saved is lost on close, and a save in flight goes
+  // on after it: the backdrop is inert then, and the X and ESC ask first
+  // (Discussion #1527).
+  const guarded = useGuardedClose({ guard: saving ? 'busy' : dirty ? 'dirty' : null, onClose });
 
   // State: history view
   const [history, setHistory] = useState<FilenNoteHistoryEntry[] | null>(null);
@@ -227,13 +233,13 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         } else if (selectedNote) {
           handleBackToList();
         } else {
-          onClose();
+          guarded.requestClose();
         }
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen, selectedNote, history, onClose, handleBackToList]);
+  }, [isOpen, selectedNote, history, guarded.requestClose, handleBackToList]);
 
   const handleContentChange = useCallback((value: string) => {
     setNoteContent(value);
@@ -969,7 +975,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[5vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[600px] h-[70vh] flex flex-col animate-scale-in overflow-hidden"
         role="dialog"
@@ -986,7 +992,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
               ({filteredNotes.length})
             </span>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500">
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500">
             <X size={16} />
           </button>
         </div>
@@ -1004,6 +1010,14 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           </p>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm
+          kind={guarded.confirmKind}
+          canAbort={guarded.canAbort}
+          onKeep={guarded.cancelConfirm}
+          onConfirm={guarded.confirmAndClose}
+        />
+      )}
     </div>
   );
 }

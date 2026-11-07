@@ -8,6 +8,8 @@ import { X, Download, RotateCcw, History, RefreshCw, Trash2, AlertTriangle } fro
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface FileVersion {
   id: string;
@@ -31,6 +33,8 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [pendingPurge, setPendingPurge] = useState<FileVersion | null>(null);
+  // A download, restore or purge already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+  const guarded = useGuardedClose({ guard: actionInProgress !== null ? 'busy' : null, onClose });
 
   useEffect(() => {
     loadVersions();
@@ -102,7 +106,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[520px] max-h-[70vh] flex flex-col animate-scale-in"
@@ -114,7 +118,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
             <History size={18} className="text-blue-500" />
             <h3 className="font-semibold text-sm">{t('versions.title') || 'File Versions'}</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button onClick={guarded.requestClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X size={16} />
           </button>
         </div>
@@ -217,6 +221,9 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
             </div>
           </div>
         </div>
+      )}
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
       )}
     </div>
   );

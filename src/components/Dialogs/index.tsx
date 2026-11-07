@@ -17,6 +17,7 @@ import { formatArchiveCipher } from '../../utils/archiveCipher';
 import { getMimeType, getFileExtension } from '../Preview/utils/fileTypes';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 import { PROFILES_CHANGED_EVENT } from '../../utils/serverProfileStore';
 import { dispatchMasterPasswordChanged } from '../../utils/masterPasswordEvents';
 import { PasswordStrengthBar } from '../vault/PasswordStrengthBar';
@@ -277,6 +278,10 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
     const [showPassword, setShowPassword] = useState(false);
     const [verifying, setVerifying] = useState(false);
     const [error, setError] = useState('');
+    // The X and Cancel are disabled while the password is checked; a typed
+    // password keeps the backdrop inert and the X asks before dropping it
+    // (Discussion #1527).
+    const guarded = useGuardedClose({ guard: verifying ? 'busy' : password ? 'dirty' : null, onClose });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -297,7 +302,7 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh] bg-black/50 backdrop-blur-sm"
-            onClick={(e) => { if (e.target === e.currentTarget && !verifying) onClose(); }}
+            onClick={guarded.onBackdropClick}
         >
             <form
                 {...modalDrag.panelProps}
@@ -311,7 +316,7 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
                 >
                     <Lock size={14} className="text-sky-500 shrink-0 pointer-events-none" />
                     <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate pointer-events-none" title={archiveName}>{archiveName}</span>
-                    <button type="button" onClick={onClose} disabled={verifying} aria-label={t('common.close')} className="ml-auto shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-0.5 rounded disabled:opacity-40">
+                    <button type="button" onClick={guarded.requestClose} disabled={verifying} aria-label={t('common.close')} className="ml-auto shrink-0 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-0.5 rounded disabled:opacity-40">
                         <X size={15} />
                     </button>
                 </div>
@@ -358,6 +363,14 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
                     </div>
                 </div>
             </form>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
@@ -599,6 +612,13 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
         { isReadonly: file.is_readonly, isHidden: file.is_hidden }
     );
     const [pendingAttr, setPendingAttr] = useState<'readOnly' | 'hidden' | null>(null);
+    // A privacy or attribute change, or a checksum, in flight goes on after a
+    // close: the backdrop is inert while it runs and the X asks first
+    // (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: applyingPrivacy || pendingAttr !== null || file.checksum?.calculating ? 'busy' : null,
+        onClose,
+    });
     const [attrError, setAttrError] = useState<string | null>(null);
 
     // Reseed when the dialog is pointed at a DIFFERENT file while staying
@@ -870,7 +890,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={file.name} onClick={onClose}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-label={file.name} onClick={guarded.onBackdropClick}>
             <div
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[560px] max-w-[92vw] max-h-[85vh] overflow-hidden animate-scale-in"
                 onClick={(e) => e.stopPropagation()}
@@ -893,7 +913,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                         </div>
                     </div>
                     <button
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
                     >
                         <X size={20} />
@@ -1309,13 +1329,21 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
                 {/* Footer */}
                 <div className="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700">
                     <button
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
                     >
                         {t('common.close')}
                     </button>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
@@ -1383,6 +1411,9 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
     })();
     const [selectedPrivacy, setSelectedPrivacy] = useState<'public' | 'private' | 'hidden'>(initialPrivacy);
     const [applyingPrivacy, setApplyingPrivacy] = useState(false);
+    // A privacy change in flight goes on after a close: the backdrop is
+    // inert while it runs, and the X and ESC ask first (Discussion #1527).
+    const guarded = useGuardedClose({ guard: applyingPrivacy ? 'busy' : null, onClose });
     const applyPrivacyToAll = async () => {
         if (!onPrivacyChange) return;
         setApplyingPrivacy(true);
@@ -1396,11 +1427,11 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
 
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape') guarded.requestClose();
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
-    }, [onClose]);
+    }, [guarded.requestClose]);
 
     const fileCount = files.filter(f => !f.is_dir).length;
     const folderCount = files.filter(f => f.is_dir).length;
@@ -1477,7 +1508,7 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
             role="dialog"
             aria-modal="true"
             aria-label={t('properties.multipleSelected', { count: files.length })}
-            onClick={onClose}
+            onClick={guarded.onBackdropClick}
         >
             <div
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[560px] max-w-[92vw] max-h-[85vh] overflow-hidden animate-scale-in"
@@ -1496,7 +1527,7 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
                         </div>
                     </div>
                     <button
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1"
                         aria-label={t('common.close')}
                     >
@@ -1663,13 +1694,21 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
 
                 <div className="flex justify-end p-4 border-t border-gray-200 dark:border-gray-700">
                     <button
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
                     >
                         {t('common.close')}
                     </button>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
@@ -1691,6 +1730,10 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
     const [timeoutMinutes, setTimeoutMinutes] = useState(5);
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    // While the store is being set up the backdrop is inert and the X asks,
+    // since setting up goes on after a close; typed passwords ask before they
+    // are dropped (Discussion #1527: a stray click closed it mid-setup).
+    const guarded = useGuardedClose({ guard: isLoading ? 'busy' : password || confirmPassword ? 'dirty' : null, onClose });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -1735,7 +1778,7 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh] bg-black/50 backdrop-blur-sm" onClick={guarded.onBackdropClick}>
             <div
                 {...modalDrag.panelProps}
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md mx-4 overflow-hidden animate-scale-in"
@@ -1748,7 +1791,7 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                     <Shield size={18} className="text-emerald-500 dark:text-emerald-400 pointer-events-none" />
                     <span className="font-medium text-gray-900 dark:text-gray-100 pointer-events-none">{t('masterPassword.setupTitle')}</span>
                     <span className="text-xs text-gray-400 ml-auto pointer-events-none">{bootstrapMode ? t('masterPassword.setupBootstrapDescription') : t('masterPassword.setupDescription')}</span>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 ml-2">
+                    <button onClick={guarded.requestClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1 ml-2">
                         <X size={16} />
                     </button>
                 </div>
@@ -1905,6 +1948,14 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                     </p>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
