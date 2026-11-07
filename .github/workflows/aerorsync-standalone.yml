@@ -59,7 +59,7 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-latest, macos-15]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
           # Same reason as the permissions block above: nothing here pushes,
           # and the emitter is pull-request-controlled code.
@@ -107,7 +107,7 @@ jobs:
       # exist until the script has written it, and naming a missing directory
       # fails the action outright on macOS.
       - name: Rust cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: target/aerorsync-standalone
           # PRs restore; only main saves (Actions cache quota is 10 GB).

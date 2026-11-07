@@ -1855,12 +1855,15 @@ pub fn reason_without_the_echoed_path(reply: &str, path: &str) -> String {
 ///
 /// Only the suffix as std prints it counts: a space before it, and after it
 /// the end, a space or punctuation, so a file named `(os error 28).txt` or
-/// `/x/(os error 28)` is not a code. The first one wins: the transfer layer
-/// adds its context, and the paths it names, after the cause. Callers that
-/// know the path should remove it first, as `classify_sync_error` does.
+/// `/x/(os error 28)` is not a code. When the message holds two different
+/// codes, neither is trusted: a file name can carry one before or after the
+/// real cause (Greptile and CodeRabbit, #1517/#1520), and the text then
+/// decides as before. Callers that know the path should remove it first, as
+/// `classify_sync_error` does.
 pub fn os_error_kind(message: &str) -> Option<std::io::ErrorKind> {
     const MARK: &str = "(os error ";
     let mut from = 0;
+    let mut found_code: Option<i32> = None;
     while let Some(found) = message[from..].find(MARK) {
         let start = from + found;
         from = start + MARK.len();
@@ -1876,10 +1879,14 @@ pub fn os_error_kind(message: &str) -> Option<std::io::ErrorKind> {
             continue;
         }
         if let Ok(code) = rest[..close].trim().parse::<i32>() {
-            return Some(std::io::Error::from_raw_os_error(code).kind());
+            match found_code {
+                None => found_code = Some(code),
+                Some(earlier) if earlier == code => {}
+                Some(_) => return None,
+            }
         }
     }
-    None
+    found_code.map(|code| std::io::Error::from_raw_os_error(code).kind())
 }
 
 /// An OS error kind that means the connection is gone.

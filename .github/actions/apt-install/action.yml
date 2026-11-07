@@ -26,7 +26,11 @@ runs:
     - name: Start the apt budget clock
       id: start
       shell: bash
-      run: '"$GITHUB_ACTION_PATH/apt-install.sh" start "${{ inputs.cache-prefix }}"'
+      # The input goes through the environment, never through `${{ }}` in the
+      # script body: an expression is substituted before bash parses the line.
+      env:
+        CACHE_PREFIX: ${{ inputs.cache-prefix }}
+      run: '"$GITHUB_ACTION_PATH/apt-install.sh" start "$CACHE_PREFIX"'
 
     # Keys are `<prefix>complete-<fp>` or `<prefix>partial-<fp>` (see finish),
     # so there is never an exact hit and `key` is a placeholder. Two lookups,

@@ -14,7 +14,7 @@
 import { useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { SyncErrorKind } from '../types';
-import { classifyTransferFailure, FATAL_ERROR_KINDS, PER_FILE_ERROR_KINDS, RECONNECT_ERROR_KINDS } from '../utils/transferErrorClassifier';
+import { classifyTransferFailure, serialRunner, FATAL_ERROR_KINDS, PER_FILE_ERROR_KINDS, RECONNECT_ERROR_KINDS } from '../utils/transferErrorClassifier';
 
 export type CircuitBreakerState = 'closed' | 'open' | 'half_open';
 export type PauseReason = 'consecutive_errors' | 'fatal_error' | 'reconnecting';
@@ -61,9 +61,21 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
     tripErrorKindRef.current = null;
   }, []);
 
+  /** Failures are decided one at a time, in the order they were recorded:
+   *  the classification awaits the backend, and two calls in flight could
+   *  otherwise apply their decisions out of order (CodeRabbit, #1520). */
+  const inOrderRef = useRef(serialRunner());
+
   /** Record a failed transfer: classifies error and decides whether to trip.
    *  The classification is the backend's (see `classifyTransferFailure`). */
-  const recordFailure = useCallback(async (errorMessage: string): Promise<RecordFailureResult> => {
+  const recordFailure = useCallback(
+    (errorMessage: string): Promise<RecordFailureResult> =>
+      inOrderRef.current(() => decideFailure(errorMessage)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [config.maxConsecutiveErrors],
+  );
+
+  const decideFailure = async (errorMessage: string): Promise<RecordFailureResult> => {
     const { kind, retryable } = await classifyTransferFailure(errorMessage, invoke);
 
     // Fatal errors: immediate trip, no retry possible
@@ -91,7 +103,7 @@ export function useCircuitBreaker(config: CircuitBreakerConfig = DEFAULT_CONFIG)
     }
 
     return { shouldPause: false, isFatal: false, errorKind: kind, retryable };
-  }, [config.maxConsecutiveErrors]);
+  };
 
   /** Calculate exponential backoff delay for a given attempt (1-indexed) */
   const getRetryDelay = useCallback((attempt: number): number => {

@@ -158,6 +158,7 @@ impl GitLabHttpClient {
             }
             404 => ProviderError::NotFound(format!("GitLab: Resource not found - {}", sanitized)),
             // A commit that creates or moves a file onto an existing path.
+            // Kept as text (#1506 row 164): GitLab's 400 carries no code for a taken name.
             400 if sanitized.to_ascii_lowercase().contains("already exists") => {
                 ProviderError::AlreadyExists(format!("GitLab: {sanitized}"))
             }

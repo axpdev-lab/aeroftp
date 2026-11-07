@@ -326,6 +326,7 @@ impl ImageKitProvider {
             StatusCode::NOT_FOUND => ProviderError::NotFound(msg),
             StatusCode::CONFLICT => ProviderError::AlreadyExists(msg),
             StatusCode::BAD_REQUEST if parsed.as_ref().is_some_and(|error|
+                // Kept as text (#1506 row 164): ImageKit's 400 for this refusal has no `reason`.
                 error.message == "A file with the same name already exists at the exact location. We could not overwrite it because both overwriteFile and useUniqueFileName are set to false."
             ) => ProviderError::AlreadyExists(msg),
             s if s.is_client_error() => ProviderError::InvalidConfig(msg),

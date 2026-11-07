@@ -862,13 +862,14 @@ const SDK_ERROR_CLASSES: &[&str] = &[
 /// None when the CLI printed a bare message, as it does for a path it cannot
 /// resolve ("Node not found: name", measured 2026-11-06).
 fn sdk_error_class(msg: &str) -> Option<&'static str> {
-    msg.lines().find_map(|line| {
-        let line = line.trim();
-        let line = line.strip_prefix("Error: ").unwrap_or(line);
-        SDK_ERROR_CLASSES.iter().copied().find(|class| {
-            line.strip_prefix(class)
-                .is_some_and(|rest| rest.starts_with(':'))
-        })
+    // The first line only: a later line can be a name the message quotes
+    // (a missing `a\nRateLimitedError: x` must not read as a rate limit,
+    // CodeRabbit, #1520).
+    let line = msg.lines().map(str::trim).find(|line| !line.is_empty())?;
+    let line = line.strip_prefix("Error: ").unwrap_or(line);
+    SDK_ERROR_CLASSES.iter().copied().find(|class| {
+        line.strip_prefix(class)
+            .is_some_and(|rest| rest.starts_with(':'))
     })
 }
 
@@ -1665,18 +1666,27 @@ impl ProtonCliProvider {
         ) {
             return error;
         }
+        // What the listing cannot settle is not an absence: a NotFound read
+        // off the message stands as a plain failure (CodeRabbit, #1520).
+        let unconfirmed = |error: ProviderError| match error {
+            ProviderError::NotFound(message) => ProviderError::ServerError(message),
+            other => other,
+        };
         let parent = parent_of(abs);
         if parent == abs {
-            return error;
+            return unconfirmed(error);
         }
-        let Ok(stdout) = self
+        let stdout = match self
             .run_cli(&["filesystem", "list", &parent, "-j"], META_TIMEOUT_SECS)
             .await
-        else {
-            return error;
+        {
+            Ok(stdout) => stdout,
+            // The parent itself is not there: nor is anything under it.
+            Err(ProviderError::NotFound(_)) => return ProviderError::NotFound(abs.to_string()),
+            Err(_) => return unconfirmed(error),
         };
         let Ok(entries) = parse_list_json(&stdout, &parent) else {
-            return error;
+            return unconfirmed(error);
         };
         // The parser drops a node whose name it cannot read; with one
         // dropped, the listing does not prove an absence (Greptile, #1517).
@@ -1684,10 +1694,14 @@ impl ProtonCliProvider {
             .ok()
             .and_then(|value| value.as_array().map(Vec::len));
         if listed != Some(entries.len()) {
-            return error;
+            return unconfirmed(error);
         }
+        // A `/my-files/{uid}` path names the node by its UID, which the
+        // listing keeps in the entry's metadata (CodeRabbit, #1520).
         let name = basename(abs);
-        if entries.iter().any(|entry| entry.name == name) {
+        if entries.iter().any(|entry| {
+            entry.name == name || entry.metadata.get("uid").is_some_and(|uid| uid == &name)
+        }) {
             match error {
                 ProviderError::NotFound(message) => ProviderError::ServerError(message),
                 other => other,
@@ -4233,10 +4247,36 @@ mod cli_sequence_tests {
             .unwrap(),
         )
         .unwrap();
-        std::fs::write(dir.join("info-error.txt"), "Errore: nodo non trovato").unwrap();
+        // CodeRabbit (#1520): whatever the refusal's wording, English and
+        // SDK-prefixed included, an absence the listing cannot settle is a
+        // failure, not `false`: an unreadable entry, a parent that fails.
+        for refusal in [
+            "Errore: nodo non trovato",
+            "Node not found: gone.txt",
+            "NotFoundAPIError: Node not found",
+        ] {
+            std::fs::write(dir.join("info-error.txt"), refusal).unwrap();
+            let mut p = provider(&shim);
+            let unreadable_parent = p.exists("/my-files/locked/gone.txt").await;
+            assert!(
+                unreadable_parent.is_err(),
+                "{refusal}: {unreadable_parent:?}"
+            );
+            // A parent whose listing cannot be read settles nothing either.
+            std::fs::write(dir.join("my-files_broken.json"), b"not json").unwrap();
+            let unlistable_parent = p.exists("/my-files/broken/gone.txt").await;
+            assert!(
+                unlistable_parent.is_err(),
+                "{refusal}: {unlistable_parent:?}"
+            );
+        }
+        // A path by UID is matched against the listed UID, not only the name.
+        std::fs::write(dir.join("info-error.txt"), "Node not found").unwrap();
         let mut p = provider(&shim);
-        let unreadable_parent = p.exists("/my-files/locked/gone.txt").await;
-        assert!(unreadable_parent.is_err(), "{unreadable_parent:?}");
+        let by_uid = p
+            .exists("/my-files/docs/AAAAAAAAAAAAAAAAAAAAAA~CCCCCCCCCCCCCCCCCCCCCC")
+            .await;
+        assert!(by_uid.is_err(), "{by_uid:?}");
         // A name the parent lists is there, whatever the refusal says: an
         // English "not found" about it is a failure to read it, not an
         // absence, so nothing takes it for a free name.
@@ -4255,6 +4295,15 @@ mod cli_sequence_tests {
     /// message falls to the text checks (and existence to the listing).
     #[test]
     fn the_sdk_error_class_is_read_before_the_message() {
+        // Only the first line: a quoted name on a later line is no class
+        // (CodeRabbit, #1520).
+        assert_eq!(
+            sdk_error_class("Node not found: a\nRateLimitedError: report.txt"),
+            None
+        );
+        assert!(!is_transient(
+            "Node not found: a\nRateLimitedError: report.txt"
+        ));
         assert!(matches!(
             classify_cli_error("NotFoundAPIError: Nodo non trovato"),
             ProviderError::NotFound(_)

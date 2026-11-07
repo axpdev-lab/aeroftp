@@ -65,6 +65,14 @@ shift || true
 case "$phase" in
 start)
   prefix_name="${1:?cache prefix required}"
+  # The prefix is written to GITHUB_OUTPUT as one `name=value` line, so a
+  # newline in it would end that line and forge a second output.
+  case "$prefix_name" in
+  *$'\n'* | *$'\r'*)
+    echo "cache prefix must be a single line" >&2
+    exit 2
+    ;;
+  esac
   echo "started=$(date +%s)" > "$state"
   # ImageOS keeps a 24.04 runner from restoring 26.04 archives: different
   # versions, so every one of them would be a miss and dead weight in the save.
