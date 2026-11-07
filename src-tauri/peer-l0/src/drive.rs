@@ -382,15 +382,17 @@ pub(crate) fn next_retry_at(
     Some(retry_at.unwrap_or(now + UNAPPLIED_RETRY))
 }
 
-/// Record the keys a pass could not apply (absent from `state` after it) with no hash, so
-/// the watch is not "live" until they are and `needs_write` writes them again.
-pub(crate) fn record_unapplied(
-    state: &mut std::collections::HashMap<String, String>,
+/// The keys of the first pass that it could not apply: pending, not applied. They are
+/// retried and hold back "live", but they never enter the applied state, so a later version
+/// that drops one never deletes a file the replica did not write.
+pub(crate) fn first_pass_pending(
+    applied_state: &std::collections::HashMap<String, String>,
     keys: &[String],
-) {
-    for key in keys {
-        state.entry(key.clone()).or_default();
-    }
+) -> std::collections::HashSet<String> {
+    keys.iter()
+        .filter(|key| !applied_state.contains_key(*key))
+        .cloned()
+        .collect()
 }
 
 /// Whether the file of `key` must be (re)written: unless the last applied state holds this
@@ -405,24 +407,45 @@ pub(crate) fn needs_write(
     !(on_disk && applied_state.get(key).is_some_and(|h| h == hash))
 }
 
-/// Whether a key of the state is still to apply (written or deleted): the watch does not
-/// report "live" until there is none, and retries the current version meanwhile.
-pub(crate) fn still_unapplied(applied_state: &std::collections::HashMap<String, String>) -> bool {
-    applied_state.values().any(|hash| hash.is_empty())
+/// Whether a key is still to apply (written or deleted): one the replica applied before but
+/// not now (no hash), or a pending one it never applied. The watch does not report "live"
+/// until there is none, and retries the current version meanwhile.
+pub(crate) fn still_unapplied(
+    applied_state: &std::collections::HashMap<String, String>,
+    pending: &std::collections::HashSet<String>,
+) -> bool {
+    !pending.is_empty() || applied_state.values().any(|hash| hash.is_empty())
 }
 
-/// The state the next version compares against. A key whose file this version neither
-/// wrote nor found unchanged (refused, failed to decrypt or verify) keeps no hash, so the
-/// next version tries it again instead of skipping a stale file as current.
-pub(crate) fn mark_not_applied(
+/// Settle a version into the state the next one compares against. `state` holds the
+/// version's keys (plus those whose deletion was refused), `prev` what the replica had
+/// applied before, `applied` what this version wrote or found unchanged.
+/// - Applied: kept with its hash, and no longer pending.
+/// - Not applied, but applied before (its file on disk is the replica's own): kept with no
+///   hash, so it is retried and stays deletable.
+/// - Never applied: dropped from the state and kept pending, so it is retried but never
+///   deleted: the file at that name, if any, is not the replica's.
+///
+/// A pending key the version no longer lists is dropped: nothing to retry, nothing to delete.
+pub(crate) fn settle_version(
     state: &mut std::collections::HashMap<String, String>,
+    prev: &std::collections::HashMap<String, String>,
     applied: &std::collections::HashSet<String>,
+    pending: &mut std::collections::HashSet<String>,
 ) {
-    for (key, hash) in state.iter_mut() {
-        if !applied.contains(key) {
+    pending.retain(|key| state.contains_key(key));
+    state.retain(|key, hash| {
+        if applied.contains(key) {
+            pending.remove(key);
+            true
+        } else if prev.contains_key(key) {
             hash.clear();
+            true
+        } else {
+            pending.insert(key.clone());
+            false
         }
-    }
+    });
 }
 
 // --------------------------------------------------------------------------------------------
@@ -1441,7 +1464,7 @@ pub async fn run_docs_replicate(
             ok += 1;
             total_bytes += pt.len() as u64;
         }
-        record_unapplied(&mut prev_files, &first_pass_keys);
+        let mut pending = first_pass_pending(&prev_files, &first_pass_keys);
 
         println!(
             "DRIVE REPLICATED: {}/{} files, all plaintext BLAKE3 verified, total_bytes={}",
@@ -1471,7 +1494,7 @@ pub async fn run_docs_replicate(
             // "syncing" when a delta lands. `live_announced` de-dups the emit.
             let mut live_announced = false;
             // A key the first pass could not apply holds back "live" and is retried.
-            let mut unapplied = still_unapplied(&prev_files);
+            let mut unapplied = still_unapplied(&prev_files, &pending);
             let mut retry_at = next_retry_at(unapplied, None, Instant::now());
             loop {
                 if !live_announced {
@@ -1670,8 +1693,8 @@ pub async fn run_docs_replicate(
                     for key in undeleted {
                         new_state.insert(key, String::new());
                     }
-                    mark_not_applied(&mut new_state, &applied);
-                    unapplied = still_unapplied(&new_state);
+                    settle_version(&mut new_state, &prev_files, &applied, &mut pending);
+                    unapplied = still_unapplied(&new_state, &pending);
                     retry_at = next_retry_at(unapplied, retry_at, Instant::now());
                     prev_files = new_state;
                     current_version = new_ver;
@@ -1891,7 +1914,7 @@ mod replica_path_tests {
     #[cfg(unix)]
     #[test]
     fn replica_rewrites_keep_long_names_and_access_and_retry_what_failed() {
-        use crate::drive::{mark_not_applied, write_replica_file};
+        use crate::drive::write_replica_file;
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("out");
@@ -1909,15 +1932,6 @@ mod replica_path_tests {
         assert_eq!(std::fs::read(&private).unwrap(), b"new");
         let mode = std::fs::metadata(&private).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);
-
-        let mut state = std::collections::HashMap::from([
-            ("written".to_string(), "h1".to_string()),
-            ("refused".to_string(), "h2".to_string()),
-        ]);
-        let applied = std::collections::HashSet::from(["written".to_string()]);
-        mark_not_applied(&mut state, &applied);
-        assert_eq!(state["written"], "h1");
-        assert_eq!(state["refused"], "");
     }
 
     /// A new replica file and the folders the replica makes are private to the user; a
@@ -1998,14 +2012,25 @@ mod replica_path_tests {
     /// hash, and the watch is not "live" while any key is unapplied.
     #[test]
     fn a_failed_write_is_retried_and_holds_back_live() {
-        use crate::drive::{mark_not_applied, needs_write, still_unapplied};
+        use crate::drive::{needs_write, settle_version, still_unapplied};
+        // Both keys were applied before; this version writes only one of them.
+        let prev = std::collections::HashMap::from([
+            ("ok".to_string(), "h0".to_string()),
+            ("failed".to_string(), "h0".to_string()),
+        ]);
         let mut state = std::collections::HashMap::from([
             ("ok".to_string(), "h1".to_string()),
             ("failed".to_string(), "h2".to_string()),
         ]);
         let applied = std::collections::HashSet::from(["ok".to_string()]);
-        mark_not_applied(&mut state, &applied);
-        assert!(still_unapplied(&state), "not live while a key is unapplied");
+        let mut pending = std::collections::HashSet::new();
+        settle_version(&mut state, &prev, &applied, &mut pending);
+        assert_eq!(state["failed"], "", "kept, deletable, with no hash");
+        let none = std::collections::HashSet::new();
+        assert!(
+            still_unapplied(&state, &none),
+            "not live while a key is unapplied"
+        );
         // The next version carries the same hashes: the failed key is written again.
         assert!(needs_write(&state, "failed", "h2", true));
         assert!(!needs_write(&state, "ok", "h1", true));
@@ -2014,7 +2039,7 @@ mod replica_path_tests {
             "a missing file is rewritten"
         );
         state.insert("failed".to_string(), "h2".to_string());
-        assert!(!still_unapplied(&state));
+        assert!(!still_unapplied(&state, &none));
     }
 
     /// A replica root named through a link counts by the path as given: a link in a folder
@@ -2095,7 +2120,7 @@ mod replica_path_tests {
     /// could not apply holds back "live" from the start.
     #[test]
     fn the_retry_time_holds_and_a_failed_first_write_is_not_live() {
-        use crate::drive::{needs_write, next_retry_at, record_unapplied, still_unapplied};
+        use crate::drive::{first_pass_pending, needs_write, next_retry_at, still_unapplied};
         let t0 = std::time::Instant::now();
         let first = next_retry_at(true, None, t0).unwrap();
         // Events every 10 s: the retry stays at its first time instead of moving away.
@@ -2105,15 +2130,14 @@ mod replica_path_tests {
         }
         assert_eq!(next_retry_at(false, Some(first), t0), None);
 
-        let mut first_pass =
-            std::collections::HashMap::from([("ok".to_string(), "h1".to_string())]);
-        record_unapplied(&mut first_pass, &["ok".to_string(), "failed".to_string()]);
+        let first_pass = std::collections::HashMap::from([("ok".to_string(), "h1".to_string())]);
+        let pending = first_pass_pending(&first_pass, &["ok".to_string(), "failed".to_string()]);
         assert!(
-            still_unapplied(&first_pass),
+            still_unapplied(&first_pass, &pending),
             "a failed first write is not live"
         );
         assert!(needs_write(&first_pass, "failed", "h2", false));
-        assert_eq!(first_pass["ok"], "h1");
+        assert!(!first_pass.contains_key("failed"), "pending, never applied");
     }
 
     /// A world-writable folder above the root is accepted only when it is sticky and owned
@@ -2187,5 +2211,36 @@ mod replica_path_tests {
             remove_replica_file(&out, &through_link).is_err(),
             "still refused"
         );
+    }
+
+    /// A key the replica never applied is retried but never deleted: when a later version
+    /// drops it, the file at that name (not the replica's) is left alone (Greptile on #1529).
+    #[test]
+    fn a_key_never_applied_is_never_deleted() {
+        use crate::drive::{settle_version, still_unapplied};
+        let prev = std::collections::HashMap::new();
+        let mut state = std::collections::HashMap::from([
+            ("a".to_string(), "h1".to_string()),
+            ("report.pdf".to_string(), "h2".to_string()),
+        ]);
+        let applied = std::collections::HashSet::from(["a".to_string()]);
+        let mut pending = std::collections::HashSet::new();
+        settle_version(&mut state, &prev, &applied, &mut pending);
+        assert!(
+            !state.contains_key("report.pdf"),
+            "not in the applied state: never deleted"
+        );
+        assert!(pending.contains("report.pdf"), "but still retried");
+        assert!(still_unapplied(&state, &pending));
+
+        // The next version drops it: the deletion loop walks the applied state only, and the
+        // pending key is let go without a deletion.
+        let prev = state.clone();
+        let mut next = std::collections::HashMap::from([("a".to_string(), "h1".to_string())]);
+        let deletable: Vec<_> = prev.keys().filter(|k| !next.contains_key(*k)).collect();
+        assert!(deletable.is_empty());
+        settle_version(&mut next, &prev, &applied, &mut pending);
+        assert!(pending.is_empty());
+        assert!(!still_unapplied(&next, &pending));
     }
 }
