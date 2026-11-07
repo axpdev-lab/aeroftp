@@ -130,6 +130,11 @@ pub fn insert_profile_option(
     if key == "ftpsMode" && extra.contains_key(&normalized_key) {
         return;
     }
+    // An empty TLS mode is no mode: it must not hide an imported `ftpsMode`
+    // that came first, nor count as one set (CodeRabbit on #1524).
+    if normalized_key == "tls_mode" && value.as_str().is_some_and(|v| v.trim().is_empty()) {
+        return;
+    }
 
     if let Some(string_value) = value.as_str() {
         extra.insert(normalized_key, string_value.to_string());
@@ -177,6 +182,12 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
             }
             insert_profile_option(extra, k, v);
         }
+    }
+    // Every surface that loads a saved profile comes through here (CLI, MCP,
+    // AeroCloud, cross-profile transfers, AI tools), so the GUI's FTP TLS
+    // default is applied once, here (CodeRabbit on #1524).
+    if let Some(protocol) = profile.get("protocol").and_then(|v| v.as_str()) {
+        apply_saved_ftp_tls_default(extra, protocol);
     }
 
     // Issue #214: bind Jottacloud (and OAuth) per-profile vault keys.
@@ -264,6 +275,16 @@ pub fn profile_connection_extra(
             {
                 continue;
             }
+            // A preset's relaxed default (Filen Desktop S3's verifyCert=false,
+            // Blomp's cleartext storage) belongs to the preset's own address:
+            // a profile that names the preset but points elsewhere does not
+            // inherit it (CodeRabbit on #1524). An option the profile sets
+            // itself still wins below.
+            if crate::profile_security::is_relaxed_value(&key, &value)
+                && !crate::profile_security::preset_owns_profile_address(profile)
+            {
+                continue;
+            }
             insert_profile_option(&mut extra, &key, &value);
         }
         if let Some(alias) = crate::connection_manifest::connection_alias(raw_protocol) {
@@ -276,6 +297,8 @@ pub fn profile_connection_extra(
         }
     }
     apply_profile_options(&mut extra, profile);
+    // A profile without a `protocol` field still gets the FTP TLS default of
+    // the type it connects as.
     if let Some(spec) = crate::connection_manifest::provider_spec(provider_type) {
         apply_saved_ftp_tls_default(&mut extra, &spec.token);
     }
@@ -1182,6 +1205,21 @@ mod tests {
                 "{profile}"
             );
         }
+        // An empty tlsMode does not hide an imported ftpsMode (CodeRabbit on
+        // #1524), whichever order the options come in.
+        assert_eq!(
+            mode(
+                json!({"protocol": "ftp", "options": {"tlsMode": "", "ftpsMode": "none"}}),
+                ProviderType::Ftp
+            )
+            .as_deref(),
+            Some("none")
+        );
+        // The shared loader every temporary provider uses (cross-profile
+        // transfers, AI tools) applies the same default.
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &json!({"protocol": "ftp", "options": {}}));
+        assert_eq!(extra.get("tls_mode").map(String::as_str), Some("explicit"));
         // Other protocols are not given an FTP mode.
         let mut extra = HashMap::new();
         apply_saved_ftp_tls_default(&mut extra, "sftp");

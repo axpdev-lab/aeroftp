@@ -441,6 +441,10 @@ pub struct ProfileImportReport {
     /// security-relaxing option ([`crate::profile_security`]): which ones came
     /// in their safe state and which were kept because the caller asked.
     pub security: Vec<ImportedSecurity>,
+    /// SHA-256 of the file a preview read, so the import the user then
+    /// confirms can refuse a file changed since its review (CodeRabbit on
+    /// #1524). `None` outside a preview.
+    pub file_digest: Option<String>,
 }
 
 /// The security-relaxing options of one imported profile.
@@ -601,20 +605,30 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         serde_json::Value::Null => serde_json::json!("ftp"),
         value => value,
     };
-    let option =
-        |p: &serde_json::Value, key: &str| match present(p.get("options").and_then(|o| o.get(key)))
+    // An option counts under every spelling the connection loader reads as the
+    // same option (`trust_unknown_hosts` as `trustUnknownHosts`), or a backup
+    // could weaken a connection under the other spelling and keep the saved
+    // secret (CodeRabbit on #1524).
+    let spelled = |p: &serde_json::Value, key: &str| -> Option<serde_json::Value> {
+        let options = p.get("options")?;
+        let canonical = crate::profile_loader::canonicalize_profile_option_key(key);
+        options
+            .get(key)
+            .or_else(|| options.get(canonical.as_str()))
+            .cloned()
+    };
+    let option = |p: &serde_json::Value, key: &str| match present(spelled(p, key).as_ref()) {
+        serde_json::Value::Bool(true) if key == "verifyCert" => serde_json::Value::Null,
+        serde_json::Value::Bool(false) if OPTIONS_OFF_WHEN_ABSENT.contains(&key) => {
+            serde_json::Value::Null
+        }
+        serde_json::Value::String(s)
+            if OPTIONS_OFF_WHEN_ABSENT.contains(&key) && s.eq_ignore_ascii_case("false") =>
         {
-            serde_json::Value::Bool(true) if key == "verifyCert" => serde_json::Value::Null,
-            serde_json::Value::Bool(false) if OPTIONS_OFF_WHEN_ABSENT.contains(&key) => {
-                serde_json::Value::Null
-            }
-            serde_json::Value::String(s)
-                if OPTIONS_OFF_WHEN_ABSENT.contains(&key) && s.eq_ignore_ascii_case("false") =>
-            {
-                serde_json::Value::Null
-            }
-            value => value,
-        };
+            serde_json::Value::Null
+        }
+        value => value,
+    };
     host(a) == host(b)
         && protocol(a) == protocol(b)
         && ["port", "username", "providerId"]
@@ -990,6 +1004,26 @@ mod tests {
         let named = json!({"host": "ftp.example:443", "port": 443, "username": "u"});
         let plain = json!({"host": "ftp.example", "port": 443, "username": "u"});
         assert!(same_target(&named, &plain));
+    }
+
+    /// A guarded option under the loader's snake_case spelling still guards
+    /// the stored secret (CodeRabbit on #1524).
+    #[test]
+    fn same_target_reads_a_guarded_option_under_any_loader_spelling() {
+        let stored = json!({"host": "sftp.example.com", "protocol": "sftp", "options": {}});
+        for (key, value) in [
+            ("trust_unknown_hosts", json!(true)),
+            ("verify_cert", json!(false)),
+            ("trust_pasv_address", json!(true)),
+            ("allow_cleartext_endpoint", json!(true)),
+        ] {
+            let mut imported = stored.clone();
+            imported["options"][key] = value;
+            assert!(!same_target(&stored, &imported), "{key}");
+        }
+        let mut same = stored.clone();
+        same["options"]["trust_unknown_hosts"] = json!(false);
+        assert!(same_target(&stored, &same));
     }
 
     #[test]

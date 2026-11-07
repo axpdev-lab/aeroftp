@@ -3,13 +3,13 @@
     "Saved-profile options that turn off a check the connection would otherwise make. One table, read by the backend (src-tauri/src/profile_security.rs) and by the frontend (src/utils/profileSecurity.ts); both test against the cases below. #1506 Requested 188 and 198.",
     "An import (an .aeroftp backup, a keystore restore, a third-party config) brings each of these in its safe state, which is the option left out, unless the user keeps it on purpose. CLI strict mode refuses a profile that carries one.",
     "A relaxed value is not reported when the profile's preset declares a default for the same key and every address the profile names is the preset's own host or loopback (the preset owns that setting at that address: Blomp's cleartext storage, the Filen Desktop S3 bridge's certificate, the local WebDAV bridges' scheme), or, for an entry marked loopbackExempt, when the profile reaches a loopback host (the bytes never leave this machine).",
-    "unsafe lists the values that relax the check. A boolean option counts as relaxed whether it is stored as a JSON boolean or as the string the providers read; webdavScheme compares case-insensitively. aliases are the other spellings the connection loader reads as the same option (the backend matches them through canonicalize_profile_option_key, a test checks the list). The safe state removes every spelling and stores safe explicitly, so neither a preset default (profile_connection_extra adds it back when the option is absent) nor an auto rule (a WebDAV host on port 80 picks HTTP when no scheme is set) brings the relaxed value back; a WebDAV host written as http:// counts as webdavScheme=http and its prefix becomes https://. The loopback exemption needs every address the profile names, its host and its options.endpoint, to stay on this machine."
+    "unsafe lists the values that relax the check. A boolean option counts as relaxed whether it is stored as a JSON boolean or as the string the providers read; webdavScheme compares case-insensitively. aliases are the other spellings the connection loader reads as the same option (the backend matches them through canonicalize_profile_option_key, a test checks the list). The safe state removes every spelling and stores safe explicitly, so neither a preset default (profile_connection_extra adds it back when the option is absent) nor an auto rule (a WebDAV host on port 80 picks HTTP when no scheme is set) brings the relaxed value back; a WebDAV host written as http:// counts as webdavScheme=http and its prefix becomes https://. The loopback exemption needs every address the profile names, its host and its options.endpoint, to stay on this machine, and never applies to Swift, whose catalog can send the storage traffic elsewhere."
   ],
   "relaxations": [
     { "key": "verifyCert", "aliases": ["verify_cert"], "unsafe": [false, "false"], "safe": true, "loopbackExempt": true },
     { "key": "allowCleartextEndpoint", "aliases": ["allow_cleartext_endpoint"], "unsafe": [true, "true"], "safe": false, "loopbackExempt": true },
     { "key": "allowCleartextStorage", "aliases": ["allow_cleartext_storage_endpoint", "allowCleartextStorageEndpoint"], "unsafe": [true, "true"], "safe": false, "loopbackExempt": true },
-    { "key": "webdavScheme", "aliases": ["tls_mode", "tlsMode"], "unsafe": ["http"], "safe": "https", "loopbackExempt": true },
+    { "key": "webdavScheme", "aliases": ["tls_mode", "tlsMode", "ftpsMode"], "unsafe": ["http"], "safe": "https", "loopbackExempt": true },
     { "key": "trustPasvAddress", "aliases": ["trust_pasv_address"], "unsafe": [true, "true"], "safe": false, "loopbackExempt": false },
     { "key": "trustUnknownHosts", "aliases": ["trust_unknown_hosts"], "unsafe": [true, "true"], "safe": false, "loopbackExempt": false }
   ],
@@ -37,6 +37,9 @@
     { "name": "Blomp on another host keeps no exemption", "profile": { "host": "swift.example.net", "protocol": "swift", "providerId": "blomp", "options": { "allowCleartextStorage": true } }, "relaxed": ["allowCleartextStorage"] },
     { "name": "a WebDAV host written as http:// is plain HTTP", "profile": { "host": "http://dav.example.com:8080", "protocol": "webdav", "options": { "webdavScheme": "https" } }, "relaxed": ["webdavScheme"] },
     { "name": "a WebDAV host written as http:// on loopback", "profile": { "host": "http://127.0.0.1:8080", "protocol": "webdav" }, "relaxed": [] },
+    { "name": "a Swift auth host on loopback does not exempt its catalog", "profile": { "host": "http://127.0.0.1:5000", "protocol": "swift", "options": { "verifyCert": false } }, "relaxed": ["verifyCert"] },
+    { "name": "a WebDAV scheme stored as ftpsMode", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "ftpsMode": "http" } }, "relaxed": ["webdavScheme"] },
+    { "name": "a webdavs profile with an http:// host", "profile": { "host": "http://dav.example.com", "protocol": "webdavs" }, "relaxed": ["webdavScheme"] },
     { "name": "plain FTP is information, not a relaxation", "profile": { "host": "ftp.example.com", "protocol": "ftp", "options": { "tlsMode": "none" } }, "relaxed": [] }
   ]
 }

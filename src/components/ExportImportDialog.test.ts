@@ -116,6 +116,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             password: 'backup-password',
             existing: 'overwrite',
             keepRelaxed: [],
+            reviewedDigest: null,
         });
         // The backend stored it: the host only shows the list it returned.
         expect(onProfilesStored).toHaveBeenCalledWith([{ id: 'srv_a', name: 'Restored' }, { id: 'srv_copy', name: 'Jotta (1)' }]);
@@ -149,6 +150,7 @@ describe('ExportImportDialog .aeroftp import', () => {
             stored: [{ id: 'srv_a', name: 'Lab' }],
             skipped: [], similar: 0, jottaChains: [], oauthAppsKept: [], sharedSecretsFailed: [], targetChanged: [],
             totalInFile: 1, metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: false },
+            fileDigest: 'digest-of-the-reviewed-file',
             security: [{
                 fileIndex: 0,
                 name: 'Lab',
@@ -172,7 +174,15 @@ describe('ExportImportDialog .aeroftp import', () => {
             password: 'backup-password',
             existing: 'skip',
             keepRelaxed: [{ fileIndex: 0, key: 'trustPasvAddress' }],
+            reviewedDigest: 'digest-of-the-reviewed-file',
         });
+        // Another password is another file for the review: it is gone.
+        const field = host.querySelector<HTMLInputElement>('input[type="password"]')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(field, 'another-password');
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(host.querySelector('[data-testid="import-security-review"]')).toBeNull();
     });
 
     it('does not hand the host the list of an account switched away from during the import', async () => {

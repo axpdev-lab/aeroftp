@@ -86,6 +86,8 @@ interface ImportResult {
     // Stored profiles whose options turned a security check off: what came in
     // safe and what was kept (#1506 Requested 198).
     security: ImportedSecurity[];
+    // SHA-256 of the file a preview read; the import refuses another file.
+    fileDigest?: string | null;
     metadata: {
         exportDate: string;
         aeroftpVersion: string;
@@ -132,11 +134,15 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // user ticked to keep (`keptRelaxationId`). Any other choice of file or
     // mode previews again.
     const [securityReview, setSecurityReview] = useState<ImportedSecurity[] | null>(null);
+    const [reviewedDigest, setReviewedDigest] = useState<string | null>(null);
     const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
+    // A review belongs to one file, mode and password: changing any of them
+    // previews again (CodeRabbit on #1524).
     useEffect(() => {
         setSecurityReview(null);
+        setReviewedDigest(null);
         setKeptRelaxed(new Set());
-    }, [importFilePath, existingMode]);
+    }, [importFilePath, existingMode, password]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -316,6 +322,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 });
                 if ((preview.security ?? []).length > 0) {
                     setSecurityReview(preview.security);
+                    setReviewedDigest(preview.fileDigest ?? null);
                     setKeptRelaxed(new Set());
                     return;
                 }
@@ -330,6 +337,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                 password,
                 existing: existingMode,
                 keepRelaxed,
+                reviewedDigest: securityReview === null ? null : reviewedDigest,
             });
 
             // The backend compared the file with the active user's profiles,

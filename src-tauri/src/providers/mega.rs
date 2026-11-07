@@ -1047,6 +1047,7 @@ impl StorageProvider for MegaCmdProvider {
         items: &[super::bulk::BulkTransferItem],
         progress: Option<super::bulk::BulkProgress>,
     ) -> Result<Vec<super::bulk::BulkTransferOutcome>, ProviderError> {
+        refuse_wildcard_bulk(items)?;
         self.bulk_upload(items, progress).await
     }
 
@@ -1068,6 +1069,7 @@ impl StorageProvider for MegaCmdProvider {
         items: &[super::bulk::BulkTransferItem],
         progress: Option<super::bulk::BulkProgress>,
     ) -> Result<Vec<super::bulk::BulkTransferOutcome>, ProviderError> {
+        refuse_wildcard_bulk(items)?;
         self.bulk_download(items, progress).await
     }
 
@@ -1470,7 +1472,17 @@ impl StorageProvider for MegaCmdProvider {
                 continue;
             }
 
-            // mega-find outputs full paths, one per line
+            // mega-find outputs full paths, one per line. Given a handle it can
+            // print them relative to the working directory, which this session
+            // never changes from `/`, so a relative line is made absolute
+            // (CodeRabbit on #1524).
+            let absolute;
+            let line = if line.starts_with('/') {
+                line
+            } else {
+                absolute = format!("/{line}");
+                absolute.as_str()
+            };
             // CQ-03: Metadata not available from mega-find: size/modified left as defaults
             let name = Path::new(line)
                 .file_name()
@@ -1619,11 +1631,16 @@ impl MegaCmdProvider {
             }
             None => ("/".to_string(), path),
         };
-        for name in rest.split('/').filter(|part| !part.is_empty()) {
+        // `.` and `..` are navigation, not names to look up (CodeRabbit on
+        // #1524); every component but the last must be a folder, or a file
+        // named like the next component's parent would be descended into.
+        let names = path_components(rest);
+        for (index, name) in names.iter().enumerate() {
             let listing = self
                 .run_mega_cmd_with_reauth("mega-ls", &["-l", "--show-handles", &current])
                 .await?;
-            current = unique_handle_for(&listing, name).map_err(|e| match e {
+            let want_folder = index + 1 < names.len();
+            current = unique_handle_for_kind(&listing, name, want_folder).map_err(|e| match e {
                 ProviderError::NotFound(_) => ProviderError::NotFound(path.to_string()),
                 other => other,
             })?;
@@ -1823,18 +1840,75 @@ fn refuse_mega_wildcard_name(path: &str) -> Result<(), ProviderError> {
 
 /// The one handle a `--show-handles` listing gives for `name`, or why not.
 fn unique_handle_for(listing: &str, name: &str) -> Result<String, ProviderError> {
+    unique_handle_for_kind(listing, name, false)
+}
+
+/// [`unique_handle_for`], refusing a match that is not a folder when
+/// `want_folder` is set: a path component with a child after it.
+fn unique_handle_for_kind(
+    listing: &str,
+    name: &str,
+    want_folder: bool,
+) -> Result<String, ProviderError> {
     let mut matches = listing
         .lines()
-        .filter_map(parse_handle_line)
-        .filter(|(_, n)| *n == name)
-        .map(|(handle, _)| handle);
-    match (matches.next(), matches.next()) {
-        (Some(handle), None) => Ok(handle.to_string()),
-        (Some(_), Some(_)) => Err(ProviderError::InvalidPath(format!(
-            "more than one item is named '{name}' here, and MEGAcmd cannot tell them \
-             apart by name: nothing was changed"
+        .filter(|line| parse_handle_line(line).is_some_and(|(_, n)| n == name))
+        .map(|line| {
+            let folder = line
+                .split_whitespace()
+                .next()
+                .is_some_and(|flags| flags.starts_with('d'));
+            (
+                parse_handle_line(line)
+                    .map(|(handle, _)| handle)
+                    .unwrap_or_default(),
+                folder,
+            )
+        });
+    let found = match (matches.next(), matches.next()) {
+        (Some(found), None) => found,
+        (Some(_), Some(_)) => {
+            return Err(ProviderError::InvalidPath(format!(
+                "more than one item is named '{name}' here, and MEGAcmd cannot tell them \
+                 apart by name: nothing was changed"
+            )))
+        }
+        (None, _) => return Err(ProviderError::NotFound(name.to_string())),
+    };
+    if want_folder && !found.1 {
+        return Err(ProviderError::InvalidPath(format!(
+            "'{name}' is a file, so nothing can be inside it: nothing was changed"
+        )));
+    }
+    Ok(found.0.to_string())
+}
+
+/// The components of a path, with `.` dropped and `..` taking back the one
+/// before it, lexically, as a path resolver does.
+fn path_components(path: &str) -> Vec<&str> {
+    let mut names: Vec<&str> = Vec::new();
+    for part in path.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                names.pop();
+            }
+            name => names.push(name),
+        }
+    }
+    names
+}
+
+/// A bulk names its files by path, which MEGAcmd would expand: a wildcard in
+/// any component, parent or name, goes the single-file way that addresses
+/// existing nodes by handle (CodeRabbit on #1524, for a direct bulk call).
+fn refuse_wildcard_bulk(items: &[super::bulk::BulkTransferItem]) -> Result<(), ProviderError> {
+    match items.iter().find(|item| mega_wildcard(&item.remote_path)) {
+        Some(item) => Err(ProviderError::InvalidPath(format!(
+            "'{}' holds a '*' or '?', which MEGAcmd expands in a path: transfer it on its own",
+            item.remote_path
         ))),
-        (None, _) => Err(ProviderError::NotFound(name.to_string())),
+        None => Ok(()),
     }
 }
 
@@ -1846,7 +1920,13 @@ fn parse_handle_line(line: &str) -> Option<(&str, &str)> {
     if !handle.starts_with("H:") {
         return None;
     }
-    let name = rest_after_columns(line, 6);
+    // The name starts after the one space that follows the handle, so a name
+    // that begins with spaces keeps them (CodeRabbit on #1524).
+    let after = rest_after_columns(line, 5).strip_prefix(handle)?;
+    let name = after
+        .strip_prefix(' ')
+        .unwrap_or(after)
+        .trim_end_matches(['\r', '\n']);
     (!name.is_empty()).then_some((handle, name))
 }
 
@@ -2545,6 +2625,99 @@ mod tests {
             !argv.contains("--show-handles /\n"),
             "listed / instead of //bin: {argv}"
         );
+    }
+
+    /// A MEGAcmd stand-in whose `mega-ls` answers by the node it is given:
+    /// `/` holds a folder `a?` and a file `f?`, the folder holds a file `b?`.
+    #[cfg(unix)]
+    fn two_level_standin(dir: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let ls = "#!/bin/sh\n\
+                  echo \"mega-ls $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
+                  echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'\n\
+                  case \"$3\" in\n\
+                  H:dir00001) echo '----    1            5 06Nov2026 12:20:41 H:file0001 b?' ;;\n\
+                  *) echo 'd---    -            - 06Nov2026 12:20:41 H:dir00001 a?'\n\
+                     echo '----    1            5 06Nov2026 12:20:41 H:file0002 f?' ;;\n\
+                  esac\n";
+        let path = dir.join("mega-ls");
+        std::fs::write(&path, ls).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    /// CodeRabbit on #1524: resolution goes one level at a time through the
+    /// intermediate folder's handle, treats `.` and `..` as navigation, and
+    /// refuses to descend into a file.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_wildcard_path_resolves_through_folders_only() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        two_level_standin(dir.path());
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        assert_eq!(provider.node_address("/a?/b?").await.unwrap(), "H:file0001");
+        let argv = std::fs::read_to_string(dir.path().join("argv.log")).unwrap();
+        assert!(argv.contains("--show-handles H:dir00001"), "{argv}");
+        assert_eq!(
+            provider.node_address("/zz/../a?/./b?").await.unwrap(),
+            "H:file0001"
+        );
+        let through_a_file = provider.node_address("/f?/b?").await;
+        assert!(
+            matches!(&through_a_file, Err(ProviderError::InvalidPath(m)) if m.contains("is a file")),
+            "{through_a_file:?}"
+        );
+    }
+
+    /// CodeRabbit on #1524: a name that begins with spaces keeps them.
+    #[test]
+    fn a_handle_line_keeps_the_leading_spaces_of_a_name() {
+        let line = "----    1            2 06Nov2026 12:20:41 H:spaced01  a?.txt";
+        assert_eq!(parse_handle_line(line), Some(("H:spaced01", " a?.txt")));
+        let plain = "----    1            2 06Nov2026 12:20:41 H:plain001 a?.txt\r";
+        assert_eq!(parse_handle_line(plain), Some(("H:plain001", "a?.txt")));
+    }
+
+    /// CodeRabbit on #1524: a direct bulk call with a wildcard in a parent
+    /// folder is refused, not handed to MEGAcmd as a pattern.
+    #[test]
+    fn a_bulk_with_a_wildcard_parent_is_refused() {
+        let item = |remote: &str| super::super::bulk::BulkTransferItem {
+            local_path: "/tmp/report.txt".into(),
+            remote_path: remote.into(),
+            size: 1,
+        };
+        assert!(refuse_wildcard_bulk(&[item("/photos/report.txt")]).is_ok());
+        for remote in [
+            "/photos?/report.txt",
+            "/a*/b/report.txt",
+            "/photos/report?.txt",
+        ] {
+            assert!(
+                matches!(
+                    refuse_wildcard_bulk(&[item(remote)]),
+                    Err(ProviderError::InvalidPath(_))
+                ),
+                "{remote}"
+            );
+        }
+    }
+
+    /// CodeRabbit on #1524: a relative line from `mega-find` is made absolute.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn find_results_are_absolute() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let find = "#!/bin/sh\necho 'photos?/a.txt'\necho '/docs/b.txt'\n";
+        let path = dir.path().join("mega-find");
+        std::fs::write(&path, find).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let found = provider.find("/", "*.txt").await.unwrap();
+        let paths: Vec<&str> = found.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["/photos?/a.txt", "/docs/b.txt"]);
     }
 
     /// End to end on a MEGAcmd stand-in that records its arguments: purging a

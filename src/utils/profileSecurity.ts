@@ -10,7 +10,7 @@
  */
 
 import table from '../shared/profile-security-relaxations.json';
-import { getConnectionPreset } from '../providers/connectionManifest';
+import { connectionProtocol, getConnectionPreset } from '../providers/connectionManifest';
 
 interface RelaxationRule {
     key: string;
@@ -91,7 +91,10 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
     const presetDefaults = profile.providerId ? getConnectionPreset(profile.providerId)?.defaults : undefined;
     const addresses = [profile.host, options.endpoint]
         .filter((a): a is string => typeof a === 'string' && a.trim() !== '');
-    const onLoopback = addresses.length > 0 && addresses.every(endpointStaysOnThisMachine);
+    const protocol = profile.protocol ? connectionProtocol(profile.protocol)?.token : undefined;
+    // Swift's catalog can send the storage traffic elsewhere: a loopback auth
+    // host proves nothing about where the token goes.
+    const onLoopback = protocol !== 'swift' && addresses.length > 0 && addresses.every(endpointStaysOnThisMachine);
     // A preset owns its defaults only at the address it fixes: an imported
     // file can name a local-bridge preset and point it at a remote server.
     const presetHosts = [presetDefaults?.server, presetDefaults?.endpoint]
@@ -115,7 +118,7 @@ export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[]
     // A WebDAV host written as http:// is plain HTTP whatever the scheme
     // option says: the host prefix wins when the connection is built.
     const webdavRule = rules.find(r => r.key === WEBDAV_SCHEME_KEY);
-    if (profile.protocol?.toLowerCase() === 'webdav' && hostIsPlainHttp(profile.host)
+    if (protocol === 'webdav' && hostIsPlainHttp(profile.host)
         && !found.some(r => r.key === WEBDAV_SCHEME_KEY) && webdavRule && !exempt(webdavRule)) {
         found.push({ key: WEBDAV_SCHEME_KEY, value: 'http (host)' });
     }

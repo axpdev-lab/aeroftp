@@ -106,32 +106,19 @@ pub fn security_relaxations_of(
     let empty = serde_json::Map::new();
     let options = options.and_then(Value::as_object).unwrap_or(&empty);
     let preset = provider_id.and_then(crate::connection_manifest::preset);
-    let addresses: Vec<&str> = [Some(host), options.get("endpoint").and_then(Value::as_str)]
-        .into_iter()
-        .flatten()
-        .map(str::trim)
-        .filter(|address| !address.is_empty())
-        .collect();
-    let on_loopback = !addresses.is_empty()
+    let addresses = profile_addresses(host, options);
+    // Swift's catalog can send the storage traffic to another host than the
+    // auth URL, so a loopback auth host proves nothing about where the token
+    // goes (CodeRabbit on #1524).
+    let swift = protocol
+        .and_then(crate::connection_manifest::connection_spec)
+        .is_some_and(|spec| spec.token == "swift");
+    let on_loopback = !swift
+        && !addresses.is_empty()
         && addresses
             .iter()
             .all(|address| crate::util::endpoint_stays_on_this_machine(address));
-    // A preset owns its defaults only at the address it fixes: an imported
-    // file can name a local-bridge preset and point it at a remote server
-    // (CodeRabbit on #1506 Requested 198), so the exemption needs every
-    // address of the profile to be the preset's own host or loopback.
-    let preset_owns_the_address = preset.is_some_and(|preset| {
-        let own: Vec<String> = ["server", "endpoint"]
-            .iter()
-            .filter_map(|key| preset.defaults.get(*key).and_then(Value::as_str))
-            .filter_map(crate::util::endpoint::endpoint_host)
-            .collect();
-        addresses.iter().all(|address| {
-            crate::util::endpoint_stays_on_this_machine(address)
-                || crate::util::endpoint::endpoint_host(address)
-                    .is_some_and(|host| own.contains(&host))
-        })
-    });
+    let preset_owns_the_address = preset.is_some_and(|preset| preset_owns(preset, &addresses));
     let exempt = |rule: &RelaxationRule| {
         (preset_owns_the_address
             && preset.is_some_and(|preset| preset.defaults.contains_key(&rule.key)))
@@ -167,6 +154,65 @@ pub fn security_relaxations_of(
         });
     }
     found
+}
+
+/// The addresses a profile names: its host and its `options.endpoint`.
+fn profile_addresses<'a>(
+    host: &'a str,
+    options: &'a serde_json::Map<String, Value>,
+) -> Vec<&'a str> {
+    [Some(host), options.get("endpoint").and_then(Value::as_str)]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .filter(|address| !address.is_empty())
+        .collect()
+}
+
+/// A preset owns its defaults only at the address it fixes: an imported file
+/// can name a local-bridge preset and point it at a remote server (CodeRabbit
+/// on #1506 Requested 198), so every address of the profile has to be the
+/// preset's own host (its `server` or `endpoint` default) or loopback. A
+/// profile that names no address connects where the preset says.
+fn preset_owns(preset: &crate::connection_manifest::ConnectionPreset, addresses: &[&str]) -> bool {
+    let own: Vec<String> = ["server", "endpoint"]
+        .iter()
+        .filter_map(|key| preset.defaults.get(*key).and_then(Value::as_str))
+        .filter_map(crate::util::endpoint::endpoint_host)
+        .collect();
+    addresses.iter().all(|address| {
+        crate::util::endpoint_stays_on_this_machine(address)
+            || crate::util::endpoint::endpoint_host(address).is_some_and(|host| own.contains(&host))
+    })
+}
+
+/// Whether a saved profile's preset defaults may be applied when its
+/// connection is built: the preset owns the profile's address, or the profile
+/// names no preset.
+pub fn preset_owns_profile_address(profile: &Value) -> bool {
+    let Some(preset) = profile
+        .get("providerId")
+        .and_then(Value::as_str)
+        .and_then(crate::connection_manifest::preset)
+    else {
+        return true;
+    };
+    let empty = serde_json::Map::new();
+    let options = profile
+        .get("options")
+        .and_then(Value::as_object)
+        .unwrap_or(&empty);
+    let host = profile.get("host").and_then(Value::as_str).unwrap_or("");
+    preset_owns(preset, &profile_addresses(host, options))
+}
+
+/// Whether `value` for option `key` is one the table calls relaxed, the test a
+/// preset default has to pass before it is applied off the preset's address.
+pub fn is_relaxed_value(key: &str, value: &Value) -> bool {
+    table()
+        .relaxations
+        .iter()
+        .any(|rule| rule.names(key) && rule.unsafe_values.iter().any(|u| value_matches(value, u)))
 }
 
 /// The rule a WebDAV host's `http://` prefix belongs to.
@@ -379,15 +425,19 @@ mod tests {
     /// the two readers cannot drift apart.
     #[test]
     fn the_frontend_aliases_are_the_spellings_the_loader_reads() {
+        use crate::profile_loader::canonicalize_profile_option_key as canonical;
         for rule in &table().relaxations {
-            let canonical = crate::profile_loader::canonicalize_profile_option_key(&rule.key);
+            let key = canonical(&rule.key);
             assert!(
-                rule.aliases.contains(&canonical) || canonical == rule.key,
+                rule.aliases.contains(&key) || key == rule.key,
                 "{}",
                 rule.key
             );
+            // Compared through the loader's canonical form directly: `names`
+            // accepts a listed alias by itself, which would make this check
+            // pass for any string (CodeRabbit on #1524).
             for alias in &rule.aliases {
-                assert!(rule.names(alias), "{} -> {alias}", rule.key);
+                assert_eq!(canonical(alias), key, "{} -> {alias}", rule.key);
             }
         }
     }
@@ -539,6 +589,49 @@ mod tests {
                 rule.key
             );
         }
+    }
+
+    /// CodeRabbit on #1524: a profile that names a local-bridge or cleartext
+    /// preset but points elsewhere, and omits the option, inherited the
+    /// preset's relaxed default when its connection was built. At the
+    /// preset's own address the default still applies.
+    #[test]
+    fn an_off_address_preset_lends_no_relaxed_default() {
+        use crate::providers::swift::SwiftConfig;
+        use crate::providers::{ProviderConfig, ProviderType, S3Config};
+        fn effective(profile: &Value, provider_type: ProviderType) -> ProviderConfig {
+            let host = profile.get("host").and_then(Value::as_str).unwrap_or("");
+            let (extra, host) =
+                crate::profile_loader::profile_connection_extra(profile, provider_type, host);
+            ProviderConfig {
+                name: "probe".into(),
+                provider_type,
+                host,
+                port: None,
+                username: Some("user".into()),
+                password: Some("secret".into()),
+                initial_path: None,
+                extra,
+            }
+        }
+        let verify = |endpoint: &str| {
+            let profile = json!({"host": "", "protocol": "s3", "providerId": "filen-desktop-s3",
+                "options": {"endpoint": endpoint, "bucket": "b"}});
+            S3Config::from_provider_config(&effective(&profile, ProviderType::S3))
+                .unwrap()
+                .verify_cert
+        };
+        assert!(verify("https://s3.attacker.example"));
+        assert!(!verify("https://local.s3.filen.io:1800"));
+        let cleartext = |host: &str| {
+            let profile =
+                json!({"host": host, "protocol": "swift", "providerId": "blomp", "options": {}});
+            SwiftConfig::from_provider_config(&effective(&profile, ProviderType::Swift))
+                .unwrap()
+                .allow_cleartext_storage_endpoint
+        };
+        assert!(!cleartext("https://keystone.attacker.example"));
+        assert!(cleartext("https://authenticate.blomp.com"));
     }
 
     /// An overwrite that brings a setting the existing profile already has,

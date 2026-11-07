@@ -5101,6 +5101,15 @@ mod pasv_address_tests {
     /// on the control connection's address. A client that follows the reply
     /// is steered away; one that uses the control peer gets the bytes.
     async fn steering_server() -> (u16, tokio::task::JoinHandle<()>) {
+        steering_server_with("127.0.0.1", "203,0,113,9").await
+    }
+
+    /// The control connection on 127.0.0.1; the data listener bound on
+    /// `data_bind`; the 227 reply naming `named` (a PASV host tuple).
+    async fn steering_server_with(
+        data_bind: &'static str,
+        named: &'static str,
+    ) -> (u16, tokio::task::JoinHandle<()>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let server = tokio::spawn(async move {
@@ -5119,11 +5128,11 @@ mod pasv_address_tests {
                         "FEAT" => "211-Features\r\n211 End\r\n".to_string(),
                         "SIZE" => "213 4\r\n".to_string(),
                         "PASV" => {
-                            let data = TcpListener::bind("127.0.0.1:0").await.unwrap();
+                            let data = TcpListener::bind((data_bind, 0)).await.unwrap();
                             let p = data.local_addr().unwrap().port();
                             data_listener = Some(data);
                             format!(
-                                "227 Entering Passive Mode (203,0,113,9,{},{})\r\n",
+                                "227 Entering Passive Mode ({named},{},{})\r\n",
                                 p / 256,
                                 p % 256
                             )
@@ -5176,6 +5185,27 @@ mod pasv_address_tests {
         )
         .await
         .expect("the data connection must not wait on 203.0.113.9")
+        .expect("download");
+        assert_eq!(bytes, b"DATA");
+        server.abort();
+    }
+
+    /// The opt-in over the wire (CodeRabbit on #1524): with the option set,
+    /// the data connection goes to the address the 227 reply names, here
+    /// 127.0.0.2, where the only data listener is. Linux routes all of
+    /// 127/8 to loopback; other systems need an alias, so the test is Linux's.
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn the_pasv_opt_in_connects_where_the_reply_says() {
+        let (port, server) = steering_server_with("127.0.0.2", "127,0,0,2").await;
+        let mut provider = FtpProvider::new(config(port, true));
+        provider.connect().await.expect("connect");
+        let bytes = tokio::time::timeout(
+            Duration::from_secs(10),
+            provider.download_to_bytes("/f.bin"),
+        )
+        .await
+        .expect("the data connection must reach 127.0.0.2")
         .expect("download");
         assert_eq!(bytes, b"DATA");
         server.abort();

@@ -30176,7 +30176,6 @@ async fn create_and_connect_for_agent(
     }
     let mut extra: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     apply_profile_options(&mut extra, matched);
-    ftp_client_gui_lib::profile_loader::apply_saved_ftp_tls_default(&mut extra, protocol);
     let provider_id_opt = matched
         .get("providerId")
         .and_then(|v| v.as_str())

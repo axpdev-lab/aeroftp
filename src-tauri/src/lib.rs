@@ -18905,8 +18905,20 @@ async fn import_server_profiles(
     password: String,
     existing: Option<profile_import_plan::ExistingProfileMode>,
     keep_relaxed: Option<Vec<profile_security::KeptRelaxation>>,
+    reviewed_digest: Option<String>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     only_main_window(webview.label(), "import_server_profiles")?;
+    // Choices made on a reviewed file apply to that file only: one replaced
+    // at the same path since the review is refused (CodeRabbit on #1524).
+    if let Some(reviewed) = reviewed_digest.as_deref() {
+        let path = file_path.clone();
+        let now = tokio::task::spawn_blocking(move || import_file_digest(&path))
+            .await
+            .map_err(|e| format!("Import task failed: {e}"))??;
+        if now != reviewed {
+            return Err(IMPORT_FILE_CHANGED.to_string());
+        }
+    }
     // A security-relaxing option of the file comes in safe unless the user
     // ticked it in the preview (#1506 Requested 198).
     let policy = profile_security::RelaxationPolicy::Keep(keep_relaxed.unwrap_or_default());
@@ -18959,6 +18971,17 @@ async fn preview_server_import(
     })
     .await
     .map_err(|e| format!("Import preview task failed: {e}"))?
+}
+
+/// The file changed between its review and the import.
+const IMPORT_FILE_CHANGED: &str =
+    "IMPORT_FILE_CHANGED: The backup file changed since its review, so nothing was imported; review it again";
+
+/// SHA-256 of an import file, hex.
+fn import_file_digest(path: &str) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let bytes = std::fs::read(path).map_err(|e| format!("Cannot read the backup file: {e}"))?;
+    Ok(hex::encode(Sha256::digest(&bytes)))
 }
 
 /// Without an unlocked vault neither the list nor the secrets can be reached,
@@ -19151,6 +19174,7 @@ fn import_report(
         target_changed: prepared.target_changed.clone(),
         total_in_file: prepared.servers.len(),
         metadata,
+        file_digest: None,
         security: prepared
             .security
             .iter()
@@ -19217,14 +19241,17 @@ pub fn preview_server_profiles(
         profile_export::import_profiles(std::path::Path::new(file_path), password)
             .map_err(|e| e.to_string())?;
     let prepared = prepare_import(&servers, &provider_secrets, mode, policy, current);
-    Ok(import_report(
+    let file_digest = import_file_digest(file_path)?;
+    let mut report = import_report(
         &prepared,
         &[],
         SharedImportSecrets::default(),
         current.to_vec(),
         Vec::new(),
         serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
-    ))
+    );
+    report.file_digest = Some(file_digest);
+    Ok(report)
 }
 
 /// Import a `.aeroftp` file into `user`, who must be the active account, as one
@@ -20492,6 +20519,20 @@ mod import_security_tests {
         let indices: Vec<usize> = report.security.iter().map(|e| e.file_index).collect();
         assert_eq!(indices, [1]);
         assert_eq!(report.servers[0]["fileIndex"], json!(1));
+    }
+
+    /// The digest a review is bound to changes with the file (CodeRabbit on
+    /// #1524): the import compares it before it reads the file again.
+    #[test]
+    fn the_review_digest_follows_the_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("servers.aeroftp");
+        std::fs::write(&path, b"first").unwrap();
+        let first = import_file_digest(path.to_str().unwrap()).unwrap();
+        assert_eq!(first.len(), 64);
+        std::fs::write(&path, b"second").unwrap();
+        assert_ne!(import_file_digest(path.to_str().unwrap()).unwrap(), first);
+        assert!(import_file_digest(dir.path().join("missing").to_str().unwrap()).is_err());
     }
 
     /// Greptile round 1 on #1506 Requested 198: an overwrite that brings the
