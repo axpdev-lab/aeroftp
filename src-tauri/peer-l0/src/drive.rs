@@ -142,16 +142,17 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
             }
         }
         for ancestor in root.ancestors().skip(1).chain(given.ancestors().skip(1)) {
-            let mode = std::fs::metadata(ancestor)?.permissions().mode() & 0o7777;
-            if mode & 0o002 != 0 && mode & 0o1000 == 0 {
+            use std::os::unix::fs::MetadataExt;
+            let above = std::fs::metadata(ancestor)?;
+            let mode = above.permissions().mode() & 0o7777;
+            if !ancestor_is_safe(mode, above.uid(), meta.uid()) {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::PermissionDenied,
                     format!(
-                        "refusing the replica folder {}: the folder above it, {}, is writable by every user and not sticky (mode {:o}), so another user could replace the replica folder; run `chmod o-w {}` or `chmod +t {}`",
+                        "refusing the replica folder {}: the folder above it, {}, is writable by every user (mode {:o}) and not both sticky and owned by root or the replica folder's owner, so another user could replace the replica folder; run `chmod o-w {}`",
                         root.display(),
                         ancestor.display(),
                         mode,
-                        ancestor.display(),
                         ancestor.display()
                     ),
                 ));
@@ -159,6 +160,17 @@ pub(crate) fn check_replica_root(out_path: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Whether a folder above the replica root, with `mode` and owned by `owner`, cannot have
+/// the root's entry replaced by another user: it is not writable by every user, or it is
+/// sticky AND owned by root or by `trusted` (the replica folder's owner). The sticky bit
+/// keeps other users from replacing an entry, but not the folder's own owner.
+pub(crate) fn ancestor_is_safe(mode: u32, owner: u32, trusted: u32) -> bool {
+    if mode & 0o002 == 0 {
+        return true;
+    }
+    mode & 0o1000 != 0 && (owner == 0 || owner == trusted)
 }
 
 /// Make the folders from `out_path` down to `folder` that do not exist yet, private to the
@@ -2072,5 +2084,30 @@ mod replica_path_tests {
         );
         assert!(needs_write(&first_pass, "failed", "h2", false));
         assert_eq!(first_pass["ok"], "h1");
+    }
+
+    /// A world-writable folder above the root is accepted only when it is sticky and owned
+    /// by root or the replica folder's owner: its owner could otherwise swap the root.
+    #[test]
+    fn a_sticky_ancestor_must_belong_to_root_or_the_replica_owner() {
+        use crate::drive::ancestor_is_safe;
+        let me = 1000;
+        assert!(ancestor_is_safe(0o755, 4242, me), "not world-writable");
+        assert!(
+            ancestor_is_safe(0o1777, 0, me),
+            "sticky, owned by root (/tmp)"
+        );
+        assert!(
+            ancestor_is_safe(0o1777, me, me),
+            "sticky, owned by the replica's owner"
+        );
+        assert!(
+            !ancestor_is_safe(0o1777, 4242, me),
+            "sticky, owned by another user"
+        );
+        assert!(
+            !ancestor_is_safe(0o777, me, me),
+            "world-writable, not sticky"
+        );
     }
 }
