@@ -6687,7 +6687,9 @@
             "dirtyTitle": "Gorde gabeko aldaketak",
             "dirtyBody": "Gorde gabeko aldaketak dituzu. Baztertu eta itxi?",
             "keepEditing": "Editatzen jarraitu",
-            "discardAndClose": "Baztertu eta itxi"
+            "discardAndClose": "Baztertu eta itxi",
+            "busyBodyKeepsRunning": "Eragiketa bat abian dago. Leiho hau itxi ondoren ere jarraituko du, eta bere emaitza ez da hemen erakutsiko. Itxi hala ere?",
+            "closeAnyway": "Itxi hala ere"
         },
         "modalView": {
             "listView": "Zerrenda ikuspegia",

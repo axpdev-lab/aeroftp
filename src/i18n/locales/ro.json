@@ -6668,7 +6668,9 @@
             "dirtyTitle": "Modificări nesalvate",
             "dirtyBody": "Aveți modificări nesalvate. Renunțați la ele și închideți?",
             "keepEditing": "Continuați editarea",
-            "discardAndClose": "Renunțați și închideți"
+            "discardAndClose": "Renunțați și închideți",
+            "busyBodyKeepsRunning": "O operațiune este încă în curs. Continuă după închiderea acestei ferestre, iar rezultatul ei nu este afișat aici. Închideți oricum?",
+            "closeAnyway": "Închideți oricum"
         },
         "modalView": {
             "listView": "Vizualizare listă",

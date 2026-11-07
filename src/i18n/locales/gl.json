@@ -6687,7 +6687,9 @@
             "dirtyTitle": "Cambios sen gardar",
             "dirtyBody": "Tes cambios sen gardar. Descartalos e pechar?",
             "keepEditing": "Continuar a editar",
-            "discardAndClose": "Descartar e pechar"
+            "discardAndClose": "Descartar e pechar",
+            "busyBodyKeepsRunning": "Hai unha operación en curso. Continúa despois de pechar esta xanela e o seu resultado non se mostra aquí. Pechar igualmente?",
+            "closeAnyway": "Pechar igualmente"
         },
         "modalView": {
             "listView": "Vista de lista",
