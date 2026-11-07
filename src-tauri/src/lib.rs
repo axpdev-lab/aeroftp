@@ -20595,6 +20595,28 @@ mod import_security_tests {
         assert!(prepared.stored().is_empty());
     }
 
+    /// Greptile on #1524: a backup whose `tlsMode` is "explicit " (which FTP
+    /// reads as no TLS) does not overwrite a profile saved with "explicit", so
+    /// the saved password never goes out over plain FTP.
+    #[test]
+    fn an_overwrite_with_a_padded_tls_mode_is_refused() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"tlsMode": "explicit"}
+        })];
+        let mut server = relaxed("srv_a");
+        server.options = Some(json!({"tlsMode": "explicit "}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.target_changed, ["srv_a name"]);
+        assert!(prepared.stored().is_empty());
+    }
+
     /// CodeRabbit on #1524: a bare `blomp` protocol off Blomp's host goes
     /// through the import like an explicit providerId: an explicit opt-in is
     /// reset, an omitted option has nothing to reset (the loader no longer

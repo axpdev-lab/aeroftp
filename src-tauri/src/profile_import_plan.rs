@@ -626,18 +626,19 @@ pub fn same_target(a: &serde_json::Value, b: &serde_json::Value) -> bool {
         extra
     };
     let (loaded_a, loaded_b) = (effective(a), effective(b));
+    // The values are compared exactly as the loader hands them to the
+    // providers, which read them as they are: `FtpConfig` takes
+    // `"explicit "` for no TLS at all, so a trimmed comparison would let such a
+    // backup keep a password saved for an explicit-TLS connection (Greptile on
+    // #1524). Only the spellings every reader takes for the default equal an
+    // absent option: `verifyCert` "true", and "false" for an option that is off
+    // when absent. Any other difference drops the saved secret.
     let option = |loaded: &std::collections::HashMap<String, String>, key: &str| {
         let canonical = crate::profile_loader::canonicalize_profile_option_key(key);
-        match loaded.get(&canonical).map(|v| v.trim()) {
+        match loaded.get(&canonical).map(String::as_str) {
             None | Some("") => serde_json::Value::Null,
-            Some(v) if key == "verifyCert" && v.eq_ignore_ascii_case("true") => {
-                serde_json::Value::Null
-            }
-            Some(v)
-                if OPTIONS_OFF_WHEN_ABSENT.contains(&key) && v.eq_ignore_ascii_case("false") =>
-            {
-                serde_json::Value::Null
-            }
+            Some("true") if key == "verifyCert" => serde_json::Value::Null,
+            Some("false") if OPTIONS_OFF_WHEN_ABSENT.contains(&key) => serde_json::Value::Null,
             Some(v) => serde_json::Value::String(v.to_string()),
         }
     };
@@ -1042,6 +1043,35 @@ mod tests {
         both["options"]["trustUnknownHosts"] = json!(false);
         both["options"]["trust_unknown_hosts"] = json!(true);
         assert!(!same_target(&stored, &both));
+    }
+
+    /// Greptile on #1524: a guarded value is compared as the provider reads
+    /// it, untrimmed and case-sensitive. `"explicit "` is no TLS for
+    /// `FtpConfig`, so it is another connection than `"explicit"`.
+    #[test]
+    fn same_target_compares_a_guarded_value_as_the_provider_reads_it() {
+        let ftp = |tls: &str| {
+            json!({"host": "ftp.example.com", "port": 21, "username": "u",
+                "protocol": "ftp", "options": {"tlsMode": tls}})
+        };
+        assert!(same_target(&ftp("explicit"), &ftp("explicit")));
+        for variant in ["explicit ", " explicit", "Explicit", "EXPLICIT"] {
+            assert!(!same_target(&ftp("explicit"), &ftp(variant)), "{variant:?}");
+        }
+        // Only the exact default spellings equal an absent option.
+        let sftp = |options: serde_json::Value| {
+            json!({"host": "sftp.example.com", "protocol": "sftp", "options": options})
+        };
+        assert!(same_target(&sftp(json!({})), &sftp(json!({"verifyCert": "true"}))));
+        assert!(same_target(&sftp(json!({})), &sftp(json!({"trustUnknownHosts": "false"}))));
+        for options in [
+            json!({"verifyCert": "TRUE"}),
+            json!({"verifyCert": "true "}),
+            json!({"trustUnknownHosts": "False"}),
+            json!({"trustUnknownHosts": " false"}),
+        ] {
+            assert!(!same_target(&sftp(json!({})), &sftp(options.clone())), "{options}");
+        }
     }
 
     #[test]
