@@ -311,10 +311,15 @@ impl DirectoryProvider {
         &self,
         vpath: &str,
         src: &Path,
-        mut options: tokio::fs::OpenOptions,
+        options: tokio::fs::OpenOptions,
     ) -> Result<tokio::fs::File, ProviderError> {
+        // The flag is unix-only, so the options are made mutable only there.
         #[cfg(unix)]
-        options.custom_flags(libc::O_NOFOLLOW);
+        let options = {
+            let mut options = options;
+            options.custom_flags(libc::O_NOFOLLOW);
+            options
+        };
         let file = options.open(src).await.map_err(ProviderError::IoError)?;
         // A link swap is a local folder's threat; an MTP device under gvfs
         // has no links, and its FUSE inode numbers are not guaranteed to
