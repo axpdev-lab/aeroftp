@@ -434,7 +434,7 @@ describe('parkActiveSession', () => {
 describe('a cancelled connect keeps the tabs that were open before it', () => {
     const abort = async (recorded: { phaseVersion: number; ids: ReadonlySet<string> } | null, phaseVersion: number) => {
         const ctx: Record<string, unknown> = {
-            remoteConnectPhaseRef: { current: 'connect' },
+            remoteConnectPhaseRef: { current: 'connect' }, backendTeardownsRef: { current: 0 },
             connectStartSessionsRef: { current: recorded },
             lockAndDropBackendConnection: vi.fn(async () => true),
             clearCryptOverlayState: vi.fn(),

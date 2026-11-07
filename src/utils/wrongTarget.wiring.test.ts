@@ -105,7 +105,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn,
             isConnected: true,
-            remoteConnectPhaseRef: { current: false },
+            remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 },
             sessions: [session],
             activeSessionId: 'A',
             liveConnectionParams: session.connectionParams,
@@ -137,7 +137,7 @@ describe('a queued transfer', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' },
+            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
         };
@@ -149,6 +149,39 @@ describe('a queued transfer', () => {
         expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
         ctx.remoteConnectPhaseRef.current = false;
         expect(fns.queuedTargetProblem(target)).toBeNull();
+    });
+
+    // A cancelled switch ends its phase, then drops the half-open backend:
+    // reads and retries stay blocked until that teardown is over.
+    it('stays blocked while a cancelled switch is still tearing the backend down', async () => {
+        const targets = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
+        const abort = between(APP, '  const abortSwitchAfterCancel = async (', '\n  // #401');
+        const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
+        let teardownDone!: (dropped: boolean) => void;
+        const ctx = {
+            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            remoteConnectPhaseRef: { current: 'switch' as false | 'switch' }, backendTeardownsRef: { current: 0 },
+            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
+            isSameConnection, savedProfileIdOf, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            lockAndDropBackendConnection: vi.fn(() => new Promise<boolean>(done => { teardownDone = done; })),
+            clearCryptOverlayState: vi.fn(),
+        };
+        const { code } = await transformWithOxc(targets + abort, 'teardown.ts');
+        const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem, abortSwitchAfterCancel };`)(...Object.values(ctx));
+        ctx.remoteConnectPhaseRef.current = false;
+        const target = fns.snapshotQueuedTarget();
+        ctx.remoteConnectPhaseRef.current = 'switch';
+        const aborting = fns.abortSwitchAfterCancel(() => true);
+        // The phase is over, the teardown is not.
+        expect(ctx.remoteConnectPhaseRef.current).toBe(false);
+        expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
+        teardownDone(true);
+        await aborting;
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+        expect(ctx.backendTeardownsRef.current).toBe(0);
+        // A cancelled connect holds the same counter around its teardown.
+        const connect = between(APP, '  const abortConnectAfterCancel = async (', 'clearCryptOverlayState();');
+        expect(connect).toMatch(/backendTeardownsRef\.current \+= 1;\n\s+try \{\n\s+if \(!await lockAndDropBackendConnection\(owns\) \|\| !owns\(\)\) return;\n\s+\} finally \{\n\s+backendTeardownsRef\.current -= 1;/);
     });
 
     it.each([

@@ -1002,6 +1002,10 @@ const App: React.FC = () => {
   // is already usable (false) must not cost the user the session: it just
   // aborts the listing and leaves them in the directory they were in.
   const remoteConnectPhaseRef = useRef<false | 'connect' | 'switch'>(false);
+  // Backend teardowns still running after a cancelled connect or switch: the
+  // phase is over, but until the half-open connection is gone the live tab is
+  // not what the backend serves.
+  const backendTeardownsRef = useRef(0);
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
   // Connect form started, keyed by its phase version: a Cancel of that connect
@@ -10177,7 +10181,12 @@ const App: React.FC = () => {
   const abortConnectAfterCancel = async (owns: () => boolean, phaseVersion: number) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    backendTeardownsRef.current += 1;
+    try {
+      if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    } finally {
+      backendTeardownsRef.current -= 1;
+    }
     clearCryptOverlayState();
     setIsConnected(false);
     setLoading(false);
@@ -10215,7 +10224,12 @@ const App: React.FC = () => {
   const abortSwitchAfterCancel = async (owns: () => boolean) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    backendTeardownsRef.current += 1;
+    try {
+      if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    } finally {
+      backendTeardownsRef.current -= 1;
+    }
     clearCryptOverlayState();
   };
 
@@ -11195,9 +11209,10 @@ const App: React.FC = () => {
    *  as the message key, or `null` when it still is. */
   const queuedTargetProblem = useLatestCallback((queuedFor: QueuedTarget): string | null => {
     // A tab switch or a connect activates the new tab before the backend has
-    // reconnected: until it has, the live tab is not the server the backend
-    // writes to, or reads from.
-    if (remoteConnectPhaseRef.current) return 'transfer.queuedForAnotherServer';
+    // reconnected, and a cancelled one drops the half-open connection after
+    // its phase ends: until either is done, the live tab is not the server the
+    // backend writes to, or reads from.
+    if (remoteConnectPhaseRef.current || backendTeardownsRef.current > 0) return 'transfer.queuedForAnotherServer';
     if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) return 'transfer.queuedForAnotherServer';
     // The same server fields can reach another account: FileLu's API key is
     // the password, and an OAuth account is told apart only by its profile.
