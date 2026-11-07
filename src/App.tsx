@@ -44,7 +44,7 @@ import {
 import { assertOverlayActivationCurrent, profileOverlayApplyParams } from './utils/profileOverlayUnlock';
 import { cryptUnlockTargetKey, overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
 import type { OverlayActivationOwnership, ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
-import { bannerOverlayParams } from './utils/rcloneCryptBanner';
+import { bannerAnchorFolder, bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
 import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
@@ -214,7 +214,8 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { loginRelativeForm, normalizeOverlayAnchor } from './utils/overlayScope';
+import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
@@ -1219,7 +1220,6 @@ const App: React.FC = () => {
     salt?: string;
     filenameEncryption?: string;
     directoryNameEncryption?: boolean;
-    initialPath?: string;
   }>(null);
   const rcloneCryptBannerHandledRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1253,7 +1253,6 @@ const App: React.FC = () => {
       directoryNameEncryption: typeof opts.rcloneCryptDirectoryNameEncryption === 'boolean'
         ? (opts.rcloneCryptDirectoryNameEncryption as boolean)
         : true,
-      initialPath: typeof opts.rcloneCryptRemote === 'string' ? (opts.rcloneCryptRemote as string) : undefined,
     });
   }, [isConnected, liveConnectionParams.options, liveConnectionParams.server, liveConnectionParams.protocol, liveConnectionParams.username, rcloneCryptVaultId, rcloneCryptImportBanner]);
   useEffect(() => {
@@ -4273,7 +4272,7 @@ const App: React.FC = () => {
   }) => {
     const bound = await getEnabledProfileOverlay(locked.savedServerId);
     const target: CryptUnlockTarget = {
-      scope: overlayAnchor(bound?.anchor),
+      scope: isLoginRelativeScope(bound?.anchor) ? bound!.anchor! : overlayAnchor(bound?.anchor),
       savedServerId: locked.savedServerId,
     };
     if (locked.kind === 'aerocrypt') setShowAeroCryptUnlock(target);
@@ -6289,6 +6288,35 @@ const App: React.FC = () => {
   // (regardless of whether a password/keyfile is stored). Used to surface the
   // LT2b locked affordance when auto-unlock never arms, including the case where
   // there is no stored unlock factor so the suppress-listing path does not run.
+  // A start folder given relative (`docs`) or under the login folder
+  // (`~/docs`), as the absolute folder the connect opened: listed again as
+  // given, `docs` resolved against the folder already open and listed
+  // `docs/docs`. Absolute folders come back as given. A relative folder the
+  // session cannot place is the folder the connect left it in (null), never
+  // listed again as given; a `~` one is resolved by the listing itself.
+  const placeStartFolder = async (path: string | null | undefined): Promise<string | null> => (
+    path && !path.startsWith('/')
+      ? await invoke<string>('provider_start_folder', { path }).catch(() => isLoginRelativeScope(path) ? path : null)
+      : path ?? null
+  );
+
+  // A binding scope under the login folder, placed where the live session
+  // reports it; '' from knownCryptScope (every path inside) when it cannot.
+  const placeLoginRelativeScope = async (scope: string | null | undefined): Promise<string | null> => (
+    isLoginRelativeScope(scope)
+      ? placeUnderLoginFolder(scope, await invoke<string>('provider_login_folder').catch(() => ''))
+      : scope ?? null
+  );
+
+  // The login folder of the live session, asked only for a profile whose
+  // overlay sits under it; null when the session cannot report it, which
+  // leaves the scope unplaced (fail closed).
+  const restoredTransferLoginFolder = async (profile: ServerProfile): Promise<string | null> => (
+    profile.aeroCryptOverlay?.enabled && isLoginRelativeScope(profileOverlayScope(profile))
+      ? await invoke<string>('provider_login_folder').catch(() => '') || null
+      : null
+  );
+
   const getEnabledProfileOverlay = async (
     savedServerId?: string,
   ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
@@ -6298,8 +6326,12 @@ const App: React.FC = () => {
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
       if (!profile || !binding?.enabled) return null;
-      const scope = binding.remoteScope || profile.initialPath || '';
-      return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
+      // A scope under the login folder is placed through the live session, as
+      // on activation. Unplaced it stays `~/...`, which only SFTP and SCP
+      // write and resolve themselves; dropped, the prompt opened at the root.
+      const scope = await placeLoginRelativeScope(profileOverlayScope(profile));
+      if (!scope || scope === '/') return { kind: binding.kind, anchor: null };
+      return { kind: binding.kind, anchor: isLoginRelativeScope(scope) ? normalizeOverlayAnchor(scope) : scope };
     } catch {
       return null;
     }
@@ -6314,7 +6346,7 @@ const App: React.FC = () => {
   const getProfileOverlayHint = async (
     savedServerId?: string,
     landingPath?: string | null,
-  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean } | null> => {
+  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean; loginFolder: string | null } | null> => {
     if (!savedServerId) return null;
     try {
       const profiles = await loadSavedServerProfiles();
@@ -6326,18 +6358,30 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      const initialPath = landingPath === undefined
+      // On SFTP and SCP a relative Remote Path opens under the login folder,
+      // as the scope below reads it.
+      const configuredLanding = loginRelativeForm(landingPath === undefined
         ? profileInitialPath
-        : resolveUsernameTemplate(landingPath, profile.username);
-      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const scope = remoteScope || profileInitialPath || '';
+        : resolveUsernameTemplate(landingPath, profile.username), profile.protocol) || null;
+      const configuredScope = profileOverlayScope(profile);
+      // `~/docs` (the rclone import of an SFTP `nas:docs`) names a folder only
+      // the session knows: it is placed under the login folder the connection
+      // reports, as the backend anchors the overlay.
+      const loginFolder = isLoginRelativeScope(configuredScope) || isLoginRelativeScope(configuredLanding)
+        ? await invoke<string>('provider_login_folder').catch(() => '') || null
+        : null;
+      const scope = placeUnderLoginFolder(configuredScope, loginFolder) || '';
+      const initialPath = placeUnderLoginFolder(configuredLanding, loginFolder);
       return {
         kind: binding.kind,
-        anchor: scope && scope !== '/' ? scope : null,
+        // A scope still under the login folder (the session did not report
+        // it) has no anchor: the panel opens where the connect landed.
+        anchor: scope && scope !== '/' && !isLoginRelativeScope(scope) ? scope : null,
         // Remote Path is the opening. An empty Overlays Path means that
         // folder is the encrypted one. A root, or any parent of the island,
         // opens in plaintext and must not point the panel at the island.
         opensOutside: connectLandsOutsideOverlay(initialPath, scope),
+        loginFolder,
       };
     } catch {
       return null;
@@ -6383,7 +6427,7 @@ const App: React.FC = () => {
           ...profileOverlayApplyParams({
             binding,
             savedServerId,
-            overlayScope: binding.remoteScope || profile.initialPath || '',
+            overlayScope: profileOverlayScope(profile),
             password: typed.password,
             salt: typed.salt || storedSalt,
             keyfilePath: typed.keyfilePath || storedKeyfile,
@@ -6466,9 +6510,11 @@ const App: React.FC = () => {
       // connect flash the scramble/reveal on a plain server's real filenames,
       // because pendingOverlayUnlock fires for every saved profile, not just
       // overlay ones.
+      const badgeScope = knownCryptScope(await placeLoginRelativeScope(profileOverlayScope(profile)));
+      assertOverlayActivationCurrent(ownership);
       setCryptOverlayOwner({ savedServerId, sessionId: null });
       // Show the path-bar badge immediately (grey) for the whole decrypt window.
-      markSessionOverlayKind({ savedServerId }, binding.kind, binding.remoteScope ?? null);
+      markSessionOverlayKind({ savedServerId }, binding.kind, badgeScope);
       setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
@@ -6480,9 +6526,7 @@ const App: React.FC = () => {
       // Filen reset pwd to "/" on connect and never cd when they merely list a
       // folder, so after applying we explicitly move the wrapped provider to the
       // plaintext anchor.
-      const initialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const overlayScope = remoteScope || initialPath || '';
+      const overlayScope = profileOverlayScope(profile);
 
       try {
         await invoke('provider_arm_crypt_capability', ownership ? { expectedGeneration: ownership.generation } : undefined);
@@ -6588,13 +6632,13 @@ const App: React.FC = () => {
           const profiles = await loadSavedServerProfiles();
           const profile = profiles.find((p) => p.id === savedId);
           const binding = profile?.aeroCryptOverlay;
-          if (binding?.enabled) {
+          if (profile && binding?.enabled) {
             locked = {
               savedServerId: savedId,
               kind: binding.kind,
               reason: refusalFor(overlayRefusalRef.current, savedId),
             };
-            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, binding.remoteScope ?? null);
+            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, knownCryptScope(await placeLoginRelativeScope(profileOverlayScope(profile))));
           }
         } catch {
           // best-effort: fall through as plain if the profile re-read fails
@@ -8524,11 +8568,14 @@ const App: React.FC = () => {
         // Listing a path need not change a provider's cwd (for example Filen).
         // An outside-scope landing must also survive Refresh at path:null.
         const overlaySavedId = effectiveParams.savedServerId;
-        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
+        // A relative or `~` start folder, as one absolute folder, before
+        // anything lists it (the connect may have opened it already).
+        const startFolder = await placeStartFolder(resolvedRemoteDir);
+        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, startFolder) : null;
         logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
         const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
-          path: overlayHint?.opensOutside ? resolvedRemoteDir || '/' : resolvedRemoteDir || null
-        }), listingReason(resolvedRemoteDir));
+          path: overlayHint?.opensOutside ? startFolder || '/' : startFolder || null
+        }), listingReason(startFolder));
         logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
@@ -8600,7 +8647,7 @@ const App: React.FC = () => {
           quickConnectDirs.localDir || currentLocalPath,
           overlayHint && !overlayHint.opensOutside ? [] : files,
           undefined,
-          overlayHint ? resolvedRemoteDir || '/' : undefined
+          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
         );
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -11004,15 +11051,21 @@ const App: React.FC = () => {
       if (entry.profile_id) {
         const profiles = await loadSavedServerProfiles();
         const profile = profiles.find(p => p.id === entry.profile_id);
-        const requireOverlay = !!profile && restoredTransferRequiresOverlay(profile, entry.remote_path);
-        if (!profile || !isLiveOnProfile(entry.profile_id, requireOverlay)) {
+        if (!profile || !isLiveOnProfile(entry.profile_id)) {
+          throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
+        }
+        // The backend compares the active overlay's absolute anchor, so a
+        // scope under the login folder is placed through the live session.
+        const loginFolder = await restoredTransferLoginFolder(profile);
+        const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path, loginFolder);
+        if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
         }
         const generation = await invoke<number>('provider_connection_generation');
         if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile changed');
         }
-        ownership = { profileId: entry.profile_id, generation, requireOverlay, cryptScope: restoredTransferCryptScope(profile) };
+        ownership = { profileId: entry.profile_id, generation, requireOverlay, cryptScope: restoredTransferCryptScope(profile, loginFolder) };
       }
       if (direction === 'download') {
         await downloadFile(
@@ -11136,7 +11189,9 @@ const App: React.FC = () => {
 
   const { isLiveOnProfile, waitForLiveProfile } = useResumeProfileGuard(isConnected, sessions, activeSessionId);
 
-  const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay = restoredTransferRequiresOverlay(profile, profile.initialPath || '/')): Promise<boolean> => {
+  // `requireOverlay` is the caller's: before the connect no session can place
+  // a scope under the login folder, so a default read here left it unplaced.
+  const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay: boolean): Promise<boolean> => {
     const protocol = (profile.protocol || 'ftp') as ProviderType;
 
     // Reuse an open session tab when one already exists for this profile.
@@ -11390,11 +11445,14 @@ const App: React.FC = () => {
       // Plaintext entries do not wait behind an encrypted sibling. Each
       // callback retains its own requirement through the queued microtask and
       // the backend ownership check, even after the user navigates elsewhere.
+      // The session is live on the profile here, so a scope under the login
+      // folder is placed through it, as on a retry (`retryRestoredEntry`).
       const resumeOwnedEntries = async () => {
+        const loginFolder = await restoredTransferLoginFolder(profile);
         await Promise.all(groupIds.map(async id => {
           const entry = journalDescriptorsRef.current.get(id);
           if (!entry) return;
-          const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path);
+          const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path, loginFolder);
           if (!await waitForLiveProfile(profileId, requireOverlay)) return;
           transferQueue.clearRestoredFlags([id]);
           logResume(1, profile.name);
@@ -18717,7 +18775,7 @@ const App: React.FC = () => {
                     setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
                     await activateProviderCryptOverlay(
                       { sessionId: activeSessionId ?? undefined },
-                      bannerOverlayParams(banner),
+                      bannerOverlayParams(banner, bannerAnchorFolder(sessions.find(s => s.id === activeSessionId)?.serverInitialPath, currentRemotePath)),
                       activeSessionId,
                     );
                     await loadRemoteFiles(undefined, true);
@@ -19344,10 +19402,11 @@ const App: React.FC = () => {
                     // initialPath (e.g. `/remote.php/dav/files/{username}/`) does
                     // not reach the backend with the placeholder unresolved.
                     const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
-                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
+                    const startFolder = await connectScope.step(() => placeStartFolder(resolvedSavedInitialPath));
+                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId, startFolder));
                     const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
-                      path: overlayHint?.opensOutside ? resolvedSavedInitialPath || '/' : resolvedSavedInitialPath || null
-                    }), listingReason(resolvedSavedInitialPath)));
+                      path: overlayHint?.opensOutside ? startFolder || '/' : startFolder || null
+                    }), listingReason(startFolder)));
 
                     const files = response.files.map(f => ({
                       name: f.name,
@@ -19396,7 +19455,7 @@ const App: React.FC = () => {
                       resolvedLocalPath2,
                       overlayHint && !overlayHint.opensOutside ? [] : files,
                       undefined,
-                      overlayHint ? resolvedSavedInitialPath || '/' : undefined
+                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
                     ));
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);

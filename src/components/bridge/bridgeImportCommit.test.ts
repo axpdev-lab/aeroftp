@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers } from './bridgeImportCommit';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -225,5 +225,37 @@ describe('the import callback and the commit helper together', () => {
         expect(onImport).not.toHaveBeenCalled();
         expect(vault.writes).toBe(0);
         expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+    });
+});
+
+describe('an imported Filen API key (#230)', () => {
+    // The two shapes `import_bridge_config` returns (pinned on the backend in
+    // `an_imported_filen_key_moves_to_the_vault_and_leaves_the_options`): the
+    // key stored in the vault, and a failed or locked write.
+    const filen = (stored: boolean): ImportedServer => ({
+        id: 'filen-1', name: 'f', host: 'filen.io', port: 443, username: 'a@example.test',
+        protocol: 'filen', options: { filen_2fa_code: '' }, hasStoredCredential: true,
+        hasStoredFilenApiKey: stored,
+    });
+
+    it.each([true, false])('commits the flag the vault reported (%s) and never a key', async (stored) => {
+        const state = { profiles: [base] as ServerProfile[] };
+        vi.mocked(readSavedServerProfilesForWrite).mockImplementation(async () => ({ profiles: [...state.profiles], userId: 3 }));
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
+            state.profiles = [...profiles];
+            return state.profiles;
+        });
+        const outcome = await commitImportedServers([importedServerProfile(filen(stored))], new Set(), async (servers) => {
+            await appendImportedProfiles(servers);
+        });
+        expect(outcome).toEqual({ added: 1, updated: 0 });
+        const saved = state.profiles.find(p => p.id === 'filen-1');
+        expect(saved?.hasStoredFilenApiKey).toBe(stored);
+        expect(saved?.options).not.toHaveProperty('filen_api_key');
+    });
+
+    it('carries no field the backend did not return', () => {
+        const withExtra = { ...filen(true), options: { filen_2fa_code: '' }, filen_api_key: 'FILEN-KEY-1' } as ImportedServer;
+        expect(JSON.stringify(importedServerProfile(withExtra))).not.toContain('FILEN-KEY-1');
     });
 });
