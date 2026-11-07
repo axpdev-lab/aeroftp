@@ -347,6 +347,9 @@ pub(crate) fn remove_replica_file(out_path: &Path, target: &Path) -> std::io::Re
         }
     }
     match std::fs::remove_file(target) {
+        // Already gone (never written, or deleted locally; its folder too): the deletion
+        // is applied. The link checks above ran first, so this never skips a refusal.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
         // On Windows a link to a folder is removed as a folder entry.
         Err(e)
             if cfg!(windows)
@@ -2157,5 +2160,29 @@ mod replica_path_tests {
         std::fs::create_dir_all(real.join("root")).unwrap();
         std::os::unix::fs::symlink(&real, dir.path().join("link")).unwrap();
         assert!(check_replica_root(&dir.path().join("link").join("root")).is_ok());
+    }
+
+    /// A deletion whose file, or whose folder, is already gone is applied: the watch does not
+    /// keep retrying it, while a link on the way is still refused first.
+    #[cfg(unix)]
+    #[test]
+    fn deleting_a_replica_file_that_is_already_gone_is_applied() {
+        use crate::drive::remove_replica_file;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(out.join("kept")).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, out.join("linked")).unwrap();
+
+        let missing = safe_replica_path(&out, "kept/missing.txt").unwrap();
+        remove_replica_file(&out, &missing).unwrap();
+        let no_folder = safe_replica_path(&out, "gone/deeper/x.txt").unwrap();
+        remove_replica_file(&out, &no_folder).unwrap();
+        let through_link = safe_replica_path(&out, "linked/x.txt").unwrap();
+        assert!(
+            remove_replica_file(&out, &through_link).is_err(),
+            "still refused"
+        );
     }
 }
