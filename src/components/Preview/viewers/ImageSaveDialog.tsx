@@ -78,15 +78,9 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
 
     // A save in flight writes the file after a close: the backdrop is inert
     // while it runs, and the X and ESC ask first (Discussion #1527).
-    const guarded = useGuardedClose({ guard: saving !== null ? 'busy' : null, onClose });
-
-    // Escape key handler
-    useEffect(() => {
-        if (!isOpen) return;
-        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') guarded.requestClose(); };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, guarded.requestClose]);
+    // ESC goes through the hook too, which holds the key for the topmost
+    // modal: the preview underneath leaves it alone while this is open.
+    const guarded = useGuardedClose({ guard: saving !== null ? 'busy' : null, onClose, escape: isOpen });
 
     const outputDims = useMemo(
         () => computeOutputDimensions(originalDimensions, editState),
