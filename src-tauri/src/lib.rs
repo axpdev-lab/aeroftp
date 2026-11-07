@@ -7237,25 +7237,16 @@ async fn copy_then_delete_local(
                 .await
                 .map_err(|e| format!("Failed to replace the destination: {}", e))?;
         }
-        #[cfg(unix)]
-        let made = tokio::fs::symlink(&target, to).await;
-        #[cfg(windows)]
-        let made = {
-            use std::os::windows::fs::FileTypeExt;
-            if source.file_type().is_symlink_dir() {
-                tokio::fs::symlink_dir(&target, to).await
-            } else {
-                tokio::fs::symlink_file(&target, to).await
-            }
-        };
-        made.map_err(|e| format!("Failed to recreate the link for a cross-device move: {}", e))?;
+        recreate_link(&source, &target, to).await?;
         remove_local_file_or_link(from)
             .await
             .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
         return Ok(());
     }
     if local_delete_walks_into(from) {
-        copy_dir_recursive(from, to, 0).await?;
+        // The links inside the folder move with it, as rename moves them: the
+        // copy recreates each, and the source is removed only after.
+        copy_dir_recursive(from, to, 0, NestedLinks::Recreate).await?;
         tokio::fs::remove_dir_all(from)
             .await
             .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
@@ -7346,7 +7337,7 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
     refuse_link_destination(std::path::Path::new(&to))?;
     if from_path.is_dir() {
         // Recursive directory copy
-        copy_dir_recursive(from_path, std::path::Path::new(&to), 0).await?;
+        copy_dir_recursive(from_path, std::path::Path::new(&to), 0, NestedLinks::Skip).await?;
     } else {
         tokio::fs::copy(&from, &to)
             .await
@@ -7375,10 +7366,43 @@ fn refuse_link_destination(path: &std::path::Path) -> Result<(), String> {
     }
 }
 
+/// What a folder copy does with a link inside the tree: a copy skips it, as
+/// it always has; a cross-device move recreates it as the same link, since
+/// the source is deleted afterwards and the link would otherwise be lost.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NestedLinks {
+    Skip,
+    Recreate,
+}
+
+/// Make at `to` the same link as the one `source` describes, pointing at `target`.
+async fn recreate_link(
+    source: &std::fs::Metadata,
+    target: &std::path::Path,
+    to: &std::path::Path,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    let made = {
+        let _ = source;
+        tokio::fs::symlink(target, to).await
+    };
+    #[cfg(windows)]
+    let made = {
+        use std::os::windows::fs::FileTypeExt;
+        if source.file_type().is_symlink_dir() {
+            tokio::fs::symlink_dir(target, to).await
+        } else {
+            tokio::fs::symlink_file(target, to).await
+        }
+    };
+    made.map_err(|e| format!("Failed to recreate the link for a cross-device move: {}", e))
+}
+
 async fn copy_dir_recursive(
     src: &std::path::Path,
     dst: &std::path::Path,
     depth: u32,
+    links: NestedLinks,
 ) -> Result<(), String> {
     if depth > 50 {
         return Err("Directory nesting too deep (max 50 levels)".to_string());
@@ -7402,11 +7426,19 @@ async fn copy_dir_recursive(
             .await
             .map_err(|e| format!("Failed to read metadata: {}", e))?;
         if metadata.is_symlink() {
-            // Skip symlinks for security
+            // A copy skips links for security; a move keeps them as links,
+            // never by copying what they point to.
+            if links == NestedLinks::Recreate {
+                refuse_link_destination(&dst_path)?;
+                let target = tokio::fs::read_link(&src_path)
+                    .await
+                    .map_err(|e| format!("Failed to read link: {}", e))?;
+                recreate_link(&metadata, &target, &dst_path).await?;
+            }
             continue;
         }
         if metadata.is_dir() {
-            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1)).await?;
+            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1, links)).await?;
         } else {
             refuse_link_destination(&dst_path)?;
             tokio::fs::copy(&src_path, &dst_path)
@@ -7424,6 +7456,41 @@ mod local_link_tests {
         copy_dir_recursive, copy_local_file, copy_then_delete_local, local_delete_walks_into,
         remove_local_file_or_link,
     };
+
+    /// Deep-scan 39, 40: a folder moved across devices arrives with the links
+    /// inside it, as links, and their targets are left alone; a copy still
+    /// skips them.
+    #[tokio::test]
+    async fn a_cross_device_folder_move_keeps_the_links_inside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+        let from = dir.path().join("from");
+        std::fs::create_dir_all(from.join("sub")).unwrap();
+        std::fs::write(from.join("plain.txt"), b"plain").unwrap();
+        std::os::unix::fs::symlink(&target, from.join("sub/file_link")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, from.join("dir_link")).unwrap();
+
+        let copied = dir.path().join("copied");
+        copy_dir_recursive(&from, &copied, 0, super::NestedLinks::Skip)
+            .await
+            .unwrap();
+        assert!(std::fs::symlink_metadata(copied.join("sub/file_link")).is_err());
+
+        let to = dir.path().join("to");
+        copy_then_delete_local(&from, &to).await.unwrap();
+        assert!(std::fs::symlink_metadata(&from).is_err());
+        assert_eq!(std::fs::read(to.join("plain.txt")).unwrap(), b"plain");
+        assert_eq!(
+            std::fs::read_link(to.join("sub/file_link")).unwrap(),
+            target
+        );
+        assert_eq!(std::fs::read_link(to.join("dir_link")).unwrap(), elsewhere);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+        assert!(elsewhere.is_dir());
+    }
 
     /// Deep-scan 39, 40: the cross-device move keeps a link a link, and
     /// replaces a link at the destination instead of writing through it.
@@ -7523,11 +7590,17 @@ mod local_link_tests {
         let dst = dir.path().join("dst");
         std::fs::create_dir(&dst).unwrap();
         std::os::unix::fs::symlink(outside.join("a.txt"), dst.join("a.txt")).unwrap();
-        assert!(copy_dir_recursive(&src, &dst, 0).await.is_err());
+        assert!(copy_dir_recursive(&src, &dst, 0, super::NestedLinks::Skip)
+            .await
+            .is_err());
         assert!(!outside.join("a.txt").exists(), "nothing written outside");
         let dst_link = dir.path().join("dst_link");
         std::os::unix::fs::symlink(&outside, &dst_link).unwrap();
-        assert!(copy_dir_recursive(&src, &dst_link, 0).await.is_err());
+        assert!(
+            copy_dir_recursive(&src, &dst_link, 0, super::NestedLinks::Skip)
+                .await
+                .is_err()
+        );
         assert!(!outside.join("a.txt").exists());
     }
 }
