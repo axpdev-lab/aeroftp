@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Okrypterad lagringsadress tillåten",
             "importSecurityPlainHttp": "Vanlig HTTP i stället för HTTPS",
             "importSecurityPasvAddress": "Dataanslutning till adressen som servern anger (PASV)",
-            "importSecurityUnknownHostKeys": "Okända SSH-värdnycklar accepteras"
+            "importSecurityUnknownHostKeys": "Okända SSH-värdnycklar accepteras",
+            "keystoreSecurityReset": "{count} återställda servrar hade alternativ som stänger av en säkerhetskontroll; de sattes tillbaka till den säkra inställningen: {details}."
         },
         "devtools": {
             "title": "AeroTools",

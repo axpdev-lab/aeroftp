@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "დაუშიფრავი საცავის მისამართი ნებადართულია",
             "importSecurityPlainHttp": "ჩვეულებრივი HTTP HTTPS-ის ნაცვლად",
             "importSecurityPasvAddress": "მონაცემთა კავშირი სერვერის მიერ მითითებულ მისამართზე (PASV)",
-            "importSecurityUnknownHostKeys": "უცნობი SSH ჰოსტის გასაღებები მიღებულია"
+            "importSecurityUnknownHostKeys": "უცნობი SSH ჰოსტის გასაღებები მიღებულია",
+            "keystoreSecurityReset": "აღდგენილ {count} სერვერს ჰქონდა პარამეტრები, რომლებიც უსაფრთხოების შემოწმებას ითიშავს; ისინი დაბრუნდა უსაფრთხო პარამეტრზე: {details}."
         },
         "devtools": {
             "title": "AeroTools",

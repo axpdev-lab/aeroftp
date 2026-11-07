@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Չգաղտնագրված պահոցի հասցեն թույլատրված է",
             "importSecurityPlainHttp": "Պարզ HTTP՝ HTTPS-ի փոխարեն",
             "importSecurityPasvAddress": "Տվյալների կապ սերվերի նշած հասցեին (PASV)",
-            "importSecurityUnknownHostKeys": "Անհայտ SSH հանգույցի բանալիներն ընդունված են"
+            "importSecurityUnknownHostKeys": "Անհայտ SSH հանգույցի բանալիներն ընդունված են",
+            "keystoreSecurityReset": "Վերականգնված {count} սերվերն ունեին ընտրանքներ, որոնք անջատում են անվտանգության ստուգումը. դրանք վերադարձվեցին անվտանգ կարգավորման՝ {details}։"
         },
         "devtools": {
             "title": "AeroTools",

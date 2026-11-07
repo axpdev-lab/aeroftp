@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Adresă de stocare necriptată permisă",
             "importSecurityPlainHttp": "HTTP simplu în loc de HTTPS",
             "importSecurityPasvAddress": "Conexiune de date la adresa indicată de server (PASV)",
-            "importSecurityUnknownHostKeys": "Chei de gazdă SSH necunoscute acceptate"
+            "importSecurityUnknownHostKeys": "Chei de gazdă SSH necunoscute acceptate",
+            "keystoreSecurityReset": "{count} servere restaurate aveau opțiuni care dezactivează o verificare de securitate; au fost readuse la setarea sigură: {details}."
         },
         "devtools": {
             "title": "AeroTools",

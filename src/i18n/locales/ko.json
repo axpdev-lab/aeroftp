@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "암호화되지 않은 스토리지 주소 허용",
             "importSecurityPlainHttp": "HTTPS 대신 일반 HTTP",
             "importSecurityPasvAddress": "서버가 지정한 주소로 데이터 연결 (PASV)",
-            "importSecurityUnknownHostKeys": "알 수 없는 SSH 호스트 키 허용"
+            "importSecurityUnknownHostKeys": "알 수 없는 SSH 호스트 키 허용",
+            "keystoreSecurityReset": "복원된 서버 {count}개에 보안 검사를 끄는 옵션이 있었습니다. 해당 옵션은 안전한 설정으로 되돌려졌습니다: {details}."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Επιτρέπεται μη κρυπτογραφημένη διεύθυνση αποθήκευσης",
             "importSecurityPlainHttp": "Απλό HTTP αντί για HTTPS",
             "importSecurityPasvAddress": "Σύνδεση δεδομένων στη διεύθυνση που υποδεικνύει ο διακομιστής (PASV)",
-            "importSecurityUnknownHostKeys": "Αποδοχή άγνωστων κλειδιών κεντρικού υπολογιστή SSH"
+            "importSecurityUnknownHostKeys": "Αποδοχή άγνωστων κλειδιών κεντρικού υπολογιστή SSH",
+            "keystoreSecurityReset": "{count} διακομιστές που επαναφέρθηκαν είχαν επιλογές που απενεργοποιούν έναν έλεγχο ασφαλείας· επανήλθαν στην ασφαλή ρύθμιση: {details}."
         },
         "devtools": {
             "title": "AeroTools",

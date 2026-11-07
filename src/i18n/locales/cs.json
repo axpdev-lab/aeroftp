@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Povolena nešifrovaná adresa úložiště",
             "importSecurityPlainHttp": "Prosté HTTP místo HTTPS",
             "importSecurityPasvAddress": "Datové spojení na adresu, kterou uvede server (PASV)",
-            "importSecurityUnknownHostKeys": "Přijímány neznámé klíče hostitele SSH"
+            "importSecurityUnknownHostKeys": "Přijímány neznámé klíče hostitele SSH",
+            "keystoreSecurityReset": "{count} obnovených serverů mělo možnosti, které vypínají bezpečnostní kontrolu; byly vráceny na bezpečné nastavení: {details}."
         },
         "devtools": {
             "title": "AeroTools",

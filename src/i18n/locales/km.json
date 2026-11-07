@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "អនុញ្ញាតអាសយដ្ឋានផ្ទុកដែលមិនបានអ៊ិនគ្រីប",
             "importSecurityPlainHttp": "HTTP ធម្មតាជំនួស HTTPS",
             "importSecurityPasvAddress": "ការតភ្ជាប់ទិន្នន័យទៅអាសយដ្ឋានដែលម៉ាស៊ីនមេបញ្ជាក់ (PASV)",
-            "importSecurityUnknownHostKeys": "ទទួលយកសោម៉ាស៊ីន SSH ដែលមិនស្គាល់"
+            "importSecurityUnknownHostKeys": "ទទួលយកសោម៉ាស៊ីន SSH ដែលមិនស្គាល់",
+            "keystoreSecurityReset": "ម៉ាស៊ីនមេដែលបានស្ដារ {count} មានជម្រើសដែលបិទការត្រួតពិនិត្យសុវត្ថិភាព។ ពួកវាត្រូវបានដាក់ត្រឡប់ទៅការកំណត់ដែលមានសុវត្ថិភាពវិញ៖ {details}។"
         },
         "devtools": {
             "title": "AeroTools",

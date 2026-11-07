@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Zifratu gabeko biltegiratze-helbidea baimenduta",
             "importSecurityPlainHttp": "HTTP arrunta HTTPS-ren ordez",
             "importSecurityPasvAddress": "Datu-konexioa zerbitzariak adierazten duen helbidera (PASV)",
-            "importSecurityUnknownHostKeys": "SSH ostalari-gako ezezagunak onartuta"
+            "importSecurityUnknownHostKeys": "SSH ostalari-gako ezezagunak onartuta",
+            "keystoreSecurityReset": "Berrezarritako {count} zerbitzarik segurtasun-egiaztapen bat desaktibatzen duten aukerak zituzten; ezarpen seguruan jarri dira berriro: {details}."
         },
         "devtools": {
             "title": "AeroTools",

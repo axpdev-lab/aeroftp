@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Ódulkóðað geymsluvistfang leyft",
             "importSecurityPlainHttp": "Venjulegt HTTP í stað HTTPS",
             "importSecurityPasvAddress": "Gagnatenging við vistfangið sem þjónninn gefur upp (PASV)",
-            "importSecurityUnknownHostKeys": "Óþekktir SSH hýsillyklar samþykktir"
+            "importSecurityUnknownHostKeys": "Óþekktir SSH hýsillyklar samþykktir",
+            "keystoreSecurityReset": "{count} endurheimtir netþjónar voru með valkosti sem slökkva á öryggisathugun; þeir voru færðir aftur í öruggar stillingar: {details}."
         },
         "devtools": {
             "title": "AeroTools",

@@ -4,7 +4,7 @@
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import type { Relaxation } from '../utils/profileSecurity';
+import { RELAXATION_LABEL_KEYS, type Relaxation } from '../utils/profileSecurity';
 
 /** The security-relaxing options of one imported profile, as the backend reports them. */
 export interface ImportedSecurity {
@@ -13,16 +13,6 @@ export interface ImportedSecurity {
     reset: Relaxation[];
     kept: Relaxation[];
 }
-
-/** The i18n key that names each option of `src/shared/profile-security-relaxations.json`. */
-const RELAXATION_LABELS: Record<string, string> = {
-    verifyCert: 'settings.importSecurityVerifyCert',
-    allowCleartextEndpoint: 'settings.importSecurityCleartextEndpoint',
-    allowCleartextStorage: 'settings.importSecurityCleartextStorage',
-    webdavScheme: 'settings.importSecurityPlainHttp',
-    trustPasvAddress: 'settings.importSecurityPasvAddress',
-    trustUnknownHosts: 'settings.importSecurityUnknownHostKeys',
-};
 
 /** The key a kept option travels under in the import call. */
 export const keptRelaxationId = (fileIndex: number, key: string) => `${fileIndex}:${key}`;
@@ -62,7 +52,7 @@ export const ImportSecurityReview: React.FC<ImportSecurityReviewProps> = ({ entr
                                         data-testid={`import-security-keep-${id}`}
                                         className="rounded border-gray-300 dark:border-gray-600"
                                     />
-                                    <span>{t(RELAXATION_LABELS[relaxation.key] ?? relaxation.key)}</span>
+                                    <span>{t(RELAXATION_LABEL_KEYS[relaxation.key] ?? relaxation.key)}</span>
                                     <code className="text-[11px] text-gray-500 dark:text-gray-400">{relaxation.key}={relaxation.value}</code>
                                 </label>
                             );

@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Şifrelenmemiş depolama adresine izin verildi",
             "importSecurityPlainHttp": "HTTPS yerine düz HTTP",
             "importSecurityPasvAddress": "Sunucunun belirttiği adrese veri bağlantısı (PASV)",
-            "importSecurityUnknownHostKeys": "Bilinmeyen SSH ana makine anahtarları kabul edildi"
+            "importSecurityUnknownHostKeys": "Bilinmeyen SSH ana makine anahtarları kabul edildi",
+            "keystoreSecurityReset": "Geri yüklenen {count} sunucuda bir güvenlik denetimini kapatan seçenekler vardı; bunlar güvenli ayara geri döndürüldü: {details}."
         },
         "devtools": {
             "title": "AeroTools",

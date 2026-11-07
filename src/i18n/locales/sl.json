@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Dovoljen nešifriran naslov shrambe",
             "importSecurityPlainHttp": "Navaden HTTP namesto HTTPS",
             "importSecurityPasvAddress": "Podatkovna povezava na naslov, ki ga navede strežnik (PASV)",
-            "importSecurityUnknownHostKeys": "Sprejeti neznani ključi gostitelja SSH"
+            "importSecurityUnknownHostKeys": "Sprejeti neznani ključi gostitelja SSH",
+            "keystoreSecurityReset": "{count} obnovljenih strežnikov je imelo možnosti, ki izklopijo varnostno preverjanje; vrnjeni so bili na varno nastavitev: {details}."
         },
         "devtools": {
             "title": "AeroTools",

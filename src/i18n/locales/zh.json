@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "允许未加密的存储地址",
             "importSecurityPlainHttp": "使用普通 HTTP 而非 HTTPS",
             "importSecurityPasvAddress": "连接到服务器指定地址的数据连接 (PASV)",
-            "importSecurityUnknownHostKeys": "接受未知的 SSH 主机密钥"
+            "importSecurityUnknownHostKeys": "接受未知的 SSH 主机密钥",
+            "keystoreSecurityReset": "已恢复的 {count} 台服务器含有会关闭安全检查的选项；这些选项已改回安全设置：{details}。"
         },
         "devtools": {
             "title": "AeroTools",

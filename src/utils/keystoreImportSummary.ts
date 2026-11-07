@@ -5,6 +5,7 @@
 // and every part of the import that needs the user's attention.
 
 import type { TranslationFunction } from '../i18n';
+import { RELAXATION_LABEL_KEYS } from './profileSecurity';
 
 /** The fields of the `import_keystore` result that the message reports. */
 export interface KeystoreImportOutcome {
@@ -17,6 +18,8 @@ export interface KeystoreImportOutcome {
     profilePartitionSkipped?: boolean;
     profileDecisionsError?: string;
     sqliteDbsFailed?: string[];
+    /** Restored profiles whose security-relaxing options were put back to safe. */
+    securityReset?: { name: string; keys: string[] }[];
 }
 
 /** What the caller knows about the import that the result does not carry. */
@@ -77,6 +80,14 @@ export function keystoreImportSummary(
         // the note says what was not done: the two lists were not merged.
         const key = context.reviewed ? 'settings.keystoreDecisionsFailed' : 'settings.keystoreListMergeFailed';
         extraNotes.push(t(key, { error: asSentence(result.profileDecisionsError) }));
+    }
+    if (result.securityReset?.length) {
+        // CodeRabbit on #1524: a restore takes no option that turns a
+        // security check off from the backup, and says which it put back.
+        const details = result.securityReset
+            .map(r => `${r.name} (${r.keys.map(k => t(RELAXATION_LABEL_KEYS[k] ?? k)).join(', ')})`)
+            .join('; ');
+        extraNotes.push(t('settings.keystoreSecurityReset', { count: result.securityReset.length, details }));
     }
     if (result.sqliteDbsFailed?.length) {
         extraNotes.push(t('settings.keystoreDatabasesFailed', { names: result.sqliteDbsFailed.join(', ') }));

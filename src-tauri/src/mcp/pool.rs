@@ -580,6 +580,12 @@ async fn create_provider_from_vault(
     let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
+    // Strict mode holds for the MCP pool too: a saved profile that turns a
+    // security check off is refused before any credential is read (Greptile
+    // on #1524).
+    if let Some(refusal) = crate::profile_security::strict_profile_refusal(matched) {
+        return Err(refusal);
+    }
 
     let profile_id = matched.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let profile_name = matched
@@ -715,6 +721,27 @@ async fn create_provider_from_vault(
 
 #[cfg(test)]
 mod tests {
+
+    /// Greptile on #1524: `agent --mcp --strict` connected saved profiles that
+    /// turn a security check off. The vault path refuses them in strict mode,
+    /// before any credential is read.
+    #[test]
+    fn the_vault_connect_path_applies_strict_mode() {
+        let source = include_str!("pool.rs");
+        let body = &source[source.find("async fn create_provider_from_vault(").unwrap()..];
+        let matched = body
+            .find("find_unique_profile(&profiles, server_query)?")
+            .unwrap();
+        let refusal = body.find("strict_profile_refusal(matched)").unwrap();
+        let credential = body.find("resolve_active_credential(").unwrap();
+        assert!(matched < refusal && refusal < credential);
+        let relaxed = serde_json::json!({
+            "name": "lab", "host": "files.example.com", "protocol": "sftp",
+            "options": {"trustUnknownHosts": true}
+        });
+        assert!(crate::profile_security::strict_profile_refusal_when(true, &relaxed).is_some());
+        assert!(crate::profile_security::strict_profile_refusal_when(false, &relaxed).is_none());
+    }
     use super::*;
 
     /// MI-02 regression pin: the five providers the resources surface

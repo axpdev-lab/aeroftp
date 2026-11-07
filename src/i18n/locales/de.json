@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Unverschlüsselte Speicheradresse erlaubt",
             "importSecurityPlainHttp": "Einfaches HTTP statt HTTPS",
             "importSecurityPasvAddress": "Datenverbindung zur vom Server genannten Adresse (PASV)",
-            "importSecurityUnknownHostKeys": "Unbekannte SSH-Hostschlüssel akzeptiert"
+            "importSecurityUnknownHostKeys": "Unbekannte SSH-Hostschlüssel akzeptiert",
+            "keystoreSecurityReset": "{count} wiederhergestellte Server hatten Optionen, die eine Sicherheitsprüfung deaktivieren; sie wurden auf die sichere Einstellung zurückgesetzt: {details}."
         },
         "devtools": {
             "title": "AeroTools",

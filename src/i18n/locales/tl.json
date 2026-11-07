@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Pinapayagan ang hindi naka-encrypt na address ng storage",
             "importSecurityPlainHttp": "Karaniwang HTTP sa halip na HTTPS",
             "importSecurityPasvAddress": "Koneksyon ng data sa address na itinuturo ng server (PASV)",
-            "importSecurityUnknownHostKeys": "Tinatanggap ang mga hindi kilalang SSH host key"
+            "importSecurityUnknownHostKeys": "Tinatanggap ang mga hindi kilalang SSH host key",
+            "keystoreSecurityReset": "{count} naibalik na server ang may mga opsyon na nag-o-off ng security check; ibinalik ang mga ito sa ligtas na setting: {details}."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Дозвољена је нешифрована адреса складишта",
             "importSecurityPlainHttp": "Обичан HTTP уместо HTTPS",
             "importSecurityPasvAddress": "Веза за податке ка адреси коју наводи сервер (PASV)",
-            "importSecurityUnknownHostKeys": "Прихваћени су непознати SSH кључеви домаћина"
+            "importSecurityUnknownHostKeys": "Прихваћени су непознати SSH кључеви домаћина",
+            "keystoreSecurityReset": "{count} враћених сервера имало је опције које искључују безбедносну проверу; враћени су на безбедно подешавање: {details}."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Leidžiamas nešifruotas saugyklos adresas",
             "importSecurityPlainHttp": "Paprastas HTTP vietoj HTTPS",
             "importSecurityPasvAddress": "Duomenų ryšys su serverio nurodytu adresu (PASV)",
-            "importSecurityUnknownHostKeys": "Priimami nežinomi SSH pagrindinio kompiuterio raktai"
+            "importSecurityUnknownHostKeys": "Priimami nežinomi SSH pagrindinio kompiuterio raktai",
+            "keystoreSecurityReset": "{count} atkurtų serverių turėjo parinkčių, išjungiančių saugumo patikrą; jos buvo grąžintos į saugų nustatymą: {details}."
         },
         "devtools": {
             "title": "AeroTools",

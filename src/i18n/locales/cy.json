@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Cyfeiriad storio heb ei amgryptio wedi'i ganiatáu",
             "importSecurityPlainHttp": "HTTP plaen yn lle HTTPS",
             "importSecurityPasvAddress": "Cysylltiad data â'r cyfeiriad y mae'r gweinydd yn ei enwi (PASV)",
-            "importSecurityUnknownHostKeys": "Allweddi gwesteiwr SSH anhysbys wedi'u derbyn"
+            "importSecurityUnknownHostKeys": "Allweddi gwesteiwr SSH anhysbys wedi'u derbyn",
+            "keystoreSecurityReset": "Roedd gan {count} gweinydd a adferwyd opsiynau sy'n diffodd gwiriad diogelwch; cawsant eu rhoi yn ôl i'r gosodiad diogel: {details}."
         },
         "devtools": {
             "title": "AeroTools",

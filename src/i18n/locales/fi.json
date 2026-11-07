@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Salaamaton tallennusosoite sallittu",
             "importSecurityPlainHttp": "Pelkkä HTTP HTTPS:n sijaan",
             "importSecurityPasvAddress": "Tietoyhteys palvelimen ilmoittamaan osoitteeseen (PASV)",
-            "importSecurityUnknownHostKeys": "Tuntemattomat SSH-isäntäavaimet hyväksytty"
+            "importSecurityUnknownHostKeys": "Tuntemattomat SSH-isäntäavaimet hyväksytty",
+            "keystoreSecurityReset": "{count} palautetulla palvelimella oli asetuksia, jotka poistavat turvatarkistuksen käytöstä; ne palautettiin turvalliseen asetukseen: {details}."
         },
         "devtools": {
             "title": "AeroTools",

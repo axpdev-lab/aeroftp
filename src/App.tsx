@@ -17,6 +17,7 @@ import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
+import { loadedCertificateCheck, loadedOptionOn } from './utils/profileSecurity';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
@@ -7631,9 +7632,9 @@ const App: React.FC = () => {
       tls_mode: protocol === 'webdav'
         ? effectiveParams.options?.webdavScheme
         : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
-      verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
-      trust_pasv_address: effectiveParams.options?.trustPasvAddress === true,
-      allow_cleartext_storage: effectiveParams.options?.allowCleartextStorage === true,
+      verify_cert: loadedCertificateCheck(effectiveParams.options),
+      trust_pasv_address: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
+      allow_cleartext_storage: loadedOptionOn(effectiveParams.options, 'allowCleartextStorage'),
       two_factor_code: effectiveParams.options?.two_factor_code || null,
       totp_secret: effectiveParams.options?.totp_secret || null,
       filen_api_key: filenApiKey,
@@ -8706,7 +8707,7 @@ const App: React.FC = () => {
       await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', {
         ...(effectiveParams as unknown as Record<string, unknown>),
         // #1506 Requested 188: the PASV address opt-in rides with the legacy command.
-        trustPasvAddress: effectiveParams.options?.trustPasvAddress === true,
+        trustPasvAddress: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
       }));
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
@@ -9241,7 +9242,7 @@ const App: React.FC = () => {
         }
         await connectScope.step(() => runConnect('connect_ftp', {
           ...(targetSession.connectionParams as unknown as Record<string, unknown>),
-          trustPasvAddress: targetSession.connectionParams.options?.trustPasvAddress === true,
+          trustPasvAddress: loadedOptionOn(targetSession.connectionParams.options, 'trustPasvAddress'),
         }, connectScope));
 
         // Navigate to the saved path to restore session state.
@@ -9736,9 +9737,9 @@ const App: React.FC = () => {
             timeout: cloudServer.options?.timeout || 30,
             ...scpFallbackConnectParam(protocol, cloudServer.options),
             tls_mode: cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
-            verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
-            trust_pasv_address: cloudServer.options?.trustPasvAddress === true,
-            allow_cleartext_storage: cloudServer.options?.allowCleartextStorage === true,
+            verify_cert: loadedCertificateCheck(cloudServer.options),
+            trust_pasv_address: loadedOptionOn(cloudServer.options, 'trustPasvAddress'),
+            allow_cleartext_storage: loadedOptionOn(cloudServer.options, 'allowCleartextStorage'),
             two_factor_code: cloudServer.options?.two_factor_code || null,
             totp_secret: cloudServer.options?.totp_secret || null,
             filen_api_key: cloudFilenApiKey,

@@ -115,7 +115,14 @@ fn refuse_rewritten_path(url: &str, parsed: &url::Url) -> Result<(), ProviderErr
     let built = after_scheme.find('/').map_or("/", |i| &after_scheme[i..]);
     let built = built.split(['?', '#']).next().unwrap_or(built);
     let built = if built.is_empty() { "/" } else { built };
-    if built == parsed.path() {
+    // Compared on the decoded bytes: the parser also percent-encodes what the
+    // endpoint's base path left raw (`/My Files` becomes `/My%20Files`), which
+    // addresses the same object. Only a removed segment changes the bytes
+    // (CodeRabbit on #1524).
+    if built == parsed.path()
+        || urlencoding::decode_binary(built.as_bytes())
+            == urlencoding::decode_binary(parsed.path().as_bytes())
+    {
         return Ok(());
     }
     Err(ProviderError::InvalidPath(format!(
@@ -10055,6 +10062,30 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// CodeRabbit on #1524: a path-style endpoint whose base path holds a
+    /// space is encoded by the URL parser (`/My%20Files`), which is not a
+    /// rewrite, so the request still signs and a share link is still made. A
+    /// dot segment under that base is still refused.
+    #[tokio::test]
+    async fn an_encoded_base_path_is_not_a_rewrite() {
+        let mut provider = make_provider(Some("https://gateway.example.com/My Files"));
+        provider.config.path_style = true;
+        let url = provider.build_url("report.pdf");
+        let mut headers = std::collections::HashMap::new();
+        let signed = provider.sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD");
+        assert!(signed.is_ok(), "{signed:?}");
+        let link = provider
+            .create_share_link("/report.pdf", ShareLinkOptions::default())
+            .await;
+        assert!(link.is_ok(), "{link:?}");
+        let url = provider.build_url("a/../b.txt");
+        let mut headers = std::collections::HashMap::new();
+        assert!(matches!(
+            provider.sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD"),
+            Err(ProviderError::InvalidPath(_))
+        ));
     }
 
     #[test]

@@ -3769,6 +3769,8 @@ export const SettingsPanel: React.FC<SettingsPanelProps> = ({ isOpen, onClose, o
                                                                             // #347: the import succeeded, the decisions did not.
                                                                             profileDecisionsError?: string;
                                                                             sqliteDbsFailed?: string[];
+                                                                            // Restored profiles whose security-relaxing options were put back to safe.
+                                                                            securityReset?: { name: string; keys: string[] }[];
                                                                         }>('import_keystore', {
                                                                             password: keystoreImportPassword,
                                                                             filePath: keystoreImportFilePath,

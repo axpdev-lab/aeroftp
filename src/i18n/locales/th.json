@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "อนุญาตที่อยู่พื้นที่จัดเก็บที่ไม่เข้ารหัส",
             "importSecurityPlainHttp": "HTTP ธรรมดาแทน HTTPS",
             "importSecurityPasvAddress": "การเชื่อมต่อข้อมูลไปยังที่อยู่ที่เซิร์ฟเวอร์ระบุ (PASV)",
-            "importSecurityUnknownHostKeys": "ยอมรับคีย์โฮสต์ SSH ที่ไม่รู้จัก"
+            "importSecurityUnknownHostKeys": "ยอมรับคีย์โฮสต์ SSH ที่ไม่รู้จัก",
+            "keystoreSecurityReset": "เซิร์ฟเวอร์ที่กู้คืน {count} เครื่องมีตัวเลือกที่ปิดการตรวจสอบความปลอดภัย จึงถูกเปลี่ยนกลับเป็นการตั้งค่าที่ปลอดภัย: {details}"
         },
         "devtools": {
             "title": "AeroTools",

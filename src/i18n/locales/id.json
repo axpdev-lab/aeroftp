@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Alamat penyimpanan tanpa enkripsi diizinkan",
             "importSecurityPlainHttp": "HTTP biasa, bukan HTTPS",
             "importSecurityPasvAddress": "Koneksi data ke alamat yang disebutkan server (PASV)",
-            "importSecurityUnknownHostKeys": "Kunci host SSH tidak dikenal diterima"
+            "importSecurityUnknownHostKeys": "Kunci host SSH tidak dikenal diterima",
+            "keystoreSecurityReset": "{count} server yang dipulihkan memiliki opsi yang menonaktifkan pemeriksaan keamanan; server itu dikembalikan ke pengaturan aman: {details}."
         },
         "devtools": {
             "title": "AeroTools",

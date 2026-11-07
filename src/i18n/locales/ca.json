@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Adreça d'emmagatzematge sense xifrar permesa",
             "importSecurityPlainHttp": "HTTP simple en lloc d'HTTPS",
             "importSecurityPasvAddress": "Connexió de dades a l'adreça que indica el servidor (PASV)",
-            "importSecurityUnknownHostKeys": "Claus d'amfitrió SSH desconegudes acceptades"
+            "importSecurityUnknownHostKeys": "Claus d'amfitrió SSH desconegudes acceptades",
+            "keystoreSecurityReset": "{count} servidors restaurats tenien opcions que desactiven una comprovació de seguretat; s'han tornat a la configuració segura: {details}."
         },
         "devtools": {
             "title": "AeroTools",

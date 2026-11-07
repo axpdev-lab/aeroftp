@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "अनएन्क्रिप्टेड स्टोरेज पते की अनुमति है",
             "importSecurityPlainHttp": "HTTPS की जगह सादा HTTP",
             "importSecurityPasvAddress": "सर्वर द्वारा बताए गए पते पर डेटा कनेक्शन (PASV)",
-            "importSecurityUnknownHostKeys": "अज्ञात SSH होस्ट कुंजियाँ स्वीकार की गईं"
+            "importSecurityUnknownHostKeys": "अज्ञात SSH होस्ट कुंजियाँ स्वीकार की गईं",
+            "keystoreSecurityReset": "पुनर्स्थापित {count} सर्वरों में ऐसे विकल्प थे जो सुरक्षा जाँच बंद कर देते हैं; उन्हें सुरक्षित सेटिंग पर लौटा दिया गया: {details}।"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Anwani ya hifadhi isiyosimbwa inaruhusiwa",
             "importSecurityPlainHttp": "HTTP ya kawaida badala ya HTTPS",
             "importSecurityPasvAddress": "Muunganisho wa data kwa anwani inayotajwa na seva (PASV)",
-            "importSecurityUnknownHostKeys": "Funguo za mwenyeji wa SSH zisizojulikana zimekubaliwa"
+            "importSecurityUnknownHostKeys": "Funguo za mwenyeji wa SSH zisizojulikana zimekubaliwa",
+            "keystoreSecurityReset": "Seva {count} zilizorejeshwa zilikuwa na chaguo zinazozima ukaguzi wa usalama; zilirudishwa kwenye mpangilio salama: {details}."
         },
         "devtools": {
             "title": "AeroTools",

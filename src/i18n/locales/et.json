@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Krüptimata salvestusaadress on lubatud",
             "importSecurityPlainHttp": "Lihtne HTTP HTTPS-i asemel",
             "importSecurityPasvAddress": "Andmeühendus serveri nimetatud aadressile (PASV)",
-            "importSecurityUnknownHostKeys": "Tundmatud SSH hostivõtmed on aktsepteeritud"
+            "importSecurityUnknownHostKeys": "Tundmatud SSH hostivõtmed on aktsepteeritud",
+            "keystoreSecurityReset": "{count} taastatud serveril olid suvandid, mis lülitavad turvakontrolli välja; need seati tagasi turvalisele seadele: {details}."
         },
         "devtools": {
             "title": "AeroTools",

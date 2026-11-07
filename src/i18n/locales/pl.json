@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Dozwolony niezaszyfrowany adres magazynu",
             "importSecurityPlainHttp": "Zwykły HTTP zamiast HTTPS",
             "importSecurityPasvAddress": "Połączenie danych z adresem podanym przez serwer (PASV)",
-            "importSecurityUnknownHostKeys": "Akceptowane nieznane klucze hosta SSH"
+            "importSecurityUnknownHostKeys": "Akceptowane nieznane klucze hosta SSH",
+            "keystoreSecurityReset": "{count} przywróconych serwerów miało opcje wyłączające kontrolę bezpieczeństwa; przywrócono dla nich bezpieczne ustawienie: {details}."
         },
         "devtools": {
             "title": "AeroTools",

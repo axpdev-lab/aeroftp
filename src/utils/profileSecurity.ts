@@ -22,6 +22,16 @@ interface RelaxationRule {
     loopbackExempt: boolean;
 }
 
+/** The i18n key that names each option of `src/shared/profile-security-relaxations.json`. */
+export const RELAXATION_LABEL_KEYS: Record<string, string> = {
+    verifyCert: 'settings.importSecurityVerifyCert',
+    allowCleartextEndpoint: 'settings.importSecurityCleartextEndpoint',
+    allowCleartextStorage: 'settings.importSecurityCleartextStorage',
+    webdavScheme: 'settings.importSecurityPlainHttp',
+    trustPasvAddress: 'settings.importSecurityPasvAddress',
+    trustUnknownHosts: 'settings.importSecurityUnknownHostKeys',
+};
+
 /** One option of a profile that relaxes a security check. */
 export interface Relaxation {
     key: string;
@@ -79,6 +89,34 @@ const endpointHost = (endpoint: string): string | undefined => {
     } catch {
         return undefined;
     }
+};
+
+/**
+ * The value the connection loader ends up with for a guarded option: it reads
+ * every spelling the table lists and applies them in key order, so the last
+ * spelling present wins (`trust_pasv_address` over `trustPasvAddress`). The GUI
+ * builds its connection from this value, the same one the import guard
+ * compares (`profile_import_plan::same_target`), so a profile carrying two
+ * spellings cannot connect one way and be judged the other (CodeRabbit on #1524).
+ */
+export const loadedOption = (options: object | null | undefined, key: string): unknown => {
+    if (!options || typeof options !== 'object') return undefined;
+    const values = options as Record<string, unknown>;
+    const rule = rules.find(r => r.key === key);
+    const present = (rule ? spellings(rule) : [key]).filter(k => k in values).sort();
+    return present.length > 0 ? values[present[present.length - 1]] : undefined;
+};
+
+/** An off-by-default switch, read as the providers read it: on only for `true`. */
+export const loadedOptionOn = (options: object | null | undefined, key: string): boolean => {
+    const value = loadedOption(options, key);
+    return value === true || value === 'true';
+};
+
+/** The certificate check, read as the providers read it: off only for `false`. */
+export const loadedCertificateCheck = (options: object | null | undefined): boolean => {
+    const value = loadedOption(options, 'verifyCert');
+    return !(value === false || value === 'false');
 };
 
 /**

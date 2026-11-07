@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Atļauta nešifrēta krātuves adrese",
             "importSecurityPlainHttp": "Parasts HTTP HTTPS vietā",
             "importSecurityPasvAddress": "Datu savienojums ar adresi, ko norāda serveris (PASV)",
-            "importSecurityUnknownHostKeys": "Pieņemtas nezināmas SSH resursdatora atslēgas"
+            "importSecurityUnknownHostKeys": "Pieņemtas nezināmas SSH resursdatora atslēgas",
+            "keystoreSecurityReset": "{count} atjaunotiem serveriem bija opcijas, kas izslēdz drošības pārbaudi; tie tika atgriezti drošajā iestatījumā: {details}."
         },
         "devtools": {
             "title": "AeroTools",

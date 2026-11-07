@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Alamat storan tanpa penyulitan dibenarkan",
             "importSecurityPlainHttp": "HTTP biasa dan bukannya HTTPS",
             "importSecurityPasvAddress": "Sambungan data ke alamat yang dinyatakan oleh pelayan (PASV)",
-            "importSecurityUnknownHostKeys": "Kunci hos SSH tidak dikenali diterima"
+            "importSecurityUnknownHostKeys": "Kunci hos SSH tidak dikenali diterima",
+            "keystoreSecurityReset": "{count} pelayan yang dipulihkan mempunyai pilihan yang mematikan semakan keselamatan; pelayan itu dikembalikan kepada tetapan selamat: {details}."
         },
         "devtools": {
             "title": "AeroTools",

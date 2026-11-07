@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Adresse de stockage non chiffrée autorisée",
             "importSecurityPlainHttp": "HTTP simple au lieu de HTTPS",
             "importSecurityPasvAddress": "Connexion de données vers l'adresse indiquée par le serveur (PASV)",
-            "importSecurityUnknownHostKeys": "Clés d'hôte SSH inconnues acceptées"
+            "importSecurityUnknownHostKeys": "Clés d'hôte SSH inconnues acceptées",
+            "keystoreSecurityReset": "{count} serveurs restaurés avaient des options qui désactivent une vérification de sécurité ; ils ont été remis au réglage sûr : {details}."
         },
         "devtools": {
             "title": "AeroTools",

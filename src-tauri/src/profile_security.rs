@@ -339,6 +339,80 @@ pub fn make_parts_safe(
     keys
 }
 
+/// The options of one profile that an import or a restore put back to their
+/// safe state, reported to the user.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileReset {
+    pub name: String,
+    pub keys: Vec<String>,
+}
+
+/// Bring every profile of `list` to its safe state ([`make_profile_safe`] with
+/// nothing kept), and return what was reset, per profile.
+pub fn make_profile_list_safe(list: &mut [Value]) -> Vec<ProfileReset> {
+    list.iter_mut()
+        .filter_map(|profile| {
+            let keys = make_profile_safe(profile, &[]);
+            (!keys.is_empty()).then(|| ProfileReset {
+                name: profile
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string(),
+                keys,
+            })
+        })
+        .collect()
+}
+
+/// Set once at startup when a run is in strict mode (`--strict` /
+/// `AEROFTP_STRICT`), for every path that loads a saved profile long after the
+/// flags were checked: the CLI's profile commands, the agent's connections and
+/// the MCP pool (Greptile on #1524: `agent --mcp --strict` connected relaxed
+/// profiles).
+static STRICT_PROFILES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Turn strict mode on for saved profiles.
+pub fn set_strict_profiles(on: bool) {
+    STRICT_PROFILES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// In strict mode, the refusal for a saved profile whose options turn a
+/// security check off (#1506 Requested 198): the flags that do the same are
+/// refused before the run, a profile option must not be the way around them.
+pub fn strict_profile_refusal(profile: &Value) -> Option<String> {
+    strict_profile_refusal_when(
+        STRICT_PROFILES.load(std::sync::atomic::Ordering::Relaxed),
+        profile,
+    )
+}
+
+/// [`strict_profile_refusal`] with the strict setting given, for tests.
+pub fn strict_profile_refusal_when(strict: bool, profile: &Value) -> Option<String> {
+    if !strict {
+        return None;
+    }
+    strict_profile_violation(profile)
+}
+
+/// The strict-mode message for `profile`, or `None` when it relaxes nothing.
+pub fn strict_profile_violation(profile: &Value) -> Option<String> {
+    let relaxations = security_relaxations(profile);
+    if relaxations.is_empty() {
+        return None;
+    }
+    let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    let options = relaxations
+        .iter()
+        .map(|r| format!("{}={}", r.key, r.value))
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some(format!(
+        "strict mode (--strict / AEROFTP_STRICT) refuses the saved profile \"{name}\": its options turn a security check off ({options}). Turn them off in the profile, or drop --strict to run without the safety gate."
+    ))
+}
+
 /// [`make_parts_safe`] for a profile stored as JSON. Returns the keys reset.
 pub fn make_profile_safe(profile: &mut Value, keep: &[String]) -> Vec<String> {
     let relaxations = security_relaxations(profile);

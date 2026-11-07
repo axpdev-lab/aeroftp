@@ -5,6 +5,7 @@ import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import { expect, it, vi } from 'vitest';
 import { scpFallbackConnectParam } from './scpFallback';
+import { loadedCertificateCheck, loadedOptionOn } from './profileSecurity';
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 import { isSshProtocol } from '../types';
 
@@ -37,6 +38,8 @@ it('forwards the saved S3 SSE policy through the real AeroCloud connection build
     cloudFilenApiKey: null,
     runConnect,
     scpFallbackConnectParam,
+    loadedCertificateCheck,
+    loadedOptionOn,
     isSshProtocol,
     checkSftpHostKey: vi.fn(async () => true),
     CONNECT_CANCELLED_MARKER,
@@ -64,6 +67,8 @@ it('keeps an "SFTP only" profile on SFTP through the AeroCloud connection builde
       cloudFilenApiKey: null,
       runConnect,
       scpFallbackConnectParam,
+      loadedCertificateCheck,
+      loadedOptionOn,
       isSshProtocol,
       checkSftpHostKey: vi.fn(async () => true),
       CONNECT_CANCELLED_MARKER,
@@ -94,6 +99,8 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
       cloudFilenApiKey: null,
       runConnect,
       scpFallbackConnectParam,
+      loadedCertificateCheck,
+      loadedOptionOn,
       isSshProtocol,
       checkSftpHostKey,
       CONNECT_CANCELLED_MARKER,

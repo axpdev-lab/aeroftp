@@ -7643,37 +7643,7 @@ fn aeroftp_strict_env() -> bool {
     strict_env_truthy(std::env::var("AEROFTP_STRICT").ok().as_deref())
 }
 
-/// Set once at startup when the run is in strict mode, for the paths that load
-/// a saved profile long after the flags were checked (the agent's server
-/// connections among them).
-static STRICT_MODE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
-/// In strict mode, the refusal for a saved profile whose options turn a
-/// security check off (#1506 Requested 198): the flags that do the same are
-/// refused before the run, a profile option must not be the way around them.
-fn strict_profile_refusal(profile: &serde_json::Value) -> Option<String> {
-    if !STRICT_MODE.load(std::sync::atomic::Ordering::Relaxed) {
-        return None;
-    }
-    strict_profile_violation(profile)
-}
-
-/// The strict-mode message for `profile`, or `None` when it relaxes nothing.
-fn strict_profile_violation(profile: &serde_json::Value) -> Option<String> {
-    let relaxations = ftp_client_gui_lib::profile_security::security_relaxations(profile);
-    if relaxations.is_empty() {
-        return None;
-    }
-    let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let options = relaxations
-        .iter()
-        .map(|r| format!("{}={}", r.key, r.value))
-        .collect::<Vec<_>>()
-        .join(", ");
-    Some(format!(
-        "strict mode (--strict / AEROFTP_STRICT) refuses the saved profile \"{name}\": its options turn a security check off ({options}). Turn them off in the profile, or drop --strict to run without the safety gate."
-    ))
-}
+use ftp_client_gui_lib::profile_security::{strict_profile_refusal, strict_profile_violation};
 
 /// Strict-mode guard (security-audit rec: `--strict` / `AEROFTP_STRICT=1`).
 ///
@@ -77875,7 +77845,7 @@ async fn main() {
     // or unlocks the vault. Fails closed (exit 5, invalid usage) so an
     // unattended/agent run can never silently downgrade its own safety.
     if cli.strict || aeroftp_strict_env() {
-        STRICT_MODE.store(true, std::sync::atomic::Ordering::Relaxed);
+        ftp_client_gui_lib::profile_security::set_strict_profiles(true);
         let violations = strict_mode_violations(&cli);
         if !violations.is_empty() {
             let detail = violations.join("\n  - ");

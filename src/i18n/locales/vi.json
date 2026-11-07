@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Cho phép địa chỉ lưu trữ không mã hóa",
             "importSecurityPlainHttp": "HTTP thường thay vì HTTPS",
             "importSecurityPasvAddress": "Kết nối dữ liệu tới địa chỉ do máy chủ chỉ định (PASV)",
-            "importSecurityUnknownHostKeys": "Chấp nhận khóa máy chủ SSH không xác định"
+            "importSecurityUnknownHostKeys": "Chấp nhận khóa máy chủ SSH không xác định",
+            "keystoreSecurityReset": "{count} máy chủ được khôi phục có tùy chọn tắt kiểm tra bảo mật; chúng đã được đặt lại về cài đặt an toàn: {details}."
         },
         "devtools": {
             "title": "AeroTools",

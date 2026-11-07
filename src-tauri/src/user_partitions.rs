@@ -2093,6 +2093,58 @@ fn put_right_profile_names(
     Ok((renamed, left))
 }
 
+/// After a keystore restore wrote `user_partitions.db` whole: bring every
+/// profile of every account this machine's key opens to its safe state
+/// ([`crate::profile_security::make_profile_list_safe`]), so no option from the
+/// backup turns a security check off (CodeRabbit on #1524). Returns what was
+/// reset and the passphrase accounts that cannot be opened here. The caller, a
+/// keystore restore, holds [`ProfileListLock`].
+pub fn reset_profile_relaxations_in_db(
+    store: &CredentialStore,
+    db_path: &std::path::Path,
+) -> Result<(Vec<crate::profile_security::ProfileReset>, usize), String> {
+    if !db_path.is_file() {
+        return Ok((Vec::new(), 0));
+    }
+    let mut conn =
+        Connection::open(db_path).map_err(|e| format!("Open user partitions DB: {e}"))?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let result = reset_profile_relaxations(&mut conn, &root_key);
+    root_key.zeroize();
+    result
+}
+
+fn reset_profile_relaxations(
+    conn: &mut Connection,
+    root_key: &[u8; 32],
+) -> Result<(Vec<crate::profile_security::ProfileReset>, usize), String> {
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let (mut reset, mut left) = (Vec::new(), 0);
+    for user in list_users(conn)? {
+        let tx = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e| format!("Start security option check: {e}"))?;
+        let row = read_user_key_row(&tx, user.id)?;
+        if row.has_passphrase {
+            left += 1;
+            continue;
+        }
+        let Ok(dek) = unwrap_user_dek_with_key(&row, &root_secret) else {
+            continue;
+        };
+        let mut profiles = read_profiles_with_dek(&tx, user.id, &dek)?;
+        let changed = crate::profile_security::make_profile_list_safe(&mut profiles);
+        if changed.is_empty() {
+            continue;
+        }
+        insert_profiles_with_dek(&tx, &root_secret, user.id, &dek, &profiles)?;
+        tx.commit()
+            .map_err(|e| format!("Commit security options: {e}"))?;
+        reset.extend(changed);
+    }
+    Ok((reset, left))
+}
+
 /// Re-read `user_id`'s server profiles, let `apply` change them, and write
 /// them back only when it reports a change, all in one IMMEDIATE transaction:
 /// no other writer (the CLI, another window) can save between the read and the

@@ -23,6 +23,16 @@ describe('keystoreImportSummary', () => {
         });
     });
 
+    it('names the restored servers whose security options were put back to safe', () => {
+        const summary = keystoreImportSummary({
+            imported: 4, skipped: 0,
+            securityReset: [{ name: 'lab', keys: ['trustUnknownHosts', 'verifyCert'] }],
+        }, null, t);
+        expect(summary.text).toContain(
+            'settings.keystoreSecurityReset(count=1,details=lab (settings.importSecurityUnknownHostKeys, settings.importSecurityVerifyCert))',
+        );
+    });
+
     it('reports the databases that could not be restored, by name', () => {
         const summary = keystoreImportSummary({ imported: 12, skipped: 0, sqliteDbsFailed: ['ai_chat.db', 'file_tags.db'] }, null, t);
         expect(summary.type).toBe('info');

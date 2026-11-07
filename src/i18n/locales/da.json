@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Ukrypteret lageradresse tilladt",
             "importSecurityPlainHttp": "Almindelig HTTP i stedet for HTTPS",
             "importSecurityPasvAddress": "Dataforbindelse til den adresse, serveren angiver (PASV)",
-            "importSecurityUnknownHostKeys": "Ukendte SSH-værtsnøgler accepteret"
+            "importSecurityUnknownHostKeys": "Ukendte SSH-værtsnøgler accepteret",
+            "keystoreSecurityReset": "{count} gendannede servere havde indstillinger, der slår en sikkerhedskontrol fra; de blev sat tilbage til den sikre indstilling: {details}."
         },
         "devtools": {
             "title": "AeroTools",

@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "暗号化されていないストレージアドレスを許可",
             "importSecurityPlainHttp": "HTTPS ではなく通常の HTTP",
             "importSecurityPasvAddress": "サーバーが指定したアドレスへのデータ接続 (PASV)",
-            "importSecurityUnknownHostKeys": "未知の SSH ホストキーを受け入れる"
+            "importSecurityUnknownHostKeys": "未知の SSH ホストキーを受け入れる",
+            "keystoreSecurityReset": "復元された {count} 台のサーバーに、セキュリティチェックを無効にするオプションがありました。安全な設定に戻しました: {details}。"
         },
         "devtools": {
             "title": "AeroTools",

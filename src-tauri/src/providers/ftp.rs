@@ -248,6 +248,19 @@ pub struct FtpProvider {
     abandoned_command: Arc<AtomicBool>,
 }
 
+/// The error for a server that did not accept the explicit TLS upgrade, the
+/// same in every mode that asks for it. The upgrade runs before `login`, so the
+/// connection stops before the user name and password are sent (CodeRabbit on
+/// #1524).
+fn tls_upgrade_refused(error: impl std::fmt::Display) -> ProviderError {
+    ProviderError::ConnectionFailed(format!(
+        "TLS upgrade failed: {error}. The server did not accept explicit TLS, so the \
+         connection stopped before login and no credentials were sent. To connect \
+         without encryption on purpose, set the profile's encryption to None in the \
+         connection form, or pass --tls none to the CLI."
+    ))
+}
+
 impl FtpProvider {
     /// Create a new FTP provider with the given configuration
     pub fn new(config: FtpConfig) -> Self {
@@ -1711,17 +1724,13 @@ impl StorageProvider for FtpProvider {
                     .await
                     .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
                 let connector = FtpsConnector(self.make_tls_connector()?);
-                stream.into_secure(connector, &domain).await.map_err(|e| {
-                    // Never a silent fall back to plaintext: say how to choose
-                    // plain FTP on purpose (#1506 Requested 198, a saved
-                    // profile with no TLS mode now requires TLS everywhere).
-                    ProviderError::ConnectionFailed(format!(
-                        "TLS upgrade failed: {e}. The server did not accept explicit TLS, so \
-                         no credentials were sent. To connect without encryption on \
-                         purpose, set the profile's encryption to None in the connection \
-                         form, or pass --tls none to the CLI."
-                    ))
-                })?
+                // Never a silent fall back to plaintext: say how to choose
+                // plain FTP on purpose (#1506 Requested 198, a saved profile
+                // with no TLS mode now requires TLS everywhere).
+                stream
+                    .into_secure(connector, &domain)
+                    .await
+                    .map_err(tls_upgrade_refused)?
             }
             FtpTlsMode::Implicit => {
                 // Implicit TLS - TLS from the start, no AUTH TLS (port 990)
@@ -1754,11 +1763,7 @@ impl StorageProvider for FtpProvider {
                             self.config.port,
                             e
                         );
-                        return Err(ProviderError::ConnectionFailed(format!(
-                            "TLS upgrade failed: {}. Connection would be unencrypted. \
-                             Use 'None' encryption mode explicitly to connect without TLS.",
-                            e
-                        )));
+                        return Err(tls_upgrade_refused(e));
                     }
                 }
             }
@@ -6039,7 +6044,19 @@ pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
+
+    /// One refusal text for both modes that ask for explicit TLS (CodeRabbit
+    /// on #1524): it names what the code guarantees and how to choose plain FTP.
+    #[test]
+    fn a_refused_tls_upgrade_reads_the_same_in_every_mode() {
+        let ProviderError::ConnectionFailed(message) = tls_upgrade_refused("handshake") else {
+            panic!("not a connection failure");
+        };
+        assert!(message.contains("stopped before login"), "{message}");
+        assert!(message.contains("--tls none"), "{message}");
+    }
 
     /// A window worker dials its own connection and starts where the login
     /// leaves it, not where this session has since moved. A relative path

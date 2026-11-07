@@ -1383,7 +1383,8 @@
             "importSecurityCleartextStorage": "Dopuštena nešifrirana adresa pohrane",
             "importSecurityPlainHttp": "Obični HTTP umjesto HTTPS-a",
             "importSecurityPasvAddress": "Podatkovna veza na adresu koju navodi poslužitelj (PASV)",
-            "importSecurityUnknownHostKeys": "Prihvaćeni nepoznati SSH ključevi poslužitelja"
+            "importSecurityUnknownHostKeys": "Prihvaćeni nepoznati SSH ključevi poslužitelja",
+            "keystoreSecurityReset": "{count} vraćenih poslužitelja imalo je opcije koje isključuju sigurnosnu provjeru; vraćeni su na sigurnu postavku: {details}."
         },
         "devtools": {
             "title": "AeroTools",

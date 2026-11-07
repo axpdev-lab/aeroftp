@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import table from '../shared/profile-security-relaxations.json';
-import { endpointStaysOnThisMachine, makeSafe, securityRelaxations } from './profileSecurity';
+import { endpointStaysOnThisMachine, loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe, securityRelaxations } from './profileSecurity';
 
 interface Case {
     name: string;
@@ -75,5 +75,26 @@ describe('endpointStaysOnThisMachine', () => {
         for (const endpoint of ['http://evil.example#@127.0.0.1', 'http://evil.example\\@127.0.0.1', 'http://localhost.evil.example', 'nas.local', '']) {
             expect(endpointStaysOnThisMachine(endpoint)).toBe(false);
         }
+    });
+});
+
+// CodeRabbit on #1524: the GUI connects with the value the loader ends up
+// with, the one the import guard compares, so two spellings cannot disagree.
+describe('loadedOption', () => {
+    it('takes the spelling the loader applies last', () => {
+        const options = { trustPasvAddress: false, trust_pasv_address: true };
+        expect(loadedOption(options, 'trustPasvAddress')).toBe(true);
+        expect(loadedOptionOn(options, 'trustPasvAddress')).toBe(true);
+        expect(loadedOptionOn({ trustPasvAddress: true, trust_pasv_address: 'false' }, 'trustPasvAddress')).toBe(false);
+    });
+
+    it('reads a kept string value as the providers do', () => {
+        expect(loadedOptionOn({ trustPasvAddress: 'true' }, 'trustPasvAddress')).toBe(true);
+        expect(loadedOptionOn({ trustPasvAddress: 'TRUE' }, 'trustPasvAddress')).toBe(false);
+        expect(loadedOptionOn({}, 'trustPasvAddress')).toBe(false);
+        expect(loadedCertificateCheck({ verifyCert: 'false' })).toBe(false);
+        expect(loadedCertificateCheck({ verifyCert: true, verify_cert: false })).toBe(false);
+        expect(loadedCertificateCheck({ verifyCert: 'False' })).toBe(true);
+        expect(loadedCertificateCheck(undefined)).toBe(true);
     });
 });
