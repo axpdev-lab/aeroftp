@@ -1020,6 +1020,15 @@ const App: React.FC = () => {
   // has connected the backend to a tab again (instead of until a restart). A
   // connect that fails before that leaves it set.
   const backendUncertainRef = useRef(false);
+  // Connections confirmed so far: a teardown that times out leaves the
+  // backend uncertain unless one was confirmed after it started.
+  const backendConfirmationsRef = useRef(0);
+  /** A tab is connected to the backend again: its state is known. Called at
+   *  the points a connect or a switch confirms its connection, and only there. */
+  const confirmBackendConnection = () => {
+    backendUncertainRef.current = false;
+    backendConfirmationsRef.current += 1;
+  };
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
   // Connect form started, keyed by its phase version: a Cancel of that connect
@@ -5126,7 +5135,7 @@ const App: React.FC = () => {
       // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
       // savedServerId makes activeProfileIds pulse the My Servers card.
       // The backend is connected to this tab's server: no longer uncertain.
-      backendUncertainRef.current = false;
+      confirmBackendConnection();
       const newSession: FtpSession = {
         id: `session_mtp_${Date.now()}`,
         serverId: displayName,
@@ -8446,7 +8455,7 @@ const App: React.FC = () => {
             setConnectionParams(reusable.connectionParams);
             setSessions(prev => prev.map(s => s.id === reusable.id ? { ...s, status: 'connected' } : s));
             // The backend is connected to this tab's server: no longer uncertain.
-            backendUncertainRef.current = false;
+            confirmBackendConnection();
             setIsConnected(true);
             setShowRemotePanel(true);
             setShowLocalPreview(false);
@@ -8909,7 +8918,7 @@ const App: React.FC = () => {
     } catch { /* ignore */ }
 
     // The backend is connected to this tab's server: no longer uncertain.
-    backendUncertainRef.current = false;
+    confirmBackendConnection();
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
       serverId: serverName,
@@ -9375,7 +9384,7 @@ const App: React.FC = () => {
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
       // The backend is connected to this tab's server: no longer uncertain.
-      backendUncertainRef.current = false;
+      confirmBackendConnection();
       // The tab bar calls here directly, and a parked tab left the workspace
       // marked disconnected. It reads as connected again only now: earlier,
       // its cached files would take remote actions while another server still
@@ -10221,6 +10230,7 @@ const App: React.FC = () => {
    *  connection confirmed afterwards clears, and reports not dropped. */
   const boundedTeardown = async (owns: () => boolean): Promise<boolean> => {
     backendTeardownsRef.current += 1;
+    const confirmedBefore = backendConfirmationsRef.current;
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const outcome = await Promise.race([
@@ -10228,10 +10238,12 @@ const App: React.FC = () => {
         new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), BACKEND_TEARDOWN_BOUND_MS); }),
       ]);
       if (outcome === 'timeout') {
-        // Only while this teardown still owns the backend: a newer connect or
-        // switch since then has its own outcome, which an old timeout must
-        // not overrule.
-        if (owns()) backendUncertainRef.current = true;
+        // Unless a connection was confirmed since this teardown started: its
+        // outcome is the backend's now, which an old timeout must not
+        // overrule. A newer connect that took over but stopped before
+        // connecting (a missing field, a refused host key) replaced nothing,
+        // so the backend stays uncertain (CodeRabbit on #1526).
+        if (backendConfirmationsRef.current === confirmedBefore) backendUncertainRef.current = true;
         return false;
       }
       return outcome;
@@ -14814,6 +14826,9 @@ const App: React.FC = () => {
         if (filePaths.length > 0) {
           try {
             const deleteCommand = protocol === 'gitlab' ? 'gitlab_batch_delete' : 'github_batch_delete';
+            // The commit message dialog gave the user time to switch tabs:
+            // the batch runs on the server it was started for (CodeRabbit on #1526).
+            onTarget();
             await invoke(deleteCommand, {
               paths: filePaths,
               message: batchCommitMessage,

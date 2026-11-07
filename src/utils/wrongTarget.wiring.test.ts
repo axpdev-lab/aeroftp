@@ -120,7 +120,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn,
             isConnected: true,
-            remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+            remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session],
             activeSessionId: 'A',
             liveConnectionParams: session.connectionParams,
@@ -157,7 +157,7 @@ describe('a queued transfer', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
         };
@@ -179,7 +179,7 @@ describe('a queued transfer', () => {
         const session = { id: 'A', connectionParams: { ...params }, cryptOverlay: null };
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
-            remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+            remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
@@ -359,30 +359,58 @@ describe('a queued transfer', () => {
         // A connect or switch that only starts does not clear it (one that fails
         // early, on a missing field or a refused host key, replaced nothing):
         // the points where a tab is confirmed connected do, and only they.
-        expect(APP_CODE).not.toMatch(/remoteConnectPhaseRef\.current = '(connect|switch)';\n\s+backendUncertainRef\.current = false;/);
-        expect(APP_CODE.match(/backendUncertainRef\.current = false;/g)).toHaveLength(4);
+        expect(APP_CODE).not.toMatch(/remoteConnectPhaseRef\.current = '(connect|switch)';\n\s+confirmBackendConnection\(\);/);
+        // The flag is cleared in one helper, which the confirmations call.
+        expect(APP_CODE.match(/backendUncertainRef\.current = false;/g)).toHaveLength(1);
+        expect(APP_CODE).toMatch(/const confirmBackendConnection = \(\) => \{\n\s+backendUncertainRef\.current = false;\n\s+backendConfirmationsRef\.current \+= 1;/);
+        expect(APP_CODE.match(/confirmBackendConnection\(\);/g)).toHaveLength(4);
         for (const confirmed of [
-            /backendUncertainRef\.current = false;\n\s+const newSession: FtpSession = \{\n\s+id: `session_mtp_/,
-            /backendUncertainRef\.current = false;\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
-            /s\.id === reusable\.id \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+backendUncertainRef\.current = false;/,
-            /s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+backendUncertainRef\.current = false;/,
+            /confirmBackendConnection\(\);\n\s+const newSession: FtpSession = \{\n\s+id: `session_mtp_/,
+            /confirmBackendConnection\(\);\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
+            /s\.id === reusable\.id \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
+            /s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
         ]) expect(APP_CODE).toMatch(confirmed);
     });
 
-    it('lets a teardown that timed out after a newer connection took over leave it alone', async () => {
+    it('lets a teardown that timed out after a newer connection was confirmed leave it alone', async () => {
         vi.useFakeTimers();
         try {
             const { fns, ctx } = await targetChecks(queued, { withAbort: true });
             const target = fns.snapshotQueuedTarget();
             let owner = true;
             const aborting = fns.abortSwitchAfterCancel(() => owner);
-            // A newer connect takes the backend over before the bound ends.
+            // A newer connect takes the backend over and connects a tab
+            // before the bound ends.
             owner = false;
+            ctx.backendConfirmationsRef.current += 1;
             await vi.advanceTimersByTimeAsync(30000);
             await aborting;
             expect(ctx.backendUncertainRef.current).toBe(false);
             expect(ctx.backendTeardownsRef.current).toBe(0);
             expect(fns.queuedTargetProblem(target)).toBeNull();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    // CodeRabbit on #1526: a newer connect took the backend over (so the old
+    // teardown no longer owned it) and then stopped before connecting, on a
+    // missing field or a refused host key. The old timeout left the backend
+    // marked known, and a queued Retry ran on whatever it was.
+    it('marks the backend uncertain when the newer connect that took over stopped before connecting', async () => {
+        vi.useFakeTimers();
+        try {
+            const { fns, ctx } = await targetChecks(queued, { withAbort: true });
+            const target = fns.snapshotQueuedTarget();
+            let owner = true;
+            const aborting = fns.abortSwitchAfterCancel(() => owner);
+            // The newer connect takes over, then fails without confirming.
+            owner = false;
+            await vi.advanceTimersByTimeAsync(30000);
+            await aborting;
+            expect(ctx.backendUncertainRef.current).toBe(true);
+            expect(ctx.backendTeardownsRef.current).toBe(0);
+            expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
         } finally {
             vi.useRealTimers();
         }
@@ -736,7 +764,8 @@ describe('the editor\'s save of a remote file', () => {
  * takes its target when it starts and checks it right before every write.
  */
 describe('a direct remote action', () => {
-    const WRITE = /invoke(<[^>]*>)?\('(provider_delete_file|provider_delete_dir|delete_remote_file|provider_rename|rename_remote_file|provider_mkdir|create_remote_folder|aerovault_overlay_delete_entries|aerovault_overlay_rename_entry|aerovault_overlay_create_directory)'/;
+    // The GitHub and GitLab batch delete names its command through a variable.
+    const WRITE = /invoke(<[^>]*>)?\('(provider_delete_file|provider_delete_dir|delete_remote_file|provider_rename|rename_remote_file|provider_mkdir|create_remote_folder|aerovault_overlay_delete_entries|aerovault_overlay_rename_entry|aerovault_overlay_create_directory)'|invoke\(deleteCommand,/;
     const body = (name: string) => {
         const start = APP_CODE.indexOf(`\n  const ${name} = `);
         expect(start, name).toBeGreaterThan(0);
@@ -783,7 +812,7 @@ describe('a direct remote action', () => {
         const session = { id: 'A', connectionParams: { server: 'a.example', protocol: 'sftp', username: 'u', password: 'k' }, cryptOverlay: null };
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
-            remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+            remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
