@@ -813,6 +813,12 @@ impl StorageProvider for DirectoryProvider {
         options.write(true).create(true);
         #[cfg(unix)]
         options.custom_flags(libc::O_NOFOLLOW);
+        #[cfg(test)]
+        BEFORE_UPLOAD_OPEN.with(|hook| {
+            if let Some(hook) = hook.borrow().as_ref() {
+                hook(&dest)
+            }
+        });
         let mut writer = options.open(&dest).await.map_err(ProviderError::IoError)?;
         if let Some(parent) = dest.parent() {
             self.contained(parent)?;
@@ -1320,6 +1326,14 @@ async fn append_from(
     Ok(())
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Test seam: run right before the upload's open, to swap a link in at
+    /// the destination after every check that precedes the open.
+    static BEFORE_UPLOAD_OPEN: std::cell::RefCell<Option<Box<dyn Fn(&Path)>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 /// Whether `a` and `b` (with their metadata) are one file: the same inode
 /// on the same device on Unix; elsewhere the same canonical path, which a
 /// case-insensitive volume gives both spellings of one name. Two files that
@@ -1386,6 +1400,40 @@ mod tests {
             .await
             .is_ok());
         assert_eq!(std::fs::read(root.join("b.txt")).unwrap(), b"B");
+    }
+
+    /// Deep-scan 51: a link swapped in at the destination after every check
+    /// and right before the upload's open is refused by that open, and the
+    /// file it points to is left alone.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_upload_refuses_a_link_swapped_in_right_before_its_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(root.join("dest.txt"), b"old").unwrap();
+        let victim = outside.join("secret.txt");
+        std::fs::write(&victim, b"secret").unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"new").unwrap();
+        let mut provider = super::DirectoryProvider::local(root.clone());
+        provider.connect().await.unwrap();
+
+        let planted = victim.clone();
+        super::BEFORE_UPLOAD_OPEN.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |dest: &Path| {
+                let _ = std::fs::remove_file(dest);
+                std::os::unix::fs::symlink(&planted, dest).unwrap();
+            }))
+        });
+        let result = provider
+            .upload(src.to_str().unwrap(), "/dest.txt", None)
+            .await;
+        super::BEFORE_UPLOAD_OPEN.with(|hook| *hook.borrow_mut() = None);
+        assert!(result.is_err(), "the open refuses the planted link");
+        assert_eq!(std::fs::read(&victim).unwrap(), b"secret");
     }
 
     /// The capped read stops at the cap instead of loading the whole file.

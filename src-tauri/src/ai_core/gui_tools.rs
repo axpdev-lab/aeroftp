@@ -1072,6 +1072,23 @@ pub(crate) fn stage_private_temp(
 #[cfg(test)]
 mod tests {
     use super::publish_remote_edit;
+
+    /// A staged temporary whose path is not UTF-8 is reported, not handed on as
+    /// an empty or lossy path (review of #1528).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_staged_temporary_with_a_non_utf8_path_is_reported() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let odd = dir.path().join(std::ffi::OsStr::from_bytes(b"temp-\xff"));
+        std::fs::create_dir(&odd).unwrap();
+        let staged = tempfile::Builder::new()
+            .prefix("aeroftp_upload_")
+            .tempfile_in(&odd)
+            .unwrap();
+        let err = super::staged_path(&staged).unwrap_err();
+        assert!(err.contains("not valid UTF-8"), "{err}");
+    }
     use crate::providers::edit_replace_tests::EditFake;
 
     /// A link back to the upload root must not repeat files or escape it.

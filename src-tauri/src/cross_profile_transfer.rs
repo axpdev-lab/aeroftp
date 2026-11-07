@@ -1177,6 +1177,55 @@ mod tests {
         assert!(relative_leaves_the_root(&roots, "/data/./a.txt"));
     }
 
+    /// Deep-scan 35, through the planner: an entry a listing names outside
+    /// the copied folder is never planned.
+    #[tokio::test]
+    async fn the_planner_refuses_a_listed_name_that_leaves_the_folder() {
+        use crate::providers::RemoteEntry;
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+        use std::collections::HashMap;
+        let request = CrossProfileTransferRequest {
+            source_profile: "source".into(),
+            dest_profile: "dest".into(),
+            source_path: "/src".into(),
+            dest_path: "/out".into(),
+            recursive: true,
+            dry_run: true,
+            skip_existing: false,
+        };
+        let mut dest = WalkTreeProvider::new(HashMap::new(), false);
+        let mut source = WalkTreeProvider::new(
+            HashMap::from([(
+                "/src".into(),
+                vec![
+                    RemoteEntry::file("ok".into(), "/src/ok".into(), 1),
+                    RemoteEntry::file("passwd".into(), "/src/../etc/passwd".into(), 1),
+                ],
+            )]),
+            false,
+        );
+        // The source walk refuses a listing that names an entry outside the
+        // path it walks (`outside_root`), and the planner's own check refuses
+        // what reaches it; a walk that dropped the entry would plan only the
+        // rest. In every case it is never planned and nothing is written.
+        match plan_transfer(&mut source, &mut dest, &request).await {
+            Err(ProviderError::InvalidPath(_)) => {}
+            Ok(plan) => {
+                let planned: Vec<_> = plan
+                    .entries
+                    .iter()
+                    .map(|entry| (entry.source_path.as_str(), entry.dest_path.as_str()))
+                    .collect();
+                assert_eq!(planned, [("/src/ok", "/out/ok")]);
+            }
+            Err(other) => assert!(
+                other.to_string().contains("outside the path being walked"),
+                "unexpected error: {other}"
+            ),
+        }
+        assert_eq!(dest.writes.load(std::sync::atomic::Ordering::Relaxed), 0);
+    }
+
     #[test]
     fn map_dest_path_dest_without_trailing_slash() {
         let dest = map_dest_path(&["/src/".to_string()], "/src/file.txt", "/dst");
