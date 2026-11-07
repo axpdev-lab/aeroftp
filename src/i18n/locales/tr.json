@@ -6678,7 +6678,9 @@
             "dirtyTitle": "Kaydedilmemiş değişiklikler",
             "dirtyBody": "Kaydedilmemiş değişiklikleriniz var. Atıp kapat?",
             "keepEditing": "Düzenlemeye devam et",
-            "discardAndClose": "At ve kapat"
+            "discardAndClose": "At ve kapat",
+            "busyBodyKeepsRunning": "Bir işlem hâlâ sürüyor. Bu pencere kapandıktan sonra da devam eder ve sonucu burada gösterilmez. Yine de kapatılsın mı?",
+            "closeAnyway": "Yine de kapat"
         },
         "modalView": {
             "listView": "Liste görünümü",

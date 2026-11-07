@@ -6678,7 +6678,9 @@
             "dirtyTitle": "未保存の変更",
             "dirtyBody": "未保存の変更があります。破棄して閉じますか？",
             "keepEditing": "編集を続ける",
-            "discardAndClose": "破棄して閉じる"
+            "discardAndClose": "破棄して閉じる",
+            "busyBodyKeepsRunning": "操作がまだ実行中です。このウィンドウを閉じても処理は続行され、結果はここには表示されません。それでも閉じますか？",
+            "closeAnyway": "それでも閉じる"
         },
         "modalView": {
             "listView": "リスト表示",

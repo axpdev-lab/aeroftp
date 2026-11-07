@@ -149,4 +149,7 @@ export interface SpeedTestDialogProps {
     initialServerId?: string;
     initialMode?: SpeedTestMode;
     onClose: () => void;
+    /** False while the dialog stays mounted but out of sight (its tab hidden):
+     *  it then claims no ESC. Default true. */
+    active?: boolean;
 }

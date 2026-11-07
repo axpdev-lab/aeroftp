@@ -77,12 +77,21 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
         invoke('local_sync_cancel').catch(() => { /* no run in flight */ });
     }, []);
 
+    // Busy while a sync, a restore or a compare scan runs: a stray click must
+    // not end any of them, and the X asks first. A comparison already made is
+    // the result of a scan that can take minutes: the backdrop never throws it
+    // away, only the X or ESC close the dialog (Discussion #1527).
+    const compareScanning = !!context.compareLoading;
     const guarded = useGuardedClose({
-        guard: syncRunning ? 'busy' : null,
+        guard: syncRunning || restoreRunning || compareScanning ? 'busy' : null,
         // Restore has no cancellation command: keep the workflow mounted until
         // its native write operation actually settles.
         onClose: () => { if (!restoreRunning) onClose(); },
-        onAbort: cancelSync,
+        onAbort: () => {
+            if (syncRunning) cancelSync();
+            if (compareScanning) onStopCompare?.();
+        },
+        backdrop: context.compareResult ? 'never' : 'idle',
     });
 
     // The settings the Plan and Sync tabs hold, kept alive across a tab switch
@@ -185,9 +194,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             aria-modal="true"
             data-gui-owned="aerosync"
             aria-label={t('aerosync.title') || 'AeroSync'}
-            onClick={(e) => {
-                if (e.target === e.currentTarget) guarded.requestBackdropClose();
-            }}
+            onClick={guarded.onBackdropClick}
         >
             <div
                 {...modalDrag.panelProps}

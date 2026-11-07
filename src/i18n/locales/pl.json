@@ -6678,7 +6678,9 @@
             "dirtyTitle": "Niezapisane zmiany",
             "dirtyBody": "Masz niezapisane zmiany. Odrzucić i zamknąć?",
             "keepEditing": "Kontynuuj edycję",
-            "discardAndClose": "Odrzuć i zamknij"
+            "discardAndClose": "Odrzuć i zamknij",
+            "busyBodyKeepsRunning": "Operacja wciąż trwa. Będzie trwać po zamknięciu tego okna, a jej wynik nie zostanie tu pokazany. Zamknąć mimo to?",
+            "closeAnyway": "Zamknij mimo to"
         },
         "modalView": {
             "listView": "Widok listy",

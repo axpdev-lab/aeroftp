@@ -23,12 +23,29 @@ def esc(value: str) -> str:
     return json.dumps(value, ensure_ascii=False)[1:-1]
 
 
+def locale_file(locale: str) -> Path:
+    """The file of `locale`, refused unless it is a bare language code naming a
+    regular file directly in LOCALES (not a link that leads elsewhere)."""
+    # A locale is a bare language code: the batch file is the only input,
+    # and a key such as "../../x" made the path leave the locale folder.
+    if not re.fullmatch(r"[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?", locale):
+        sys.exit(f"invalid locale name: {locale!r}")
+    path = LOCALES / f"{locale}.json"
+    if path.is_symlink() or not path.is_file():
+        sys.exit(f"unknown locale, or not a plain file in {LOCALES}: {locale}")
+    if path.resolve().parent != LOCALES:
+        sys.exit(f"locale file leaves {LOCALES}: {locale}")
+    return path
+
+
 def apply_batch(batch: dict, *, force: bool = False) -> int:
+    # Every locale and every key is checked and every new text built before
+    # any file is written: a refusal half way through used to leave the
+    # earlier locales applied, and a retry without --force then refused them.
+    updates = []
     changed = 0
     for locale, entries in batch.items():
-        path = LOCALES / f"{locale}.json"
-        if not path.exists():
-            sys.exit(f"unknown locale: {locale}")
+        path = locale_file(locale)
         text = path.read_text(encoding="utf-8")
         for key, translation in entries.items():
             pattern = re.compile(r'("' + re.escape(key) + r'": ")((?:[^"\\]|\\.)*)(")')
@@ -46,6 +63,8 @@ def apply_batch(batch: dict, *, force: bool = False) -> int:
         # Validate before writing: a bad substitution must not leave the
         # locale file corrupted on disk.
         json.loads(text)
+        updates.append((path, text))
+    for path, text in updates:
         path.write_text(text, encoding="utf-8")
     return changed
 

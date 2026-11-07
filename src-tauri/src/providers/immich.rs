@@ -1087,6 +1087,7 @@ impl StorageProvider for ImmichProvider {
             // AI agents know why the upload was refused.
             if status == reqwest::StatusCode::BAD_REQUEST {
                 let lower = text.to_lowercase();
+                // Kept as text (#1506 row 164): Immich's 400 for an unsupported asset type has no code.
                 let mime_hint = lower.contains("unsupported")
                     || lower.contains("asset type")
                     || lower.contains("mime")

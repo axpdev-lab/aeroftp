@@ -360,20 +360,22 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
         setPhase('setup');
     };
 
-    // Guarded close: a transfer in progress must not be lost to a stray
-    // click-outside; the backdrop is inert and X/ESC offer wait vs stop.
+    // Guarded close: a transfer in progress, or a plan being built, must not
+    // be lost to a stray click-outside; the backdrop is inert and X/ESC offer
+    // wait vs stop. A plan or a transfer summary is kept from the backdrop
+    // too: only the X or ESC close it (Discussion #1527). Only a transfer can
+    // be stopped: a plan being built goes on, and the confirm says so.
     const guarded = useGuardedClose({
-        guard: phase === 'executing' ? 'busy' : null,
+        guard: phase === 'executing' || loading ? 'busy' : null,
         onClose,
-        onAbort: handleCancel,
+        onAbort: phase === 'executing' ? handleCancel : undefined,
+        backdrop: plan || summary ? 'never' : 'idle',
     });
 
     return (
         <div
             className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-[5vh] bg-black/60 backdrop-blur-sm animate-scale-in"
-            onClick={(e) => {
-                if (e.target === e.currentTarget) guarded.requestBackdropClose();
-            }}
+            onClick={guarded.onBackdropClick}
         >
             <div
                 {...modalDrag.panelProps}
@@ -658,6 +660,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
             {guarded.confirmOpen && guarded.confirmKind && (
                 <GuardedCloseConfirm
                     kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
                     onKeep={guarded.cancelConfirm}
                     onConfirm={guarded.confirmAndClose}
                 />

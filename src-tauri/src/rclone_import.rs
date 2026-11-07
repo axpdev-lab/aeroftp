@@ -666,13 +666,20 @@ fn rclone_bool(value: &str) -> Option<bool> {
     }
 }
 
+/// The longest `key_file` an expansion may produce: Linux's `PATH_MAX`. A
+/// longer path names no file on any platform AeroFTP runs on.
+const MAX_RCLONE_KEY_PATH_BYTES: usize = 4096;
+
 /// A `key_file` path as rclone opens it: environment variables expanded
 /// (`${HOME}`, `$HOME`, unset ones empty, as Go's `os.ExpandEnv`), with
 /// `RCLONE_CONFIG_DIR` the folder of the file being read, which rclone sets
 /// for its own config. A leading `~` is left to the key loader, which expands
 /// it. Kept literal, `${HOME}/.ssh/id_ed25519` named no file and the profile
 /// stopped signing in.
-fn expand_rclone_path(path: &str, config_dir: Option<&Path>) -> String {
+/// `None` when the result would pass [`MAX_RCLONE_KEY_PATH_BYTES`]: the
+/// length is checked before each piece is added, so `${PATH}` repeated a
+/// million times stops at the cap instead of allocating hundreds of MB.
+fn expand_rclone_path(path: &str, config_dir: Option<&Path>) -> Option<String> {
     let lookup = |name: &str| -> String {
         if name == "RCLONE_CONFIG_DIR" {
             if let Some(dir) = config_dir {
@@ -682,34 +689,37 @@ fn expand_rclone_path(path: &str, config_dir: Option<&Path>) -> String {
         std::env::var(name).unwrap_or_default()
     };
     let is_name = |c: char| c == '_' || c.is_ascii_alphanumeric();
-    let mut out = String::with_capacity(path.len());
+    let mut out = String::with_capacity(path.len().min(MAX_RCLONE_KEY_PATH_BYTES));
+    let push = |out: &mut String, piece: &str| -> Option<()> {
+        (out.len() + piece.len() <= MAX_RCLONE_KEY_PATH_BYTES).then(|| out.push_str(piece))
+    };
     let mut rest = path;
     while let Some(at) = rest.find('$') {
-        out.push_str(&rest[..at]);
+        push(&mut out, &rest[..at])?;
         let after = &rest[at + 1..];
         if let Some(braced) = after.strip_prefix('{') {
             match braced.find('}') {
                 Some(end) => {
-                    out.push_str(&lookup(&braced[..end]));
+                    push(&mut out, &lookup(&braced[..end]))?;
                     rest = &braced[end + 1..];
                 }
                 None => {
-                    out.push_str(&rest[at..]);
+                    push(&mut out, &rest[at..])?;
                     rest = "";
                 }
             }
         } else {
             let end = after.find(|c: char| !is_name(c)).unwrap_or(after.len());
             if end == 0 {
-                out.push('$');
+                push(&mut out, "$")?;
             } else {
-                out.push_str(&lookup(&after[..end]));
+                push(&mut out, &lookup(&after[..end]))?;
             }
             rest = &after[end..];
         }
     }
-    out.push_str(rest);
-    out
+    push(&mut out, rest)?;
+    Some(out)
 }
 
 /// The folder `${RCLONE_CONFIG_DIR}` names for the file at `config_path`,
@@ -728,14 +738,22 @@ fn rclone_config_dir(config_path: &Path) -> Option<std::path::PathBuf> {
 fn expand_rclone_key_files(
     sections: &mut HashMap<String, RcloneRemote>,
     config_dir: Option<&Path>,
-) {
-    for remote in sections.values_mut() {
+) -> Result<(), String> {
+    for (name, remote) in sections.iter_mut() {
         if let Some(key_file) = remote.get_mut("key_file") {
             if key_file.contains('$') {
-                *key_file = expand_rclone_path(key_file, config_dir);
+                *key_file = expand_rclone_path(key_file, config_dir).ok_or_else(|| {
+                    format!(
+                        "the key_file of '{}' expands past {} bytes, which names no file; \
+                         check its environment variables",
+                        name.replace(['\n', '\r'], " "),
+                        MAX_RCLONE_KEY_PATH_BYTES
+                    )
+                })?;
             }
         }
     }
+    Ok(())
 }
 
 /// Convert a single rclone remote to an AeroFTP profile.
@@ -1898,6 +1916,23 @@ fn map_alias_remote(
     Ok((mapped, base.to_string()))
 }
 
+/// The start folder AeroFTP opens for the path of an rclone sftp target
+/// (`nas:<path>`): `/docs` for `/docs`, `~/docs` for `docs`, `/` for `/`, and
+/// none, the login folder, for an empty path ([`apply_rclone_start_folder`]).
+fn sftp_start_folder(path: &str) -> Option<String> {
+    let path = path.trim_end();
+    let kept = path.trim_end_matches('/');
+    if kept.starts_with('/') {
+        Some(kept.to_string())
+    } else if !kept.is_empty() {
+        Some(format!("~/{kept}"))
+    } else if path.starts_with('/') {
+        Some("/".to_string())
+    } else {
+        None
+    }
+}
+
 /// Make the folder an alias opens the profile's start: the bucket and the
 /// path under it for S3, the absolute folder for SFTP (`nas:/abs`), and a
 /// path under the URL's collection for WebDAV, whose start folder is a path
@@ -1912,14 +1947,8 @@ fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
     // (`nas: docs` is ` docs`, measured with rclone v1.75.2); its config
     // drops only the trailing ones, with the rest of the value.
     if mapped.protocol == "sftp" {
-        let path = path.trim_end();
-        let kept = path.trim_end_matches('/');
-        if kept.starts_with('/') {
-            mapped.initial_path = Some(kept.to_string());
-        } else if !kept.is_empty() {
-            mapped.initial_path = Some(format!("~/{kept}"));
-        } else if path.starts_with('/') {
-            mapped.initial_path = Some("/".to_string());
+        if let Some(start) = sftp_start_folder(path) {
+            mapped.initial_path = Some(start);
         }
         return;
     }
@@ -1969,7 +1998,7 @@ fn map_crypt_remote(
     remote: &RcloneRemote,
     sections: &HashMap<String, RcloneRemote>,
     aeroftp_export: Option<AeroftpExport>,
-) -> Result<MappedProfile, String> {
+) -> Result<(MappedProfile, String), String> {
     let remote_target = remote
         .get("remote")
         .map(|v| v.trim().to_string())
@@ -2061,7 +2090,7 @@ fn map_crypt_remote(
     options.insert("rcloneCryptEnabled".into(), serde_json::Value::Bool(true));
     options.insert(
         "rcloneCryptRemote".into(),
-        serde_json::Value::String(remote_target),
+        serde_json::Value::String(remote_target.clone()),
     );
     options.insert(
         "rcloneCryptOverlayName".into(),
@@ -2092,11 +2121,25 @@ fn map_crypt_remote(
 
     mapped.options = Some(serde_json::Value::Object(options));
 
-    if crypt_subpath.is_some() {
+    // rclone's sftp opens `nas:docs` under the login folder and `nas:/docs`
+    // from the root, as an alias does ([`apply_rclone_start_folder`]); the
+    // folder is also the overlay's scope. Read from the root like the other
+    // backends, `nas: docs` became `/ docs`, another folder, where files were
+    // encrypted with the right key and rclone never looked.
+    if mapped.protocol == "sftp" {
+        let raw = remote_target.split_once(':').map_or("", |(_, path)| path);
+        apply_rclone_start_folder(&mut mapped, raw);
+        // `nas:` names the login folder too. No start folder opens it, but the
+        // scope falls back to the start folder, and an empty scope is the
+        // whole remote from the root, where rclone wrote nothing.
+        if mapped.initial_path.is_none() {
+            mapped.initial_path = Some("~".to_string());
+        }
+    } else if crypt_subpath.is_some() {
         mapped.initial_path = crypt_subpath;
     }
 
-    Ok(mapped)
+    Ok((mapped, base_remote_name))
 }
 
 /// Parse a WebDAV URL into (host, basePath, port).
@@ -2293,6 +2336,55 @@ pub struct RcloneImportWarning {
     pub reason: String,
 }
 
+/// What one import may hold in memory once aliases and crypts are expanded.
+/// Each of them is mapped from the section it opens, so its secrets are copied
+/// again: 10,000 aliases over one section with a 1 MiB secret would hold about
+/// 10 GiB from a 2 MiB file (Codex review RCB-02, 2026-11-06).
+const MAX_RCLONE_EXPANDED_BYTES: usize = 64 * 1024 * 1024;
+
+/// Refuse a file whose remotes would expand past [`MAX_RCLONE_EXPANDED_BYTES`].
+/// A remote costs its own keys and values, and an alias or crypt also costs
+/// every section on its way to the remote it opens (at most 8 hops, the bound
+/// `resolve_alias_target` keeps).
+fn check_rclone_expansion(sections: &HashMap<String, RcloneRemote>) -> Result<(), String> {
+    let size =
+        |remote: &RcloneRemote| -> usize { remote.iter().map(|(k, v)| k.len() + v.len()).sum() };
+    let mut total = 0usize;
+    for remote in sections.values() {
+        total = total.saturating_add(size(remote));
+        let mut current = remote;
+        for _ in 0..8 {
+            let wraps = matches!(
+                current.get("type").map(|t| t.trim()),
+                Some("alias") | Some("crypt")
+            );
+            // `remote = base` with no colon opens the whole of `base`, as
+            // `parse_crypt_remote_target` reads it, so it copies `base` too.
+            let Some(base) = wraps
+                .then(|| current.get("remote"))
+                .flatten()
+                .map(|r| r.trim())
+                .map(|r| r.split_once(':').map_or(r, |(base, _)| base).trim())
+            else {
+                break;
+            };
+            let Some(next) = sections.get(base) else {
+                break;
+            };
+            total = total.saturating_add(size(next));
+            current = next;
+        }
+        if total > MAX_RCLONE_EXPANDED_BYTES {
+            return Err(format!(
+                "rclone.conf expands to more than {} MB once its aliases and crypt remotes are \
+                 resolved; split the file",
+                MAX_RCLONE_EXPANDED_BYTES / (1024 * 1024)
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Import all supported remotes from an rclone.conf file.
 /// Whether `name` is one the export generates for an alias of `base` opening
 /// `path`: `<base>-path` for a start folder, `<base>-<bucket>` for a pinned
@@ -2321,11 +2413,27 @@ fn is_generated_alias_name(name: &str, base: &str, base_type: &str, path: &str) 
 }
 
 pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
-    let content =
-        std::fs::read_to_string(config_path).map_err(|e| format!("Read rclone.conf: {}", e))?;
+    // Read through the cap, not after a size check: a file that grows between
+    // the caller's metadata check and this read cannot get past it.
+    let content = {
+        use std::io::Read;
+        let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES;
+        let mut bytes = Vec::new();
+        std::fs::File::open(config_path)
+            .and_then(|f| f.take(cap + 1).read_to_end(&mut bytes))
+            .map_err(|e| format!("Read rclone.conf: {}", e))?;
+        if bytes.len() as u64 > cap {
+            return Err(format!(
+                "rclone.conf is larger than {} MB",
+                cap / (1024 * 1024)
+            ));
+        }
+        String::from_utf8(bytes).map_err(|e| format!("Read rclone.conf: {}", e))?
+    };
 
     let mut sections = parse_rclone_conf(&content);
-    expand_rclone_key_files(&mut sections, rclone_config_dir(config_path).as_deref());
+    expand_rclone_key_files(&mut sections, rclone_config_dir(config_path).as_deref())?;
+    check_rclone_expansion(&sections)?;
     let aeroftp_export = aeroftp_export_header(&content);
     let total_remotes = sections.len();
     let mut servers = Vec::new();
@@ -2369,7 +2477,18 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                 .map(|t| t.trim())
                 .unwrap_or("");
             let base_is_plain = !matches!(base_type, "" | "alias" | "crypt");
+            // A folder inside a Drive rooted at a folder id cannot be a path
+            // (see `map_alias_remote`): folded, the start folder replaced the
+            // root id and `gd:Team` opened /Team at the account root. Left as
+            // an alias, the guard there skips it with the reason.
+            let rooted_drive = base_type == "drive"
+                && sections
+                    .get(base)
+                    .and_then(|b| b.get("root_folder_id"))
+                    .is_some_and(|id| !id.trim().is_empty());
+            let alias_has_path = !path.trim_end().trim_matches('/').is_empty();
             if base_is_plain
+                && !(rooted_drive && alias_has_path)
                 && is_generated_alias_name(name, base, base_type, path)
                 && !start_of.contains_key(base)
             {
@@ -2387,10 +2506,15 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         }
 
         // The section holding the OAuth app (`client_id`, `client_secret`):
-        // for an alias, the remote it opens, whose token was mapped.
+        // for an alias or a crypt, the remote it opens, whose token was mapped.
         let mut app_section = remote;
         let mapped = if rclone_type == "crypt" {
-            map_crypt_remote(name, remote, &sections, aeroftp_export)
+            map_crypt_remote(name, remote, &sections, aeroftp_export).map(|(mapped, base)| {
+                if let Some(base_remote) = sections.get(&base) {
+                    app_section = base_remote;
+                }
+                mapped
+            })
         } else if rclone_type == "alias" {
             map_alias_remote(name, remote, &sections, aeroftp_export).map(|(mapped, base)| {
                 if let Some(base_remote) = sections.get(&base) {
@@ -2606,7 +2730,10 @@ fn sanitize_export_server(server: &RcloneExportServer) -> RcloneExportServer {
     out.host = ini_value(&server.host);
     out.username = ini_value(&server.username);
     if let Some(serde_json::Value::Object(map)) = out.options.as_mut() {
-        for value in map.values_mut() {
+        for (key, value) in map.iter_mut() {
+            if OBSCURED_EXPORT_OPTION_KEYS.contains(&key.as_str()) {
+                continue;
+            }
             if let serde_json::Value::String(s) = value {
                 *s = ini_value(s);
             }
@@ -2631,6 +2758,16 @@ impl<'a> AliasRoot<'a> {
         }
     }
 }
+
+/// Options written only through `obscure_password`, whose output has no line
+/// break: their bytes are the key material (a crypt password and salt derive
+/// the encryption key, a passphrase unlocks the key file), so stripping a
+/// CR/LF from them would export a different secret, not a safer line.
+const OBSCURED_EXPORT_OPTION_KEYS: &[&str] = &[
+    "rcloneCryptPassword",
+    "rcloneCryptPassword2",
+    "key_passphrase",
+];
 
 /// Derive rclone's `remote = <base>:<path>` for a crypt overlay.
 ///
@@ -2657,8 +2794,11 @@ fn crypt_export_remote_target(
     folder: Option<&str>,
     options: &serde_json::Value,
 ) -> String {
+    // A space at the start is part of a folder name (`nas: docs` opens
+    // ` docs`), as in `apply_rclone_start_folder`; trimmed, the alias of
+    // `~/ docs` became `docs` and no longer held a scope inside it.
     let trim = |p: &str| {
-        p.trim()
+        p.trim_end()
             .trim_start_matches('/')
             .trim_end_matches('/')
             .to_string()
@@ -2837,25 +2977,32 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
     }
 }
 
-/// The Keystone auth URL of a Swift profile, from where the provider reads it:
-/// `SwiftConfig::from_provider_config` dials the host (with `https://` when the
-/// host has no scheme), and nothing else. `options.endpoint` is read only when
-/// the host is empty, for profiles that carry the URL there. Preferred to the
-/// host, it sent the password to a service the profile never signs in to;
-/// reading the endpoint alone left Blomp, whose preset stores the URL as the
-/// host, exported without `auth`.
+/// The Keystone auth URL of a Swift profile, resolved the way the profile
+/// connects: [`crate::profile_loader::profile_connection_extra`] (the CLI, MCP
+/// and AeroCloud path) dials an `http(s)` `options.endpoint` when the host has
+/// no scheme, and the host otherwise; `SwiftConfig::from_provider_config`
+/// then adds `https://` to a host without one. Read from the host alone, a
+/// host without a scheme and a different endpoint sent the password to a
+/// service the profile never signs in to. `options.endpoint` is also read when
+/// the host is empty, for profiles that carry the URL there; Blomp's preset
+/// stores the URL as the host.
 fn swift_auth_url(server: &RcloneExportServer) -> Option<String> {
-    let endpoint = || {
-        server
-            .options
-            .as_ref()
-            .and_then(|o| o.get("endpoint"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .unwrap_or("")
+    let profile = serde_json::json!({
+        "protocol": server.protocol,
+        "providerId": server.provider_id,
+        "options": server.options,
+    });
+    let (extra, resolved) = crate::profile_loader::profile_connection_extra(
+        &profile,
+        crate::providers::ProviderType::Swift,
+        &server.host,
+    );
+    let resolved = resolved.trim();
+    let raw = if resolved.is_empty() {
+        extra.get("endpoint").map(|e| e.trim()).unwrap_or("")
+    } else {
+        resolved
     };
-    let host = server.host.trim();
-    let raw = if host.is_empty() { endpoint() } else { host };
     if raw.is_empty() {
         return None;
     }
@@ -3394,9 +3541,32 @@ impl RcloneNamespace {
         self.claim(base, true)
     }
 
+    /// Whether `candidate` and a section of this file would be ancestor and
+    /// descendant. rclone's config parser (goconfig) reads a key that `[a.b]`
+    /// lacks from `[a]`, the section before its last dot, so `[Lab.x]` with no
+    /// `pass` logs in to its own host with `[Lab]`'s password (measured on
+    /// rclone 1.75.2 against a local FTP listener, 2026-11-06). A name whose
+    /// dot-prefix is a section, or will be one (a profile still to write), is
+    /// the descendant; a name that is the dot-prefix of a section already
+    /// written would become the ancestor. `above_reserved` also counts the
+    /// profiles still to write as descendants, for a name that must not push
+    /// one aside: an overlay or generated `vault` written before the profile
+    /// `vault.team` turned that profile into `vault-team`, which commands
+    /// using `vault.team:` no longer address.
+    fn dotted_kin(&self, candidate: &str, above_reserved: bool) -> bool {
+        let ancestor_taken = candidate.match_indices('.').any(|(i, _)| {
+            let prefix = &candidate[..i];
+            self.used.contains(prefix) || self.reserved.contains(prefix)
+        });
+        let below = format!("{candidate}.");
+        ancestor_taken
+            || self.used.iter().any(|u| u.starts_with(&below))
+            || (above_reserved && self.reserved.iter().any(|r| r.starts_with(&below)))
+    }
+
     /// A name the operator wrote by hand: taken exactly, or not at all.
     fn claim_exact(&mut self, name: &str) -> bool {
-        if self.used.contains(name) || self.reserved.contains(name) {
+        if self.used.contains(name) || self.reserved.contains(name) || self.dotted_kin(name, true) {
             return false;
         }
         self.used.insert(name.to_string());
@@ -3410,8 +3580,22 @@ impl RcloneNamespace {
     }
 
     fn claim(&mut self, base: &str, avoid_reserved: bool) -> Option<String> {
+        // A descendant gives up its dots: a suffix alone keeps it under the
+        // same ancestor (`Lab.x-2` still reads `[Lab]`). The undotted name is
+        // one this exporter invents, so it steps aside for every profile name:
+        // taken as it was, `Lab.x` became `Lab-x` and the real `Lab-x` moved
+        // to `Lab-x-2`, where existing commands no longer find it.
+        let undotted;
+        let (base, avoid_reserved) = if self.dotted_kin(base, avoid_reserved) {
+            undotted = base.replace('.', "-");
+            (undotted.as_str(), true)
+        } else {
+            (base, avoid_reserved)
+        };
         let free = |me: &Self, candidate: &str| {
-            !me.used.contains(candidate) && !(avoid_reserved && me.reserved.contains(candidate))
+            !me.used.contains(candidate)
+                && !(avoid_reserved && me.reserved.contains(candidate))
+                && !me.dotted_kin(candidate, avoid_reserved)
         };
         if free(self, base) {
             self.used.insert(base.to_string());
@@ -4554,27 +4738,78 @@ pub fn export_rclone(
                     ));
                     o
                 }),
-            // Under the login folder the app saves the scope with the `~` it
-            // read as a folder (`resolveOverlayScope` turns `~/projects` into
-            // `/~/projects`), while the alias holds `projects`: taken as
-            // written, the crypt opened `/~/projects` inside the start folder.
-            ("sftp", _, Some(o))
-                if options
-                    .and_then(|o| o.get("initial_path"))
+            // Under the login folder the app saves the scope as `~/projects`
+            // (`resolveOverlayScope`; before, `/~/projects`, the `~` read as a
+            // folder), while the alias holds `projects`: taken as written, the
+            // crypt opened `/~/projects` inside the start folder. The scope is
+            // taken from the login folder whatever the start folder is; where
+            // it lies is settled below. An imported target comes first, as in
+            // `crypt_export_remote_target`: `nas:docs` is under the login
+            // folder too, and taken from the root it became `nas:/docs`, or
+            // `nas-path:/docs` inside the start folder. `nas:/docs` stays
+            // absolute and is written as imported.
+            ("sftp", _, Some(o)) => {
+                let imported = o
+                    .get("rcloneCryptRemote")
                     .and_then(|v| v.as_str())
-                    .is_some_and(|start| start.starts_with('~')) =>
-            {
-                o.get("rcloneCryptOverlayScope")
-                    .and_then(|v| v.as_str())
-                    .and_then(sftp_login_relative_scope)
-                    .map(|scope| {
-                        let mut o = o.clone();
-                        o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope);
-                        o
-                    })
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty());
+                let from_login = match imported {
+                    Some(target) => {
+                        match sftp_start_folder(target.split_once(':').map_or(target, |(_, p)| p)) {
+                            None => Some("/".to_string()),
+                            Some(start) => sftp_login_relative_scope(&start),
+                        }
+                    }
+                    None => o
+                        .get("rcloneCryptOverlayScope")
+                        .and_then(|v| v.as_str())
+                        .and_then(sftp_login_relative_scope),
+                };
+                from_login.map(|scope| {
+                    let mut o = o.clone();
+                    if let Some(map) = o.as_object_mut() {
+                        map.remove("rcloneCryptRemote");
+                    }
+                    o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope);
+                    o
+                })
             }
             _ => None,
         };
+        // A scope under the login folder that is not under the start folder's
+        // alias (an absolute start folder such as `/` or `/srv`, none, or a
+        // relative one it lies beside) wraps the clear remote, which opens the
+        // login folder: `nas:vault`. Over the alias of `/` it was
+        // `nas-path:/~/vault`, a folder named `~` at the root, where rclone
+        // found none of the encrypted files and wrote new ones.
+        if proto == "sftp" {
+            let start = options
+                .and_then(|o| o.get("initial_path"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            // The start folder as a path from the login folder, when it is one.
+            let start_from_login = if start.starts_with('~') {
+                sftp_login_relative_scope(start)
+            } else if start.trim().is_empty() || start.starts_with('/') {
+                None
+            } else {
+                Some(format!("/{}", start.trim_matches('/')))
+            };
+            let scope_from_login = scoped_crypt_options
+                .as_ref()
+                .and_then(|o| o.get("rcloneCryptOverlayScope"))
+                .and_then(|v| v.as_str());
+            if let Some(scope) = scope_from_login {
+                let under_start = start_from_login.as_deref().is_some_and(|root| {
+                    root == "/" || scope == root || scope.starts_with(&format!("{root}/"))
+                });
+                if !under_start {
+                    crypt_folder = Some(String::new());
+                    crypt_base_root = None;
+                }
+            }
+        }
         let mut crypt_section = String::new();
         let crypt = append_crypt_remote_section(
             &mut crypt_section,
@@ -5453,8 +5688,9 @@ region = eu-west-1
         crypt.insert("filename_encryption".into(), "standard".into());
         crypt.insert("directory_name_encryption".into(), "true".into());
 
-        let mapped =
-            map_crypt_remote("mycrypt", &crypt, &sections, None).expect("should map crypt");
+        let mapped = map_crypt_remote("mycrypt", &crypt, &sections, None)
+            .expect("should map crypt")
+            .0;
         assert_eq!(mapped.protocol, "sftp");
         assert_eq!(mapped.host, "192.168.1.10");
         assert_eq!(mapped.initial_path.as_deref(), Some("/encrypted"));
@@ -9867,8 +10103,89 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // `~` alone: no alias, the crypt wraps the login folder itself.
         assert_eq!(remote_of("~", "/~"), "nas:");
         assert_eq!(remote_of("~", "/~/vault"), "nas:vault");
+        // The form the app saves now (`~/projects`), for a start folder under
+        // `~`, a relative one (SFTP opens it under the login folder) and none.
+        assert_eq!(remote_of("~/projects", "~/projects"), "nas-path:");
+        assert_eq!(
+            remote_of("~/projects", "~/projects/vault"),
+            "nas-path:/vault"
+        );
+        assert_eq!(remote_of("projects", "~/projects/vault"), "nas-path:/vault");
+        assert_eq!(remote_of("~", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("", "~"), "nas:");
+        assert_eq!(remote_of("", "/srv/vault"), "nas:/srv/vault");
+        // #1523 Greptile: a scope under the login folder is read from it
+        // whatever the start folder is. Over the alias of `/` it was
+        // `nas-path:/~/vault`, a folder named `~` at the root.
+        assert_eq!(remote_of("/", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("/srv", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("/srv", "~/srv/x"), "nas:srv/x");
+        assert_eq!(remote_of("/", "~"), "nas:");
+        assert_eq!(remote_of("projects", "~/other"), "nas:other");
+        assert_eq!(remote_of("~/projects", "~/other"), "nas:other");
+        // A space at the start is part of the folder name.
+        assert_eq!(remote_of("~/ docs", "~/ docs"), "nas-path:");
+        assert_eq!(remote_of("~/ docs", "~/ docs/vault"), "nas-path:/vault");
+        // An absolute scope keeps its meaning under an absolute start folder.
+        assert_eq!(remote_of("/srv", "/srv/vault"), "nas-path:/vault");
         assert_eq!(sftp_login_relative_scope("/~x/vault"), None);
         assert_eq!(sftp_login_relative_scope("/srv/~"), None);
+    }
+
+    #[test]
+    fn an_imported_sftp_crypt_target_keeps_its_login_or_root_form() {
+        // #1523 CodeRabbit: rclone's sftp opens `nas:docs` under the login
+        // folder and `nas:/docs` from the root. The imported target was taken
+        // from the root (`nas:/docs`), and once a login-relative scope moved
+        // the crypt off the start folder's alias, from inside it
+        // (`nas-path:/docs`, which is `/srv/docs`).
+        let crypt = |start: &str, imported: &str, scope: Option<&str>| {
+            let mut o = serde_json::json!({
+                "initial_path": start,
+                "rcloneCryptEnabled": true,
+                "rcloneCryptRemote": imported,
+                "rcloneCryptPassword": "pw"
+            });
+            if let Some(scope) = scope {
+                o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope.to_string());
+            }
+            server_with("nas", "sftp", "nas.example.test", 22, None, o)
+        };
+        let remote_of = |start: &str, imported: &str, scope: Option<&str>| {
+            let (_, conf) = export_to_string(&[crypt(start, imported, scope)], "crypt-imported");
+            conf.lines()
+                .skip_while(|line| *line != "type = crypt")
+                .find_map(|line| line.strip_prefix("remote = "))
+                .unwrap_or_else(|| panic!("no crypt remote:\n{conf}"))
+                .to_string()
+        };
+        // The absolute form, over an absolute start folder it lies beside,
+        // whatever scope the profile carries: the imported target comes first.
+        assert_eq!(remote_of("/srv", "nas:/docs", Some("~/vault")), "nas:/docs");
+        assert_eq!(remote_of("/srv", "nas:/docs", Some("/docs")), "nas:/docs");
+        assert_eq!(remote_of("/srv", "nas:/docs", None), "nas:/docs");
+        assert_eq!(remote_of("~", "nas:/docs", Some("/docs")), "nas:/docs");
+        assert_eq!(remote_of("/", "nas:/docs", Some("/docs")), "nas-path:/docs");
+        assert_eq!(
+            remote_of("/srv", "nas:/srv/vault", Some("/srv/vault")),
+            "nas-path:/vault"
+        );
+        // The relative form stays under the login folder.
+        assert_eq!(remote_of("/srv", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("/srv", "nas:docs", None), "nas:docs");
+        assert_eq!(remote_of("/", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("~", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("", "nas:docs", Some("~/docs")), "nas:docs");
+        assert_eq!(remote_of("/srv", "nas:", None), "nas:");
+        // As imported: the start folder is the crypt's (`apply_rclone_start_folder`).
+        assert_eq!(remote_of("~/docs", "nas:docs", None), "nas-path:");
+        assert_eq!(remote_of("~/ docs", "nas: docs", None), "nas-path:");
+        assert_eq!(
+            remote_of("~/p", "nas:p/vault", Some("~/p/vault")),
+            "nas-path:/vault"
+        );
+        assert_eq!(remote_of("~", "nas:", None), "nas:");
     }
 
     #[test]
@@ -10014,6 +10331,258 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         let photos = result.servers.iter().find(|s| s.name == "photos").unwrap();
         assert_eq!(bucket_of(photos).as_deref(), Some("media"));
         assert_eq!(photos.initial_path.as_deref(), Some("/photos"));
+    }
+
+    /// Every `[section]` header of an exported file.
+    fn section_headers(conf: &str) -> Vec<&str> {
+        conf.lines()
+            .filter_map(|l| l.strip_prefix('[').and_then(|l| l.strip_suffix(']')))
+            .collect()
+    }
+
+    #[test]
+    fn a_dotted_name_never_takes_another_profile_name() {
+        // `Lab.x` gives up its dot, but `Lab-x` is a real profile: taken as it
+        // was, the real one moved to `Lab-x-2`.
+        let lab = |name: &str, host: &str| {
+            server_with(name, "ftp", host, 21, None, serde_json::json!({}))
+        };
+        let servers = vec![
+            lab("Lab", "lab.test"),
+            lab("Lab.x", "dotted.test"),
+            lab("Lab-x", "real.test"),
+        ];
+        let (_, conf) = export_to_string(&servers, "dotted-reserved");
+        assert!(
+            section_of(&conf, "Lab-x").contains("host = real.test"),
+            "{conf}"
+        );
+        assert!(
+            !section_of(&conf, "Lab-x").contains("dotted.test"),
+            "{conf}"
+        );
+        assert!(conf.contains("host = dotted.test"), "{conf}");
+
+        // An overlay name may not become the ancestor of a profile written
+        // later: `vault` before `vault.team` renamed that profile.
+        let servers = vec![
+            export_server(
+                "nas",
+                "ftp",
+                Some(serde_json::json!({
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptOverlayName": "vault",
+                    "rcloneCryptPassword": "topsecret",
+                })),
+            ),
+            export_server("vault.team", "ftp", None),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "dotted-overlay");
+        assert!(conf.contains("[vault.team]\ntype = ftp"), "{conf}");
+        assert!(!conf.contains("[vault]\n"), "{conf}");
+        assert!(
+            outcome.skipped.iter().any(|s| s.name == "nas"),
+            "{:?}",
+            outcome.skipped
+        );
+    }
+
+    #[test]
+    fn no_exported_section_reads_another_through_a_dotted_name() {
+        // Codex review RCB-01: rclone reads a key `[Lab.x]` lacks from
+        // `[Lab]`, so the child logged in to its own host with the parent's
+        // password. No two sections may be ancestor and descendant, in either
+        // order of the profiles, and a generated alias may not become one.
+        let lab = |name: &str, host: &str| {
+            let mut s = server_with(name, "ftp", host, 21, None, serde_json::json!({}));
+            s.id = format!("{name}-id");
+            s
+        };
+        for servers in [
+            vec![
+                lab("Lab", "legit.test"),
+                lab("Lab.attacker", "attacker.test"),
+            ],
+            vec![
+                lab("Lab.attacker", "attacker.test"),
+                lab("Lab", "legit.test"),
+            ],
+            vec![
+                lab("nas", "nas.test"),
+                server_with(
+                    "nas-path.x",
+                    "ftp",
+                    "x.test",
+                    21,
+                    None,
+                    serde_json::json!({}),
+                ),
+                server_with(
+                    "nas",
+                    "sftp",
+                    "nas.test",
+                    22,
+                    None,
+                    serde_json::json!({ "initial_path": "/data" }),
+                ),
+            ],
+        ] {
+            let (_, conf) = export_with_passwords(&servers, &[("Lab-id", "OWNER")], "dotted");
+            let headers = section_headers(&conf);
+            for a in &headers {
+                for b in &headers {
+                    assert!(
+                        !b.starts_with(&format!("{a}.")),
+                        "[{b}] would read the keys it lacks from [{a}]:\n{conf}"
+                    );
+                }
+            }
+        }
+        let (_, conf) = export_with_passwords(
+            &[
+                lab("Lab", "legit.test"),
+                lab("Lab.attacker", "attacker.test"),
+            ],
+            &[("Lab-id", "OWNER")],
+            "dotted-name",
+        );
+        assert!(
+            section_of(&conf, "Lab-attacker").contains("host = attacker.test\n"),
+            "{conf}"
+        );
+        assert!(
+            !section_of(&conf, "Lab-attacker").contains("pass ="),
+            "{conf}"
+        );
+        // A dotted name with no section above it keeps its dots.
+        let (_, conf) = export_to_string(&[lab("ftp.example.com", "h.test")], "dotted-alone");
+        assert!(conf.contains("[ftp.example.com]\n"), "{conf}");
+    }
+
+    #[test]
+    fn an_import_that_would_expand_past_the_budget_is_refused() {
+        // Codex review RCB-02: every alias is mapped from the section it opens,
+        // so its secrets are copied once per alias.
+        let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
+        let mut base = RcloneRemote::new();
+        base.insert("type".into(), "s3".into());
+        base.insert("secret_access_key".into(), "A".repeat(1024 * 1024));
+        sections.insert("base".into(), base);
+        let alias = |n: usize, sections: &mut HashMap<String, RcloneRemote>| {
+            for i in 0..n {
+                let mut a = RcloneRemote::new();
+                a.insert("type".into(), "alias".into());
+                a.insert("remote".into(), "base:".into());
+                sections.insert(format!("a{i}"), a);
+            }
+        };
+        alias(40, &mut sections);
+        assert!(check_rclone_expansion(&sections).is_ok());
+        alias(80, &mut sections);
+        let err = check_rclone_expansion(&sections).unwrap_err();
+        assert!(err.contains("expands to more than"), "{err}");
+    }
+
+    #[test]
+    fn an_obscured_secret_keeps_its_line_breaks_through_the_export() {
+        // Codex review RCB-04: the CR/LF strip for raw INI values changed the
+        // crypt key material, and the key passphrase, before obscuring.
+        let servers = vec![server_with(
+            "demo",
+            "sftp",
+            "example.test",
+            22,
+            None,
+            serde_json::json!({
+                "private_key_path": "/keys/demo",
+                "key_passphrase": "pass\nphrase",
+                "rcloneCryptEnabled": true,
+                "rcloneCryptPassword": "first\nsecond",
+                "rcloneCryptPassword2": "salt\r\nvalue"
+            }),
+        )];
+        let (_, conf) = export_to_string(&servers, "obscured-crlf");
+        let value = |section: &str, key: &str| {
+            section_of(&conf, section)
+                .lines()
+                .find_map(|l| l.strip_prefix(&format!("{key} = ")))
+                .map(|v| reveal_obscured(v).expect("reveal"))
+        };
+        assert_eq!(
+            value("demo-crypt", "password").as_deref(),
+            Some("first\nsecond")
+        );
+        assert_eq!(
+            value("demo-crypt", "password2").as_deref(),
+            Some("salt\r\nvalue")
+        );
+        assert_eq!(
+            value("demo", "key_file_pass").as_deref(),
+            Some("pass\nphrase")
+        );
+        // The file still has one key per line.
+        assert!(conf.lines().all(|l| !l.contains('\r')), "{conf}");
+    }
+
+    #[test]
+    fn a_crypt_over_an_oauth_remote_keeps_the_app_of_the_remote_it_opens() {
+        let password = obscure_password("pw").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            format!(
+                "[z-drive]\ntype = drive\nclient_id = APP_A\nclient_secret = SECRET_A\n\
+                 token = {{\"access_token\":\"AT\",\"refresh_token\":\"RT\",\"expiry\":\"2030-01-01T00:00:00Z\"}}\n\n\
+                 [a-vault]\ntype = crypt\nremote = z-drive:\npassword = {password}\n"
+            ),
+        )
+        .unwrap();
+        let result = import_rclone(&path).unwrap();
+        let id = result_app(&result, "a-vault");
+        let secrets = result.provider_secrets.get(&id).expect("the app");
+        assert_eq!(secrets.oauth_client_id.as_deref(), Some("APP_A"));
+        assert_eq!(secrets.oauth_client_secret.as_deref(), Some("SECRET_A"));
+    }
+
+    #[test]
+    fn a_key_file_that_expands_past_path_max_refuses_the_import() {
+        let key = "${RCLONE_CONFIG_DIR}".repeat(1000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            format!("[nas]\ntype = sftp\nhost = nas.example.test\nuser = u\nkey_file = {key}\n"),
+        )
+        .unwrap();
+        let err = import_rclone(&path).err().expect("refused");
+        assert!(err.contains("key_file of 'nas' expands past"), "{err}");
+    }
+
+    #[test]
+    fn crypt_remotes_without_a_colon_count_against_the_expansion_budget() {
+        // `remote = base` opens all of `base`, so each crypt copies its secret.
+        let secret = "k".repeat(1024 * 1024);
+        let mut conf =
+            format!("[base]\ntype = s3\nprovider = AWS\nsecret_access_key = {secret}\n\n");
+        for i in 0..70 {
+            conf.push_str(&format!("[c{i}]\ntype = crypt\nremote = base\n\n"));
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(&path, conf).unwrap();
+        let err = import_rclone(&path).err().expect("refused");
+        assert!(err.contains("expands to more than"), "{err}");
+    }
+
+    #[test]
+    fn an_import_larger_than_the_cap_is_refused_while_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES as usize;
+        std::fs::write(&path, "#".repeat(cap + 1)).unwrap();
+        let err = import_rclone(&path).err().expect("refused");
+        assert!(err.contains("larger than"), "{err}");
     }
 
     #[test]
@@ -10565,18 +11134,38 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         let dir = Path::new("/etc/rclone");
         let path = std::env::var("PATH").unwrap_or_default();
         assert_eq!(
-            expand_rclone_path("${RCLONE_CONFIG_DIR}/id_ed25519", Some(dir)),
-            "/etc/rclone/id_ed25519"
+            expand_rclone_path("${RCLONE_CONFIG_DIR}/id_ed25519", Some(dir)).as_deref(),
+            Some("/etc/rclone/id_ed25519")
         );
-        assert_eq!(expand_rclone_path("$PATH/k", None), format!("{path}/k"));
-        assert_eq!(expand_rclone_path("${PATH}-k", None), format!("{path}-k"));
+        // A host PATH near the cap expands past it; the cap itself is pinned
+        // by the long case below, whatever the host.
+        if path.len() + 2 <= MAX_RCLONE_KEY_PATH_BYTES {
+            assert_eq!(
+                expand_rclone_path("$PATH/k", None),
+                Some(format!("{path}/k"))
+            );
+            assert_eq!(
+                expand_rclone_path("${PATH}-k", None),
+                Some(format!("{path}-k"))
+            );
+        }
         assert_eq!(
-            expand_rclone_path("/k/${AEROFTP_TEST_NEVER_SET_VAR}/x", None),
-            "/k//x",
+            expand_rclone_path("/k/${AEROFTP_TEST_NEVER_SET_VAR}/x", None).as_deref(),
+            Some("/k//x"),
             "an unset variable is empty, as in Go's os.ExpandEnv"
         );
-        assert_eq!(expand_rclone_path("~/.ssh/id $ x", None), "~/.ssh/id $ x");
-        assert_eq!(expand_rclone_path("/k/${open", None), "/k/${open");
+        assert_eq!(
+            expand_rclone_path("~/.ssh/id $ x", None).as_deref(),
+            Some("~/.ssh/id $ x")
+        );
+        assert_eq!(
+            expand_rclone_path("/k/${open", None).as_deref(),
+            Some("/k/${open")
+        );
+        // A key path past PATH_MAX stops at the cap instead of allocating:
+        // `${RCLONE_CONFIG_DIR}` a thousand times over a 12-byte folder.
+        let long = "${RCLONE_CONFIG_DIR}".repeat(1000);
+        assert_eq!(expand_rclone_path(&long, Some(dir)), None);
         // A bare file name, as the CLI passes `rclone.conf`: the folder is the
         // current one, not the empty parent that made `/id_ed25519`.
         assert_eq!(
@@ -10617,6 +11206,32 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             assert!(!reason.contains("SENTINEL"), "{name}: {reason}");
         }
         assert!(skip_reason(&result, "named").contains("'mys3'"));
+    }
+
+    #[test]
+    fn an_aeroftp_export_does_not_fold_a_folder_into_a_rooted_drive() {
+        // The fold runs before `map_alias_remote`'s guard: an alias that looks
+        // generated (`gd-path`) over a Drive rooted at a folder id replaced the
+        // root id with `/Team`, which opened at the account root.
+        let result = import_text(
+            "# Generated by AeroFTP - https://aeroftp.app\n# Exported: 2026-11-06T17:00:00Z\n\n\
+             [gd]\ntype = drive\nroot_folder_id = 1AbCdEf\n\n\
+             [gd-path]\ntype = alias\nremote = gd:Team\n\n\
+             [plain]\ntype = drive\n\n\
+             [plain-path]\ntype = alias\nremote = plain:Team\n",
+            "stamped-rooted-drive",
+        );
+        assert_eq!(
+            imported(&result, "gd").initial_path.as_deref(),
+            Some("1AbCdEf")
+        );
+        assert!(skip_reason(&result, "gd-path").contains("root_folder_id"));
+        // An unrooted Drive still folds its start folder back into the profile.
+        assert!(result.servers.iter().all(|s| s.name != "plain-path"));
+        assert!(imported(&result, "plain")
+            .initial_path
+            .as_deref()
+            .is_some_and(|p| p.trim_matches('/') == "Team"));
     }
 
     #[test]
@@ -10760,6 +11375,41 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     }
 
     #[test]
+    fn a_swift_export_without_a_scheme_signs_in_at_the_endpoint_the_profile_dials() {
+        // profile_connection_extra dials an http(s) endpoint when the host has
+        // no scheme; the export wrote `https://<host>` and sent the password
+        // to a service the profile never signs in to.
+        let servers = vec![
+            server_with(
+                "bare",
+                "swift",
+                "auth.example.test",
+                443,
+                None,
+                serde_json::json!({ "endpoint": "https://keystone.example.test/v3" }),
+            ),
+            server_with(
+                "plain",
+                "swift",
+                "auth.example.test/v3",
+                443,
+                None,
+                serde_json::json!({ "endpoint": "keystone.example.test/v3" }),
+            ),
+        ];
+        let (_, conf) = export_to_string(&servers, "swift-bare-host");
+        assert!(
+            section_of(&conf, "bare").contains("auth = https://keystone.example.test/v3\n"),
+            "{conf}"
+        );
+        // An endpoint without a scheme is not dialled: the host is.
+        assert!(
+            section_of(&conf, "plain").contains("auth = https://auth.example.test/v3\n"),
+            "{conf}"
+        );
+    }
+
+    #[test]
     fn a_space_after_the_colon_is_part_of_the_folder_rclone_opens() {
         // rclone v1.75.2 opens ` sp` for `remote = loc: sp` and drops only the
         // trailing spaces, with the rest of the value.
@@ -10791,8 +11441,35 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
              [pics]\ntype = alias\nremote = s3r: media/2026\n\n\
              [nas]\ntype = sftp\nhost = nas.example.test\nuser = u\n\n\
              [docs]\ntype = alias\nremote = nas: docs\n\n\
-             [deep]\ntype = alias\nremote = docs: sub\n",
+             [deep]\ntype = alias\nremote = docs: sub\n\n\
+             [relcrypt]\ntype = crypt\nremote = nas: docs\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\n\
+             [abscrypt]\ntype = crypt\nremote = nas:/docs\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\n\
+             [homecrypt]\ntype = crypt\nremote = nas:\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n\n\
+             [rootcrypt]\ntype = crypt\nremote = nas:/\n\
+             password = Z5gL8_HnB9SyJT5RjJtYcEBwiBrSN8h0fHelLigK\n",
             "lead-space-foreign",
+        );
+        // A crypt over SFTP opens where an alias does: under the login folder
+        // for `nas: docs`, from the root for `nas:/docs`.
+        assert_eq!(
+            imported(&foreign, "relcrypt").initial_path.as_deref(),
+            Some("~/ docs")
+        );
+        assert_eq!(
+            imported(&foreign, "abscrypt").initial_path.as_deref(),
+            Some("/docs")
+        );
+        // `nas:` is the login folder, never the whole remote from the root.
+        assert_eq!(
+            imported(&foreign, "homecrypt").initial_path.as_deref(),
+            Some("~")
+        );
+        assert_eq!(
+            imported(&foreign, "rootcrypt").initial_path.as_deref(),
+            Some("/")
         );
         assert_eq!(bucket_of(&foreign, "pics").as_deref(), Some(" media"));
         assert_eq!(

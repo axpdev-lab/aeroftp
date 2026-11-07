@@ -6678,7 +6678,9 @@
             "dirtyTitle": "Tallentamattomia muutoksia",
             "dirtyBody": "Sinulla on tallentamattomia muutoksia. Hylätäänkö ja suljetaan?",
             "keepEditing": "Jatka muokkausta",
-            "discardAndClose": "Hylkää ja sulje"
+            "discardAndClose": "Hylkää ja sulje",
+            "busyBodyKeepsRunning": "Toiminto on yhä käynnissä. Se jatkuu, kun tämä ikkuna on suljettu, eikä sen tulosta näytetä täällä. Suljetaanko silti?",
+            "closeAnyway": "Sulje silti"
         },
         "modalView": {
             "listView": "Luettelonäkymä",

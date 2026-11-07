@@ -253,6 +253,29 @@ pub async fn vault_v2_extract_entry(
     Ok(dest_path)
 }
 
+/// The entry names a v2 extraction must refuse: anything that is not a plain
+/// relative path of normal components once joined under the destination
+/// (`..`, `.`, a root, a drive prefix, a backslash or a NUL). A directory
+/// entry's trailing `/` is not a component.
+fn names_outside_the_destination<'a>(names: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
+    names
+        .filter(|name| {
+            crate::readable_vault::validate_rel_path(name.trim_end_matches('/')).is_err()
+        })
+        .collect()
+}
+
+/// The entry names whose path under `dest` goes through a link already on
+/// disk (a folder of the destination, or the entry's own name).
+fn names_through_a_link<'a>(
+    dest: &std::path::Path,
+    names: impl Iterator<Item = &'a str>,
+) -> Vec<&'a str> {
+    names
+        .filter(|name| first_link_under(dest, name.trim_end_matches('/')).is_some())
+        .collect()
+}
+
 /// Extract every entry of an opened v2 `vault` into `dest`, rebuilding the directory
 /// tree. The `aerovault` crate's v2 `extract`/`extract_all` write each file under its
 /// `file_name()` only, so nested files all collapse into the destination root, and
@@ -267,6 +290,28 @@ pub async fn vault_v2_extract_entry(
 /// refused before anything is written, naming the files in the way.
 pub(crate) fn extract_all_v2_tree(vault: &Vault, dest: &std::path::Path) -> Result<u32, String> {
     let entries = vault.list().map_err(|e| e.to_string())?;
+    // Every name is joined under `dest`, and the directories are created
+    // before the crate's own name check runs on the files: a vault naming an
+    // entry `../x`, `/etc/x` or `a\..\b` would create or write outside the
+    // destination. The names are checked first, and one unsafe name refuses
+    // the whole extraction before anything is written (deep-scan 18).
+    let unsafe_names = names_outside_the_destination(entries.iter().map(|e| e.name.as_str()));
+    if !unsafe_names.is_empty() {
+        return Err(format!(
+            "Nothing was extracted: the vault names entries outside the destination: {}",
+            unsafe_names[..unsafe_names.len().min(5)].join(", ")
+        ));
+    }
+    // A folder of the destination that is a link carries an entry under it
+    // outside the destination: such an extraction is refused before anything
+    // is written, as the sync refuses it (deep-scan 17).
+    let linked = names_through_a_link(dest, entries.iter().map(|e| e.name.as_str()));
+    if !linked.is_empty() {
+        return Err(format!(
+            "Nothing was extracted: these entries go through a link in the destination: {}",
+            linked[..linked.len().min(5)].join(", ")
+        ));
+    }
     let existing: Vec<&str> = entries
         .iter()
         .filter(|e| !e.is_dir && std::fs::symlink_metadata(dest.join(&e.name)).is_ok())
@@ -924,17 +969,24 @@ pub async fn vault_v2_sync_apply(
 
     // Process to_local: extract vault entries to local dir
     for name in &to_local_files {
-        if name.contains("..")
-            || name.starts_with('/')
-            || name.starts_with('\\')
-            || name.contains('\0')
-            || name.contains('\\')
-        {
+        if sync_entry_name_is_unsafe(name) {
             errors.push(format!("Invalid file name blocked: {}", name));
             skipped_count += 1;
             continue;
         }
 
+        // The name is checked, but the folders it goes through are on disk:
+        // one of them being a link to elsewhere carried the extraction
+        // outside the local folder (deep-scan 17).
+        if let Some(link) = first_link_under(&local_dir_canonical, name) {
+            errors.push(format!(
+                "Not extracted: '{}' goes through the link {}",
+                name,
+                link.display()
+            ));
+            skipped_count += 1;
+            continue;
+        }
         let dest = local_dir_canonical.join(name);
         if let Some(parent) = dest.parent() {
             if !parent.exists() {
@@ -969,6 +1021,33 @@ pub async fn vault_v2_sync_apply(
 // ============================================================================
 // Helpers: Path Validation
 // ============================================================================
+
+/// The first existing entry on the way from `root` to `root/rel` (the last
+/// one included) that is a link, or None. Entries not there yet are
+/// created by the extraction as real folders, so the walk stops at the
+/// first missing one.
+fn first_link_under(root: &std::path::Path, rel: &str) -> Option<std::path::PathBuf> {
+    let mut at = root.to_path_buf();
+    for part in std::path::Path::new(rel).components() {
+        at.push(part);
+        match std::fs::symlink_metadata(&at) {
+            Ok(meta) if meta.file_type().is_symlink() => return Some(at),
+            Ok(_) => {}
+            Err(_) => return None,
+        }
+    }
+    None
+}
+
+/// A vault entry name the sync must not extract: anything that is not a
+/// plain relative path of normal components (a `..` or `.` segment, a root,
+/// a backslash or a NUL), which on Windows includes a drive prefix such as
+/// `C:/x`: the join would replace the local folder with that drive
+/// (deep-scan 17). A name that merely contains two dots, `a..b.txt`, is a
+/// normal component.
+fn sync_entry_name_is_unsafe(name: &str) -> bool {
+    crate::readable_vault::validate_rel_path(name).is_err()
+}
 
 /// Validate a relative path for vault entry safety.
 /// Rejects path traversal, absolute paths, null bytes, and Windows drive letters.
@@ -1240,6 +1319,90 @@ pub async fn vault_v2_add_directory_core(
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 17: a folder on the way that is a link stops the entry.
+    #[cfg(unix)]
+    #[test]
+    fn a_link_on_the_way_to_a_vault_entry_is_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("local");
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("linked")).unwrap();
+        std::os::unix::fs::symlink(outside.join("f"), root.join("docs/f.txt")).unwrap();
+        assert_eq!(super::first_link_under(&root, "docs/new/a.txt"), None);
+        assert_eq!(
+            super::first_link_under(&root, "linked/a.txt"),
+            Some(root.join("linked"))
+        );
+        assert_eq!(
+            super::first_link_under(&root, "docs/f.txt"),
+            Some(root.join("docs/f.txt"))
+        );
+    }
+
+    /// Deep-scan 17: extract-all refuses entries that go through a link in
+    /// the destination, before anything is written.
+    #[cfg(unix)]
+    #[test]
+    fn extract_all_finds_entries_through_a_link_in_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("dest");
+        std::fs::create_dir_all(dest.join("plain")).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, dest.join("linked")).unwrap();
+        let names = ["plain/a.txt", "linked/new.txt", "linked/", "fresh/b.txt"];
+        assert_eq!(
+            super::names_through_a_link(&dest, names.iter().copied()),
+            vec!["linked/new.txt", "linked/"]
+        );
+    }
+
+    /// Deep-scan 17: the sync refuses a name that is not a plain relative
+    /// path, a drive-qualified one included on Windows.
+    #[test]
+    fn sync_refuses_names_that_leave_the_local_folder() {
+        for bad in ["../x", "a/../../x", "/etc/x", "a\\b", "./a", ""] {
+            assert!(super::sync_entry_name_is_unsafe(bad), "{bad:?}");
+        }
+        for good in ["a.txt", "docs/b.txt", "deep/er/c.bin", "a..b.txt"] {
+            assert!(!super::sync_entry_name_is_unsafe(good), "{good:?}");
+        }
+        #[cfg(windows)]
+        for bad in ["C:/outside/new.txt", "C:x", "\\\\server\\share\\x"] {
+            assert!(super::sync_entry_name_is_unsafe(bad), "{bad:?}");
+        }
+    }
+
+    /// Deep-scan 18: the names of a crafted or corrupt vault are checked
+    /// before any directory is created, and one unsafe name refuses all.
+    #[test]
+    fn vault_entry_names_outside_the_destination_are_refused() {
+        let names = [
+            "a.txt",
+            "d/",
+            "d/b.txt",
+            "../escape",
+            "d/../../escape",
+            "/etc/passwd",
+            "a\\..\\b",
+            "./a",
+            "",
+        ];
+        assert_eq!(
+            super::names_outside_the_destination(names.iter().copied()),
+            vec![
+                "../escape",
+                "d/../../escape",
+                "/etc/passwd",
+                "a\\..\\b",
+                "./a",
+                ""
+            ]
+        );
+    }
+
     use std::fs;
     use std::path::Path;
 

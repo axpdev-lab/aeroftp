@@ -4,6 +4,7 @@ import { X, ShieldCheck, Loader2, AlertTriangle } from 'lucide-react';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 /**
  * 2FA TOTP prompt that appears when a connect attempt to a 2FA-aware
@@ -81,14 +82,11 @@ export function TwoFactorPromptDialog({
         prevLoading.current = loading;
     }, [loading, isOpen]);
 
-    useEffect(() => {
-        if (!isOpen) return;
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && !loading) onCancel();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [isOpen, loading, onCancel]);
+    // ESC cancels, except while a retry runs. It goes through the hook, which
+    // gives the key to the topmost modal: the prompt can open over the speed
+    // test or another dialog that routes ESC, and one press used to close
+    // both (Discussion #1527).
+    useGuardedClose({ guard: null, onClose: onCancel, backdrop: 'never', escape: isOpen, escapeSuspended: loading });
 
     if (!isOpen) return null;
 

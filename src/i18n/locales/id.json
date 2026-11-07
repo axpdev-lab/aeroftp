@@ -6678,7 +6678,9 @@
             "dirtyTitle": "Perubahan belum disimpan",
             "dirtyBody": "Anda punya perubahan yang belum disimpan. Buang dan tutup?",
             "keepEditing": "Lanjut menyunting",
-            "discardAndClose": "Buang dan tutup"
+            "discardAndClose": "Buang dan tutup",
+            "busyBodyKeepsRunning": "Sebuah operasi masih berjalan. Operasi ini tetap berlanjut setelah jendela ini ditutup, dan hasilnya tidak ditampilkan di sini. Tutup saja?",
+            "closeAnyway": "Tutup saja"
         },
         "modalView": {
             "listView": "Tampilan daftar",

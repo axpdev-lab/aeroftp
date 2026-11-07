@@ -6678,7 +6678,9 @@
             "dirtyTitle": "Niet-opgeslagen wijzigingen",
             "dirtyBody": "U hebt niet-opgeslagen wijzigingen. Verwerpen en sluiten?",
             "keepEditing": "Verder bewerken",
-            "discardAndClose": "Verwerpen en sluiten"
+            "discardAndClose": "Verwerpen en sluiten",
+            "busyBodyKeepsRunning": "Er loopt nog een bewerking. Die gaat door nadat dit venster is gesloten en het resultaat wordt hier niet getoond. Toch sluiten?",
+            "closeAnyway": "Toch sluiten"
         },
         "modalView": {
             "listView": "Lijstweergave",

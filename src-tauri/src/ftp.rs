@@ -601,8 +601,13 @@ impl FtpManager {
             }
         }
 
-        // Write to local file
-        tokio::fs::write(local_path, buf).await?;
+        // Write to the local file through a temporary renamed over the
+        // name: the rename replaces a link standing at the name instead of
+        // writing through it to the link's target, as `fs::write` did
+        // (deep-scan 37).
+        let mut file = crate::providers::atomic_write::AtomicFile::new(local_path).await?;
+        file.write_all(&buf).await?;
+        file.commit().await?;
 
         info!("Download completed: {}", remote_path);
         Ok(())
@@ -714,8 +719,11 @@ impl FtpManager {
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
-        // Stream directly to disk in 8KB chunks (no full-file RAM buffering)
-        let mut local_file = tokio::fs::File::create(local_path).await?;
+        // Stream to disk in 8KB chunks (no full-file RAM buffering), through
+        // a temporary renamed over the name at the end: a link standing at
+        // the name is replaced, not written through (deep-scan 37), and a
+        // cancelled download leaves the existing file as it was.
+        let mut local_file = crate::providers::atomic_write::AtomicFile::new(local_path).await?;
         let mut chunk = [0u8; 8192];
         let mut total_read: u64 = 0;
         let mut cancelled = false;
@@ -737,19 +745,19 @@ impl FtpManager {
             }
         }
 
-        local_file.flush().await?;
-
         // Finalize the stream (must always finalize to keep FTP connection clean)
         // On cancel, FTP server sends 426: ignore that error
         let finalize_result = data_stream.finish().await;
         if cancelled {
             let _ = finalize_result; // Ignore 426 error on cancel
-            let _ = tokio::fs::remove_file(local_path).await;
+                                     // Dropping the uncommitted writer removes its temporary.
+            drop(local_file);
             return Err(
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
         finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        local_file.commit().await?;
 
         info!("Download completed: {} ({} bytes)", remote_path, total_read);
         Ok(())

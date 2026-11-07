@@ -100,3 +100,20 @@ describe('overlayEditDiffers (#369: OAuth Save without signing in again)', () =>
         expect(overlayEditDiffers(hydrated({ kind: 'aerocrypt', directoryNameEncryption: false, salt: 'x' }), aero)).toBe(false);
     });
 });
+
+// #1523: on SFTP a relative Remote Path is under the login folder, and the
+// stored anchor is `~/docs`; compared from the root, an untouched edit read
+// as a change, and saving it rewrote the anchor.
+describe('an SFTP overlay under the login folder', () => {
+    const sftpBinding = { ...rcloneBinding, remoteScope: '~/docs' };
+    it('reads an untouched edit as unchanged', () => {
+        const form = hydrated({ protocol: 'sftp', overlaysRemotePath: '~/docs', remoteDir: 'docs' });
+        expect(overlayEditDiffers(form, stored({ binding: sftpBinding, remotePath: 'docs' }))).toBe(false);
+        // A blank stored scope stands for the Remote Path, placed the same way.
+        expect(overlayEditDiffers(form, stored({ binding: { ...sftpBinding, remoteScope: '' }, remotePath: 'docs' }))).toBe(false);
+    });
+    it('sees a move to another folder', () => {
+        const form = hydrated({ protocol: 'sftp', overlaysRemotePath: 'sub', remoteDir: 'docs' });
+        expect(overlayEditDiffers(form, stored({ binding: sftpBinding, remotePath: 'docs' }))).toBe(true);
+    });
+});

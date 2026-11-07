@@ -169,6 +169,7 @@ impl MegaCmdProvider {
     }
 
     /// Check if an error is transient and worth retrying (ERR-02).
+    // Kept as text (#1506 row 164): MEGAcmd has no exit status for a transient failure.
     fn is_transient_error(stderr: &str) -> bool {
         let lower = stderr.to_lowercase();
         lower.contains("temporarily unavailable")
@@ -1356,8 +1357,12 @@ impl StorageProvider for MegaCmdProvider {
             Ok(out) => out,
             Err(e) => {
                 let err_msg = e.to_string();
-                // If already exported, remove old link and re-export
-                if err_msg.contains("already exported") {
+                // If already exported, remove old link and re-export. The
+                // typed AlreadyExists (exit status 64, MCMD_EXISTS) decides
+                // first; the phrase stays for a client that exits otherwise.
+                if matches!(e, ProviderError::AlreadyExists(_))
+                    || err_msg.contains("already exported")
+                {
                     tracing::info!(target: "mega", "Link already exported, re-exporting: {}", abs_path);
                     let _ = self
                         .run_mega_cmd_with_reauth("mega-export", &["-d", &abs_path])
@@ -1998,6 +2003,41 @@ mod tests {
             matches!(never, Err(ProviderError::NotConnected)),
             "nor must a session that was never opened: {never:?}"
         );
+    }
+
+    /// #1506 row 164 (Greptile, #1520): an export refused with exit 64
+    /// (MCMD_EXISTS) in words no phrase knows removes the old link and
+    /// returns the new one.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_share_link_refused_as_existing_by_exit_status_is_made_again() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("mega-export");
+        std::fs::write(
+            &script,
+            concat!(
+                "#!/bin/sh\n",
+                "d=$(dirname \"$0\")\n",
+                "echo \"$1\" >> \"$d/calls.log\"\n",
+                "if [ \"$1\" = -d ]; then rm -f \"$d/exported\"; exit 0; fi\n",
+                "if [ -e \"$d/exported\" ]; then echo 'Ya existe un enlace' >&2; exit 64; fi\n",
+                "touch \"$d/exported\"\n",
+                "echo \"Exported $2: https://mega.nz/file/AbC#key\"\n",
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::write(dir.path().join("exported"), b"").unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let link = provider
+            .create_share_link("/doc.pdf", ShareLinkOptions::default())
+            .await
+            .expect("re-exported");
+        assert_eq!(link.url, "https://mega.nz/file/AbC#key");
+        let calls = std::fs::read_to_string(dir.path().join("calls.log")).unwrap();
+        assert_eq!(calls.lines().collect::<Vec<_>>(), ["-a", "-d", "-a"]);
     }
 
     /// #1506 row 164: MEGAcmd's exit status classifies before its text. A

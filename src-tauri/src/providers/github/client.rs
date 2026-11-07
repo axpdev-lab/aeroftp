@@ -149,12 +149,35 @@ impl GitHubHttpClient {
             return Ok(response);
         }
 
+        // GitHub signals a spent primary quota with `x-ratelimit-remaining: 0`
+        // on a 403 or 429; that header, not the words "rate limit" in the
+        // message, decides. #1506 row 164.
+        let remaining = response
+            .headers()
+            .get("x-ratelimit-remaining")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.trim().parse::<u64>().ok());
+        let limited = matches!(status.as_u16(), 403 | 429);
+        let quota_spent = limited && remaining == Some(0);
+
         // Read the error body and classify.
         let body_text = response.text().await.unwrap_or_else(|_| String::from("{}"));
         let body_json: serde_json::Value = serde_json::from_str(&body_text)
             .unwrap_or_else(|_| serde_json::json!({ "message": sanitize_api_error(&body_text) }));
 
         let mut err = classify_api_error(status.as_u16(), &body_json, path_hint);
+        if quota_spent && !matches!(err, GitHubError::SecondaryRateLimit { .. }) {
+            err = GitHubError::PrimaryRateLimit { reset_at: 0 };
+        } else if limited
+            && remaining.is_some_and(|left| left > 0)
+            && matches!(err, GitHubError::PrimaryRateLimit { .. })
+        {
+            // Quota left, so the limit hit is the secondary one, whatever the
+            // message says ("You have exceeded a secondary rate limit" also
+            // says "rate limit"): retried after a wait, not held until the
+            // primary reset (Greptile, #1520).
+            err = GitHubError::SecondaryRateLimit { retry_after: 60 };
+        }
 
         // Enrich rate-limit errors with the actual reset timestamp.
         if let GitHubError::PrimaryRateLimit { ref mut reset_at } = err {
