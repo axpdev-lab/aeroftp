@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { countedOAuthLogin, oauthLoginCount } from './oauthLogins';
+import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './oauthLogins';
 
 const SOURCES = import.meta.glob<string>(
     ['/src/**/*.ts', '/src/**/*.tsx', '!/src/**/*.test.ts', '!/src/**/*.test.tsx'],
@@ -10,11 +10,16 @@ const SOURCES = import.meta.glob<string>(
 );
 
 describe('the interactive OAuth logins', () => {
-    it('are counted whether they succeed or fail', async () => {
-        const before = oauthLoginCount();
-        await countedOAuthLogin(async () => 'token');
-        await expect(countedOAuthLogin(async () => { throw new Error('cancelled'); })).rejects.toThrow('cancelled');
-        expect(oauthLoginCount()).toBe(before + 2);
+    it('are counted on their own token whether they succeed or fail', async () => {
+        const work = oauthLoginKey('googledrive', 'work');
+        const personal = oauthLoginKey('googledrive', 'personal');
+        const before = oauthLoginCount(work);
+        await countedOAuthLogin(work, async () => 'token');
+        await expect(countedOAuthLogin(work, async () => { throw new Error('cancelled'); })).rejects.toThrow('cancelled');
+        expect(oauthLoginCount(work)).toBe(before + 2);
+        expect(oauthLoginCount(personal)).toBe(0);
+        // The OAuth calls and the connections spell Google Drive differently.
+        expect(oauthLoginKey('google_drive', 'work')).toBe(work);
     });
 
     // A login that is not counted lets a queued OAuth write survive an

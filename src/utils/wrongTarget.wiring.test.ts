@@ -14,6 +14,7 @@ import PREVIEW from '../hooks/usePreview.ts?raw';
 import DRAG from '../hooks/useDragAndDrop.ts?raw';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, local, remote } from '../components/appTransfers.testkit';
 import { QueuedTargetChangedError } from './queuedTarget';
+import { oauthLoginKey } from './oauthLogins';
 import { connectionNumberOf, isSameConnection, savedProfileIdOf } from './liveConnection';
 import { isFourSharedProvider, isOAuthProvider } from '../types';
 
@@ -28,7 +29,8 @@ import { isFourSharedProvider, isOAuthProvider } from '../types';
 // mention what a check looks for. Code run by a test keeps its comments.
 // App's own list of the account-key options, read from its source.
 // Interactive OAuth logins, as App's counter sees them; a test can add one.
-const oauthLogins = { count: 0 };
+const oauthLogins = new Map<string, number>();
+const loginOn = (key: string) => oauthLogins.set(key, (oauthLogins.get(key) ?? 0) + 1);
 const ACCOUNT_KEY_OPTIONS = new Function(`return ${APP.match(/const ACCOUNT_KEY_OPTIONS = (\[[^\]]*\])/)![1]};`)() as string[];
 
 const codeOnly = (source: string) => source.split('\n').filter(line => !/^\s*(\/\/|\/\*|\*)/.test(line)).join('\n');
@@ -128,7 +130,7 @@ describe('a queued transfer', () => {
             isFourSharedProvider,
             connectionNumberOf,
             ACCOUNT_KEY_OPTIONS,
-            oauthLoginCount: () => oauthLogins.count,
+            oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey,
             transferQueue: { failTransfer: vi.fn() },
             t: (key: string) => key,
         };
@@ -157,7 +159,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: () => oauthLogins.count, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
@@ -179,7 +181,7 @@ describe('a queued transfer', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: () => oauthLogins.count, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
         };
@@ -243,7 +245,10 @@ describe('a queued transfer', () => {
         const { fns } = await targetChecks(oauth);
         const target = fns.snapshotQueuedTarget();
         expect(fns.queuedTargetProblem(target)).toBeNull();
-        oauthLogins.count += 1;
+        // A login on another profile's token leaves this target alone.
+        loginOn(oauthLoginKey('googledrive', 'gdrive-unrelated'));
+        expect(fns.queuedTargetProblem(target)).toBeNull();
+        loginOn(oauthLoginKey('googledrive', (linked as { savedServerId?: string }).savedServerId));
         expect(fns.queuedTargetProblem(target)).toBe('transfer.queuedForAnotherServer');
         // A target taken after the login is the account chosen there.
         expect(fns.queuedTargetProblem(fns.snapshotQueuedTarget())).toBeNull();
@@ -252,7 +257,7 @@ describe('a queued transfer', () => {
     it('a target whose account is in the params is not refused by an OAuth login elsewhere', async () => {
         const { fns } = await targetChecks(queued);
         const target = fns.snapshotQueuedTarget();
-        oauthLogins.count += 1;
+        loginOn(oauthLoginKey('googledrive', null));
         expect(fns.queuedTargetProblem(target)).toBeNull();
     });
 
@@ -506,7 +511,8 @@ describe('a switch to another server while the overwrite question is open', () =
         const batch = between(APP_CODE, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isDownload\) \{\n\s+await invoke\('provider_download_file'/);
-        expect(batch).toContain('if (queuedTargetProblem(queuedTarget)) return;');
+        // The private step checks the target too, and names what it leaves.
+        expect(batch).toContain('if (queuedTargetProblem(queuedTarget)) {');
         // uploadFile and downloadFile run it inside their ownership check,
         // which every one of their writes calls first.
         for (const name of ['downloadFile', 'uploadFile']) {
@@ -742,7 +748,7 @@ describe('a direct remote action', () => {
             useLatestCallback: (fn: unknown) => fn, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: () => oauthLogins.count, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
         const { code } = await transformWithOxc(source, 'action-guard.ts');
@@ -757,5 +763,30 @@ describe('a direct remote action', () => {
         }
         session.connectionParams.server = 'b.example';
         expect(() => onTarget()).toThrow('toast.remoteTargetChanged');
+    });
+});
+
+/**
+ * Greptile on #1526: OpenDrive and 4shared make a new upload public unless
+ * told otherwise, and the batch sets the landed files private on the server
+ * it was queued for. After a tab switch that step is not run on the other
+ * server, and it used to be dropped in silence: the files left as the
+ * provider made them are now named.
+ */
+describe('the private step after a batch upload', () => {
+    it.each(['opendrive', 'fourshared'] as const)('names the %s files it could not set private after a switch', async (protocol) => {
+        const f = fixture({ protocol, folders: { [LOCAL]: [local('one.txt'), local('two.txt')] } });
+        const run = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+            const answer = await run(command, args);
+            // The files land, then the user switches tabs before the private step.
+            if (command === 'provider_upload_files_batch') f.switchServer();
+            return answer;
+        });
+        const items = ['one.txt', 'two.txt'].map(name => ({ name, sourcePath: `${LOCAL}/${name}`, size: 1, modified: null }));
+        const runFileBatch = f.targetChecks.runFileBatch as (direction: string, entries: typeof items, dir: string) => Promise<unknown>;
+        await runFileBatch('upload', items, REMOTE);
+        expect(f.invoke.mock.calls.filter(([command]) => /set_path_privacy$/.test(command))).toEqual([]);
+        expect(f.notify.error).toHaveBeenCalledWith('activity.set_private_error', 'one.txt, two.txt');
     });
 });

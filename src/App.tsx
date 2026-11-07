@@ -522,7 +522,7 @@ import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
 import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
-import { countedOAuthLogin, oauthLoginCount } from './utils/oauthLogins';
+import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, sameQuickConnectTarget } from './utils/probeAliveArgs';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
@@ -9168,7 +9168,7 @@ const App: React.FC = () => {
                 lower.includes('token expired') ||
                 (lower.includes('token') && lower.includes('refresh'))) {
               logger.debug('[switchSession] OAuth token invalid, re-authenticating...');
-              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(() => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } })))));
+              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } })))));
               await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
             } else {
               throw connectErr;
@@ -11232,7 +11232,7 @@ const App: React.FC = () => {
     profileId: liveProfileId(),
     sessionId: activeSessionId,
     connection: connectionNumberOf(liveConnectionParams),
-    oauthLogins: oauthLoginCount(),
+    oauthLogins: oauthLoginCount(oauthLoginKey(liveConnectionParams.protocol, liveProfileId())),
     overlay: liveOverlay(),
   }));
 
@@ -11302,7 +11302,8 @@ const App: React.FC = () => {
     // An interactive OAuth login since the batch was queued (a reconnect of the
     // same tab with an expired token, say) may have picked another account,
     // and nothing in the params or the profile would show it.
-    if (!accountInParams && oauthLoginCount() !== queuedFor.oauthLogins) return 'transfer.queuedForAnotherServer';
+    if (!accountInParams
+      && oauthLoginCount(oauthLoginKey(queuedProtocol, queuedFor.profileId)) !== queuedFor.oauthLogins) return 'transfer.queuedForAnotherServer';
     // An OAuth connection with no saved profile has nothing in the params that
     // names its account: only the very connection it was queued on is known
     // to be that account, so another tab or a new login is refused.
@@ -11455,7 +11456,7 @@ const App: React.FC = () => {
           provider: oauthProvider,
           profileId: profile.id,
         });
-        if (!hasTokens) await countedOAuthLogin(() => invoke('oauth2_full_auth', { params: baseParams }));
+        if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
         let oauthResult: { display_name?: string; account_email?: string | null };
         try {
           oauthResult = await invoke('oauth2_connect', { params: baseParams });
@@ -11468,7 +11469,7 @@ const App: React.FC = () => {
             || lower.includes('authentication failed')
             || (lower.includes('invalid') && lower.includes('access_token'))
           ) {
-            await countedOAuthLogin(() => invoke('oauth2_full_auth', { params: baseParams }));
+            await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
             oauthResult = await invoke('oauth2_connect', { params: baseParams });
           } else {
             throw connectErr;
@@ -11512,11 +11513,11 @@ const App: React.FC = () => {
         }
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });
         const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };
-        if (!hasTokens) await countedOAuthLogin(() => invoke('fourshared_full_auth', { params }));
+        if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
         try {
           await invoke('fourshared_connect', { params });
         } catch {
-          await countedOAuthLogin(() => invoke('fourshared_full_auth', { params }));
+          await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
           await invoke('fourshared_connect', { params });
         }
         await connectToFtp({
@@ -13547,9 +13548,16 @@ const App: React.FC = () => {
     const setPrivate = async (landedEntries: Entry[]) => {
       if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return;
       const command = protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy';
-      for (const entry of landedEntries) {
-        // Privacy is set on the server the batch was queued for, or not at all.
-        if (queuedTargetProblem(queuedTarget)) return;
+      for (const [index, entry] of landedEntries.entries()) {
+        // Privacy is set on the server the batch was queued for, or not at
+        // all; the files left as the provider made them are named, not
+        // dropped in silence (Greptile on #1526: they can stay public).
+        if (queuedTargetProblem(queuedTarget)) {
+          const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
+          const left = landedEntries.slice(index).map(rest => rest.display_name);
+          notify.error(t('activity.set_private_error', { provider }), left.join(', '));
+          return;
+        }
         try {
           await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false });
         } catch { /* already private, or removed meanwhile */ }

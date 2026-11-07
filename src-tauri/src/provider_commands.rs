@@ -14950,6 +14950,54 @@ mod tests {
         );
     }
 
+    /// CodeRabbit on #1526: a switch that comes while the editor's save is
+    /// writing waits for it. The save is paused on the provider slot (the
+    /// test holds it), with the connection pinned: the switch cannot take
+    /// the slot over until the write has ended, then it can.
+    #[tokio::test]
+    async fn a_switch_waits_for_an_editor_save_in_flight() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        let live = state.connection_generation.load(Ordering::SeqCst);
+        let slot = state.provider.lock().await;
+        let save = crate::write_remote_file_from_editor(
+            &app,
+            &state,
+            "/a.txt".into(),
+            "sentinel".into(),
+            Some(live),
+        );
+        tokio::pin!(save);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut save)
+                .await
+                .is_err(),
+            "the save waits on the slot the test holds"
+        );
+        assert!(
+            state
+                .transfer_owner_write(Duration::from_millis(50))
+                .await
+                .is_err(),
+            "a switch waits while the save holds the connection"
+        );
+        drop(slot);
+        let saved = save.await;
+        assert!(
+            saved
+                .as_ref()
+                .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
+            "{saved:?}"
+        );
+        assert!(
+            state
+                .transfer_owner_write(Duration::from_millis(50))
+                .await
+                .is_ok(),
+            "the switch goes ahead once the save is done"
+        );
+    }
+
     /// A preview and a session switch racing, over and over: the read takes
     /// the gate then the provider lock, and so does a swap, so neither waits
     /// on the other for good. Each read either ran before the swap or was
