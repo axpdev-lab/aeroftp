@@ -103,21 +103,27 @@ pub(crate) fn write_replica_file(
         std::fs::create_dir_all(parent)?;
     }
     refuse_link_on_the_way(out_path, target)?;
-    let name = target.file_name().ok_or_else(|| {
-        std::io::Error::new(
+    if target.file_name().is_none() {
+        return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidInput,
             "replica path names no file",
-        )
-    })?;
-    let mut temp_name = std::ffi::OsString::from(".");
-    temp_name.push(name);
-    temp_name.push(format!(".replica-{:016x}", rand::random::<u64>()));
-    let temp = target.with_file_name(temp_name);
+        ));
+    }
+    // A short name of its own, not derived from the key's: a valid name near the
+    // filesystem's 255-byte limit must not fail for the length of its temporary.
+    let temp = target.with_file_name(format!(".replica-{:016x}.tmp", rand::random::<u64>()));
     let written = (|| {
         let mut file = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)
             .open(&temp)?;
+        // A rewrite keeps the access the replica had (a 0600 file stays 0600), set
+        // before any plaintext is written; `fs::write` used to keep it in place.
+        if let Ok(existing) = std::fs::symlink_metadata(target) {
+            if existing.is_file() {
+                file.set_permissions(existing.permissions())?;
+            }
+        }
         file.write_all(data)?;
         file.sync_all()?;
         std::fs::rename(&temp, target)
@@ -154,7 +160,31 @@ pub(crate) fn remove_replica_file(out_path: &Path, target: &Path) -> std::io::Re
             return refuse_link_on_the_way(out_path, target);
         }
     }
-    std::fs::remove_file(target)
+    match std::fs::remove_file(target) {
+        // On Windows a link to a folder is removed as a folder entry.
+        Err(e)
+            if cfg!(windows)
+                && std::fs::symlink_metadata(target)
+                    .is_ok_and(|meta| meta.file_type().is_symlink()) =>
+        {
+            std::fs::remove_dir(target).map_err(|_| e)
+        }
+        other => other,
+    }
+}
+
+/// The state the next version compares against. A key whose file this version neither
+/// wrote nor found unchanged (refused, failed to decrypt or verify) keeps no hash, so the
+/// next version tries it again instead of skipping a stale file as current.
+pub(crate) fn mark_not_applied(
+    state: &mut std::collections::HashMap<String, String>,
+    applied: &std::collections::HashSet<String>,
+) {
+    for (key, hash) in state.iter_mut() {
+        if !applied.contains(key) {
+            hash.clear();
+        }
+    }
 }
 
 // --------------------------------------------------------------------------------------------
@@ -1283,6 +1313,8 @@ pub async fn run_docs_replicate(
                             let old_file_count = prev_files.len();
                             let mut written = 0usize;
                             let mut deleted = 0usize;
+                            let mut applied = std::collections::HashSet::new();
+                            let mut undeleted: Vec<String> = Vec::new();
 
                             // Process new/current files: skip if unchanged+exists, else pull+write (changed/added/new)
                             for f in &new_files {
@@ -1305,6 +1337,7 @@ pub async fn run_docs_replicate(
                                     prev_files.get(&rkey).is_some_and(|h| h == &eblake);
                                 if is_unchanged && target.exists() {
                                     println!("skip unchanged {}", rkey);
+                                    applied.insert(rkey.clone());
                                     continue;
                                 }
 
@@ -1346,6 +1379,7 @@ pub async fn run_docs_replicate(
                                 }) {
                                     continue;
                                 }
+                                applied.insert(rkey.clone());
                                 written += 1;
                             }
 
@@ -1356,13 +1390,25 @@ pub async fn run_docs_replicate(
                                     // remove_file outside the replica root. Keys reach prev_files
                                     // only after passing the guard, but re-check defensively.
                                     if let Some(target) = safe_replica_path(out_path, old_key) {
-                                        if remove_replica_file(out_path, &target).is_ok() {
-                                            deleted += 1;
+                                        match remove_replica_file(out_path, &target) {
+                                            Ok(()) => deleted += 1,
+                                            Err(e) => {
+                                                eprintln!(
+                                                    "converge: delete {old_key} refused: {e}"
+                                                );
+                                                undeleted.push(old_key.clone());
+                                            }
                                         }
                                     }
                                 }
                             }
 
+                            // A file whose deletion was refused stays known (with no hash), so
+                            // the next version tries to delete it again.
+                            for key in undeleted {
+                                new_state.insert(key, String::new());
+                            }
+                            mark_not_applied(&mut new_state, &applied);
                             prev_files = new_state;
                             current_version = new_ver;
                             println!("DRIVE UPDATED: v{} -> v{}: {} written, {} deleted (file_count {} -> {})", old_ver, new_ver, written, deleted, old_file_count, new_k);
@@ -1527,6 +1573,13 @@ mod replica_path_tests {
         assert!(link_on_the_way(&out, &at_name).unwrap().is_some());
         assert!(write_replica_file(&out, &at_name, b"new").is_err());
         assert_eq!(std::fs::read(outside.join("victim")).unwrap(), b"precious");
+        // The link at the name is removed as itself; its target stays.
+        remove_replica_file(&out, &at_name).unwrap();
+        assert_eq!(
+            std::fs::symlink_metadata(&at_name).unwrap_err().kind(),
+            std::io::ErrorKind::NotFound
+        );
+        assert_eq!(std::fs::read(outside.join("victim")).unwrap(), b"precious");
 
         let fresh = safe_replica_path(&out, "a/b/c.txt").unwrap();
         write_replica_file(&out, &fresh, b"ok").unwrap();
@@ -1556,11 +1609,50 @@ mod replica_path_tests {
         std::fs::create_dir(&locked).unwrap();
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
         let behind = safe_replica_path(&out, "locked/x.txt").unwrap();
+        // A runner that bypasses permissions (root, CAP_DAC_OVERRIDE) reads the locked
+        // folder anyway; there the case cannot be built.
+        let bypassed = std::fs::read_dir(&locked).is_ok();
         let walked = link_on_the_way(&out, &behind);
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o700)).unwrap();
-        assert!(
-            walked.is_err(),
-            "a permission error is reported, not read as no link"
-        );
+        if !bypassed {
+            assert!(
+                walked.is_err(),
+                "a permission error is reported, not read as no link"
+            );
+        }
+    }
+
+    /// A rewrite keeps a long valid name and the replica's access; a key not applied
+    /// in a version keeps no hash, so the next version retries it.
+    #[cfg(unix)]
+    #[test]
+    fn replica_rewrites_keep_long_names_and_access_and_retry_what_failed() {
+        use crate::drive::{mark_not_applied, write_replica_file};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let long = "n".repeat(240);
+        let target = safe_replica_path(&out, &long).unwrap();
+        write_replica_file(&out, &target, b"long").unwrap();
+        assert_eq!(std::fs::read(&target).unwrap(), b"long");
+
+        let private = safe_replica_path(&out, "private.txt").unwrap();
+        std::fs::write(&private, b"old").unwrap();
+        std::fs::set_permissions(&private, std::fs::Permissions::from_mode(0o600)).unwrap();
+        write_replica_file(&out, &private, b"new").unwrap();
+        assert_eq!(std::fs::read(&private).unwrap(), b"new");
+        let mode = std::fs::metadata(&private).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+
+        let mut state = std::collections::HashMap::from([
+            ("written".to_string(), "h1".to_string()),
+            ("refused".to_string(), "h2".to_string()),
+        ]);
+        let applied = std::collections::HashSet::from(["written".to_string()]);
+        mark_not_applied(&mut state, &applied);
+        assert_eq!(state["written"], "h1");
+        assert_eq!(state["refused"], "");
     }
 }
