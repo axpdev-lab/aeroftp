@@ -309,10 +309,11 @@ interface MarkdownRendererProps {
     isStreaming?: boolean;
     editorFilePath?: string;
     editorFileName?: string;
+    editorFileIsRemote?: boolean;
 }
 
 /** Build react-markdown custom components with code block actions */
-function useMarkdownComponents(editorFilePath?: string, editorFileName?: string): Components {
+function useMarkdownComponents(editorFilePath?: string, editorFileName?: string, editorFileIsRemote?: boolean): Components {
     return useMemo(() => ({
         // Code block / inline code
         code({ className, children, ...props }) {
@@ -359,6 +360,7 @@ function useMarkdownComponents(editorFilePath?: string, editorFileName?: string)
                         language={lang}
                         editorFilePath={editorFilePath}
                         editorFileName={editorFileName}
+                        editorFileIsRemote={editorFileIsRemote}
                     />
                 </div>
             );
@@ -420,7 +422,7 @@ function useMarkdownComponents(editorFilePath?: string, editorFileName?: string)
         // Strong / em
         strong({ children }) { return <strong className="font-semibold text-white">{children}</strong>; },
         em({ children }) { return <em className="italic">{children}</em>; },
-    }), [editorFilePath, editorFileName]);
+    }), [editorFilePath, editorFileName, editorFileIsRemote]);
 }
 
 // ── Finalized segment renderer (stable key, no re-renders) ──────────
@@ -450,8 +452,9 @@ const MarkdownRendererInner: React.FC<MarkdownRendererProps> = ({
     isStreaming = false,
     editorFilePath,
     editorFileName,
+    editorFileIsRemote,
 }) => {
-    const components = useMarkdownComponents(editorFilePath, editorFileName);
+    const components = useMarkdownComponents(editorFilePath, editorFileName, editorFileIsRemote);
 
     // Split content into markdown segments and tool chip segments
     const segments = useMemo(() => splitContent(content), [content]);
@@ -580,7 +583,8 @@ export const MarkdownRenderer = React.memo(MarkdownRendererInner, (prev, next) =
         prev.content === next.content &&
         prev.isStreaming === next.isStreaming &&
         prev.editorFilePath === next.editorFilePath &&
-        prev.editorFileName === next.editorFileName
+        prev.editorFileName === next.editorFileName &&
+        prev.editorFileIsRemote === next.editorFileIsRemote
     );
 });
 

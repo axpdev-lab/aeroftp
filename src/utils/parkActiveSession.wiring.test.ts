@@ -436,7 +436,8 @@ describe('a cancelled connect keeps the tabs that were open before it', () => {
         const ctx: Record<string, unknown> = {
             remoteConnectPhaseRef: { current: 'connect' },
             connectStartSessionsRef: { current: recorded },
-            lockAndDropBackendConnection: vi.fn(async () => true),
+            // The bounded teardown, with the cleanup it runs.
+            boundedTeardown: vi.fn(async () => true),
             clearCryptOverlayState: vi.fn(),
             humanLog: { logRaw: vi.fn() },
             showToastNotifications: false,

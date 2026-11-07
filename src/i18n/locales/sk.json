@@ -765,7 +765,10 @@
             },
             "stagedCount": "Pripravené: {count}",
             "pendingCount": "Čakajúce: {count}",
-            "failedCount": "Zlyhalo: {count}"
+            "failedCount": "Zlyhalo: {count}",
+            "queuedForAnotherServer": "Nespustené: tento prenos bol zaradený do frontu pre iný server alebo účet. Vráťte sa na jeho kartu a skúste to znova.",
+            "queuedOverlayChanged": "Nespustené: šifrovaný overlay, pod ktorým bol tento prenos zaradený do frontu, je zamknutý alebo už túto priečinok nepokrýva. Odomknite ho na tom serveri a skúste to znova.",
+            "pasteFromAnotherServer": "Nevložené: tieto súbory boli vystrihnuté alebo skopírované na serveri, účte alebo šifrovanej vrstve, ktoré teraz nie sú aktívne. Vráťte sa na jeho kartu a vložte ich znova."
         },
         "settings": {
             "title": "Nastavenia",
@@ -1751,7 +1754,10 @@
             "createFailed": "Vytvorenie zlyhalo",
             "unknownServer": "neznámemu serveru",
             "scpModeTitle": "Pripojené cez SCP",
-            "scpModeBody": "{host} nemá SFTP, preto AeroFTP používa SCP na rovnakom pripojení."
+            "scpModeBody": "{host} nemá SFTP, preto AeroFTP používa SCP na rovnakom pripojení.",
+            "saveOnAnotherServer": "Neuložené: tento súbor bol otvorený zo servera, účtu alebo šifrovanej vrstvy, ktoré teraz nie sú aktívne. Vráťte sa na jeho kartu a uložte ho znova.",
+            "openedOnAnotherServer": "Neotvorené: server sa zmenil počas čítania súboru. Otvorte ho znova.",
+            "remoteTargetChanged": "Nič sa nezmenilo: server, účet alebo šifrovaná vrstva sa od začiatku akcie zmenili, alebo sa stále znovu pripájajú. Skúste to znova na aktuálnom pripojení."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -3068,7 +3074,8 @@
                 "diff": "Porovnať s originálom",
                 "diffNoFile": "Žiadny súbor na porovnanie",
                 "commandBlocked": "Príkaz zablokovaný: potenciálne deštruktívny",
-                "confirmRun": "Potvrdiť spustenie: {command}"
+                "confirmRun": "Potvrdiť spustenie: {command}",
+                "reopenEditor": "Zobrazte editor s otvoreným týmto súborom a skúste to znova."
             },
             "thinkingBlock": {
                 "thinking": "Premyslam...",

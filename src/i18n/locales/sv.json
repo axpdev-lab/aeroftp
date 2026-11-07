@@ -765,7 +765,10 @@
             },
             "stagedCount": "Förberedda: {count}",
             "pendingCount": "Väntande: {count}",
-            "failedCount": "Misslyckade: {count}"
+            "failedCount": "Misslyckade: {count}",
+            "queuedForAnotherServer": "Inte startad: den här överföringen stod i kö för en annan server eller ett annat konto. Växla tillbaka till dess flik och försök igen.",
+            "queuedOverlayChanged": "Inte startad: det krypterade overlayet som den här överföringen köades under är låst eller täcker inte längre den här mappen. Lås upp det på den servern och försök igen.",
+            "pasteFromAnotherServer": "Inte inklistrad: de här filerna klipptes ut eller kopierades på en server, ett konto eller ett krypterat överlägg som inte är aktivt nu. Växla tillbaka till dess flik och klistra in igen."
         },
         "settings": {
             "title": "Inställningar",
@@ -1751,7 +1754,10 @@
             "createFailed": "Skapandet misslyckades",
             "unknownServer": "Okänd",
             "scpModeTitle": "Ansluten med SCP",
-            "scpModeBody": "{host} saknar SFTP, så AeroFTP använder SCP på samma anslutning."
+            "scpModeBody": "{host} saknar SFTP, så AeroFTP använder SCP på samma anslutning.",
+            "saveOnAnotherServer": "Inte sparad: den här filen öppnades från en server, ett konto eller ett krypterat överlägg som inte är aktivt nu. Växla tillbaka till dess flik och spara igen.",
+            "openedOnAnotherServer": "Inte öppnad: servern ändrades medan filen lästes. Öppna den igen.",
+            "remoteTargetChanged": "Ingenting ändrades: servern, kontot eller det krypterade lagret har ändrats sedan åtgärden startade, eller ansluter fortfarande på nytt. Försök igen på den aktuella anslutningen."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -3068,7 +3074,8 @@
                 "diff": "Jämför med original",
                 "diffNoFile": "Ingen fil öppen för jämförelse",
                 "commandBlocked": "Kommando blockerat: potentiellt destruktivt",
-                "confirmRun": "Bekräfta körning: {command}"
+                "confirmRun": "Bekräfta körning: {command}",
+                "reopenEditor": "Visa redigeraren med den här filen öppen och försök igen."
             },
             "thinkingBlock": {
                 "thinking": "Tänker...",

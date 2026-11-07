@@ -765,7 +765,10 @@
             },
             "stagedCount": "Préparés : {count}",
             "pendingCount": "En attente : {count}",
-            "failedCount": "Échecs : {count}"
+            "failedCount": "Échecs : {count}",
+            "queuedForAnotherServer": "Non démarré : ce transfert était en file d'attente pour un autre serveur ou compte. Revenez à son onglet, puis réessayez.",
+            "queuedOverlayChanged": "Non démarré : l'overlay chiffré sous lequel ce transfert a été mis en file d'attente est verrouillé ou ne couvre plus ce dossier. Déverrouillez-le sur ce serveur, puis réessayez.",
+            "pasteFromAnotherServer": "Non collé : ces fichiers ont été coupés ou copiés sur un serveur, compte ou surcouche chiffrée qui n'est pas actif actuellement. Revenez à son onglet, puis collez à nouveau."
         },
         "settings": {
             "title": "Paramètres",
@@ -1751,7 +1754,10 @@
             "createFailed": "Échec de la création",
             "unknownServer": "Inconnu",
             "scpModeTitle": "Connecté avec SCP",
-            "scpModeBody": "{host} n'a pas de SFTP, AeroFTP utilise donc SCP sur la même connexion."
+            "scpModeBody": "{host} n'a pas de SFTP, AeroFTP utilise donc SCP sur la même connexion.",
+            "saveOnAnotherServer": "Non enregistré : ce fichier a été ouvert depuis un serveur, compte ou surcouche chiffrée qui n'est pas actif actuellement. Revenez à son onglet, puis enregistrez à nouveau.",
+            "openedOnAnotherServer": "Non ouvert : le serveur a changé pendant la lecture du fichier. Ouvrez-le à nouveau.",
+            "remoteTargetChanged": "Rien n'a été modifié : le serveur, le compte ou la couche chiffrée a changé depuis le début de l'action, ou se reconnecte encore. Réessayez sur la connexion actuelle."
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -3068,7 +3074,8 @@
                 "diff": "Comparer avec l'original",
                 "diffNoFile": "Aucun fichier ouvert pour la comparaison",
                 "commandBlocked": "Commande bloquée : potentiellement destructrice",
-                "confirmRun": "Confirmer l'exécution : {command}"
+                "confirmRun": "Confirmer l'exécution : {command}",
+                "reopenEditor": "Affichez l'éditeur avec ce fichier ouvert, puis réessayez."
             },
             "thinkingBlock": {
                 "thinking": "Réflexion en cours...",

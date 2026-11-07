@@ -765,7 +765,10 @@
             },
             "stagedCount": "Ettevalmistatud: {count}",
             "pendingCount": "Ootel: {count}",
-            "failedCount": "Ebaõnnestunud: {count}"
+            "failedCount": "Ebaõnnestunud: {count}",
+            "queuedForAnotherServer": "Pole alustatud: see ülekanne oli järjekorras teise serveri või konto jaoks. Minge tagasi selle vahekaardile ja proovige uuesti.",
+            "queuedOverlayChanged": "Pole alustatud: krüptitud overlay, mille all see ülekanne järjekorda pandi, on lukus või ei kata enam seda kausta. Avage see lukust sellel serveril ja proovige uuesti.",
+            "pasteFromAnotherServer": "Pole kleebitud: need failid lõigati või kopeeriti serveris, kontol või krüpteeritud kihil, mis pole praegu aktiivne. Minge tagasi selle vahekaardile ja kleepige uuesti."
         },
         "settings": {
             "title": "Seaded",
@@ -1751,7 +1754,10 @@
             "createFailed": "Loomine ebaõnnestus",
             "unknownServer": "Tundmatu",
             "scpModeTitle": "Ühendatud SCP-ga",
-            "scpModeBody": "Serveril {host} pole SFTP-d, seega kasutab AeroFTP sama ühenduse kaudu SCP-d."
+            "scpModeBody": "Serveril {host} pole SFTP-d, seega kasutab AeroFTP sama ühenduse kaudu SCP-d.",
+            "saveOnAnotherServer": "Pole salvestatud: see fail avati serverist, kontolt või krüpteeritud kihilt, mis pole praegu aktiivne. Minge tagasi selle vahekaardile ja salvestage uuesti.",
+            "openedOnAnotherServer": "Avamata: server muutus faili lugemise ajal. Ava see uuesti.",
+            "remoteTargetChanged": "Midagi ei muudetud: server, konto või krüptitud kiht on pärast toimingu algust muutunud või ühendub veel uuesti. Proovige uuesti praeguse ühenduse kaudu."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -3068,7 +3074,8 @@
                 "diff": "Võrdle originaaliga",
                 "diffNoFile": "Faili pole avatud võrdlemiseks",
                 "commandBlocked": "Käsk blokeeritud: võib olla hävitav",
-                "confirmRun": "Kinnita käivitamine: {command}"
+                "confirmRun": "Kinnita käivitamine: {command}",
+                "reopenEditor": "Kuvage redaktor selle avatud failiga ja proovige uuesti."
             },
             "thinkingBlock": {
                 "thinking": "Mõtleb...",

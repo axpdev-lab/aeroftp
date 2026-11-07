@@ -558,7 +558,7 @@ const TransferPlanReview: React.FC<{
     );
 };
 
-export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, activeFilePanel, isCloudConnection, onFileMutation, editorFileName, editorFilePath, aiSettingsOpenRequest }) => {
+export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, localPath, appTheme = 'dark', providerType, isConnected, selectedFiles, serverHost, serverPort, serverUser, activeFilePanel, isCloudConnection, onFileMutation, editorFileName, editorFilePath, editorFileIsRemote, aiSettingsOpenRequest }) => {
     const t = useTranslation();
 
     // Conversation management (hook)
@@ -3343,6 +3343,7 @@ export const AIChat: React.FC<AIChatProps> = ({ className = '', remotePath, loca
                                 isExecutingPlan={executingTransferPlanId === message.id}
                                 editorFilePath={editorFilePath}
                                 editorFileName={editorFileName}
+                                editorFileIsRemote={editorFileIsRemote}
                                 onToggleExpand={handleToggleExpand}
                                 onCopy={handleCopyMessage}
                                 onFork={handleForkMessage}

@@ -765,7 +765,10 @@
             },
             "stagedCount": "Undirbúið: {count}",
             "pendingCount": "Bíður: {count}",
-            "failedCount": "Mistókst: {count}"
+            "failedCount": "Mistókst: {count}",
+            "queuedForAnotherServer": "Ekki ræst: þessi flutningur var í biðröð fyrir annan netþjón eða reikning. Farðu aftur á flipa hans og reyndu aftur.",
+            "queuedOverlayChanged": "Ekki hafið: dulkóðaða overlay-lagið sem þessi flutningur var settur í biðröð undir er læst eða nær ekki lengur yfir þessa möppu. Opnaðu það á þeim netþjóni og reyndu aftur.",
+            "pasteFromAnotherServer": "Ekki límt: þessar skrár voru klipptar eða afritaðar á netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og límdu aftur."
         },
         "settings": {
             "title": "Stillingar",
@@ -1751,7 +1754,10 @@
             "createFailed": "Stofnun mistókst",
             "unknownServer": "Óþekkt",
             "scpModeTitle": "Tengt með SCP",
-            "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu."
+            "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu.",
+            "saveOnAnotherServer": "Ekki vistað: þessi skrá var opnuð frá netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og vistaðu aftur.",
+            "openedOnAnotherServer": "Ekki opnað: þjóninum var breytt meðan skráin var lesin. Opnaðu hana aftur.",
+            "remoteTargetChanged": "Engu var breytt: þjónninn, reikningurinn eða dulkóðaða lagið hefur breyst frá því aðgerðin hófst, eða er enn að tengjast aftur. Reyndu aftur á núverandi tengingu."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -3068,7 +3074,8 @@
                 "diff": "Mismunur frá upprunalegri",
                 "diffNoFile": "Engin skrá opin fyrir samanburð",
                 "commandBlocked": "Skipun lokuð: getur valdið eyðileggingu",
-                "confirmRun": "Staðfesta keyrslu: {command}"
+                "confirmRun": "Staðfesta keyrslu: {command}",
+                "reopenEditor": "Sýndu ritilinn með þessa skrá opna og reyndu aftur."
             },
             "thinkingBlock": {
                 "thinking": "Hugsar...",

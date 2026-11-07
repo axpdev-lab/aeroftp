@@ -765,7 +765,10 @@
             },
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendientes: {count}",
-            "failedCount": "Fallidos: {count}"
+            "failedCount": "Fallidos: {count}",
+            "queuedForAnotherServer": "No iniciado: esta transferencia estaba en cola para otro servidor o cuenta. Vuelve a su pestaña y reinténtalo.",
+            "queuedOverlayChanged": "No iniciada: el overlay cifrado bajo el que se puso en cola esta transferencia está bloqueado o ya no cubre esta carpeta. Desbloquéalo en ese servidor y vuelve a intentarlo.",
+            "pasteFromAnotherServer": "No pegado: estos archivos se cortaron o copiaron en un servidor, cuenta o superposición cifrada que ahora no está activa. Vuelve a su pestaña y pega de nuevo."
         },
         "settings": {
             "title": "Configuración",
@@ -1751,7 +1754,10 @@
             "createFailed": "Error al crear",
             "unknownServer": "Desconocido",
             "scpModeTitle": "Conectado con SCP",
-            "scpModeBody": "{host} no tiene SFTP, así que AeroFTP usa SCP en la misma conexión."
+            "scpModeBody": "{host} no tiene SFTP, así que AeroFTP usa SCP en la misma conexión.",
+            "saveOnAnotherServer": "No guardado: este archivo se abrió desde un servidor, cuenta o superposición cifrada que ahora no está activa. Vuelve a su pestaña y guarda de nuevo.",
+            "openedOnAnotherServer": "No abierto: el servidor cambió mientras se leía el archivo. Ábrelo de nuevo.",
+            "remoteTargetChanged": "No se cambió nada: el servidor, la cuenta o la capa cifrada cambió desde que empezó la acción, o aún se está reconectando. Inténtalo de nuevo en la conexión actual."
         },
         "about": {
             "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",
@@ -3068,7 +3074,8 @@
                 "diff": "Diferencias con original",
                 "diffNoFile": "No hay archivo abierto para comparar",
                 "commandBlocked": "Comando bloqueado: potencialmente destructivo",
-                "confirmRun": "Confirmar ejecución: {command}"
+                "confirmRun": "Confirmar ejecución: {command}",
+                "reopenEditor": "Muestra el editor con este archivo abierto y vuelve a intentarlo."
             },
             "thinkingBlock": {
                 "thinking": "Pensando...",

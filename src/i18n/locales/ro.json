@@ -765,7 +765,10 @@
             },
             "stagedCount": "Pregătite: {count}",
             "pendingCount": "În așteptare: {count}",
-            "failedCount": "Eșuate: {count}"
+            "failedCount": "Eșuate: {count}",
+            "queuedForAnotherServer": "Nu a început: acest transfer era în coadă pentru alt server sau cont. Reveniți la fila lui, apoi încercați din nou.",
+            "queuedOverlayChanged": "Nepornit: overlay-ul criptat sub care a fost pus în coadă acest transfer este blocat sau nu mai acoperă acest folder. Deblochează-l pe acel server, apoi încearcă din nou.",
+            "pasteFromAnotherServer": "Nu a fost lipit: aceste fișiere au fost decupate sau copiate pe un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi lipiți din nou."
         },
         "settings": {
             "title": "Setări",
@@ -1751,7 +1754,10 @@
             "createFailed": "Crearea a eșuat",
             "unknownServer": "Necunoscut",
             "scpModeTitle": "Conectat cu SCP",
-            "scpModeBody": "{host} nu are SFTP, așa că AeroFTP folosește SCP pe aceeași conexiune."
+            "scpModeBody": "{host} nu are SFTP, așa că AeroFTP folosește SCP pe aceeași conexiune.",
+            "saveOnAnotherServer": "Nu a fost salvat: acest fișier a fost deschis dintr-un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi salvați din nou.",
+            "openedOnAnotherServer": "Nedeschis: serverul s-a schimbat în timpul citirii fișierului. Deschide-l din nou.",
+            "remoteTargetChanged": "Nu s-a modificat nimic: serverul, contul sau stratul criptat s-a schimbat de când a început acțiunea sau se reconectează încă. Încearcă din nou pe conexiunea curentă."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -3068,7 +3074,8 @@
                 "diff": "Diferențe față de original",
                 "diffNoFile": "Niciun fișier deschis pentru comparare",
                 "commandBlocked": "Comandă blocată: potențial distructivă",
-                "confirmRun": "Confirmați rularea: {command}"
+                "confirmRun": "Confirmați rularea: {command}",
+                "reopenEditor": "Afișați editorul cu acest fișier deschis, apoi încercați din nou."
             },
             "thinkingBlock": {
                 "thinking": "Se gândește...",

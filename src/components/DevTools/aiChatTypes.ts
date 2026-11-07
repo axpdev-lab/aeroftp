@@ -437,6 +437,8 @@ export interface AIChatProps {
     editorFileName?: string;
     /** Currently open file path in the code editor */
     editorFilePath?: string;
+    /** Whether the file open in the editor lives on a server, not on this machine. */
+    editorFileIsRemote?: boolean;
 }
 
 // Selected model state

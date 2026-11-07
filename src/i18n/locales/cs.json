@@ -765,7 +765,10 @@
             },
             "stagedCount": "Připraveno: {count}",
             "pendingCount": "Čekající: {count}",
-            "failedCount": "Selhalo: {count}"
+            "failedCount": "Selhalo: {count}",
+            "queuedForAnotherServer": "Nespuštěno: tento přenos byl zařazen do fronty pro jiný server nebo účet. Vraťte se na jeho kartu a zkuste to znovu.",
+            "queuedOverlayChanged": "Nespuštěno: šifrovaný overlay, pod kterým byl tento přenos zařazen do fronty, je zamčený nebo už tuto složku nepokrývá. Odemkněte jej na onom serveru a zkuste to znovu.",
+            "pasteFromAnotherServer": "Nevloženo: tyto soubory byly vyjmuty nebo zkopírovány na serveru, účtu nebo šifrované vrstvě, která teď není aktivní. Vraťte se na její kartu a vložte je znovu."
         },
         "settings": {
             "title": "Nastavení",
@@ -1751,7 +1754,10 @@
             "createFailed": "Vytvoření selhalo",
             "unknownServer": "neznámému serveru",
             "scpModeTitle": "Připojeno přes SCP",
-            "scpModeBody": "{host} nemá SFTP, proto AeroFTP používá SCP na stejném připojení."
+            "scpModeBody": "{host} nemá SFTP, proto AeroFTP používá SCP na stejném připojení.",
+            "saveOnAnotherServer": "Neuloženo: tento soubor byl otevřen ze serveru, účtu nebo šifrované vrstvy, která teď není aktivní. Vraťte se na její kartu a uložte jej znovu.",
+            "openedOnAnotherServer": "Neotevřeno: server se změnil během čtení souboru. Otevřete ho znovu.",
+            "remoteTargetChanged": "Nic se nezměnilo: server, účet nebo šifrovaná vrstva se od zahájení akce změnily, nebo se stále znovu připojují. Zkuste to znovu na aktuálním připojení."
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",
@@ -3068,7 +3074,8 @@
                 "diff": "Porovnat s originalem",
                 "diffNoFile": "Žádný soubor k porovnání",
                 "commandBlocked": "Příkaz zablokován: potenciálně destruktivní",
-                "confirmRun": "Potvrdit spuštění: {command}"
+                "confirmRun": "Potvrdit spuštění: {command}",
+                "reopenEditor": "Zobrazte editor s otevřeným tímto souborem a zkuste to znovu."
             },
             "thinkingBlock": {
                 "thinking": "Přemýšlím...",
