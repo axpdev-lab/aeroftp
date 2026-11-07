@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Ef netþjónninn hefur ekki SFTP er haldið áfram um SCP á sömu tengingu, eins og WinSCP gerir.",
             "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP",
             "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)",
-            "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis)"
+            "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Αν ο διακομιστής δεν έχει SFTP, η σύνδεση συνεχίζει μέσω SCP, όπως κάνει το WinSCP.",
             "discoverScp": "Αντιγραφή αρχείων μέσω SSH για διακομιστές χωρίς SFTP",
             "discoverTigris": "Tigris: παγκοσμίως κατανεμημένος χώρος αποθήκευσης συμβατός με S3, χωρίς χρεώσεις εξερχόμενης κίνησης (5 GB δωρεάν)",
-            "discoverFastly": "Fastly Object Storage: αποθήκευση συμβατή με S3 σε 12 περιοχές (5 GB δωρεάν)"
+            "discoverFastly": "Fastly Object Storage: αποθήκευση συμβατή με S3 σε 12 περιοχές (5 GB δωρεάν, απαιτείται κάρτα)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

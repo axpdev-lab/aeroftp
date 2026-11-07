@@ -241,6 +241,34 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(profiles[0])).toBe(getStorageDedupKey(profiles[1]));
     });
 
+    it('case 4f: a stored preset alias keys like its preset (counted once)', () => {
+        // fastly-object-storage, backblaze-b2 and azure-blob are manifest
+        // aliases: an old or hand-edited profile may carry them.
+        const pair = (canonical: string, alias: string, host: string) => [
+            make({
+                id: `${canonical}-1`, protocol: 's3', providerId: canonical,
+                host, port: 443, username: 'ALIASEXAMPLEKEY01',
+                used: 1_000_000_000, total: 5_000_000_000,
+            }),
+            make({
+                id: `${canonical}-2`, protocol: 's3', providerId: alias,
+                host, port: 443, username: 'ALIASEXAMPLEKEY01',
+                used: 1_000_000_000, total: 5_000_000_000,
+            }),
+        ];
+        for (const [canonical, alias, host] of [
+            ['fastly', 'fastly-object-storage', 'eu-central-1.object.fastlystorage.app'],
+            ['backblaze', 'backblaze-b2', 's3.us-west-004.backblazeb2.com'],
+        ]) {
+            const profiles = pair(canonical, alias, host);
+            expect(getStorageDedupKey(profiles[1]), alias).toBe(getStorageDedupKey(profiles[0]));
+            const summary = aggregateByDedupKey(profiles);
+            expect(summary.uniqueCount, alias).toBe(1);
+            // The cached quota counts once, not twice.
+            expect(summary.totalUsed, alias).toBe(1_000_000_000);
+        }
+    });
+
     it('case 5: OAuth keyed by email, not by display name', () => {
         const profiles = [
             make({

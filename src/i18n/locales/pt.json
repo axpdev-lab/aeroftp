@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Se o servidor não tiver SFTP, a conexão continua por SCP, como faz o WinSCP.",
             "discoverScp": "Cópia de arquivos via SSH para servidores sem SFTP",
             "discoverTigris": "Tigris: armazenamento distribuído globalmente compatível com S3, sem taxas de saída de dados (5 GB grátis)",
-            "discoverFastly": "Fastly Object Storage: armazenamento compatível com S3 em 12 regiões (5 GB grátis)"
+            "discoverFastly": "Fastly Object Storage: armazenamento compatível com S3 em 12 regiões (5 GB grátis, cartão necessário)"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",

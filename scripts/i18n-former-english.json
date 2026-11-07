@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "b747928a103b7d522368e880f621b171693f06c33026cfbbf4e81db1c375e5c5",
+    "enHash": "a430f447a4f11d4c0d37b1bf290c4ac15774c25c92adc61c37ba87cc311bb454",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -535,6 +535,9 @@
         "protocol.devicesInfoLine2": [
             "MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
             "MTP is exclusive: on Linux, Connect soft-releases the system file manager mount. Transfers are whole-file only (no resume, no drive letter)."
+        ],
+        "protocol.discoverFastly": [
+            "Fastly Object Storage: S3-compatible storage in 12 regions (5 GB free)"
         ],
         "protocol.discoverFileLu": [
             "Cloud storage with FTP, WebDAV, S3 and native API (1 GB free)"

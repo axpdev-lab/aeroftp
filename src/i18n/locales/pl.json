@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Jeśli serwer nie ma SFTP, połączenie jest kontynuowane przez SCP, tak jak robi to WinSCP.",
             "discoverScp": "Kopiowanie plików przez SSH dla serwerów bez SFTP",
             "discoverTigris": "Tigris: globalnie rozproszona pamięć masowa zgodna z S3, bez opłat za transfer wychodzący (5 GB za darmo)",
-            "discoverFastly": "Fastly Object Storage: magazyn zgodny z S3 w 12 regionach (5 GB za darmo)"
+            "discoverFastly": "Fastly Object Storage: pamięć masowa zgodna z S3 w 12 regionach (5 GB za darmo, wymagana karta)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

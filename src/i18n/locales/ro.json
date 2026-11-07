@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Dacă serverul nu are SFTP, conexiunea continuă prin SCP, așa cum face WinSCP.",
             "discoverScp": "Copiere de fișiere prin SSH pentru servere fără SFTP",
             "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)",
-            "discoverFastly": "Fastly Object Storage: stocare compatibilă cu S3 în 12 regiuni (5 GB gratuit)"
+            "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

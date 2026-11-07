@@ -13656,6 +13656,106 @@ mod tests {
         assert!(error.contains("408"), "{error}");
     }
 
+    /// A single PUT repeated after a 408 reads the open file again, so a file
+    /// edited in place during the wait is not a snapshot (the retry notes say
+    /// so). What happens, pinned: a same-length edit uploads the new bytes under
+    /// the unchanged Content-Length; an edit that shortens the file fails the
+    /// repeat instead of storing a short object.
+    #[tokio::test]
+    async fn fastly_single_put_repeat_after_an_in_place_edit_never_stores_a_short_object() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+        async fn run(
+            original: &'static [u8],
+            edited: &'static [u8],
+        ) -> (Result<(), ProviderError>, Vec<Vec<u8>>, Vec<Option<String>>) {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("src.bin");
+            std::fs::write(&path, original).expect("write");
+            let bodies: Arc<Mutex<Vec<Vec<u8>>>> = Arc::default();
+            let lengths: Arc<Mutex<Vec<Option<String>>>> = Arc::default();
+            let count = Arc::new(AtomicUsize::new(0));
+            let (b, l, c, edit_path) = (
+                Arc::clone(&bodies),
+                Arc::clone(&lengths),
+                Arc::clone(&count),
+                path.clone(),
+            );
+            let app = axum::Router::new().route(
+                "/test-bucket/{*key}",
+                axum::routing::put(
+                    move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                        let (b, l, c, edit_path) = (
+                            Arc::clone(&b),
+                            Arc::clone(&l),
+                            Arc::clone(&c),
+                            edit_path.clone(),
+                        );
+                        async move {
+                            let n = c.fetch_add(1, Ordering::SeqCst);
+                            b.lock().unwrap().push(body.to_vec());
+                            l.lock().unwrap().push(
+                                headers
+                                    .get("content-length")
+                                    .and_then(|v| v.to_str().ok())
+                                    .map(String::from),
+                            );
+                            if n == 0 {
+                                // The user edits the file while the client waits.
+                                std::fs::write(&edit_path, edited).expect("edit in place");
+                                axum::http::Response::builder()
+                                    .status(408)
+                                    .header("retry-after", "0")
+                                    .body(axum::body::Body::empty())
+                                    .unwrap()
+                            } else {
+                                axum::http::Response::builder()
+                                    .status(200)
+                                    .header("etag", "\"abc\"")
+                                    .body(axum::body::Body::empty())
+                                    .unwrap()
+                            }
+                        }
+                    },
+                ),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind");
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            provider.force_fastly = true;
+            let outcome = provider
+                .upload(path.to_str().unwrap(), "/x.bin", None)
+                .await;
+            let bodies = bodies.lock().unwrap().clone();
+            let lengths = lengths.lock().unwrap().clone();
+            (outcome, bodies, lengths)
+        }
+
+        // Same length, new bytes: the repeat sends what the file holds now.
+        let (outcome, bodies, lengths) = run(b"original-bytes", b"rewritten-byte").await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(bodies.len(), 2, "{bodies:?}");
+        assert_eq!(bodies[0], b"original-bytes");
+        assert_eq!(bodies[1], b"rewritten-byte");
+        assert_eq!(lengths[0], lengths[1], "Content-Length is unchanged");
+
+        // A shorter file: the repeat cannot complete, and no short body is
+        // ever accepted as the object.
+        let (outcome, bodies, lengths) = run(b"original-bytes", b"short").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let declared: usize = lengths[0].as_deref().unwrap().parse().unwrap();
+        assert!(
+            bodies.iter().all(|body| body.len() == declared),
+            "a body of another length was delivered: {bodies:?}"
+        );
+    }
+
     /// The repeat is Fastly's alone: every other endpoint keeps leaving a 408
     /// on the first answer.
     #[tokio::test]
@@ -14272,6 +14372,22 @@ mod tests {
             .iter()
             .all(|r| !r.headers.contains_key("x-tigris-rename")));
         assert_eq!(tigris_requests(&log, "DELETE").len(), 1);
+    }
+
+    /// What `sync_one_config` hands the scheduler for a Fastly profile.
+    #[test]
+    fn a_fastly_provider_reports_the_thirty_minute_floor_as_scan_traits() {
+        let traits = crate::cloud_service::ProviderScanTraits::of(&make_provider(Some(
+            "https://eu-central-1.object.fastlystorage.app",
+        )));
+        assert_eq!(
+            traits.min_full_scan_interval,
+            Some(std::time::Duration::from_secs(1800))
+        );
+        let aws = crate::cloud_service::ProviderScanTraits::of(&make_provider(Some(
+            "https://s3.us-east-1.amazonaws.com",
+        )));
+        assert_eq!(aws.min_full_scan_interval, None);
     }
 
     #[test]

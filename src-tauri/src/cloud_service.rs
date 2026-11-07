@@ -3698,6 +3698,15 @@ pub async fn sync_one_config(
 ) -> Result<SyncOperationResult, String> {
     let opened = open_aerocloud_connection(&config, store).await?;
     let mut provider = opened.provider;
+    // A manual "Sync now" connects here, not through the background cycle, so
+    // it is the one that must tell the scheduler what the provider said about
+    // scanning. Without it the floor (Tigris, Fastly: 30 minutes) is not known
+    // when the first scan of a pair is a manual one, and a short configured
+    // interval could scan again at once.
+    crate::cloud_scan_schedule::ledger().learn(
+        &crate::cloud_scan_schedule::pair_key(&config),
+        ProviderScanTraits::of(&*provider),
+    );
 
     // NOTE: explicit cd/mkdir that used to sit between wrap and service here
     // (and in the old inner) has been removed: build_sync_plan_with_provider

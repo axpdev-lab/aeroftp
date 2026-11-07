@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Hvis serveren ikke har SFTP, fortsættes via SCP på samme forbindelse, som WinSCP gør.",
             "discoverScp": "Filkopiering via SSH til servere uden SFTP",
             "discoverTigris": "Tigris: globalt distribueret S3-kompatibel lagring, ingen gebyrer for udgående data (5 GB gratis)",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort påkrævet)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

@@ -3658,7 +3658,11 @@ pub fn export_rclone(
                 // rclone must recognize them, including the purge root's own
                 // marker, instead of constructing a DELETE for `<key>//`.
                 body.push_str("directory_markers = true\n");
-                let provider_id = server.provider_id.as_deref().unwrap_or("custom-s3");
+                // A stored alias (`fastly-object-storage`, `backblaze-b2`) exports
+                // as its preset, with the preset's region and addressing.
+                let provider_id = crate::connection_manifest::canonical_preset_id(
+                    server.provider_id.as_deref().unwrap_or("custom-s3"),
+                );
                 // rclone S3 backend providers: see `rclone help backend s3`.
                 // Names are case-sensitive; "Other" forces the generic
                 // signature path which works for unknown S3-compatible
@@ -5938,6 +5942,33 @@ force_path_style = false
                 "{stored}: {conf}"
             );
         }
+    }
+
+    #[test]
+    fn test_export_stored_fastly_alias_exports_as_the_preset() {
+        // A profile that stores the manifest alias must export like one that
+        // stores `fastly`: the provider token, the region and the endpoint.
+        let servers = vec![RcloneExportServer {
+            id: "fastly-alias".into(),
+            name: "fastly-alias".into(),
+            host: "".into(),
+            port: 443,
+            username: "AKFASTLY".into(),
+            protocol: Some("s3".into()),
+            options: Some(serde_json::json!({ "bucket": "photos" })),
+            provider_id: Some("fastly-object-storage".into()),
+        }];
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        export_rclone(&servers, &HashMap::new(), &path).unwrap();
+        let conf = std::fs::read_to_string(path).unwrap();
+        assert!(conf.contains("provider = Fastly\n"), "{conf}");
+        assert!(conf.contains("region = eu-central-1\n"), "{conf}");
+        assert!(
+            conf.contains("endpoint = https://eu-central-1.object.fastlystorage.app\n"),
+            "{conf}"
+        );
+        assert!(conf.contains("force_path_style = true\n"), "{conf}");
     }
 
     #[test]

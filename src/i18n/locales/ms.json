@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Jika pelayan tiada SFTP, sambungan diteruskan melalui SCP, seperti yang dilakukan WinSCP.",
             "discoverScp": "Salinan fail melalui SSH untuk pelayan tanpa SFTP",
             "discoverTigris": "Tigris: storan teragih secara global yang serasi dengan S3, tanpa yuran egress (5 GB percuma)",
-            "discoverFastly": "Fastly Object Storage: storan serasi S3 di 12 wilayah (5 GB percuma)"
+            "discoverFastly": "Fastly Object Storage: storan serasi S3 di 12 wilayah (5 GB percuma, kad diperlukan)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

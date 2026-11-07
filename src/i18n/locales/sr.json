@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Ако сервер нема SFTP, веза се наставља преко SCP-а, као што то ради WinSCP.",
             "discoverScp": "Копирање датотека преко SSH-а за сервере без SFTP-а",
             "discoverTigris": "Tigris: глобално дистрибуирано S3-компатибилно складиште, без накнада за одлазни саобраћај (5 GB бесплатно)",
-            "discoverFastly": "Fastly Object Storage: складиште компатибилно са S3 у 12 региона (5 GB бесплатно)"
+            "discoverFastly": "Fastly Object Storage: складиште компатибилно са S3 у 12 региона (5 GB бесплатно, потребна је картица)"
         },
         "shortcuts": {
             "title": "Пречице на тастатури",

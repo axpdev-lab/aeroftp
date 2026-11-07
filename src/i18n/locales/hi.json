@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "यदि सर्वर में SFTP नहीं है, तो WinSCP की तरह उसी कनेक्शन पर SCP से जारी रखें।",
             "discoverScp": "बिना SFTP वाले सर्वरों के लिए SSH के माध्यम से फ़ाइल कॉपी",
             "discoverTigris": "Tigris: विश्व स्तर पर वितरित S3-संगत स्टोरेज, डेटा एग्रेस शुल्क नहीं (5 GB निःशुल्क)",
-            "discoverFastly": "Fastly Object Storage: 12 क्षेत्रों में S3-संगत स्टोरेज (5 GB मुफ़्त)"
+            "discoverFastly": "Fastly Object Storage: 12 क्षेत्रों में S3-संगत स्टोरेज (5 GB मुफ़्त, कार्ड आवश्यक)"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

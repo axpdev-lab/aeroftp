@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Zerbitzariak SFTPrik ez badu, SCP bidez jarraitzen du konexio berean, WinSCPk egiten duen bezala.",
             "discoverScp": "Fitxategiak kopiatzea SSH bidez SFTPrik gabeko zerbitzarietarako",
             "discoverTigris": "Tigris: mundu osoan banatutako S3-rekin bateragarria den biltegiratzea, datu-irteeren kosturik gabe (5 GB doan)",
-            "discoverFastly": "Fastly Object Storage: S3rekin bateragarria den biltegiratzea 12 eskualdetan (5 GB doan)"
+            "discoverFastly": "Fastly Object Storage: S3rekin bateragarria den biltegiratzea 12 eskualdetan (5 GB doan, txartela behar da)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

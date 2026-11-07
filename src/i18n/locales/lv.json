@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Ja serverim nav SFTP, savienojums turpinās ar SCP, kā to dara WinSCP.",
             "discoverScp": "Failu kopēšana caur SSH serveriem bez SFTP",
             "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)",
-            "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas)"
+            "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas, nepieciešama karte)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

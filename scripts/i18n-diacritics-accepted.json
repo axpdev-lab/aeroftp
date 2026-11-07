@@ -529,6 +529,13 @@
       "folded": "estas",
       "twin": "estás",
       "reason": "Estas is the demonstrative (these saved paths); estás is the verb (you are), which this sentence does not use."
+    },
+    "lt\u001fsupport.fiatSection\u001fPaaukoti kortele": {
+      "locale": "lt",
+      "key": "support.fiatSection",
+      "folded": "kortele",
+      "twin": "kortelė",
+      "reason": "Paaukoti kortele is donate by card, the instrumental case of kortelė (card); the nominative kortelė is the other form and the two are different cases, not a stripped letter."
     }
   }
 }

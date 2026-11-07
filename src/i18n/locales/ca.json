@@ -2360,7 +2360,7 @@
             "allowScpFallbackHint": "Si el servidor no té SFTP, continua per SCP a la mateixa connexió, com fa WinSCP.",
             "discoverScp": "Còpia de fitxers per SSH per a servidors sense SFTP",
             "discoverTigris": "Tigris: emmagatzematge distribuït globalment compatible amb S3, sense càrrecs per sortida de dades (5 GB gratis)",
-            "discoverFastly": "Fastly Object Storage: emmagatzematge compatible amb S3 en 12 regions (5 GB gratuïts)"
+            "discoverFastly": "Fastly Object Storage: emmagatzematge compatible amb S3 en 12 regions (5 GB gratis, cal targeta)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
