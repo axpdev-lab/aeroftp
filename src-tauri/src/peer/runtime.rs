@@ -1429,7 +1429,12 @@ mod tests {
     #[test]
     fn a_published_drive_key_goes_to_the_account_that_started_the_share() {
         let src = include_str!("runtime.rs");
-        let production = &src[..src.find("#[cfg(test)]").expect("tests")];
+        // The code alone: a comment may name a call or say "return".
+        let production: String = src[..src.find("#[cfg(test)]").expect("tests")]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let start = production
             .find("pub async fn start_share(")
             .expect("start_share");

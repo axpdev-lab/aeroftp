@@ -1080,7 +1080,12 @@ mod tests {
     #[test]
     fn upload_files_pins_each_source_first_and_reports_every_file_through_one_function() {
         let src = include_str!("gui_tools.rs");
-        let production = &src[..src.find("#[cfg(test)]").expect("tests")];
+        // The code alone: a comment may name any of the calls checked below.
+        let production: String = src[..src.find("#[cfg(test)]").expect("tests")]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
         let start = production
             .find("\"upload_files\" => {")
             .expect("upload_files");

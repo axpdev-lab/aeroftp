@@ -22,6 +22,11 @@ import { isSameConnection, savedProfileIdOf } from './liveConnection';
  * of the new tab (item 6).
  */
 
+// A pin reads the code alone: a comment may name a call, say "await" or
+// mention what a check looks for. Code run by a test keeps its comments.
+const codeOnly = (source: string) => source.split('\n').filter(line => !/^\s*(\/\/|\/\*|\*)/.test(line)).join('\n');
+const APP_CODE = codeOnly(APP);
+
 const between = (source: string, start: string, end: string) => {
     const a = source.indexOf(start);
     const b = source.indexOf(end, a + start.length);
@@ -31,13 +36,13 @@ const between = (source: string, start: string, end: string) => {
 
 describe('Apply on a remote file', () => {
     it('goes into the editor buffer, never through the local filesystem', () => {
-        const apply = between(CODE_BLOCK, 'const handleApplyToFile = useCallback(', '}, [code, language');
+        const apply = between(codeOnly(CODE_BLOCK), 'const handleApplyToFile = useCallback(', '}, [code, language');
         const remote = between(apply, 'if (editorFilePath && editorFileIsRemote) {', '} else if (editorFilePath) {');
         expect(remote).toContain('applyToEditorBuffer({ path: editorFilePath, isRemote: true }, code)');
         expect(remote).not.toContain('writeTextFile');
         // Without the editor showing the file the action says so (CodeBlockActions.test.tsx).
         expect(remote).toContain("showUnreachable('apply')");
-        const diff = between(CODE_BLOCK, 'const handleDiff = useCallback(', '}, [editorFilePath, editorFileIsRemote, showDiff, showUnreachable]);');
+        const diff = between(codeOnly(CODE_BLOCK), 'const handleDiff = useCallback(', '}, [editorFilePath, editorFileIsRemote, showDiff, showUnreachable]);');
         const remoteDiff = between(diff, 'if (editorFileIsRemote) {', 'try {');
         expect(remoteDiff).toContain('readEditorBuffer({ path: editorFilePath, isRemote: true })');
         expect(remoteDiff).not.toContain('readTextFile');
@@ -53,7 +58,7 @@ describe('Apply on a remote file', () => {
         expect(CODE_EDITOR).toContain('window.addEventListener(EDITOR_APPLY_EVENT, handleApply);');
         expect(CODE_EDITOR).toContain('window.addEventListener(EDITOR_READ_EVENT, handleRead);');
         // An Apply is one undoable edit, so it never discards unsaved work.
-        const apply = between(CODE_EDITOR, 'const handleApply = (e: Event) => {', 'detail.accept();');
+        const apply = between(codeOnly(CODE_EDITOR), 'const handleApply = (e: Event) => {', 'detail.accept();');
         expect(apply).toContain("editor.executeEdits('aeroagent-apply'");
         expect(apply).toContain('editor.pushUndoStop();');
         expect(apply).not.toContain('setValue(');
@@ -62,7 +67,7 @@ describe('Apply on a remote file', () => {
 
 describe('a queued transfer', () => {
     it('is bound to its server on every Start and Retry the user queues', () => {
-        const registrations = APP.split('retryCallbacksRef.current.set(').slice(1).map(rest => rest.slice(0, 120));
+        const registrations = APP_CODE.split('retryCallbacksRef.current.set(').slice(1).map(rest => rest.slice(0, 120));
         // The restored-journal retry has its own profile ownership check.
         const restored = registrations.filter(r => r.startsWith('id, () => retryRestoredEntry('));
         const bound = registrations.filter(r => r.startsWith('id, boundToQueuedServer(queuedTarget, id, '));
@@ -76,7 +81,7 @@ describe('a queued transfer', () => {
     it.each(['const runFileBatch = useLatestCallback(', 'const uploadMultipleFiles = withBatchLatch(', 'const downloadMultipleFiles = withBatchLatch('])(
         'takes its target before the first await in %s',
         (head) => {
-            const body = APP.slice(APP.indexOf(head));
+            const body = APP_CODE.slice(APP_CODE.indexOf(head));
             const snapshot = body.search(/const queuedTarget = (options\.queuedTarget \?\? )?snapshotQueuedTarget\(\);/);
             expect(snapshot).toBeGreaterThan(0);
             expect(snapshot).toBeLessThan(body.indexOf('await '));
@@ -215,7 +220,7 @@ describe('a queued transfer', () => {
             vi.useRealTimers();
         }
         // Both ways a new connection starts clear it.
-        expect(APP.match(/remoteConnectPhaseRef\.current = '(connect|switch)';\n(\s+\/\/.*\n)*\s+backendUncertainRef\.current = false;/g)).toHaveLength(2);
+        expect(APP_CODE.match(/remoteConnectPhaseRef\.current = '(connect|switch)';\n\s+backendUncertainRef\.current = false;/g)).toHaveLength(2);
     });
 
     // A cancelled switch ends its phase, then drops the half-open backend:
@@ -236,7 +241,7 @@ describe('a queued transfer', () => {
         expect(ctx.backendTeardownsRef.current).toBe(0);
         expect(ctx.backendUncertainRef.current).toBe(false);
         // A cancelled connect tears down through the same bounded, counted step.
-        const connect = between(APP, '  const abortConnectAfterCancel = async (', 'clearCryptOverlayState();');
+        const connect = between(APP_CODE, '  const abortConnectAfterCancel = async (', 'clearCryptOverlayState();');
         expect(connect).toContain('if (!await boundedTeardown(owns) || !owns()) return;');
         expect(connect).not.toContain('lockAndDropBackendConnection(');
     });
@@ -324,29 +329,30 @@ describe('a switch to another server while the overwrite question is open', () =
     });
 
     it('passes the check to every write of the three batch functions', () => {
-        for (const [head, end] of [
-            ['const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles ='],
-            ['const uploadMultipleFiles = withBatchLatch(', '\n  // === Bulk Operations ==='],
-            ['const downloadMultipleFiles = withBatchLatch(', '\n  // Wire cross-panel drag & drop callback'],
+        for (const head of [
+            'const runFileBatch = useLatestCallback(',
+            'const uploadMultipleFiles = withBatchLatch(',
+            'const downloadMultipleFiles = withBatchLatch(',
         ]) {
-            const body = between(APP, head, end);
+            // Up to the next closure declared at App's own level.
+            const body = between(APP_CODE, head, '\n  const ');
             expect(body).toContain('const onQueuedTarget = queuedTargetGuard(queuedTarget);');
             const writes = body.split(/await (?:uploadFile|downloadFile)\(/).slice(1).map(call => call.slice(0, call.indexOf(';')));
             for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget\)$/);
         }
-        const batch = between(APP, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
+        const batch = between(APP_CODE, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isDownload\) \{\n\s+await invoke\('provider_download_file'/);
         expect(batch).toContain('if (queuedTargetProblem(queuedTarget)) return;');
         // uploadFile and downloadFile run it inside their ownership check,
         // which every one of their writes calls first.
         for (const name of ['downloadFile', 'uploadFile']) {
-            const fn = between(APP, `const ${name} = useLatestCallback(`, 'const ');
+            const fn = between(APP_CODE, `const ${name} = useLatestCallback(`, 'const ');
             expect(fn).toContain('onTarget?: () => void');
         }
         // Without one, they bind to the server live at the call.
-        expect(APP.match(/const checkTarget = onTarget \?\? queuedTargetGuard\(snapshotQueuedTarget\(\)\);/g)).toHaveLength(2);
-        expect(APP.match(/const assertOwnership = \(\) => \{\n\s+checkTarget\(\);/g)).toHaveLength(2);
+        expect(APP_CODE.match(/const checkTarget = onTarget \?\? queuedTargetGuard\(snapshotQueuedTarget\(\)\);/g)).toHaveLength(2);
+        expect(APP_CODE.match(/const assertOwnership = \(\) => \{\n\s+checkTarget\(\);/g)).toHaveLength(2);
     });
 });
 
@@ -494,7 +500,7 @@ describe('the editor\'s save of a remote file', () => {
 
     it('opens both editor entry points through the bound read', () => {
         for (const opener of ['const openDevToolsPreview = useCallback(', 'const openDevToolsFromData = useCallback(']) {
-            const body = between(PREVIEW, opener, '}, [notify]);');
+            const body = between(codeOnly(PREVIEW), opener, '}, [notify]);');
             expect(body).toContain('await readForEditor(');
             expect(body).not.toContain("invoke<string>('preview_remote_file'");
             expect(body).toContain('        target,\n');
@@ -514,9 +520,9 @@ describe('the editor\'s save of a remote file', () => {
 describe('a direct remote action', () => {
     const WRITE = /invoke(<[^>]*>)?\('(provider_delete_file|provider_delete_dir|delete_remote_file|provider_rename|rename_remote_file|provider_mkdir|create_remote_folder|aerovault_overlay_delete_entries|aerovault_overlay_rename_entry|aerovault_overlay_create_directory)'/;
     const body = (name: string) => {
-        const start = APP.indexOf(`\n  const ${name} = `);
+        const start = APP_CODE.indexOf(`\n  const ${name} = `);
         expect(start, name).toBeGreaterThan(0);
-        const rest = APP.slice(start + 1);
+        const rest = APP_CODE.slice(start + 1);
         const end = rest.slice(10).search(/\n {2}const [A-Za-z_]+ = |\n {2}\/\/ ===|\n {2}\/\*\*/);
         return rest.slice(0, end + 10);
     };
@@ -547,7 +553,7 @@ describe('a direct remote action', () => {
     });
 
     it('moves a dropped remote file only on the server it was dropped on', () => {
-        const move = between(DRAG, '        // Same-panel move (rename into another folder), never into itself.', '            } catch (err) {');
+        const move = between(codeOnly(DRAG), '        if (dropsIntoItself(targetPath, sourcePaths)) return;', '            } catch (err) {');
         expect(move).toContain("const onTarget = sourceIsRemote ? remoteActionGuard?.() : undefined;");
         expect(move).toMatch(/onTarget\?\.\(\);\n\s+if \(useProviderCmd\) \{\n\s+await invoke\('provider_rename'/);
         expect(APP).toContain('remoteActionGuard: () => remoteActionGuard(),');
