@@ -4727,41 +4727,52 @@ pub fn export_rclone(
             // Under the login folder the app saves the scope as `~/projects`
             // (`resolveOverlayScope`; before, `/~/projects`, the `~` read as a
             // folder), while the alias holds `projects`: taken as written, the
-            // crypt opened `/~/projects` inside the start folder. A relative
-            // start folder (`projects`) and no start folder are under the login
-            // folder too, where SFTP opens them.
-            ("sftp", _, Some(o))
-                if !options
-                    .and_then(|o| o.get("initial_path"))
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|start| start.starts_with('/')) =>
-            {
-                o.get("rcloneCryptOverlayScope")
-                    .and_then(|v| v.as_str())
-                    .and_then(sftp_login_relative_scope)
-                    .map(|scope| {
-                        let mut o = o.clone();
-                        o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope);
-                        o
-                    })
-            }
-            _ => None,
-        };
-        // No start folder: the remote opens the login folder, where a scope
-        // under `~` is relative too (`nas:vault`); from the root it was
-        // `nas:/vault`, a folder rclone never wrote to.
-        if proto == "sftp"
-            && options
-                .and_then(|o| o.get("initial_path"))
-                .and_then(|v| v.as_str())
-                .is_none_or(str::is_empty)
-            && options
-                .and_then(|o| o.get("rcloneCryptOverlayScope"))
+            // crypt opened `/~/projects` inside the start folder. The scope is
+            // taken from the login folder whatever the start folder is; where
+            // it lies is settled below.
+            ("sftp", _, Some(o)) => o
+                .get("rcloneCryptOverlayScope")
                 .and_then(|v| v.as_str())
                 .and_then(sftp_login_relative_scope)
-                .is_some()
-        {
-            crypt_folder = Some(String::new());
+                .map(|scope| {
+                    let mut o = o.clone();
+                    o["rcloneCryptOverlayScope"] = serde_json::Value::String(scope);
+                    o
+                }),
+            _ => None,
+        };
+        // A scope under the login folder that is not under the start folder's
+        // alias (an absolute start folder such as `/` or `/srv`, none, or a
+        // relative one it lies beside) wraps the clear remote, which opens the
+        // login folder: `nas:vault`. Over the alias of `/` it was
+        // `nas-path:/~/vault`, a folder named `~` at the root, where rclone
+        // found none of the encrypted files and wrote new ones.
+        if proto == "sftp" {
+            let start = options
+                .and_then(|o| o.get("initial_path"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            // The start folder as a path from the login folder, when it is one.
+            let start_from_login = if start.starts_with('~') {
+                sftp_login_relative_scope(start)
+            } else if start.trim().is_empty() || start.starts_with('/') {
+                None
+            } else {
+                Some(format!("/{}", start.trim_matches('/')))
+            };
+            let scope_from_login = scoped_crypt_options
+                .as_ref()
+                .and_then(|o| o.get("rcloneCryptOverlayScope"))
+                .and_then(|v| v.as_str());
+            if let Some(scope) = scope_from_login {
+                let under_start = start_from_login.as_deref().is_some_and(|root| {
+                    root == "/" || scope == root || scope.starts_with(&format!("{root}/"))
+                });
+                if !under_start {
+                    crypt_folder = Some(String::new());
+                    crypt_base_root = None;
+                }
+            }
         }
         let mut crypt_section = String::new();
         let crypt = append_crypt_remote_section(
@@ -10068,6 +10079,17 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert_eq!(remote_of("", "~/vault"), "nas:vault");
         assert_eq!(remote_of("", "~"), "nas:");
         assert_eq!(remote_of("", "/srv/vault"), "nas:/srv/vault");
+        // #1523 Greptile: a scope under the login folder is read from it
+        // whatever the start folder is. Over the alias of `/` it was
+        // `nas-path:/~/vault`, a folder named `~` at the root.
+        assert_eq!(remote_of("/", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("/srv", "~/vault"), "nas:vault");
+        assert_eq!(remote_of("/srv", "~/srv/x"), "nas:srv/x");
+        assert_eq!(remote_of("/", "~"), "nas:");
+        assert_eq!(remote_of("projects", "~/other"), "nas:other");
+        assert_eq!(remote_of("~/projects", "~/other"), "nas:other");
+        // An absolute scope keeps its meaning under an absolute start folder.
+        assert_eq!(remote_of("/srv", "/srv/vault"), "nas-path:/vault");
         assert_eq!(sftp_login_relative_scope("/~x/vault"), None);
         assert_eq!(sftp_login_relative_scope("/srv/~"), None);
     }
