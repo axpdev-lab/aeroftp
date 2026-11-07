@@ -19,6 +19,8 @@ export interface ShareLinkCapabilities {
     hasAdvancedOptions: boolean;
     supportsList: boolean;
     supportsRevoke: boolean;
+    /** Longest expiry the provider accepts, in seconds; null when it states none. */
+    maxExpirationSecs: number | null;
 }
 
 /** Wire shape of `ShareLinkCapabilities` in `src-tauri/src/providers/mod.rs`. */
@@ -29,6 +31,7 @@ export interface BackendShareLinkCapabilities {
     available_permissions: string[];
     supports_list_links: boolean;
     supports_revoke: boolean;
+    max_expiration_secs?: number | null;
 }
 
 export const NO_SHARE_LINK_CAPABILITIES: ShareLinkCapabilities = {
@@ -39,6 +42,7 @@ export const NO_SHARE_LINK_CAPABILITIES: ShareLinkCapabilities = {
     hasAdvancedOptions: false,
     supportsList: false,
     supportsRevoke: false,
+    maxExpirationSecs: null,
 };
 
 export function shareLinkCapabilitiesFromBackend(raw: BackendShareLinkCapabilities): ShareLinkCapabilities {
@@ -53,6 +57,10 @@ export function shareLinkCapabilitiesFromBackend(raw: BackendShareLinkCapabiliti
         hasAdvancedOptions: expiration || password || permissions,
         supportsList: raw.supports_list_links === true,
         supportsRevoke: raw.supports_revoke === true,
+        maxExpirationSecs:
+            typeof raw.max_expiration_secs === 'number' && raw.max_expiration_secs > 0
+                ? raw.max_expiration_secs
+                : null,
     };
 }
 
@@ -71,4 +79,17 @@ export async function loadShareLinkCapabilities(
         console.warn('[ShareLinkModal] provider_share_link_capabilities failed:', err);
         return NO_SHARE_LINK_CAPABILITIES;
     }
+}
+
+/**
+ * The expiry choices a provider accepts: none above its stated limit, so a
+ * 30-day link is never offered where the provider caps at seven days (every
+ * S3 preset) and would clamp or refuse it.
+ */
+export function expirationChoicesWithin<T extends { value: number }>(
+    presets: readonly T[],
+    caps: Pick<ShareLinkCapabilities, 'maxExpirationSecs'>,
+): T[] {
+    const max = caps.maxExpirationSecs;
+    return presets.filter(preset => max === null || preset.value <= max);
 }

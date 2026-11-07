@@ -3912,6 +3912,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             // Revoked one link at a time through `remove_share_link_by_id`:
             // a file can carry several.
             supports_revoke: true,
+            max_expiration_secs: None,
         }
     }
 

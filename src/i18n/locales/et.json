@@ -5653,7 +5653,8 @@
             "managePasswordProtected": "Parooliga kaitstud",
             "expirationHoursOne": "{count} tund",
             "expirationHoursMany": "{count} tundi",
-            "expirationDaysMany": "{count} päeva"
+            "expirationDaysMany": "{count} päeva",
+            "expiresSoonerThanChosen": "lühem kui valitud"
         },
         "introHub": {
             "tab": {

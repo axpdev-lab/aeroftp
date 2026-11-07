@@ -412,6 +412,9 @@ function formatBenchmarkReport(r: Record<string, unknown>): string {
     return lines.join('\n');
 }
 
+/** How many names a sync preview lists among those it could not compare. */
+const SYNC_PREVIEW_NAMES_SHOWN = 20;
+
 export function formatToolResult(_toolName: string, result: unknown): string {
     if (result && typeof result === 'object') {
         const r = result as Record<string, unknown>;
@@ -467,6 +470,27 @@ export function formatToolResult(_toolName: string, result: unknown): string {
                 if (sizeDiff?.length) {
                     lines.push(`\n**Size differs** (${sizeDiff.length}):`);
                     sizeDiff.forEach(f => lines.push(`  ~ ${escapeMarkdown(f.name)} (local: ${f.local_size}, remote: ${f.remote_size})`));
+                }
+                // Entries the preview could not compare: a listed name that is
+                // not one file name of this folder, and the protected entries
+                // the path policy keeps out. Without them a preview whose
+                // comparable files all match read as complete.
+                const notCompared = Array.isArray(r.not_compared) ? (r.not_compared as string[]) : [];
+                const protectedSkipped = typeof r.protected_skipped === 'number' ? r.protected_skipped : 0;
+                if (notCompared.length) {
+                    lines.push(`\n**Not compared** (${notCompared.length}), names this folder cannot hold:`);
+                    notCompared
+                        .slice(0, SYNC_PREVIEW_NAMES_SHOWN)
+                        .forEach(name => lines.push(`  ? ${escapeMarkdown(name)}`));
+                    if (notCompared.length > SYNC_PREVIEW_NAMES_SHOWN) {
+                        lines.push(`  ... +${notCompared.length - SYNC_PREVIEW_NAMES_SHOWN} more`);
+                    }
+                }
+                if (protectedSkipped > 0) {
+                    lines.push(`\n**Protected entries left out:** ${protectedSkipped}`);
+                }
+                if (notCompared.length || protectedSkipped > 0) {
+                    lines.push('\n_The comparison is incomplete: the entries above were not compared._');
                 }
             }
             return lines.join('\n');

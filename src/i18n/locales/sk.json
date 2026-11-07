@@ -5653,7 +5653,8 @@
             "managePasswordProtected": "Chránené heslom",
             "expirationHoursOne": "{count} hodina",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "{count} d"
+            "expirationDaysMany": "{count} d",
+            "expiresSoonerThanChosen": "skôr, než bolo zvolené"
         },
         "introHub": {
             "tab": {

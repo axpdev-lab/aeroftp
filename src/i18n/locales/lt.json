@@ -5653,7 +5653,8 @@
             "managePasswordProtected": "Apsaugota slaptažodžiu",
             "expirationHoursOne": "{count} valanda",
             "expirationHoursMany": "{count} val.",
-            "expirationDaysMany": "{count} d."
+            "expirationDaysMany": "{count} d.",
+            "expiresSoonerThanChosen": "trumpiau nei pasirinkta"
         },
         "introHub": {
             "tab": {

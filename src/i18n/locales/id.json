@@ -5653,7 +5653,8 @@
             "managePasswordProtected": "Dilindungi kata sandi",
             "expirationHoursOne": "{count} jam",
             "expirationHoursMany": "{count} jam",
-            "expirationDaysMany": "{count} hari"
+            "expirationDaysMany": "{count} hari",
+            "expiresSoonerThanChosen": "lebih singkat dari yang dipilih"
         },
         "introHub": {
             "tab": {

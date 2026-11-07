@@ -5672,7 +5672,8 @@
             "managePasswordProtected": "Pinoprotektahan ng password",
             "expirationHoursOne": "{count} oras",
             "expirationHoursMany": "{count} oras",
-            "expirationDaysMany": "{count} araw"
+            "expirationDaysMany": "{count} araw",
+            "expiresSoonerThanChosen": "mas maikli kaysa sa napili"
         },
         "introHub": {
             "tab": {

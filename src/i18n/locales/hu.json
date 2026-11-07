@@ -5653,7 +5653,8 @@
             "managePasswordProtected": "Jelszóval védett",
             "expirationHoursOne": "{count} óra",
             "expirationHoursMany": "{count} óra",
-            "expirationDaysMany": "{count} nap"
+            "expirationDaysMany": "{count} nap",
+            "expiresSoonerThanChosen": "rövidebb a választottnál"
         },
         "introHub": {
             "tab": {

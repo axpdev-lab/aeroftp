@@ -5653,7 +5653,8 @@
             "managePasswordProtected": "Chroniony hasłem",
             "expirationHoursOne": "{count} godzina",
             "expirationHoursMany": "{count} godz.",
-            "expirationDaysMany": "{count} dni"
+            "expirationDaysMany": "{count} dni",
+            "expiresSoonerThanChosen": "krócej niż wybrano"
         },
         "introHub": {
             "tab": {

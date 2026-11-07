@@ -1059,6 +1059,10 @@ pub struct ShareLinkCapabilities {
     pub supports_list_links: bool,
     /// Whether this provider supports revoking share links
     pub supports_revoke: bool,
+    /// The longest expiry, in seconds, the provider accepts for a link, or
+    /// `None` when it states no limit. The modal offers no option above it, so
+    /// a 30-day choice can no longer be clamped (or refused) without a word.
+    pub max_expiration_secs: Option<u64>,
 }
 
 /// Information about an existing share link

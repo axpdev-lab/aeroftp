@@ -5653,7 +5653,8 @@
             "managePasswordProtected": "Προστασία με κωδικό",
             "expirationHoursOne": "{count} ώρα",
             "expirationHoursMany": "{count} ώρες",
-            "expirationDaysMany": "{count} ημέρες"
+            "expirationDaysMany": "{count} ημέρες",
+            "expiresSoonerThanChosen": "συντομότερα από το επιλεγμένο"
         },
         "introHub": {
             "tab": {

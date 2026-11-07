@@ -477,12 +477,29 @@ fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
         .next()?
         .to_ascii_lowercase();
     let region = host.strip_prefix(prefix)?.strip_suffix(suffix)?;
+    // Labels a vendor puts where the region goes that are not one (Greptile on
+    // #1525): an internal endpoint (`oss-cn-hangzhou-internal.aliyuncs.com`)
+    // names its region with a suffix, and an accelerate endpoint
+    // (`oss-accelerate.aliyuncs.com`, `cos.accelerate.myqcloud.com`) names
+    // none. Read as a region they would override a correct stored one.
+    let region = region
+        .strip_suffix(S3_INTERNAL_ENDPOINT_SUFFIX)
+        .unwrap_or(region);
     (!region.is_empty()
+        && !S3_NON_REGION_LABELS.contains(&region)
         && region
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-'))
     .then(|| region.to_string())
 }
+
+/// Suffix of an S3 vendor's internal (same-cloud) endpoint label. Mirrored in
+/// `regionFromS3Template` in src/providers/registry.ts.
+const S3_INTERNAL_ENDPOINT_SUFFIX: &str = "-internal";
+
+/// Endpoint labels in a region's place that name no region. Mirrored in
+/// `regionFromS3Template` in src/providers/registry.ts.
+const S3_NON_REGION_LABELS: [&str; 2] = ["accelerate", "accelerate-overseas"];
 
 pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<String> {
     let template = s3_profile_endpoint_template(provider_id)?;
@@ -561,19 +578,38 @@ pub fn apply_s3_profile_defaults(
                 .then(|| host.to_string())
         });
 
-    let region_source = if extra.contains_key("region") {
-        "profile"
-    } else if let Some(region) = explicit_endpoint
+    // The region the endpoint names wins over a stored one (#1506 Requested
+    // 200): an importer (kopia, restic, mc, aws, rclone) stores its source's
+    // region as given, often us-east-1, and a host that carries its region in
+    // the preset's template signs with that region, spelled as the host
+    // spells it (SigV4's credential scope is case-sensitive), as the same
+    // profile made in the form does. The source says "profile" only when the
+    // stored value is exactly that region. A stored region beside an
+    // endpoint the template does not parse stays, trimmed.
+    let named_region = explicit_endpoint
         .as_deref()
-        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint))
-    {
-        extra.insert("region".to_string(), region);
-        "endpoint"
-    } else {
-        if let Some(default_region) = s3_profile_default_region(provider_id) {
-            extra.insert("region".to_string(), default_region.to_string());
+        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint));
+    let stored_region = extra.get("region").map(|region| region.trim().to_string());
+    let region_source = match (stored_region, named_region) {
+        (stored, Some(named)) => {
+            let source = if stored.as_deref() == Some(named.as_str()) {
+                "profile"
+            } else {
+                "endpoint"
+            };
+            extra.insert("region".to_string(), named);
+            source
         }
-        "preset"
+        (Some(stored), None) => {
+            extra.insert("region".to_string(), stored);
+            "profile"
+        }
+        (None, None) => {
+            if let Some(default_region) = s3_profile_default_region(provider_id) {
+                extra.insert("region".to_string(), default_region.to_string());
+            }
+            "preset"
+        }
     };
     extra.insert(
         S3_REGION_SOURCE_META_KEY.to_string(),
@@ -977,6 +1013,24 @@ mod tests {
                 "https://bucket.s3.eu-amsterdam-1.megas4.com",
                 None,
             ),
+            // Internal and accelerate endpoints (Greptile on #1525).
+            (
+                "alibaba-oss",
+                "https://oss-cn-hangzhou-internal.aliyuncs.com",
+                Some("cn-hangzhou"),
+            ),
+            ("alibaba-oss", "https://oss-accelerate.aliyuncs.com", None),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate-overseas.aliyuncs.com",
+                None,
+            ),
+            ("tencent-cos", "https://cos.accelerate.myqcloud.com", None),
+            (
+                "ibm-cos",
+                "https://s3.private.us-south.cloud-object-storage.appdomain.cloud",
+                None,
+            ),
             (
                 "alibaba-oss",
                 "https://oss-eu-central-1.aliyuncs.com",
@@ -1041,7 +1095,9 @@ mod tests {
             extra.get("region").map(String::as_str),
             Some("eu-central-2")
         );
-        // A stored region always wins; an unreadable host keeps the default.
+        // A stored region the host contradicts loses to the host's (#1506
+        // Requested 200: eu-gb cannot sign for the us-south endpoint); an
+        // unreadable host keeps the default.
         let mut extra = HashMap::new();
         extra.insert("region".to_string(), "eu-gb".to_string());
         apply_s3_profile_defaults(
@@ -1049,10 +1105,124 @@ mod tests {
             Some("ibm-cos"),
             "s3.us-south.cloud-object-storage.appdomain.cloud",
         );
-        assert_eq!(extra.get("region").map(String::as_str), Some("eu-gb"));
+        assert_eq!(extra.get("region").map(String::as_str), Some("us-south"));
         let mut extra = HashMap::new();
         apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "cos.example.internal");
         assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
+    }
+
+    /// #1506 Requested 200: an imported region that contradicts the region
+    /// the preset's endpoint template names is replaced by the named one; a
+    /// matching one, or one beside a host the template does not parse, stays.
+    #[test]
+    fn the_region_an_endpoint_names_wins_over_a_contradicting_stored_one() {
+        let resolve = |provider: &str, endpoint: &str, region: Option<&str>| {
+            let mut extra = HashMap::new();
+            extra.insert("endpoint".to_string(), endpoint.to_string());
+            if let Some(region) = region {
+                extra.insert("region".to_string(), region.to_string());
+            }
+            apply_s3_profile_defaults(&mut extra, Some(provider), "");
+            (
+                extra.get("region").cloned(),
+                extra.get(S3_REGION_SOURCE_META_KEY).cloned(),
+            )
+        };
+        let cases = [
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("us-east-1"),
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("eu-central-1"),
+                "eu-central-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("EU-CENTRAL-1"),
+                // SigV4's scope is case-sensitive: the host's spelling signs.
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some(" eu-central-1 "),
+                "eu-central-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                None,
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "ibm-cos",
+                "https://s3.us-south.cloud-object-storage.appdomain.cloud",
+                Some("eu-de"),
+                "us-south",
+                "endpoint",
+            ),
+            (
+                "digitalocean-spaces",
+                "https://fra1.digitaloceanspaces.com",
+                Some("us-east-1"),
+                "fra1",
+                "endpoint",
+            ),
+            // A host the template does not produce keeps the stored region.
+            (
+                "wasabi",
+                "https://storage.example.com",
+                Some("us-west-1"),
+                "us-west-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://storage.example.com",
+                Some(" us-west-1 "),
+                "us-west-1",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-cn-hangzhou-internal.aliyuncs.com",
+                Some("cn-hangzhou"),
+                "cn-hangzhou",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate.aliyuncs.com",
+                Some("cn-shanghai"),
+                "cn-shanghai",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate-overseas.aliyuncs.com",
+                Some("cn-shanghai"),
+                "cn-shanghai",
+                "profile",
+            ),
+        ];
+        for (provider, endpoint, stored, region, source) in cases {
+            assert_eq!(
+                resolve(provider, endpoint, stored),
+                (Some(region.to_string()), Some(source.to_string())),
+                "{provider} {endpoint} {stored:?}"
+            );
+        }
     }
 
     #[test]
