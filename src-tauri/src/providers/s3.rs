@@ -675,6 +675,10 @@ pub struct S3Provider {
     /// Makes a loopback test double answer to the Fastly detector.
     #[cfg(test)]
     force_fastly: bool,
+    /// Stands in for the region label of a Fastly endpoint host on a loopback
+    /// double, whose host has no label.
+    #[cfg(test)]
+    force_fastly_label: Option<&'static str>,
 }
 
 /// The shortest gap AeroCloud leaves between two full remote scans of a
@@ -929,6 +933,8 @@ impl S3Provider {
             force_tigris: false,
             #[cfg(test)]
             force_fastly: false,
+            #[cfg(test)]
+            force_fastly_label: None,
         })
     }
 
@@ -1836,6 +1842,16 @@ impl S3Provider {
         self.config.endpoint.as_deref().is_some_and(is_fastly_host)
     }
 
+    /// The Fastly region label of the endpoint when it differs from the
+    /// configured region, `None` for any other endpoint or a matching region.
+    fn fastly_mismatch_label(&self) -> Option<String> {
+        #[cfg(test)]
+        if let Some(label) = self.force_fastly_label {
+            return (self.config.region.trim() != label).then(|| label.to_string());
+        }
+        fastly_region_mismatch(self.config.endpoint.as_deref()?, &self.config.region)
+    }
+
     /// The message for Fastly's answer to a request signed for the wrong
     /// region, or `None` when the answer is anything else. Decided on the HTTP
     /// status (400), the S3 error code (`InvalidRequest`) and the host (a
@@ -1846,8 +1862,7 @@ impl S3Provider {
         if status != 400 || s3_error_code(body) != Some("InvalidRequest") {
             return None;
         }
-        let endpoint = self.config.endpoint.as_deref()?;
-        let label = fastly_region_mismatch(endpoint, &self.config.region)?;
+        let label = self.fastly_mismatch_label()?;
         let shown = match self.config.region.trim() {
             "" => "empty".to_string(),
             region => region.to_string(),
@@ -1869,10 +1884,7 @@ impl S3Provider {
         if response.status() != StatusCode::BAD_REQUEST {
             return Ok(response);
         }
-        let Some(endpoint) = self.config.endpoint.as_deref() else {
-            return Ok(response);
-        };
-        if fastly_region_mismatch(endpoint, &self.config.region).is_none() {
+        if self.fastly_mismatch_label().is_none() {
             return Ok(response);
         }
         let status = response.status();
@@ -2676,6 +2688,7 @@ impl S3Provider {
             query_params,
             body.map(bytes::Bytes::from),
             extra_headers,
+            None,
         )
         .await
     }
@@ -2683,6 +2696,12 @@ impl S3Provider {
     /// [`Self::s3_request_ext`] for a payload that is already refcounted
     /// `Bytes`, so a caller that repeats a request clones a pointer, not the
     /// payload.
+    ///
+    /// `budget` is the caller's remaining retries for one logical request. With
+    /// `Some`, this send spends from that allowance (a 429 or a connection
+    /// refusal uses one) instead of starting a fresh one, so an outer loop that
+    /// repeats the request on its own signal (the Fastly 408) cannot multiply
+    /// the sends. With `None` the shared wrapper applies its own allowance.
     async fn s3_request_bytes(
         &self,
         method: Method,
@@ -2690,6 +2709,7 @@ impl S3Provider {
         query_params: Option<&[(&str, &str)]>,
         body: Option<bytes::Bytes>,
         extra_headers: &[(&str, &str)],
+        budget: Option<&mut u32>,
     ) -> Result<reqwest::Response, ProviderError> {
         use sha2::{Digest, Sha256};
 
@@ -2797,13 +2817,22 @@ impl S3Provider {
         // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504).
         // The request is rebuilt per attempt from the same `Bytes`, so a retry
         // never copies the payload and a paced body is simply built again.
-        let response = super::send_with_retry_replayable(
-            &self.client,
-            build_request,
-            &super::HttpRetryConfig::default(),
-        )
-        .await
-        .map_http_err(|e| self.transport_error(&e))?;
+        let retry_config = super::HttpRetryConfig::default();
+        let response = match budget {
+            None => super::send_with_retry_replayable(&self.client, build_request, &retry_config)
+                .await
+                .map_http_err(|e| self.transport_error(&e))?,
+            Some(remaining) => {
+                super::http_retry::send_rebuilt_async_with_budget(
+                    || std::future::ready(Ok::<_, ProviderError>(build_request())),
+                    &retry_config,
+                    |e| self.transport_error(&e),
+                    true,
+                    remaining,
+                )
+                .await?
+            }
+        };
 
         let status = response.status();
         if !status.is_success() {
@@ -3641,6 +3670,9 @@ impl S3Provider {
             .map(String::from);
         let body = response.text().await.unwrap_or_default();
 
+        if let Some(message) = self.fastly_region_mismatch_hint(status.as_u16(), &body) {
+            return Err(ProviderError::InvalidConfig(message).into());
+        }
         if !status.is_success() || body.to_ascii_lowercase().contains("<error>") {
             return Err(self.delta_response_error(
                 DeltaOperation::Create,
@@ -3721,7 +3753,10 @@ impl S3Provider {
 
     /// `UploadPart` on Fastly: a 408 answer is repeated with backoff
     /// (`fastly_timeout_delay`), because a part is overwritten by number and
-    /// a repeat stores nothing twice. The last answer is returned as it came.
+    /// a repeat stores nothing twice. One allowance covers the whole part: the
+    /// 408 repeats and the shared 429 and connection-refusal retries inside each
+    /// send spend from the same counter, so a part goes out at most
+    /// `max_retries + 1` times. The last answer is returned as it came.
     async fn fastly_upload_part_request(
         &self,
         key: &str,
@@ -3729,18 +3764,26 @@ impl S3Provider {
         data: Vec<u8>,
     ) -> Result<reqwest::Response, ProviderError> {
         let retry = super::HttpRetryConfig::default();
-        let mut attempt = 0u32;
+        let mut remaining = retry.max_retries;
         // One refcounted payload: a repeat clones a pointer, not the part.
         let data = bytes::Bytes::from(data);
         loop {
             let response = self
-                .s3_request_bytes(Method::PUT, key, Some(params), Some(data.clone()), &[])
+                .s3_request_bytes(
+                    Method::PUT,
+                    key,
+                    Some(params),
+                    Some(data.clone()),
+                    &[],
+                    Some(&mut remaining),
+                )
                 .await?;
             let status = response.status().as_u16();
             let retry_after = super::http_retry::parse_retry_after(&response);
+            let attempt = retry.max_retries.saturating_sub(remaining);
             match fastly_timeout_delay(status, retry_after, attempt, &retry) {
                 Some(delay) => {
-                    attempt += 1;
+                    remaining = remaining.saturating_sub(1);
                     tokio::time::sleep(delay).await;
                 }
                 None => return Ok(response),
@@ -6502,6 +6545,12 @@ impl StorageProvider for S3Provider {
                     .and_then(|v| v.to_str().ok())
                     .map(String::from);
                 let body = response.text().await.unwrap_or_default();
+                // The single PUT sends its own request, so the Fastly region
+                // hint is applied here too (it matters with --s3-no-check-bucket,
+                // where nothing else has probed the bucket).
+                if let Some(message) = self.fastly_region_mismatch_hint(status.as_u16(), &body) {
+                    return Err(ProviderError::InvalidConfig(message));
+                }
                 Err(ProviderError::TransferFailed(format_s3_error(
                     "Upload failed",
                     status,
@@ -13666,6 +13715,125 @@ mod tests {
             .await;
         assert!(outcome.is_err(), "{outcome:?}");
         assert_eq!(puts.load(Ordering::SeqCst), 1, "not Fastly: no repeat");
+    }
+
+    /// One allowance covers a part: 429 replies and a 408 spend from the same
+    /// counter, so a part never goes out more than `max_retries + 1` times.
+    /// (Before the shared budget, three 429s then a 408 restarted the inner
+    /// allowance and one part could be sent 16 times.)
+    #[tokio::test]
+    async fn fastly_part_upload_shares_one_retry_budget_across_429_and_408() {
+        use std::sync::atomic::Ordering;
+        let max = super::super::HttpRetryConfig::default().max_retries as usize;
+        // Three 429s, then 408 on every later send.
+        let mut mixed = vec![(429u16, ""); 3];
+        mixed.extend(vec![(408u16, ""); 20]);
+        let (origin, puts) = fastly_put_double(mixed).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.force_fastly = true;
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            puts.load(Ordering::SeqCst) <= max + 1,
+            "{} sends for one part",
+            puts.load(Ordering::SeqCst)
+        );
+
+        // 408s then 429s: same bound.
+        let mut mixed = vec![(408u16, ""); 2];
+        mixed.extend(vec![(429u16, ""); 20]);
+        let (origin, puts) = fastly_put_double(mixed).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.force_fastly = true;
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(puts.load(Ordering::SeqCst) <= max + 1);
+
+        // A 429 that clears is still retried, and so is a 408 that clears.
+        let (origin, puts) = fastly_put_double(vec![(429, ""), (408, "")]).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.force_fastly = true;
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(puts.load(Ordering::SeqCst), 3);
+    }
+
+    /// A double that answers every request with 400 InvalidRequest, the answer
+    /// Fastly gives to a request signed for another region.
+    async fn fastly_invalid_request_double() -> String {
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            axum::http::Response::builder()
+                .status(400)
+                .body(axum::body::Body::from(
+                    "<Error><Code>InvalidRequest</Code><Message>Invalid request</Message></Error>",
+                ))
+                .unwrap()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        format!("http://{addr}")
+    }
+
+    /// The single PUT and the multipart initiation send their own requests, so
+    /// they carry the Region hint themselves (with --s3-no-check-bucket nothing
+    /// else has probed the bucket first).
+    #[tokio::test]
+    async fn fastly_upload_and_multipart_start_name_the_region_to_set() {
+        let origin = fastly_invalid_request_double().await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("src.bin");
+        std::fs::write(&path, b"payload").expect("write");
+        let local = path.to_str().unwrap();
+        let provider_with = |region: &str| {
+            let mut provider = make_provider(Some(&origin));
+            provider.config.region = region.to_string();
+            provider.connected = true;
+            provider.force_fastly = true;
+            provider.force_fastly_label = Some("eu-central-1");
+            provider
+        };
+
+        // Mismatched region: the guided message, on both paths.
+        let mut provider = provider_with("us-east-1");
+        let error = provider.upload(local, "/x.bin", None).await.unwrap_err();
+        assert!(
+            matches!(&error, ProviderError::InvalidConfig(m) if m.contains("Set Region to eu-central-1")),
+            "{error:?}"
+        );
+        let error = provider
+            .create_multipart_upload("m.bin", None, None)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, ProviderError::InvalidConfig(m) if m.contains("Set Region to eu-central-1")),
+            "{error:?}"
+        );
+
+        // Matching region: a real 400 keeps its own error on both paths.
+        let mut provider = provider_with("eu-central-1");
+        let error = provider.upload(local, "/x.bin", None).await.unwrap_err();
+        assert!(
+            matches!(&error, ProviderError::TransferFailed(m) if m.contains("400") && m.contains("InvalidRequest")),
+            "{error:?}"
+        );
+        let error = provider
+            .create_multipart_upload("m.bin", None, None)
+            .await
+            .unwrap_err();
+        assert!(
+            !matches!(&error, ProviderError::InvalidConfig(_)),
+            "{error:?}"
+        );
+        assert!(error.to_string().contains("400"), "{error}");
     }
 
     /// FOS answers 500 to a DeleteObjects that names a missing key, after it

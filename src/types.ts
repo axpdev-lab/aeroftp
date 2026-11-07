@@ -359,6 +359,18 @@ export const s3PresetReportsUsage = (
   providerId?: string | null,
 ): boolean => protocol === "s3" && providerId === "tigris";
 
+/**
+ * S3 presets that have no object tagging: Fastly Object Storage answers 501
+ * NotImplemented to the tagging calls (Tier 0, 2026-11-06), and the backend
+ * refuses them as not supported. The file menu does not offer "Object Tags"
+ * for these. A profile saved from the Custom S3 form carries no preset id and
+ * still offers it; the backend refusal answers there.
+ */
+const S3_PRESETS_WITHOUT_OBJECT_TAGS = new Set<string>(["fastly"]);
+
+export const s3PresetOffersObjectTags = (providerId?: string | null): boolean =>
+  !providerId || !S3_PRESETS_WITHOUT_OBJECT_TAGS.has(providerId);
+
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
   return [

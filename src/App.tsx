@@ -34,7 +34,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, s3PresetOffersObjectTags, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -15791,11 +15791,13 @@ const App: React.FC = () => {
         action: () => setObjectTierTarget({ mode: 's3-class', path: file.path, name: file.name, current: storageClass ?? 'STANDARD' }),
         divider: true,
       });
-      items.push({
-        label: t('s3.objectTags'),
-        icon: <Tag size={14} className="text-cyan-500" />,
-        action: () => setS3TagsTarget({ path: file.path, name: file.name }),
-      });
+      if (s3PresetOffersObjectTags(liveConnectionParams.providerId)) {
+        items.push({
+          label: t('s3.objectTags'),
+          icon: <Tag size={14} className="text-cyan-500" />,
+          action: () => setS3TagsTarget({ path: file.path, name: file.name }),
+        });
+      }
       if (needsGlacierRestore(storageClass)) {
         items.push({
           label: t('s3.restoreFromGlacier'),
