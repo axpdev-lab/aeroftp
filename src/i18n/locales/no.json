@@ -5662,7 +5662,7 @@
             "expirationHoursOne": "{count} time",
             "expirationHoursMany": "{count} timer",
             "expirationDaysMany": "{count} dager",
-            "expiresSoonerThanAsked": "tidligere enn valgt: økten som signerte den, utløper først"
+            "expiresSoonerThanChosen": "kortere enn valgt"
         },
         "introHub": {
             "tab": {

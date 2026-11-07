@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} 時間",
             "expirationHoursMany": "{count} 時間",
             "expirationDaysMany": "{count} 日",
-            "expiresSoonerThanAsked": "選択した期限より早い: 署名したセッションが先に終了するため"
+            "expiresSoonerThanChosen": "選択した期間より短い"
         },
         "introHub": {
             "tab": {

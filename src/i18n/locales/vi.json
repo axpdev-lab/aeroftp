@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} giờ",
             "expirationHoursMany": "{count} giờ",
             "expirationDaysMany": "{count} ngày",
-            "expiresSoonerThanAsked": "sớm hơn đã chọn: phiên đã ký liên kết này kết thúc trước"
+            "expiresSoonerThanChosen": "ngắn hơn thời hạn đã chọn"
         },
         "introHub": {
             "tab": {

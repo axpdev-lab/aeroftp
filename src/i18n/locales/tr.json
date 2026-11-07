@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} saat",
             "expirationHoursMany": "{count} saat",
             "expirationDaysMany": "{count} gün",
-            "expiresSoonerThanAsked": "seçilenden daha erken: bunu imzalayan oturum önce sona eriyor"
+            "expiresSoonerThanChosen": "seçilenden daha kısa"
         },
         "introHub": {
             "tab": {

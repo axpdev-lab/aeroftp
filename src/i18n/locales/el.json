@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} ώρα",
             "expirationHoursMany": "{count} ώρες",
             "expirationDaysMany": "{count} ημέρες",
-            "expiresSoonerThanAsked": "νωρίτερα από την επιλογή: η συνεδρία που το υπέγραψε λήγει πρώτη"
+            "expiresSoonerThanChosen": "συντομότερα από το επιλεγμένο"
         },
         "introHub": {
             "tab": {

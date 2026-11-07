@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} hodina",
             "expirationHoursMany": "{count} h",
             "expirationDaysMany": "{count} d",
-            "expiresSoonerThanAsked": "dříve, než bylo zvoleno: relace, která odkaz podepsala, skončí první"
+            "expiresSoonerThanChosen": "dříve než zvoleno"
         },
         "introHub": {
             "tab": {

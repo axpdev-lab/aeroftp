@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} stunda",
             "expirationHoursMany": "{count} stundas",
             "expirationDaysMany": "{count} dienas",
-            "expiresSoonerThanAsked": "agrāk nekā izvēlēts: to parakstījusī sesija beidzas pirmā"
+            "expiresSoonerThanChosen": "īsāk nekā izvēlēts"
         },
         "introHub": {
             "tab": {

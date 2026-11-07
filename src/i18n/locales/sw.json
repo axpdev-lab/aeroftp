@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "Saa {count}",
             "expirationHoursMany": "Saa {count}",
             "expirationDaysMany": "Siku {count}",
-            "expiresSoonerThanAsked": "mapema kuliko ilivyochaguliwa: kipindi kilichoitia saini kinaisha kwanza"
+            "expiresSoonerThanChosen": "fupi kuliko ilivyochaguliwa"
         },
         "introHub": {
             "tab": {

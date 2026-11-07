@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} time",
             "expirationHoursMany": "{count} timer",
             "expirationDaysMany": "{count} dage",
-            "expiresSoonerThanAsked": "tidligere end valgt: sessionen, der signerede det, udløber først"
+            "expiresSoonerThanChosen": "kortere end valgt"
         },
         "introHub": {
             "tab": {

@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} ঘণ্টা",
             "expirationHoursMany": "{count} ঘণ্টা",
             "expirationDaysMany": "{count} দিন",
-            "expiresSoonerThanAsked": "নির্বাচিত সময়ের আগে: যে সেশন এটি সাইন করেছে সেটি আগে শেষ হয়"
+            "expiresSoonerThanChosen": "নির্বাচিত সময়ের চেয়ে কম"
         },
         "introHub": {
             "tab": {

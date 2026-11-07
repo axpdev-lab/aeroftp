@@ -6002,7 +6002,7 @@
             "expirationHoursOne": "{count} ora",
             "expirationHoursMany": "{count} ore",
             "expirationDaysMany": "{count} giorni",
-            "expiresSoonerThanAsked": "prima di quanto scelto: la sessione che lo ha firmato termina per prima"
+            "expiresSoonerThanChosen": "più breve di quella scelta"
         },
         "introHub": {
             "tab": {

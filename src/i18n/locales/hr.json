@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} sat",
             "expirationHoursMany": "{count} h",
             "expirationDaysMany": "{count} d",
-            "expiresSoonerThanAsked": "prije odabranog: sesija koja ga je potpisala prva istječe"
+            "expiresSoonerThanChosen": "kraće od odabranog"
         },
         "introHub": {
             "tab": {

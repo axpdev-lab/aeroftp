@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count}시간",
             "expirationHoursMany": "{count}시간",
             "expirationDaysMany": "{count}일",
-            "expiresSoonerThanAsked": "선택한 기간보다 짧음: 서명한 세션이 먼저 종료됨"
+            "expiresSoonerThanChosen": "선택한 기간보다 짧음"
         },
         "introHub": {
             "tab": {

@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} घंटा",
             "expirationHoursMany": "{count} घंटे",
             "expirationDaysMany": "{count} दिन",
-            "expiresSoonerThanAsked": "चुने गए समय से पहले: जिस सत्र ने इसे हस्ताक्षरित किया वह पहले समाप्त हो जाता है"
+            "expiresSoonerThanChosen": "चुने गए समय से कम"
         },
         "introHub": {
             "tab": {

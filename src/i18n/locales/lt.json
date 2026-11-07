@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} valanda",
             "expirationHoursMany": "{count} val.",
             "expirationDaysMany": "{count} d.",
-            "expiresSoonerThanAsked": "anksčiau nei pasirinkta: ją pasirašiusi sesija baigiasi pirma"
+            "expiresSoonerThanChosen": "trumpiau nei pasirinkta"
         },
         "introHub": {
             "tab": {

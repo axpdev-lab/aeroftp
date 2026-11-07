@@ -5662,7 +5662,7 @@
             "expirationHoursOne": "{count} klukkustund",
             "expirationHoursMany": "{count} klukkustundir",
             "expirationDaysMany": "{count} dagar",
-            "expiresSoonerThanAsked": "fyrr en valið var: lotan sem undirritaði hann rennur út á undan"
+            "expiresSoonerThanChosen": "styttra en valið"
         },
         "introHub": {
             "tab": {

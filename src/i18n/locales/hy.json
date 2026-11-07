@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} ժամ",
             "expirationHoursMany": "{count} ժամ",
             "expirationDaysMany": "{count} օր",
-            "expiresSoonerThanAsked": "ընտրվածից շուտ․ այն ստորագրած սեսիան առաջինն է ավարտվում"
+            "expiresSoonerThanChosen": "ընտրվածից կարճ"
         },
         "introHub": {
             "tab": {

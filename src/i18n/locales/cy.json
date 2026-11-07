@@ -5662,7 +5662,7 @@
             "expirationHoursOne": "{count} awr",
             "expirationHoursMany": "{count} awr",
             "expirationDaysMany": "{count} diwrnod",
-            "expiresSoonerThanAsked": "yn gynt na'r hyn a ddewiswyd: mae'r sesiwn a'i llofnododd yn dod i ben gyntaf"
+            "expiresSoonerThanChosen": "yn fyrrach na'r hyn a ddewiswyd"
         },
         "introHub": {
             "tab": {

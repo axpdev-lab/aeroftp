@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} საათი",
             "expirationHoursMany": "{count} საათი",
             "expirationDaysMany": "{count} დღე",
-            "expiresSoonerThanAsked": "არჩეულზე ადრე: მის მომწერ სესიას ვადა ჯერ გასდის"
+            "expiresSoonerThanChosen": "არჩეულზე მოკლე"
         },
         "introHub": {
             "tab": {

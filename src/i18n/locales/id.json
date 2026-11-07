@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} jam",
             "expirationHoursMany": "{count} jam",
             "expirationDaysMany": "{count} hari",
-            "expiresSoonerThanAsked": "lebih awal dari yang dipilih: sesi yang menandatanganinya berakhir lebih dulu"
+            "expiresSoonerThanChosen": "lebih singkat dari yang dipilih"
         },
         "introHub": {
             "tab": {

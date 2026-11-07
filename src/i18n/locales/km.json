@@ -5662,7 +5662,7 @@
             "expirationHoursOne": "{count} ម៉ោង",
             "expirationHoursMany": "{count} ម៉ោង",
             "expirationDaysMany": "{count} ថ្ងៃ",
-            "expiresSoonerThanAsked": "មុនពេលដែលបានជ្រើស៖ សម័យដែលបានចុះហត្ថលេខាវាផុតកំណត់មុន"
+            "expiresSoonerThanChosen": "ខ្លីជាងដែលបានជ្រើសរើស"
         },
         "introHub": {
             "tab": {

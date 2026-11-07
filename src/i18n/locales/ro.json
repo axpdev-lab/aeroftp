@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} oră",
             "expirationHoursMany": "{count} h",
             "expirationDaysMany": "Zile: {count}",
-            "expiresSoonerThanAsked": "mai devreme decât s-a ales: sesiunea care l-a semnat expiră prima"
+            "expiresSoonerThanChosen": "mai scurt decât cel ales"
         },
         "introHub": {
             "tab": {

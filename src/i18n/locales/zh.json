@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} 小时",
             "expirationHoursMany": "{count} 小时",
             "expirationDaysMany": "{count} 天",
-            "expiresSoonerThanAsked": "比所选时间更早:签署该链接的会话会先结束"
+            "expiresSoonerThanChosen": "短于所选时间"
         },
         "introHub": {
             "tab": {

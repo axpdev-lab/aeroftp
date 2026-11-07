@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} tund",
             "expirationHoursMany": "{count} tundi",
             "expirationDaysMany": "{count} päeva",
-            "expiresSoonerThanAsked": "varem kui valitud: selle allkirjastanud seanss lõpeb esimesena"
+            "expiresSoonerThanChosen": "lühem kui valitud"
         },
         "introHub": {
             "tab": {

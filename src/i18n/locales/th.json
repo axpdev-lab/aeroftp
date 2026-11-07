@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} ชั่วโมง",
             "expirationHoursMany": "{count} ชั่วโมง",
             "expirationDaysMany": "{count} วัน",
-            "expiresSoonerThanAsked": "เร็วกว่าที่เลือก: เซสชันที่ลงนามจะสิ้นสุดก่อน"
+            "expiresSoonerThanChosen": "สั้นกว่าที่เลือก"
         },
         "introHub": {
             "tab": {

@@ -5662,7 +5662,7 @@
             "expirationHoursOne": "{count} oras",
             "expirationHoursMany": "{count} oras",
             "expirationDaysMany": "{count} araw",
-            "expiresSoonerThanAsked": "mas maaga kaysa sa pinili: mauuna matapos ang session na pumirma rito"
+            "expiresSoonerThanChosen": "mas maikli kaysa sa napili"
         },
         "introHub": {
             "tab": {

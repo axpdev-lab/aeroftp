@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} tunti",
             "expirationHoursMany": "{count} tuntia",
             "expirationDaysMany": "{count} päivää",
-            "expiresSoonerThanAsked": "valittua aiemmin: sen allekirjoittanut istunto päättyy ensin"
+            "expiresSoonerThanChosen": "lyhyempi kuin valittu"
         },
         "introHub": {
             "tab": {

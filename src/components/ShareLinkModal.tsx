@@ -50,6 +50,21 @@ const EXPIRATION_PRESETS = [
   { labelKey: 'shareLinkModal.expirationDaysMany', count: 30, value: 2592000 },
 ] as const;
 
+/**
+ * Whether a created link expires before the time chosen. A date-only expiry
+ * (Proton returns one) is compared by day, so its rounding is not a shorter
+ * link (Greptile on #1525); a timestamp gets a minute of slack.
+ */
+export function expiresSoonerThanChosen(expiresAt: string | null, chosenSecs: number | null | undefined, now: number): boolean {
+  if (!expiresAt || !chosenSecs) return false;
+  const chosen = now + chosenSecs * 1000;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+    return expiresAt < new Date(chosen).toISOString().slice(0, 10);
+  }
+  const granted = Date.parse(expiresAt);
+  return Number.isFinite(granted) && granted < chosen - 60_000;
+}
+
 export function ShareLinkModal({ path, fileName, providerName, providerIcon, onClose }: ShareLinkModalProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
@@ -146,9 +161,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
       setShareUrl(result.url);
       setSharePassword(result.password || null);
       setShareExpiresAt(result.expires_at);
-      const asked = opts?.expiresInSecs;
-      const granted = result.expires_at ? (Date.parse(result.expires_at) - Date.now()) / 1000 : null;
-      setShareShortened(!!asked && granted !== null && granted < asked - 60);
+      setShareShortened(expiresSoonerThanChosen(result.expires_at, opts?.expiresInSecs, Date.now()));
       setState('success');
 
       // Auto-copy link to clipboard
@@ -593,7 +606,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
               {shareExpiresAt && (
                 <p data-testid="share-link-expiry" className="text-xs text-gray-600 dark:text-gray-400">
                   {t('shareLinkModal.manageExpires')}: {new Date(shareExpiresAt).toLocaleString(getUiLocale())}
-                  {shareShortened && <> ({t('shareLinkModal.expiresSoonerThanAsked')})</>}
+                  {shareShortened && <> ({t('shareLinkModal.expiresSoonerThanChosen')})</>}
                 </p>
               )}
 

@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} hora",
             "expirationHoursMany": "{count} horas",
             "expirationDaysMany": "{count} días",
-            "expiresSoonerThanAsked": "antes de lo elegido: la sesión que lo firmó termina primero"
+            "expiresSoonerThanChosen": "más corto que el elegido"
         },
         "introHub": {
             "tab": {

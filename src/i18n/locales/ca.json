@@ -5662,7 +5662,7 @@
             "expirationHoursOne": "{count} hora",
             "expirationHoursMany": "{count} hores",
             "expirationDaysMany": "{count} dies",
-            "expiresSoonerThanAsked": "abans del triat: la sessió que l'ha signat acaba primer"
+            "expiresSoonerThanChosen": "més curt que l'escollit"
         },
         "introHub": {
             "tab": {

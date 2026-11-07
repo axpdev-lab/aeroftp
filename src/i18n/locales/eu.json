@@ -5662,7 +5662,7 @@
             "expirationHoursOne": "{count} ordu",
             "expirationHoursMany": "{count} ordu",
             "expirationDaysMany": "{count} egun",
-            "expiresSoonerThanAsked": "aukeratutakoa baino lehenago: sinatu zuen saioa lehenago amaitzen da"
+            "expiresSoonerThanChosen": "aukeratutakoa baino laburragoa"
         },
         "introHub": {
             "tab": {

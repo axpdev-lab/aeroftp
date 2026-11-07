@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} timme",
             "expirationHoursMany": "{count} timmar",
             "expirationDaysMany": "{count} dagar",
-            "expiresSoonerThanAsked": "tidigare än valt: sessionen som signerade den upphör först"
+            "expiresSoonerThanChosen": "kortare än valt"
         },
         "introHub": {
             "tab": {

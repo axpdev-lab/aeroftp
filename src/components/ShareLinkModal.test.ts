@@ -5,7 +5,7 @@
 import { act, createElement, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ShareLinkModal } from './ShareLinkModal';
+import { expiresSoonerThanChosen, ShareLinkModal } from './ShareLinkModal';
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
@@ -71,7 +71,20 @@ describe('Share Link modal on a provider with an expiry limit', () => {
         // The session that signed it ends in an hour: the line says so.
         const expiry = host.querySelector('[data-testid="share-link-expiry"]')?.textContent ?? '';
         expect(expiry).toContain('shareLinkModal.manageExpires');
-        expect(expiry).toContain('shareLinkModal.expiresSoonerThanAsked');
+        expect(expiry).toContain('shareLinkModal.expiresSoonerThanChosen');
+    });
+
+    // Greptile on #1525: Proton answers with a date only, which is not a
+    // shorter link when it is the chosen day.
+    it('compares a date-only expiry by day', () => {
+        const now = Date.parse('2026-11-07T10:00:00Z');
+        const week = 7 * 86400;
+        expect(expiresSoonerThanChosen('2026-11-14', week, now)).toBe(false);
+        expect(expiresSoonerThanChosen('2026-11-13', week, now)).toBe(true);
+        expect(expiresSoonerThanChosen('2026-11-14T10:00:00Z', week, now)).toBe(false);
+        expect(expiresSoonerThanChosen('2026-11-07T11:00:00Z', week, now)).toBe(true);
+        expect(expiresSoonerThanChosen(null, week, now)).toBe(false);
+        expect(expiresSoonerThanChosen('2026-11-14', null, now)).toBe(false);
     });
 });
 

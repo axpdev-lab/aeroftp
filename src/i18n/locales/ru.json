@@ -5643,7 +5643,7 @@
             "expirationHoursOne": "{count} час",
             "expirationHoursMany": "{count} ч",
             "expirationDaysMany": "{count} дн.",
-            "expiresSoonerThanAsked": "раньше выбранного: сессия, подписавшая ссылку, завершается первой"
+            "expiresSoonerThanChosen": "короче выбранного"
         },
         "introHub": {
             "tab": {
