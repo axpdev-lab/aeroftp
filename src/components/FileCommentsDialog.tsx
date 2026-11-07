@@ -8,6 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { getUiLocale } from '../utils/formatters';
 import {
   addComment,
@@ -56,13 +58,21 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
     void reload();
   }, [reload]);
 
+  // A comment being typed is lost on close, and one being sent or deleted
+  // goes on after it: the backdrop is inert then, and the X, Close and ESC
+  // ask first (Discussion #1527).
+  const guarded = useGuardedClose({
+    guard: sending || deletingId !== null ? 'busy' : message.trim() ? 'dirty' : null,
+    onClose,
+  });
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose]);
 
   useModalFocusTrap(panelRef, textareaRef);
 
@@ -100,7 +110,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         {...modalDrag.panelProps}
         ref={panelRef}
@@ -114,7 +124,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
             <MessageSquare size={16} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('fileComments.title')}</h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
             <X size={16} className="text-gray-500" />
           </button>
         </div>
@@ -176,7 +186,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
 
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-700">
           <button
-            onClick={onClose}
+            onClick={guarded.requestClose}
             className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {t('common.close')}
@@ -191,6 +201,14 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
           </button>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm
+          kind={guarded.confirmKind}
+          canAbort={guarded.canAbort}
+          onKeep={guarded.cancelConfirm}
+          onConfirm={guarded.confirmAndClose}
+        />
+      )}
     </div>
   );
 }
