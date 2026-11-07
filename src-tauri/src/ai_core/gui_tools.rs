@@ -1,4 +1,4 @@
-use crate::ai_core::local_tools::{get_str_opt, resolve_local_path, validate_path};
+use crate::ai_core::local_tools::{get_str_opt, resolve_local_path, validate_path, PathPolicy};
 use crate::ai_core::pinned_source::PinnedSource;
 use crate::ai_core::tools::ToolError;
 use crate::ai_tools::{
@@ -17,6 +17,45 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
 }
 
 /// Expand a local directory for AeroAgent upload, keeping its top-level name.
+/// Whether `sync_preview` can compare a remote name with the local folder:
+/// one plain path component under this platform's rules, so it names an entry
+/// of that folder and nothing outside it. A backslash is a separator only on
+/// Windows; on Unix `report\\2026.txt` is an ordinary name.
+fn preview_remote_name_comparable(name: &str) -> bool {
+    let mut parts = std::path::Path::new(name).components();
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    ) && !name.contains('/')
+        && !(cfg!(windows) && name.contains('\\'))
+}
+
+/// The files directly in `local_path` that `sync_preview` compares, with
+/// their sizes, and how many entries the policy left out: a protected entry
+/// is neither listed nor sized.
+fn list_preview_local_files(
+    local_path: &str,
+    policy: &PathPolicy,
+) -> Result<(std::collections::HashMap<String, u64>, usize), String> {
+    let mut files = std::collections::HashMap::new();
+    let mut protected = 0usize;
+    for entry in std::fs::read_dir(local_path)
+        .map_err(|e| format!("Failed to read local directory: {}", e))?
+        .filter_map(|e| e.ok())
+    {
+        if policy.refuses(&entry.path()) {
+            protected += 1;
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if meta.is_file() {
+                files.insert(entry.file_name().to_string_lossy().to_string(), meta.len());
+            }
+        }
+    }
+    Ok((files, protected))
+}
+
 fn expand_upload_directory(base: &std::path::Path) -> Result<Vec<(String, String)>, String> {
     let mut expanded_paths = Vec::new();
     // Walk directory recursively
@@ -870,23 +909,17 @@ pub async fn dispatch_gui_tool(
             validate_path(&local_path, "local_path")?;
             validate_path(&remote_path, "remote_path")?;
 
-            // Collect local files
-            let local_files: std::collections::HashMap<String, u64> =
-                std::fs::read_dir(&local_path)
-                    .map_err(|e| format!("Failed to read local directory: {}", e))?
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        let meta = e.metadata().ok()?;
-                        if meta.is_file() {
-                            Some((e.file_name().to_string_lossy().to_string(), meta.len()))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+            // Collect local files. A protected entry in the folder (the home's
+            // `.vault-token`) is not listed or sized, and a remote file under a
+            // protected local name is not reported as only remote: neither was
+            // compared, which `protected_skipped` and `synced` say.
+            let policy = PathPolicy::current();
+            let protected_here =
+                |name: &str| policy.refuses(&std::path::Path::new(&local_path).join(name));
+            let (local_files, protected_local) = list_preview_local_files(&local_path, &policy)?;
 
             // Collect remote files
-            let remote_files: std::collections::HashMap<String, u64> = if has_provider(&state).await
+            let mut remote_files: std::collections::HashMap<String, u64> = if has_provider(&state).await
             {
                 let mut provider = state.provider.lock().await;
                 let provider = match provider.as_mut() {
@@ -918,6 +951,18 @@ pub async fn dispatch_gui_tool(
                 return Err("Not connected to any server".to_string());
             };
 
+            // A listed name is compared as an entry of `local_path`: an absolute
+            // name or one with a separator would make `join` leave that folder,
+            // and a protected path there could hide the entry. Such a name is
+            // reported as not compared, and the rest of the folder still is.
+            let mut not_compared: Vec<String> = remote_files
+                .keys()
+                .filter(|name| !preview_remote_name_comparable(name))
+                .map(|name| name.chars().flat_map(char::escape_debug).collect())
+                .collect();
+            not_compared.sort();
+            remote_files.retain(|name, _| preview_remote_name_comparable(name));
+
             // Compare
             let mut only_local: Vec<Value> = Vec::new();
             let mut only_remote: Vec<Value> = Vec::new();
@@ -941,8 +986,17 @@ pub async fn dispatch_gui_tool(
                     }
                 }
             }
+            // Each protected name counts once, whether it was met locally, on
+            // the server, or on both sides.
+            let mut protected_skipped = protected_local;
             for (name, remote_size) in &remote_files {
                 if !local_files.contains_key(name) {
+                    if protected_here(name) {
+                        if !std::path::Path::new(&local_path).join(name).exists() {
+                            protected_skipped += 1;
+                        }
+                        continue;
+                    }
                     only_remote.push(json!({ "name": name, "size": remote_size }));
                 }
             }
@@ -956,7 +1010,13 @@ pub async fn dispatch_gui_tool(
                 "only_local": only_local,
                 "only_remote": only_remote,
                 "size_different": size_diff,
-                "synced": only_local.is_empty() && only_remote.is_empty() && size_diff.is_empty(),
+                "protected_skipped": protected_skipped,
+                "not_compared": not_compared,
+                "synced": protected_skipped == 0
+                    && not_compared.is_empty()
+                    && only_local.is_empty()
+                    && only_remote.is_empty()
+                    && size_diff.is_empty(),
             }))
 
         }
@@ -1153,6 +1213,47 @@ mod tests {
             "every report goes through record_upload_outcome"
         );
         assert_eq!(arm.matches("PinnedSource::pin(").count(), 1);
+    }
+
+    /// A listed name that is absolute, holds a separator or is `..` would make
+    /// the comparison leave the local folder.
+    #[test]
+    fn a_sync_preview_compares_only_names_of_one_component() {
+        for name in ["/home/u/.ssh/id", "../up", "a/b", "..", "."] {
+            assert!(!super::preview_remote_name_comparable(name), "{name}");
+        }
+        for name in ["notes.txt", ".hidden", "with space", "caf\u{e9}.txt"] {
+            assert!(super::preview_remote_name_comparable(name), "{name}");
+        }
+        // A backslash separates only on Windows.
+        assert_eq!(
+            super::preview_remote_name_comparable("report\\2026.txt"),
+            !cfg!(windows)
+        );
+    }
+
+    /// `sync_preview` of the home listed the protected files directly in it
+    /// with their sizes; it now leaves them out and counts them.
+    #[test]
+    fn the_sync_preview_listing_leaves_protected_entries_out() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::write(home.join(".vault-token"), b"SECRETWORD").unwrap();
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        std::fs::write(home.join("notes.txt"), b"x").unwrap();
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let listed =
+            super::list_preview_local_files(&home.to_string_lossy(), &super::PathPolicy::current());
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let (files, protected) = listed.unwrap();
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert_eq!(files["notes.txt"], 1);
+        assert_eq!(protected, 2);
     }
 
     /// A link back to the upload root must not repeat files or escape it.

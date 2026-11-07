@@ -13,7 +13,7 @@
 
 use serde_json::{json, Value};
 
-use super::local_tools::{get_str, get_str_opt, resolve_local_path, validate_path};
+use super::local_tools::{get_str, get_str_opt, resolve_local_path, validate_path, PathPolicy};
 use super::tools::{ToolCtx, ToolError};
 
 fn map_str_err(e: String) -> ToolError {
@@ -77,6 +77,7 @@ pub async fn rag_index(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         }
 
         fn scan_dir(
+            policy: &PathPolicy,
             dir: &std::path::Path,
             base: &std::path::Path,
             recursive: bool,
@@ -93,6 +94,11 @@ pub async fn rag_index(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                     return;
                 }
                 let entry_path = entry.path();
+                // The root passing the policy says nothing of what lies below:
+                // a protected file or folder is never read (deep scan items 20, 21).
+                if policy.refuses(&entry_path) {
+                    continue;
+                }
                 let meta = match entry.metadata() {
                     Ok(m) => m,
                     Err(_) => continue,
@@ -103,7 +109,15 @@ pub async fn rag_index(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
                     }
                     *dirs_count += 1;
                     if recursive {
-                        scan_dir(&entry_path, base, recursive, files, dirs_count, max_files);
+                        scan_dir(
+                            policy,
+                            &entry_path,
+                            base,
+                            recursive,
+                            files,
+                            dirs_count,
+                            max_files,
+                        );
                     }
                 } else if meta.is_file() {
                     let rel = entry_path
@@ -148,6 +162,7 @@ pub async fn rag_index(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         let mut files: Vec<Value> = Vec::new();
         let mut dirs_count: u32 = 0;
         scan_dir(
+            &PathPolicy::current(),
             base_path,
             base_path,
             recursive,
@@ -206,7 +221,9 @@ pub async fn rag_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
             return Err(format!("Not a directory: {}", path_clone));
         }
 
+        #[allow(clippy::too_many_arguments)]
         fn search_dir(
+            policy: &PathPolicy,
             dir: &std::path::Path,
             base: &std::path::Path,
             query_lower: &str,
@@ -224,6 +241,11 @@ pub async fn rag_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
                     return;
                 }
                 let entry_path = entry.path();
+                // The root passing the policy says nothing of what lies below:
+                // a protected file or folder is never read (deep scan items 20, 21).
+                if policy.refuses(&entry_path) {
+                    continue;
+                }
                 let meta = match entry.metadata() {
                     Ok(m) => m,
                     Err(_) => continue,
@@ -233,6 +255,7 @@ pub async fn rag_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
                         continue;
                     }
                     search_dir(
+                        policy,
                         &entry_path,
                         base,
                         query_lower,
@@ -276,6 +299,7 @@ pub async fn rag_search(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolEr
         let mut matches: Vec<Value> = Vec::new();
         let mut files_scanned: u32 = 0;
         search_dir(
+            &PathPolicy::current(),
             base_path,
             base_path,
             &query_lower,
