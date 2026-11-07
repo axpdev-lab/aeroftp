@@ -110,10 +110,12 @@ it('places all five named tools after Compare/Plan with one divider and mounts t
     }
     expect(invoke).toHaveBeenCalledWith('get_multi_path_config', { localPath: '/local', remotePath: '/remote' });
     expect(invoke).toHaveBeenCalledWith('get_sync_schedule_cmd');
-    // Embedded panes do not register the old child-dialog Escape callbacks.
+    // Embedded panes do not register the old child-dialog Escape callbacks:
+    // ESC switches no tab, and only the dialog's own ESC answers, closing it
+    // once (Discussion #1527 gave AeroSync its ESC).
     await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
     expect(tab('Scheduler').getAttribute('aria-selected')).toBe('true');
-    expect(props.onClose).not.toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalledTimes(1);
 });
 
 it('preserves an unsaved Multi-Path draft across tabs, and saves the displayed pair', async () => {
@@ -304,6 +306,11 @@ it.each(['success', 'failure'])('blocks close and stale Plan through restore %s 
     });
     expect(props.onClose).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalledWith('local_sync_cancel');
+    // A restore cannot be stopped: ESC opens no "stop" confirm that would
+    // stop nothing and close nothing (Discussion #1527).
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(host.querySelector('[role=alertdialog]')).toBeNull();
+    expect(props.onClose).not.toHaveBeenCalled();
     await choose('Plan');
     expect(visibleButtons().some(b => b.textContent === 'Start comparison')).toBe(false);
     const execute = visibleButtons().find(b => b.textContent === 'Execute plan')!;

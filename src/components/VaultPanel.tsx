@@ -67,6 +67,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         guard: state.loading ? 'busy' : null,
         onClose,
         backdrop: state.mode === 'home' ? 'idle' : 'never',
+        // A dialog of its own open over the panel (repair, scrub, sync, a new
+        // folder, the receipt) takes ESC first: one press must not close the
+        // whole vault, or a repair or sync in flight with it.
+        escape: !(state.showRepairDialog || state.showScrubDialog || state.showSyncDialog || state.showNewDirDialog
+            || (state.lastReport && state.mode === 'browse')),
     });
 
     // Unified tabbed shell (owner-locked layout, 2026-06-24): the standalone intro

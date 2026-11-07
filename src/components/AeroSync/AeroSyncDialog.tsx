@@ -78,20 +78,23 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
     }, []);
 
     // Busy while a sync, a restore or a compare scan runs: a stray click must
-    // not end any of them, and the X asks first. A comparison already made is
-    // the result of a scan that can take minutes: the backdrop never throws it
-    // away, only the X or ESC close the dialog (Discussion #1527).
+    // not end any of them, and the X and ESC ask first. A restore cannot be
+    // stopped and keeps the dialog open until it settles: its X is disabled
+    // and ESC does nothing then. A comparison already made is the result of a
+    // scan that can take minutes: the backdrop never throws it away, only the
+    // X or ESC close the dialog (Discussion #1527).
     const compareScanning = !!context.compareLoading;
     const guarded = useGuardedClose({
         guard: syncRunning || restoreRunning || compareScanning ? 'busy' : null,
         // Restore has no cancellation command: keep the workflow mounted until
         // its native write operation actually settles.
         onClose: () => { if (!restoreRunning) onClose(); },
-        onAbort: () => {
+        onAbort: syncRunning || compareScanning ? () => {
             if (syncRunning) cancelSync();
             if (compareScanning) onStopCompare?.();
-        },
+        } : undefined,
         backdrop: context.compareResult ? 'never' : 'idle',
+        escape: isOpen && !restoreRunning,
     });
 
     // The settings the Plan and Sync tabs hold, kept alive across a tab switch
@@ -418,6 +421,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             {guarded.confirmOpen && guarded.confirmKind && (
                 <GuardedCloseConfirm
                     kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
                     onKeep={guarded.cancelConfirm}
                     onConfirm={guarded.confirmAndClose}
                 />
