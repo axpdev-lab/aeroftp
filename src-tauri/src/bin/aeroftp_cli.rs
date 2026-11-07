@@ -76216,6 +76216,14 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         ) {
             return Ok(format!("Error: {reason}"));
         }
+        // The profiles the approval is given for: checked again before the
+        // call runs, so a profile replaced while the prompt was open is not the
+        // one written to.
+        let approved_targets = ftp_client_gui_lib::ai_core::tools::change_target_ids(
+            &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
+            &tc.name,
+            &tc.arguments,
+        );
         // Check approval
         let approved = if is_auto_approved(&tc.name, cfg.approve_level) {
             if is_tty {
@@ -76236,6 +76244,18 @@ impl ftp_client_gui_lib::ai_core::runner::RunnerAdapter for CliRunnerAdapter<'_>
         };
 
         ftp_client_gui_lib::ai_core::runner::check_cancelled(cancel)?;
+        if approved
+            && ftp_client_gui_lib::ai_core::tools::change_target_ids(
+                &ftp_client_gui_lib::ai_core::cli_impl::CliCredentialProvider,
+                &tc.name,
+                &tc.arguments,
+            ) != approved_targets
+        {
+            return Ok(
+                "Tool call refused: a saved server it names changed while the approval was open."
+                    .to_string(),
+            );
+        }
         let result_content = if approved {
             if is_tty {
                 eprint!("  \x1b[2m⠙ Executing {}...\x1b[0m", tc.name);

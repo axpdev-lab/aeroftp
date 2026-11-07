@@ -903,16 +903,33 @@ fn session_grant_operation<'a>(tool_name: &str, args: &'a Value) -> Option<&'a s
     }
 }
 
-/// The arguments that pick a saved server or profile: `server` for most
-/// remote tools, `profile` for `aeroftp_benchmark`, `profile_id` for a
-/// `gui_run` connect, both ends of a cross-profile transfer.
-const SESSION_GRANT_TARGET_KEYS: [&str; 5] = [
-    "server",
-    "profile",
-    "profile_id",
-    "source_server",
-    "dest_server",
-];
+/// The arguments that pick a saved server or profile, the same list the exact
+/// check reads: both ends of a transfer included.
+const SESSION_GRANT_TARGET_KEYS: [&str; 7] = crate::ai_core::tools::TARGET_PROFILE_KEYS;
+
+/// The arguments with the saved profile ids their targets name, for the
+/// approval keys: a profile replaced between the approval and the execution
+/// gives other keys, so the approval given for the old one does not let the
+/// call run on the replacement.
+fn bound_to_target_ids(tool_name: &str, args: &Value) -> Value {
+    let ids = crate::ai_core::tools::change_target_ids(
+        &crate::ai_core::tauri_impl::VaultCredentialProvider,
+        tool_name,
+        args,
+    );
+    with_target_ids(args, ids)
+}
+
+fn with_target_ids(args: &Value, ids: Vec<String>) -> Value {
+    if ids.is_empty() {
+        return args.clone();
+    }
+    let mut bound = args.clone();
+    if let Some(object) = bound.as_object_mut() {
+        object.insert("__approved_target_ids".to_string(), json!(ids));
+    }
+    bound
+}
 
 /// The arguments that pick what a tool does: `gui_run`'s `intent`, the
 /// `action` of `remote_trash`, `remote_versions` and `sync_control`, the
@@ -938,6 +955,7 @@ fn build_session_scope_key(
             .iter()
             .map(|key| args.get(*key).and_then(Value::as_str))
             .collect::<Vec<_>>(),
+        "approved_target_ids": args.get("__approved_target_ids"),
         "selectors": SESSION_GRANT_SELECTOR_KEYS
             .iter()
             .map(|key| args.get(*key).and_then(Value::as_str))
@@ -962,9 +980,10 @@ fn execution_approval_keys(
     remote_context: Option<&str>,
 ) -> Result<(String, String), String> {
     approval_message_for(tool_name, args)?;
+    let keyed = bound_to_target_ids(tool_name, args);
     Ok((
-        build_tool_cache_key(tool_name, args, context_local_path, remote_context)?,
-        build_session_scope_key(tool_name, args, context_local_path, remote_context)?,
+        build_tool_cache_key(tool_name, &keyed, context_local_path, remote_context)?,
+        build_session_scope_key(tool_name, &keyed, context_local_path, remote_context)?,
     ))
 }
 
@@ -2251,15 +2270,16 @@ pub async fn prepare_ai_tool_approval(
     }
 
     let remote_context = build_remote_cache_context(&state, &app_state).await;
+    let keyed = bound_to_target_ids(&tool_name, &args);
     let scope_key = build_tool_cache_key(
         &tool_name,
-        &args,
+        &keyed,
         context_local_path.as_deref(),
         remote_context.as_deref(),
     )?;
     let session_scope_key = build_session_scope_key(
         &tool_name,
-        &args,
+        &keyed,
         context_local_path.as_deref(),
         remote_context.as_deref(),
     )?;
@@ -2709,6 +2729,25 @@ mod session_grant_tests {
 
     // A chat-wide grant for `server_exec ls` on one saved server does not
     // cover the same operation on another.
+    // The approval keys carry the profile ids the targets named: the same
+    // name pointing at a replacement profile gives other keys.
+    #[test]
+    fn the_approval_keys_change_when_a_target_profile_is_replaced() {
+        let args = json!({"server": "lab-prod", "path": "/x"});
+        let keys = |ids: Vec<String>| {
+            let keyed = with_target_ids(&args, ids);
+            (
+                build_tool_cache_key("remote_delete", &keyed, Some("/w"), None).unwrap(),
+                build_session_scope_key("remote_delete", &keyed, Some("/w"), None).unwrap(),
+            )
+        };
+        let approved = keys(vec!["server=srv_1".to_string()]);
+        assert_eq!(approved, keys(vec!["server=srv_1".to_string()]));
+        let replaced = keys(vec!["server=srv_9".to_string()]);
+        assert_ne!(approved.0, replaced.0);
+        assert_ne!(approved.1, replaced.1);
+    }
+
     #[test]
     fn a_chat_wide_grant_covers_only_its_own_server() {
         let scope = |server: &str| {
@@ -3135,6 +3174,17 @@ mod approval_tests {
             .unwrap_or_else(|e| panic!("{tool}: {e}"));
             assert!(!message.contains("SECRETWORD"), "{tool}: {message}");
             assert!(message.contains("find: 14 bytes"), "{tool}: {message}");
+            assert!(
+                message.contains(&format!(
+                    "replace: {} bytes",
+                    super::MAX_APPROVAL_MESSAGE_CHARS + 10
+                )),
+                "{tool}"
+            );
+            assert!(
+                !message.contains("yyyyyyyy"),
+                "{tool}: the replacement content is shown"
+            );
         }
         // A `paths` that is not a list is shown, since it picks the handler.
         let details = build_ai_tool_approval_details(

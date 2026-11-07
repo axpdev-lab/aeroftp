@@ -8255,6 +8255,53 @@ mod tests {
         assert_eq!(summary["local_scan_incomplete"], true, "{report}");
     }
 
+    /// The sync doctor of the home names the entries the path policy left out
+    /// apart from read errors: in the local scan check, in the summary and in
+    /// its own risk line, with the counts still partial.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_sync_doctor_names_protected_entries_apart_from_read_errors() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        for rel in [".ssh/id_fixture", "notes.txt"] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let mut fake = FakeBackend::sample();
+        fake.tree
+            .insert("/remote".into(), vec![entry("/remote/notes.txt", false, 1)]);
+        let doctor = sync_doctor(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "s", "local_dir": home.to_string_lossy(), "remote_dir": "/remote"}),
+        )
+        .await;
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let doctor = doctor.unwrap();
+        let local_check = doctor["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["name"] == "local_scan_complete")
+            .cloned()
+            .unwrap();
+        assert_eq!(local_check["ok"], false, "{doctor}");
+        assert_eq!(local_check["errors"], 0, "{doctor}");
+        assert_eq!(local_check["protected_skipped"], 1, "{doctor}");
+        assert_eq!(doctor["summary"]["local_scan_errors"], 0, "{doctor}");
+        assert_eq!(doctor["summary"]["local_protected_skipped"], 1, "{doctor}");
+        let risks = doctor["risks"].to_string();
+        assert!(risks.contains("left out 1 protected entry"), "{risks}");
+        assert!(!risks.contains("did not read the whole tree"), "{risks}");
+        assert_eq!(doctor["status"], "attention", "{doctor}");
+    }
+
     /// A protected file only on the server, under a home without `~/.ssh`:
     /// the local scan met nothing protected and reads as complete, yet that
     /// file was not compared, so the result is partial, not an all-clear.

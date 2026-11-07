@@ -2227,8 +2227,56 @@ pub fn find_tool(name: &str) -> Option<&'static ToolDef> {
     TOOL_DEFINITIONS.iter().find(|t| t.name == name)
 }
 
-/// The arguments that pick a saved server or profile.
-const TARGET_PROFILE_KEYS: [&str; 4] = ["server", "source_server", "dest_server", "profile"];
+/// Every argument of a tool schema that picks a saved server or profile:
+/// `server`, both ends of a transfer (`src_server`, `dst_server`) and of a
+/// cross-profile transfer (`source_server`, `dest_server`), a benchmark's
+/// `profile`, a GUI connect's `profile_id`. A test reads the registry so a new
+/// one cannot be left out.
+pub const TARGET_PROFILE_KEYS: [&str; 7] = [
+    "server",
+    "src_server",
+    "dst_server",
+    "source_server",
+    "dest_server",
+    "profile",
+    "profile_id",
+];
+
+/// The saved profile each target of a change names exactly, as `key=id`
+/// (`key=?` when none does). Taken before the approval and again before the
+/// call runs: when a name maps to another profile in between (the profile was
+/// replaced while the prompt was open) the two differ and the call does not
+/// run on the replacement. Empty for a call that only reads.
+pub fn change_target_ids(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Vec<String> {
+    let Some(def) = find_tool(tool_name) else {
+        return Vec::new();
+    };
+    if !matches!(def.danger, DangerLevel::Medium | DangerLevel::High) {
+        return Vec::new();
+    }
+    let mut saved = None;
+    let mut bound = Vec::new();
+    for key in TARGET_PROFILE_KEYS {
+        let Some(query) = args.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        if query.trim().is_empty() {
+            continue;
+        }
+        let saved = saved.get_or_insert_with(|| creds.list_servers().unwrap_or_default());
+        let lower = query.to_lowercase();
+        let id = saved
+            .iter()
+            .find(|profile| profile.id == query || profile.name.to_lowercase() == lower)
+            .map_or("?", |profile| profile.id.as_str());
+        bound.push(format!("{key}={id}"));
+    }
+    bound
+}
 
 /// Why a call that changes something may not run on the saved server it
 /// names: the name is not exactly a profile's name or id, though it is part of
@@ -2714,6 +2762,48 @@ mod tests {
         .unwrap()
     }
 
+    // Every schema property that names a server or a profile is one the exact
+    // check reads: `src_server` and `dst_server` of the transfers were missing.
+    #[test]
+    fn every_server_or_profile_argument_is_checked_exactly() {
+        for def in TOOL_DEFINITIONS.iter() {
+            let Some(properties) = def
+                .input_schema
+                .get("properties")
+                .and_then(Value::as_object)
+            else {
+                continue;
+            };
+            for key in properties.keys() {
+                if key.contains("server") || key.contains("profile") {
+                    assert!(
+                        TARGET_PROFILE_KEYS.contains(&key.as_str()),
+                        "{}: `{key}` picks a server and is not checked",
+                        def.name
+                    );
+                }
+            }
+        }
+    }
+
+    // A profile replaced while the approval was open: its name now names
+    // another id, and the call does not run on the replacement.
+    #[test]
+    fn a_change_is_bound_to_the_profile_ids_it_was_approved_for() {
+        let before = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let after = SavedServers(vec![saved("srv_9", "lab-prod")]);
+        let args = json!({"server": "lab-prod", "path": "/x"});
+        assert_eq!(
+            change_target_ids(&before, "remote_delete", &args),
+            vec!["server=srv_1"]
+        );
+        assert_ne!(
+            change_target_ids(&before, "remote_delete", &args),
+            change_target_ids(&after, "remote_delete", &args)
+        );
+        assert!(change_target_ids(&before, "remote_list", &args).is_empty());
+    }
+
     // `server: "lab"` resolved to the one profile containing it, `lab-prod`,
     // while the approval said `lab`: a change now runs only on a server named
     // exactly, a read still finds it by a part of its name.
@@ -2754,6 +2844,17 @@ mod tests {
             None
         );
         // Both ends of a transfer are checked.
+        for args in [
+            json!({"src_server": "home", "dst_server": "lab", "src_path": "/a", "dst_path": "/b"}),
+            json!({"src_server": "lab", "dst_server": "home", "src_path": "/a", "dst_path": "/b"}),
+        ] {
+            for tool in ["aeroftp_transfer", "aeroftp_transfer_tree"] {
+                assert!(
+                    inexact_change_target(&creds, tool, &args).is_some(),
+                    "{tool} {args}"
+                );
+            }
+        }
         assert!(inexact_change_target(
             &creds,
             "cross_profile_transfer",
