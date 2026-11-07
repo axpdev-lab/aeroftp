@@ -10,7 +10,7 @@
  */
 
 import table from '../shared/profile-security-relaxations.json';
-import { connectionProtocol, getConnectionPreset } from '../providers/connectionManifest';
+import { connectionManifest, connectionProtocol, getConnectionPreset } from '../providers/connectionManifest';
 
 interface RelaxationRule {
     key: string;
@@ -88,7 +88,11 @@ const endpointHost = (endpoint: string): string | undefined => {
  */
 export const securityRelaxations = (profile: ProfileSecurityInput): Relaxation[] => {
     const options: Record<string, unknown> = profile.options && typeof profile.options === 'object' ? profile.options : {};
-    const presetDefaults = profile.providerId ? getConnectionPreset(profile.providerId)?.defaults : undefined;
+    // The preset as the connection loader derives it: the providerId, or the
+    // one a protocol alias names (a bare `blomp` protocol is the Blomp preset).
+    const presetId = profile.providerId
+        ?? (profile.protocol ? connectionManifest.aliases[profile.protocol.trim().toLowerCase()]?.providerId : undefined);
+    const presetDefaults = presetId ? getConnectionPreset(presetId)?.defaults : undefined;
     const addresses = [profile.host, options.endpoint]
         .filter((a): a is string => typeof a === 'string' && a.trim() !== '');
     const protocol = profile.protocol ? connectionProtocol(profile.protocol)?.token : undefined;

@@ -383,6 +383,13 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             }
         } catch (err) {
             const errStr = String(err);
+            // The file changed since its review: that review is gone, and the
+            // next Import previews the file again (Greptile on #1524).
+            if (errStr.includes('IMPORT_FILE_CHANGED')) {
+                setSecurityReview(null);
+                setReviewedDigest(null);
+                setKeptRelaxed(new Set());
+            }
             if (errStr.includes('Invalid password')) {
                 setError(t('settings.invalidPassword'));
             } else {

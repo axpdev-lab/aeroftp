@@ -105,7 +105,7 @@ pub fn security_relaxations_of(
 ) -> Vec<Relaxation> {
     let empty = serde_json::Map::new();
     let options = options.and_then(Value::as_object).unwrap_or(&empty);
-    let preset = provider_id.and_then(crate::connection_manifest::preset);
+    let preset = profile_preset(protocol, provider_id);
     let addresses = profile_addresses(host, options);
     // Swift's catalog can send the storage traffic to another host than the
     // auth URL, so a loopback auth host proves nothing about where the token
@@ -190,11 +190,10 @@ fn preset_owns(preset: &crate::connection_manifest::ConnectionPreset, addresses:
 /// connection is built: the preset owns the profile's address, or the profile
 /// names no preset.
 pub fn preset_owns_profile_address(profile: &Value) -> bool {
-    let Some(preset) = profile
-        .get("providerId")
-        .and_then(Value::as_str)
-        .and_then(crate::connection_manifest::preset)
-    else {
+    let Some(preset) = profile_preset(
+        profile.get("protocol").and_then(Value::as_str),
+        profile.get("providerId").and_then(Value::as_str),
+    ) else {
         return true;
     };
     let empty = serde_json::Map::new();
@@ -204,6 +203,22 @@ pub fn preset_owns_profile_address(profile: &Value) -> bool {
         .unwrap_or(&empty);
     let host = profile.get("host").and_then(Value::as_str).unwrap_or("");
     preset_owns(preset, &profile_addresses(host, options))
+}
+
+/// The preset a profile connects through, derived as the connection loader
+/// derives it: its `providerId`, or the one a protocol alias names (a bare
+/// `blomp` protocol is the Blomp preset, CodeRabbit on #1524).
+fn profile_preset(
+    protocol: Option<&str>,
+    provider_id: Option<&str>,
+) -> Option<&'static crate::connection_manifest::ConnectionPreset> {
+    let provider_id = match protocol {
+        Some(protocol) => {
+            crate::connection_manifest::canonical_protocol_and_provider(protocol, provider_id).1
+        }
+        None => provider_id,
+    };
+    provider_id.and_then(crate::connection_manifest::preset)
 }
 
 /// Whether `value` for option `key` is one the table calls relaxed, the test a
@@ -632,6 +647,49 @@ mod tests {
         };
         assert!(!cleartext("https://keystone.attacker.example"));
         assert!(cleartext("https://authenticate.blomp.com"));
+        // A bare `blomp` protocol names the preset without a providerId.
+        let bare = json!({"host": "https://keystone.attacker.example", "protocol": "blomp", "options": {}});
+        assert!(
+            !SwiftConfig::from_provider_config(&effective(&bare, ProviderType::Swift))
+                .unwrap()
+                .allow_cleartext_storage_endpoint
+        );
+    }
+
+    /// CodeRabbit on #1524: a loopback Swift auth host exempts nothing, and
+    /// the effective config shows it: reset, the certificate check is on for
+    /// whatever host the catalog names; kept, it stays off as asked.
+    #[test]
+    fn a_loopback_swift_profile_resets_its_certificate_check() {
+        use crate::providers::swift::SwiftConfig;
+        use crate::providers::{ProviderConfig, ProviderType};
+        let effective = |profile: &Value| {
+            let (extra, host) = crate::profile_loader::profile_connection_extra(
+                profile,
+                ProviderType::Swift,
+                profile.get("host").and_then(Value::as_str).unwrap_or(""),
+            );
+            SwiftConfig::from_provider_config(&ProviderConfig {
+                name: "probe".into(),
+                provider_type: ProviderType::Swift,
+                host,
+                port: None,
+                username: Some("user".into()),
+                password: Some("secret".into()),
+                initial_path: None,
+                extra,
+            })
+            .unwrap()
+            .verify_cert
+        };
+        let relaxed = json!({"host": "http://127.0.0.1:5000", "protocol": "swift",
+            "options": {"verifyCert": false}});
+        let mut reset = relaxed.clone();
+        assert_eq!(make_profile_safe(&mut reset, &[]), vec!["verifyCert"]);
+        assert!(effective(&reset));
+        let mut kept = relaxed.clone();
+        assert!(make_profile_safe(&mut kept, &["verifyCert".to_string()]).is_empty());
+        assert!(!effective(&kept));
     }
 
     /// An overwrite that brings a setting the existing profile already has,

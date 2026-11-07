@@ -18908,17 +18908,6 @@ async fn import_server_profiles(
     reviewed_digest: Option<String>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     only_main_window(webview.label(), "import_server_profiles")?;
-    // Choices made on a reviewed file apply to that file only: one replaced
-    // at the same path since the review is refused (CodeRabbit on #1524).
-    if let Some(reviewed) = reviewed_digest.as_deref() {
-        let path = file_path.clone();
-        let now = tokio::task::spawn_blocking(move || import_file_digest(&path))
-            .await
-            .map_err(|e| format!("Import task failed: {e}"))??;
-        if now != reviewed {
-            return Err(IMPORT_FILE_CHANGED.to_string());
-        }
-    }
     // A security-relaxing option of the file comes in safe unless the user
     // ticked it in the preview (#1506 Requested 198).
     let policy = profile_security::RelaxationPolicy::Keep(keep_relaxed.unwrap_or_default());
@@ -18935,6 +18924,7 @@ async fn import_server_profiles(
             password,
             existing.unwrap_or_default(),
             &policy,
+            reviewed_digest.as_deref(),
             user.id,
         )
     })
@@ -18977,11 +18967,28 @@ async fn preview_server_import(
 const IMPORT_FILE_CHANGED: &str =
     "IMPORT_FILE_CHANGED: The backup file changed since its review, so nothing was imported; review it again";
 
-/// SHA-256 of an import file, hex.
-fn import_file_digest(path: &str) -> Result<String, String> {
+/// Read an import file once: the same bytes are hashed for the review and
+/// decrypted for the import, so a file swapped between the two cannot slip in
+/// (Greptile on #1524).
+fn read_import_file(path: &str) -> Result<Vec<u8>, String> {
+    std::fs::read(path).map_err(|e| format!("Cannot read the backup file: {e}"))
+}
+
+/// SHA-256 of an import file's bytes, hex.
+fn import_bytes_digest(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    let bytes = std::fs::read(path).map_err(|e| format!("Cannot read the backup file: {e}"))?;
-    Ok(hex::encode(Sha256::digest(&bytes)))
+    hex::encode(Sha256::digest(bytes))
+}
+
+/// Refuse bytes that are not the file the user reviewed. No digest (the CLI,
+/// a preview, an import with nothing to review) checks nothing.
+fn check_reviewed_file(bytes: &[u8], reviewed: Option<&str>) -> Result<(), String> {
+    match reviewed {
+        Some(reviewed) if import_bytes_digest(bytes) != reviewed => {
+            Err(IMPORT_FILE_CHANGED.to_string())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Without an unlocked vault neither the list nor the secrets can be reached,
@@ -19237,11 +19244,11 @@ pub fn preview_server_profiles(
     policy: &profile_security::RelaxationPolicy,
     current: &[serde_json::Value],
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let bytes = read_import_file(file_path)?;
+    let file_digest = import_bytes_digest(&bytes);
     let (servers, provider_secrets, metadata) =
-        profile_export::import_profiles(std::path::Path::new(file_path), password)
-            .map_err(|e| e.to_string())?;
+        profile_export::import_profiles_from_bytes(&bytes, password).map_err(|e| e.to_string())?;
     let prepared = prepare_import(&servers, &provider_secrets, mode, policy, current);
-    let file_digest = import_file_digest(file_path)?;
     let mut report = import_report(
         &prepared,
         &[],
@@ -19286,7 +19293,7 @@ pub async fn import_server_profiles_with_mode(
     policy: &profile_security::RelaxationPolicy,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
-    import_server_profiles_blocking(file_path, password, mode, policy, user)
+    import_server_profiles_blocking(file_path, password, mode, policy, None, user)
 }
 
 fn import_server_profiles_blocking(
@@ -19294,11 +19301,13 @@ fn import_server_profiles_blocking(
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
     policy: &profile_security::RelaxationPolicy,
+    reviewed_digest: Option<&str>,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let bytes = read_import_file(&file_path)?;
+    check_reviewed_file(&bytes, reviewed_digest)?;
     let (servers, provider_secrets, metadata) =
-        profile_export::import_profiles(std::path::Path::new(&file_path), &password)
-            .map_err(|e| e.to_string())?;
+        profile_export::import_profiles_from_bytes(&bytes, &password).map_err(|e| e.to_string())?;
     let metadata = serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null);
     let store = credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
     user_partitions::init_or_migrate_cli(&store)
@@ -20525,14 +20534,13 @@ mod import_security_tests {
     /// #1524): the import compares it before it reads the file again.
     #[test]
     fn the_review_digest_follows_the_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("servers.aeroftp");
-        std::fs::write(&path, b"first").unwrap();
-        let first = import_file_digest(path.to_str().unwrap()).unwrap();
+        let first = import_bytes_digest(b"first");
         assert_eq!(first.len(), 64);
-        std::fs::write(&path, b"second").unwrap();
-        assert_ne!(import_file_digest(path.to_str().unwrap()).unwrap(), first);
-        assert!(import_file_digest(dir.path().join("missing").to_str().unwrap()).is_err());
+        assert!(check_reviewed_file(b"first", Some(&first)).is_ok());
+        assert!(check_reviewed_file(b"second", None).is_ok());
+        let changed = check_reviewed_file(b"second", Some(&first)).unwrap_err();
+        assert!(changed.starts_with("IMPORT_FILE_CHANGED"), "{changed}");
+        assert!(read_import_file("/nonexistent/aeroftp-import.aeroftp").is_err());
     }
 
     /// Greptile round 1 on #1506 Requested 198: an overwrite that brings the

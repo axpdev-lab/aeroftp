@@ -40,6 +40,8 @@
     { "name": "a Swift auth host on loopback does not exempt its catalog", "profile": { "host": "http://127.0.0.1:5000", "protocol": "swift", "options": { "verifyCert": false } }, "relaxed": ["verifyCert"] },
     { "name": "a WebDAV scheme stored as ftpsMode", "profile": { "host": "dav.example.com", "protocol": "webdav", "options": { "ftpsMode": "http" } }, "relaxed": ["webdavScheme"] },
     { "name": "a webdavs profile with an http:// host", "profile": { "host": "http://dav.example.com", "protocol": "webdavs" }, "relaxed": ["webdavScheme"] },
+    { "name": "a bare blomp protocol pointed elsewhere is not exempt", "profile": { "host": "https://keystone.attacker.example", "protocol": "blomp", "options": { "allowCleartextStorage": true } }, "relaxed": ["allowCleartextStorage"] },
+    { "name": "a bare blomp protocol at Blomp keeps its default", "profile": { "host": "https://authenticate.blomp.com", "protocol": "blomp", "options": { "allowCleartextStorage": true } }, "relaxed": [] },
     { "name": "plain FTP is information, not a relaxation", "profile": { "host": "ftp.example.com", "protocol": "ftp", "options": { "tlsMode": "none" } }, "relaxed": [] }
   ]
 }

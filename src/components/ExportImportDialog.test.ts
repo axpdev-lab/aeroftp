@@ -185,6 +185,31 @@ describe('ExportImportDialog .aeroftp import', () => {
         expect(host.querySelector('[data-testid="import-security-review"]')).toBeNull();
     });
 
+    // Greptile on #1524: a file replaced since its review is refused, the
+    // review is dropped, and the next Import previews the file again.
+    it('drops the review when the file changed since it', async () => {
+        const report = {
+            servers: [], stored: [], skipped: [], similar: 0, jottaChains: [], oauthAppsKept: [],
+            sharedSecretsFailed: [], targetChanged: [], totalInFile: 1,
+            metadata: { exportDate: '', aeroftpVersion: '', serverCount: 1, hasCredentials: false },
+            fileDigest: 'digest-a',
+            security: [{ fileIndex: 0, name: 'Lab', reset: [{ key: 'verifyCert', value: 'false' }], kept: [] }],
+        };
+        vi.mocked(invoke).mockImplementation(async (command: string) => {
+            if (command === 'import_server_profiles') throw 'IMPORT_FILE_CHANGED: The backup file changed since its review';
+            return report;
+        });
+        await openImport(vi.fn(), vi.fn());
+        await runImport('skip');
+        expect(host.querySelector('[data-testid="import-security-review"]')).not.toBeNull();
+        await click(button(b => b.textContent === 'settings.importServers'));
+        expect(vi.mocked(invoke).mock.lastCall?.[0]).toBe('import_server_profiles');
+        expect(host.querySelector('[data-testid="import-security-review"]')).toBeNull();
+        expect(host.textContent).toContain('IMPORT_FILE_CHANGED');
+        await click(button(b => b.textContent === 'settings.importServers'));
+        expect(vi.mocked(invoke).mock.lastCall?.[0]).toBe('preview_server_import');
+    });
+
     it('does not hand the host the list of an account switched away from during the import', async () => {
         vi.mocked(invoke).mockImplementation(async () => {
             accountChanges += 1;

@@ -668,7 +668,7 @@ impl MegaCmdProvider {
         // came: joining the split words collapsed a double space and dropped
         // a trailing one, so the look before a rename never found `a  b.txt`
         // or `b.txt ` and `mega-mv` went over it.
-        let name = rest_after_columns(line, 5).to_string();
+        let name = name_after_columns(line, 5).to_string();
         if name.is_empty() {
             tracing::debug!(target: "mega", "[PARSE] Skipping line with empty name: {:?}", line);
             return None;
@@ -1920,8 +1920,30 @@ fn parse_handle_line(line: &str) -> Option<(&str, &str)> {
     if !handle.starts_with("H:") {
         return None;
     }
-    let name = rest_after_columns(line, 6);
+    let name = name_after_columns(line, 6);
     (!name.is_empty()).then_some((handle, name))
+}
+
+/// The name that follows the first `columns` columns of a `mega-ls -l` line:
+/// everything after the ONE space that ends the last column, the name's own
+/// leading and inner spaces kept, a trailing `\r` dropped.
+///
+/// One space is the format MEGAcmd 2.6 prints (captured live on 2026-11-06,
+/// `... 12:20:41 H:yj5ATZxI *`), and anchoring to it fails safe: should a
+/// future MEGAcmd pad that column, every name would gain a leading space and
+/// a lookup would answer NotFound, never another node. Trimming instead made
+/// ` a?.txt` read as `a?.txt`, so a delete of `/a?.txt` could reach the node
+/// whose real name begins with a space (CodeRabbit on #1524).
+fn name_after_columns(line: &str, columns: usize) -> &str {
+    let mut rest = line;
+    for _ in 0..columns {
+        rest = rest.trim_start();
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        rest = &rest[end..];
+    }
+    rest.strip_prefix(' ')
+        .unwrap_or(rest)
+        .trim_end_matches(['\r', '\n'])
 }
 
 /// What follows the first `columns` whitespace-separated columns of `line`
@@ -1944,7 +1966,7 @@ mod tests {
     /// A listing that answered means the path is there.
     #[test]
     fn map_mega_exists_reports_a_listed_path_as_present() {
-        assert!(map_mega_exists(Ok("----  1  0  15Jan2026  14:30  a.txt".to_string())).unwrap());
+        assert!(map_mega_exists(Ok("----  1  0  15Jan2026  14:30 a.txt".to_string())).unwrap());
     }
 
     /// And a path the command reported as missing is absent. `ProviderError`
@@ -2382,12 +2404,12 @@ mod tests {
         };
         listing(
             "folder-handles.txt",
-            "----  1  3  05Oct2026  08:42:55  H:run1  run.dat",
+            "----  1  3  05Oct2026  08:42:55  H:run1 run.dat",
         );
         provider.delete("/demo/run.dat").await.unwrap();
         listing(
             "bin-handles.txt",
-            "----  1  3  05Oct2026  08:42:55  H:run1  run.dat",
+            "----  1  3  05Oct2026  08:42:55  H:run1 run.dat",
         );
 
         for fault in ["bin-fails", "rm-fails"] {
@@ -2419,14 +2441,14 @@ mod tests {
         // node and leaves the older one.
         listing(
             "folder-handles.txt",
-            &["d---  -  -  05Oct2026  08:42:55  H:runNow1  1bd68585"],
+            &["d---  -  -  05Oct2026  08:42:55  H:runNow1 1bd68585"],
         );
         provider.rmdir_recursive("/demo/1bd68585").await.unwrap();
         listing(
             "bin-handles.txt",
             &[
-                "d---  -  -  05Oct2026  08:42:55  H:runNow1  1bd68585",
-                "d---  -  -  13Jul2026  14:07:26  H:runOld1  1bd68585",
+                "d---  -  -  05Oct2026  08:42:55  H:runNow1 1bd68585",
+                "d---  -  -  13Jul2026  14:07:26  H:runOld1 1bd68585",
             ],
         );
         assert!(provider.delete_permanent("/demo/1bd68585").await.unwrap());
@@ -2439,7 +2461,7 @@ mod tests {
         // the bin holds exactly one item of its name.
         listing(
             "bin-handles.txt",
-            &["d---  -  -  13Jul2026  14:07:26  H:report1  report"],
+            &["d---  -  -  13Jul2026  14:07:26  H:report1 report"],
         );
         assert!(!provider.delete_permanent("/docs/report").await.unwrap());
 
@@ -2448,7 +2470,7 @@ mod tests {
         // time. Restored from the bin meanwhile: not in the bin, not purged.
         listing(
             "folder-handles.txt",
-            &["----  1  3  05Oct2026  08:42:55  H:back1  kept.txt"],
+            &["----  1  3  05Oct2026  08:42:55  H:back1 kept.txt"],
         );
         provider.delete("/docs/kept.txt").await.unwrap();
         assert_eq!(read("ls.log"), "/demo\n/docs/kept.txt\n");
@@ -2461,14 +2483,14 @@ mod tests {
         listing(
             "folder-handles.txt",
             &[
-                "----  1  3  05Oct2026  08:42:55  H:twin1  twin.txt",
-                "----  1  3  05Oct2026  08:42:55  H:twin2  twin.txt",
+                "----  1  3  05Oct2026  08:42:55  H:twin1 twin.txt",
+                "----  1  3  05Oct2026  08:42:55  H:twin2 twin.txt",
             ],
         );
         provider.delete("/docs/twin.txt").await.unwrap();
         listing(
             "bin-handles.txt",
-            &["----  1  3  05Oct2026  08:42:55  H:twin1  twin.txt"],
+            &["----  1  3  05Oct2026  08:42:55  H:twin1 twin.txt"],
         );
         let refused = provider.delete_permanent("/docs/twin.txt").await;
         assert!(
@@ -2504,7 +2526,7 @@ mod tests {
             Some(("H:26wmgAjC", "hprobe"))
         );
         assert_eq!(
-            parse_handle_line("----  1  3  15Jan2026  14:30  H:abc  a  b.txt "),
+            parse_handle_line("----  1  3  15Jan2026  14:30  H:abc a  b.txt "),
             Some(("H:abc", "a  b.txt "))
         );
         assert_eq!(
@@ -2513,7 +2535,7 @@ mod tests {
         );
         assert_eq!(parse_handle_line("/aeroftp-demo-368: "), None);
         assert_eq!(
-            parse_handle_line("----  1  3  15Jan2026  14:30  a.txt"),
+            parse_handle_line("----  1  3  15Jan2026  14:30 a.txt"),
             None
         );
     }
@@ -2663,6 +2685,35 @@ mod tests {
         );
     }
 
+    /// CodeRabbit on #1524: a name that begins with a space is its own name,
+    /// in the listing and in a handle lookup, so it is never taken for the
+    /// trimmed one. The first line is a live MEGAcmd 2.6 capture.
+    #[test]
+    fn a_leading_space_is_part_of_a_mega_name() {
+        assert_eq!(
+            parse_handle_line("d---    -            - 05Oct2026 10:44:08 H:26wmgAjC hprobe"),
+            Some(("H:26wmgAjC", "hprobe"))
+        );
+        let listing = "FLAGS VERS      SIZE            DATE          HANDLE NAME\n\
+                       ----    1            2 06Nov2026 12:20:41 H:spaced01  a?.txt\n";
+        assert_eq!(
+            parse_handle_line(listing.lines().nth(1).unwrap()),
+            Some(("H:spaced01", " a?.txt"))
+        );
+        assert!(matches!(
+            unique_handle_for(listing, "a?.txt"),
+            Err(ProviderError::NotFound(_))
+        ));
+        assert_eq!(unique_handle_for(listing, " a?.txt").unwrap(), "H:spaced01");
+        let entry = MegaCmdProvider::parse_ls_line(
+            "----    1            2 06Nov2026 12:20:41  a?.txt",
+            "/",
+        )
+        .unwrap();
+        assert_eq!(entry.name, " a?.txt");
+        assert_eq!(entry.path, "/ a?.txt");
+    }
+
     /// CodeRabbit on #1524: a direct bulk call with a wildcard in a parent
     /// folder is refused, not handed to MEGAcmd as a pattern.
     #[test]
@@ -2703,6 +2754,35 @@ mod tests {
         let found = provider.find("/", "*.txt").await.unwrap();
         let paths: Vec<&str> = found.iter().map(|e| e.path.as_str()).collect();
         assert_eq!(paths, ["/photos?/a.txt", "/docs/b.txt"]);
+    }
+
+    /// A search rooted at a wildcard folder goes by its handle, and a search
+    /// from a provider path other than `/` still returns absolute paths, since
+    /// MEGAcmd's own working directory stays `/` (CodeRabbit on #1524).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_find_by_handle_and_from_a_sub_path_returns_absolute_paths() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        two_level_standin(dir.path());
+        let find = "#!/bin/sh\n\
+                    echo \"mega-find $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
+                    case \"$1\" in\n\
+                    H:dir00001) echo 'a?/b?' ;;\n\
+                    *) echo 'docs/sub/x.txt' ;;\n\
+                    esac\n";
+        let path = dir.path().join("mega-find");
+        std::fs::write(&path, find).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        let by_handle = provider.find("/a?", "*").await.unwrap();
+        assert_eq!(by_handle[0].path, "/a?/b?");
+        let argv = std::fs::read_to_string(dir.path().join("argv.log")).unwrap();
+        assert!(argv.contains("mega-find H:dir00001 --pattern *"), "{argv}");
+        provider.current_path = "/docs".to_string();
+        let from_sub = provider.find("sub", "*.txt").await.unwrap();
+        assert_eq!(from_sub[0].path, "/docs/sub/x.txt");
     }
 
     /// End to end on a MEGAcmd stand-in that records its arguments: purging a
@@ -2797,7 +2877,7 @@ mod tests {
     /// found the item and `mega-mv` went over it.
     #[test]
     fn parse_ls_line_keeps_the_spaces_of_a_name() {
-        let line = "----  1  3  15Jan2026  14:30  a  b.txt ";
+        let line = "----  1  3  15Jan2026  14:30 a  b.txt ";
         let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
         assert_eq!(entry.name, "a  b.txt ");
         assert_eq!(entry.path, "/a  b.txt ");
@@ -2805,7 +2885,7 @@ mod tests {
 
     #[test]
     fn parse_ls_line_extracts_file_and_directory() {
-        let line = "----  1  1024  15Jan2026  14:30  hello.txt";
+        let line = "----  1  1024  15Jan2026  14:30 hello.txt";
         let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
         assert_eq!(entry.name, "hello.txt");
         assert_eq!(entry.size, 1024);
@@ -2813,7 +2893,7 @@ mod tests {
         assert_eq!(entry.path, "/hello.txt");
         assert!(entry.modified.is_some());
 
-        let dir_line = "d---  1  0  15Jan2026  14:30  photos";
+        let dir_line = "d---  1  0  15Jan2026  14:30 photos";
         let entry = MegaCmdProvider::parse_ls_line(dir_line, "/home").unwrap();
         assert!(entry.is_dir);
         assert_eq!(entry.path, "/home/photos");
@@ -2822,7 +2902,7 @@ mod tests {
     #[test]
     fn parse_ls_line_joins_name_with_spaces() {
         // files with spaces: parts[5..] joined with space
-        let line = "----  1  42  15Jan2026  14:30  file with spaces.txt";
+        let line = "----  1  42  15Jan2026  14:30 file with spaces.txt";
         let entry = MegaCmdProvider::parse_ls_line(line, "/").unwrap();
         assert_eq!(entry.name, "file with spaces.txt");
     }

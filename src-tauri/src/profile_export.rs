@@ -436,8 +436,17 @@ pub type ImportedProfiles = (
 );
 
 pub fn import_profiles(file_path: &Path, password: &str) -> Result<ImportedProfiles, ExportError> {
-    let file_data = std::fs::read(file_path)?;
-    let export_file: ExportFile = serde_json::from_slice(&file_data)?;
+    import_profiles_from_bytes(&std::fs::read(file_path)?, password)
+}
+
+/// [`import_profiles`] on bytes the caller already read, so one read can be
+/// both hashed and decrypted: the import a user confirms then works on the
+/// exact file the preview showed (Greptile on #1524).
+pub fn import_profiles_from_bytes(
+    file_data: &[u8],
+    password: &str,
+) -> Result<ImportedProfiles, ExportError> {
+    let export_file: ExportFile = serde_json::from_slice(file_data)?;
 
     if export_file.version > FILE_VERSION {
         return Err(ExportError::UnsupportedVersion(export_file.version));
