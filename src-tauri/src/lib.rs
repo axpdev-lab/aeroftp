@@ -11161,6 +11161,17 @@ async fn preview_remote_file(
     path: String,
     expected_generation: Option<u64>,
 ) -> Result<String, String> {
+    read_remote_file_for_preview(&state, &provider_state, path, expected_generation).await
+}
+
+/// [`preview_remote_file`] without the Tauri state wrappers, so a test can run
+/// it on plain state.
+async fn read_remote_file_for_preview(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    expected_generation: Option<u64>,
+) -> Result<String, String> {
     // The editor's read, bound to the connection it was opened on: held for
     // the whole read, so a switch waits for it, and refused if one came first.
     let _pin = match expected_generation {

@@ -14888,6 +14888,31 @@ mod tests {
         assert!(state.pin_connection_generation(opened_on + 1).await.is_ok());
     }
 
+    /// The editor's read command honours the connection it was opened on: a
+    /// generation another connection replaced is refused before any read,
+    /// the live one goes on to the read (which fails here: nothing is
+    /// connected).
+    #[tokio::test]
+    async fn the_editor_preview_reads_only_on_the_connection_it_was_opened_on() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        let opened_on = state.connection_generation.load(Ordering::SeqCst);
+        state.invalidate_overlay_key_cache();
+        let refused =
+            crate::read_remote_file_for_preview(&app, &state, "/a.txt".into(), Some(opened_on))
+                .await
+                .unwrap_err();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        let live = state.connection_generation.load(Ordering::SeqCst);
+        let read =
+            crate::read_remote_file_for_preview(&app, &state, "/a.txt".into(), Some(live)).await;
+        assert!(
+            read.as_ref()
+                .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
+            "{read:?}"
+        );
+    }
+
     /// A preview and a session switch racing, over and over: the read takes
     /// the gate then the provider lock, and so does a swap, so neither waits
     /// on the other for good. Each read either ran before the swap or was

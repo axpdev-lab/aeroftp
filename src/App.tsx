@@ -563,6 +563,9 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 // backstop well above any legitimate slow login (real logins are seconds), not
 // a policy timeout; the "Keep waiting" button re-arms it for another window.
 const CONNECT_HARD_TIMEOUT_MS = 120000;
+// How long a cancelled connect's or switch's backend teardown may run before
+// the backend is treated as uncertain (the backend's own gates wait 30 s).
+const BACKEND_TEARDOWN_BOUND_MS = 30000;
 
 // Minimum time the finished update progress bar stays on screen before the
 // result card replaces it. Signature verification normally takes longer than
@@ -1006,6 +1009,10 @@ const App: React.FC = () => {
   // phase is over, but until the half-open connection is gone the live tab is
   // not what the backend serves.
   const backendTeardownsRef = useRef(0);
+  // A teardown that did not end within its bound: the backend's state is
+  // unknown, so nothing is bound to the live tab until the next connect or
+  // switch replaces the connection (instead of until a restart).
+  const backendUncertainRef = useRef(false);
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
   // Connect form started, keyed by its phase version: a Cancel of that connect
@@ -6744,6 +6751,8 @@ const App: React.FC = () => {
       releaseRemoteNavigation();
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
       remoteConnectPhaseRef.current = 'connect';
+      // This connect replaces the connection a hung teardown left unknown.
+      backendUncertainRef.current = false;
       connectStartSessionsRef.current = { phaseVersion, ids: new Set(sessions.map(s => s.id)) };
       try {
         const scope = args[args.length - 1];
@@ -9023,6 +9032,8 @@ const App: React.FC = () => {
     // session down rather than leaving the user staring at stale files.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
     remoteConnectPhaseRef.current = 'switch';
+    // This switch replaces the connection a hung teardown left unknown.
+    backendUncertainRef.current = false;
     const listWithSpinner = <T,>(fn: () => Promise<T>): Promise<T> =>
       withRemoteListSpinner(fn, listingReason(targetSession.remotePath));
 
@@ -10151,6 +10162,29 @@ const App: React.FC = () => {
   // protocol, so issue both. Shared by the connect abort (which then clears the
   // remote view and the tabs the connect added) and the switch abort (which
   // keeps every healthy tab).
+  /** The teardown of a cancelled connect or switch, counted while it runs
+   *  (nothing is bound to the live tab meanwhile) and bounded: one that hangs
+   *  leaves the backend marked uncertain, which the next connect or switch
+   *  clears, and reports not dropped. */
+  const boundedTeardown = async (owns: () => boolean): Promise<boolean> => {
+    backendTeardownsRef.current += 1;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const outcome = await Promise.race([
+        lockAndDropBackendConnection(owns),
+        new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), BACKEND_TEARDOWN_BOUND_MS); }),
+      ]);
+      if (outcome === 'timeout') {
+        backendUncertainRef.current = true;
+        return false;
+      }
+      return outcome;
+    } finally {
+      clearTimeout(timer);
+      backendTeardownsRef.current -= 1;
+    }
+  };
+
   const lockAndDropBackendConnection = async (owns: () => boolean) => {
     const overlaySessionId = aeroVaultOverlaySession?.sessionId;
     return runOwnedConnectionCleanup(owns, [
@@ -10181,12 +10215,7 @@ const App: React.FC = () => {
   const abortConnectAfterCancel = async (owns: () => boolean, phaseVersion: number) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    backendTeardownsRef.current += 1;
-    try {
-      if (!await lockAndDropBackendConnection(owns) || !owns()) return;
-    } finally {
-      backendTeardownsRef.current -= 1;
-    }
+    if (!await boundedTeardown(owns) || !owns()) return;
     clearCryptOverlayState();
     setIsConnected(false);
     setLoading(false);
@@ -10224,12 +10253,7 @@ const App: React.FC = () => {
   const abortSwitchAfterCancel = async (owns: () => boolean) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    backendTeardownsRef.current += 1;
-    try {
-      if (!await lockAndDropBackendConnection(owns) || !owns()) return;
-    } finally {
-      backendTeardownsRef.current -= 1;
-    }
+    if (!await boundedTeardown(owns) || !owns()) return;
     clearCryptOverlayState();
   };
 
@@ -11212,12 +11236,19 @@ const App: React.FC = () => {
     // reconnected, and a cancelled one drops the half-open connection after
     // its phase ends: until either is done, the live tab is not the server the
     // backend writes to, or reads from.
-    if (remoteConnectPhaseRef.current || backendTeardownsRef.current > 0) return 'transfer.queuedForAnotherServer';
+    if (remoteConnectPhaseRef.current || backendTeardownsRef.current > 0 || backendUncertainRef.current) {
+      return 'transfer.queuedForAnotherServer';
+    }
     if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) return 'transfer.queuedForAnotherServer';
     // The same server fields can reach another account: FileLu's API key is
     // the password, and an OAuth account is told apart only by its profile.
+    // A Quick Connect queued with no profile may be linked to a saved one by a
+    // reconnect: with every field and the key unchanged it is the same
+    // account, so only a profile it was queued under has to match.
     if ((liveConnectionParams.password || '') !== (queuedFor.params.password || '')
-      || liveProfileId() !== queuedFor.profileId) return 'transfer.queuedForAnotherServer';
+      || (queuedFor.profileId !== null && liveProfileId() !== queuedFor.profileId)) {
+      return 'transfer.queuedForAnotherServer';
+    }
     if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';
     return null;
   });

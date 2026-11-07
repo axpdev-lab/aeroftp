@@ -708,7 +708,20 @@ pub async fn dispatch_gui_tool(
 
             let total = expanded_paths.len();
             for (idx, (local_path, rel_path)) in expanded_paths.iter().enumerate() {
-                validate_path(local_path, "path").map_err(|e| e.to_string())?;
+                let display_name = rel_path.clone();
+                // The file the policy approves is the file sent (deep scan
+                // item 27): pinned before any remote side effect, its parent
+                // folders included, and checked again after the upload. A
+                // refused source is that file's error; the others still go.
+                let source = match PinnedSource::pin(local_path, "path", |path, label| {
+                    validate_path(path, label).map_err(ToolError::Denied)
+                }) {
+                    Ok(source) => source,
+                    Err(e) => {
+                        errors.push(json!({ "file": display_name, "error": e.to_string() }));
+                        continue;
+                    }
+                };
                 let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), rel_path);
 
                 // Ensure remote parent directory exists (create each level)
@@ -736,18 +749,6 @@ pub async fn dispatch_gui_tool(
                     }
                 }
 
-                let display_name = rel_path.clone();
-                // The file the policy approves is the file sent (deep scan
-                // item 27): pinned before the upload, checked again after.
-                let source = match PinnedSource::pin(local_path, "path", |path, label| {
-                    validate_path(path, label).map_err(ToolError::Denied)
-                }) {
-                    Ok(source) => source,
-                    Err(e) => {
-                        errors.push(json!({ "file": display_name, "error": e.to_string() }));
-                        continue;
-                    }
-                };
                 emit_tool_progress(
                     &app,
                     "upload_files",
@@ -1070,6 +1071,40 @@ pub async fn dispatch_gui_tool(
 mod tests {
     use super::publish_remote_edit;
     use crate::providers::edit_replace_tests::EditFake;
+
+    /// The GUI's `upload_files`, as it runs: each source is pinned before any
+    /// remote side effect (its parent folders included), a refused one is
+    /// that file's error rather than the whole call's, and every outcome is
+    /// reported through `record_upload_outcome`, which reports a source
+    /// replaced during the upload as an error (tested in `pinned_source`).
+    #[test]
+    fn upload_files_pins_each_source_first_and_reports_every_file_through_one_function() {
+        let src = include_str!("gui_tools.rs");
+        let production = &src[..src.find("#[cfg(test)]").expect("tests")];
+        let start = production
+            .find("\"upload_files\" => {")
+            .expect("upload_files");
+        let arm = &production[start..];
+        let arm = &arm[..arm[1..]
+            .find("\n        \"")
+            .map_or(arm.len(), |end| end + 1)];
+        let pin = arm.find("PinnedSource::pin(local_path").expect("the pin");
+        let mkdir = arm.find(".mkdir(").expect("the parent folders");
+        assert!(
+            pin < mkdir,
+            "a source is pinned before any remote folder is made"
+        );
+        assert!(
+            !arm.contains("validate_path(local_path"),
+            "a refused source fails only its own file"
+        );
+        assert_eq!(arm.matches("record_upload_outcome(").count(), 1);
+        assert!(
+            !arm.contains("uploaded.push("),
+            "every report goes through record_upload_outcome"
+        );
+        assert_eq!(arm.matches("PinnedSource::pin(").count(), 1);
+    }
 
     /// A link back to the upload root must not repeat files or escape it.
     #[cfg(unix)]

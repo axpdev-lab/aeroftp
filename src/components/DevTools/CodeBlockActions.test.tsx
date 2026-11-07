@@ -9,7 +9,8 @@ import { EDITOR_APPLY_EVENT, EDITOR_READ_EVENT, type EditorApplyDetail, type Edi
 
 const fs = vi.hoisted(() => ({ writeTextFile: vi.fn(), readTextFile: vi.fn() }));
 vi.mock('@tauri-apps/plugin-fs', () => fs);
-vi.mock('../../utils/pickPath', () => ({ pickSave: vi.fn() }));
+const picker = vi.hoisted(() => ({ pickSave: vi.fn() }));
+vi.mock('../../utils/pickPath', () => picker);
 vi.mock('../../utils/clipboard', () => ({ copyText: vi.fn() }));
 vi.mock('../../i18n', () => ({ useTranslation: () => (key: string) => key }));
 
@@ -101,3 +102,59 @@ describe('Apply and Diff on a remote file whose editor is not open', () => {
         expect(fs.writeTextFile).not.toHaveBeenCalled();
     });
 });
+
+/**
+ * The diff of a local file stays open when its Apply does not land: a write
+ * that fails, or a Save-as cancelled after the editor closed the file.
+ */
+describe('Apply from the diff of a local file', () => {
+    let host: HTMLDivElement;
+    let root: Root;
+    const render = (props: Partial<React.ComponentProps<typeof CodeBlockActions>>) =>
+        act(() => root.render(<CodeBlockActions code="new" language="txt" editorFileName="a.txt" {...props} />));
+    beforeEach(() => {
+        host = document.createElement('div');
+        document.body.appendChild(host);
+        root = createRoot(host);
+        fs.readTextFile.mockResolvedValue('old');
+    });
+    afterEach(() => {
+        act(() => root.unmount());
+        host.remove();
+        vi.clearAllMocks();
+    });
+    const click = async (button: Element) => { await act(async () => { button.dispatchEvent(new MouseEvent('click', { bubbles: true })); }); };
+    const diffApply = () => [...host.querySelectorAll('button')].find(b => b.textContent === 'ai.diff.apply');
+    const openDiff = async () => {
+        render({ editorFilePath: '/home/me/a.txt' });
+        await click(host.querySelectorAll('button')[2]);
+        expect(diffApply()).toBeDefined();
+    };
+
+    it('stays open when the write fails', async () => {
+        await openDiff();
+        fs.writeTextFile.mockRejectedValueOnce(new Error('read-only file system'));
+        await click(diffApply()!);
+        expect(fs.writeTextFile).toHaveBeenCalledWith('/home/me/a.txt', 'new');
+        expect(diffApply()).toBeDefined();
+    });
+
+    it('stays open when the Save-as is cancelled', async () => {
+        await openDiff();
+        // The editor closed the file while the diff was open: Apply saves as.
+        render({ editorFilePath: undefined });
+        picker.pickSave.mockResolvedValueOnce(null);
+        await click(diffApply()!);
+        expect(picker.pickSave).toHaveBeenCalled();
+        expect(fs.writeTextFile).not.toHaveBeenCalled();
+        expect(diffApply()).toBeDefined();
+    });
+
+    it('closes once the write lands', async () => {
+        await openDiff();
+        fs.writeTextFile.mockResolvedValueOnce(undefined);
+        await click(diffApply()!);
+        expect(diffApply()).toBeUndefined();
+    });
+});
+
