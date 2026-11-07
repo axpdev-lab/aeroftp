@@ -14950,16 +14950,114 @@ mod tests {
         );
     }
 
+    /// A provider whose upload says when it starts and then waits to be let
+    /// go, so a test can act while a write is under way.
+    struct PausedUpload {
+        started: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for PausedUpload {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "paused".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(())
+        }
+        async fn mkdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _: &str, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, _: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+    }
+
     /// CodeRabbit on #1526: a switch that comes while the editor's save is
-    /// writing waits for it. The save is paused on the provider slot (the
-    /// test holds it), with the connection pinned: the switch cannot take
-    /// the slot over until the write has ended, then it can.
+    /// uploading waits for it. The save reaches the provider's upload, which
+    /// pauses there: a switch cannot take the connection over until the
+    /// upload has ended, then it can. A save that let the pin go before the
+    /// upload would let the switch through and fail this test.
     #[tokio::test]
     async fn a_switch_waits_for_an_editor_save_in_flight() {
         let app = crate::AppState::new();
         let state = ProviderState::new();
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        *state.provider.lock().await = Some(Box::new(PausedUpload {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        }));
         let live = state.connection_generation.load(Ordering::SeqCst);
-        let slot = state.provider.lock().await;
         let save = crate::write_remote_file_from_editor(
             &app,
             &state,
@@ -14968,27 +15066,19 @@ mod tests {
             Some(live),
         );
         tokio::pin!(save);
-        assert!(
-            tokio::time::timeout(Duration::from_millis(50), &mut save)
-                .await
-                .is_err(),
-            "the save waits on the slot the test holds"
-        );
+        tokio::select! {
+            saved = &mut save => panic!("the save ended before its upload paused: {saved:?}"),
+            _ = started.notified() => {}
+        }
         assert!(
             state
                 .transfer_owner_write(Duration::from_millis(50))
                 .await
                 .is_err(),
-            "a switch waits while the save holds the connection"
+            "a switch waits while the upload is under way"
         );
-        drop(slot);
-        let saved = save.await;
-        assert!(
-            saved
-                .as_ref()
-                .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
-            "{saved:?}"
-        );
+        release.notify_one();
+        save.await.expect("the save completes");
         assert!(
             state
                 .transfer_owner_write(Duration::from_millis(50))
