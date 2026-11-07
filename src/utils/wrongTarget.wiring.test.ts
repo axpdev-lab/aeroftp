@@ -574,6 +574,31 @@ describe('remote files cut on one server and pasted after a switch to another', 
         expect(f.fileClipboardRef.current).toBeNull();
     });
 
+    // Greptile on #1526: a switch that stops a move midway left the files it
+    // had not moved on A, and cleared the clipboard, so Paste could not finish.
+    it('keeps the files a switch stopped it from moving, and moves them once their server is back', async () => {
+        const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
+        cutOnA(f);
+        const run = f.invoke.getMockImplementation()!;
+        let renames = 0;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+            if (command === 'provider_rename') {
+                renames += 1;
+                // The user switches tabs while the first move is under way.
+                if (renames === 1) f.switchServer();
+                return undefined;
+            }
+            return run(command, args);
+        });
+        await f.clipboardPaste(true, INBOX);
+        expect(renames).toBe(1);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', isRemote: true, files: [{ name: 'b.txt' }] });
+        f.switchServer({ server: 'a.example' });
+        await f.clipboardPaste(true, INBOX);
+        expect(renames).toBe(2);
+        expect(f.fileClipboardRef.current).toBeNull();
+    });
+
     it('deletes nothing on B when the switch comes while the paste asks about overwriting', async () => {
         const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)), [SUB]: names.map(n => local(n, SUB)) }, policy: 'ask' });
         cutOnA(f);
@@ -722,7 +747,8 @@ describe('a direct remote action', () => {
 
     it.each([
         ['deleteMultipleRemoteFiles', 'remoteActionGuard()'],
-        ['deleteRemoteFile', 'remoteActionGuard()'],
+        // Or the target it was started for, when it runs again after the commit dialog.
+        ['deleteRemoteFile', 'startedFor ?? remoteActionGuard()'],
         ['renameFile', 'remoteActionGuard()'],
         ['commitInlineRename', 'remoteActionGuard(inlineRename.target)'],
         ['handleBatchRename', 'remoteActionGuard(batchRenameDialog?.target)'],
@@ -799,5 +825,60 @@ describe('the private step after a batch upload', () => {
         await runFileBatch('upload', items, REMOTE);
         expect(f.invoke.mock.calls.filter(([command]) => /set_path_privacy$/.test(command))).toEqual([]);
         expect(f.notify.error).toHaveBeenCalledWith('activity.set_private_error', 'one.txt, two.txt');
+    });
+});
+
+/**
+ * CodeRabbit on #1526: a GitHub or GitLab delete without a commit message
+ * opens the commit dialog, and its Commit runs the delete again. That second
+ * run took a fresh target, the server live after the dialog, so a switch
+ * while the dialog was open deleted the file at the same path there. It keeps
+ * the target the delete was started for. App's own `deleteRemoteFile` runs
+ * here, with the IPC and the dialogs mocked.
+ */
+describe('a delete that asks for a commit message', () => {
+    const run = async () => {
+        const source = between(APP, '  const deleteRemoteFile = (', '\n  const renameFile = (');
+        const { code } = await transformWithOxc(source, 'delete.ts');
+        const live = { server: 'a.example' };
+        // The guard of a direct action: bound to the server live when it is taken.
+        const remoteActionGuard = () => {
+            const at = live.server;
+            return () => { if (live.server !== at) throw new QueuedTargetChangedError('toast.remoteTargetChanged'); };
+        };
+        const invoke = vi.fn(async () => undefined);
+        const dialog: { onCommit?: (message: string) => void } = {};
+        const notify = { success: vi.fn(), error: vi.fn() };
+        const context: Record<string, unknown> = {
+            remoteActionGuard, invoke, notify, t: (key: string) => key,
+            liveConnectionParams: { protocol: 'github' },
+            gitHubRepoInfo: { branch: 'main', writeModeKind: 'direct', workingBranch: null },
+            setGitHubCommitDialog: (value: { onCommit: (message: string) => void } | null) => { if (value) dialog.onCommit = value.onCommit; },
+            humanLog: { logStart: () => 'log', logSuccess: vi.fn(), logError: vi.fn() },
+            usesProviderApi: () => true, aeroVaultOverlaySession: null, confirmBeforeDelete: false,
+            setConfirmDialog: vi.fn(), loadRemoteFiles: vi.fn(async () => undefined),
+        };
+        const deleteRemoteFile = new Function(...Object.keys(context), `${code}; return deleteRemoteFile;`)(...Object.values(context));
+        return { deleteRemoteFile, live, invoke, dialog, notify };
+    };
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+
+    it('deletes nothing on the server switched to while the dialog was open', async () => {
+        const r = await run();
+        r.deleteRemoteFile('/repo/a.txt', false);
+        expect(r.dialog.onCommit).toBeDefined();
+        r.live.server = 'b.example';
+        r.dialog.onCommit!('sentinel message');
+        await flush();
+        expect(r.invoke).not.toHaveBeenCalled();
+        expect(r.notify.error).toHaveBeenCalled();
+    });
+
+    it('deletes on the server it was started for when no switch came', async () => {
+        const r = await run();
+        r.deleteRemoteFile('/repo/a.txt', false);
+        r.dialog.onCommit!('sentinel message');
+        await flush();
+        expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message' });
     });
 });

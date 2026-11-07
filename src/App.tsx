@@ -13155,6 +13155,10 @@ const App: React.FC = () => {
     const onPasteTarget = queuedTargetGuard(pasteTarget);
     /** True, said once, when the paste's server is no longer live. */
     let retargetNotified = false;
+    /** The files a cut has moved all the way: the rest stay on the clipboard
+     *  when a switch stops it, so Paste can finish the move once their server
+     *  is live again (Greptile on #1526). */
+    const moveFinished = new Set<string>();
     const pasteRetargeted = () => {
       if (!queuedTargetProblem(pasteTarget)) return false;
       if (!retargetNotified) notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
@@ -13238,6 +13242,7 @@ const App: React.FC = () => {
                 recursive: true,
               });
               moved = landed.length;
+              for (const file of landed) moveFinished.add(file.path);
             } catch (e) {
               console.error('Failed to delete overlay source after cut', e);
             }
@@ -13257,6 +13262,7 @@ const App: React.FC = () => {
                 await invoke('delete_local_file', { path: file.path });
               }
               moved++;
+              moveFinished.add(file.path);
             } catch (e) {
               console.error(`Failed to delete source after cut: ${file.name}`, e);
             }
@@ -13301,6 +13307,7 @@ const App: React.FC = () => {
               // the target directory (irreversible, no trash). (audit C-F01)
               await invoke('rename_local_file', { from: file.path, to: destPath, overwrite: false });
             }
+            moveFinished.add(file.path);
           } catch (e) {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
           }
@@ -13383,10 +13390,16 @@ const App: React.FC = () => {
       }
     }
 
-    // Clear clipboard after cut (not after copy, so user can paste multiple times)
+    // Clear clipboard after cut (not after copy, so user can paste multiple
+    // times). A cut a switch stopped keeps the files it did not move.
     if (operation === 'cut') {
-      fileClipboardRef.current = null;
-      setHasClipboard(false);
+      const left = files.filter(file => !moveFinished.has(file.path));
+      if (retargetNotified && left.length > 0) {
+        fileClipboardRef.current = { ...cb, files: left };
+      } else {
+        fileClipboardRef.current = null;
+        setHasClipboard(false);
+      }
     }
   };
 
@@ -15024,10 +15037,12 @@ const App: React.FC = () => {
   });
 
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
-  const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
+  const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string, startedFor?: () => void) => {
     const fileName = path.split('/').pop() || path;
-    // The server this delete is for, taken before its confirmation.
-    const onTarget = remoteActionGuard();
+    // The server this delete is for, taken before its confirmation, or before
+    // the commit message dialog when it runs again after it (CodeRabbit on
+    // #1526: a fresh snapshot then was the server live after the dialog).
+    const onTarget = startedFor ?? remoteActionGuard();
     const protocol = liveConnectionParams.protocol;
     const isGitHubRepoMode = (protocol === 'github' && !path.startsWith('/.github-releases')) || protocol === 'gitlab';
 
@@ -15040,7 +15055,7 @@ const App: React.FC = () => {
         workingBranch: gitHubRepoInfo.workingBranch || undefined,
         onCommit: (message: string) => {
           setGitHubCommitDialog(null);
-          deleteRemoteFile(path, isDir, message);
+          deleteRemoteFile(path, isDir, message, onTarget);
         },
       });
       return;
