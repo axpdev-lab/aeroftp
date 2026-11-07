@@ -2279,11 +2279,36 @@ fn reset_profile_relaxations(
         if except_user == Some(user.id) {
             continue;
         }
+        let database_path = conn.path().map(str::to_string);
         let tx = match conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
             Ok(tx) => tx,
             Err(e) => {
                 report.failed += 1;
+                clear_user_session();
                 tracing::warn!("Security reset: account {}: {e}", user.id);
+                if let Some(path) = database_path {
+                    match Connection::open(path) {
+                        Ok(mut error_conn) => {
+                            block_security_reset(&error_conn, user.id);
+                            if let Err(marker) =
+                                mark_security_reset_pending(&mut error_conn, user.id)
+                            {
+                                report.persistent_failure = true;
+                                tracing::warn!(
+                                    "Security reset start marker: account {}: {marker}",
+                                    user.id
+                                );
+                            }
+                        }
+                        Err(marker) => {
+                            report.persistent_failure = true;
+                            tracing::warn!(
+                                "Security reset start connection: account {}: {marker}",
+                                user.id
+                            );
+                        }
+                    }
+                }
                 continue;
             }
         };
@@ -8164,6 +8189,51 @@ mod tests {
         assert_eq!(profiles[0]["name"], "Still here");
         assert_eq!(profiles[0]["options"]["trustUnknownHosts"], true);
         assert!(unlock_user(&conn, &root, locked.id, Some("passphrase")).is_ok());
+    }
+
+    #[test]
+    fn a_failed_reset_transaction_start_blocks_until_a_successful_unlock() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let root = store.derive_user_partition_wrapping_key();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let path = dir.path().join(DB_FILENAME);
+        let mut conn = open_or_init_path(path.clone()).unwrap();
+        conn.busy_timeout(std::time::Duration::from_millis(1))
+            .unwrap();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let user = active_user_id(&conn).unwrap().unwrap();
+        let row = read_user_key_row(&conn, user).unwrap();
+        let dek = unwrap_user_dek_with_key(&row, &root_secret).unwrap();
+        insert_profile_rows(
+            &conn,
+            &root_secret,
+            user,
+            &dek,
+            &[json!({
+                "id": "relaxed", "name": "Relaxed", "protocol": "sftp",
+                "host": "sftp.example.com", "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        let locker = Connection::open(&path).unwrap();
+        locker.execute_batch("BEGIN EXCLUSIVE").unwrap();
+
+        let report = reset_profile_relaxations(&mut conn, &root, None).unwrap();
+        assert_eq!(report.failed, 1);
+        assert!(report.persistent_failure);
+        assert!(security_reset_blocked(&conn, user));
+        assert_eq!(
+            list_server_profiles_for(&conn, &root, user).unwrap_err(),
+            "SECURITY_RESET_PENDING"
+        );
+
+        drop(locker);
+        let status = unlock_user(&conn, &root, user, None).unwrap();
+        assert_eq!(status.security_reset.len(), 1);
+        assert!(!security_reset_blocked(&conn, user));
     }
 
     #[test]
