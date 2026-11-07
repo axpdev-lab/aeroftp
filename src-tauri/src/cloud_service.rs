@@ -3697,6 +3697,15 @@ pub async fn sync_one_config(
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
     let opened = open_aerocloud_connection(&config, store).await?;
+    sync_opened_config(config, opened, app, dry_run).await
+}
+
+async fn sync_opened_config(
+    config: CloudConfig,
+    opened: ConnectedCloudProvider,
+    app: Option<AppHandle>,
+    dry_run: bool,
+) -> Result<SyncOperationResult, String> {
     let mut provider = opened.provider;
     // A manual "Sync now" connects here, not through the background cycle, so
     // it is the one that must tell the scheduler what the provider said about
@@ -6624,6 +6633,7 @@ mod baseline_tests {
         fail_upload_path: Option<String>,
         fail_stat_path: Option<String>,
         stat_calls: Vec<String>,
+        scan_floor: Option<Duration>,
     }
 
     impl MemoryProvider {
@@ -6790,6 +6800,9 @@ mod baseline_tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("memory".to_string())
         }
+        fn min_full_scan_interval(&self) -> Option<Duration> {
+            self.scan_floor
+        }
     }
 
     /// Run `body` with the sync index under a scratch `XDG_CONFIG_HOME`, which
@@ -6815,6 +6828,50 @@ mod baseline_tests {
         if let Err(panic) = outcome {
             std::panic::resume_unwind(panic);
         }
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn manual_sync_records_the_connected_providers_scan_floor() {
+        with_scratch_index(async {
+            let local = tempfile::tempdir().unwrap();
+            let floor = Duration::from_secs(30 * 60);
+            let config = CloudConfig {
+                enabled: true,
+                local_folder: local.path().into(),
+                remote_folder: "/manual-scan-traits".into(),
+                sync_direction: CompareDirection::Bidirectional,
+                ..Default::default()
+            };
+            let key = crate::cloud_scan_schedule::pair_key(&config);
+            let start = std::time::Instant::now();
+            crate::cloud_scan_schedule::ledger().record_full_scan(&key, start);
+            let opened = ConnectedCloudProvider {
+                provider: Box::new(MemoryProvider {
+                    scan_floor: Some(floor),
+                    ..Default::default()
+                }),
+                identity: None,
+            };
+            sync_opened_config(config, opened, None, true)
+                .await
+                .unwrap();
+            let five_minutes = Duration::from_secs(5 * 60);
+            assert!(
+                !crate::cloud_scan_schedule::ledger().scheduled_full_scan_due(
+                    &key,
+                    start + five_minutes,
+                    five_minutes,
+                )
+            );
+            assert!(
+                crate::cloud_scan_schedule::ledger().scheduled_full_scan_due(
+                    &key,
+                    start + floor,
+                    five_minutes,
+                )
+            );
+        });
     }
 
     const GONE_REMOTE: &str = "/gone-on-both";

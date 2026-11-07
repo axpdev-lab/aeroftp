@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { canonicalPresetId } from './providers/connectionManifest';
+
 // Remote file from FTP server
 export interface RemoteFile {
   name: string;
@@ -368,8 +370,14 @@ export const s3PresetReportsUsage = (
  */
 const S3_PRESETS_WITHOUT_OBJECT_TAGS = new Set<string>(["fastly"]);
 
-export const s3PresetOffersObjectTags = (providerId?: string | null): boolean =>
-  !providerId || !S3_PRESETS_WITHOUT_OBJECT_TAGS.has(providerId);
+export const s3PresetOffersObjectTags = (providerId?: string | null): boolean => {
+  const preset = canonicalPresetId(providerId);
+  return !preset || !S3_PRESETS_WITHOUT_OBJECT_TAGS.has(preset);
+};
+
+/** Fastly has no object versions, so it has no version-based trash view. */
+export const s3PresetOffersTrash = (providerId?: string | null): boolean =>
+  canonicalPresetId(providerId) !== "fastly";
 
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {

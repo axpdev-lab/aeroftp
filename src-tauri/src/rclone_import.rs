@@ -3905,7 +3905,8 @@ pub fn export_rclone(
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         // A blank region on a Tigris or Fastly profile is no
                         // region: it gets the preset's value written below.
-                        if !(matches!(provider_id, "tigris" | "fastly") && region.trim().is_empty())
+                        if provider_id != "fastly"
+                            && !(provider_id == "tigris" && region.trim().is_empty())
                         {
                             body.push_str(&format!("region = {}\n", region));
                             region_written = true;
@@ -3982,13 +3983,20 @@ pub fn export_rclone(
                         )
                     });
 
-                // Fastly signs with the host label as the region, so a profile
-                // without a usable region gets the label of its endpoint, else
-                // the preset's Frankfurt.
+                // Fastly signs with the host label as the region. A parsable
+                // endpoint wins over a mismatched stored value; otherwise the
+                // stored region stays, with the preset's Frankfurt as default.
                 let fastly_region = (provider_id == "fastly").then(|| {
                     resolved_endpoint
                         .as_deref()
                         .and_then(|e| crate::profile_loader::s3_region_from_endpoint("fastly", e))
+                        .or_else(|| {
+                            options
+                                .and_then(|opts| opts.get("region"))
+                                .and_then(|v| v.as_str())
+                                .filter(|region| !region.trim().is_empty())
+                                .map(str::to_string)
+                        })
                         .unwrap_or_else(|| "eu-central-1".to_string())
                 });
 
@@ -6135,6 +6143,15 @@ force_path_style = false
             conf.contains("endpoint = https://us-east.object.fastlystorage.app\n"),
             "{conf}"
         );
+        assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
+
+        // A mismatched stored region cannot win over the endpoint's signing label.
+        let conf = export(
+            serde_json::json!({ "bucket": "photos", "region": "eu-central-1" }),
+            "us-east.object.fastlystorage.app",
+        );
+        assert!(conf.contains("region = us-east\n"), "{conf}");
+        assert!(!conf.contains("region = eu-central-1\n"), "{conf}");
         assert_eq!(conf.matches("region = ").count(), 1, "{conf}");
 
         // A blank region follows the endpoint label, not the generic default.

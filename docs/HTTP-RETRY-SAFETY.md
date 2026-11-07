@@ -25,7 +25,7 @@ to the caller instead of repeating the write.
   S3 single PUT also retries 503 SlowDown under the same bound, and leaves
   every other 503 in place. On Fastly Object Storage the single PUT and each
   multipart part also repeat a 408, which Fastly answers when a request ran
-  past its 120 second limit and was not completed. The repeat targets the same
+  past its 120-second limit and was not completed. The repeat targets the same
   key, so it overwrites rather than stores twice; a single PUT reads the open
   file again on each attempt, so an in-place edit during the wait changes the
   bytes (no snapshot, as above). GitLab's byte-backed commit stays on

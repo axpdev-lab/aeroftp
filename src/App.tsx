@@ -34,7 +34,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, s3PresetOffersObjectTags, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, s3PresetOffersObjectTags, s3PresetOffersTrash, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -20189,7 +20189,10 @@ const App: React.FC = () => {
                         backblaze: () => setShowB2Hidden(true),
                         s3: () => setShowS3Trash(true),
                       };
-                      let handler = trashMap[proto || ''];
+                      let handler: (() => void) | undefined = trashMap[proto || ''];
+                      if (proto === 's3' && !s3PresetOffersTrash(activeProviderId)) {
+                        handler = undefined;
+                      }
                       // Azure rides on the s3 protocol key: its own trash view wins
                       // over the generic S3 version/trash browser.
                       if (isAzure) {

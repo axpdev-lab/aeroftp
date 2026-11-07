@@ -1851,7 +1851,7 @@ impl S3Provider {
     fn fastly_mismatch_label(&self) -> Option<String> {
         #[cfg(test)]
         if let Some(label) = self.force_fastly_label {
-            return (self.config.region.trim() != label).then(|| label.to_string());
+            return (self.config.region != label).then(|| label.to_string());
         }
         fastly_region_mismatch(self.config.endpoint.as_deref()?, &self.config.region)
     }
@@ -9623,7 +9623,7 @@ fn fastly_region_label(endpoint: &str) -> Option<String> {
 /// stored: `EU-CENTRAL-1` is refused like `us-east-1`.
 fn fastly_region_mismatch(endpoint: &str, region: &str) -> Option<String> {
     let label = fastly_region_label(endpoint)?;
-    (region.trim() != label).then_some(label)
+    (region != label).then_some(label)
 }
 
 /// The `<Code>` of an S3 XML error body, `None` when there is none.
@@ -13423,8 +13423,11 @@ mod tests {
             Some("us-east")
         );
         assert_eq!(fastly_region_mismatch(host, "eu-central-1"), None);
-        // Surrounding spaces do not count; the case does, as it is signed as stored.
-        assert_eq!(fastly_region_mismatch(host, " eu-central-1 "), None);
+        // Surrounding spaces and case both count, as the region is signed as stored.
+        assert_eq!(
+            fastly_region_mismatch(host, " eu-central-1 ").as_deref(),
+            Some("eu-central-1")
+        );
         assert_eq!(
             fastly_region_mismatch(host, "EU-Central-1").as_deref(),
             Some("eu-central-1")
