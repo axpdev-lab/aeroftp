@@ -148,6 +148,30 @@ impl std::fmt::Debug for ServerCredentials {
 /// change to profile ids), so a profile named like another profile's id is
 /// never approved as one profile and run as the other. `None` when nothing is
 /// named exactly; a caller may then try a part of a name, as reads do.
+/// What a saved profile's JSON connects to, as an approval sees it: the same
+/// value [`ServerProfile::connection_identity`] gives, read from the JSON the
+/// connection is then opened with.
+pub fn profile_identity(profile: &serde_json::Value) -> Option<String> {
+    ServerProfile::from_profile_json(profile).map(|profile| profile.connection_identity())
+}
+
+/// An error when a call was approved for a profile that connects elsewhere
+/// now; nothing is opened then. `expected` is the identity the approval saw,
+/// `current` the identity of the profile about to be connected; no
+/// `expected` (nothing was approved for it) passes.
+pub fn approved_target_unchanged(
+    server_query: &str,
+    expected: Option<&str>,
+    current: Option<&str>,
+) -> Result<(), String> {
+    match expected {
+        Some(expected) if Some(expected) != current => Err(format!(
+            "The saved server '{server_query}' changed after the call was approved; nothing was done"
+        )),
+        _ => Ok(()),
+    }
+}
+
 pub fn exact_profile_index<T>(
     profiles: &[T],
     query: &str,

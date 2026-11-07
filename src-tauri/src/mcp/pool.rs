@@ -10,6 +10,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::ai_core::credential_provider::{approved_target_unchanged, profile_identity};
 use crate::credential_store::CredentialStore;
 use crate::profile_loader::{
     apply_local_bridge_credential_defaults, parse_server_credential, profile_connection_extra,
@@ -573,27 +574,6 @@ fn resolve_profile_target(server_query: &str) -> Result<(String, Option<String>)
         .unwrap_or(server_query)
         .to_string();
     Ok((id, profile_identity(matched)))
-}
-
-/// What a saved profile's JSON connects to, as the approval saw it.
-fn profile_identity(profile: &serde_json::Value) -> Option<String> {
-    crate::ai_core::ServerProfile::from_profile_json(profile)
-        .map(|profile| profile.connection_identity())
-}
-
-/// An error when the call was approved for a profile that connects
-/// elsewhere now; nothing is opened then.
-fn approved_target_unchanged(
-    server_query: &str,
-    expected: Option<&str>,
-    current: Option<&str>,
-) -> Result<(), String> {
-    match expected {
-        Some(expected) if Some(expected) != current => Err(format!(
-            "The saved server '{server_query}' changed after the call was approved; nothing was done"
-        )),
-        _ => Ok(()),
-    }
 }
 
 /// Map a saved profile's protocol string to its provider type. Extracted from

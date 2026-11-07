@@ -119,6 +119,14 @@ pub trait ToolCtx: Send + Sync {
     fn approval_grant_id(&self) -> Option<&str> {
         None
     }
+    /// The connection identity the call was approved for, when `profile_id`
+    /// is a saved profile it changes ([`approve_change_targets`]): a tool
+    /// that opens that profile itself (a transfer) reaches it by this id only
+    /// and only while it still connects there. `None` for a call approved
+    /// for nothing.
+    fn approved_identity(&self, _profile_id: &str) -> Option<&str> {
+        None
+    }
     fn session_id(&self) -> Option<&str> {
         None
     }
@@ -2310,15 +2318,23 @@ fn change_targets_in(
 }
 
 /// [`change_targets`] as `key=id#identity` strings (`key=?`), the form the
-/// desktop's approval keys carry.
-pub fn change_target_ids(
+/// desktop's approval keys carry ([`target_ids`]).
+#[cfg(test)]
+pub(crate) fn change_target_ids(
     creds: &dyn CredentialProvider,
     tool_name: &str,
     args: &Value,
 ) -> Vec<String> {
-    change_targets(creds, tool_name, args)
-        .into_iter()
-        .map(|target| match target.profile {
+    target_ids(&change_targets(creds, tool_name, args))
+}
+
+/// How `targets` appear in an approval key: each one's argument with the
+/// profile id and the connection identity it resolved to, so a grant is for
+/// that profile as it connected then.
+pub fn target_ids(targets: &[ApprovedTarget]) -> Vec<String> {
+    targets
+        .iter()
+        .map(|target| match &target.profile {
             Some((id, identity)) => format!("{}={id}#{identity}", target.key),
             None => format!("{}=?", target.key),
         })

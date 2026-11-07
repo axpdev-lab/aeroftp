@@ -911,15 +911,6 @@ const SESSION_GRANT_TARGET_KEYS: [&str; 7] = crate::ai_core::tools::TARGET_PROFI
 /// approval keys: a profile replaced between the approval and the execution
 /// gives other keys, so the approval given for the old one does not let the
 /// call run on the replacement.
-fn bound_to_target_ids(tool_name: &str, args: &Value) -> Value {
-    let ids = crate::ai_core::tools::change_target_ids(
-        &crate::ai_core::tauri_impl::VaultCredentialProvider,
-        tool_name,
-        args,
-    );
-    with_target_ids(args, ids)
-}
-
 fn with_target_ids(args: &Value, ids: Vec<String>) -> Value {
     if ids.is_empty() {
         return args.clone();
@@ -976,11 +967,12 @@ fn build_session_scope_key(
 fn execution_approval_keys(
     tool_name: &str,
     args: &Value,
+    targets: &[crate::ai_core::tools::ApprovedTarget],
     context_local_path: Option<&str>,
     remote_context: Option<&str>,
 ) -> Result<(String, String), String> {
     approval_message_for(tool_name, args)?;
-    let keyed = bound_to_target_ids(tool_name, args);
+    let keyed = with_target_ids(args, crate::ai_core::tools::target_ids(targets));
     Ok((
         build_tool_cache_key(tool_name, &keyed, context_local_path, remote_context)?,
         build_session_scope_key(tool_name, &keyed, context_local_path, remote_context)?,
@@ -2074,8 +2066,44 @@ pub(crate) fn find_server_by_name_or_id(
 
 /// Create a temporary StorageProvider from a saved server profile.
 /// Credentials resolved internally from vault: never exposed to caller.
+/// The saved server a tool reaches. A change approved for a profile names it
+/// by id and gives the identity the approval saw: it is reached by that exact
+/// id only. A profile removed since is refused, never replaced by one whose
+/// name contains the id or the old name (a deleted `staging` must not become
+/// `staging-old`), and one recreated under the same name has another id. A
+/// read (`expected` None) keeps the name lookup.
+pub(crate) fn resolve_approved_server(
+    servers: &[SavedServerInfo],
+    server_id: &str,
+    expected: Option<&str>,
+) -> Result<SavedServerInfo, String> {
+    if expected.is_none() {
+        return find_server_by_name_or_id(servers, server_id);
+    }
+    servers
+        .iter()
+        .find(|server| server.id == server_id)
+        .cloned()
+        .ok_or_else(|| {
+            format!(
+                "The saved server '{server_id}' was removed after the call was approved; nothing was done"
+            )
+        })
+}
+
 pub(crate) async fn create_temp_provider(
     server: &SavedServerInfo,
+) -> Result<Box<dyn crate::providers::StorageProvider>, String> {
+    create_temp_provider_expecting(server, None).await
+}
+
+/// [`create_temp_provider`] for a call approved for `server` while it
+/// connected to `expected`: the profile is checked against that identity on
+/// the same JSON the connection is opened with, so a profile edited to
+/// another host after the approval is not opened.
+pub(crate) async fn create_temp_provider_expecting(
+    server: &SavedServerInfo,
+    expected: Option<&str>,
 ) -> Result<Box<dyn crate::providers::StorageProvider>, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
@@ -2104,6 +2132,11 @@ pub(crate) async fn create_temp_provider(
                 server.name
             )
         })?;
+    crate::ai_core::credential_provider::approved_target_unchanged(
+        &server.name,
+        expected,
+        crate::ai_core::credential_provider::profile_identity(profile).as_deref(),
+    )?;
 
     let scope = crate::profile_auth::AuthScope {
         store: &store,
@@ -2255,18 +2288,17 @@ pub async fn prepare_ai_tool_approval(
             allow_session_grant: false,
         });
     }
-    // A change on a server named only in part is refused before the window
-    // asks, so no approval is given for a server the user did not name.
-    if let Some(reason) = crate::ai_core::tools::inexact_change_target(
+    // A change on a server named only in part, or on no saved server, is
+    // refused before the window asks, so no approval is given for a server
+    // the user did not name. The key binds the profiles from the same read.
+    let targets = crate::ai_core::tools::approve_change_targets(
         &crate::ai_core::tauri_impl::VaultCredentialProvider,
         &tool_name,
         &args,
-    ) {
-        return Err(reason);
-    }
+    )?;
 
     let remote_context = build_remote_cache_context(&state, &app_state).await;
-    let keyed = bound_to_target_ids(&tool_name, &args);
+    let keyed = with_target_ids(&args, crate::ai_core::tools::target_ids(&targets));
     let scope_key = build_tool_cache_key(
         &tool_name,
         &keyed,
@@ -2548,11 +2580,21 @@ async fn execute_ai_tool_of_turn(
         return Err(crate::ai_core::tools::CANCELLED.to_string());
     }
 
+    // The saved profiles a change names, read once: the approval key binds
+    // them, and the call reaches them by id with the identity they had then
+    // (Greptile on #1522: resolving the name again at dispatch could reach a
+    // profile deleted, recreated or edited after the approval).
+    let approved_targets = crate::ai_core::tools::approve_change_targets(
+        &crate::ai_core::tauri_impl::VaultCredentialProvider,
+        &tool_name,
+        &args,
+    )?;
     if requires_backend_write_approval(&tool_name, &args) {
         let remote_context = build_remote_cache_context(&state, &app_state).await;
         let (scope_key, session_scope_key) = execution_approval_keys(
             &tool_name,
             &args,
+            &approved_targets,
             context_local_path.as_deref(),
             remote_context.as_deref(),
         )?;
@@ -2564,7 +2606,21 @@ async fn execute_ai_tool_of_turn(
             approval_grant_id.as_deref(),
         )
         .await?;
+        // The approval can wait on another one: a profile replaced or edited
+        // meanwhile is not the one the approval was for.
+        if crate::ai_core::tools::change_targets(
+            &crate::ai_core::tauri_impl::VaultCredentialProvider,
+            &tool_name,
+            &args,
+        ) != approved_targets
+        {
+            return Err(
+                "Tool call refused: a saved server it names changed while the approval was open."
+                    .to_string(),
+            );
+        }
     }
+    let pinned = crate::ai_core::tools::args_pinned_to(&args, &approved_targets);
 
     let ctx = crate::ai_core::tauri_impl::TauriToolCtx {
         app: app.clone(),
@@ -2574,8 +2630,10 @@ async fn execute_ai_tool_of_turn(
         approval_grant_id,
         session_id,
         cancel: cancel.clone(),
-    };
-    let dispatch = crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &args);
+        approved_identities: std::collections::HashMap::new(),
+    }
+    .approved_for(&approved_targets);
+    let dispatch = crate::ai_core::tools::dispatch_tool(&ctx, &tool_name, &pinned);
     match cancel {
         // The cancel point inside the tool ends a loop between two items; a
         // tool waiting on one request (a large remote read) ends here, the
@@ -3260,6 +3318,7 @@ mod approval_tests {
         let err = execution_approval_keys(
             "local_copy_files",
             &json!({"paths": paths, "destination": "/work/out"}),
+            &[],
             Some("/work"),
             None,
         )
@@ -3268,6 +3327,7 @@ mod approval_tests {
         execution_approval_keys(
             "local_copy_files",
             &json!({"paths": ["/work/one.txt"], "destination": "/work/out"}),
+            &[],
             Some("/work"),
             None,
         )

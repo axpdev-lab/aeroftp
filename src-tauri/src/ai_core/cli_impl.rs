@@ -312,6 +312,9 @@ impl ToolCtx for CliToolCtx {
     fn context_local_path(&self) -> Option<&str> {
         self.cwd.as_deref()
     }
+    fn approved_identity(&self, profile_id: &str) -> Option<&str> {
+        self.approved_identities.get(profile_id).map(String::as_str)
+    }
     fn surface(&self) -> Surfaces {
         Surfaces::CLI
     }

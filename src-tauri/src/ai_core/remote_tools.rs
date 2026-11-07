@@ -2786,11 +2786,22 @@ fn validate_transfer_path(path: &str, label: &str) -> Result<(), ToolError> {
 /// Resolve a fuzzy server query to a concrete `SavedServerInfo`. Same logic as
 /// [`crate::ai_tools::find_server_by_name_or_id`] but returns
 /// [`ToolError::Exec`] so the dispatcher can surface a structured error.
-fn resolve_profile(
+/// The profile a transfer endpoint names, and the identity it was approved
+/// for. An approved transfer names its profiles by id ([`args_pinned_to`]):
+/// each is reached by that id only, and opened only while it still connects
+/// where it did at the approval. A call approved for nothing keeps the name
+/// lookup.
+///
+/// [`args_pinned_to`]: crate::ai_core::tools::args_pinned_to
+fn resolve_transfer_endpoint<'a>(
+    ctx: &'a dyn ToolCtx,
     profiles: &[crate::ai_tools::SavedServerInfo],
     query: &str,
-) -> Result<crate::ai_tools::SavedServerInfo, ToolError> {
-    crate::ai_tools::find_server_by_name_or_id(profiles, query).map_err(ToolError::Exec)
+) -> Result<(crate::ai_tools::SavedServerInfo, Option<&'a str>), ToolError> {
+    let expected = ctx.approved_identity(query);
+    let server = crate::ai_tools::resolve_approved_server(profiles, query, expected)
+        .map_err(ToolError::Exec)?;
+    Ok((server, expected))
 }
 
 /// Reject identical source/destination profiles by id (preferred) or by
@@ -2808,7 +2819,7 @@ fn ensure_distinct_profiles(
     Ok(())
 }
 
-async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+async fn transfer_one(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let src_server_query = get_str(args, "src_server")?;
     let dst_server_query = get_str(args, "dst_server")?;
     let src_path = get_str(args, "src_path")?;
@@ -2819,15 +2830,15 @@ async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
 
     let profiles = crate::ai_tools::load_saved_servers().map_err(ToolError::Exec)?;
-    let src_server = resolve_profile(&profiles, &src_server_query)?;
-    let dst_server = resolve_profile(&profiles, &dst_server_query)?;
+    let (src_server, src_expected) = resolve_transfer_endpoint(ctx, &profiles, &src_server_query)?;
+    let (dst_server, dst_expected) = resolve_transfer_endpoint(ctx, &profiles, &dst_server_query)?;
     ensure_distinct_profiles(&src_server, &dst_server)?;
 
     let started = std::time::Instant::now();
 
     // Connect to source first to stat the file. The dest connection is opened
     // only when actually needed (skip_existing check or transfer).
-    let src_box = crate::ai_tools::create_temp_provider(&src_server)
+    let src_box = crate::ai_tools::create_temp_provider_expecting(&src_server, src_expected)
         .await
         .map_err(ToolError::Exec)?;
     let mut src_provider = src_box;
@@ -2845,7 +2856,7 @@ async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         });
     }
 
-    let dst_box = crate::ai_tools::create_temp_provider(&dst_server)
+    let dst_box = crate::ai_tools::create_temp_provider_expecting(&dst_server, dst_expected)
         .await
         .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
     let mut dst_provider = dst_box;
@@ -2972,8 +2983,8 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         .unwrap_or(DEFAULT_TRANSFER_TREE_FILES);
 
     let profiles = crate::ai_tools::load_saved_servers().map_err(ToolError::Exec)?;
-    let src_server = resolve_profile(&profiles, &src_server_query)?;
-    let dst_server = resolve_profile(&profiles, &dst_server_query)?;
+    let (src_server, src_expected) = resolve_transfer_endpoint(ctx, &profiles, &src_server_query)?;
+    let (dst_server, dst_expected) = resolve_transfer_endpoint(ctx, &profiles, &dst_server_query)?;
     ensure_distinct_profiles(&src_server, &dst_server)?;
 
     let started = std::time::Instant::now();
@@ -2981,12 +2992,14 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     // Open BOTH connections once and reuse them across the whole batch: the
     // cap on `max_files` keeps temp-file fan-out bounded while sticking to
     // 2 underlying TCP/SSH sessions (Option A in the Gap 10 handoff).
-    let mut src_provider = crate::ai_tools::create_temp_provider(&src_server)
-        .await
-        .map_err(ToolError::Exec)?;
-    let mut dst_provider = crate::ai_tools::create_temp_provider(&dst_server)
-        .await
-        .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
+    let mut src_provider =
+        crate::ai_tools::create_temp_provider_expecting(&src_server, src_expected)
+            .await
+            .map_err(ToolError::Exec)?;
+    let mut dst_provider =
+        crate::ai_tools::create_temp_provider_expecting(&dst_server, dst_expected)
+            .await
+            .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
 
     let request = crate::cross_profile_transfer::CrossProfileTransferRequest {
         source_profile: src_server.name.clone(),
@@ -4696,41 +4709,46 @@ mod tests {
     #[test]
     fn resolve_profile_exact_id() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
-        let r = resolve_profile(&profiles, "id-b").unwrap();
+        let r = crate::ai_tools::find_server_by_name_or_id(&profiles, "id-b").unwrap();
         assert_eq!(r.id, "id-b");
     }
 
     #[test]
     fn resolve_profile_takes_an_id_over_a_profile_named_like_it() {
         let profiles = vec![server("id-a", "id-b"), server("id-b", "Beta")];
-        assert_eq!(resolve_profile(&profiles, "id-b").unwrap().id, "id-b");
+        assert_eq!(
+            crate::ai_tools::find_server_by_name_or_id(&profiles, "id-b")
+                .unwrap()
+                .id,
+            "id-b"
+        );
     }
 
     #[test]
     fn resolve_profile_exact_name_case_insensitive() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
-        let r = resolve_profile(&profiles, "alpha").unwrap();
+        let r = crate::ai_tools::find_server_by_name_or_id(&profiles, "alpha").unwrap();
         assert_eq!(r.id, "id-a");
     }
 
     #[test]
     fn resolve_profile_substring_match() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
-        let r = resolve_profile(&profiles, "et").unwrap();
+        let r = crate::ai_tools::find_server_by_name_or_id(&profiles, "et").unwrap();
         assert_eq!(r.id, "id-b");
     }
 
     #[test]
     fn resolve_profile_no_match_errors() {
         let profiles = vec![server("id-a", "Alpha")];
-        assert!(resolve_profile(&profiles, "Gamma").is_err());
+        assert!(crate::ai_tools::find_server_by_name_or_id(&profiles, "Gamma").is_err());
     }
 
     #[test]
     fn resolve_profile_ambiguous_errors() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Alpine")];
         // "alp" matches both "Alpha" and "Alpine" via fuzzy contains.
-        assert!(resolve_profile(&profiles, "alp").is_err());
+        assert!(crate::ai_tools::find_server_by_name_or_id(&profiles, "alp").is_err());
     }
 
     #[test]
@@ -8662,5 +8680,185 @@ mod tests {
                 "{root:?}: {reconciled}"
             );
         }
+    }
+
+    // --- an approved change reaches its profile by id only (Greptile, #1522) --
+
+    fn saved(id: &str, name: &str, host: &str) -> crate::ai_tools::SavedServerInfo {
+        crate::ai_tools::SavedServerInfo {
+            id: id.to_string(),
+            name: name.to_string(),
+            host: host.to_string(),
+            port: 22,
+            username: "tester".to_string(),
+            protocol: "sftp".to_string(),
+            initial_path: None,
+            provider_id: None,
+        }
+    }
+
+    /// `staging` approved, then deleted before the call reached its server:
+    /// the name lookup a read uses would take `staging-old`, whose name
+    /// contains it. An approved change is refused instead.
+    #[test]
+    fn an_approved_change_never_reaches_a_profile_named_like_a_deleted_one() {
+        let after_delete = vec![saved("id-old", "staging-old", "old.example.com")];
+        assert_eq!(
+            crate::ai_tools::resolve_approved_server(&after_delete, "staging", None)
+                .unwrap()
+                .id,
+            "id-old",
+            "a read keeps the name lookup"
+        );
+        let refused =
+            crate::ai_tools::resolve_approved_server(&after_delete, "id-staging", Some("sftp://x"))
+                .unwrap_err();
+        assert!(
+            refused.contains("was removed after the call was approved"),
+            "{refused}"
+        );
+    }
+
+    /// Deleted and recreated under the same name: the new profile has another
+    /// id, and the call approved for the old one does not reach it.
+    #[test]
+    fn an_approved_change_never_reaches_a_profile_recreated_under_the_same_name() {
+        let recreated = vec![saved("id-new", "staging", "new.example.com")];
+        assert!(crate::ai_tools::resolve_approved_server(
+            &recreated,
+            "id-staging",
+            Some("sftp://x")
+        )
+        .is_err());
+        let unchanged = vec![saved("id-staging", "staging", "staging.example.com")];
+        assert_eq!(
+            crate::ai_tools::resolve_approved_server(&unchanged, "id-staging", Some("sftp://x"))
+                .unwrap()
+                .id,
+            "id-staging"
+        );
+    }
+
+    /// Same id, edited to another host after the approval: the identity check
+    /// that `create_temp_provider_expecting` runs on the profile JSON it then
+    /// connects with refuses it, and passes the profile left unchanged.
+    #[test]
+    fn an_approved_change_never_opens_a_profile_edited_to_another_host() {
+        let profile = json!({"id": "id-staging", "name": "staging", "host": "staging.example.com",
+            "port": 22, "username": "tester", "protocol": "sftp"});
+        let approved = crate::ai_core::credential_provider::profile_identity(&profile).unwrap();
+        let mut edited = profile.clone();
+        edited["host"] = json!("elsewhere.example.com");
+        let current = crate::ai_core::credential_provider::profile_identity(&edited);
+        assert!(
+            crate::ai_core::credential_provider::approved_target_unchanged(
+                "staging",
+                Some(&approved),
+                current.as_deref()
+            )
+            .is_err()
+        );
+        assert!(
+            crate::ai_core::credential_provider::approved_target_unchanged(
+                "staging",
+                Some(&approved),
+                Some(&approved)
+            )
+            .is_ok()
+        );
+    }
+
+    /// The desktop resolves the backend each time a tool asks for it, the way
+    /// `TauriToolCtx` does: by the approved id only. `create_parents` asks a
+    /// second time, after network round trips; a profile deleted in between
+    /// is refused there too, and every resolution names the approved id.
+    struct ResolvingCtx {
+        profiles: Mutex<Vec<crate::ai_tools::SavedServerInfo>>,
+        approved: std::collections::HashMap<String, String>,
+        backend: Arc<dyn RemoteBackend>,
+        asked: Mutex<Vec<String>>,
+        sink: NoopSink,
+        creds: NoopCreds,
+    }
+
+    #[async_trait::async_trait]
+    impl ToolCtx for ResolvingCtx {
+        fn event_sink(&self) -> &dyn EventSink {
+            &self.sink
+        }
+        fn credentials(&self) -> &dyn CredentialProvider {
+            &self.creds
+        }
+        async fn remote_backend(&self, server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
+            self.asked.lock().unwrap().push(server_id.to_string());
+            let mut profiles = self.profiles.lock().unwrap();
+            crate::ai_tools::resolve_approved_server(
+                &profiles,
+                server_id,
+                self.approved_identity(server_id),
+            )?;
+            // Deleted right after this resolution, leaving a profile whose
+            // name contains the deleted one's.
+            *profiles = vec![saved("id-old", "staging-old", "old.example.com")];
+            Ok(Arc::clone(&self.backend))
+        }
+        fn approved_identity(&self, profile_id: &str) -> Option<&str> {
+            self.approved.get(profile_id).map(String::as_str)
+        }
+        fn surface(&self) -> crate::ai_core::tools::Surfaces {
+            crate::ai_core::tools::Surfaces::GUI
+        }
+    }
+
+    #[tokio::test]
+    async fn create_parents_resolves_the_approved_id_again_and_refuses_a_profile_deleted_meanwhile()
+    {
+        let ctx = ResolvingCtx {
+            profiles: Mutex::new(vec![saved("id-staging", "staging", "staging.example.com")]),
+            approved: [("id-staging".to_string(), "sftp://x".to_string())]
+                .into_iter()
+                .collect(),
+            backend: Arc::new(FakeBackend::sample()),
+            asked: Mutex::new(Vec::new()),
+            sink: NoopSink,
+            creds: NoopCreds::default(),
+        };
+        let args = json!({"server": "id-staging", "remote_path": "/new/dir/a.txt",
+            "content": "payload", "create_parents": true});
+        let refused = upload_file(&ctx, &args).await.unwrap_err();
+        assert!(
+            refused
+                .to_string()
+                .contains("was removed after the call was approved"),
+            "{refused}"
+        );
+        assert_eq!(*ctx.asked.lock().unwrap(), vec!["id-staging", "id-staging"]);
+    }
+
+    /// The transfer tools open their two profiles themselves, outside the
+    /// backend: they take the same path, by the approved id and identity, and
+    /// a call approved for nothing keeps the name lookup.
+    #[test]
+    fn a_transfer_endpoint_is_reached_by_its_approved_id_only() {
+        let ctx = ResolvingCtx {
+            profiles: Mutex::new(Vec::new()),
+            approved: [("id-staging".to_string(), "sftp://x".to_string())]
+                .into_iter()
+                .collect(),
+            backend: Arc::new(FakeBackend::sample()),
+            asked: Mutex::new(Vec::new()),
+            sink: NoopSink,
+            creds: NoopCreds::default(),
+        };
+        let after_delete = vec![saved("id-old", "staging-old", "old.example.com")];
+        assert!(resolve_transfer_endpoint(&ctx, &after_delete, "id-staging").is_err());
+        let present = vec![saved("id-staging", "staging", "staging.example.com")];
+        let (server, expected) = resolve_transfer_endpoint(&ctx, &present, "id-staging").unwrap();
+        assert_eq!(
+            (server.id.as_str(), expected),
+            ("id-staging", Some("sftp://x"))
+        );
+        let (read, expected) = resolve_transfer_endpoint(&ctx, &after_delete, "staging").unwrap();
+        assert_eq!((read.id.as_str(), expected), ("id-old", None));
     }
 }
