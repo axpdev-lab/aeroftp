@@ -1326,11 +1326,15 @@ async fn append_from(
     Ok(())
 }
 
+/// What the upload test seam runs right before the upload's open.
+#[cfg(test)]
+type UploadOpenHook = Box<dyn Fn(&Path)>;
+
 #[cfg(test)]
 thread_local! {
     /// Test seam: run right before the upload's open, to swap a link in at
     /// the destination after every check that precedes the open.
-    static BEFORE_UPLOAD_OPEN: std::cell::RefCell<Option<Box<dyn Fn(&Path)>>> =
+    static BEFORE_UPLOAD_OPEN: std::cell::RefCell<Option<UploadOpenHook>> =
         const { std::cell::RefCell::new(None) };
 }
 
