@@ -5643,7 +5643,8 @@
             "managePasswordProtected": "Şifre korumalı",
             "expirationHoursOne": "{count} saat",
             "expirationHoursMany": "{count} saat",
-            "expirationDaysMany": "{count} gün"
+            "expirationDaysMany": "{count} gün",
+            "expiresSoonerThanChosen": "seçilenden daha kısa"
         },
         "introHub": {
             "tab": {

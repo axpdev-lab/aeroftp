@@ -8,6 +8,29 @@
 
 import { ServerProfile, ProviderType, getE2EBits, getProtocolClass, getServerCryptOverlay, NATIVE_PROVIDER_PROTOCOLS } from '../types';
 import { getProviderById } from '../providers';
+import s3HostMap from '../shared/s3-host-map.json';
+
+interface S3HostEntry {
+    providerId: string;
+    preset: boolean;
+    domains: string[];
+    hostPatterns?: string[];
+}
+
+const S3_HOST_ENTRIES: readonly (S3HostEntry & { patterns: RegExp[] })[] = (s3HostMap.providers as S3HostEntry[])
+    .filter(entry => entry.preset)
+    .map(entry => ({ ...entry, patterns: (entry.hostPatterns ?? []).map(p => new RegExp(p)) }));
+
+/** The S3 preset a bare endpoint host belongs to, on a domain boundary, or
+ *  undefined. Exported for the table's own test. */
+export function s3ProviderForHost(host: string): string | undefined {
+    const h = host.toLowerCase();
+    for (const entry of S3_HOST_ENTRIES) {
+        if (entry.domains.some(domain => h === domain || h.endsWith('.' + domain))) return entry.providerId;
+        if (entry.patterns.some(pattern => pattern.test(h))) return entry.providerId;
+    }
+    return undefined;
+}
 
 /** The fields the search reads. Saved profiles satisfy it, and so do the
  *  previews a bridge import builds from a third-party config, which carry
@@ -24,36 +47,14 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
     if (NATIVE_PROVIDER_PROTOCOLS.has(proto)) return proto;
     const host = (server.host || '').toLowerCase();
     if (proto === 's3') {
-        // Tigris first, on its domain boundary: a bucket-qualified Tigris host
-        // can carry another vendor's name (backblaze-backups.t3.storage.dev),
-        // which the substring rules below would take for that vendor.
-        // Current t3.storage.dev plus the legacy fly.storage.tigris.dev.
-        const tigrisHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
-        for (const domain of ['t3.storage.dev', 'fly.storage.tigris.dev']) {
-            if (tigrisHost === domain || tigrisHost.endsWith('.' + domain)) return 'tigris';
-        }
-        if (host.includes('backblaze')) return 'backblaze';
-        if (host.includes('r2.cloudflarestorage')) return 'cloudflare-r2';
-        if (host.includes('wasabi')) return 'wasabi';
-        if (host.includes('idrive')) return 'idrive-e2';
-        // Domain-boundary match: exact s3.filebase.io (+ optional port) or bucket subdomains; reject lookalikes
+        // One boundary-matched table shared with the bridge mapper
+        // (src/shared/s3-host-map.json). The substring rules it replaces took
+        // a bucket named after another vendor for that vendor:
+        // `backblaze-backup.s3.amazonaws.com` read as Backblaze (#1506
+        // Requested 173).
         const s3Host = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
-        if (s3Host === 's3.filebase.io' || s3Host.endsWith('.s3.filebase.io')) return 'filebase';
-        if (host.includes('storj')) return 'storj';
-        // Host boundary, same idea as Filebase. The old includes('mega.io')
-        // also matched notmega.io and mega.io.example. s4.mega.io is named
-        // on its own so a later edit of the mega.io rule cannot drop the
-        // legacy S4 zone. megas4.com is the current zone and is not a
-        // subdomain of mega.io.
-        const megaHost = (domain: string) => s3Host === domain || s3Host.endsWith('.' + domain);
-        if (megaHost('megas4.com') || megaHost('s4.mega.io') || megaHost('mega.io') || megaHost('mega.nz')) return 'mega-s4';
-        if (host.includes('amazonaws.com')) return 'amazon-s3';
-        if (host.includes('aliyuncs.com')) return 'alibaba-oss';
-        if (host.includes('myqcloud.com')) return 'tencent-cos';
-        if (host.includes('oraclecloud')) return 'oracle-cloud';
-        if (host.includes('digitaloceanspaces')) return 'digitalocean-spaces';
-        if (host.includes('storage.yandex')) return 'yandex-storage';
-        if (host.includes('filelu')) return 'filelu-s3';
+        const match = s3ProviderForHost(s3Host);
+        if (match) return match;
     }
     if (proto === 'webdav') {
         if (host.includes('koofr')) return 'koofr-webdav';

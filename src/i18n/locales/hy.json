@@ -5643,7 +5643,8 @@
             "managePasswordProtected": "Գաղտնաբառով պաշտպանված",
             "expirationHoursOne": "{count} ժամ",
             "expirationHoursMany": "{count} ժամ",
-            "expirationDaysMany": "{count} օր"
+            "expirationDaysMany": "{count} օր",
+            "expiresSoonerThanChosen": "ընտրվածից կարճ"
         },
         "introHub": {
             "tab": {

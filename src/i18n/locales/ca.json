@@ -5662,7 +5662,8 @@
             "managePasswordProtected": "Protegit amb contrasenya",
             "expirationHoursOne": "{count} hora",
             "expirationHoursMany": "{count} hores",
-            "expirationDaysMany": "{count} dies"
+            "expirationDaysMany": "{count} dies",
+            "expiresSoonerThanChosen": "més curt que l'escollit"
         },
         "introHub": {
             "tab": {

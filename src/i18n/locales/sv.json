@@ -5643,7 +5643,8 @@
             "managePasswordProtected": "Lösenordsskyddad",
             "expirationHoursOne": "{count} timme",
             "expirationHoursMany": "{count} timmar",
-            "expirationDaysMany": "{count} dagar"
+            "expirationDaysMany": "{count} dagar",
+            "expiresSoonerThanChosen": "kortare än valt"
         },
         "introHub": {
             "tab": {

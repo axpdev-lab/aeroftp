@@ -119,6 +119,12 @@ describe('signing region read back from an explicit endpoint', () => {
         ['ibm-cos', 'https://s3.eu-gb.cloud-object-storage.appdomain.cloud/bucket', 'eu-gb'],
         ['ibm-cos', 'https://S3.JP-OSA.cloud-object-storage.appdomain.cloud:443', 'jp-osa'],
         ['wasabi', 'https://s3.eu-central-2.wasabisys.com', 'eu-central-2'],
+        // Internal and accelerate endpoints (Greptile on #1525).
+        ['alibaba-oss', 'https://oss-cn-hangzhou-internal.aliyuncs.com', 'cn-hangzhou'],
+        ['alibaba-oss', 'https://oss-accelerate.aliyuncs.com', undefined],
+        ['alibaba-oss', 'https://oss-accelerate-overseas.aliyuncs.com', undefined],
+        ['tencent-cos', 'https://cos.accelerate.myqcloud.com', undefined],
+        ['ibm-cos', 'https://s3.private.us-south.cloud-object-storage.appdomain.cloud', undefined],
         ['wasabi', 's3.wasabisys.com', undefined],
         ['mega-s4', 's3.eu-central-2.s4.mega.io', 'eu-central-2'],
         ['mega-s4', 's3.eu-central-1.s4.mega.io', 'eu-central-1'],
@@ -164,8 +170,10 @@ describe('signing region read back from an explicit endpoint', () => {
     it('signs an IBM regional endpoint with its own region, not us-east-1', () => {
         expect(resolveProfileS3Location('ibm-cos', {}, 's3.us-south.cloud-object-storage.appdomain.cloud').signingRegion)
             .toBe('us-south');
+        // A stored region the host contradicts loses to the host's (#1506
+        // Requested 200): eu-gb cannot sign for the us-south endpoint.
         expect(resolveProfileS3Location('ibm-cos', { region: 'eu-gb' }, 's3.us-south.cloud-object-storage.appdomain.cloud').signingRegion)
-            .toBe('eu-gb');
+            .toBe('us-south');
     });
 });
 
@@ -208,11 +216,34 @@ describe('MEGA S4 preset', () => {
             region: 'eu-central-1',
             signingRegion: 'eu-central-1',
         });
+        // The region the host names wins over a stored one that contradicts
+        // it (#1506 Requested 200): this host signs eu-central-1.
         expect(resolveProfileS3Location(
             'mega-s4',
             { endpoint: 's3.eu-central-1.s4.mega.io', region: 'eu-central-2' },
             '',
-        ).signingRegion).toBe('eu-central-2');
+        ).signingRegion).toBe('eu-central-1');
+    });
+
+    // #1506 Requested 200, the same table as the Rust test
+    // the_region_an_endpoint_names_wins_over_a_contradicting_stored_one.
+    it.each([
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'us-east-1', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'eu-central-1', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'EU-CENTRAL-1', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', ' eu-central-1 ', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', undefined, 'eu-central-1'],
+        ['ibm-cos', 'https://s3.us-south.cloud-object-storage.appdomain.cloud', 'eu-de', 'us-south'],
+        ['digitalocean-spaces', 'https://fra1.digitaloceanspaces.com', 'us-east-1', 'fra1'],
+        ['wasabi', 'https://storage.example.com', 'us-west-1', 'us-west-1'],
+        ['wasabi', 'https://storage.example.com', ' us-west-1 ', 'us-west-1'],
+        ['alibaba-oss', 'https://oss-cn-hangzhou-internal.aliyuncs.com', 'cn-hangzhou', 'cn-hangzhou'],
+        ['alibaba-oss', 'https://oss-accelerate.aliyuncs.com', 'cn-shanghai', 'cn-shanghai'],
+        ['alibaba-oss', 'https://oss-accelerate-overseas.aliyuncs.com', 'cn-shanghai', 'cn-shanghai'],
+    ])('%s %s with stored %s signs %s', (provider, endpoint, region, expected) => {
+        const location = resolveProfileS3Location(provider, { endpoint, region }, '');
+        expect(location.region).toBe(expected);
+        expect(location.signingRegion).toBe(expected);
     });
 });
 

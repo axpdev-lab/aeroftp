@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-use super::local_tools::{get_str, get_str_opt, resolve_local_path, validate_path};
+use super::local_tools::{
+    get_str, get_str_opt, protected_location_creatable_within, resolve_local_path, validate_path,
+};
 use super::tools::{ToolCtx, ToolError};
 use serde_json::{json, Value};
 
@@ -97,9 +99,11 @@ pub async fn archive_compress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
         validate_path(p, "path").map_err(map_str_err)?;
     }
 
+    // One snapshot of the policy for every entry the archive walks.
+    let path_policy = super::local_tools::PathPolicy::current();
     let policy = |path: &std::path::Path| {
         let path = path.to_str().ok_or("Archive path is not valid UTF-8")?;
-        validate_path(path, "path")
+        path_policy.check(path, "path")
     };
     let result = crate::compress_archive_with_policy(
         paths,
@@ -122,6 +126,18 @@ pub async fn archive_compress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, 
     }
 }
 
+/// The folder an extraction of `archive_path` writes into: the output folder
+/// itself, or the per-archive subfolder every extractor derives through
+/// `archive_subfolder`, so the folder checked is the folder written.
+fn extraction_target(archive_path: &str, output_dir: &str, create_subfolder: bool) -> String {
+    if !create_subfolder {
+        return output_dir.to_string();
+    }
+    crate::archive_subfolder(std::path::Path::new(output_dir), archive_path)
+        .to_string_lossy()
+        .to_string()
+}
+
 pub async fn archive_decompress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let base = ctx.context_local_path();
     let archive_path = resolve_local_path(&get_str(args, "archive_path")?, base);
@@ -134,6 +150,21 @@ pub async fn archive_decompress(ctx: &dyn ToolCtx, args: &Value) -> Result<Value
 
     validate_path(&archive_path, "archive_path").map_err(map_str_err)?;
     validate_path(&output_dir, "output_dir").map_err(map_str_err)?;
+
+    // The folder the entries land in must pass the policy, and must not be or
+    // hold a protected location, existing or not: an extraction creates
+    // the folders its entries name (deep scan item 42: an archive extracted
+    // into the home wrote `~/.ssh/authorized_keys`, also on a home without
+    // `~/.ssh`). The extraction itself still opens the subfolder through the
+    // chosen output folder, so a symlinked subfolder cannot lead it elsewhere.
+    let target = extraction_target(&archive_path, &output_dir, create_subfolder);
+    validate_path(&target, "output_dir").map_err(map_str_err)?;
+    if let Some(protected) = protected_location_creatable_within(&target) {
+        return Err(ToolError::Denied(format!(
+            "Refusing to extract into {}: it could create the protected path {}. Extract into a subfolder instead.",
+            target, protected
+        )));
+    }
 
     // Detect format from extension
     let lower = archive_path.to_lowercase();

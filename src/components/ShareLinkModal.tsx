@@ -15,7 +15,7 @@ import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { getUiLocale } from '../utils/formatters';
 import { copyText } from '../utils/clipboard';
-import { loadShareLinkCapabilities, NO_SHARE_LINK_CAPABILITIES, type ShareLinkCapabilities } from '../utils/shareLinkCapabilities';
+import { expirationChoicesWithin, loadShareLinkCapabilities, NO_SHARE_LINK_CAPABILITIES, type ShareLinkCapabilities } from '../utils/shareLinkCapabilities';
 
 /** Backend response from provider_create_share_link */
 interface ShareLinkResult {
@@ -52,6 +52,34 @@ const EXPIRATION_PRESETS = [
   { labelKey: 'shareLinkModal.expirationDaysMany', count: 30, value: 2592000 },
 ] as const;
 
+/**
+ * Whether a created link expires before the time chosen. A date-only expiry
+ * (Proton returns one) is compared by day, so its rounding is not a shorter
+ * link (Greptile on #1525); a timestamp gets a minute of slack.
+ */
+export function expiresSoonerThanChosen(expiresAt: string | null, chosenSecs: number | null | undefined, now: number): boolean {
+  if (!expiresAt || !chosenSecs) return false;
+  const chosen = now + chosenSecs * 1000;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+    return expiresAt < new Date(chosen).toISOString().slice(0, 10);
+  }
+  const granted = Date.parse(expiresAt);
+  return Number.isFinite(granted) && granted < chosen - 60_000;
+}
+
+/**
+ * The expiry line's text. A date-only expiry (Proton returns one) is a
+ * calendar day: it is shown as that day, with no time, in every timezone.
+ * Parsed as a timestamp it would be UTC midnight, the previous evening west of
+ * UTC (Greptile and CodeRabbit on #1525).
+ */
+export function formatShareExpiry(expiresAt: string, locale: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+    return new Date(`${expiresAt}T00:00:00Z`).toLocaleDateString(locale, { timeZone: 'UTC' });
+  }
+  return new Date(expiresAt).toLocaleString(locale);
+}
+
 export function ShareLinkModal({ path, fileName, providerName, providerIcon, onClose }: ShareLinkModalProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
@@ -65,6 +93,10 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   const [creating, setCreating] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [sharePassword, setSharePassword] = useState<string | null>(null);
+  // When the created link expires, and whether that is sooner than asked (a
+  // link signed by a short-lived session ends with the session).
+  const [shareExpiresAt, setShareExpiresAt] = useState<string | null>(null);
+  const [shareShortened, setShareShortened] = useState(false);
   const [error, setError] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
   const [passwordCopied, setPasswordCopied] = useState(false);
@@ -73,6 +105,9 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   // Options form state
   const [optPassword, setOptPassword] = useState('');
   const [optExpiration, setOptExpiration] = useState<number | null>(null);
+  // The expiry the options start from: the longest choice on a provider with
+  // a limit, else none. Only a change from it counts as typed input.
+  const [startExpiration, setStartExpiration] = useState<number | null>(null);
   const [optPermissions, setOptPermissions] = useState<string>('view');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -147,6 +182,8 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
       const result = await invoke<ShareLinkResult>('provider_create_share_link', params);
       setShareUrl(result.url);
       setSharePassword(result.password || null);
+      setShareExpiresAt(result.expires_at);
+      setShareShortened(expiresSoonerThanChosen(result.expires_at, opts?.expiresInSecs, Date.now()));
       setState('success');
 
       // Auto-copy link to clipboard
@@ -174,6 +211,16 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
     void loadShareLinkCapabilities(invoke).then((loaded) => {
       if (cancelled) return;
       setCaps(loaded);
+      // A provider with a stated limit has no "never": start at the longest
+      // choice it allows.
+      if (loaded.maxExpirationSecs !== null) {
+        const allowed = expirationChoicesWithin(EXPIRATION_PRESETS, loaded);
+        if (allowed.length > 0) {
+          const longest = allowed[allowed.length - 1].value;
+          setStartExpiration(longest);
+          setOptExpiration(longest);
+        }
+      }
       if (loaded.hasAdvancedOptions) setState('options');
       else generateLink();
     });
@@ -186,7 +233,7 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
   // request in flight or a revoke asks first (the provider finishes it
   // anyway); options typed in ask before they are dropped; a generated link
   // stays until the X, Close or ESC.
-  const optionsTyped = state === 'options' && (optPassword !== '' || optExpiration !== null || optPermissions !== 'view');
+  const optionsTyped = state === 'options' && (optPassword !== '' || optExpiration !== startExpiration || optPermissions !== 'view');
   const guarded = useGuardedClose({
     guard: creating || revokingId !== null ? 'busy' : optionsTyped ? 'dirty' : null,
     onClose,
@@ -441,7 +488,9 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                         {t('shareLinkModal.expiration')}
                       </label>
                       <div className="flex flex-wrap gap-1.5">
-                        <button
+                        {/* "Never" exists only where the provider states no limit:
+                            an S3 link without an expiry is a one-hour link. */}
+                        {caps.maxExpirationSecs === null && <button
                           onClick={() => setOptExpiration(null)}
                           className={`px-2.5 py-1 text-xs rounded-lg transition-colors ${
                             optExpiration === null
@@ -450,8 +499,8 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                           }`}
                         >
                           {t('shareLinkModal.expirationNever')}
-                        </button>
-                        {EXPIRATION_PRESETS.map(preset => (
+                        </button>}
+                        {expirationChoicesWithin(EXPIRATION_PRESETS, caps).map(preset => (
                           <button
                             key={preset.value}
                             onClick={() => setOptExpiration(preset.value)}
@@ -589,6 +638,13 @@ export function ShareLinkModal({ path, fileName, providerName, providerIcon, onC
                   </button>
                 </div>
               </div>
+
+              {shareExpiresAt && (
+                <p data-testid="share-link-expiry" className="text-xs text-gray-600 dark:text-gray-400">
+                  {t('shareLinkModal.manageExpires')}: {formatShareExpiry(shareExpiresAt, getUiLocale())}
+                  {shareShortened && <> ({t('shareLinkModal.expiresSoonerThanChosen')})</>}
+                </p>
+              )}
 
               {/* Password field (if server returned one) */}
               {sharePassword && (

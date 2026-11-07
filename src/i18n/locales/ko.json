@@ -5643,7 +5643,8 @@
             "managePasswordProtected": "비밀번호 보호",
             "expirationHoursOne": "{count}시간",
             "expirationHoursMany": "{count}시간",
-            "expirationDaysMany": "{count}일"
+            "expirationDaysMany": "{count}일",
+            "expiresSoonerThanChosen": "선택한 기간보다 짧음"
         },
         "introHub": {
             "tab": {

@@ -32,6 +32,15 @@ pub trait RemoteBackend: Send + Sync {
     /// new name must fail closed: a later write may reconnect successfully.
     async fn provider_type(&self) -> Option<ProviderType>;
 
+    /// [`Self::provider_type`], with the reason when no provider is
+    /// available: a backend that refused to open the server says why (the
+    /// saved server changed after the call was approved, say).
+    async fn provider_type_or_reason(&self) -> Result<ProviderType, String> {
+        self.provider_type()
+            .await
+            .ok_or_else(|| "remote provider unavailable".to_string())
+    }
+
     /// List entries at a remote path.
     async fn list(&self, path: &str) -> Result<Vec<RemoteEntry>, String>;
 

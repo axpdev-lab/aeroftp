@@ -19,8 +19,20 @@ impl EventSink for TestSink {
 
 struct TestCreds;
 impl CredentialProvider for TestCreds {
+    /// The saved server the remote tests name. A change runs only on a saved
+    /// server named exactly, so a write to an unsaved "Test" is refused.
     fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
-        Ok(vec![])
+        let profile = serde_json::json!({
+            "id": "srv-test",
+            "name": "Test",
+            "host": "test.example.com",
+            "port": 21,
+            "username": "tester",
+            "protocol": "ftp",
+        });
+        Ok(vec![
+            serde_json::from_value(profile).map_err(|e| e.to_string())?
+        ])
     }
     fn get_credentials(&self, _: &str) -> Result<ServerCredentials, String> {
         Err("test".into())

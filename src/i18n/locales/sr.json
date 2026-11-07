@@ -5643,7 +5643,8 @@
             "managePasswordProtected": "Заштићено лозинком",
             "expirationHoursOne": "{count} сат",
             "expirationHoursMany": "{count} ч",
-            "expirationDaysMany": "{count} д"
+            "expirationDaysMany": "{count} д",
+            "expiresSoonerThanChosen": "краће од изабраног"
         },
         "introHub": {
             "tab": {

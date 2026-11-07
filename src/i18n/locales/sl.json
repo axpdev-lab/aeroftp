@@ -5643,7 +5643,8 @@
             "managePasswordProtected": "Zaščiteno z geslom",
             "expirationHoursOne": "{count} ura",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "{count} d"
+            "expirationDaysMany": "{count} d",
+            "expiresSoonerThanChosen": "krajše od izbranega"
         },
         "introHub": {
             "tab": {

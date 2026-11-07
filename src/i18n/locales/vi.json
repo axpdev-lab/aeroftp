@@ -5643,7 +5643,8 @@
             "managePasswordProtected": "Được bảo vệ bằng mật khẩu",
             "expirationHoursOne": "{count} giờ",
             "expirationHoursMany": "{count} giờ",
-            "expirationDaysMany": "{count} ngày"
+            "expirationDaysMany": "{count} ngày",
+            "expiresSoonerThanChosen": "ngắn hơn thời hạn đã chọn"
         },
         "introHub": {
             "tab": {

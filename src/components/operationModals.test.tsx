@@ -368,6 +368,16 @@ describe('ShareLinkModal (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    // CodeRabbit on #1525: the longest choice a capped provider starts at is
+    // not input, so closing its untouched options asks nothing.
+    it('closes the untouched options of a provider with an expiry limit at once', async () => {
+        const onClose = vi.fn();
+        await open(onClose, { supports_expiration: true, max_expiration_secs: 604800 } as Partial<typeof noCaps>);
+        await escape();
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('asks on ESC while a link is being created', async () => {
         const onClose = vi.fn();
         await creating(onClose);
