@@ -44,8 +44,18 @@ function computeOutputDimensions(
  */
 export function copyOutputPath(directory: string, name: string, baseName: string, format: string): string {
     const last = (name.split(/[\\/]/).pop() ?? '').trim();
-    const plain = last === '' || last === '.' || last === '..' ? baseName : last;
+    const fallback = baseName.split(/[\\/]/).pop() ?? '';
+    const plain = last === '' || last === '.' || last === '..' ? fallback : last;
     return `${directory}/${plain}_edited.${format}`;
+}
+
+/**
+ * What the filename field keeps of what is typed or pasted: no `/` or `\\`,
+ * so the name shown is the name the copy gets, never a folder path that
+ * `copyOutputPath` would silently reduce.
+ */
+export function copyNameInput(value: string): string {
+    return value.replace(/[\\/]/g, '');
 }
 
 export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
@@ -159,7 +169,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     <input
                         className="flex-1 bg-[var(--color-bg-tertiary)] border border-[var(--color-border)] rounded-lg px-3 py-2 text-sm text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]"
                         value={name}
-                        onChange={e => setName(e.target.value)}
+                        onChange={e => setName(copyNameInput(e.target.value))}
                     />
                     <span className="text-sm text-[var(--color-text-secondary)]">.{format}</span>
                 </div>

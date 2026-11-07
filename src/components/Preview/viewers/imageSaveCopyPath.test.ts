@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, expect, it } from 'vitest';
-import { copyOutputPath } from './ImageSaveDialog';
+import { copyNameInput, copyOutputPath } from './ImageSaveDialog';
 
 // Deep-scan 81: the copy stays in the image's folder whatever name is typed.
 describe('copyOutputPath', () => {
@@ -20,5 +20,16 @@ describe('copyOutputPath', () => {
         for (const name of ['', '  ', '.', '..', 'a/..', 'x/']) {
             expect(copyOutputPath('/pics', name, 'orig', 'png')).toBe('/pics/orig_edited.png');
         }
+    });
+
+    it('falls back to the last component of a base name that holds a folder', () => {
+        expect(copyOutputPath('/pics', '..', 'subdir/photo', 'png')).toBe('/pics/photo_edited.png');
+        expect(copyOutputPath('/pics', '', 'a\\b', 'png')).toBe('/pics/b_edited.png');
+    });
+
+    it('keeps no separator in the typed name, so the name shown is the name used', () => {
+        expect(copyNameInput('sub/holiday')).toBe('subholiday');
+        expect(copyNameInput('..\\x')).toBe('..x');
+        expect(copyNameInput('plain name')).toBe('plain name');
     });
 });
