@@ -20,6 +20,76 @@ const presetIds = new Set(
         .map(p => p.id),
 );
 
+/**
+ * Whether a pattern has a group that repeats without bound (`+`, `*`,
+ * `{n,}`) and holds, at any depth, something else that repeats without
+ * bound: the shape that backtracks exponentially (`(a+)+`, `((a+))+`,
+ * `(x(a*)y)*`). A bounded repeat (`?`, `{n}`, `{n,m}`) runs a fixed number of
+ * times, so `(-[0-9]+)?` stays allowed. Escapes and character classes are
+ * literal.
+ */
+function hasNestedUnboundedQuantifier(pattern: string): boolean {
+    // One frame per open group: whether anything inside repeats without bound.
+    const stack: boolean[] = [false];
+    let i = 0;
+    // Reads the quantifier at i, if any; returns whether it is unbounded and moves i past it.
+    const quantifier = (): boolean | undefined => {
+        const c = pattern[i];
+        let unbounded: boolean | undefined;
+        if (c === '+' || c === '*') {
+            unbounded = true;
+            i += 1;
+        } else if (c === '?') {
+            unbounded = false;
+            i += 1;
+        } else if (c === '{') {
+            const m = /^\{(\d+)(,(\d*))?\}/.exec(pattern.slice(i));
+            if (!m) return undefined;
+            unbounded = m[2] !== undefined && m[3] === '';
+            i += m[0].length;
+        } else {
+            return undefined;
+        }
+        if (pattern[i] === '?') i += 1; // lazy modifier
+        return unbounded;
+    };
+    while (i < pattern.length) {
+        const c = pattern[i];
+        if (c === '(') {
+            stack.push(false);
+            i += 1;
+            // Skip a group prefix: (?:, (?=, (?!, (?<=, (?<! or (?<name>.
+            if (pattern[i] === '?') {
+                const named = pattern[i + 1] === '<' && pattern[i + 2] !== '=' && pattern[i + 2] !== '!';
+                i = named ? pattern.indexOf('>', i) + 1 : i + (pattern[i + 1] === '<' ? 3 : 2);
+            }
+            continue;
+        }
+        if (c === ')') {
+            const inner = stack.pop() ?? false;
+            i += 1;
+            const unbounded = quantifier();
+            if (unbounded && inner) return true;
+            stack[stack.length - 1] ||= inner || unbounded === true;
+            continue;
+        }
+        // One atom: an escape, a character class or a single character.
+        if (c === '\\') {
+            i += 2;
+        } else if (c === '[') {
+            i += 1;
+            if (pattern[i] === '^') i += 1;
+            if (pattern[i] === ']') i += 1;
+            while (i < pattern.length && pattern[i] !== ']') i += pattern[i] === '\\' ? 2 : 1;
+            i += 1;
+        } else {
+            i += 1;
+        }
+        if (quantifier()) stack[stack.length - 1] = true;
+    }
+    return false;
+}
+
 describe('S3 host map', () => {
     it('maps every listed host case, on the host and on a full endpoint URL', () => {
         for (const { host, providerId } of hostMap.cases) {
@@ -46,18 +116,25 @@ describe('S3 host map', () => {
 
     it('keeps every host pattern anchored and free of nested quantifiers', () => {
         // The patterns are compiled with `new RegExp` at module load. A group
-        // that holds its own + or * and repeats without bound ((a+)+, (a*)*,
-        // (a+){2,}) can backtrack exponentially; an optional group ((-[0-9]+)?)
-        // runs at most once and stays linear. An unanchored pattern matches a
-        // lookalike host.
-        const nestedQuantifier = /\([^()]*[+*][^()]*\)[+*{]/;
+        // that repeats without bound and holds, at any depth, something else
+        // that repeats without bound can backtrack exponentially. An
+        // unanchored pattern matches a lookalike host.
         for (const entry of entries) {
             for (const pattern of entry.hostPatterns ?? []) {
                 expect(() => new RegExp(pattern), pattern).not.toThrow();
                 expect(pattern.endsWith('$'), pattern).toBe(true);
                 expect(pattern.startsWith('^') || pattern.startsWith('(^|\\.)'), pattern).toBe(true);
-                expect(nestedQuantifier.test(pattern), pattern).toBe(false);
+                expect(hasNestedUnboundedQuantifier(pattern), pattern).toBe(false);
             }
+        }
+    });
+
+    it('finds a nested unbounded quantifier at any depth', () => {
+        for (const bad of ['^(a+)+\\.com$', '^((a+))+\\.com$', '^(x(a*)y)*\\.com$', '^(a*)*$', '^(a+){2,}$', '^((ab)+c)*$', '^(a{1,})+$', '^(?:a+)+$', '^(?<n>a+)+$', '^(?:x(?<n>a*)y)*$']) {
+            expect(hasNestedUnboundedQuantifier(bad), bad).toBe(true);
+        }
+        for (const good of ['(^|\\.)idrivee2(-[0-9]+)?\\.com$', '^(a+)?$', '^(a+){2}$', '^(a+){1,3}$', '^a+b*$', '^([+*]a)+$', '^(\\+a)+$', '^(a)+$', '^(?:a)+$', '^(?<n>ab)+$', '^(?=a)(a+)$']) {
+            expect(hasNestedUnboundedQuantifier(good), good).toBe(false);
         }
     });
 
