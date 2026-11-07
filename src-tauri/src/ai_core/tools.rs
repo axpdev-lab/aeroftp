@@ -2322,9 +2322,11 @@ pub fn args_pinned_to(args: &Value, targets: &[ApprovedTarget]) -> Value {
 /// names: the name is not exactly a profile's name or id, though it is part of
 /// one or more. The backends match a part of a name, so `lab` acted on
 /// `lab-prod` while the approval said `lab`. A read keeps that convenience; a
-/// change acts only on a server named exactly. `None` when the call reads, when
-/// the name is exact, or when no profile contains it (the backend then reports
-/// it not found). The saved list comes from `creds`, never a connection.
+/// change acts only on a server named exactly. A name that is no saved
+/// server's at all is refused too: approved for nothing, a profile created
+/// with that name before the call reached the backend would receive the
+/// write. `None` when the call reads or every name is exact. The saved list
+/// comes from `creds`, never a connection.
 pub fn inexact_change_target(
     creds: &dyn CredentialProvider,
     tool_name: &str,
@@ -2356,7 +2358,10 @@ pub fn inexact_change_target(
             .map(|profile| format!("'{}' (id {})", profile.name, profile.id))
             .collect();
         if candidates.is_empty() {
-            continue;
+            return Some(format!(
+                "{key} '{query}' is not the name or id of a saved server, and a change runs \
+                 only on a saved server named exactly"
+            ));
         }
         return Some(format!(
             "{key} '{query}' is not the exact name or id of a saved server, and a change runs only \
@@ -2908,7 +2913,6 @@ mod tests {
             json!({"server": "lab-prod", "path": "/x"}),
             json!({"server": "LAB-PROD", "path": "/x"}),
             json!({"server": "srv_1", "path": "/x"}),
-            json!({"server": "nowhere", "path": "/x"}),
             json!({"path": "/x"}),
         ] {
             assert_eq!(
@@ -3391,6 +3395,35 @@ mod tests {
                 "{name} must be routed here, or removing its legacy arm makes it unreachable: {outcome:?}"
             );
         }
+    }
+
+    /// CodeRabbit on #1522: a change naming no saved server was approved for
+    /// nothing (`change_targets` records no profile), so a profile created
+    /// with that name before the call reached the pool would have received
+    /// the write. A change runs only on a server that exists when it is
+    /// approved; a read still reports the name not found itself.
+    #[test]
+    fn a_change_on_a_name_no_saved_server_has_is_refused_before_approval() {
+        let creds = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let args = json!({"server": "staging", "path": "/x"});
+        let reason = inexact_change_target(&creds, "remote_delete", &args).expect("refused");
+        assert!(
+            reason.contains("'staging' is not the name or id of a saved server"),
+            "{reason}"
+        );
+        assert!(inexact_change_target(&creds, "remote_list", &args).is_none());
+        // Both ends of a transfer: the unknown one is named.
+        let transfer = json!({"server": "lab-prod", "dst_server": "staging", "path": "/x"});
+        let reason = inexact_change_target(&creds, "aeroftp_transfer", &transfer).expect("refused");
+        assert!(reason.starts_with("dst_server 'staging'"), "{reason}");
+        // The profile created later does not turn the approval into one for it:
+        // there was no approval to begin with.
+        let created = SavedServers(vec![saved("srv_1", "lab-prod"), saved("srv_2", "staging")]);
+        assert!(inexact_change_target(&created, "remote_delete", &args).is_none());
+        assert_ne!(
+            change_target_ids(&creds, "remote_delete", &args),
+            change_target_ids(&created, "remote_delete", &args)
+        );
     }
 
     /// The weaker half, declared as weaker: for these three the registry entry

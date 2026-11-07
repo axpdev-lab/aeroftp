@@ -407,9 +407,11 @@ async fn cli_tty_step_limit_returns_failure_after_streamed_answer() {
 }
 
 /// The remote tools of the CLI agent now reach the saved server, so a
-/// `remote_delete` must still stop at its approval: denied at the default
-/// level and at `high`, which leaves deletes to the user, without the call
-/// reaching any backend. The prompt that would ask names the server.
+/// `remote_delete` must never run unasked. Here `srv-a` is no saved server:
+/// the call is refused before any approval is asked, at the default level
+/// and at `high` alike, and never reaches the tool engine (a change runs
+/// only on a saved server named exactly). The prompt that would ask for a
+/// saved one names the server.
 #[tokio::test]
 async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
     for level in [0, parse_approve_level("high")] {
@@ -430,14 +432,18 @@ async fn cli_runner_denies_a_remote_delete_below_the_all_level() {
                 let request = read_request(&mut socket).await;
                 let messages = request["messages"].as_array().unwrap();
                 assert_eq!(messages[3]["tool_call_id"], "delete-A");
-                assert_eq!(messages[3]["content"], "Tool call denied by user.", "level {level}");
+                let refused = messages[3]["content"].as_str().unwrap();
+                assert!(
+                    refused.starts_with("Error: server 'srv-a' is not the name or id of a saved server"),
+                    "level {level}: {refused}"
+                );
                 let done = json!({"choices":[{"delta":{"role":"assistant","content":"Not deleted."},"finish_reason":"stop"}]});
                 respond(&mut socket, "200 OK", &format!("data: {done}\n\ndata: [DONE]\n\n")).await;
             };
             let mut messages = vec![serde_json::from_value(json!({"role":"user","content":"delete it"})).unwrap()];
             let (result, ()) = tokio::join!(agent_tool_loop(&cfg, &mut messages, false), server);
             assert_eq!(result.unwrap(), "Not deleted.", "level {level}");
-            // Denied before dispatch: the call never reached the tool engine.
+            // Refused before dispatch: the call never reached the tool engine.
             let dispatched = CLI_TOOL_DISPATCHES
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
