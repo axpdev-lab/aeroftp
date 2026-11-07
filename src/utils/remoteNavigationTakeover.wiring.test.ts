@@ -28,7 +28,7 @@ function context() {
     const state = { loading: true, decrypting: true, reason: 'old /Crypt listing' as string | null };
     const ctx = {
         remoteNavCounter: { current: 7 }, remoteNavInFlightRef: { current: 7 },
-        remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false as false | string },
+        remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false as false | string }, backendUncertainRef: { current: false },
         connectStartSessionsRef: { current: null as unknown }, sessions: [] as { id: string }[],
         setOverlayDecrypting: vi.fn((value: boolean) => { state.decrypting = value; }),
         setRemoteListLoading: vi.fn((value: boolean) => { state.loading = value; }),

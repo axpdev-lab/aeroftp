@@ -57,6 +57,9 @@ interface UseDragAndDropParams {
     sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;
     connectionParams?: { protocol?: string };
     onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: PanelKey) => Promise<void>;
+    /** The server check of a remote move, taken when the drop starts and run
+     *  right before each move: it throws once another server is live. */
+    remoteActionGuard?: () => () => void;
 }
 
 export function useDragAndDrop({
@@ -73,6 +76,7 @@ export function useDragAndDrop({
     sessions,
     connectionParams,
     onCrossPanelDrop,
+    remoteActionGuard,
 }: UseDragAndDropParams) {
 
     const [dragData, setDragData] = useState<DragData | null>(null);
@@ -332,6 +336,8 @@ export function useDragAndDrop({
         // Same-panel move (rename into another folder), never into itself.
         if (dropsIntoItself(targetPath, sourcePaths)) return;
         const useProviderCmd = isProvider();
+        // The server the files were dropped on, checked before each move.
+        const onTarget = sourceIsRemote ? remoteActionGuard?.() : undefined;
 
         for (let i = 0; i < files.length; i++) {
             const fileName = files[i];
@@ -347,6 +353,7 @@ export function useDragAndDrop({
             const logId = humanLog.logStart('MOVE', { isRemote: sourceIsRemote, filename: fileName });
             try {
                 if (sourceIsRemote) {
+                    onTarget?.();
                     if (useProviderCmd) {
                         await invoke('provider_rename', { from: sourcePath, to: destPath });
                     } else {
@@ -369,7 +376,7 @@ export function useDragAndDrop({
         } else {
             await refreshAfterLocal(sourceKey);
         }
-    }, [dragData, isProvider, humanLog, notify, loadRemoteFiles, refreshAfterLocal, onCrossPanelDrop, performLocalLocalTransfer]);
+    }, [dragData, isProvider, humanLog, notify, loadRemoteFiles, refreshAfterLocal, onCrossPanelDrop, performLocalLocalTransfer, remoteActionGuard]);
 
     /**
      * Panel-level drag over (for cross-panel drops on empty space)

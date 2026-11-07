@@ -222,7 +222,7 @@ import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
-import { DevToolsV2, isPreviewable } from './components/DevTools';
+import { DevToolsV2, isPreviewable, type PreviewFile } from './components/DevTools';
 import { UniversalPreview, isPreviewable as isMediaPreviewable } from './components/Preview';
 // GAP-1: legacy connected-remote sync engine, restored as a safety net
 // while the unified AeroSync modal absorbs delete/verify/journal/retry
@@ -525,6 +525,8 @@ import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
+import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, sameQuickConnectTarget } from './utils/probeAliveArgs';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
@@ -566,6 +568,13 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 // backstop well above any legitimate slow login (real logins are seconds), not
 // a policy timeout; the "Keep waiting" button re-arms it for another window.
 const CONNECT_HARD_TIMEOUT_MS = 120000;
+// Connection options that are credentials picking the account, compared on
+// their own by the queued-target check (isSameConnection leaves them out).
+const ACCOUNT_KEY_OPTIONS = ['filen_api_key', 'accessKey', 'apiKey', 'clientSecret', 'sasToken'] as const;
+
+// How long a cancelled connect's or switch's backend teardown may run before
+// the backend is treated as uncertain (the backend's own gates wait 30 s).
+const BACKEND_TEARDOWN_BOUND_MS = 30000;
 
 // Minimum time the finished update progress bar stays on screen before the
 // result card replaces it. Signature verification normally takes longer than
@@ -1005,6 +1014,24 @@ const App: React.FC = () => {
   // is already usable (false) must not cost the user the session: it just
   // aborts the listing and leaves them in the directory they were in.
   const remoteConnectPhaseRef = useRef<false | 'connect' | 'switch'>(false);
+  // Backend teardowns still running after a cancelled connect or switch: the
+  // phase is over, but until the half-open connection is gone the live tab is
+  // not what the backend serves.
+  const backendTeardownsRef = useRef(0);
+  // A teardown that did not end within its bound: the backend's state is
+  // unknown, so nothing is bound to the live tab until a connect or a switch
+  // has connected the backend to a tab again (instead of until a restart). A
+  // connect that fails before that leaves it set.
+  const backendUncertainRef = useRef(false);
+  // Connections confirmed so far: a teardown that times out leaves the
+  // backend uncertain unless one was confirmed after it started.
+  const backendConfirmationsRef = useRef(0);
+  /** A tab is connected to the backend again: its state is known. Called at
+   *  the points a connect or a switch confirms its connection, and only there. */
+  const confirmBackendConnection = () => {
+    backendUncertainRef.current = false;
+    backendConfirmationsRef.current += 1;
+  };
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
   // Connect form started, keyed by its phase version: a Cancel of that connect
@@ -1093,9 +1120,9 @@ const App: React.FC = () => {
     onCommit: (message: string) => void;
     onCancel?: () => void;
   } | null>(null);
-  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: BatchRenameSibling[] } | null>(null);
+  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: BatchRenameSibling[]; target?: QueuedTarget } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
-  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
+  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean; target?: QueuedTarget } | null>(null);
   const [inlineRenameValue, setInlineRenameValue] = useState('');
   const inlineRenameRef = useRef<HTMLInputElement>(null);
 
@@ -1514,7 +1541,7 @@ const App: React.FC = () => {
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
-  const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
+  const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string; target?: QueuedTarget } | null>(null);
   // AeroFile sidebar state (persisted in localStorage)
   const [showSidebar, setShowSidebar] = useState(() => localStorage.getItem('aerofile_show_sidebar') !== 'false');
   // Boot always starts on the single default panel (left, "L") even if the
@@ -1812,6 +1839,9 @@ const App: React.FC = () => {
     sourceDir: string;
     isRemote: boolean;
     operation: 'cut' | 'copy';
+    // The server (and crypt overlay) remote files were cut or copied on:
+    // their paths name files there, and nowhere else.
+    target: QueuedTarget | null;
   } | null>(null);
   const [hasClipboard, setHasClipboard] = React.useState(false);
 
@@ -2651,7 +2681,16 @@ const App: React.FC = () => {
   }, []);
 
   // Preview: handled by usePreview hook
-  const preview = usePreview({ notify, toast });
+  // Called on a click, long after the render that declares these.
+  const preview = usePreview({
+    notify,
+    toast,
+    remoteTarget: {
+      snapshot: () => snapshotQueuedTarget(),
+      changedSince: (target: QueuedTarget) => queuedTargetProblem(target) !== null,
+      changedMessage: () => t('toast.openedOnAnotherServer'),
+    },
+  });
   const {
     showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
     devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview, openDevToolsFromData,
@@ -5114,6 +5153,8 @@ const App: React.FC = () => {
 
       // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
       // savedServerId makes activeProfileIds pulse the My Servers card.
+      // The backend is connected to this tab's server: no longer uncertain.
+      confirmBackendConnection();
       const newSession: FtpSession = {
         id: `session_mtp_${Date.now()}`,
         serverId: displayName,
@@ -7171,6 +7212,8 @@ const App: React.FC = () => {
     onCrossPanelDrop: async (files, fromRemote, targetDir, sourceKey) => {
       await crossPanelDropRef.current?.(files, fromRemote, targetDir, sourceKey);
     },
+    // Called on a drop, long after the render that declares it.
+    remoteActionGuard: () => remoteActionGuard(),
   });
 
   // --- Connection step logging helpers ---
@@ -8432,6 +8475,8 @@ const App: React.FC = () => {
             setActiveSessionId(reusable.id);
             setConnectionParams(reusable.connectionParams);
             setSessions(prev => prev.map(s => s.id === reusable.id ? { ...s, status: 'connected' } : s));
+            // The backend is connected to this tab's server: no longer uncertain.
+            confirmBackendConnection();
             setIsConnected(true);
             setShowRemotePanel(true);
             setShowLocalPreview(false);
@@ -8897,6 +8942,8 @@ const App: React.FC = () => {
       }
     } catch { /* ignore */ }
 
+    // The backend is connected to this tab's server: no longer uncertain.
+    confirmBackendConnection();
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
       serverId: serverName,
@@ -9196,7 +9243,7 @@ const App: React.FC = () => {
                 lower.includes('token expired') ||
                 (lower.includes('token') && lower.includes('refresh'))) {
               logger.debug('[switchSession] OAuth token invalid, re-authenticating...');
-              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } }))));
+              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } })))));
               await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
             } else {
               throw connectErr;
@@ -9364,6 +9411,8 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
+      // The backend is connected to this tab's server: no longer uncertain.
+      confirmBackendConnection();
       // The tab bar calls here directly, and a parked tab left the workspace
       // marked disconnected. It reads as connected again only now: earlier,
       // its cached files would take remote actions while another server still
@@ -10208,6 +10257,35 @@ const App: React.FC = () => {
   // protocol, so issue both. Shared by the connect abort (which then clears the
   // remote view and the tabs the connect added) and the switch abort (which
   // keeps every healthy tab).
+  /** The teardown of a cancelled connect or switch, counted while it runs
+   *  (nothing is bound to the live tab meanwhile) and bounded: one that hangs
+   *  while it still owns the backend leaves it marked uncertain, which only a
+   *  connection confirmed afterwards clears, and reports not dropped. */
+  const boundedTeardown = async (owns: () => boolean): Promise<boolean> => {
+    backendTeardownsRef.current += 1;
+    const confirmedBefore = backendConfirmationsRef.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const outcome = await Promise.race([
+        lockAndDropBackendConnection(owns),
+        new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), BACKEND_TEARDOWN_BOUND_MS); }),
+      ]);
+      if (outcome === 'timeout') {
+        // Unless a connection was confirmed since this teardown started: its
+        // outcome is the backend's now, which an old timeout must not
+        // overrule. A newer connect that took over but stopped before
+        // connecting (a missing field, a refused host key) replaced nothing,
+        // so the backend stays uncertain (CodeRabbit on #1526).
+        if (backendConfirmationsRef.current === confirmedBefore) backendUncertainRef.current = true;
+        return false;
+      }
+      return outcome;
+    } finally {
+      clearTimeout(timer);
+      backendTeardownsRef.current -= 1;
+    }
+  };
+
   const lockAndDropBackendConnection = async (owns: () => boolean) => {
     const overlaySessionId = aeroVaultOverlaySession?.sessionId;
     return runOwnedConnectionCleanup(owns, [
@@ -10238,7 +10316,7 @@ const App: React.FC = () => {
   const abortConnectAfterCancel = async (owns: () => boolean, phaseVersion: number) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    if (!await boundedTeardown(owns) || !owns()) return;
     clearCryptOverlayState();
     setIsConnected(false);
     setLoading(false);
@@ -10276,7 +10354,7 @@ const App: React.FC = () => {
   const abortSwitchAfterCancel = async (owns: () => boolean) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    if (!await boundedTeardown(owns) || !owns()) return;
     clearCryptOverlayState();
   };
 
@@ -10413,7 +10491,7 @@ const App: React.FC = () => {
             setRemoteSearchResults(null);
           } catch {
             if (navId !== remoteNavCounter.current) return null;
-            setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
+            setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath, target: snapshotQueuedTarget() });
           }
         } else if (action.kind === 'navigate') {
           const response: FileListResponse = await invoke('provider_change_dir', { path: action.path });
@@ -10423,7 +10501,7 @@ const App: React.FC = () => {
           setSelectedRemoteFiles(new Set());
           setRemoteSearchResults(null);
         } else if (action.kind === 'missing') {
-          setSyncNavDialog({ missingPath: action.path, isRemote: true, targetPath: action.path });
+          setSyncNavDialog({ missingPath: action.path, isRemote: true, targetPath: action.path, target: snapshotQueuedTarget() });
         } else if (action.kind === 'conflict') {
           notify.error(t('cloud.conflict'), syncMirrorConflictText(action.path, action.candidates));
         }
@@ -10566,18 +10644,22 @@ const App: React.FC = () => {
 
   // Handle sync nav dialog actions
   const handleSyncNavCreateFolder = async () => {
+    // The server the navigation was on when it asked to create the folder.
+    const onTarget = remoteActionGuard(syncNavDialog?.target);
     if (!syncNavDialog) return;
     const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
     const isProviderConn = usesProviderApi(protocol);
     try {
       if (syncNavDialog.isRemote) {
         if (isProviderConn) {
+          onTarget();
           await invoke('provider_mkdir', { path: syncNavDialog.targetPath });
           const response: FileListResponse = await invoke('provider_change_dir', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
           setSelectedRemoteFiles(new Set());
         } else {
+          onTarget();
           await invoke('create_remote_folder', { path: syncNavDialog.targetPath });
           const response: FileListResponse = await invoke('change_directory', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
@@ -10674,7 +10756,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }): Promise<boolean> => {
+  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }, onTarget?: () => void): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -10686,8 +10768,12 @@ const App: React.FC = () => {
     // True only when the file or folder actually landed: a "cut" paste deletes
     // the source on this answer, so a skip, a cancel or an error must say no.
     let completed = false;
+    // Bound to the server live now, unless the caller bound it earlier: the
+    // overwrite question below gives the user time to switch tabs.
+    const checkTarget = onTarget ?? queuedTargetGuard(snapshotQueuedTarget());
 
     const assertOwnership = () => {
+      checkTarget();
       if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
         throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
       }
@@ -10852,11 +10938,16 @@ const App: React.FC = () => {
     explicitRemoteDir?: string,
     onError: TransferErrorMode = 'notify',
     ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean },
+    // The caller's target check, run with the ownership one right before each
+    // write (see `queuedTargetGuard`); by default the server live at the call.
+    onTarget?: () => void,
   ): Promise<boolean> => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
     let completed = false;
+    const checkTarget = onTarget ?? queuedTargetGuard(snapshotQueuedTarget());
     const assertOwnership = () => {
+      checkTarget();
       if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
         throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
       }
@@ -11000,7 +11091,7 @@ const App: React.FC = () => {
             workingBranch: gitHubRepoInfo.workingBranch || undefined,
             onCommit: (message: string) => {
               setGitHubCommitDialog(null);
-              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership);
+              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership, checkTarget);
             },
           });
           // Deferred to the commit dialog: not uploaded yet.
@@ -11216,6 +11307,178 @@ const App: React.FC = () => {
 
   const { isLiveOnProfile, waitForLiveProfile } = useResumeProfileGuard(isConnected, sessions, activeSessionId);
 
+  // The crypt overlay over the live connection, by its vault: `null` when the
+  // provider is not wrapped (no overlay, or one locked or left out of scope).
+  // The overlay as a queued write is bound to it: the vault, its kind and the
+  // scope it covers. The same vault unlocked again matches, so a Retry after a
+  // relock still runs; another vault of the same kind does not.
+  const liveOverlay = useLatestCallback((): string | null => {
+    const overlay = sessions.find(session => session.id === activeSessionId)?.cryptOverlay;
+    return overlay ? JSON.stringify([overlay.vaultId, overlay.kind, overlay.remoteScope ?? null]) : null;
+  });
+  const liveProfileId = useLatestCallback((): string | null =>
+    savedProfileIdOf(liveConnectionParams, sessions.find(session => session.id === activeSessionId)));
+
+  /** What a batch is queued for: the live server, its account and the overlay
+   *  over it, taken when the batch starts, before a destination listing or an
+   *  overwrite question gives the user time to switch tabs. */
+  const snapshotQueuedTarget = useLatestCallback((): QueuedTarget => ({
+    params: { ...liveConnectionParams },
+    profileId: liveProfileId(),
+    sessionId: activeSessionId,
+    connection: connectionNumberOf(liveConnectionParams),
+    oauthLogins: oauthLoginCount(oauthLoginKey(liveConnectionParams.protocol, liveProfileId())),
+    overlay: liveOverlay(),
+  }));
+
+  /** A queued transfer's Start or Retry, bound to the server it was queued
+   *  for and to its crypt overlay. The callback ran on whatever backend was
+   *  live when the user clicked, so after a tab switch a staged or failed
+   *  upload went to the other server (deep scan item 6), and after the overlay
+   *  was locked an encrypted upload went out in plaintext. It now fails with
+   *  the reason instead, and runs again once that target is live. */
+  const boundToQueuedServer = useLatestCallback((queuedFor: QueuedTarget, id: string, run: () => unknown): (() => Promise<void>) => async () => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (problem) {
+      transferQueue.failTransfer(id, t(problem));
+      return;
+    }
+    await run();
+  });
+
+  /** Whether two connections log in with other account keys: the options the
+   *  target comparison leaves out as credentials, yet that pick the account
+   *  (Filen's API key, an S3 access key, an API key, a client secret, a SAS
+   *  token). Absent and empty are the same absence. */
+  const accountKeysDiffer = (live: ConnectionParams, queued: ConnectionParams) => {
+    const liveOptions = (live.options ?? {}) as Record<string, unknown>;
+    const queuedOptions = (queued.options ?? {}) as Record<string, unknown>;
+    return ACCOUNT_KEY_OPTIONS.some(key => (liveOptions[key] || '') !== (queuedOptions[key] || ''));
+  };
+
+  /** Whether the backend serves the live tab now: not while a connect or a
+   *  tab switch runs (the tab is the new one, the backend not yet), while a
+   *  cancelled one is torn down, or after a teardown that hung. */
+  const backendServesLiveTab = () =>
+    !remoteConnectPhaseRef.current && backendTeardownsRef.current === 0 && !backendUncertainRef.current;
+
+  /** The target check of a direct remote action (a rename, a delete, a new
+   *  folder), on the target taken when the action started: run right before
+   *  each of its writes, so a dialog the user answered meanwhile, a tab
+   *  switch or a reconnect cannot move the write to another server. */
+  const remoteActionGuard = (target: QueuedTarget = snapshotQueuedTarget()) => () => {
+    if (queuedTargetProblem(target)) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
+  };
+
+  /** Why the live connection is no longer the target a batch was queued for,
+   *  as the message key, or `null` when it still is. */
+  const queuedTargetProblem = useLatestCallback((queuedFor: QueuedTarget): string | null => {
+    // A tab switch or a connect activates the new tab before the backend has
+    // reconnected, and a cancelled one drops the half-open connection after
+    // its phase ends: until either is done, the live tab is not the server the
+    // backend writes to, or reads from.
+    if (!backendServesLiveTab()) return 'transfer.queuedForAnotherServer';
+    if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) return 'transfer.queuedForAnotherServer';
+    // The same server fields can reach another account: FileLu's API key is
+    // the password, and an OAuth account is told apart only by its profile.
+    // A Quick Connect queued with no profile may be linked to a saved one by a
+    // reconnect: with every field and the key unchanged it is the same
+    // account, so only a profile it was queued under has to match. Not for
+    // OAuth: its account is in a token the params do not carry, so the same
+    // fields can be another account and only the profile tells them apart.
+    const queuedProtocol = queuedFor.params.protocol as ProviderType | undefined;
+    const accountInParams = !queuedProtocol || !(isOAuthProvider(queuedProtocol) || isFourSharedProvider(queuedProtocol));
+    const profileMustMatch = queuedFor.profileId !== null || !accountInParams;
+    if ((liveConnectionParams.password || '') !== (queuedFor.params.password || '')
+      || accountKeysDiffer(liveConnectionParams, queuedFor.params)
+      || (profileMustMatch && liveProfileId() !== queuedFor.profileId)) {
+      return 'transfer.queuedForAnotherServer';
+    }
+    // An interactive OAuth login since the batch was queued (a reconnect of the
+    // same tab with an expired token, say) may have picked another account,
+    // and nothing in the params or the profile would show it.
+    if (!accountInParams
+      && oauthLoginCount(oauthLoginKey(queuedProtocol, queuedFor.profileId)) !== queuedFor.oauthLogins) return 'transfer.queuedForAnotherServer';
+    // An OAuth connection with no saved profile has nothing in the params that
+    // names its account: only the very connection it was queued on is known
+    // to be that account, so another tab or a new login is refused.
+    if (!accountInParams && queuedFor.profileId === null
+      && (activeSessionId !== queuedFor.sessionId || connectionNumberOf(liveConnectionParams) !== queuedFor.connection)) {
+      return 'transfer.queuedForAnotherServer';
+    }
+    if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';
+    return null;
+  });
+
+  /** The check a batch runs right before each write, after every await: a
+   *  check at the start alone left the overwrite question, the destination
+   *  listing and the files before it as windows in which the user could switch
+   *  to another server, and the write then went there. */
+  const queuedTargetGuard = (queuedFor: QueuedTarget) => () => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (problem) throw new QueuedTargetChangedError(t(problem));
+  };
+
+  /** Fails the rows from `from` on when the batch's target is gone, so the
+   *  files left neither ask their overwrite question nor start; true when it
+   *  did. */
+  const failQueuedRestIfRetargeted = (queuedFor: QueuedTarget, items: { id: string }[], from: number): boolean => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (!problem) return false;
+    for (let j = from; j < items.length; j++) transferQueue.failTransfer(items[j].id, t(problem));
+    return true;
+  };
+
+  /** The editor's save: a local file to its path, a remote one to its own
+   *  server only (see `PreviewFile.target`). */
+  const saveDevToolsFile = useLatestCallback(async (content: string, file: PreviewFile) => {
+    // A remote file is its server's: saved after a switch to another
+    // tab, the content went to the file at the same path there.
+    // A refused or failed save rejects, so the editor keeps the buffer
+    // marked modified: it was not saved.
+    const refuse = (): never => {
+      notify.error(t('toast.saveFailed'), t('toast.saveOnAnotherServer'));
+      throw new QueuedTargetChangedError(t('toast.saveOnAnotherServer'));
+    };
+    if (file.isRemote && (!file.target || queuedTargetProblem(file.target))) refuse();
+    const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
+    try {
+      if (file.isRemote) {
+        // The connection read now, between two checks, and held by the
+        // backend through the write: a switch that comes first gets the
+        // save refused, never written to the server now in the slot. Read
+        // at save time, not at open, so a reconnect to the same server in
+        // between does not refuse the save.
+        const expectedGeneration = await invoke<number>('provider_connection_generation');
+        if (!file.target || queuedTargetProblem(file.target)) refuse();
+        try {
+          await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
+        } catch (error) {
+          if (String(error).includes('CONNECTION_CHANGED')) refuse();
+          throw error;
+        }
+        humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
+        notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
+      } else {
+        await invoke('save_local_file', { path: file.path, content });
+        humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
+        notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
+      }
+    } catch (error) {
+      humanLog.logError('UPLOAD', { filename: file.name }, logId);
+      // A refusal has said why already.
+      if (!(error instanceof QueuedTargetChangedError)) notify.error(t('toast.saveFailed'), String(error));
+      throw error;
+    }
+    // The save is done; a listing that fails to refresh does not undo it.
+    try {
+      if (file.isRemote) await loadRemoteFiles(undefined, true);
+      else await refreshLocalPanelForPath(parentDir(file.path));
+    } catch {
+      // The panel shows its own error; the file was saved.
+    }
+  });
+
   // `requireOverlay` is the caller's: before the connect no session can place
   // a scope under the login folder, so a default read here left it unplaced.
   const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay: boolean): Promise<boolean> => {
@@ -11290,7 +11553,7 @@ const App: React.FC = () => {
           provider: oauthProvider,
           profileId: profile.id,
         });
-        if (!hasTokens) await invoke('oauth2_full_auth', { params: baseParams });
+        if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
         let oauthResult: { display_name?: string; account_email?: string | null };
         try {
           oauthResult = await invoke('oauth2_connect', { params: baseParams });
@@ -11303,7 +11566,7 @@ const App: React.FC = () => {
             || lower.includes('authentication failed')
             || (lower.includes('invalid') && lower.includes('access_token'))
           ) {
-            await invoke('oauth2_full_auth', { params: baseParams });
+            await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
             oauthResult = await invoke('oauth2_connect', { params: baseParams });
           } else {
             throw connectErr;
@@ -11347,11 +11610,11 @@ const App: React.FC = () => {
         }
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });
         const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };
-        if (!hasTokens) await invoke('fourshared_full_auth', { params });
+        if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
         try {
           await invoke('fourshared_connect', { params });
         } catch {
-          await invoke('fourshared_full_auth', { params });
+          await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
           await invoke('fourshared_connect', { params });
         }
         await connectToFtp({
@@ -11660,7 +11923,7 @@ const App: React.FC = () => {
   const formatClipboardFileCount = (count: number) => count === 1 ? '1 file' : `${count} files`;
 
   const clipboardCopy = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
-    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy' };
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy', target: isRemote ? snapshotQueuedTarget() : null };
     setHasClipboard(true);
     notify.success(t('contextMenu.copied') || 'Copied', formatClipboardFileCount(files.length));
   };
@@ -12914,7 +13177,7 @@ const App: React.FC = () => {
   ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
-    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut', target: isRemote ? snapshotQueuedTarget() : null };
     setHasClipboard(true);
     notify.success(t('contextMenu.cut') || 'Cut', formatClipboardFileCount(files.length));
   };
@@ -12924,6 +13187,29 @@ const App: React.FC = () => {
     if (!cb) return;
 
     const { files, isRemote: sourceIsRemote, operation, sourceDir } = cb;
+    // Remote files pasted after a switch to another server named that
+    // server's files at the same paths, and a cut then deleted or moved them
+    // there. The paste waits, clipboard kept, until their server is live.
+    if (cb.target && queuedTargetProblem(cb.target)) {
+      notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
+      return;
+    }
+    // The server of the paste: the source's, or the destination live now. Each
+    // remote write below checks it again, since every await is a window.
+    const pasteTarget = cb.target ?? snapshotQueuedTarget();
+    const onPasteTarget = queuedTargetGuard(pasteTarget);
+    /** True, said once, when the paste's server is no longer live. */
+    let retargetNotified = false;
+    /** The files a cut has moved all the way: the rest stay on the clipboard
+     *  when a switch stops it, so Paste can finish the move once their server
+     *  is live again (Greptile on #1526). */
+    const moveFinished = new Set<string>();
+    const pasteRetargeted = () => {
+      if (!queuedTargetProblem(pasteTarget)) return false;
+      if (!retargetNotified) notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
+      retargetNotified = true;
+      return true;
+    };
 
     // Cross-panel paste → upload or download using clipboard paths directly
     if (sourceIsRemote !== targetIsRemote) {
@@ -12960,7 +13246,7 @@ const App: React.FC = () => {
             };
           }),
           targetDir,
-          { allowStaging: false },
+          { allowStaging: false, queuedTarget: pasteTarget },
         );
         const landedSources = new Set(outcome.succeededSources);
         for (const file of pasteBatch) {
@@ -12971,13 +13257,13 @@ const App: React.FC = () => {
       const pasteItems = stopAfterBatch ? [] : pasteBatch.length > 0 ? pasteRest : files;
 
       for (const file of pasteItems) {
-        if (batchCancelledRef.current) break;
+        if (batchCancelledRef.current || pasteRetargeted()) break;
         try {
           const ok = sourceIsRemote
             // Remote → Local: download into the paste target panel path (not always panel 1)
-            ? await downloadFile(file.path, file.name, targetDir, file.is_dir)
+            ? await downloadFile(file.path, file.name, targetDir, file.is_dir, undefined, false, 'notify', undefined, onPasteTarget)
             // Local → Remote: upload each file using stored path (not current listing)
-            : await uploadFile(file.path, file.name, file.is_dir);
+            : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'notify', undefined, onPasteTarget);
           if (ok) landed.push(file);
         } catch (e) {
           if (!batchCancelledRef.current) {
@@ -12988,20 +13274,27 @@ const App: React.FC = () => {
       if (sourceIsRemote) await refreshLocalPanelForPath(targetDir);
       else loadRemoteFiles();
 
+      // The sources deleted: a remote one only while its server is live.
+      let moved = 0;
       if (operation === 'cut' && landed.length > 0) {
         // Delete source after successful transfer, and only those sources.
         if (sourceIsRemote && aeroVaultOverlaySession?.sessionId) {
-          try {
-            await invoke<number>('aerovault_overlay_delete_entries', {
-              sessionId: aeroVaultOverlaySession?.sessionId,
-              entryPaths: landed.map((f) => f.path),
-              recursive: true,
-            });
-          } catch (e) {
-            console.error('Failed to delete overlay source after cut', e);
+          if (!pasteRetargeted()) {
+            try {
+              await invoke<number>('aerovault_overlay_delete_entries', {
+                sessionId: aeroVaultOverlaySession?.sessionId,
+                entryPaths: landed.map((f) => f.path),
+                recursive: true,
+              });
+              moved = landed.length;
+              for (const file of landed) moveFinished.add(file.path);
+            } catch (e) {
+              console.error('Failed to delete overlay source after cut', e);
+            }
           }
         } else {
           for (const file of landed) {
+            if (sourceIsRemote && pasteRetargeted()) break;
             try {
               if (sourceIsRemote) {
                 const protocol = liveConnectionParams.protocol;
@@ -13013,6 +13306,8 @@ const App: React.FC = () => {
               } else {
                 await invoke('delete_local_file', { path: file.path });
               }
+              moved++;
+              moveFinished.add(file.path);
             } catch (e) {
               console.error(`Failed to delete source after cut: ${file.name}`, e);
             }
@@ -13021,9 +13316,9 @@ const App: React.FC = () => {
         if (sourceIsRemote) loadRemoteFiles(undefined, true);
         else await refreshLocalPanelForPath(sourceDir);
       }
-      if (operation === 'cut' && landed.length < files.length) {
+      if (operation === 'cut' && moved < files.length) {
         notify.warning(
-          t('toast.cutPartial', { moved: landed.length, total: files.length }),
+          t('toast.cutPartial', { moved, total: files.length }),
         );
       }
     }
@@ -13036,6 +13331,7 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = targetIsRemote && !!aeroVaultOverlaySession?.sessionId;
 
         for (const file of files) {
+          if (targetIsRemote && pasteRetargeted()) break;
           const sep = targetIsRemote ? '/' : (targetDir.includes('\\') ? '\\' : '/');
           const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
           try {
@@ -13056,6 +13352,7 @@ const App: React.FC = () => {
               // the target directory (irreversible, no trash). (audit C-F01)
               await invoke('rename_local_file', { from: file.path, to: destPath, overwrite: false });
             }
+            moveFinished.add(file.path);
           } catch (e) {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
           }
@@ -13101,6 +13398,10 @@ const App: React.FC = () => {
           // Remote copy via server-side copy API
           let anyFailed = false;
           for (const file of files) {
+            if (pasteRetargeted()) {
+              anyFailed = true;
+              break;
+            }
             const destPath = `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
             const from = file.path || `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
             // Same directory: add " (copy)" suffix
@@ -13134,10 +13435,16 @@ const App: React.FC = () => {
       }
     }
 
-    // Clear clipboard after cut (not after copy, so user can paste multiple times)
+    // Clear clipboard after cut (not after copy, so user can paste multiple
+    // times). A cut a switch stopped keeps the files it did not move.
     if (operation === 'cut') {
-      fileClipboardRef.current = null;
-      setHasClipboard(false);
+      const left = files.filter(file => !moveFinished.has(file.path));
+      if (retargetNotified && left.length > 0) {
+        fileClipboardRef.current = { ...cb, files: left };
+      } else {
+        fileClipboardRef.current = null;
+        setHasClipboard(false);
+      }
     }
   };
 
@@ -13204,8 +13511,14 @@ const App: React.FC = () => {
     targetDir: string,
     // Clipboard paste and the planner never staged (they run, then maybe
     // delete the source); only the panel entry points honour auto-start OFF.
-    options: { allowStaging?: boolean } = {},
+    // A caller that started before a wait (a picker, a listing, a paste of
+    // files cut earlier) passes the target it took then.
+    options: { allowStaging?: boolean; queuedTarget?: QueuedTarget } = {},
   ): Promise<FileBatchResult> => {
+    // Taken before any await: the listing and the overwrite questions below
+    // give the user time to switch to another server.
+    const queuedTarget = options.queuedTarget ?? snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     const isDownload = direction === 'download';
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = liveConnectionParams.protocol;
@@ -13255,6 +13568,16 @@ const App: React.FC = () => {
       return result;
     }
     for (let i = 0; i < items.length; i++) {
+      // After a switch the questions left would be about the other server's
+      // folder: the batch stops as a failed preflight does, before any row.
+      const retargeted = queuedTargetProblem(queuedTarget);
+      if (retargeted) {
+        resetOverwriteSettings();
+        result.failed = items.length - result.skipped;
+        result.aborted = true;
+        notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), t(retargeted));
+        return result;
+      }
       const item = items[i];
       let overwriteResult: Awaited<ReturnType<typeof checkOverwrite>>;
       try {
@@ -13338,7 +13661,16 @@ const App: React.FC = () => {
     const setPrivate = async (landedEntries: Entry[]) => {
       if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return;
       const command = protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy';
-      for (const entry of landedEntries) {
+      for (const [index, entry] of landedEntries.entries()) {
+        // Privacy is set on the server the batch was queued for, or not at
+        // all; the files left as the provider made them are named, not
+        // dropped in silence (Greptile on #1526: they can stay public).
+        if (queuedTargetProblem(queuedTarget)) {
+          const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
+          const left = landedEntries.slice(index).map(rest => rest.display_name);
+          notify.error(t('activity.set_private_error', { provider }), left.join(', '));
+          return;
+        }
         try {
           await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false });
         } catch { /* already private, or removed meanwhile */ }
@@ -13368,6 +13700,7 @@ const App: React.FC = () => {
         } : {}),
       };
       try {
+        onQueuedTarget();
         if (isProvider) {
           const outcome = await invoke<{
             completed: number; failed: number; cancelled: boolean; message: string; succeeded: number[];
@@ -13415,6 +13748,7 @@ const App: React.FC = () => {
         result.sent++;
         transferQueue.startTransfer(queueIds[i]);
         try {
+          onQueuedTarget();
           if (isDownload) {
             await invoke('provider_download_file', {
               remotePath: entry.remote_path,
@@ -13473,8 +13807,8 @@ const App: React.FC = () => {
     // A Start of staged rows or a Retry clears a Stop left from an earlier
     // transfer when the user acts; a Stop during this run still holds.
     const cancelFlags = { batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef };
-    for (const id of batchIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id)));
-    for (const id of singleIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id)));
+    for (const id of batchIds) retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id))));
+    for (const id of singleIds) retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id))));
     if (staged) {
       result.staged = true;
       return result;
@@ -13487,6 +13821,9 @@ const App: React.FC = () => {
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
     if (!isConnected) return;
+    // The target its Start and Retry are bound to, taken before any await.
+    const queuedTarget = snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     // A timeout or 5xx can follow a committed upload. Providers own their safe
     // transport retries; the GUI must not start that write again automatically.
     // The queue's explicit Retry remains available to the user.
@@ -13587,6 +13924,7 @@ const App: React.FC = () => {
               modified: file.modified || null,
             })),
             remoteDir,
+            { queuedTarget },
           );
           if (outcome.aborted) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
@@ -13639,10 +13977,10 @@ const App: React.FC = () => {
             size,
             is_folder: !!file?.is_dir,
           });
-          retryCallbacksRef.current.set(id, async () => {
+          retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
               transferQueue.completeTransfer(id);
             } catch (error) {
               // Stopped during this Retry: the file reads as cancelled and the
@@ -13655,7 +13993,7 @@ const App: React.FC = () => {
                 notify.error(t('toast.uploadFailed'), String(error));
               }
             }
-          });
+          }));
           return { id, filePath, fileName, file };
         });
 
@@ -13685,6 +14023,7 @@ const App: React.FC = () => {
             const kept: typeof queueItems = [];
             let skippedInCommit = 0;
             for (let i = 0; i < queueItems.length; i++) {
+              if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
               const item = queueItems[i];
               const remainingInQueue = queueItems.length - i - 1;
               let action: string;
@@ -13724,6 +14063,7 @@ const App: React.FC = () => {
             const keptFiles = kept.filter(i => !i.file.is_dir);
             if (keptFiles.length > 0) {
               try {
+                onQueuedTarget();
                 const files = keptFiles.map(item => ({
                   localPath: item.filePath,
                   remotePath: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${item.fileName}`,
@@ -13751,7 +14091,7 @@ const App: React.FC = () => {
             for (const item of kept.filter(i => i.file.is_dir)) {
               transferQueue.startTransfer(item.id);
               try {
-                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
                 transferQueue.completeTransfer(item.id);
               } catch (error) {
                 transferQueue.failTransfer(item.id, String(error));
@@ -13773,6 +14113,7 @@ const App: React.FC = () => {
         // Upload sequentially with queue tracking and overwrite checking
         let skippedCount = 0;
         for (let i = 0; i < queueItems.length; i++) {
+          if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
           const item = queueItems[i];
           const remainingInQueue = queueItems.length - i - 1;
 
@@ -13886,7 +14227,7 @@ const App: React.FC = () => {
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw');
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
               if (attempt > 0) transferQueue.retryItem(item.id);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
@@ -13899,7 +14240,7 @@ const App: React.FC = () => {
               }
               // A folder with failed files is not sent again, nor counted
               // toward the pause: its command has retried each file.
-              const result = error instanceof FolderTransferFailedError ? null : await circuitBreaker.recordFailure(String(error));
+              const result = error instanceof FolderTransferFailedError || error instanceof QueuedTargetChangedError ? null : await circuitBreaker.recordFailure(String(error));
               if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
                 transferQueue.failTransfer(item.id, String(error));
                 notify.error(t('toast.uploadFailed'), String(error));
@@ -13946,7 +14287,9 @@ const App: React.FC = () => {
       const { batch: pickedBatch } = splitForFileBatch(picked, fileBatchSessionFlags('upload'));
       if (pickedBatch.length > 0) {
         resetOverwriteSettings();
-        const outcome = await runFileBatch('upload', pickedBatch, remoteDir);
+        // The target taken before the picker opened: the user can switch tabs
+        // while it is open.
+        const outcome = await runFileBatch('upload', pickedBatch, remoteDir, { queuedTarget });
         if (!outcome.aborted && !outcome.staged) loadRemoteFiles();
         return;
       }
@@ -13984,10 +14327,10 @@ const App: React.FC = () => {
           size: 0,
           is_folder: false,
         });
-        retryCallbacksRef.current.set(id, async () => {
+        retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -14000,7 +14343,7 @@ const App: React.FC = () => {
               notify.error(t('toast.uploadFailed'), String(error));
             }
           }
-        });
+        }));
         return { id, filePath, fileName };
       });
 
@@ -14009,6 +14352,7 @@ const App: React.FC = () => {
       }
 
       for (let i = 0; i < queueItems.length; i++) {
+        if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
@@ -14103,7 +14447,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -14114,8 +14458,9 @@ const App: React.FC = () => {
               transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
-            const result = await circuitBreaker.recordFailure(String(error));
-            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
+            // A target that changed is not retried, nor counted toward the pause.
+            const result = error instanceof QueuedTargetChangedError ? null : await circuitBreaker.recordFailure(String(error));
+            if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.uploadFailed'), String(error));
               break;
@@ -14135,6 +14480,9 @@ const App: React.FC = () => {
   // === Bulk Operations ===
   const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localDir: string = currentLocalPath) => {
     if (!isConnected) return;
+    // The target its Start and Retry are bound to, taken before any await.
+    const queuedTarget = snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -14160,6 +14508,7 @@ const App: React.FC = () => {
           'download',
           batchFiles.map(f => ({ name: f.name, sourcePath: f.path, size: f.size || 0, modified: f.modified || null })),
           localDir,
+          { queuedTarget },
         );
         if (outcome.aborted) return;
         batchStaged = outcome.staged;
@@ -14203,10 +14552,10 @@ const App: React.FC = () => {
           size: file.size || 0,
           is_folder: !!file.is_dir,
         });
-        retryCallbacksRef.current.set(id, async () => {
+        retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw');
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -14219,7 +14568,7 @@ const App: React.FC = () => {
               notify.error(t('toast.downloadFailed'), String(error));
             }
           }
-        });
+        }));
         return { id, file };
       });
 
@@ -14237,6 +14586,7 @@ const App: React.FC = () => {
       // Download sequentially with queue tracking and overwrite checking
       let skippedCount = 0;
       for (let i = 0; i < queueItems.length; i++) {
+        if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
@@ -14357,7 +14707,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw');
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw', undefined, onQueuedTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -14370,7 +14720,7 @@ const App: React.FC = () => {
             }
             // A folder with failed files is not downloaded again, nor counted
             // toward the pause: its command has retried each file.
-            const result = error instanceof FolderTransferFailedError ? null : await circuitBreaker.recordFailure(String(error));
+            const result = error instanceof FolderTransferFailedError || error instanceof QueuedTargetChangedError ? null : await circuitBreaker.recordFailure(String(error));
             if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.downloadFailed'), String(error));
@@ -14437,6 +14787,8 @@ const App: React.FC = () => {
   const deleteMultipleRemoteFiles = withBatchLatch((filesOverride?: string[]) => {
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
+    // The server this delete is for, taken before its confirmation.
+    const onTarget = remoteActionGuard();
 
     const performDelete = async () => {
       const deletedFiles: string[] = [];
@@ -14480,6 +14832,7 @@ const App: React.FC = () => {
           .filter(Boolean) as RemoteFile[];
         const entryPaths = resolvedFiles.map(f => f.path);
         try {
+          onTarget();
           await invoke<number>('aerovault_overlay_delete_entries', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPaths,
@@ -14506,6 +14859,9 @@ const App: React.FC = () => {
         if (filePaths.length > 0) {
           try {
             const deleteCommand = protocol === 'gitlab' ? 'gitlab_batch_delete' : 'github_batch_delete';
+            // The commit message dialog gave the user time to switch tabs:
+            // the batch runs on the server it was started for (CodeRabbit on #1526).
+            onTarget();
             await invoke(deleteCommand, {
               paths: filePaths,
               message: batchCommitMessage,
@@ -14520,6 +14876,7 @@ const App: React.FC = () => {
         for (const dir of dirFiles) {
           if (batchCancelledRef.current) break;
           try {
+            onTarget();
             await invoke('provider_delete_dir', { path: dir.path, recursive: true, commitMessage: batchCommitMessage });
             deletedFolders.push(dir.path);
           } catch (err) {
@@ -14541,11 +14898,14 @@ const App: React.FC = () => {
             try {
               if (isProvider) {
                 if (file.is_dir) {
+                  onTarget();
                   await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null });
                 } else {
+                  onTarget();
                   await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null });
                 }
               } else {
+                onTarget();
                 await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
               }
 
@@ -14725,8 +15085,12 @@ const App: React.FC = () => {
   });
 
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
-  const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
+  const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string, startedFor?: () => void) => {
     const fileName = path.split('/').pop() || path;
+    // The server this delete is for, taken before its confirmation, or before
+    // the commit message dialog when it runs again after it (CodeRabbit on
+    // #1526: a fresh snapshot then was the server live after the dialog).
+    const onTarget = startedFor ?? remoteActionGuard();
     const protocol = liveConnectionParams.protocol;
     const isGitHubRepoMode = (protocol === 'github' && !path.startsWith('/.github-releases')) || protocol === 'gitlab';
 
@@ -14739,7 +15103,7 @@ const App: React.FC = () => {
         workingBranch: gitHubRepoInfo.workingBranch || undefined,
         onCommit: (message: string) => {
           setGitHubCommitDialog(null);
-          deleteRemoteFile(path, isDir, message);
+          deleteRemoteFile(path, isDir, message, onTarget);
         },
       });
       return;
@@ -14752,6 +15116,7 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
         if (isAeroVaultOverlay) {
+          onTarget();
           await invoke<number>('aerovault_overlay_delete_entries', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPaths: [path],
@@ -14759,11 +15124,14 @@ const App: React.FC = () => {
           });
         } else if (isProvider) {
           if (isDir) {
+            onTarget();
             await invoke('provider_delete_dir', { path, recursive: true });
           } else {
+            onTarget();
             await invoke('provider_delete_file', { path, commitMessage: commitMessage || null });
           }
         } else {
+          onTarget();
           await invoke('delete_remote_file', { path, isDir });
         }
         humanLog.logSuccess('DELETE', { filename: path }, logId);
@@ -14791,6 +15159,8 @@ const App: React.FC = () => {
   };
 
   const renameFile = (path: string, currentName: string, isRemote: boolean) => {
+    // The server this rename is for, taken before its dialog.
+    const onTarget = remoteActionGuard();
     setInputDialog({
       title: t('common.rename'),
       defaultValue: currentName,
@@ -14817,14 +15187,17 @@ const App: React.FC = () => {
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
             if (isAeroVaultOverlay) {
+              onTarget();
               await invoke<string>('aerovault_overlay_rename_entry', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 entryPath: path,
                 newName,
               });
             } else if (isProvider) {
+              onTarget();
               await invoke('provider_rename', { from: path, to: newPath });
             } else {
+              onTarget();
               await invoke('rename_remote_file', { from: path, to: newPath });
             }
             await loadRemoteFiles(undefined, true);
@@ -14865,7 +15238,7 @@ const App: React.FC = () => {
   const startInlineRename = (path: string, name: string, isRemote: boolean) => {
     if (name === '..') return;
     if (isRemote && liveConnectionParams.protocol === 'immich') return;
-    setInlineRename({ path, name, isRemote });
+    setInlineRename({ path, name, isRemote, target: isRemote ? snapshotQueuedTarget() : undefined });
     setInlineRenameValue(name);
     // Focus input after render
     setTimeout(() => {
@@ -14886,6 +15259,8 @@ const App: React.FC = () => {
   const commitInlineRename = async () => {
     if (!inlineRename) return;
     const { path, name, isRemote } = inlineRename;
+    // The server the inline rename started on.
+    const onTarget = remoteActionGuard(inlineRename.target);
     const newName = inlineRenameValue.trim();
 
     // Cancel if empty or unchanged
@@ -14912,14 +15287,17 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
         if (isAeroVaultOverlay) {
+          onTarget();
           await invoke<string>('aerovault_overlay_rename_entry', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPath: path,
             newName,
           });
         } else if (isProvider) {
+          onTarget();
           await invoke('provider_rename', { from: path, to: newPath });
         } else {
+          onTarget();
           await invoke('rename_remote_file', { from: path, to: newPath });
         }
         await loadRemoteFiles(undefined, true);
@@ -14976,6 +15354,8 @@ const App: React.FC = () => {
 
   // Batch rename handler for multiple selected files
   const handleBatchRename = async (renames: Map<string, string>) => {
+    // The server the batch rename dialog was opened on.
+    const onTarget = remoteActionGuard(batchRenameDialog?.target);
     const isRemote = batchRenameDialog?.isRemote ?? true;
     const logId = humanLog.logStart('BATCH_RENAME', {
       count: renames.size,
@@ -14999,14 +15379,17 @@ const App: React.FC = () => {
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
           if (isAeroVaultOverlay) {
+            onTarget();
             await invoke<string>('aerovault_overlay_rename_entry', {
               sessionId: aeroVaultOverlaySession?.sessionId,
               entryPath: oldPath,
               newName,
             });
           } else if (isProvider) {
+            onTarget();
             await invoke('provider_rename', { from: oldPath, to: newPath });
           } else {
+            onTarget();
             await invoke('rename_remote_file', { from: oldPath, to: newPath });
           }
         } else {
@@ -15050,6 +15433,8 @@ const App: React.FC = () => {
   };
 
   const createFolder = useLatestCallback((isRemote: boolean, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
+    // The server the new folder is for, taken before its dialog.
+    const onTarget = remoteActionGuard();
     setInputDialog({
       title: t('dialog.newFolder'),
       defaultValue: '',
@@ -15067,13 +15452,16 @@ const App: React.FC = () => {
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
             if (isAeroVaultOverlay) {
+              onTarget();
               await invoke('aerovault_overlay_create_directory', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 dirName: name,
               });
             } else if (isProvider) {
+              onTarget();
               await invoke('provider_mkdir', { path });
             } else {
+              onTarget();
               await invoke('create_remote_folder', { path });
             }
             await loadRemoteFiles(undefined, true);
@@ -15160,7 +15548,7 @@ const App: React.FC = () => {
           // C-F02: pre-existing siblings NOT in this batch, captured at open time,
           // so the dialog can pre-flag a rename target that would collide with one.
           const siblings = remoteFiles.filter(f => !selection.has(f.name)).map(f => f.name);
-          setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
+          setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target: snapshotQueuedTarget() });
         }
       }] : []),
       ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || isSshProtocol(currentProtocol) ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
@@ -18409,7 +18797,7 @@ const App: React.FC = () => {
               setPermissionsDialog(null);
               notify.error(t('common.failed'), t('toast.permissionsSessionChanged'));
             };
-            if (remoteConnectPhaseRef.current || dialog.sessionId !== activeSessionId) {
+            if (!backendServesLiveTab() || dialog.sessionId !== activeSessionId) {
               sessionChanged();
               return;
             }
@@ -21302,25 +21690,7 @@ const App: React.FC = () => {
               }
             }, 300);
           }}
-          onSaveFile={async (content, file) => {
-            const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
-            try {
-              if (file.isRemote) {
-                await invoke('save_remote_file', { path: file.path, content });
-                humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
-                notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
-                await loadRemoteFiles(undefined, true);
-              } else {
-                await invoke('save_local_file', { path: file.path, content });
-                humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
-                notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
-                await refreshLocalPanelForPath(parentDir(file.path));
-              }
-            } catch (error) {
-              humanLog.logError('UPLOAD', { filename: file.name }, logId);
-              notify.error(t('toast.saveFailed'), String(error));
-            }
-          }}
+          onSaveFile={saveDevToolsFile}
         />
 
         <GuiControllerBanner lease={guiController.lease} preferences={settings.guiPresentation} onSpeed={guiController.setSpeed} onPause={guiController.setPaused} onStop={() => { void guiController.stop(); }} />

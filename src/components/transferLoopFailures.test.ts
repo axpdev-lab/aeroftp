@@ -54,16 +54,19 @@ const pickerEnd = app.indexOf('  // === Bulk Operations ===', pickerStart);
 const { code: pickerCode } = await transformWithOxc(
   app.slice(pickerStart, pickerEnd) + '\nreturn uploadMultipleFiles;', 'upload-picker.ts',
 );
-async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<typeof breaker>) {
+async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<typeof breaker>, picked = [`${LOCAL}/up.txt`], onPick = () => {}) {
   const context = {
     withBatchLatch: <T,>(fn: T) => fn, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
     getActiveLocalState: () => f.panels.local, resetOverwriteSettings: vi.fn(),
-    pickFile: vi.fn(async () => [`${LOCAL}/up.txt`]), t: (key: string) => key,
-    splitForFileBatch, fileBatchSessionFlags: () => ({ aeroVaultOverlay: false, gitHostUpload: false }),
-    liveConnectionParams: { protocol: 'webdav' }, usesProviderApi,
+    pickFile: vi.fn(async () => { onPick(); return picked; }), t: (key: string) => key,
+    splitForFileBatch, usesProviderApi, liveConnectionParams: f.liveConnectionParams, loadRemoteFiles: f.loadRemoteFiles,
     batchCancelledRef: f.batchCancelledRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
     invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
     transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
+    // App's own target checks and file batch, over the fixture's live
+    // connection, which a test can switch while the picker is open.
+    ...f.targetChecks,
+    QueuedTargetChangedError: Error,
     uploadFile: f.uploadFile, notify: f.notify, checkOverwrite: f.checkOverwrite,
     humanLog: f.humanLog, isCancelledTransferError,
     joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,
@@ -523,5 +526,27 @@ describe('every transfer that completes a queue row passes its error on', () => 
       return !line.includes('stopCountRef.current += 1');
     });
     expect(uncounted).toEqual([]);
+  });
+});
+
+/**
+ * The picker stays open as long as the user wants: a switch to another server
+ * meanwhile left the upload to run on it, because the batch took its target
+ * after the picker. The target is the one taken before it opened.
+ */
+describe('a switch to another server while the file picker is open', () => {
+  it.each([
+    ['one file', [`${LOCAL}/up.txt`]],
+    ['two files', [`${LOCAL}/up.txt`, `${LOCAL}/b.txt`]],
+  ])('uploads nothing to the server switched to, with %s', async (_label, picked) => {
+    const f = fixture({ folders: { [LOCAL]: [local('up.txt'), local('b.txt')] } });
+    await uploadPicked(f, breaker(), picked, () => f.switchServer());
+    expect(f.written()).toEqual([]);
+  });
+
+  it('uploads when the server stays the same', async () => {
+    const f = fixture({ folders: { [LOCAL]: [local('up.txt'), local('b.txt')] } });
+    await uploadPicked(f, breaker(), [`${LOCAL}/up.txt`, `${LOCAL}/b.txt`]);
+    expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/b.txt`]);
   });
 });

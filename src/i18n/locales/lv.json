@@ -765,7 +765,10 @@
             },
             "stagedCount": "Sagatavoti: {count}",
             "pendingCount": "Gaida: {count}",
-            "failedCount": "Neizdevās: {count}"
+            "failedCount": "Neizdevās: {count}",
+            "queuedForAnotherServer": "Nav sākts: šī pārsūtīšana bija rindā citam serverim vai kontam. Atgriezieties tā cilnē un mēģiniet vēlreiz.",
+            "queuedOverlayChanged": "Nav sākts: šifrētais overlay, ar kuru šī pārsūtīšana tika ievietota rindā, ir bloķēts vai vairs neaptver šo mapi. Atbloķējiet to attiecīgajā serverī un mēģiniet vēlreiz.",
+            "pasteFromAnotherServer": "Nav ielīmēts: šie faili tika izgriezti vai kopēti serverī, kontā vai šifrētā slānī, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un ielīmējiet vēlreiz."
         },
         "settings": {
             "title": "Iestatījumi",
@@ -1761,7 +1764,10 @@
             "createFailed": "Izveide neizdevās",
             "unknownServer": "nezināmu serveri",
             "scpModeTitle": "Savienots ar SCP",
-            "scpModeBody": "Serverim {host} nav SFTP, tāpēc AeroFTP izmanto SCP tajā pašā savienojumā."
+            "scpModeBody": "Serverim {host} nav SFTP, tāpēc AeroFTP izmanto SCP tajā pašā savienojumā.",
+            "saveOnAnotherServer": "Nav saglabāts: šis fails tika atvērts no servera, konta vai šifrēta slāņa, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un saglabājiet vēlreiz.",
+            "openedOnAnotherServer": "Nav atvērts: faila lasīšanas laikā serveris mainījās. Atveriet to vēlreiz.",
+            "remoteTargetChanged": "Nekas netika mainīts: serveris, konts vai šifrētais slānis ir mainījies kopš darbības sākuma vai vēl savienojas atkārtoti. Mēģiniet vēlreiz pašreizējā savienojumā."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -3080,7 +3086,8 @@
                 "diff": "Salīdzināt ar oriģinālu",
                 "diffNoFile": "Nav atvērta faila salīdzināšanai",
                 "commandBlocked": "Komanda bloķēta: potenciāli destruktīva",
-                "confirmRun": "Apstiprināt izpildi: {command}"
+                "confirmRun": "Apstiprināt izpildi: {command}",
+                "reopenEditor": "Parādiet redaktoru ar atvērtu šo failu un mēģiniet vēlreiz."
             },
             "thinkingBlock": {
                 "thinking": "Domā...",

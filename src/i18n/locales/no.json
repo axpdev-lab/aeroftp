@@ -765,7 +765,10 @@
             },
             "stagedCount": "Klargjort: {count}",
             "pendingCount": "Ventende: {count}",
-            "failedCount": "Mislykket: {count}"
+            "failedCount": "Mislykket: {count}",
+            "queuedForAnotherServer": "Ikke startet: denne overføringen sto i kø for en annen server eller konto. Bytt tilbake til fanen og prøv igjen.",
+            "queuedOverlayChanged": "Ikke startet: det krypterte overlayet som denne overføringen ble satt i kø under, er låst eller dekker ikke lenger denne mappen. Lås det opp på den serveren, og prøv igjen.",
+            "pasteFromAnotherServer": "Ikke limt inn: disse filene ble klippet ut eller kopiert på en server, konto eller kryptert overlegg som ikke er aktivt nå. Bytt tilbake til fanen og lim inn på nytt."
         },
         "settings": {
             "title": "Innstillinger",
@@ -1761,7 +1764,10 @@
             "createFailed": "Oppretting mislyktes",
             "unknownServer": "Ukjent",
             "scpModeTitle": "Koblet til med SCP",
-            "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruker SCP på samme tilkobling."
+            "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruker SCP på samme tilkobling.",
+            "saveOnAnotherServer": "Ikke lagret: denne filen ble åpnet fra en server, konto eller kryptert overlegg som ikke er aktivt nå. Bytt tilbake til fanen og lagre på nytt.",
+            "openedOnAnotherServer": "Ikke åpnet: serveren ble endret mens filen ble lest. Åpne den på nytt.",
+            "remoteTargetChanged": "Ingenting ble endret: serveren, kontoen eller det krypterte laget er endret siden handlingen startet, eller kobler fortsatt til på nytt. Prøv igjen på gjeldende tilkobling."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -3080,7 +3086,8 @@
                 "diff": "Diff med original",
                 "diffNoFile": "Ingen fil åpen for diff",
                 "commandBlocked": "Kommando blokkert: potensielt destruktiv",
-                "confirmRun": "Bekreft kjøring: {command}"
+                "confirmRun": "Bekreft kjøring: {command}",
+                "reopenEditor": "Vis editoren med denne filen åpen og prøv igjen."
             },
             "thinkingBlock": {
                 "thinking": "Tenker...",

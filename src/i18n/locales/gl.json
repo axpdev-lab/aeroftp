@@ -765,7 +765,10 @@
             },
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendentes: {count}",
-            "failedCount": "Fallidos: {count}"
+            "failedCount": "Fallidos: {count}",
+            "queuedForAnotherServer": "Non iniciado: esta transferencia estaba na cola para outro servidor ou conta. Volve á súa lapela e téntao de novo.",
+            "queuedOverlayChanged": "Non iniciada: o overlay cifrado baixo o que se puxo en cola esta transferencia está bloqueado ou xa non cobre este cartafol. Desbloquéao nese servidor e téntao de novo.",
+            "pasteFromAnotherServer": "Non pegado: estes ficheiros cortáronse ou copiáronse nun servidor, conta ou superposición cifrada que agora non está activa. Volve á súa lapela e pega de novo."
         },
         "settings": {
             "title": "Axustes",
@@ -1761,7 +1764,10 @@
             "createFailed": "Fallou a creación",
             "unknownServer": "Descoñecido",
             "scpModeTitle": "Conectado con SCP",
-            "scpModeBody": "{host} non ten SFTP, así que AeroFTP usa SCP na mesma conexión."
+            "scpModeBody": "{host} non ten SFTP, así que AeroFTP usa SCP na mesma conexión.",
+            "saveOnAnotherServer": "Non gardado: este ficheiro abriuse desde un servidor, conta ou superposición cifrada que agora non está activa. Volve á súa lapela e garda de novo.",
+            "openedOnAnotherServer": "Non aberto: o servidor cambiou mentres se lía o ficheiro. Ábreo de novo.",
+            "remoteTargetChanged": "Non se cambiou nada: o servidor, a conta ou a capa cifrada cambiou desde que comezou a acción, ou aínda se está reconectando. Téntao de novo na conexión actual."
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -3080,7 +3086,8 @@
                 "diff": "Comparar co orixinal",
                 "diffNoFile": "Non hai ficheiro aberto para comparar",
                 "commandBlocked": "Orde bloqueada: potencialmente destrutiva",
-                "confirmRun": "Confirmar execución: {command}"
+                "confirmRun": "Confirmar execución: {command}",
+                "reopenEditor": "Mostra o editor con este ficheiro aberto e téntao de novo."
             },
             "thinkingBlock": {
                 "thinking": "Pensando...",

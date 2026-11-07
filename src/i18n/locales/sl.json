@@ -765,7 +765,10 @@
             },
             "stagedCount": "Pripravljeno: {count}",
             "pendingCount": "V čakanju: {count}",
-            "failedCount": "Neuspešno: {count}"
+            "failedCount": "Neuspešno: {count}",
+            "queuedForAnotherServer": "Ni zagnano: ta prenos je bil v čakalni vrsti za drug strežnik ali račun. Vrnite se na njegov zavihek in poskusite znova.",
+            "queuedOverlayChanged": "Ni zagnano: šifrirani overlay, pod katerim je bil ta prenos postavljen v čakalno vrsto, je zaklenjen ali te mape ne pokriva več. Odklenite ga na tem strežniku in poskusite znova.",
+            "pasteFromAnotherServer": "Ni prilepljeno: te datoteke so bile izrezane ali kopirane na strežniku, računu ali šifriranem sloju, ki trenutno ni aktiven. Vrnite se na njegov zavihek in prilepite znova."
         },
         "settings": {
             "title": "Nastavitve",
@@ -1761,7 +1764,10 @@
             "createFailed": "Ustvarjanje ni uspelo",
             "unknownServer": "neznanim strežnikom",
             "scpModeTitle": "Povezano prek SCP",
-            "scpModeBody": "{host} nima SFTP, zato AeroFTP uporablja SCP na isti povezavi."
+            "scpModeBody": "{host} nima SFTP, zato AeroFTP uporablja SCP na isti povezavi.",
+            "saveOnAnotherServer": "Ni shranjeno: ta datoteka je bila odprta s strežnika, računa ali šifriranega sloja, ki trenutno ni aktiven. Vrnite se na njegov zavihek in shranite znova.",
+            "openedOnAnotherServer": "Ni odprto: strežnik se je spremenil med branjem datoteke. Odprite jo znova.",
+            "remoteTargetChanged": "Nič ni bilo spremenjeno: strežnik, račun ali šifrirana plast so se od začetka dejanja spremenili ali se še ponovno povezujejo. Poskusite znova na trenutni povezavi."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -3080,7 +3086,8 @@
                 "diff": "Primerjaj z izvirnikom",
                 "diffNoFile": "Ni odprte datoteke za primerjavo",
                 "commandBlocked": "Ukaz blokiran: potencialno uničujoč",
-                "confirmRun": "Potrdi zagon: {command}"
+                "confirmRun": "Potrdi zagon: {command}",
+                "reopenEditor": "Prikažite urejevalnik z odprto to datoteko in poskusite znova."
             },
             "thinkingBlock": {
                 "thinking": "Razmišljam...",

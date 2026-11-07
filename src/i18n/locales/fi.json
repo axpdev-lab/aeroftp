@@ -765,7 +765,10 @@
             },
             "stagedCount": "Valmisteltu: {count}",
             "pendingCount": "Odottaa: {count}",
-            "failedCount": "Epäonnistui: {count}"
+            "failedCount": "Epäonnistui: {count}",
+            "queuedForAnotherServer": "Ei käynnistetty: tämä siirto oli jonossa toiselle palvelimelle tai tilille. Vaihda takaisin sen välilehteen ja yritä uudelleen.",
+            "queuedOverlayChanged": "Ei käynnistynyt: salattu overlay, jonka alla tämä siirto jonotettiin, on lukittu tai ei enää kata tätä kansiota. Avaa se kyseisellä palvelimella ja yritä uudelleen.",
+            "pasteFromAnotherServer": "Ei liimattu: nämä tiedostot leikattiin tai kopioitiin palvelimella, tilillä tai salatulla kerroksella, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja liimaa uudelleen."
         },
         "settings": {
             "title": "Asetukset",
@@ -1761,7 +1764,10 @@
             "createFailed": "Luonti epäonnistui",
             "unknownServer": "Tuntematon",
             "scpModeTitle": "Yhdistetty SCP:llä",
-            "scpModeBody": "Palvelimella {host} ei ole SFTP:tä, joten AeroFTP käyttää SCP:tä samassa yhteydessä."
+            "scpModeBody": "Palvelimella {host} ei ole SFTP:tä, joten AeroFTP käyttää SCP:tä samassa yhteydessä.",
+            "saveOnAnotherServer": "Ei tallennettu: tämä tiedosto avattiin palvelimelta, tililtä tai salatulta kerrokselta, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja tallenna uudelleen.",
+            "openedOnAnotherServer": "Ei avattu: palvelin vaihtui tiedoston lukemisen aikana. Avaa se uudelleen.",
+            "remoteTargetChanged": "Mitään ei muutettu: palvelin, tili tai salattu kerros on muuttunut toiminnon alun jälkeen tai yhdistää vielä uudelleen. Yritä uudelleen nykyisellä yhteydellä."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -3080,7 +3086,8 @@
                 "diff": "Vertaa alkuperäiseen",
                 "diffNoFile": "Ei tiedostoa auki vertailua varten",
                 "commandBlocked": "Komento estetty: mahdollisesti tuhoava",
-                "confirmRun": "Vahvista suoritus: {command}"
+                "confirmRun": "Vahvista suoritus: {command}",
+                "reopenEditor": "Näytä editori tämä tiedosto avattuna ja yritä uudelleen."
             },
             "thinkingBlock": {
                 "thinking": "Ajattelee...",

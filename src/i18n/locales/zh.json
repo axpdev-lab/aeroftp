@@ -765,7 +765,10 @@
             },
             "stagedCount": "{count} 个已暂存",
             "pendingCount": "{count} 个等待中",
-            "failedCount": "{count} 个失败"
+            "failedCount": "{count} 个失败",
+            "queuedForAnotherServer": "未开始：此传输是为另一个服务器或账户排队的。请切回其标签页，然后重试。",
+            "queuedOverlayChanged": "未开始：此传输排队时所用的加密覆盖层已锁定，或不再覆盖此文件夹。请在该服务器上解锁，然后重试。",
+            "pasteFromAnotherServer": "未粘贴：这些文件是在当前未激活的服务器、账户或加密叠加层上剪切或复制的。请切回其标签页，然后再次粘贴。"
         },
         "settings": {
             "title": "设置",
@@ -1761,7 +1764,10 @@
             "createFailed": "创建失败",
             "unknownServer": "未知服务器",
             "scpModeTitle": "已通过 SCP 连接",
-            "scpModeBody": "{host} 没有 SFTP，因此 AeroFTP 正在同一连接上使用 SCP。"
+            "scpModeBody": "{host} 没有 SFTP，因此 AeroFTP 正在同一连接上使用 SCP。",
+            "saveOnAnotherServer": "未保存：此文件是从当前未激活的服务器、账户或加密叠加层打开的。请切回其标签页，然后再次保存。",
+            "openedOnAnotherServer": "未打开：读取文件时服务器已更改。请重新打开。",
+            "remoteTargetChanged": "未做任何更改：自操作开始以来，服务器、账户或加密叠加层已发生变化，或仍在重新连接。请在当前连接上重试。"
         },
         "about": {
             "tagline": "不仅仅是 FTP。完整的开发者工具包。",
@@ -3080,7 +3086,8 @@
                 "diff": "与原文件对比",
                 "diffNoFile": "没有打开的文件可供对比",
                 "commandBlocked": "命令已阻止：可能具有破坏性",
-                "confirmRun": "确认运行：{command}"
+                "confirmRun": "确认运行：{command}",
+                "reopenEditor": "显示已打开此文件的编辑器，然后重试。"
             },
             "thinkingBlock": {
                 "thinking": "正在思考...",

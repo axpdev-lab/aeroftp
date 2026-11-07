@@ -765,7 +765,10 @@
             },
             "stagedCount": "Prestatuta: {count}",
             "pendingCount": "Zain: {count}",
-            "failedCount": "Huts eginda: {count}"
+            "failedCount": "Huts eginda: {count}",
+            "queuedForAnotherServer": "Ez da hasi: transferentzia hau beste zerbitzari edo kontu baterako ilaran zegoen. Itzuli bere fitxara eta saiatu berriro.",
+            "queuedOverlayChanged": "Ez da hasi: transferentzia hau ilaran jarri zen overlay zifratua blokeatuta dago edo ez du karpeta hau estaltzen jada. Desblokeatu zerbitzari horretan, eta saiatu berriro.",
+            "pasteFromAnotherServer": "Ez da itsatsi: fitxategi hauek orain aktibo ez dagoen zerbitzari, kontu edo geruza zifratu batean ebaki edo kopiatu ziren. Itzuli bere fitxara eta itsatsi berriro."
         },
         "settings": {
             "title": "Ezarpenak",
@@ -1761,7 +1764,10 @@
             "createFailed": "Sorrerak huts egin du",
             "unknownServer": "Ezezaguna",
             "scpModeTitle": "SCP bidez konektatuta",
-            "scpModeBody": "{host} zerbitzariak ez du SFTPrik, beraz AeroFTP SCP erabiltzen ari da konexio berean."
+            "scpModeBody": "{host} zerbitzariak ez du SFTPrik, beraz AeroFTP SCP erabiltzen ari da konexio berean.",
+            "saveOnAnotherServer": "Ez da gorde: fitxategi hau orain aktibo ez dagoen zerbitzari, kontu edo geruza zifratu batetik ireki zen. Itzuli bere fitxara eta gorde berriro.",
+            "openedOnAnotherServer": "Ez da ireki: zerbitzaria aldatu da fitxategia irakurtzen ari zen bitartean. Ireki berriro.",
+            "remoteTargetChanged": "Ez da ezer aldatu: zerbitzaria, kontua edo geruza zifratua aldatu da ekintza hasi zenetik, edo oraindik birkonektatzen ari da. Saiatu berriro uneko konexioan."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -3080,7 +3086,8 @@
                 "diff": "Jatorrizkoarekin alderatu",
                 "diffNoFile": "Ez dago fitxategirik irekita alderatzeko",
                 "commandBlocked": "Komandoa blokeatuta: suntsitzailea izan daiteke",
-                "confirmRun": "Berretsi exekuzioa: {command}"
+                "confirmRun": "Berretsi exekuzioa: {command}",
+                "reopenEditor": "Erakutsi editorea fitxategi hau irekita duela eta saiatu berriro."
             },
             "thinkingBlock": {
                 "thinking": "Pentsatzen...",

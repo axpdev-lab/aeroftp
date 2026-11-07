@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "063fba2a8b334b055faae2e04a92074c3448b1a6c20795c4512f48bd619939c5",
+    "enHash": "4be7a2f76ea4d77342e6877e1e6ee8aca19579e6600259474030f0f92cb32c63",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -858,6 +858,9 @@
         ],
         "transfer.modeUnavailable": [
             "Transfer mode presets are currently available for FTP/FTPS only"
+        ],
+        "transfer.queuedForAnotherServer": [
+            "Not started: this transfer was queued for another server. Switch back to that server's tab, then retry."
         ],
         "transfer.restoredHint": [
             "Restored from a previous session. Reconnect to the same server, then press Retry to re-run."

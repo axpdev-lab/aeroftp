@@ -9,6 +9,7 @@
 import { presetConnectionOptions, connectionProfileDefaults } from '../providers/connectionManifest';
 import React, { useState, useEffect, useRef, useMemo, useId, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { countedOAuthLogin, oauthLoginKey } from '../utils/oauthLogins';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
@@ -195,7 +196,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         try {
             // One call: an import or another window must not see half of the pair.
             await invoke('store_oauth_app', { provider: 'fourshared', clientId: consumerKey, clientSecret: consumerSecret });
-            await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
+            await countedOAuthLogin(oauthLoginKey('fourshared', null), () => invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } }));
             setHasExistingTokens(true);
             setWantsNewAccount(false);
             await handleConnect();

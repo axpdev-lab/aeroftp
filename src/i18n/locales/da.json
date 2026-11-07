@@ -765,7 +765,10 @@
             },
             "stagedCount": "Klargjorte: {count}",
             "pendingCount": "Afventende: {count}",
-            "failedCount": "Mislykkede: {count}"
+            "failedCount": "Mislykkede: {count}",
+            "queuedForAnotherServer": "Ikke startet: denne overførsel stod i kø til en anden server eller konto. Skift tilbage til dens fane, og prøv igen.",
+            "queuedOverlayChanged": "Ikke startet: det krypterede overlay, som denne overførsel blev sat i kø under, er låst eller dækker ikke længere denne mappe. Lås det op på den server, og prøv igen.",
+            "pasteFromAnotherServer": "Ikke indsat: disse filer blev klippet eller kopieret på en server, konto eller krypteret overlejring, som ikke er aktiv nu. Skift tilbage til dens fane, og indsæt igen."
         },
         "settings": {
             "title": "Indstillinger",
@@ -1761,7 +1764,10 @@
             "createFailed": "Oprettelse mislykkedes",
             "unknownServer": "Ukendt",
             "scpModeTitle": "Forbundet med SCP",
-            "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruger SCP på samme forbindelse."
+            "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruger SCP på samme forbindelse.",
+            "saveOnAnotherServer": "Ikke gemt: denne fil blev åbnet fra en server, konto eller krypteret overlejring, som ikke er aktiv nu. Skift tilbage til dens fane, og gem igen.",
+            "openedOnAnotherServer": "Ikke åbnet: serveren blev ændret, mens filen blev læst. Åbn den igen.",
+            "remoteTargetChanged": "Intet blev ændret: serveren, kontoen eller det krypterede overlay er ændret, siden handlingen startede, eller genopretter stadig forbindelsen. Prøv igen på den aktuelle forbindelse."
         },
         "about": {
             "tagline": "Mere end FTP. Et komplet udviklingsværktøj.",
@@ -3080,7 +3086,8 @@
                 "diff": "Diff med original",
                 "diffNoFile": "Ingen fil åben til diff",
                 "commandBlocked": "Kommando blokeret: potentielt destruktiv",
-                "confirmRun": "Bekræft kørsel: {command}"
+                "confirmRun": "Bekræft kørsel: {command}",
+                "reopenEditor": "Vis editoren med denne fil åben, og prøv igen."
             },
             "thinkingBlock": {
                 "thinking": "Tænker...",

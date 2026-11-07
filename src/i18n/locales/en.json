@@ -412,7 +412,8 @@
                 "insert": "Insert in Editor",
                 "run": "Run in Terminal",
                 "commandBlocked": "Command blocked: potentially destructive",
-                "confirmRun": "Confirm run: {command}"
+                "confirmRun": "Confirm run: {command}",
+                "reopenEditor": "Show the editor with this file open, then try again."
             },
             "codeContext": "Regarding this code from `{file}`:",
             "codeExec": {
@@ -4942,6 +4943,9 @@
             "renameSuccess": "Renamed successfully",
             "restoreFailed": "Restore failed",
             "saveFailed": "Save Failed",
+            "saveOnAnotherServer": "Not saved: this file was opened from a server, account or encrypted overlay that is not active now. Switch back to its tab, then save again.",
+            "openedOnAnotherServer": "Not opened: the server changed while the file was being read. Open it again.",
+            "remoteTargetChanged": "Nothing was changed: the server, account or encrypted overlay changed since this action started, or is still reconnecting. Try again on the current connection.",
             "saveServerFirst": "Please save your server first",
             "serverNotFound": "Server not found",
             "serverProfileNotFound": "Server profile \"{name}\" not found",
@@ -5153,7 +5157,10 @@
             },
             "stagedCount": "{count} staged",
             "pendingCount": "{count} Pending",
-            "failedCount": "{count} Failed"
+            "failedCount": "{count} Failed",
+            "queuedForAnotherServer": "Not started: this transfer was queued for another server or account. Switch back to its tab, then retry.",
+            "queuedOverlayChanged": "Not started: the encrypted overlay this transfer was queued under is locked or no longer covers this folder. Unlock it on that server, then retry.",
+            "pasteFromAnotherServer": "Not pasted: these files were cut or copied on a server, account or encrypted overlay that is not active now. Switch back to its tab, then paste again."
         },
         "scanning": {
             "deleting": "Deleting",
