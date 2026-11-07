@@ -2122,6 +2122,7 @@ pub struct ProfileResetReport {
     pub reset: Vec<crate::profile_security::ProfileReset>,
     pub left: usize,
     pub failed: usize,
+    persistent_failure: bool,
 }
 
 fn security_reset_pending_key(user_id: i64) -> String {
@@ -2178,6 +2179,31 @@ fn mark_security_reset_pending(conn: &mut Connection, user_id: i64) -> Result<()
         .map_err(|e| format!("Commit pending security reset: {e}"))
 }
 
+fn quarantine_security_reset_db(path: &std::path::Path) -> Result<PathBuf, String> {
+    let target = PathBuf::from(format!(
+        "{}.security-reset-failed-{}",
+        path.display(),
+        uuid::Uuid::new_v4()
+    ));
+    for suffix in ["", "-wal", "-shm"] {
+        let source = PathBuf::from(format!("{}{suffix}", path.display()));
+        if source.exists() {
+            let destination = PathBuf::from(format!("{}{suffix}", target.display()));
+            std::fs::rename(&source, &destination).map_err(|e| {
+                format!(
+                    "Quarantine restored partition database {}: {e}",
+                    source.display()
+                )
+            })?;
+        }
+    }
+    tracing::warn!(
+        "Restored partition database preserved in quarantine at {}",
+        target.display()
+    );
+    Ok(target)
+}
+
 pub fn reset_profile_relaxations_in_db(
     store: &CredentialStore,
     db_path: &std::path::Path,
@@ -2191,6 +2217,13 @@ pub fn reset_profile_relaxations_in_db(
     let mut root_key = store.derive_user_partition_wrapping_key();
     let result = reset_profile_relaxations(&mut conn, &root_key, except_user);
     root_key.zeroize();
+    let needs_quarantine = result
+        .as_ref()
+        .is_ok_and(|report| report.persistent_failure);
+    if needs_quarantine {
+        drop(conn);
+        quarantine_security_reset_db(db_path)?;
+    }
     result
 }
 
@@ -2231,6 +2264,7 @@ fn reset_profile_relaxations(
                     });
             if let Err(e) = marked {
                 report.failed += 1;
+                report.persistent_failure = true;
                 block_security_reset(conn, user.id);
                 clear_user_session();
                 tracing::warn!("Security reset marker: account {}: {e}", user.id);
@@ -2269,6 +2303,7 @@ fn reset_profile_relaxations(
             clear_user_session();
             tracing::warn!("Security reset: account {}: {e}", user.id);
             if let Err(e) = mark_security_reset_pending(conn, user.id) {
+                report.persistent_failure = true;
                 tracing::warn!("Security reset rollback marker: account {}: {e}", user.id);
             }
             continue;
@@ -2284,6 +2319,7 @@ fn reset_profile_relaxations(
                 clear_user_session();
                 tracing::warn!("Security reset: account {}: {e}", user.id);
                 if let Err(e) = mark_security_reset_pending(conn, user.id) {
+                    report.persistent_failure = true;
                     tracing::warn!("Security reset rollback marker: account {}: {e}", user.id);
                 }
             }
@@ -8182,6 +8218,68 @@ mod tests {
     }
 
     #[test]
+    fn a_double_write_failure_quarantines_the_database_before_a_restart() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let root = store.derive_user_partition_wrapping_key();
+        let root_secret = user_crypto::secret_key_from_bytes(&root);
+        let path = dir.path().join(DB_FILENAME);
+        let mut conn = open_or_init_path(path.clone()).unwrap();
+        migrate_legacy_payloads(&mut conn, None, None, &root).unwrap();
+        let user = active_user_id(&conn).unwrap().unwrap();
+        let row = read_user_key_row(&conn, user).unwrap();
+        let dek = unwrap_user_dek_with_key(&row, &root_secret).unwrap();
+        insert_profile_rows(
+            &conn,
+            &root_secret,
+            user,
+            &dek,
+            &[json!({
+                "id": "relaxed", "name": "Relaxed", "protocol": "sftp",
+                "host": "sftp.example.com", "options": {"trustUnknownHosts": true}
+            })],
+        )
+        .unwrap();
+        conn.execute_batch(
+            "CREATE TRIGGER fail_restore_reset BEFORE INSERT ON server_profiles BEGIN SELECT RAISE(FAIL, 'forced reset failure'); END;
+             CREATE TRIGGER fail_pending_marker BEFORE INSERT ON global_state BEGIN SELECT RAISE(FAIL, 'forced marker failure'); END;",
+        )
+        .unwrap();
+        drop(conn);
+
+        let report = reset_profile_relaxations_in_db(&store, &path, None).unwrap();
+        assert_eq!(report.failed, 1);
+        assert!(report.persistent_failure);
+        assert!(!path.exists(), "the unmarked restored DB cannot reopen");
+        let preserved = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .find(|candidate| {
+                candidate
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| {
+                        name.starts_with("user_partitions.db.security-reset-failed-")
+                            && !name.ends_with("-wal")
+                            && !name.ends_with("-shm")
+                    })
+            })
+            .expect("quarantined database");
+        assert!(preserved.metadata().unwrap().len() > 0);
+
+        let fresh = open_or_init_path(path.clone()).unwrap();
+        let profiles = fresh
+            .query_row("SELECT COUNT(*) FROM server_profiles", [], |row| {
+                row.get::<_, usize>(0)
+            })
+            .unwrap();
+        assert_eq!(profiles, 0, "a restart creates no unsafe restored profile");
+    }
+
+    #[test]
     fn a_failed_pending_marker_invalidates_the_held_session() {
         let _guard = test_lock();
         clear_user_session();
@@ -8213,13 +8311,13 @@ mod tests {
         assert_eq!(report.failed, 1);
         assert!(session_generation() > generation);
         assert!(list_server_profiles_for(&conn, &root, locked.id).is_err());
+        assert!(security_reset_blocked(&conn, locked.id));
         conn.execute_batch("DROP TRIGGER fail_pending_marker")
             .unwrap();
-        reset_profile_relaxations(&mut conn, &root, None).unwrap();
-        assert!(security_reset_pending(&conn, locked.id).unwrap());
         let status = unlock_user(&conn, &root, locked.id, Some("passphrase")).unwrap();
         assert_eq!(status.security_reset.len(), 1);
         assert!(!security_reset_pending(&conn, locked.id).unwrap());
+        assert!(!security_reset_blocked(&conn, locked.id));
     }
 
     /// A database written whole (a restored backup from an older build) is put
