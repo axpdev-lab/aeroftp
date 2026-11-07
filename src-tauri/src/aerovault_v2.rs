@@ -265,6 +265,17 @@ fn names_outside_the_destination<'a>(names: impl Iterator<Item = &'a str>) -> Ve
         .collect()
 }
 
+/// The entry names whose path under `dest` goes through a link already on
+/// disk (a folder of the destination, or the entry's own name).
+fn names_through_a_link<'a>(
+    dest: &std::path::Path,
+    names: impl Iterator<Item = &'a str>,
+) -> Vec<&'a str> {
+    names
+        .filter(|name| first_link_under(dest, name.trim_end_matches('/')).is_some())
+        .collect()
+}
+
 /// Extract every entry of an opened v2 `vault` into `dest`, rebuilding the directory
 /// tree. The `aerovault` crate's v2 `extract`/`extract_all` write each file under its
 /// `file_name()` only, so nested files all collapse into the destination root, and
@@ -289,6 +300,16 @@ pub(crate) fn extract_all_v2_tree(vault: &Vault, dest: &std::path::Path) -> Resu
         return Err(format!(
             "Nothing was extracted: the vault names entries outside the destination: {}",
             unsafe_names[..unsafe_names.len().min(5)].join(", ")
+        ));
+    }
+    // A folder of the destination that is a link carries an entry under it
+    // outside the destination: such an extraction is refused before anything
+    // is written, as the sync refuses it (deep-scan 17).
+    let linked = names_through_a_link(dest, entries.iter().map(|e| e.name.as_str()));
+    if !linked.is_empty() {
+        return Err(format!(
+            "Nothing was extracted: these entries go through a link in the destination: {}",
+            linked[..linked.len().min(5)].join(", ")
         ));
     }
     let existing: Vec<&str> = entries
@@ -948,12 +969,7 @@ pub async fn vault_v2_sync_apply(
 
     // Process to_local: extract vault entries to local dir
     for name in &to_local_files {
-        if name.contains("..")
-            || name.starts_with('/')
-            || name.starts_with('\\')
-            || name.contains('\0')
-            || name.contains('\\')
-        {
+        if sync_entry_name_is_unsafe(name) {
             errors.push(format!("Invalid file name blocked: {}", name));
             skipped_count += 1;
             continue;
@@ -1021,6 +1037,19 @@ fn first_link_under(root: &std::path::Path, rel: &str) -> Option<std::path::Path
         }
     }
     None
+}
+
+/// A vault entry name the sync must not extract: a traversal, a root, a NUL
+/// or a backslash, and anything that is not a plain relative path of normal
+/// components, which on Windows includes a drive prefix such as `C:/x`: the
+/// join would replace the local folder with that drive (deep-scan 17).
+fn sync_entry_name_is_unsafe(name: &str) -> bool {
+    name.contains("..")
+        || name.starts_with('/')
+        || name.starts_with('\\')
+        || name.contains('\0')
+        || name.contains('\\')
+        || crate::readable_vault::validate_rel_path(name).is_err()
 }
 
 /// Validate a relative path for vault entry safety.
@@ -1313,6 +1342,40 @@ mod tests {
             super::first_link_under(&root, "docs/f.txt"),
             Some(root.join("docs/f.txt"))
         );
+    }
+
+    /// Deep-scan 17: extract-all refuses entries that go through a link in
+    /// the destination, before anything is written.
+    #[cfg(unix)]
+    #[test]
+    fn extract_all_finds_entries_through_a_link_in_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("dest");
+        std::fs::create_dir_all(dest.join("plain")).unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, dest.join("linked")).unwrap();
+        let names = ["plain/a.txt", "linked/new.txt", "linked/", "fresh/b.txt"];
+        assert_eq!(
+            super::names_through_a_link(&dest, names.iter().copied()),
+            vec!["linked/new.txt", "linked/"]
+        );
+    }
+
+    /// Deep-scan 17: the sync refuses a name that is not a plain relative
+    /// path, a drive-qualified one included on Windows.
+    #[test]
+    fn sync_refuses_names_that_leave_the_local_folder() {
+        for bad in ["../x", "a/../../x", "/etc/x", "a\\b", "./a", ""] {
+            assert!(super::sync_entry_name_is_unsafe(bad), "{bad:?}");
+        }
+        for good in ["a.txt", "docs/b.txt", "deep/er/c.bin"] {
+            assert!(!super::sync_entry_name_is_unsafe(good), "{good:?}");
+        }
+        #[cfg(windows)]
+        for bad in ["C:/outside/new.txt", "C:x", "\\\\server\\share\\x"] {
+            assert!(super::sync_entry_name_is_unsafe(bad), "{bad:?}");
+        }
     }
 
     /// Deep-scan 18: the names of a crafted or corrupt vault are checked
