@@ -264,9 +264,6 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/ConnectionScreen.tsx': [
         'demopublickey...', 'dxz9abc12', '003d90ca9d33900000000001', 'my-b2-bucket', 'glpat-xxxxxxxxxxxx',
         'FEF5078EA41D182EEF89A21E034BD680', 'AKIAIOSFODNN7EXAMPLE', 'aeroftp2026', 'FileLu', 'AeroFTP-ID',
-        'PixelUnion', 'Immich', 'Dropbox', 'Google Drive', 'OneDrive', 'Box', 'Google Photos', 'pCloud Drive',
-        'Filen', 'Internxt', 'Jottacloud', 'Proton Drive', 'kDrive', 'Yandex Disk', 'Zoho WorkDrive', '4shared',
-        'Backblaze B2', 'Drime', 'MEGA', 'Cloudinary', 'ImageKit', 'Twake Drive', 'Uploadcare', 'GitHub', 'GitLab',
         'Proton', 'API', 'CLI',
     ],
     // The Proton Drive tab (API or CLI) a mode switch goes to.

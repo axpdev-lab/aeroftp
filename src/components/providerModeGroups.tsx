@@ -122,6 +122,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
     {
         id: 'filelu',
         headerLabel: (t) => t('provider.modes.header', { name: 'FileLu' }),
+        headerProviderId: 'filelu',
+        headerName: 'FileLu',
+        headerDescription: (t) => t('protocol.fileluDesc'),
         modes: [
             {
                 // Preset-less like every other group's native mode (Filen, Koofr,
@@ -172,6 +175,9 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
     {
         id: 'filen',
         headerLabel: (t) => t('provider.modes.header', { name: 'Filen' }),
+        headerProviderId: 'filen',
+        headerName: 'Filen',
+        headerDescription: (t) => t('protocol.filenDesc'),
         modes: [
             {
                 // Native Filen API is selected directly via the
@@ -221,6 +227,7 @@ export const PROVIDER_MODE_GROUPS: ProviderModeGroup[] = [
         // are told apart by the `proton_mode` option.
         id: 'proton',
         headerLabel: (t) => t('provider.modes.header', { name: 'Proton Drive' }),
+        headerProviderId: 'proton',
         headerName: 'Proton Drive',
         // Neutral across the tabs: the catalog's own text names the CLI,
         // which is wrong for the API tab. Each tab says how it connects.

@@ -128,11 +128,17 @@ export function ServiceCard({
     // placeholder dot on services without a `healthCheckUrl`.
     const showHealthDot = healthStatus && healthStatus !== 'unknown';
     const healthTitle = showHealthDot ? t(`introHub.health.${healthStatus}`) : undefined;
+    // Single line in the grid so every card keeps the same height; the full
+    // text is in the card tooltip and in the Quick Connect form header.
+    const description = item.description
+        ? (DISCOVER_DESC_KEYS[item.id] ? t(DISCOVER_DESC_KEYS[item.id]) : item.description)
+        : undefined;
 
     return (
         <button
             onClick={() => onSelect(false)}
             {...middleClickOpen(() => onSelect(true))}
+            title={description}
             className="group flex items-center gap-3 p-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-500/30 rounded-lg transition-all text-left shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.1)] dark:hover:shadow-[0_4px_12px_rgba(0,0,0,0.4)]"
         >
             {/* Logo - no container box, just the icon like original ProtocolSelector */}
@@ -166,9 +172,9 @@ export function ServiceCard({
                 <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
                     {item.name}
                 </div>
-                {item.description && (
-                    <div className="text-[11px] leading-snug break-words text-gray-500 dark:text-gray-400">
-                        {DISCOVER_DESC_KEYS[item.id] ? t(DISCOVER_DESC_KEYS[item.id]) : item.description}
+                {description && (
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                        {description}
                     </div>
                 )}
             </div>

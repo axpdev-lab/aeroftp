@@ -37,6 +37,7 @@ The complete change record and remaining follow-ups are in the [4.2.7 release tr
 - **Snap packages list only shared host partitions.** Runtime binds and duplicate volume listings are excluded, EFI partitions identify by type, and occupied UI port launches notify cleanly (#1519).
 - **S3 share links enforce a 7-day expiration cap.** Share links across all S3 presets enforce SigV4 maximum validity windows, dotted bucket names use path style, and endpoint region mapping normalizes on domain boundaries (#1525).
 - **TypeScript project configuration accepts strict JSON.** Removed comments from `tsconfig.json` to allow automated Snyk ingestion, verified by automated unit tests (#1532).
+- **Add Services cards and Quick Connect header descriptions align.** Add Services cards truncate to a single line with native tooltip hover to preserve uniform row height, Quick Connect retains the short brand description in the header, and multi-connector or differing provider descriptions surface in a dedicated detail badge (#1531).
 
 #### Security
 

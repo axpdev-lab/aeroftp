@@ -4,7 +4,7 @@
  * protocol-level cloud services (OAuth providers).
  */
 import { ProviderType } from '../../types';
-import { getAllProviders, getProvidersByCategory } from '../../providers';
+import { getAllProviders, getProvidersByCategory, getProviderById } from '../../providers';
 import type { ProviderConfig, ProviderCategory } from '../../providers/types';
 import { CatalogCategoryId } from '../../types/catalog';
 
@@ -407,3 +407,44 @@ export const SYNTHETIC_TILE_COUNT = 1;
 export function getTotalServiceCount(): number {
     return buildDiscoverCategories().reduce((sum, cat) => sum + cat.count, 0) + SYNTHETIC_TILE_COUNT;
 }
+
+/**
+ * Look up the full translated card description as shown in Add Services
+ * for a given providerId or protocol.
+ */
+export function getDiscoverCardDescription(
+    providerId: string | null | undefined,
+    protocol: string | null | undefined,
+    t: (key: string) => string,
+): string | undefined {
+    const candidates = [
+        providerId,
+        providerId === 'fourshared-webdav' ? '4shared-webdav' : undefined,
+        protocol ? `${protocol}-generic` : undefined,
+        protocol === 's3' && !providerId ? 'custom-s3' : undefined,
+        protocol === 'webdav' && !providerId ? 'custom-webdav' : undefined,
+        protocol === 'koofr' ? 'koofr-cloud' : undefined,
+        protocol === 'mtp' ? 'mtp-portable' : undefined,
+        protocol,
+    ].filter(Boolean) as string[];
+
+    for (const id of candidates) {
+        if (DISCOVER_DESC_KEYS[id]) {
+            return t(DISCOVER_DESC_KEYS[id]);
+        }
+    }
+
+    for (const id of candidates) {
+        const prov = getProviderById(id);
+        if (prov?.description) return prov.description;
+    }
+
+    const allItems = buildDiscoverCategories().flatMap(c => c.items);
+    for (const id of candidates) {
+        const item = allItems.find(it => it.id === id);
+        if (item?.description) return item.description;
+    }
+
+    return undefined;
+}
+

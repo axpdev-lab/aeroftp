@@ -39,7 +39,10 @@ describe('Fastly Discover description', () => {
         expect(fastly?.freeRequiresCard).toBe(true);
     });
 
-    it('keeps the whole requirement visible on a minimum-width card', () => {
+    // The grid keeps every card on one line (#1531 let descriptions wrap and
+    // broke the grid rows), so the full offer lives in the card tooltip and
+    // in the Quick Connect description badge.
+    it('keeps the whole requirement reachable from a minimum-width card', () => {
         host = document.createElement('div');
         host.style.width = '260px';
         document.body.appendChild(host);
@@ -54,8 +57,9 @@ describe('Fastly Discover description', () => {
                 iconSize: 32,
             }));
         });
-        const description = host.querySelector('.break-words');
+        const card = host.querySelector('button');
+        expect(card?.getAttribute('title')).toContain('card required');
+        const description = host.querySelector('.truncate:not(.font-semibold)');
         expect(description?.textContent).toContain('card required');
-        expect(description?.className).not.toContain('truncate');
     });
 });
