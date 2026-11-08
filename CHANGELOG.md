@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.7] - 2026-11-08
+
+### Network Trust, Storage Presets and Object Integrity
+
+AeroFTP 4.2.7 introduces Tigris and Fastly Object Storage S3 presets, native MEGAcmd bulk transfers and hardened profile imports. This release enforces URL-parsed network trust, prevents object path escapes, protects modal workflows from accidental backdrop clicks, and ensures transfers and background synchronization stay bound to their target.
+
+The complete change record and remaining follow-ups are in the [4.2.7 release tracker](https://github.com/axpdev-lab/aeroftp/discussions/1506).
+
+#### Added
+
+- **Tigris S3 preset.** Connect to Tigris with static endpoints, region auto-detection, atomic metadata rename that protects moved objects, storage usage reporting with fallbacks, soft-deleted version handling in the trash, and rclone export and import (#1512).
+- **Fastly Object Storage S3 preset.** Choose from 12 regional endpoints with path-style addressing, Fastly rclone bridge import and export, 16 MiB single-PUT cutoffs, 8 MiB multipart parts with bounded 408 and 429 retries, SigV4 7-day share link caps, 30-minute AeroCloud scan floors, and session-aware capability switching (#1531).
+- **Native MEGAcmd bulk transfers.** Transfer entire folders and bulk uploads through a single native MEGAcmd invocation with per-file proof, and reduce Proton Drive CLI launches (#1513).
+- **S3 and WebDAV import security review.** Profile imports review and reset insecure options to safe defaults unless explicitly kept, requiring approval for certificate or TLS relaxations (#1524).
+
+#### Fixed
+
+- **Network trust and destination validation are fail-closed.** Private, loopback and certificate checks inspect the host reached by URL parsing, S3 keys with dot segments are rejected, and FTP passive connections pin to the control peer unless explicitly opted in (#1524).
+- **Transfers, Apply and AI uploads stay bound to their target.** File operations remain pinned to their initial server, profile, account and crypt scope across tab switches or connection handoffs; unlinked targets and interrupted cuts retain unfinished files (#1526).
+- **Object names encode exactly once.** Spaces, `+`, `%`, `#`, `?` and non-ASCII names are encoded once across S3 share links, Filen listings, Azure wire requests and OAuth 1 signatures (#1515).
+- **Relative paths and archive extraction cannot escape targets.** Path traversal, link following during local delete or move, and cross-device directory moves are secured against directory escapes, and temporary files remain private (#1528).
+- **AeroSync and dialogs ignore accidental backdrop clicks.** Backdrop clicks no longer close windows holding active transfers or comparison results, and ESC prioritizes the topmost active decision prompt (@456vv, #1527, #1530).
+- **Peer-L0 replica protects local filesystem boundaries.** Replica file writing and deletion refuse symbolic links, operate on verified roots, reject world-writable parent directories, and never remove files outside their own writes (#1529).
+- **Credential vault writes are protected across processes.** Simultaneous saves between the GUI, CLI and MCP services acquire an exclusive cross-process lock with automatic cleanup of orphaned temporary files (#1510).
+- **Session connection and tab switching isolate credentials.** Opening a second saved profile parks the prior session cleanly, connection failures keep tabs intact, and tab switches prevent credential reuse between profiles sharing a username (#1511, #1514).
+- **rclone bridge carries configuration without loss.** Swift passwords are kept within their service, aliases preserve container and drive associations, and nested sections and crypt scopes import reliably (#1516, #1523).
+- **Error outcomes are decided by codes rather than translated strings.** Operational errors evaluate HTTP statuses, OS error codes, markers and listings instead of localized messages (#1517, #1520).
+- **DEB and RPM package staging supports symlinked Downloads.** Automatic update downloads stage in private `/var/tmp` directories with verified SHA-256 digests and background file I/O (#1507).
+- **FileLu timestamps convert from US Eastern to UTC.** Deserialized timestamps align with UTC, trash age calculations are corrected, and CLI trash commands manage FileLu trash directly (#1509).
+- **Snap packages list only shared host partitions.** Runtime binds and duplicate volume listings are excluded, EFI partitions identify by type, and occupied UI port launches notify cleanly (#1519).
+- **S3 share links enforce a 7-day expiration cap.** Share links across all S3 presets enforce SigV4 maximum validity windows, dotted bucket names use path style, and endpoint region mapping normalizes on domain boundaries (#1525).
+- **TypeScript project configuration accepts strict JSON.** Removed comments from `tsconfig.json` to allow automated Snyk ingestion, verified by automated unit tests (#1532).
+
+#### Security
+
+- **Pre-tag commit audit: PASS.** Independent review covered all 29 release-cycle commits and touched security hot-spots. Validated network trust checks, object name canonicalization, link-following guards, sandbox isolation, credential locking, and imported profile security option resets. Full local release gate and counter-reviews passed.
+- **AeroAgent enforces path policy and explicit approval.** Agent operations display full parameters before execution, verify path policies on every target, and bind execution strictly to the approved profile ID (#1522).
+- **Imported profiles require explicit security relaxations.** Overwriting profiles preserves existing secrets only when all security options match, FTP requires TLS everywhere by default, and cleartext WebDAV on port 80 defaults to HTTPS (#1524).
+- **Dependencies refreshed and actions pinned.** Updated mio and pest patches address parser and runtime concerns, and checkout actions pin verified SHAs (#1521).
+
+#### Changed
+
+- **Documentation and provider figures match the client.** Updated command inventories, setup guides for Tigris and Fastly Object Storage, and threat models reflect 8 transports, 26 native integrations, and 49 presets (#1508, docs #27, docs #29).
+
+#### Contributors
+
+[<img src="https://github.com/456vv.png?size=48" width="48" height="48" alt="@456vv" />](https://github.com/456vv) [<img src="https://github.com/EhudKirsh.png?size=48" width="48" height="48" alt="@EhudKirsh" />](https://github.com/EhudKirsh) [<img src="https://github.com/GWan1234.png?size=48" width="48" height="48" alt="@GWan1234" />](https://github.com/GWan1234)
+
 ## [4.2.6] - 2026-11-05
 
 ### SCP Support and Reliability Consolidation

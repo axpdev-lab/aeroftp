@@ -146,6 +146,20 @@
   </languages>
 
   <releases>
+    <release version="4.2.7" date="2026-11-08">
+      <description>
+        <p>Network trust hardening, Tigris and Fastly Object Storage S3 presets, native MEGA bulk transfers, and imported profile security reviews.</p>
+        <ul>
+          <li>Network trust checks inspect the host reached by URL parsing, and S3 keys with dot segments are rejected.</li>
+          <li>New S3 presets for Tigris and Fastly Object Storage with tailored part sizes, retry budgets and rclone compatibility.</li>
+          <li>Native MEGAcmd bulk transfers and folder downloads with per-file proof.</li>
+          <li>Imported profiles reset insecure options to safe defaults unless explicitly kept, and FTP requires TLS everywhere.</li>
+          <li>Transfers, Apply, and AI uploads remain strictly bound to their target across tab switches and session handoffs.</li>
+          <li>AeroSync and decision prompts ignore accidental backdrop clicks, and ESC routes to the active modal.</li>
+          <li>Relative path escapes and symlink following during delete and move are blocked, and temporary files remain private.</li>
+        </ul>
+      </description>
+    </release>
     <release version="4.2.6" date="2026-11-05">
       <description>
         <p>SCP support and reliability consolidation across transfers, synchronization, credentials and desktop behavior.</p>
