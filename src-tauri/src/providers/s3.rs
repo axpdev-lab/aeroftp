@@ -14081,14 +14081,16 @@ mod tests {
     /// A double that answers every request with 400 InvalidRequest, the answer
     /// Fastly gives to a request signed for another region.
     async fn fastly_invalid_request_double() -> String {
-        let app = axum::Router::new().fallback(axum::routing::any(|| async {
-            axum::http::Response::builder()
-                .status(400)
-                .body(axum::body::Body::from(
-                    "<Error><Code>InvalidRequest</Code><Message>Invalid request</Message></Error>",
-                ))
-                .unwrap()
-        }));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_body: axum::body::Bytes| async {
+                axum::http::Response::builder()
+                    .status(400)
+                    .body(axum::body::Body::from(
+                        "<Error><Code>InvalidRequest</Code><Message>Invalid request</Message></Error>",
+                    ))
+                    .unwrap()
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");
@@ -14159,14 +14161,14 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
-        let app =
-            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, _body: axum::body::Bytes| {
                 let seen = Arc::clone(&seen);
                 async move {
                     seen.lock()
                         .unwrap()
-                        .push(format!("{} {}", req.method(), req.uri().path()));
-                    if req.method() == Method::POST {
+                        .push(format!("{method} {}", uri.path()));
+                    if method == Method::POST {
                         return axum::http::Response::builder()
                             .status(500)
                             .body(axum::body::Body::from(
@@ -14174,7 +14176,7 @@ mod tests {
                             ))
                             .unwrap();
                     }
-                    let status = if req.uri().path().ends_with("/gone") {
+                    let status = if uri.path().ends_with("/gone") {
                         404
                     } else {
                         204
@@ -14184,7 +14186,8 @@ mod tests {
                         .body(axum::body::Body::empty())
                         .unwrap()
                 }
-            }));
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {
