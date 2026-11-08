@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} vieram com um aplicativo OAuth personalizado diferente do que este dispositivo tem para esse provedor. O aplicativo salvo foi mantido, por isso inicie sessão novamente se estes perfis deixarem de se conectar.",
             "importTargetChanged": "{names} não foram substituídos: o arquivo aponta-os para outro servidor, e as senhas e os tokens salvos não devem ir para lá. Importe com Duplicar para adicionar a cópia do arquivo, ou exclua primeiro o perfil.",
             "importSharedSecretsFailed": "{names} foram importados, mas um segredo compartilhado ou uma sessão do arquivo não pôde ser salvo. Inicie sessão novamente nestes perfis se não se conectarem.",
-            "keystoreDatabasesFailed": "A importação terminou, mas estes bancos de dados não puderam ser restaurados e mantêm o que continham: {names}."
+            "keystoreDatabasesFailed": "A importação terminou, mas estes bancos de dados não puderam ser restaurados e mantêm o que continham: {names}.",
+            "importSecurityTitle": "Definições de segurança neste backup",
+            "importSecurityHelp": "Estas opções desativam uma verificação de segurança. Cada uma é importada no estado seguro, a menos que a marque para a manter como está no ficheiro.",
+            "importSecurityVerifyCert": "Verificação do certificado desativada",
+            "importSecurityCleartextEndpoint": "Endpoint S3 não encriptado permitido",
+            "importSecurityCleartextStorage": "Endereço de armazenamento não encriptado permitido",
+            "importSecurityPlainHttp": "HTTP simples em vez de HTTPS",
+            "importSecurityPasvAddress": "Ligação de dados ao endereço indicado pelo servidor (PASV)",
+            "importSecurityUnknownHostKeys": "Chaves de anfitrião SSH desconhecidas aceites",
+            "keystoreSecurityReset": "{count} servidores restaurados tinham opções que desativam uma verificação de segurança; foram repostos na definição segura: {details}.",
+            "keystoreSecurityResetFailed": "Não foi possível verificar nem repor as definições de segurança de {count} contas restauradas. Estão listadas aqui em vez de permanecerem ativas sem aviso.",
+            "keystoreSecurityResetQuarantine": "Não foi possível proteger a base de dados de contas restaurada, que foi colocada em quarentena como {path}. Nenhuma conta restaurada está ativa. Corrija o problema de disco ou de permissões e restaure novamente a cópia de segurança. O ficheiro em quarentena permanece disponível para recuperação."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2366,6 +2377,8 @@
             "allowScpFallbackHint": "Se o servidor não tiver SFTP, a conexão continua por SCP, como faz o WinSCP.",
             "discoverScp": "Cópia de arquivos via SSH para servidores sem SFTP",
             "discoverTigris": "Tigris: armazenamento distribuído globalmente compatível com S3, sem taxas de saída de dados (5 GB grátis)",
+            "trustPasvAddress": "Usar o endereço passivo indicado pelo servidor",
+            "trustPasvAddressHelp": "Desativado: as ligações de dados vão para o host ao qual se ligou, como faz o curl. Ative apenas para um servidor que envia os dados a partir de outro endereço.",
             "discoverFastly": "Fastly Object Storage: armazenamento compatível com S3 em 12 regiões (5 GB grátis, cartão necessário)"
         },
         "shortcuts": {

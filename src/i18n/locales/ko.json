@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names}은(는) 이 기기에 있는 해당 제공업체용 앱과 다른 사용자 지정 OAuth 앱과 함께 가져와졌습니다. 저장된 앱을 유지했으므로 이 프로필이 연결되지 않으면 다시 로그인하세요.",
             "importTargetChanged": "{names}은(는) 덮어쓰지 않았습니다. 파일이 이 프로필들을 다른 서버로 연결하며, 저장된 비밀번호와 토큰은 그곳으로 보내면 안 되기 때문입니다. 파일의 사본을 추가하려면 복제로 가져오거나, 먼저 프로필을 삭제하세요.",
             "importSharedSecretsFailed": "{names}을(를) 가져왔지만 파일의 공유 비밀 또는 세션을 저장하지 못했습니다. 연결되지 않으면 이 프로필에 다시 로그인하세요.",
-            "keystoreDatabasesFailed": "가져오기는 완료되었지만 다음 데이터베이스는 복원하지 못했고 기존 내용이 그대로 유지됩니다: {names}."
+            "keystoreDatabasesFailed": "가져오기는 완료되었지만 다음 데이터베이스는 복원하지 못했고 기존 내용이 그대로 유지됩니다: {names}.",
+            "importSecurityTitle": "이 백업의 보안 설정",
+            "importSecurityHelp": "이 옵션들은 보안 검사를 끕니다. 체크하지 않으면 각 항목은 안전한 상태로 가져오며, 체크하면 파일에 있는 그대로 유지합니다.",
+            "importSecurityVerifyCert": "인증서 검사 꺼짐",
+            "importSecurityCleartextEndpoint": "암호화되지 않은 S3 엔드포인트 허용",
+            "importSecurityCleartextStorage": "암호화되지 않은 스토리지 주소 허용",
+            "importSecurityPlainHttp": "HTTPS 대신 일반 HTTP",
+            "importSecurityPasvAddress": "서버가 지정한 주소로 데이터 연결 (PASV)",
+            "importSecurityUnknownHostKeys": "알 수 없는 SSH 호스트 키 허용",
+            "keystoreSecurityReset": "복원된 서버 {count}개에 보안 검사를 끄는 옵션이 있었습니다. 해당 옵션은 안전한 설정으로 되돌려졌습니다: {details}.",
+            "keystoreSecurityResetFailed": "복원된 계정 {count}개의 보안 설정을 확인하거나 재설정할 수 없었습니다. 알림 없이 활성 상태로 남겨 두는 대신 여기에 나열됩니다.",
+            "keystoreSecurityResetQuarantine": "복원된 계정 데이터베이스를 보호할 수 없어 {path} 경로로 격리되었습니다. 복원된 계정이 하나도 활성화되어 있지 않습니다. 디스크 또는 권한 문제를 해결한 다음 백업을 다시 복원하세요. 격리된 파일은 복구에 계속 사용할 수 있습니다."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2366,6 +2377,8 @@
             "allowScpFallbackHint": "서버에 SFTP가 없으면 WinSCP처럼 같은 연결에서 SCP로 계속합니다.",
             "discoverScp": "SFTP가 없는 서버를 위한 SSH 파일 복사",
             "discoverTigris": "Tigris: 전 세계에 분산된 S3 호환 스토리지, 송신 데이터 요금 없음 (5 GB 무료)",
+            "trustPasvAddress": "서버가 알려 주는 패시브 주소 사용",
+            "trustPasvAddressHelp": "끔: 데이터 연결은 curl처럼 연결한 호스트로 향합니다. 다른 주소에서 데이터를 보내는 서버에만 켜세요.",
             "discoverFastly": "Fastly Object Storage: 12개 리전의 S3 호환 스토리지 (5 GB 무료, 카드 필요)"
         },
         "shortcuts": {

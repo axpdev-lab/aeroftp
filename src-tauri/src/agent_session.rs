@@ -151,7 +151,15 @@ fn profile_summary_from(matched: &Value) -> ProfileSummary {
             .and_then(|v| v.as_str())
             .unwrap_or("/")
             .to_string(),
-        extras: flatten_options(matched.get("options")),
+        extras: {
+            let mut extras = flatten_options(matched.get("options"));
+            let protocol = matched
+                .get("protocol")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            crate::profile_loader::apply_saved_ftp_tls_default(&mut extras, protocol);
+            extras
+        },
     }
 }
 
@@ -983,12 +991,6 @@ async fn connect_provider(profile: &ProfileSummary, no_scp_fallback: bool) -> Co
         }
     }
 
-    // FTPS without an explicit tls_mode in the profile: default to
-    // implicit (port 990 convention). Matches the GUI default.
-    if matches!(provider_type, ProviderType::Ftps) && !extra.contains_key("tls_mode") {
-        extra.insert("tls_mode".to_string(), "implicit".to_string());
-    }
-
     let config = ProviderConfig {
         name: profile.name.clone(),
         provider_type,
@@ -1602,6 +1604,34 @@ mod tests {
         assert!(!m.contains_key("ignored_arr"));
         assert!(!m.contains_key("ignored_obj"));
         assert!(!m.contains_key("ignored_null"));
+    }
+
+    /// The agent path gives a saved FTP profile with no TLS mode the GUI's
+    /// default too (#1506 Requested 198), and FTPS keeps its implicit one.
+    #[test]
+    fn an_agent_profile_without_a_tls_mode_requires_tls() {
+        let ftp = profile_summary_from(&serde_json::json!({
+            "id": "srv_a", "name": "a", "protocol": "ftp", "host": "ftp.example.com"
+        }));
+        assert_eq!(
+            ftp.extras.get("tls_mode").map(String::as_str),
+            Some("explicit")
+        );
+        let ftps = profile_summary_from(&serde_json::json!({
+            "id": "srv_b", "name": "b", "protocol": "ftps", "host": "ftp.example.com"
+        }));
+        assert_eq!(
+            ftps.extras.get("tls_mode").map(String::as_str),
+            Some("implicit")
+        );
+        let plain = profile_summary_from(&serde_json::json!({
+            "id": "srv_c", "name": "c", "protocol": "ftp", "host": "ftp.example.com",
+            "options": {"tlsMode": "none"}
+        }));
+        assert_eq!(
+            plain.extras.get("tls_mode").map(String::as_str),
+            Some("none")
+        );
     }
 
     #[test]

@@ -232,6 +232,7 @@ async fn proton_alias_preserves_manifest_options_and_explicit_client_after_savin
         &export.to_string_lossy(),
         "synthetic alias export",
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &ftp_client_gui_lib::profile_security::RelaxationPolicy::KeepAll,
         &[],
     )
     .unwrap();
@@ -274,6 +275,7 @@ async fn saved(root: &Path, id: &str) -> serde_json::Value {
         &export.to_string_lossy(),
         "synthetic switch export",
         ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+        &ftp_client_gui_lib::profile_security::RelaxationPolicy::KeepAll,
         &[],
     )
     .unwrap();

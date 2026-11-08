@@ -5,6 +5,7 @@ import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import { expect, it, vi } from 'vitest';
 import { scpFallbackConnectParam } from './scpFallback';
+import { loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe } from './profileSecurity';
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 import { isSshProtocol } from '../types';
 
@@ -37,6 +38,9 @@ it('forwards the saved S3 SSE policy through the real AeroCloud connection build
     cloudFilenApiKey: null,
     runConnect,
     scpFallbackConnectParam,
+    loadedCertificateCheck,
+    loadedOption,
+    loadedOptionOn,
     isSshProtocol,
     checkSftpHostKey: vi.fn(async () => true),
     CONNECT_CANCELLED_MARKER,
@@ -64,6 +68,9 @@ it('keeps an "SFTP only" profile on SFTP through the AeroCloud connection builde
       cloudFilenApiKey: null,
       runConnect,
       scpFallbackConnectParam,
+      loadedCertificateCheck,
+      loadedOption,
+      loadedOptionOn,
       isSshProtocol,
       checkSftpHostKey: vi.fn(async () => true),
       CONNECT_CANCELLED_MARKER,
@@ -94,6 +101,9 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
       cloudFilenApiKey: null,
       runConnect,
       scpFallbackConnectParam,
+      loadedCertificateCheck,
+      loadedOption,
+      loadedOptionOn,
       isSshProtocol,
       checkSftpHostKey,
       CONNECT_CANCELLED_MARKER,
@@ -117,4 +127,28 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
 
   // Other protocols have no host key to ask about.
   expect((await connectWith('webdav', 443, true)).order).toEqual(['connect']);
+});
+
+
+it('forwards the effective scheme, S3 consent and preset id', async () => {
+  const connectWith = async (protocol: string, providerId: string, options: Record<string, unknown>) => {
+    const runConnect = vi.fn(async (_command: string, _params: Record<string, unknown>) => undefined);
+    const context = {
+      isProvider: true, protocol,
+      cloudServer: { id: 'profile', providerId, host: 'dav.example.test', port: 80, username: 'user', options },
+      resolveProfileS3Location: () => ({ endpoint: options.endpoint ?? null, signingRegion: 'us-east-1' }),
+      cloudConfig: { remote_folder: '/' }, cloudPassword: 'secret', cloudFilenApiKey: null,
+      runConnect, scpFallbackConnectParam, loadedCertificateCheck, loadedOption, loadedOptionOn,
+      isSshProtocol, checkSftpHostKey: vi.fn(async () => true), CONNECT_CANCELLED_MARKER,
+    };
+    const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
+    await connect();
+    return runConnect.mock.calls[0][1] as Record<string, unknown>;
+  };
+  expect(await connectWith('webdav', 'custom-webdav', { tls_mode: 'https' })).toMatchObject({ tls_mode: 'https', provider_id: 'custom-webdav' });
+  expect(await connectWith('s3', 'custom-s3', { allowCleartextEndpoint: true })).toMatchObject({ allow_cleartext_endpoint: true, provider_id: 'custom-s3' });
+  expect(await connectWith('swift', 'blomp', {})).toMatchObject({ provider_id: 'blomp' });
+  const reset = makeSafe({ host: 'dav.example.test', protocol: 'webdav', options: { webdavScheme: 'http' } }).profile;
+  expect(reset.options).toMatchObject({ webdavScheme: 'https' });
+  expect(await connectWith('webdav', 'custom-webdav', reset.options)).toMatchObject({ tls_mode: 'https' });
 });

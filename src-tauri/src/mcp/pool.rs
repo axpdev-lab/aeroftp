@@ -586,6 +586,22 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
     ProviderType::from_lowercase(protocol)
 }
 
+fn refuse_relaxed_vault_profile(profile: &serde_json::Value, strict: bool) -> Result<(), String> {
+    match crate::profile_security::strict_profile_refusal_when(strict, profile) {
+        Some(refusal) => Err(refusal),
+        None => Ok(()),
+    }
+}
+
+fn credential_after_strict_check<T>(
+    profile: &serde_json::Value,
+    strict: bool,
+    read: impl FnOnce() -> T,
+) -> Result<T, String> {
+    refuse_relaxed_vault_profile(profile, strict)?;
+    Ok(read())
+}
+
 /// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols
 /// plus OAuth2 providers when valid tokens exist in the vault.
 ///
@@ -595,12 +611,35 @@ async fn create_provider_from_vault(
     server_query: &str,
     identity: Option<&str>,
 ) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
+    create_provider_from_vault_with_reader(
+        server_query,
+        identity,
+        crate::user_partitions::mcp_list_active_server_profiles,
+        crate::profile_security::strict_profiles_enabled(),
+        |store, key| {
+            crate::user_partitions::resolve_active_credential(store, key)
+                .ok()
+                .flatten()
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        },
+    )
+    .await
+}
+
+async fn create_provider_from_vault_with_reader(
+    server_query: &str,
+    identity: Option<&str>,
+    read_profiles: impl FnOnce(&CredentialStore) -> Result<Vec<serde_json::Value>, String>,
+    strict: bool,
+    read_credential: impl FnOnce(&CredentialStore, &str) -> String,
+) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
     // MUV-5: active-user profiles (see resolve_profile_target). The transient
     // env-passphrase unlock done inside also primes the session so the
     // `resolve_active_credential` read below decrypts the per-user `server_<id>`.
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
+    let profiles = read_profiles(&store)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
     // The profile read again here is the one opened: it must still connect
@@ -635,14 +674,11 @@ async fn create_provider_from_vault(
     // profile listing above already unlocked a passphrase account from
     // AEROFTP_USER_PASSPHRASE, so this resolves its own `server_<id>` row;
     // otherwise the dual-written vault copy still answers.
-    let raw_cred = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("server_{}", profile_id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .unwrap_or_default();
+    // Strict mode holds here too: the read is never attempted for a relaxed
+    // saved profile when strict mode is active.
+    let raw_cred = credential_after_strict_check(matched, strict, || {
+        read_credential(&store, &format!("server_{}", profile_id))
+    })?;
 
     let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
 
@@ -741,6 +777,58 @@ async fn create_provider_from_vault(
 
 #[cfg(test)]
 mod tests {
+
+    /// Greptile on #1524: `agent --mcp --strict` connected saved profiles that
+    /// turn a security check off. The full vault path refuses them before any
+    /// credential is read; non-strict mode keeps its existing behavior.
+    #[tokio::test]
+    async fn the_vault_connect_path_applies_strict_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key = [0x24; 32];
+        CredentialStore::write_test_vault(&path, &key);
+        CredentialStore::cache_vault(path, key);
+        struct ClearCache;
+        impl Drop for ClearCache {
+            fn drop(&mut self) {
+                CredentialStore::clear_cache();
+            }
+        }
+        let _clear = ClearCache;
+        let profile = serde_json::json!({
+            "id": "srv_relaxed", "name": "lab", "host": "files.example.com",
+            "port": 22, "username": "user", "protocol": "sftp",
+            "options": {"trustUnknownHosts": true}
+        });
+
+        let read = std::cell::Cell::new(false);
+        let refused = create_provider_from_vault_with_reader(
+            "lab",
+            None,
+            {
+                let profile = profile.clone();
+                move |_| Ok(vec![profile])
+            },
+            true,
+            |_, key| {
+                assert_eq!(key, "server_srv_relaxed");
+                read.set(true);
+                "fixture-secret".to_string()
+            },
+        )
+        .await
+        .err()
+        .expect("strict mode must refuse the relaxed profile");
+        assert!(refused.contains("strict mode"), "{refused}");
+        assert!(!read.get(), "strict refusal precedes credential resolution");
+
+        let allowed = credential_after_strict_check(&profile, false, || {
+            read.set(true);
+            "fixture-secret".to_string()
+        });
+        assert_eq!(allowed.unwrap(), "fixture-secret");
+        assert!(read.get());
+    }
     use super::*;
 
     /// A call approved while the profile connected to one host never opens

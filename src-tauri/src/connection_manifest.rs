@@ -373,7 +373,16 @@ mod tests {
     #[test]
     fn saved_ftp_modes_survive_creation_defaults() {
         for (protocol, kind, options, expected) in [
-            ("ftp", ProviderType::Ftp, json!({}), FtpTlsMode::None),
+            // A saved FTP profile without a mode requires TLS, as in the GUI
+            // (owner decision 2026-11-06, #1506 Requested 198); it read as
+            // plain FTP before.
+            ("ftp", ProviderType::Ftp, json!({}), FtpTlsMode::Explicit),
+            (
+                "ftp",
+                ProviderType::Ftp,
+                json!({"tlsMode":"none"}),
+                FtpTlsMode::None,
+            ),
             ("ftps", ProviderType::Ftps, json!({}), FtpTlsMode::Implicit),
             (
                 "ftps",

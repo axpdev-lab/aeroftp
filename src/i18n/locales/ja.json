@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} は、このデバイスにあるそのプロバイダー用のものとは異なるカスタム OAuth アプリと共にインポートされました。保存済みのアプリは維持されたため、これらのプロファイルが接続できなくなった場合は再度サインインしてください。",
             "importTargetChanged": "{names} は上書きされませんでした。ファイルがこれらを別のサーバーに向けており、保存されているパスワードとトークンをそこへ送ってはならないためです。ファイルのコピーを追加するには「複製」でインポートするか、先にプロファイルを削除してください。",
             "importSharedSecretsFailed": "{names} をインポートしましたが、ファイル内の共有シークレットまたはセッションを保存できませんでした。接続できない場合は、これらのプロファイルに再度サインインしてください。",
-            "keystoreDatabasesFailed": "インポートは完了しましたが、次のデータベースは復元できず、元の内容のままです: {names}。"
+            "keystoreDatabasesFailed": "インポートは完了しましたが、次のデータベースは復元できず、元の内容のままです: {names}。",
+            "importSecurityTitle": "このバックアップ内のセキュリティ設定",
+            "importSecurityHelp": "これらのオプションはセキュリティチェックを無効にします。チェックを入れない限り、各項目は安全な状態でインポートされます。チェックすると、ファイルの内容のまま保持されます。",
+            "importSecurityVerifyCert": "証明書の検証が無効",
+            "importSecurityCleartextEndpoint": "暗号化されていない S3 エンドポイントを許可",
+            "importSecurityCleartextStorage": "暗号化されていないストレージアドレスを許可",
+            "importSecurityPlainHttp": "HTTPS ではなく通常の HTTP",
+            "importSecurityPasvAddress": "サーバーが指定したアドレスへのデータ接続 (PASV)",
+            "importSecurityUnknownHostKeys": "未知の SSH ホストキーを受け入れる",
+            "keystoreSecurityReset": "復元された {count} 台のサーバーに、セキュリティチェックを無効にするオプションがありました。安全な設定に戻しました: {details}。",
+            "keystoreSecurityResetFailed": "{count} 件の復元されたアカウントのセキュリティ設定を確認またはリセットできませんでした。通知なく有効なままにせず、ここに一覧表示しています。",
+            "keystoreSecurityResetQuarantine": "復元されたアカウントデータベースを保護できなかったため、{path} として隔離されました。復元されたアカウントはいずれも有効ではありません。ディスクまたはアクセス権の問題を修正してから、バックアップを再度復元してください。隔離されたファイルは、回復用に引き続き利用できます。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2366,6 +2377,8 @@
             "allowScpFallbackHint": "サーバーにSFTPがない場合、WinSCPと同様に同じ接続のままSCPで続行します。",
             "discoverScp": "SFTPのないサーバー向けのSSH経由ファイルコピー",
             "discoverTigris": "Tigris: グローバル分散型の S3 互換ストレージ、エグレス料金なし（5 GB 無料）",
+            "trustPasvAddress": "サーバーが示すパッシブアドレスを使用する",
+            "trustPasvAddressHelp": "オフ: データ接続は curl と同様に、接続したホストへ向かいます。別のアドレスからデータを送信するサーバーの場合のみオンにしてください。",
             "discoverFastly": "Fastly Object Storage: 12リージョンで利用できるS3互換ストレージ (5 GB無料、カードが必要)"
         },
         "shortcuts": {

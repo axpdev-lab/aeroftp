@@ -733,6 +733,7 @@ interface ProtocolFieldsProps {
         // FTP/FTPS-specific
         tlsMode?: FtpTlsMode;
         verifyCert?: boolean;
+        trustPasvAddress?: boolean;
         // WebDAV local-bridge presets (Filen Desktop, MEGAcmd)
         webdavScheme?: 'http' | 'https' | 'auto';
     };
@@ -1619,6 +1620,16 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                         label={<span className="text-sm">{t('protocol.acceptInvalidCerts')}</span>}
                     />
                 )}
+
+                {/* #1506 Requested 188: data connections go to the control host by
+                    default; this opt-in follows the PASV reply's address instead. */}
+                <Checkbox
+                    checked={options.trustPasvAddress === true}
+                    onChange={(v) => onChange({ ...options, trustPasvAddress: v })}
+                    disabled={disabled}
+                    label={<span className="text-sm">{t('protocol.trustPasvAddress')}</span>}
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">{t('protocol.trustPasvAddressHelp')}</p>
 
                 {/* Insecure warning: only when user explicitly chooses plain FTP */}
                 {showInsecureWarning && (

@@ -16,6 +16,7 @@ import { normalizeGuiPresentation } from '../gui/presentation';
 import { connectionProfileDefaults } from '../providers/connectionManifest';
 import { getProviderById } from '../providers';
 import { storedPresetForSave } from './protocolSwitch';
+import { canonicalOptionsForEdit } from './profileSecurity';
 import type { ServerProfile } from '../types';
 
 // Run the production closures, with their captured IPC and React state cells
@@ -63,7 +64,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         aeroCryptOverlayFields: vi.fn(async () => ({})), migrateCryptCredentials: vi.fn(),
         normalizeMegaOptions: (v: unknown) => v, getDefaultPort: () => 21, connectionProfileDefaults,
         findDuplicateProfile: () => undefined,
-        getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false, storedPresetForSave, getProviderById,
+        getStorageDedupKey: () => 'dedup', isBlompAuthUrl: () => false, storedPresetForSave, getProviderById, canonicalOptionsForEdit,
         syncPersistedModeCredentials: vi.fn(async () => true), carryFavoriteServer: vi.fn(), carryServerGroups: vi.fn(),
         deleteModeCredentials: vi.fn(), warnIfSavedByOtherAccount: vi.fn(),
         setSavedServersUpdate: vi.fn(), logActivity: vi.fn(), setGitHubAlert: vi.fn(),

@@ -1143,10 +1143,17 @@ pub struct ProviderConnectionParams {
     pub tls_mode: Option<String>,
     /// FTP/FTPS: Accept invalid/self-signed certificates
     pub verify_cert: Option<bool>,
+    /// FTP/FTPS: use the address a PASV reply names for the data connection
+    /// (absent or false: the control connection's peer, #1506 Requested 188).
+    #[serde(default)]
+    pub trust_pasv_address: Option<bool>,
     /// Swift only. Accept a catalog-issued cleartext object-store endpoint after
     /// an HTTPS Keystone session. Absent or false means the downgrade guard is
     /// armed, which is the default for every profile that does not ask for it.
     pub allow_cleartext_storage: Option<bool>,
+    /// S3: explicit consent to a non-loopback HTTP endpoint.
+    #[serde(default)]
+    pub allow_cleartext_endpoint: Option<bool>,
     /// Filen: Optional TOTP 2FA code
     pub two_factor_code: Option<String>,
     /// Filen/MEGA/Internxt: Optional persisted base32 TOTP secret. When set,
@@ -1316,6 +1323,9 @@ impl ProviderConnectionParams {
             }
             if let Some(path_style) = self.path_style {
                 extra.insert("path_style".to_string(), path_style.to_string());
+            }
+            if let Some(allow) = self.allow_cleartext_endpoint {
+                extra.insert("allow_cleartext_endpoint".to_string(), allow.to_string());
             }
             // Preset endpoint templates (Wasabi, IBM COS, R2, ...): callers
             // that build a config from raw form fields (bucket Fetch
@@ -1488,6 +1498,9 @@ impl ProviderConnectionParams {
             }
             if let Some(verify) = self.verify_cert {
                 extra.insert("verify_cert".to_string(), verify.to_string());
+            }
+            if self.trust_pasv_address == Some(true) {
+                extra.insert("trust_pasv_address".to_string(), "true".to_string());
             }
         }
 
@@ -7514,6 +7527,7 @@ mod site_connection_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         })));
         state
     }
@@ -16741,6 +16755,23 @@ mod tests {
         assert!(swift.allow_cleartext_storage_endpoint);
     }
 
+    #[test]
+    fn s3_cleartext_consent_reaches_the_provider_config() {
+        let mut params = s3_params(None);
+        params.endpoint = Some("http://minio.example.test:9000".into());
+        params.allow_cleartext_endpoint = Some(true);
+        let config = params.to_provider_config().expect("config");
+        assert_eq!(
+            config
+                .extra
+                .get("allow_cleartext_endpoint")
+                .map(String::as_str),
+            Some("true")
+        );
+        let s3 = crate::providers::types::S3Config::from_provider_config(&config).expect("s3");
+        assert!(s3.allow_cleartext_endpoint);
+    }
+
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {
             protocol: "s3".to_string(),
@@ -16777,7 +16808,9 @@ mod tests {
             timeout: None,
             tls_mode: None,
             verify_cert: None,
+            trust_pasv_address: None,
             allow_cleartext_storage: None,
+            allow_cleartext_endpoint: None,
             two_factor_code: None,
             totp_secret: None,
             filen_api_key: None,
@@ -21714,6 +21747,7 @@ mod overlay_activation_discard_tests {
             tls_mode: crate::providers::FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         *state.provider.lock().await = Some(Box::new(CryptOverlayProvider::new(
             Box::new(raw),

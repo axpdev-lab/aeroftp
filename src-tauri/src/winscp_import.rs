@@ -329,11 +329,20 @@ fn map_session(name: &str, fields: &WinScpSession) -> Option<MappedProfile> {
     let mut options = serde_json::Map::new();
 
     match protocol {
-        "webdav"
-            // Ftps=1 means HTTPS for WebDAV
-            if ftps == 1 => {
-                options.insert("useSsl".to_string(), serde_json::Value::Bool(true));
-            }
+        // Ftps=1 means HTTPS for WebDAV, 0 plain HTTP. Stored as
+        // `webdavScheme`, the key the connection reads: the `useSsl` written
+        // before was read by nothing but this file's own export, so an HTTPS
+        // site on another port than 443 connected as the host's auto default.
+        // The bridge import (`finish_bridge_import` and `importedServerProfile`)
+        // resets `http` to `https` before returning/saving the profile unless
+        // the user explicitly keeps it in the security review.
+        "webdav" => {
+            let scheme = if ftps == 1 { "https" } else { "http" };
+            options.insert(
+                "webdavScheme".to_string(),
+                serde_json::Value::String(scheme.to_string()),
+            );
+        }
         "ftps" => {
             // Implicit vs explicit, under `tlsMode`: the key the GUI stores
             // and the connection reads (an `ftpsMode` was read by nothing, so
@@ -608,12 +617,34 @@ pub fn export_winscp(
                 _ => (5, 0),
             },
             "webdav" => {
-                let use_ssl = server
-                    .options
-                    .as_ref()
-                    .and_then(|o| o.get("useSsl"))
-                    .and_then(|v| v.as_bool())
-                    .unwrap_or(server.port == 443);
+                // The scheme the profile connects with, derived through
+                // `WebDavConfig::from_provider_config` so `http://` / `https://`
+                // host prefixes, every scheme option spelling (`webdavScheme`,
+                // `tls_mode`, `tlsMode`, `ftpsMode`), and automatic local/Filen
+                // HTTP hosts (`nas.local:8080`, `192.168.x.x:8080`, `localhost`)
+                // match the connection URL AeroFTP builds.
+                let mut extra = HashMap::new();
+                let profile = serde_json::json!({
+                    "options": server.options.clone().unwrap_or(serde_json::Value::Null),
+                });
+                crate::profile_loader::apply_profile_options(&mut extra, &profile);
+                let config = crate::providers::ProviderConfig {
+                    name: server.name.clone(),
+                    provider_type: crate::providers::ProviderType::WebDav,
+                    host: server.host.trim().to_string(),
+                    port: u16::try_from(server.port).ok().filter(|p| *p > 0),
+                    username: Some(server.username.clone()).filter(|u| !u.is_empty()),
+                    password: None,
+                    initial_path: server.initial_path.clone(),
+                    extra,
+                };
+                let use_ssl = crate::providers::WebDavConfig::from_provider_config(&config)
+                    .map(|dav| {
+                        dav.url
+                            .get(..8)
+                            .is_some_and(|s| s.eq_ignore_ascii_case("https://"))
+                    })
+                    .unwrap_or(server.port != 80);
                 if use_ssl {
                     (6, 1)
                 } else {
@@ -997,6 +1028,29 @@ FSProtocol=1
         let mapped = map_session("test", &fields).unwrap();
         assert_eq!(mapped.protocol, "webdav");
         assert_eq!(mapped.port, 443);
+        let scheme = |mapped: &MappedProfile| {
+            mapped
+                .options
+                .as_ref()
+                .and_then(|o| o.get("webdavScheme"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        assert_eq!(scheme(&mapped).as_deref(), Some("https"));
+        assert!(mapped.options.as_ref().unwrap().get("useSsl").is_none());
+
+        // An HTTPS site on another port keeps HTTPS, and plain HTTP is kept
+        // as such (an import then offers to reset it, #1506 Requested 198).
+        fields.insert("PortNumber".to_string(), "8443".to_string());
+        assert_eq!(
+            scheme(&map_session("test", &fields).unwrap()).as_deref(),
+            Some("https")
+        );
+        fields.insert("Ftps".to_string(), "0".to_string());
+        assert_eq!(
+            scheme(&map_session("test", &fields).unwrap()).as_deref(),
+            Some("http")
+        );
     }
 
     #[test]
@@ -1101,5 +1155,166 @@ FSProtocol=1
             .collect();
         back.sort();
         assert_eq!(back, ["Default Settings-2", "default settings-3"]);
+    }
+
+    #[test]
+    fn winscp_bridge_import_resets_plain_http_webdav_unless_kept_and_connects_over_https() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        std::fs::write(
+            &path,
+            "[Sessions\\Public%20WebDAV]\r\nHostName=dav.example.com\r\nPortNumber=8080\r\nUserName=alice\r\nPasswordPlain=secret\r\nFSProtocol=6\r\nFtps=0\r\n",
+        )
+        .unwrap();
+
+        let imported = import_winscp(&path).unwrap();
+        assert_eq!(imported.servers.len(), 1);
+        assert_eq!(
+            imported.servers[0]
+                .options
+                .as_ref()
+                .and_then(|o| o.get("webdavScheme"))
+                .and_then(|v| v.as_str()),
+            Some("http")
+        );
+
+        let parsed = serde_json::to_value(&imported).unwrap();
+        let safe_response =
+            crate::bridge_commands::finish_bridge_import("winscp", &parsed, Vec::new(), None)
+                .unwrap();
+        let safe_server = &safe_response["servers"][0];
+        assert_eq!(safe_server["options"]["webdavScheme"], "https");
+        assert_eq!(safe_server["relaxedOptions"]["webdavScheme"], "http");
+        assert_eq!(
+            safe_response["security"],
+            serde_json::json!([{
+                "fileIndex": 0,
+                "name": "Public WebDAV",
+                "reset": [{ "key": "webdavScheme", "value": "http" }],
+                "kept": [],
+            }])
+        );
+
+        let safe_config = crate::providers::ProviderConfig {
+            name: "Public WebDAV".to_string(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: "dav.example.com".to_string(),
+            port: Some(8080),
+            username: Some("alice".to_string()),
+            password: None,
+            initial_path: None,
+            extra: crate::profile_loader::profile_connection_extra(
+                safe_server,
+                crate::providers::ProviderType::WebDav,
+                "dav.example.com",
+            )
+            .0,
+        };
+        let safe_dav = crate::providers::WebDavConfig::from_provider_config(&safe_config).unwrap();
+        assert_eq!(safe_dav.url, "https://dav.example.com:8080");
+
+        let kept_response = crate::bridge_commands::finish_bridge_import_with_policy(
+            "winscp",
+            &parsed,
+            Vec::new(),
+            None,
+            &crate::profile_security::RelaxationPolicy::Keep(vec![
+                crate::profile_security::KeptRelaxation {
+                    file_index: 0,
+                    key: "webdavScheme".into(),
+                },
+            ]),
+        )
+        .unwrap();
+        let kept_server = &kept_response["servers"][0];
+        assert_eq!(kept_server["options"]["webdavScheme"], "http");
+        assert!(kept_server.get("relaxedOptions").is_none());
+        assert_eq!(
+            kept_response["security"],
+            serde_json::json!([{
+                "fileIndex": 0,
+                "name": "Public WebDAV",
+                "reset": [],
+                "kept": [{ "key": "webdavScheme", "value": "http" }],
+            }])
+        );
+
+        let kept_config = crate::providers::ProviderConfig {
+            name: "Public WebDAV".to_string(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: "dav.example.com".to_string(),
+            port: Some(8080),
+            username: Some("alice".to_string()),
+            password: None,
+            initial_path: None,
+            extra: crate::profile_loader::profile_connection_extra(
+                kept_server,
+                crate::providers::ProviderType::WebDav,
+                "dav.example.com",
+            )
+            .0,
+        };
+        let kept_dav = crate::providers::WebDavConfig::from_provider_config(&kept_config).unwrap();
+        assert_eq!(kept_dav.url, "http://dav.example.com:8080");
+    }
+
+    #[test]
+    fn export_winscp_derives_webdav_scheme_from_webdav_config_rules() {
+        let cases = [
+            ("nas-auto-none", "nas.local", 8080, None, "Ftps=0"),
+            (
+                "nas-auto-opt",
+                "nas.local",
+                8080,
+                Some(serde_json::json!({"webdavScheme": "auto"})),
+                "Ftps=0",
+            ),
+            ("lan-ip", "192.168.1.20", 8080, None, "Ftps=0"),
+            ("nas-443", "nas.local", 443, None, "Ftps=1"),
+            (
+                "nas-explicit-https",
+                "nas.local",
+                8080,
+                Some(serde_json::json!({"webdavScheme": "https"})),
+                "Ftps=1",
+            ),
+            ("cloud-auto-none", "cloud.example.com", 8080, None, "Ftps=1"),
+            (
+                "cloud-auto-opt",
+                "cloud.example.com",
+                8080,
+                Some(serde_json::json!({"webdavScheme": "auto"})),
+                "Ftps=1",
+            ),
+            ("cloud-port-80", "cloud.example.com", 80, None, "Ftps=0"),
+            (
+                "cloud-explicit-http",
+                "cloud.example.com",
+                8080,
+                Some(serde_json::json!({"webdavScheme": "http"})),
+                "Ftps=0",
+            ),
+        ];
+
+        for (id, host, port, options, expected_ftps) in cases {
+            let server: WinScpExportServer = serde_json::from_value(serde_json::json!({
+                "id": id,
+                "name": id,
+                "host": host,
+                "port": port,
+                "username": "alice",
+                "protocol": "webdav",
+                "options": options,
+            }))
+            .unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("WinSCP.ini");
+            assert_eq!(export_winscp(&[server], &HashMap::new(), &path).unwrap(), 1);
+            let ini = std::fs::read_to_string(&path).unwrap();
+            assert!(
+                ini.lines().any(|line| line.trim() == expected_ftps),
+                "case {id} ({host}:{port}, options={options:?}) expected {expected_ftps}, got:\n{ini}"
+            );
+        }
     }
 }

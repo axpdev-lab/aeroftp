@@ -16,12 +16,16 @@ import { BridgeSourceDescriptor, BridgeSourceMeta } from './bridge/bridgeSources
 import { detectBridgeConfigBounded } from '../hooks/useDetectedBridgeConfigs';
 import { bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridge/bridgeImportCommit';
 import { ServerChecklistNoMatch, ServerChecklistSearch, ServerChecklistSummary, SelectShownButton, useServerChecklistFilter } from './ServerChecklistFilter';
+import { ImportSecurityReview, keptRelaxationId, type ImportedSecurity } from './ImportSecurityReview';
+import { securityRelaxations } from '../utils/profileSecurity';
 
 interface BridgeImportResult {
     servers: ImportedServer[];
     skipped: Array<{ name: string; reason: string }>;
     /** Imported without everything they carried, e.g. a password that did not reveal. */
     warnings?: Array<{ name: string; reason: string }>;
+    /** Stored profiles whose options turned a security check off (#1506 Requested 198). */
+    security?: ImportedSecurity[];
     sourcePath: string | null;
     totalRemotes: number;
 }
@@ -69,6 +73,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     const [detectedPath, setDetectedPath] = useState<string | null>(null);
     const [result, setResult] = useState<BridgeImportResult | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [keptRelaxed, setKeptRelaxed] = useState<Set<string>>(() => new Set());
 
     // export state
     const [includeCredentials, setIncludeCredentials] = useState(true);
@@ -125,6 +130,29 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     const importFilter = useServerChecklistFilter(importRows);
     const importAllIds = useMemo(() => importRows.map(s => s.id), [importRows]);
     const importShownIds = useMemo(() => importFilter.visible.map(s => s.id), [importFilter.visible]);
+    const allSecurityEntries = useMemo<ImportedSecurity[]>(() => {
+        if (!result) return [];
+        if (result.security && result.security.length > 0) return result.security;
+        return result.servers.flatMap((s, fileIndex) => {
+            const reset = securityRelaxations({
+                host: s.relaxedHost ?? s.host,
+                port: s.port,
+                providerId: s.providerId,
+                protocol: s.protocol,
+                options: (s.relaxedOptions ?? s.options) ?? null,
+            });
+            return reset.length > 0
+                ? [{ fileIndex, name: s.name || s.host, reset, kept: [] }]
+                : [];
+        });
+    }, [result]);
+    const selectedSecurityEntries = useMemo(
+        () => allSecurityEntries.filter(entry => {
+            const server = result?.servers[entry.fileIndex];
+            return server ? selectedIds.has(server.id) : false;
+        }),
+        [allSecurityEntries, result, selectedIds],
+    );
     const exportFilter = useServerChecklistFilter(servers);
     const exportableIds = useMemo(() => exportable.map(s => s.id), [exportable]);
     const exportShownIds = useMemo(() => {
@@ -159,6 +187,7 @@ export const BridgeSourcePanel: React.FC<Props> = ({
         setLoading(true);
         setError(null);
         setResult(null);
+        setKeptRelaxed(new Set());
         try {
             const r = await invoke<BridgeImportResult>('import_bridge_config', {
                 source: source.id, filePath,
@@ -207,8 +236,16 @@ export const BridgeSourcePanel: React.FC<Props> = ({
     const confirmImport = async () => {
         if (!result) return;
         const selected: ServerProfile[] = result.servers
-            .filter(s => selectedIds.has(s.id))
-            .map(importedServerProfile);
+            .map((s, fileIndex) => ({ s, fileIndex }))
+            .filter(({ s }) => selectedIds.has(s.id))
+            .map(({ s, fileIndex }) => {
+                const entry = allSecurityEntries.find(e => e.fileIndex === fileIndex);
+                const relaxations = entry ? [...entry.reset, ...entry.kept] : [];
+                const keep = relaxations
+                    .filter(r => keptRelaxed.has(keptRelaxationId(fileIndex, r.key)))
+                    .map(r => r.key);
+                return importedServerProfile(s, keep);
+            });
         if (selected.length === 0 || committingRef.current) return;
         // The commit is not idempotent: onImport appends to the persisted list
         // and existingServerKeys still holds the pre-import snapshot, so a
@@ -428,6 +465,17 @@ export const BridgeSourcePanel: React.FC<Props> = ({
                                     ))}
                                 </div>
                             </div>
+                        )}
+                        {selectedSecurityEntries.length > 0 && (
+                            <ImportSecurityReview
+                                entries={selectedSecurityEntries}
+                                kept={keptRelaxed}
+                                onToggle={id => setKeptRelaxed(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(id)) next.delete(id); else next.add(id);
+                                    return next;
+                                })}
+                            />
                         )}
                     </>
                 )}

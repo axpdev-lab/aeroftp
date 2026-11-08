@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} kwamen mee met een andere aangepaste OAuth-app dan die dit apparaat voor die provider heeft. De opgeslagen app is behouden, dus log opnieuw in als deze profielen niet meer verbinden.",
             "importTargetChanged": "{names} zijn niet overschreven: het bestand laat ze naar een andere server wijzen, en hun opgeslagen wachtwoorden en tokens mogen daar niet naartoe. Importeer met Dupliceren om de kopie uit het bestand toe te voegen, of verwijder eerst het profiel.",
             "importSharedSecretsFailed": "{names} zijn geïmporteerd, maar een gedeeld geheim of een sessie uit het bestand kon niet worden opgeslagen. Meld u opnieuw aan bij deze profielen als ze geen verbinding maken.",
-            "keystoreDatabasesFailed": "De import is voltooid, maar deze databases konden niet worden hersteld en behouden hun inhoud: {names}."
+            "keystoreDatabasesFailed": "De import is voltooid, maar deze databases konden niet worden hersteld en behouden hun inhoud: {names}.",
+            "importSecurityTitle": "Beveiligingsinstellingen in deze back-up",
+            "importSecurityHelp": "Deze opties schakelen een beveiligingscontrole uit. Elke optie wordt in de veilige staat geïmporteerd, tenzij u die aanvinkt om hem te behouden zoals in het bestand.",
+            "importSecurityVerifyCert": "Certificaatcontrole uitgeschakeld",
+            "importSecurityCleartextEndpoint": "Niet-versleuteld S3-eindpunt toegestaan",
+            "importSecurityCleartextStorage": "Niet-versleuteld opslagadres toegestaan",
+            "importSecurityPlainHttp": "Gewoon HTTP in plaats van HTTPS",
+            "importSecurityPasvAddress": "Dataverbinding naar het adres dat de server opgeeft (PASV)",
+            "importSecurityUnknownHostKeys": "Onbekende SSH-hostsleutels geaccepteerd",
+            "keystoreSecurityReset": "{count} herstelde servers hadden opties die een beveiligingscontrole uitschakelen; ze zijn teruggezet naar de veilige instelling: {details}.",
+            "keystoreSecurityResetFailed": "De beveiligingsinstellingen van {count} herstelde accounts konden niet worden gecontroleerd of opnieuw ingesteld. Ze worden hier vermeld in plaats van zonder waarschuwing actief te blijven.",
+            "keystoreSecurityResetQuarantine": "De herstelde accountdatabase kon niet worden beveiligd en is in quarantaine geplaatst als {path}. Geen enkel hersteld account is actief. Los het schijf- of machtigingsprobleem op en herstel daarna de back-up opnieuw. Het bestand in quarantaine blijft beschikbaar voor herstel."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2366,6 +2377,8 @@
             "allowScpFallbackHint": "Als de server geen SFTP heeft, gaat de verbinding verder via SCP, zoals WinSCP doet.",
             "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP",
             "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)",
+            "trustPasvAddress": "Het door de server opgegeven passieve adres gebruiken",
+            "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt.",
             "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)"
         },
         "shortcuts": {

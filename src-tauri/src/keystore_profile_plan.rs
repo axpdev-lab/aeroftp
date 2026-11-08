@@ -153,6 +153,9 @@ pub struct PlanInputs {
     pub local_secrets: HashMap<String, Option<Zeroizing<String>>>,
     /// The backup's value for the same keys. Absent keys are not in the map.
     pub backup_secrets: HashMap<String, Zeroizing<String>>,
+    /// What bringing the backup's profiles to their safe state reset: a
+    /// restore takes no relaxing option from the backup (CodeRabbit on #1524).
+    pub security_reset: Vec<crate::profile_security::ProfileReset>,
 }
 
 /// A vault write the plan needs: `Some` stores the value, `None` deletes.
@@ -670,6 +673,7 @@ mod tests {
                 ("server_srv_b", "pw-b-backup"),
                 ("server_srv_d", "pw-d"),
             ]),
+            security_reset: Vec::new(),
         }
     }
 

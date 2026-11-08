@@ -530,6 +530,153 @@
       "twin": "estás",
       "reason": "Estas is the demonstrative (these saved paths); estás is the verb (you are), which this sentence does not use."
     },
+    "ca\u001ftransfer.crossProfile.subtitle\u001fCopia fitxers directament entre dos servidors desats.": {
+      "locale": "ca",
+      "key": "transfer.crossProfile.subtitle",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia introduces the instruction to copy files between saved servers. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001ftransfer.unifiedPlan.modeCopy\u001fCopia": {
+      "locale": "ca",
+      "key": "transfer.unifiedPlan.modeCopy",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia names the Copy action alongside the imperative Mou for Move. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fshortcuts.copyFiles\u001fCopia al porta-retalls": {
+      "locale": "ca",
+      "key": "shortcuts.copyFiles",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia al porta-retalls instructs copying to the clipboard. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fshortcuts.copyToOtherPanel\u001fCopia a l'altre panell": {
+      "locale": "ca",
+      "key": "shortcuts.copyToOtherPanel",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia a l'altre panell describes the Copy shortcut as a command. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fvault.copyReportHint\u001fCopia l'informe al porta-retalls": {
+      "locale": "ca",
+      "key": "vault.copyReportHint",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia l'informe asks the user to copy the report to the clipboard. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fvault.copyReport\u001fCopia": {
+      "locale": "ca",
+      "key": "vault.copyReport",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia is the action on the Copy report button. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001ftrash.copyToHomeTrash\u001fCopia a la paperera personal": {
+      "locale": "ca",
+      "key": "trash.copyToHomeTrash",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia a la paperera personal commands copying into the personal trash. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fdebug.tests.copyResults\u001fCopia els resultats": {
+      "locale": "ca",
+      "key": "debug.tests.copyResults",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia els resultats commands copying the test results. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fdebug.tests.copyResultsTitle\u001fCopia els resultats com a Markdown": {
+      "locale": "ca",
+      "key": "debug.tests.copyResultsTitle",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia els resultats com a Markdown describes a copy command with an output format. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fmenu.copy\u001fCopia": {
+      "locale": "ca",
+      "key": "menu.copy",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia is the Copy menu command. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fpreview.text.pickColor\u001fSeleccionar color (copia al porta-retalls)": {
+      "locale": "ca",
+      "key": "preview.text.pickColor",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "copia al porta-retalls describes what the color picker does (copies to the clipboard); this is the present-tense verb. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fsavedServers.copyToUser\u001fCopia a un compte...": {
+      "locale": "ca",
+      "key": "savedServers.copyToUser",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia a un compte commands copying a server to an account. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fsavedServers.relocateCopyTitle\u001fCopia el servidor a un altre compte": {
+      "locale": "ca",
+      "key": "savedServers.relocateCopyTitle",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia el servidor a un altre compte instructs copying the server. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fsavedServers.relocateSubmitCopy\u001fCopia": {
+      "locale": "ca",
+      "key": "savedServers.relocateSubmitCopy",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia labels the button that performs the copy. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fspeedTest.copyResult\u001fCopia resultat": {
+      "locale": "ca",
+      "key": "speedTest.copyResult",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia resultat is the command to copy a speed-test result. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001faerofile.copyToOtherPanel\u001fCopia a l'altre panell": {
+      "locale": "ca",
+      "key": "aerofile.copyToOtherPanel",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia a l'altre panell commands copying to the other file-manager panel. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001faerofile.copyHereFromOtherPanelTooltip\u001fCopia {count} seleccionats de l'altre tauler en aquest tauler (F5)": {
+      "locale": "ca",
+      "key": "aerofile.copyHereFromOtherPanelTooltip",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia {count} seleccionats instructs copying the selected items into this panel. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001faerocryptNative.keyslotsRecoveryCopy\u001fCopia el codi": {
+      "locale": "ca",
+      "key": "aerocryptNative.keyslotsRecoveryCopy",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia el codi is the recovery-code copy command. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001faeroShare.dialog.copy\u001fCopia": {
+      "locale": "ca",
+      "key": "aeroShare.dialog.copy",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia labels the share dialog Copy button. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fsiteCommand.copyReply\u001fCopia la resposta": {
+      "locale": "ca",
+      "key": "siteCommand.copyReply",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia la resposta commands copying the server reply. The verb copiar takes no accent here; còpia is the noun."
+    },
+    "ca\u001fsiteCommand.copyAll\u001fCopia-ho tot": {
+      "locale": "ca",
+      "key": "siteCommand.copyAll",
+      "folded": "copia",
+      "twin": "còpia",
+      "reason": "Copia-ho tot is the imperative copia with the enclitic ho (copy it all). The verb copiar takes no accent here; còpia is the noun."
+    },
     "lt\u001fsupport.fiatSection\u001fPaaukoti kortele": {
       "locale": "lt",
       "key": "support.fiatSection",

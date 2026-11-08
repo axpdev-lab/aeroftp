@@ -76,10 +76,6 @@ fn partial_rename_message(
     }
 }
 
-/// Returns true when the S3 endpoint targets a loopback address or a known
-/// local-bridge hostname (Filen Desktop S3 at local.s3.filen.io, MEGAcmd, ...).
-/// Used to auto-trust self-signed TLS certificates in S3Provider::new without
-/// requiring the user to flip verify_cert manually for every loopback profile.
 /// URL-encode an S3 key path segment-by-segment, preserving `/` as the
 /// path separator. AWS SigV4 and any compliant S3 server expect the wire
 /// URL to contain percent-encoded keys (spaces -> `%20`, emojis -> UTF-8
@@ -104,6 +100,38 @@ fn encode_s3_key_path(key: &str) -> String {
         })
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// Refuse a request whose path the URL parser rewrote. S3 allows a key with
+/// `.` or `..` segments (`a/../b.txt`), but URL parsing removes dot segments,
+/// `%2e%2e` included (WHATWG), so the request and its signature would address
+/// `b.txt`, or in path-style even another bucket: a GET or a delete on the
+/// wrong object, accepted by the server. No URL form keeps such a segment, so
+/// the operation is refused with the key named instead (#1506 Requested 189).
+/// Batch deletes carry keys in the XML body and copy sources in a header, which
+/// are not rewritten.
+fn refuse_rewritten_path(url: &str, parsed: &url::Url) -> Result<(), ProviderError> {
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let built = after_scheme.find('/').map_or("/", |i| &after_scheme[i..]);
+    let built = built.split(['?', '#']).next().unwrap_or(built);
+    let built = if built.is_empty() { "/" } else { built };
+    // Compared on the decoded bytes: the parser also percent-encodes what the
+    // endpoint's base path left raw (`/My Files` becomes `/My%20Files`), which
+    // addresses the same object. Only a removed segment changes the bytes
+    // (CodeRabbit on #1524).
+    if built == parsed.path()
+        || urlencoding::decode_binary(built.as_bytes())
+            == urlencoding::decode_binary(parsed.path().as_bytes())
+    {
+        return Ok(());
+    }
+    Err(ProviderError::InvalidPath(format!(
+        "S3 cannot address '{}': a '.' or '..' segment in an object name is \
+         rewritten by every HTTP client, so the request would reach '{}' instead. \
+         Rename the object with a tool that sends raw paths, or work on its folder.",
+        urlencoding::decode(built).unwrap_or(std::borrow::Cow::Borrowed(built)),
+        urlencoding::decode(parsed.path()).unwrap_or(std::borrow::Cow::Borrowed(parsed.path()))
+    )))
 }
 
 /// The longest validity SigV4 allows a presigned URL: seven days.
@@ -420,24 +448,12 @@ fn plan_copy_parts(
 /// and "nobody else can read this" are different questions with different
 /// answers. Do not merge the two predicates.
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
-    let lower = endpoint.trim().to_ascii_lowercase();
-    let stripped = lower
-        .strip_prefix("http://")
-        .or_else(|| lower.strip_prefix("https://"))
-        .unwrap_or(&lower);
-    let host_only = stripped
-        .split('/')
-        .next()
-        .unwrap_or(stripped)
-        .split('@')
-        .next_back()
-        .unwrap_or(stripped);
-    let host = host_only
-        .rsplit_once(':')
-        .filter(|(_, p)| p.chars().all(|c| c.is_ascii_digit()))
-        .map(|(h, _)| h)
-        .unwrap_or(host_only);
-    matches!(host, "127.0.0.1" | "::1" | "[::1]" | "localhost")
+    // The host the request reaches (#1506 Requested 188): a split string kept
+    // `?` and `#`, so a schemeless `evil.com?.local` read as an mDNS name.
+    let Some(host) = crate::util::endpoint::endpoint_host(endpoint) else {
+        return false;
+    };
+    matches!(host.as_str(), "127.0.0.1" | "::1" | "localhost")
         || host.ends_with(".localhost")
         || host.ends_with(".local")
         || host == "local.s3.filen.io"
@@ -2536,6 +2552,7 @@ impl S3Provider {
         // Parse URL to get host and path
         let parsed =
             url::Url::parse(url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        refuse_rewritten_path(url, &parsed)?;
 
         let host = parsed.host_str().unwrap_or("");
         let path = parsed.path();
@@ -7048,6 +7065,7 @@ impl StorageProvider for S3Provider {
         self.validate_request_url_confidentiality(&url)?;
         let parsed =
             url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        refuse_rewritten_path(&url, &parsed)?;
 
         let host = parsed.host_str().unwrap_or("");
         let raw_path = parsed.path();
@@ -10447,6 +10465,96 @@ mod tests {
                 .is_err(),
             "an mDNS host is on a network: cleartext to it needs consent"
         );
+    }
+
+    /// #1506 Requested 188: the certificate predicate keeps its documented
+    /// names (owner decision 2026-11-06) but reads the host with the URL
+    /// parser, so a query, a fragment or userinfo cannot fake one.
+    #[test]
+    fn local_certificate_trust_reads_the_real_host() {
+        for local in [
+            "http://minio.local:9000",
+            "https://nas.local",
+            "gateway.localhost:8443",
+            "https://127.0.0.1:1800",
+            "https://[::1]:1800",
+            "local.s3.filen.io:1800",
+        ] {
+            assert!(is_local_s3_endpoint(local), "{local}");
+        }
+        for public in [
+            "evil.com?.local",
+            "evil.com#.local",
+            "https://evil.com/?x=.local",
+            "https://user@evil.com/a.local",
+            "https://minio.local.evil.com",
+            "https://s3.amazonaws.com",
+        ] {
+            assert!(!is_local_s3_endpoint(public), "{public}");
+        }
+    }
+
+    /// #1506 Requested 189: a key with `.` or `..` segments is refused before
+    /// signing, on both signers, instead of reaching another object (another
+    /// bucket in path-style). Ordinary names, dots inside a name included,
+    /// still sign.
+    #[tokio::test]
+    async fn dot_segment_keys_are_refused_not_rewritten() {
+        for path_style in [true, false] {
+            let mut provider = make_provider(Some("https://s3.example.com"));
+            provider.config.path_style = path_style;
+            for key in ["a/../b.txt", "../other/x", "./x", "dir/./y", "dir/.."] {
+                let url = provider.build_url(key);
+                let mut headers = std::collections::HashMap::new();
+                let signed =
+                    provider.sign_request("DELETE", &url, &mut headers, "UNSIGNED-PAYLOAD");
+                assert!(
+                    matches!(signed, Err(ProviderError::InvalidPath(ref m)) if m.contains("'.' or '..'")),
+                    "path_style={path_style} key={key}: {signed:?}"
+                );
+                let link = provider
+                    .create_share_link(&format!("/{key}"), ShareLinkOptions::default())
+                    .await;
+                assert!(
+                    matches!(link, Err(ProviderError::InvalidPath(_))),
+                    "path_style={path_style} key={key}: {link:?}"
+                );
+            }
+            for key in ["a.b/c..d.txt", "...", "dir/.hidden", "x/..y/z", "a b/c"] {
+                let url = provider.build_url(key);
+                let mut headers = std::collections::HashMap::new();
+                assert!(
+                    provider
+                        .sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD")
+                        .is_ok(),
+                    "path_style={path_style} key={key}"
+                );
+            }
+        }
+    }
+
+    /// CodeRabbit on #1524: a path-style endpoint whose base path holds a
+    /// space is encoded by the URL parser (`/My%20Files`), which is not a
+    /// rewrite, so the request still signs and a share link is still made. A
+    /// dot segment under that base is still refused.
+    #[tokio::test]
+    async fn an_encoded_base_path_is_not_a_rewrite() {
+        let mut provider = make_provider(Some("https://gateway.example.com/My Files"));
+        provider.config.path_style = true;
+        let url = provider.build_url("report.pdf");
+        let mut headers = std::collections::HashMap::new();
+        let signed = provider.sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD");
+        assert!(signed.is_ok(), "{signed:?}");
+        let link = provider
+            .create_share_link("/report.pdf", ShareLinkOptions::default())
+            .await;
+        assert!(link.is_ok(), "{link:?}");
+        let url = provider.build_url("a/../b.txt");
+        let mut headers = std::collections::HashMap::new();
+        assert!(matches!(
+            provider.sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD"),
+            Err(ProviderError::InvalidPath(_))
+        ));
     }
 
     #[test]
@@ -13973,14 +14081,16 @@ mod tests {
     /// A double that answers every request with 400 InvalidRequest, the answer
     /// Fastly gives to a request signed for another region.
     async fn fastly_invalid_request_double() -> String {
-        let app = axum::Router::new().fallback(axum::routing::any(|| async {
-            axum::http::Response::builder()
-                .status(400)
-                .body(axum::body::Body::from(
-                    "<Error><Code>InvalidRequest</Code><Message>Invalid request</Message></Error>",
-                ))
-                .unwrap()
-        }));
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_body: axum::body::Bytes| async {
+                axum::http::Response::builder()
+                    .status(400)
+                    .body(axum::body::Body::from(
+                        "<Error><Code>InvalidRequest</Code><Message>Invalid request</Message></Error>",
+                    ))
+                    .unwrap()
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("bind");
@@ -14051,14 +14161,14 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
-        let app =
-            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, _body: axum::body::Bytes| {
                 let seen = Arc::clone(&seen);
                 async move {
                     seen.lock()
                         .unwrap()
-                        .push(format!("{} {}", req.method(), req.uri().path()));
-                    if req.method() == Method::POST {
+                        .push(format!("{method} {}", uri.path()));
+                    if method == Method::POST {
                         return axum::http::Response::builder()
                             .status(500)
                             .body(axum::body::Body::from(
@@ -14066,7 +14176,7 @@ mod tests {
                             ))
                             .unwrap();
                     }
-                    let status = if req.uri().path().ends_with("/gone") {
+                    let status = if uri.path().ends_with("/gone") {
                         404
                     } else {
                         204
@@ -14076,7 +14186,8 @@ mod tests {
                         .body(axum::body::Body::empty())
                         .unwrap()
                 }
-            }));
+            },
+        ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move {

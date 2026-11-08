@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "Daeth {names} gydag ap OAuth personol gwahanol i'r un sydd gan y ddyfais hon ar gyfer y darparwr hwnnw. Cadwyd yr ap sydd wedi'i storio, felly mewngofnodwch eto os bydd y proffiliau hyn yn rhoi'r gorau i gysylltu.",
             "importTargetChanged": "Ni chafodd {names} eu trosysgrifo: mae'r ffeil yn eu pwyntio at weinydd arall, ac ni ddylai eu cyfrineiriau a'u tocynnau storiedig fynd yno. Mewnforiwch gyda Dyblygu i ychwanegu'r copi o'r ffeil, neu dilëwch y proffil yn gyntaf.",
             "importSharedSecretsFailed": "Mewnforiwyd {names}, ond ni ellid storio cyfrinach a rennir neu sesiwn o'r ffeil. Mewngofnodwch i'r proffiliau hyn eto os nad ydynt yn cysylltu.",
-            "keystoreDatabasesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer y cronfeydd data hyn ac maent yn cadw'r hyn oedd ynddynt: {names}."
+            "keystoreDatabasesFailed": "Mae'r mewnforio wedi gorffen, ond nid oedd modd adfer y cronfeydd data hyn ac maent yn cadw'r hyn oedd ynddynt: {names}.",
+            "importSecurityTitle": "Gosodiadau diogelwch yn y copi wrth gefn hwn",
+            "importSecurityHelp": "Mae'r opsiynau hyn yn diffodd gwiriad diogelwch. Caiff pob un ei fewnforio yn ei gyflwr diogel oni bai eich bod yn ei dicio i'w gadw fel y mae yn y ffeil.",
+            "importSecurityVerifyCert": "Gwiriad tystysgrif wedi'i ddiffodd",
+            "importSecurityCleartextEndpoint": "Pwynt terfyn S3 heb ei amgryptio wedi'i ganiatáu",
+            "importSecurityCleartextStorage": "Cyfeiriad storio heb ei amgryptio wedi'i ganiatáu",
+            "importSecurityPlainHttp": "HTTP plaen yn lle HTTPS",
+            "importSecurityPasvAddress": "Cysylltiad data â'r cyfeiriad y mae'r gweinydd yn ei enwi (PASV)",
+            "importSecurityUnknownHostKeys": "Allweddi gwesteiwr SSH anhysbys wedi'u derbyn",
+            "keystoreSecurityReset": "Roedd gan {count} gweinydd a adferwyd opsiynau sy'n diffodd gwiriad diogelwch; cawsant eu rhoi yn ôl i'r gosodiad diogel: {details}.",
+            "keystoreSecurityResetFailed": "Nid oedd modd gwirio nac ailosod gosodiadau diogelwch {count} o gyfrifon wedi'u hadfer. Maent wedi'u rhestru yma yn hytrach na'u gadael yn weithredol heb rybudd.",
+            "keystoreSecurityResetQuarantine": "Ni oedd modd diogelu'r gronfa ddata cyfrifon a adferwyd, felly cafodd ei rhoi mewn cwarantin fel {path}. Nid oes unrhyw gyfrif a adferwyd yn weithredol. Trwsiwch broblem y ddisg neu'r caniatâd, yna adferwch y copi wrth gefn eto. Mae'r ffeil mewn cwarantin yn parhau i fod ar gael i'w hadfer."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2366,6 +2377,8 @@
             "allowScpFallbackHint": "Os nad oes gan y gweinydd SFTP, parhau dros SCP ar yr un cysylltiad, fel y mae WinSCP yn ei wneud.",
             "discoverScp": "Copïo ffeiliau dros SSH ar gyfer gweinyddion heb SFTP",
             "discoverTigris": "Tigris: storfa wedi'i dosbarthu'n fyd-eang sy'n gydnaws ag S3, dim ffioedd all-drosglwyddo data (5 GB am ddim)",
+            "trustPasvAddress": "Defnyddio'r cyfeiriad goddefol a roddir gan y gweinydd",
+            "trustPasvAddressHelp": "I ffwrdd: mae cysylltiadau data yn mynd i'r gwesteiwr y gwnaethoch gysylltu ag ef, fel y mae curl yn ei wneud. Trowch ymlaen ar gyfer gweinydd sy'n anfon data o gyfeiriad arall yn unig.",
             "discoverFastly": "Fastly Object Storage: storfa sy'n gydnaws ag S3 mewn 12 rhanbarth (5 GB am ddim, mae angen cerdyn)"
         },
         "shortcuts": {

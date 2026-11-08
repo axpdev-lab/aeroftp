@@ -631,7 +631,11 @@ fn without_private_export_options(entry: &Value) -> Value {
 /// upgrades any recovered secret into the AES-256-GCM vault and returns
 /// credential-redacted profiles, exactly like `import_rclone_config`.
 #[tauri::command]
-pub async fn import_bridge_config(source: String, file_path: String) -> Result<Value, String> {
+pub async fn import_bridge_config(
+    source: String,
+    file_path: String,
+    keep_relaxed: Option<Vec<crate::profile_security::KeptRelaxation>>,
+) -> Result<Value, String> {
     known(&source)?;
 
     let path = Path::new(&file_path);
@@ -673,7 +677,13 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     } else {
         None
     };
-    finish_bridge_import(&source, &value, secret_failures, vault)
+    match keep_relaxed {
+        Some(keep) => {
+            let policy = crate::profile_security::RelaxationPolicy::Keep(keep);
+            finish_bridge_import_with_policy(&source, &value, secret_failures, vault, &policy)
+        }
+        None => finish_bridge_import(&source, &value, secret_failures, vault),
+    }
 }
 
 /// One vault write: the entry's key and its secret.
@@ -681,15 +691,32 @@ type VaultWrite<'a> = &'a mut dyn FnMut(&str, &str) -> Result<(), String>;
 
 /// What an import does once the file is parsed: the rclone crypt and Filen
 /// secrets move into the vault, the recovered passwords are stored, and the
-/// profiles go back to the window redacted, with every secret that was not
+/// profiles go back to the window redacted and with security-relaxing options
+/// reset (`RelaxationPolicy::ResetAll`), with every secret that was not
 /// stored named in the warnings. `vault` writes one vault entry; `None` is a
 /// locked vault. Split from [`import_bridge_config`] so a test reads the
 /// response the window commits, not only the helpers.
-fn finish_bridge_import(
+pub(crate) fn finish_bridge_import(
+    source: &str,
+    value: &Value,
+    secret_failures: Vec<(String, String)>,
+    vault: Option<VaultWrite<'_>>,
+) -> Result<Value, String> {
+    finish_bridge_import_with_policy(
+        source,
+        value,
+        secret_failures,
+        vault,
+        &crate::profile_security::RelaxationPolicy::ResetAll,
+    )
+}
+
+pub(crate) fn finish_bridge_import_with_policy(
     source: &str,
     value: &Value,
     mut secret_failures: Vec<(String, String)>,
     mut vault: Option<VaultWrite<'_>>,
+    policy: &crate::profile_security::RelaxationPolicy,
 ) -> Result<Value, String> {
     let mut servers = value
         .get("servers")
@@ -812,16 +839,54 @@ fn finish_bridge_import(
         log::warn!("{} import credential issues: {:?}", source, cred_errors);
     }
 
+    // A third-party config is untrusted input: any option that turns a
+    // security check off (`webdavScheme=http`, `verifyCert=false`,
+    // `allowCleartextEndpoint`, `allowCleartextStorage`, `trustPasvAddress`,
+    // `trustUnknownHosts`) comes back in its safe state unless kept by
+    // `policy`, and `security` lists what was reset or kept so the GUI bridge
+    // panel can offer the same per-option review as `.aeroftp` imports (#1506
+    // Requested 198). The pre-reset host and options travel beside a reset
+    // profile so ticking an option in the review restores only what was asked.
+    let mut security: Vec<crate::profile_import_plan::ImportedSecurity> = Vec::new();
+    let mut relaxed_before_reset: HashMap<usize, (Value, Value)> = HashMap::new();
+    for (file_index, server) in servers.iter_mut().enumerate() {
+        let relaxations = crate::profile_security::security_relaxations(server);
+        if relaxations.is_empty() {
+            continue;
+        }
+        let raw_host = server.get("host").cloned().unwrap_or(Value::Null);
+        let raw_options = server.get("options").cloned().unwrap_or(Value::Null);
+        let name = crate::profile_import_plan::display_name(
+            server.get("name").and_then(Value::as_str).unwrap_or(""),
+            server.get("host").and_then(Value::as_str).unwrap_or(""),
+        );
+        let keep = policy.kept_keys(file_index, &relaxations);
+        let removed = crate::profile_security::make_profile_safe(server, &keep);
+        if !removed.is_empty() {
+            relaxed_before_reset.insert(file_index, (raw_host, raw_options));
+        }
+        let (reset, kept) = relaxations
+            .into_iter()
+            .partition(|relaxation| removed.contains(&relaxation.key));
+        security.push(crate::profile_import_plan::ImportedSecurity {
+            file_index,
+            name,
+            reset,
+            kept,
+        });
+    }
+
     // Redact credentials before crossing back to the renderer.
     let redacted: Vec<Value> = servers
         .iter()
-        .map(|s| {
+        .enumerate()
+        .map(|(file_index, s)| {
             let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let has_cred = !unsaved_credentials.contains(id)
                 && s.get("credential")
                     .map(|c| !c.is_null() && c.as_str().map(|x| !x.is_empty()).unwrap_or(true))
                     .unwrap_or(false);
-            json!({
+            let mut item = json!({
                 "id": s.get("id").cloned().unwrap_or(Value::Null),
                 "name": s.get("name").cloned().unwrap_or(Value::Null),
                 "host": s.get("host").cloned().unwrap_or(Value::Null),
@@ -836,7 +901,12 @@ fn finish_bridge_import(
                 "hasStoredAeroCryptSalt": s.get("hasStoredAeroCryptSalt").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredFilenApiKey": s.get("hasStoredFilenApiKey").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredCredential": has_cred,
-            })
+            });
+            if let Some((raw_host, raw_options)) = relaxed_before_reset.get(&file_index) {
+                item["relaxedHost"] = raw_host.clone();
+                item["relaxedOptions"] = raw_options.clone();
+            }
+            item
         })
         .collect();
 
@@ -861,6 +931,7 @@ fn finish_bridge_import(
         redacted,
         servers.len(),
         secret_warnings,
+        security,
     ))
 }
 
@@ -873,6 +944,7 @@ fn bridge_import_response(
     redacted: Vec<Value>,
     imported: usize,
     secret_warnings: Vec<Value>,
+    security: Vec<crate::profile_import_plan::ImportedSecurity>,
 ) -> Value {
     let mut warnings = parsed
         .get("warnings")
@@ -887,6 +959,7 @@ fn bridge_import_response(
         // password that does not reveal), and any profile whose secret could not be
         // stored here: it is listed as imported, and will not sign in.
         "warnings": warnings,
+        "security": security,
         "sourcePath": parsed.get("sourcePath").cloned().unwrap_or(Value::Null),
         "totalRemotes": parsed
             .get("totalRemotes")
@@ -2012,6 +2085,7 @@ mod tests {
             Vec::new(),
             1,
             vec![json!({ "name": "box1", "reason": "its password was not stored: test" })],
+            Vec::new(),
         );
         let warnings = response["warnings"].as_array().expect("warnings list");
         assert_eq!(warnings.len(), 2, "{response}");
@@ -2032,8 +2106,13 @@ mod tests {
         let result = crate::rclone_import::import_rclone(&config).unwrap();
         let parsed = serde_json::to_value(&result).unwrap();
 
-        let response =
-            bridge_import_response(&parsed, Vec::new(), result.servers.len(), Vec::new());
+        let response = bridge_import_response(
+            &parsed,
+            Vec::new(),
+            result.servers.len(),
+            Vec::new(),
+            Vec::new(),
+        );
 
         let warnings = response["warnings"].as_array().expect("warnings list");
         assert_eq!(warnings.len(), 1, "{response}");
@@ -2879,6 +2958,56 @@ mod tests {
         assert!(
             conf.contains("key_file = /home/admin/.ssh/id_ed25519"),
             "{conf}"
+        );
+    }
+
+    #[test]
+    fn dispatch_import_and_finish_bridge_import_reset_winscp_webdav_http_unless_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("winscp_webdav_plain_http.ini");
+        std::fs::write(
+            &path,
+            "[Sessions\\Remote%20WebDAV]\r\nHostName=dav.example.com\r\nPortNumber=8080\r\nUserName=alice\r\nFSProtocol=6\r\nFtps=0\r\n",
+        )
+        .unwrap();
+        let parsed = dispatch_import("winscp", &path).expect("winscp import");
+
+        let safe = finish_bridge_import("winscp", &parsed, Vec::new(), None).expect("safe import");
+        assert_eq!(safe["servers"][0]["options"]["webdavScheme"], "https");
+        assert_eq!(safe["servers"][0]["relaxedOptions"]["webdavScheme"], "http");
+        assert_eq!(
+            safe["security"],
+            json!([{
+                "fileIndex": 0,
+                "name": "Remote WebDAV",
+                "reset": [{ "key": "webdavScheme", "value": "http" }],
+                "kept": [],
+            }])
+        );
+
+        let kept = finish_bridge_import_with_policy(
+            "winscp",
+            &parsed,
+            Vec::new(),
+            None,
+            &crate::profile_security::RelaxationPolicy::Keep(vec![
+                crate::profile_security::KeptRelaxation {
+                    file_index: 0,
+                    key: "webdavScheme".into(),
+                },
+            ]),
+        )
+        .expect("kept import");
+        assert_eq!(kept["servers"][0]["options"]["webdavScheme"], "http");
+        assert!(kept["servers"][0].get("relaxedOptions").is_none());
+        assert_eq!(
+            kept["security"],
+            json!([{
+                "fileIndex": 0,
+                "name": "Remote WebDAV",
+                "reset": [],
+                "kept": [{ "key": "webdavScheme", "value": "http" }],
+            }])
         );
     }
 }

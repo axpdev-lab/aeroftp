@@ -259,3 +259,49 @@ describe('an imported Filen API key (#230)', () => {
         expect(JSON.stringify(importedServerProfile(withExtra))).not.toContain('FILEN-KEY-1');
     });
 });
+
+describe('importedServerProfile security relaxations on bridge imports', () => {
+    const winscpWebdavResetByBackend: ImportedServer = {
+        id: 'winscp-webdav-1',
+        name: 'Public WebDAV',
+        host: 'dav.example.com',
+        port: 8080,
+        username: 'alice',
+        protocol: 'webdav',
+        options: { webdavScheme: 'https' },
+        relaxedOptions: { webdavScheme: 'http' },
+        hasStoredCredential: true,
+    };
+
+    const winscpWebdavRawHttp: ImportedServer = {
+        id: 'winscp-webdav-2',
+        name: 'Raw WebDAV',
+        host: 'dav.example.com',
+        port: 8080,
+        username: 'alice',
+        protocol: 'webdav',
+        options: { webdavScheme: 'http' },
+        hasStoredCredential: true,
+    };
+
+    it('defaults to resetting plain-HTTP WebDAV on a non-local host to https and strips relaxed metadata', () => {
+        const fromBackend = importedServerProfile(winscpWebdavResetByBackend);
+        expect(fromBackend.options?.webdavScheme).toBe('https');
+        expect(fromBackend).not.toHaveProperty('relaxedOptions');
+        expect(fromBackend).not.toHaveProperty('relaxedHost');
+
+        const fromRaw = importedServerProfile(winscpWebdavRawHttp);
+        expect(fromRaw.options?.webdavScheme).toBe('https');
+        expect(fromRaw).not.toHaveProperty('relaxedOptions');
+    });
+
+    it('preserves plain-HTTP WebDAV only when webdavScheme is explicitly kept in the security review', () => {
+        const keptFromBackend = importedServerProfile(winscpWebdavResetByBackend, ['webdavScheme']);
+        expect(keptFromBackend.options?.webdavScheme).toBe('http');
+        expect(keptFromBackend).not.toHaveProperty('relaxedOptions');
+        expect(keptFromBackend).not.toHaveProperty('relaxedHost');
+
+        const keptFromRaw = importedServerProfile(winscpWebdavRawHttp, ['webdavScheme']);
+        expect(keptFromRaw.options?.webdavScheme).toBe('http');
+    });
+});

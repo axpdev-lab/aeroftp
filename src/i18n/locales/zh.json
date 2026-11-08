@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} 导入时带有与此设备上该提供商已有的不同的自定义 OAuth 应用。已保留设备上存储的应用，如果这些配置文件无法连接，请重新登录。",
             "importTargetChanged": "{names} 未被覆盖：该文件会让它们指向另一台服务器，而它们已保存的密码和令牌不能发送到那里。请使用“复制”导入以添加文件中的副本，或先删除该配置文件。",
             "importSharedSecretsFailed": "{names} 已导入，但文件中的共享密钥或会话无法保存。如果这些配置文件无法连接，请重新登录。",
-            "keystoreDatabasesFailed": "导入已完成，但未能恢复以下数据库，它们保留原有内容：{names}。"
+            "keystoreDatabasesFailed": "导入已完成，但未能恢复以下数据库，它们保留原有内容：{names}。",
+            "importSecurityTitle": "此备份中的安全设置",
+            "importSecurityHelp": "这些选项会关闭某项安全检查。除非勾选以保持文件中的原样，否则每项都会以安全状态导入。",
+            "importSecurityVerifyCert": "证书检查已关闭",
+            "importSecurityCleartextEndpoint": "允许未加密的 S3 端点",
+            "importSecurityCleartextStorage": "允许未加密的存储地址",
+            "importSecurityPlainHttp": "使用普通 HTTP 而非 HTTPS",
+            "importSecurityPasvAddress": "连接到服务器指定地址的数据连接 (PASV)",
+            "importSecurityUnknownHostKeys": "接受未知的 SSH 主机密钥",
+            "keystoreSecurityReset": "已恢复的 {count} 台服务器含有会关闭安全检查的选项；这些选项已改回安全设置：{details}。",
+            "keystoreSecurityResetFailed": "无法检查或重置 {count} 个已恢复账户的安全设置。这些账户已列在此处，而不是在没有警告的情况下保持启用状态。",
+            "keystoreSecurityResetQuarantine": "无法保护已恢复的账户数据库，已将其隔离为 {path}。没有已恢复的账户处于活动状态。请修复磁盘或权限问题，然后再次恢复备份。隔离的文件仍可用于恢复。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -2366,6 +2377,8 @@
             "allowScpFallbackHint": "如果服务器没有 SFTP，则像 WinSCP 一样在同一连接上改用 SCP 继续。",
             "discoverScp": "为没有 SFTP 的服务器通过 SSH 复制文件",
             "discoverTigris": "Tigris：全球分布式 S3 兼容存储，无出站流量费用（5 GB 免费）",
+            "trustPasvAddress": "使用服务器提供的被动模式地址",
+            "trustPasvAddressHelp": "关闭：数据连接会发往你所连接的主机，与 curl 一致。仅对从其他地址发送数据的服务器开启。",
             "discoverFastly": "Fastly Object Storage：覆盖 12 个区域的 S3 兼容存储（免费 5 GB，需要银行卡）"
         },
         "shortcuts": {

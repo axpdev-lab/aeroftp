@@ -445,6 +445,7 @@ export interface ProviderOptions {
    *  wrote `tlsMode` connects with its real mode (explicit on port 21). */
   ftpsMode?: FtpTlsMode;
   verifyCert?: boolean; // Verify server certificate (default: true)
+  trustPasvAddress?: boolean; // FTP: use the address a PASV reply names (default: false, the control peer)
   /** Swift only. Accept a catalog-issued cleartext object-store endpoint after
    *  an HTTPS Keystone session. Undefined or false keeps the downgrade guard
    *  armed: the storage endpoint carries the bearer token, so a silent

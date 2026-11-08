@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 800
+    "tauri_commands": 801
   },
   "mcp": {
     "count": 78,
@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 467,
+    "name_matched_count": 468,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1576,6 +1576,7 @@
       "native_rsync_classic_available",
       "export_server_profiles",
       "import_server_profiles",
+      "preview_server_import",
       "detect_bridge_config",
       "bridge_source_meta",
       "bridge_identify",
@@ -2115,6 +2116,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 800
+    "count": 801
   }
 }

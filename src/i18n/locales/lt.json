@@ -1378,7 +1378,18 @@
             "importOauthAppKept": "{names} atkeliavo su kita pasirinktine OAuth programa nei ta, kurią šis įrenginys turi tam teikėjui. Išsaugota programa buvo palikta, todėl prisijunkite iš naujo, jei šie profiliai nustos jungtis.",
             "importTargetChanged": "{names} nebuvo perrašyti: failas nukreipia juos į kitą serverį, o jų išsaugoti slaptažodžiai ir žetonai neturi ten patekti. Importuokite su Dubliuoti, kad pridėtumėte failo kopiją, arba pirmiausia ištrinkite profilį.",
             "importSharedSecretsFailed": "{names} importuoti, bet nepavyko išsaugoti bendros paslapties ar seanso iš failo. Jei šie profiliai neprisijungia, prisijunkite prie jų iš naujo.",
-            "keystoreDatabasesFailed": "Importavimas baigtas, bet šių duomenų bazių nepavyko atkurti, todėl jose išliko ankstesnis turinys: {names}."
+            "keystoreDatabasesFailed": "Importavimas baigtas, bet šių duomenų bazių nepavyko atkurti, todėl jose išliko ankstesnis turinys: {names}.",
+            "importSecurityTitle": "Šios atsarginės kopijos saugumo nustatymai",
+            "importSecurityHelp": "Šios parinktys išjungia saugumo patikrą. Kiekviena importuojama saugios būsenos, nebent pažymėsite ją, kad liktų tokia, kokia yra faile.",
+            "importSecurityVerifyCert": "Sertifikato patikra išjungta",
+            "importSecurityCleartextEndpoint": "Leidžiamas nešifruotas S3 galinis taškas",
+            "importSecurityCleartextStorage": "Leidžiamas nešifruotas saugyklos adresas",
+            "importSecurityPlainHttp": "Paprastas HTTP vietoj HTTPS",
+            "importSecurityPasvAddress": "Duomenų ryšys su serverio nurodytu adresu (PASV)",
+            "importSecurityUnknownHostKeys": "Priimami nežinomi SSH pagrindinio kompiuterio raktai",
+            "keystoreSecurityReset": "{count} atkurtų serverių turėjo parinkčių, išjungiančių saugumo patikrą; jos buvo grąžintos į saugų nustatymą: {details}.",
+            "keystoreSecurityResetFailed": "Nepavyko patikrinti arba iš naujo nustatyti {count} atkurtų paskyrų saugos nustatymų. Jos pateikiamos čia, o ne paliekamos aktyvios be įspėjimo.",
+            "keystoreSecurityResetQuarantine": "Atkurtos paskyrų duomenų bazės apsaugoti nepavyko, todėl ji buvo izoliuota kaip {path}. Nė viena atkurta paskyra nėra aktyvi. Išspręskite disko arba teisių problemą, tada vėl atkurkite atsarginę kopiją. Izoliuotas failas ir toliau pasiekiamas atkūrimui."
         },
         "devtools": {
             "title": "AeroTools",
@@ -2366,6 +2377,8 @@
             "allowScpFallbackHint": "Jei serveris neturi SFTP, ryšys tęsiamas per SCP, kaip tai daro WinSCP.",
             "discoverScp": "Failų kopijavimas per SSH serveriams be SFTP",
             "discoverTigris": "Tigris: pasauliniu mastu paskirstyta su S3 suderinama saugykla, be išeinančio srauto mokesčių (5 GB nemokamai)",
+            "trustPasvAddress": "Naudoti serverio nurodytą pasyvųjį adresą",
+            "trustPasvAddressHelp": "Išjungta: duomenų ryšiai eina į pagrindinį kompiuterį, prie kurio prisijungėte, kaip daro curl. Įjunkite tik serveriui, kuris siunčia duomenis iš kito adreso.",
             "discoverFastly": "Fastly Object Storage: su S3 suderinama saugykla 12 regionų (5 GB nemokamai, reikalinga kortelė)"
         },
         "shortcuts": {

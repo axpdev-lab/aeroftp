@@ -61,6 +61,7 @@ async fn provider_answering(site_reply: Option<String>) -> FtpProvider {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: Some("/".to_string()),
+        trust_pasv_address: false,
     });
     provider
         .connect()
