@@ -77,7 +77,7 @@ jobs:
           toolchain: 1.97.1
           components: clippy
       - name: Rust cache
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
         # put this job's key outside the `linux-dev` family (see
         # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
@@ -164,7 +164,7 @@ jobs:
         with:
           toolchain: 1.97.1
       - name: Rust cache
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
         # put this job's key outside the `linux-dev` family (see
         # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
@@ -298,7 +298,7 @@ jobs:
       # real-rsync step builds without it, with `check`'s features, and is the
       # one the restored dependencies serve.
       - name: Rust cache
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         # Blank only for rust-cache: RUST_BACKTRACE changes no artefact but would
         # put this job's key outside the `linux-dev` family (see
         # delta-sync-integration.yml). CARGO_TERM_COLOR stays: every job already
