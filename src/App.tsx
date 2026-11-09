@@ -8218,7 +8218,7 @@ const App: React.FC = () => {
   // FTP operations
   const connectToFtpImpl = async (
     overrideParams?: ConnectionParams,
-    opts?: { isAutoRetry?: boolean; existingLogId?: string },
+    opts?: { isAutoRetry?: boolean; existingLogId?: string; initialRemotePath?: string },
   ) => {
     // Snapshot the abort epoch: a Cancel on the connect listing bumps it, and
     // the branches below that swallow a failed listing (rather than throwing out
@@ -8239,6 +8239,7 @@ const App: React.FC = () => {
     // Use a local copy to avoid direct React state mutation (C3 audit fix)
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
     let effectiveParams = overrideParams || connectionParams;
+    const remoteDirInput = opts?.initialRemotePath ?? quickConnectDirs.remoteDir;
     if (connectionParams.server && connectionParams.server.includes(':')) {
       const lastColon = connectionParams.server.lastIndexOf(':');
       const possiblePort = connectionParams.server.substring(lastColon + 1);
@@ -8331,7 +8332,7 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      let oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
+      let oauthInitialPath = resolveUsernameTemplate(remoteDirInput, effectiveParams.username) || '/';
       let overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
@@ -8584,7 +8585,7 @@ const App: React.FC = () => {
         // doc comment. Then strip the literal Nextcloud WebDAV root for
         // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles saved before
         // basePath was dropped from the preset.
-        const qcTemplateResolved = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+        const qcTemplateResolved = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
         const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
           qcTemplateResolved,
           effectiveParams.providerId,
@@ -8798,7 +8799,7 @@ const App: React.FC = () => {
       // resolution (Nextcloud-based presets) happens here too, mirroring the
       // provider-API path above.
       let ftpResponse: FileListResponse | null = null;
-      const ftpResolvedRemoteDir = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+      const ftpResolvedRemoteDir = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
       if (ftpResolvedRemoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
         await changeRemoteDirectory(ftpResolvedRemoteDir, effectiveParams.protocol || 'ftp');
@@ -8820,7 +8821,7 @@ const App: React.FC = () => {
       await createSession(
         effectiveParams.displayName || effectiveParams.server,
         effectiveParams,
-        ftpResponse?.current_path || quickConnectDirs.remoteDir || currentRemotePath,
+        ftpResponse?.current_path || remoteDirInput || currentRemotePath,
         quickConnectDirs.localDir || currentLocalPath,
         ftpResponse?.files
       );
@@ -8832,7 +8833,7 @@ const App: React.FC = () => {
       // A 550 after a successful login is a Remote Path problem, not a
       // credentials one (see isRemotePathNotFoundOnConnect): report it honestly.
       if (isRemotePathNotFoundOnConnect(error)) {
-        const badPath = quickConnectDirs.remoteDir || '/';
+        const badPath = remoteDirInput || '/';
         const pathMsg = t('activity.connect_error_path_not_found', { server: effectiveParams.server, path: badPath });
         humanLog.updateEntry(logId, { status: 'error', message: pathMsg });
         notify.error(t('connection.connectionFailed'), pathMsg);
@@ -17711,8 +17712,13 @@ const App: React.FC = () => {
       return;
     }
 
-    const existing = sessions.find(s => s.savedServerId === matched.id);
+    const existing = sessions.find(
+      s => s.savedServerId === matched.id || s.connectionParams?.savedServerId === matched.id,
+    );
     if (existing) {
+      setShowConnectionScreen(false);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
       await goToActiveSession(matched.id);
       return;
     }
@@ -17743,6 +17749,9 @@ const App: React.FC = () => {
     });
 
     if (existingSession) {
+      setShowConnectionScreen(false);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
       await switchSession(existingSession.id);
       if (initialRemotePath && initialRemotePath !== '/' && initialRemotePath !== '') {
         await changeRemoteDirectory(initialRemotePath, targetProtocol);
@@ -17756,7 +17765,7 @@ const App: React.FC = () => {
       password: req.password || '',
       protocol: targetProtocol,
       port: targetPort,
-      displayName: req.name || req.server,
+      displayName: req.server,
       options: {
         allowScpFallback: true,
       },
@@ -17767,12 +17776,17 @@ const App: React.FC = () => {
       const match = all.find(s =>
         (s.protocol || 'ftp') === targetProtocol &&
         (s.host || '').toLowerCase() === req.server!.toLowerCase() &&
-        (s.port || (targetProtocol === 'sftp' || targetProtocol === 'scp' ? 22 : 21)) === targetPort &&
+        (s.port || defaultPort) === targetPort &&
         (s.username || '') === targetUser
       );
       if (match) {
         params.savedServerId = match.id;
         params.displayName = match.name;
+        params.providerId = match.providerId;
+        params.options = {
+          ...match.options,
+          allowScpFallback: match.options?.allowScpFallback ?? true,
+        };
         try {
           const stored = await getCredentialWithRetry(`server_${match.id}`, 2);
           if (stored) params.password = stored;
@@ -17782,10 +17796,7 @@ const App: React.FC = () => {
       }
     }
 
-    await connectToFtp(params);
-    if (initialRemotePath && initialRemotePath !== '/' && initialRemotePath !== '') {
-      await changeRemoteDirectory(initialRemotePath, targetProtocol);
-    }
+    await connectToFtp(params, { initialRemotePath });
   };
 
   const handleOpenRequests = async (requests: OpenRequest[]) => {
