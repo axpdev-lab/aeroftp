@@ -17691,6 +17691,103 @@ const App: React.FC = () => {
     if (file) await openUniversalPreview(file, false);
   };
 
+  const profileConnector = useRef<ProfileConnector | null>(null);
+  const registerProfileConnector = useCallback<RegisterProfileConnector>(connector => {
+    profileConnector.current = connector;
+    return () => { if (profileConnector.current === connector) profileConnector.current = null; };
+  }, []);
+
+  const openProfileByName = async (name?: string) => {
+    if (!name) return;
+    const profiles = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+    const matched = profiles.find(s => s.name === name)
+      || profiles.find(s => s.name.toLowerCase() === name.toLowerCase());
+
+    if (!matched) {
+      notify.warning(
+        t('toast.serverNotFound'),
+        t('toast.serverProfileNotFound', { name }),
+      );
+      return;
+    }
+
+    const existing = sessions.find(s => s.savedServerId === matched.id);
+    if (existing) {
+      await goToActiveSession(matched.id);
+      return;
+    }
+
+    if (profileConnector.current) {
+      const scope = new ConnectScope();
+      await profileConnector.current(matched.id, scope);
+    }
+  };
+
+  const openRemoteUrlSession = async (req: OpenRequest) => {
+    if (!req.server) return;
+
+    const targetProtocol = (req.protocol as ProviderType) || 'sftp';
+    const defaultPort = targetProtocol === 'sftp' || targetProtocol === 'scp' ? 22 : targetProtocol === 'ftps' ? 990 : targetProtocol === 'webdav' ? 80 : 21;
+    const targetPort = req.port || defaultPort;
+    const targetUser = req.username || '';
+    const initialRemotePath = req.initialPath || '/';
+
+    const existingSession = sessions.find(s => {
+      const p = s.connectionParams;
+      const sProto = p.protocol || 'ftp';
+      if (sProto !== targetProtocol) return false;
+      if ((p.server || '').toLowerCase() !== req.server!.toLowerCase()) return false;
+      const sPort = p.port || (sProto === 'sftp' || sProto === 'scp' ? 22 : sProto === 'ftps' ? 990 : sProto === 'webdav' ? 80 : 21);
+      if (sPort !== targetPort) return false;
+      return (p.username || '') === targetUser;
+    });
+
+    if (existingSession) {
+      await switchSession(existingSession.id);
+      if (initialRemotePath && initialRemotePath !== '/' && initialRemotePath !== '') {
+        await changeRemoteDirectory(initialRemotePath, targetProtocol);
+      }
+      return;
+    }
+
+    const params: ConnectionParams = {
+      server: req.server,
+      username: targetUser,
+      password: req.password || '',
+      protocol: targetProtocol,
+      port: targetPort,
+      displayName: req.name || req.server,
+      options: {
+        allowScpFallback: true,
+      },
+    };
+
+    if (!params.password) {
+      const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+      const match = all.find(s =>
+        (s.protocol || 'ftp') === targetProtocol &&
+        (s.host || '').toLowerCase() === req.server!.toLowerCase() &&
+        (s.port || (targetProtocol === 'sftp' || targetProtocol === 'scp' ? 22 : 21)) === targetPort &&
+        (s.username || '') === targetUser
+      );
+      if (match) {
+        params.savedServerId = match.id;
+        params.displayName = match.name;
+        try {
+          const stored = await getCredentialWithRetry(`server_${match.id}`, 2);
+          if (stored) params.password = stored;
+        } catch {
+          // Vault lookup failed or no stored password
+        }
+      }
+    }
+
+    await connectToFtp(params);
+    if (initialRemotePath && initialRemotePath !== '/' && initialRemotePath !== '') {
+      await changeRemoteDirectory(initialRemotePath, targetProtocol);
+    }
+  };
+
   const handleOpenRequests = async (requests: OpenRequest[]) => {
     const local: OpenRequest[] = [];
     for (const request of requests) {
@@ -17712,6 +17809,12 @@ const App: React.FC = () => {
         case 'local':
           local.push(request);
           break;
+        case 'profile':
+          await openProfileByName(request.profileName || request.name);
+          break;
+        case 'remoteUrl':
+          await openRemoteUrlSession(request);
+          break;
       }
     }
     if (local.length > 0) await openLocalPathsInAeroFile(local);
@@ -17720,12 +17823,6 @@ const App: React.FC = () => {
     vaultBootComplete && !isAppLocked && accountLockState === 'ready' && localFilesBootstrapped,
     handleOpenRequests,
   );
-
-  const profileConnector = useRef<ProfileConnector | null>(null);
-  const registerProfileConnector = useCallback<RegisterProfileConnector>(connector => {
-    profileConnector.current = connector;
-    return () => { if (profileConnector.current === connector) profileConnector.current = null; };
-  }, []);
 
   // === Safe Settings surface for the GUI controller ===
   // aiPublicSettings is the field-by-field projection of the public AI

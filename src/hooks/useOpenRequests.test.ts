@@ -198,3 +198,38 @@ it('reads the lock of the commit a resuming drain wakes up after', async () => {
     expect(batches).toEqual([['first.png']]);
     expect(bridge.queue.map(r => (r as OpenRequest).name)).toEqual(['second.png']);
 });
+
+it('forwards a remoteUrl open request with connection fields', async () => {
+    const urlReq: OpenRequest = {
+        kind: 'remoteUrl',
+        path: 'sftp://bob:***@host:22/var/www',
+        folder: '/var/www',
+        name: '',
+        isDir: true,
+        protocol: 'sftp',
+        server: 'host',
+        port: 22,
+        username: 'bob',
+        password: 'secret',
+        initialPath: '/var/www',
+    };
+    await render(true);
+    bridge.queue.push(urlReq);
+    await emit();
+    expect(handled).toEqual([urlReq]);
+});
+
+it('forwards a profile open request with profile name', async () => {
+    const profReq: OpenRequest = {
+        kind: 'profile',
+        path: 'profile://Production NAS',
+        folder: '',
+        name: 'Production NAS',
+        isDir: false,
+        profileName: 'Production NAS',
+    };
+    await render(true);
+    bridge.queue.push(profReq);
+    await emit();
+    expect(handled).toEqual([profReq]);
+});

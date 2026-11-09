@@ -582,13 +582,20 @@ export interface LocalFile {
 
 // A file or folder the OS handed to the app (`open_request.rs`).
 export interface OpenRequest {
-  kind: 'vault' | 'keystore' | 'profiles' | 'archive' | 'local';
+  kind: 'vault' | 'keystore' | 'profiles' | 'archive' | 'local' | 'remoteUrl' | 'profile';
   path: string;
   /** The folder AeroFile shows: the parent of a file, a folder itself. */
   folder: string;
   /** The entry to select in `folder`; empty for a folder. */
   name: string;
   isDir: boolean;
+  protocol?: ProviderType;
+  server?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  initialPath?: string;
+  profileName?: string;
 }
 
 // Transfer progress event from backend
