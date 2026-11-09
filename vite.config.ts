@@ -3,9 +3,42 @@ import react from '@vitejs/plugin-react'
 import { readFileSync, cpSync, existsSync } from 'fs'
 import { resolve } from 'path'
 
-// Extract resolved versions from package.json at build time
+// Extract resolved versions for build-time injection into the About dialog.
+// Prefers the exact lockfile resolution (or the installed package.json in node_modules)
+// so the Technical tab and copied technical info report the real build version rather
+// than the manifest range minimum.
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 const cleanVer = (v: string) => v.replace(/^[\^~>=<]+/, '');
+
+let packageLock: { packages?: Record<string, { version?: string }> } | null = null;
+try {
+  const lockPath = resolve(__dirname, 'package-lock.json');
+  if (existsSync(lockPath)) {
+    packageLock = JSON.parse(readFileSync(lockPath, 'utf-8'));
+  }
+} catch {
+  // Ignore lockfile parse failure; fallback below will handle it
+}
+
+function resolveInstalledVersion(name: string, fallbackRange?: string): string {
+  const locked = packageLock?.packages?.[`node_modules/${name}`]?.version;
+  if (typeof locked === 'string' && locked) {
+    return locked;
+  }
+  try {
+    const modPkgPath = resolve(__dirname, `node_modules/${name}/package.json`);
+    if (existsSync(modPkgPath)) {
+      const modPkg = JSON.parse(readFileSync(modPkgPath, 'utf-8'));
+      if (typeof modPkg.version === 'string' && modPkg.version) {
+        return modPkg.version;
+      }
+    }
+  } catch {
+    // Ignore error
+  }
+  const raw = fallbackRange ?? pkg.dependencies?.[name] ?? pkg.devDependencies?.[name] ?? '?';
+  return cleanVer(raw);
+}
 
 /**
  * Copy Monaco Editor AMD assets to dist/vs at build time,
@@ -83,11 +116,11 @@ export default defineConfig({
   },
   define: {
     __FRONTEND_VERSIONS__: JSON.stringify({
-      react: cleanVer(pkg.dependencies?.['react'] ?? '?'),
-      typescript: cleanVer(pkg.devDependencies?.['typescript'] ?? '?'),
-      tailwindcss: cleanVer(pkg.devDependencies?.['tailwindcss'] ?? '?'),
-      monaco: cleanVer(pkg.dependencies?.['monaco-editor'] ?? cleanVer(pkg.dependencies?.['@monaco-editor/react'] ?? '?')),
-      vite: cleanVer(pkg.devDependencies?.['vite'] ?? '?'),
+      react: resolveInstalledVersion('react'),
+      typescript: resolveInstalledVersion('typescript'),
+      tailwindcss: resolveInstalledVersion('tailwindcss'),
+      monaco: resolveInstalledVersion('monaco-editor', pkg.dependencies?.['monaco-editor'] ?? pkg.dependencies?.['@monaco-editor/react']),
+      vite: resolveInstalledVersion('vite'),
     }),
   },
 })
