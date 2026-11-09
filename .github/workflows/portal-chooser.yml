@@ -67,7 +67,7 @@ jobs:
           components: clippy, rustfmt
 
       - name: Rust cache
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './tests/portal-chooser/fake-portal -> target'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
@@ -129,7 +129,7 @@ jobs:
           toolchain: 1.97.1
 
       - name: Rust cache
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './src-tauri -> target'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
