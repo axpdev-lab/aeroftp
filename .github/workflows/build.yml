@@ -795,28 +795,28 @@ jobs:
 
       - name: Download Linux installers
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: aeroftp-linux-${{ github.sha }}
           path: release-assets
 
       - name: Download Windows installers
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: aeroftp-windows-${{ github.sha }}
           path: release-assets
 
       - name: Download macOS aarch64 installer
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: aeroftp-macos-aarch64-${{ github.sha }}
           path: release-assets
 
       - name: Download macOS x64 installer
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: aeroftp-macos-x64-${{ github.sha }}
           path: release-assets
@@ -975,7 +975,7 @@ jobs:
       # The payload comes from the ubuntu-22.04 leg, never from this runner:
       # jammy binaries for a jammy (core22) base. Nothing here compiles Rust.
       - name: Download Linux payload built on jammy
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: aeroftp-linux-payload-${{ github.sha }}
           path: ${{ runner.temp }}/payload
