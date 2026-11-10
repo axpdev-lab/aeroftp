@@ -120,7 +120,7 @@ jobs:
 
       - name: Rust cache
         timeout-minutes: 15
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './src-tauri -> target'
           # Family `linux-dev` (Actions cache quota, tracker Requested 76): every
@@ -366,7 +366,7 @@ jobs:
 
       - name: Rust cache
         timeout-minutes: 15
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './src-tauri -> target'
           # Restore-only member of `linux-dev` (see the key-auth job above).
@@ -517,7 +517,7 @@ jobs:
 
       - name: Rust cache
         timeout-minutes: 15
-        uses: swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './src-tauri -> target'
           shared-key: linux-dev

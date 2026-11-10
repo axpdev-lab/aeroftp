@@ -2,10 +2,14 @@ import { defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync, cpSync, existsSync } from 'fs'
 import { resolve } from 'path'
+import { resolveInstalledVersion, loadPackageManifest, loadPackageLock } from './scripts/lib/frontend-versions'
 
-// Extract resolved versions from package.json at build time
-const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
-const cleanVer = (v: string) => v.replace(/^[\^~>=<]+/, '');
+// Extract resolved versions for build-time injection into the About dialog.
+// Prefers the exact lockfile resolution (or the installed package.json in node_modules)
+// so the Technical tab and copied technical info report the real build version rather
+// than the manifest range minimum.
+const lock = loadPackageLock(__dirname);
+const pkg = loadPackageManifest(__dirname) || {};
 
 /**
  * Copy Monaco Editor AMD assets to dist/vs at build time,
@@ -83,11 +87,11 @@ export default defineConfig({
   },
   define: {
     __FRONTEND_VERSIONS__: JSON.stringify({
-      react: cleanVer(pkg.dependencies?.['react'] ?? '?'),
-      typescript: cleanVer(pkg.devDependencies?.['typescript'] ?? '?'),
-      tailwindcss: cleanVer(pkg.devDependencies?.['tailwindcss'] ?? '?'),
-      monaco: cleanVer(pkg.dependencies?.['monaco-editor'] ?? cleanVer(pkg.dependencies?.['@monaco-editor/react'] ?? '?')),
-      vite: cleanVer(pkg.devDependencies?.['vite'] ?? '?'),
+      react: resolveInstalledVersion('react', undefined, __dirname, lock, pkg),
+      typescript: resolveInstalledVersion('typescript', undefined, __dirname, lock, pkg),
+      tailwindcss: resolveInstalledVersion('tailwindcss', undefined, __dirname, lock, pkg),
+      monaco: resolveInstalledVersion('monaco-editor', pkg.dependencies?.['monaco-editor'] ?? pkg.dependencies?.['@monaco-editor/react'], __dirname, lock, pkg),
+      vite: resolveInstalledVersion('vite', undefined, __dirname, lock, pkg),
     }),
   },
 })
