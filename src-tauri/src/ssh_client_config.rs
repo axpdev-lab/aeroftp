@@ -8,11 +8,23 @@ use russh::{kex, Preferred};
 /// Shared SSH client policy. NIST ECDH gives standards-compliant servers an
 /// efficient SHA-2 alternative to finite-field GEX without lowering its floor.
 pub(crate) fn preferred() -> Preferred {
-    let mut preferred = Preferred::default();
+    with_nist_ecdh(Preferred::default())
+}
+
+fn with_nist_ecdh(mut preferred: Preferred) -> Preferred {
     let mut kex = preferred.kex.to_vec();
     let ecdh_at = kex
         .iter()
         .position(|name| *name == kex::DH_GEX_SHA256)
+        .or_else(|| {
+            let markers = [
+                kex::EXTENSION_SUPPORT_AS_CLIENT,
+                kex::EXTENSION_SUPPORT_AS_SERVER,
+                kex::EXTENSION_OPENSSH_STRICT_KEX_AS_CLIENT,
+                kex::EXTENSION_OPENSSH_STRICT_KEX_AS_SERVER,
+            ];
+            kex.iter().position(|name| markers.contains(name))
+        })
         .unwrap_or(kex.len());
     kex.splice(
         ecdh_at..ecdh_at,
@@ -53,6 +65,30 @@ mod tests {
                 "ext-info-s",
                 "kex-strict-c-v00@openssh.com",
                 "kex-strict-s-v00@openssh.com",
+            ]
+        );
+    }
+
+    #[test]
+    fn without_gex_nist_ecdh_still_precedes_the_extension_markers() {
+        let configured = with_nist_ecdh(Preferred {
+            kex: Cow::Borrowed(&[
+                kex::CURVE25519,
+                kex::EXTENSION_SUPPORT_AS_CLIENT,
+                kex::EXTENSION_OPENSSH_STRICT_KEX_AS_CLIENT,
+            ]),
+            ..Default::default()
+        });
+        let names: Vec<&str> = configured.kex.iter().map(|name| name.as_ref()).collect();
+        assert_eq!(
+            names,
+            [
+                "curve25519-sha256",
+                "ecdh-sha2-nistp256",
+                "ecdh-sha2-nistp384",
+                "ecdh-sha2-nistp521",
+                "ext-info-c",
+                "kex-strict-c-v00@openssh.com",
             ]
         );
     }
