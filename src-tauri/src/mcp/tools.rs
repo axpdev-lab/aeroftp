@@ -1348,16 +1348,14 @@ pub async fn execute_tool(
                         &crate::crypt_compare::remote_scan_options(&opts, crypt_keys.is_some()),
                     )
                     .await;
-                    // The scan already retried a transport error once. A leftover
-                    // is text (`failed to list {path}: {Display}`). Drop the
-                    // pooled session only when that text is a dead transport,
-                    // after `p` and `arc` are released, and do not scan again.
-                    // NotFound, a permission error, and `timed out listing`
-                    // keep the entry. No failure keeps it too.
-                    let session_dead = remote_boundaries
-                        .first_failure
-                        .as_deref()
-                        .is_some_and(crate::sync_core::scan::transport_failure_text);
+                    // The scan already retried a transport error once. Any listing
+                    // whose rendered text is a dead transport sets
+                    // `transport_failure`, including one that was not the first.
+                    // Drop the pooled session from that flag after `p` and
+                    // `arc` are released, and do not scan again. NotFound, a
+                    // permission error, and `timed out listing` keep the entry.
+                    // No failure keeps it too.
+                    let session_dead = remote_boundaries.transport_failure;
                     let mut remotes = remote_rows;
                     if let Some(keys) = &crypt_keys {
                         // The scan read the list on ciphertext names; it is read again on
@@ -1990,7 +1988,8 @@ const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
 ///
 /// The caller drops the provider mutex and the pool `Arc` first. A clean
 /// scan, a missing path, and a `timed out listing` sentence pass `false`
-/// and leave the entry.
+/// and leave the entry. The flag comes from the walk, so a later transport
+/// failure drops the entry even when the first message is a business error.
 async fn invalidate_dead_check_session(pool: &ConnectionPool, server: &str, session_dead: bool) {
     if session_dead {
         let _ = pool.invalidate(server).await;
@@ -2361,6 +2360,21 @@ mod tests {
         parse_benchmark_skipped, tool_definitions, validate_read_preview_target,
         MAX_READ_PREVIEW_BYTES,
     };
+
+    /// `aeroftp_check_tree` drops the pool only when the walk says the session
+    /// is dead. A clean scan leaves the inserted probe.
+    #[tokio::test]
+    async fn pooled_session_action_dead_check_session_is_removed() {
+        use crate::providers::probe_fake::ProbeFake;
+
+        let pool = super::ConnectionPool::new(4, std::time::Duration::from_secs(300));
+        pool.insert_for_test("srv_probe", "probe", Box::new(ProbeFake::new()))
+            .await;
+        super::invalidate_dead_check_session(&pool, "probe", false).await;
+        assert_eq!(pool.status().await.len(), 1);
+        super::invalidate_dead_check_session(&pool, "probe", true).await;
+        assert!(pool.status().await.is_empty());
+    }
 
     /// A link is a gap without being a failure: no walk follows one, so the
     /// subtree behind it was never compared, while `list_errors` stays 0 and

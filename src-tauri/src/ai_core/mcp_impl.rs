@@ -268,7 +268,9 @@ impl McpRemoteBackend {
     /// which the desktop app may already have refreshed. An auth failure
     /// means the operation did not take effect server-side, so this single
     /// retry is safe for a write. The caller has already released the
-    /// provider lock. A second failure is returned and not classified again.
+    /// provider lock. The retried call is not run again. A transport failure
+    /// on that fresh session drops the entry. Another auth failure is not a
+    /// second reload.
     async fn reload_credential_and_retry<T, F>(&self, op: F) -> Result<T, String>
     where
         F: for<'p> FnOnce(
@@ -286,10 +288,31 @@ impl McpRemoteBackend {
             .pool
             .get_provider_expecting(&self.server, self.expected_identity.as_deref())
             .await?;
-        let mut guard = arc.lock().await;
-        op(&mut guard)
-            .await
-            .map_err(|e| crate::providers::sanitize_api_error(&e.to_string()))
+        let result = {
+            let mut guard = arc.lock().await;
+            op(&mut guard).await
+        };
+        self.finish_retried_call(arc, result).await
+    }
+
+    /// Settle the one auth retry. The call has already finished, and the
+    /// provider lock is not held. A transport failure drops the fresh entry.
+    /// The call is not run again.
+    async fn finish_retried_call<T>(
+        &self,
+        arc: Arc<tokio::sync::Mutex<Box<dyn crate::providers::StorageProvider>>>,
+        result: Result<T, crate::providers::ProviderError>,
+    ) -> Result<T, String> {
+        match result {
+            Ok(value) => Ok(value),
+            Err(error) => {
+                drop(arc);
+                if pooled_session_action(&error) == PooledSessionAction::DropSession {
+                    let _ = self.pool.invalidate(&self.server).await;
+                }
+                Err(crate::providers::sanitize_api_error(&error.to_string()))
+            }
+        }
     }
 }
 
@@ -672,9 +695,13 @@ mod tests {
             pooled_session_action(&ProviderError::Timeout),
             PooledSessionAction::DropSession
         );
-        // The scan's own time limit is not the Display word Timeout.
+        // The scan's own time limit is not the Display word Timeout, even
+        // when the directory name contains a transport phrase.
         assert!(!transport_failure_text(
             "timed out listing /remote after 30s"
+        ));
+        assert!(!transport_failure_text(
+            "timed out listing /remote/connection closed after 30s"
         ));
         assert!(!transport_failure_text(
             "failed to list /reports/q3: Path not found: /reports/q3"
@@ -725,5 +752,65 @@ mod tests {
         ] {
             assert!(!looks_like_auth_failure(s), "should NOT be auth-class: {s}");
         }
+    }
+
+    /// The auth retry has already run. A transport error on that fresh session
+    /// drops the inserted entry and does not call the operation again. An auth
+    /// error and a missing path leave the entry. No vault is opened.
+    #[tokio::test]
+    async fn pooled_session_action_retry_transport_drops_the_fresh_entry() {
+        use crate::providers::probe_fake::ProbeFake;
+        use crate::providers::ProviderError;
+
+        let pool = std::sync::Arc::new(crate::mcp::pool::ConnectionPool::new(
+            4,
+            std::time::Duration::from_secs(300),
+        ));
+        let backend =
+            super::McpRemoteBackend::new(std::sync::Arc::clone(&pool), "probe".to_string());
+
+        let arc = pool
+            .insert_for_test("srv_probe", "probe", Box::new(ProbeFake::new()))
+            .await;
+        let dropped = backend
+            .finish_retried_call(
+                arc,
+                Err::<(), _>(ProviderError::ConnectionLost("broken pipe".into())),
+            )
+            .await
+            .unwrap_err();
+        assert!(dropped.contains("Connection lost"), "{dropped}");
+        assert!(pool.status().await.is_empty());
+
+        let arc = pool
+            .insert_for_test("srv_probe", "probe", Box::new(ProbeFake::new()))
+            .await;
+        let kept = backend
+            .finish_retried_call(
+                arc,
+                Err::<(), _>(ProviderError::NotFound("/reports/q3".into())),
+            )
+            .await
+            .unwrap_err();
+        assert!(kept.contains("Path not found"), "{kept}");
+        assert_eq!(pool.status().await.len(), 1);
+
+        let arc = pool
+            .insert_for_test("srv_auth", "auth", Box::new(ProbeFake::new()))
+            .await;
+        let auth = super::McpRemoteBackend::new(std::sync::Arc::clone(&pool), "auth".to_string());
+        let reloaded = auth
+            .finish_retried_call(
+                arc,
+                Err::<(), _>(ProviderError::Other("HTTP 401 Unauthorized".into())),
+            )
+            .await
+            .unwrap_err();
+        assert!(reloaded.contains("401"), "{reloaded}");
+        assert_eq!(
+            pool.status().await.len(),
+            2,
+            "a second auth failure is not another reload and does not drop the entry"
+        );
     }
 }

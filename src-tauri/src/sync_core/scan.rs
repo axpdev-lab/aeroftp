@@ -502,6 +502,11 @@ pub struct UnseenPath {
 pub struct ScanBoundaries {
     /// The first listing that failed and why: what a refusal can tell the user.
     pub first_failure: Option<String>,
+    /// A listing failed in a way that leaves the session unusable, including
+    /// one that was not the first. `first_failure` stays the first message.
+    /// [`transport_failure_text`] decides. `aeroftp_check_tree` drops the
+    /// pooled session from this flag and does not scan again.
+    pub transport_failure: bool,
     /// Symbolic links the scan listed and did not follow.
     pub links: Vec<SkippedLink>,
     /// Paths the scan could not see: a directory at the depth limit or one that
@@ -1471,9 +1476,7 @@ async fn scan_remote_tree_inventory_internal(
                 // deletion downstream, so count it instead of only warning, and
                 // bound it so no copy reaches into what it might hold.
                 completeness.list_errors += 1;
-                boundaries
-                    .first_failure
-                    .get_or_insert_with(|| failure.message.clone());
+                note_listing_failure(&mut boundaries, &failure.message);
                 if failure.root_absent {
                     boundaries.root_missing = true;
                 } else {
@@ -1713,9 +1716,7 @@ async fn scan_remote_tree_locked(
                 // CLAUDE-AV-B3-13: an unlisted directory hides every file under
                 // it, which downstream reads as "these files were deleted".
                 completeness.list_errors += 1;
-                boundaries
-                    .first_failure
-                    .get_or_insert_with(|| failure.message.clone());
+                note_listing_failure(&mut boundaries, &failure.message);
                 if failure.root_absent {
                     boundaries.root_missing = true;
                 } else {
@@ -1917,6 +1918,20 @@ struct RemoteScanFailure {
 /// new folder, which is a clean run.
 fn listing_failure_line(failure: &RemoteScanFailure) -> Option<String> {
     (!failure.root_absent).then(|| format!("[scan_remote_tree] warning: {}", failure.message))
+}
+
+/// Remember a directory that did not list.
+///
+/// The user still sees the first message. A later dead transport is recorded
+/// on its own, so a pooled caller can drop the session without hiding the
+/// earlier business error.
+fn note_listing_failure(boundaries: &mut ScanBoundaries, message: &str) {
+    if transport_failure_text(message) {
+        boundaries.transport_failure = true;
+    }
+    boundaries
+        .first_failure
+        .get_or_insert_with(|| message.to_string());
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2304,8 +2319,10 @@ async fn list_with_transport_retry(
 /// [`list_with_transport_retry`] reconnects and lists once on a match. The
 /// CLI and MCP pools call the same function and drop the pooled entry
 /// instead of running the failed call again. The string arm is
-/// [`transport_failure_text`], which `aeroftp_check_tree` also applies to a
-/// scan `first_failure` (the typed error is already rendered there).
+/// [`transport_failure_text`]. The walk sets
+/// [`ScanBoundaries::transport_failure`] from that text, including a failure
+/// that was not the first. `aeroftp_check_tree` drops the pooled session from
+/// the flag. The typed error is already rendered into the message.
 pub(crate) fn is_transport_level(e: &ProviderError) -> bool {
     match e {
         ProviderError::NotConnected
@@ -2350,8 +2367,13 @@ fn rendered_provider_display(message: &str) -> &str {
 ///
 /// `Timeout` is the whole Display, not a substring. A path that contains
 /// that word leaves the session. A scan that hit its own time limit says
-/// `timed out listing ...`, which is not that Display and does not match.
+/// `timed out listing ...`, which is not that Display and does not match,
+/// even when the directory name contains a transport phrase.
 pub(crate) fn transport_failure_text(message: &str) -> bool {
+    // The scan's own time limit is not a dead transport, whatever the path says.
+    if message.starts_with("timed out listing ") {
+        return false;
+    }
     let text = rendered_provider_display(message);
     // ProviderError::Timeout renders as this word and nothing else.
     if text == "Timeout" {
@@ -3953,6 +3975,9 @@ pub(crate) mod tests {
         /// a missing one reports it (SFTP did for every listing failure until it
         /// kept `NotFound` for `NO_SUCH_FILE`), while `stat` finds them.
         pub(crate) unlistable: std::collections::HashSet<String>,
+        /// Directories whose `list` fails with `ConnectionLost`. A walk can
+        /// meet this after an earlier business error on another directory.
+        pub(crate) transport_lost: std::collections::HashSet<String>,
         /// Directories whose `exists` check itself fails (permission, I/O).
         /// Distinct from `unlistable`: that path answers `Ok(true)`, this one
         /// answers `Err`, which is how SFTP must report a root under a parent
@@ -3984,6 +4009,7 @@ pub(crate) mod tests {
             Self {
                 dirs,
                 unlistable: std::collections::HashSet::new(),
+                transport_lost: std::collections::HashSet::new(),
                 exists_denied: std::collections::HashSet::new(),
                 cancel_on: None,
                 cancel: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -4057,6 +4083,7 @@ pub(crate) mod tests {
             Ok(Box::new(Self {
                 dirs: self.dirs.clone(),
                 unlistable: self.unlistable.clone(),
+                transport_lost: self.transport_lost.clone(),
                 exists_denied: self.exists_denied.clone(),
                 cancel_on: self.cancel_on.clone(),
                 cancel: Arc::clone(&self.cancel),
@@ -4088,6 +4115,11 @@ pub(crate) mod tests {
                 .push(("list".into(), path.into()));
             if self.cancel_on.as_deref() == Some(path) {
                 self.cancel.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            if self.transport_lost.contains(path) {
+                return Err(ProviderError::ConnectionLost(format!(
+                    "broken pipe: {path}"
+                )));
             }
             if self.unlistable.contains(path) {
                 return Err(ProviderError::NotFound(format!(
@@ -5156,6 +5188,45 @@ pub(crate) mod tests {
             "pool-tree",
             "the caller gets its own provider back, not the placeholder"
         );
+    }
+
+    /// Requested 203: a later connection loss still marks the scan when the
+    /// first listing failure is a missing directory. The user-facing message
+    /// stays the first one. Both the locked walk and the one-at-a-time clone
+    /// pool record the transport flag.
+    #[tokio::test]
+    async fn pooled_session_action_later_listing_failure_still_marks_the_scan() {
+        use crate::providers::RemoteEntry as Listed;
+        let folder = |name: &str, path: &str| Listed::directory(name.to_string(), path.to_string());
+        for pool in [false, true] {
+            let mut tree = WalkTreeProvider::new(
+                std::collections::HashMap::from([(
+                    "/root".to_string(),
+                    vec![
+                        folder("denied", "/root/denied"),
+                        folder("dead", "/root/dead"),
+                    ],
+                )]),
+                pool,
+            );
+            tree.unlistable.insert("/root/denied".to_string());
+            tree.transport_lost.insert("/root/dead".to_string());
+            let (_rows, completeness, boundaries) = walk_tree_at(tree, "/root").await;
+            assert_eq!(completeness.list_errors, 2, "pool={pool}");
+            assert!(
+                boundaries.transport_failure,
+                "a later connection loss drops the pooled session (pool={pool})"
+            );
+            let first = boundaries.first_failure.expect("the first failure is kept");
+            assert!(
+                first.contains("Path not found"),
+                "the first message stays the business error (pool={pool}): {first}"
+            );
+            assert!(
+                !first.contains("Connection lost"),
+                "the later transport error does not replace the first message (pool={pool}): {first}"
+            );
+        }
     }
 
     /// [`walk_tree_with`] from `root` instead of `/root`, bounded in time: a

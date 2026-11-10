@@ -235,7 +235,7 @@ impl ConnectionPool {
     /// Insert a provider without opening the vault or dialing a server.
     /// Tests use it to prove [`Self::invalidate`] removes the entry.
     #[cfg(test)]
-    async fn insert_for_test(
+    pub(crate) async fn insert_for_test(
         &self,
         profile_id: &str,
         profile_name: &str,
@@ -858,13 +858,13 @@ mod tests {
     }
     use super::*;
 
-    /// Requested 203: a transport failure removes the pooled entry. The
-    /// provider is a ProbeFake that answers list with ConnectionLost. No
-    /// vault is opened and no server is dialed. `with_provider` is not driven
-    /// here: `get_provider_expecting` reads the vault, and a retry would call
-    /// `create_provider_from_vault`.
+    /// `invalidate` removes an inserted probe. No vault is opened and no
+    /// server is dialed. `with_provider` is not driven here:
+    /// `get_provider_expecting` reads the vault, and a retry would call
+    /// `create_provider_from_vault`. The classification and the post-retry
+    /// drop are pinned next to `pooled_session_action`.
     #[tokio::test]
-    async fn pooled_session_action_invalidate_removes_the_probed_session() {
+    async fn invalidate_removes_an_inserted_probe() {
         use crate::providers::probe_fake::ProbeFake;
         use crate::providers::ProviderError;
 
