@@ -1349,13 +1349,13 @@ pub async fn execute_tool(
                     )
                     .await;
                     // The scan already retried a transport error once. Any listing
-                    // whose rendered text is a dead transport sets
+                    // whose typed error is a dead transport sets
                     // `transport_failure`, including one that was not the first.
-                    // Drop the pooled session from that flag after `p` and
+                    // `release_checked_session` reads that flag, not the first
+                    // failure sentence. Drop the pooled session after `p` and
                     // `arc` are released, and do not scan again. NotFound, a
                     // permission error, and `timed out listing` keep the entry.
                     // No failure keeps it too.
-                    let session_dead = remote_boundaries.transport_failure;
                     let mut remotes = remote_rows;
                     if let Some(keys) = &crypt_keys {
                         // The scan read the list on ciphertext names; it is read again on
@@ -1371,7 +1371,7 @@ pub async fn execute_tool(
                         if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
                             drop(p);
                             drop(arc);
-                            invalidate_dead_check_session(pool, &server, session_dead).await;
+                            release_checked_session(pool, &server, &remote_boundaries).await;
                             return finish(
                                 tool_name,
                                 Some(&server),
@@ -1391,7 +1391,7 @@ pub async fn execute_tool(
                     ) {
                         drop(p);
                         drop(arc);
-                        invalidate_dead_check_session(pool, &server, session_dead).await;
+                        release_checked_session(pool, &server, &remote_boundaries).await;
                         return finish(
                             tool_name,
                             Some(&server),
@@ -1525,7 +1525,7 @@ pub async fn execute_tool(
                     // the underlying socket on the detached disconnect.
                     drop(p);
                     drop(arc);
-                    invalidate_dead_check_session(pool, &server, session_dead).await;
+                    release_checked_session(pool, &server, &remote_boundaries).await;
                     ok(payload)
                 }
             };
@@ -1996,6 +1996,16 @@ async fn invalidate_dead_check_session(pool: &ConnectionPool, server: &str, sess
     }
 }
 
+/// The check_tree return paths share this. The typed flag decides, so a
+/// business error whose text contains a transport phrase keeps the session.
+async fn release_checked_session(
+    pool: &ConnectionPool,
+    server: &str,
+    boundaries: &crate::sync_core::ScanBoundaries,
+) {
+    invalidate_dead_check_session(pool, server, boundaries.transport_failure).await;
+}
+
 /// Comparison can report incomplete observations, while a policy refusal with
 /// no named boundary cannot safely describe a permitted comparison scope.
 fn bound_check_tree(
@@ -2361,18 +2371,33 @@ mod tests {
         MAX_READ_PREVIEW_BYTES,
     };
 
-    /// `aeroftp_check_tree` drops the pool only when the walk says the session
-    /// is dead. A clean scan leaves the inserted probe.
+    /// `aeroftp_check_tree` drops the pool only when the walk's typed flag
+    /// says the session is dead. The first failure sentence is not the
+    /// decision, even when it contains a transport phrase.
     #[tokio::test]
     async fn pooled_session_action_dead_check_session_is_removed() {
         use crate::providers::probe_fake::ProbeFake;
+        use crate::sync_core::ScanBoundaries;
 
         let pool = super::ConnectionPool::new(4, std::time::Duration::from_secs(300));
         pool.insert_for_test("srv_probe", "probe", Box::new(ProbeFake::new()))
             .await;
-        super::invalidate_dead_check_session(&pool, "probe", false).await;
+        let kept = ScanBoundaries {
+            first_failure: Some(
+                "failed to list /remote/broken pipe: Permission denied: /remote/broken pipe"
+                    .to_string(),
+            ),
+            transport_failure: false,
+            ..ScanBoundaries::default()
+        };
+        super::release_checked_session(&pool, "probe", &kept).await;
         assert_eq!(pool.status().await.len(), 1);
-        super::invalidate_dead_check_session(&pool, "probe", true).await;
+        let dead = ScanBoundaries {
+            first_failure: kept.first_failure.clone(),
+            transport_failure: true,
+            ..ScanBoundaries::default()
+        };
+        super::release_checked_session(&pool, "probe", &dead).await;
         assert!(pool.status().await.is_empty());
     }
 
