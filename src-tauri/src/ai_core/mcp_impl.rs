@@ -656,20 +656,36 @@ mod tests {
         assert!(transport_failure_text(
             "failed to list /remote: broken pipe"
         ));
-        // The scan's own time limit. Not `operation timed out`, and not a
-        // reason to drop the pooled session from the rendered sentence.
-        assert!(!transport_failure_text(
-            "timed out listing /remote after 30s"
+        // The rendered Display of each typed transport variant. check_tree
+        // only has this sentence, and it drops the session from it.
+        assert!(transport_failure_text("failed to list /remote: Timeout"));
+        assert!(transport_failure_text(
+            "failed to list /remote: Connection failed: dns lookup failed"
         ));
-        // Typed transport still drops in with_provider even when the rendered
-        // sentence has none of the text needles. check_tree only sees the text.
+        assert!(transport_failure_text(
+            "failed to list /remote: Network error: reset"
+        ));
+        assert!(transport_failure_text(
+            "failed to list /remote: IO error: closed"
+        ));
         assert_eq!(
             pooled_session_action(&ProviderError::Timeout),
             PooledSessionAction::DropSession
         );
-        assert!(!transport_failure_text("failed to list /remote: Timeout"));
+        // The scan's own time limit is not the Display word Timeout.
         assert!(!transport_failure_text(
-            "failed to list /remote: Connection failed: dns lookup failed"
+            "timed out listing /remote after 30s"
+        ));
+        assert!(!transport_failure_text(
+            "failed to list /reports/q3: Path not found: /reports/q3"
+        ));
+        assert!(!transport_failure_text("Permission denied"));
+        // The word sits in the path. The Display is NotFound, so the session stays.
+        assert!(!transport_failure_text(
+            "failed to list /remote/Timeout: Path not found: /remote/Timeout"
+        ));
+        assert!(!transport_failure_text(
+            "failed to list /remote/timeout backup: Permission denied: /remote/timeout backup"
         ));
     }
 

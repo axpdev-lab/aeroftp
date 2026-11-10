@@ -2322,22 +2322,48 @@ pub(crate) fn is_transport_level(e: &ProviderError) -> bool {
     }
 }
 
+/// The error Display inside a scan `first_failure`.
+///
+/// The scan writes `failed to list {path}: {Display}`. The path is the text
+/// before the first `: `, so a directory named `Timeout` is not read as
+/// [`ProviderError::Timeout`]. A message that is not a scan line is already
+/// the Display (or a provider string) and is returned unchanged.
+fn rendered_provider_display(message: &str) -> &str {
+    match message.strip_prefix("failed to list ") {
+        Some(rest) => rest
+            .split_once(": ")
+            .map(|(_, display)| display)
+            .unwrap_or(message),
+        None => message,
+    }
+}
+
 /// True when `message` is the kind of text [`is_transport_level`] matches
 /// once a [`ProviderError`] has been rendered.
 ///
 /// The scan stores that rendering in `first_failure` as
 /// `failed to list {path}: {Display}`. The string needles are the same ones
-/// the typed classifier uses, so the two cannot drift. `Connection lost:` is
-/// the Display of [`ProviderError::ConnectionLost`], whose detail (`idle`)
-/// is not itself a needle. `not connected` covers
-/// [`ProviderError::NotConnected`] (`Not connected to server`).
+/// the typed classifier uses, so the two cannot drift. The typed transport
+/// variants are recognized from their Display: `Connection failed:`,
+/// `Connection lost:`, `Network error:`, `IO error:`, `Not connected to
+/// server`, and the exact word `Timeout`.
 ///
-/// A scan that hit its own time limit says `timed out listing ...`. That
-/// sentence does not contain `operation timed out` and does not match here:
-/// the listing gave up, and this helper does not decide the pooled session
-/// is dead from those words alone.
+/// `Timeout` is the whole Display, not a substring. A path that contains
+/// that word leaves the session. A scan that hit its own time limit says
+/// `timed out listing ...`, which is not that Display and does not match.
 pub(crate) fn transport_failure_text(message: &str) -> bool {
-    let lower = message.to_ascii_lowercase();
+    let text = rendered_provider_display(message);
+    // ProviderError::Timeout renders as this word and nothing else.
+    if text == "Timeout" {
+        return true;
+    }
+    let lower = text.to_ascii_lowercase();
+    const DISPLAY_PREFIXES: &[&str] = &[
+        "connection failed:",
+        "connection lost:",
+        "network error:",
+        "io error:",
+    ];
     const PATTERNS: &[&str] = &[
         "data connection is already open",
         "data connection already open",
@@ -2359,11 +2385,16 @@ pub(crate) fn transport_failure_text(message: &str) -> bool {
     ];
     // A translated OS message carries none of these phrases; its
     // code does (#1506 row 164).
-    let by_code = crate::providers::types::os_error_kind(message).is_some_and(|kind| {
+    let by_code = crate::providers::types::os_error_kind(text).is_some_and(|kind| {
         crate::providers::types::os_error_kind_closes_the_session(kind)
             || kind == std::io::ErrorKind::ConnectionRefused
     });
-    by_code || lower.contains("connection lost:") || PATTERNS.iter().any(|p| lower.contains(p))
+    by_code
+        || lower.contains("connection lost:")
+        || DISPLAY_PREFIXES
+            .iter()
+            .any(|prefix| lower.starts_with(prefix))
+        || PATTERNS.iter().any(|pattern| lower.contains(pattern))
 }
 
 /// Pick a preferred hash from a provider checksum map. Returns `(algo, hex)`.
