@@ -83,6 +83,23 @@ describe('AboutDialog frontend dependency versions', () => {
         expect(resolved).toBe('2.4.1');
     });
 
+    it('shared resolver does not inspect node_modules on disk when packageLock is explicitly provided', () => {
+        // Even if 'vite' is installed on disk in node_modules, passing an explicit empty lockfile
+        // must not trigger the node_modules fallback and must fall back to the manifest range.
+        const mockManifest = {
+            dependencies: {
+                vite: '^8.3.0',
+            },
+            devDependencies: {},
+        };
+        const mockLock = {
+            packages: {},
+        };
+
+        const resolved = resolveInstalledVersion('vite', undefined, rootDir, mockLock, mockManifest);
+        expect(resolved).toBe('8.3.0');
+    });
+
     it('resolves concrete build versions without range prefixes for all AboutDialog frontend deps using real repo files', () => {
         const frontDeps: Record<string, string> = {
             react: resolveInstalledVersion('react', undefined, rootDir, lock, pkg),

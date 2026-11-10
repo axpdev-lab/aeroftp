@@ -58,16 +58,18 @@ export function resolveInstalledVersion(
   if (typeof locked === 'string' && locked) {
     return locked;
   }
-  try {
-    const modPkgPath = resolve(rootDir, `node_modules/${name}/package.json`);
-    if (existsSync(modPkgPath)) {
-      const modPkg = JSON.parse(readFileSync(modPkgPath, 'utf-8'));
-      if (typeof modPkg.version === 'string' && modPkg.version) {
-        return modPkg.version;
+  if (packageLock === undefined) {
+    try {
+      const modPkgPath = resolve(rootDir, `node_modules/${name}/package.json`);
+      if (existsSync(modPkgPath)) {
+        const modPkg = JSON.parse(readFileSync(modPkgPath, 'utf-8'));
+        if (typeof modPkg.version === 'string' && modPkg.version) {
+          return modPkg.version;
+        }
       }
+    } catch {
+      // Ignore error
     }
-  } catch {
-    // Ignore error
   }
   const pkg = manifest !== undefined ? manifest : loadPackageManifest(rootDir);
   const raw = fallbackRange ?? pkg?.dependencies?.[name] ?? pkg?.devDependencies?.[name] ?? '?';

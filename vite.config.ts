@@ -2,12 +2,13 @@ import { defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync, cpSync, existsSync } from 'fs'
 import { resolve } from 'path'
-import { resolveInstalledVersion, loadPackageManifest } from './scripts/lib/frontend-versions.ts'
+import { resolveInstalledVersion, loadPackageManifest, loadPackageLock } from './scripts/lib/frontend-versions.ts'
 
 // Extract resolved versions for build-time injection into the About dialog.
 // Prefers the exact lockfile resolution (or the installed package.json in node_modules)
 // so the Technical tab and copied technical info report the real build version rather
 // than the manifest range minimum.
+const lock = loadPackageLock(__dirname);
 const pkg = loadPackageManifest(__dirname) || {};
 
 /**
@@ -86,11 +87,11 @@ export default defineConfig({
   },
   define: {
     __FRONTEND_VERSIONS__: JSON.stringify({
-      react: resolveInstalledVersion('react'),
-      typescript: resolveInstalledVersion('typescript'),
-      tailwindcss: resolveInstalledVersion('tailwindcss'),
-      monaco: resolveInstalledVersion('monaco-editor', pkg.dependencies?.['monaco-editor'] ?? pkg.dependencies?.['@monaco-editor/react']),
-      vite: resolveInstalledVersion('vite'),
+      react: resolveInstalledVersion('react', undefined, __dirname, lock, pkg),
+      typescript: resolveInstalledVersion('typescript', undefined, __dirname, lock, pkg),
+      tailwindcss: resolveInstalledVersion('tailwindcss', undefined, __dirname, lock, pkg),
+      monaco: resolveInstalledVersion('monaco-editor', pkg.dependencies?.['monaco-editor'] ?? pkg.dependencies?.['@monaco-editor/react'], __dirname, lock, pkg),
+      vite: resolveInstalledVersion('vite', undefined, __dirname, lock, pkg),
     }),
   },
 })
