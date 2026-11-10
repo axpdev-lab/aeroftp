@@ -304,6 +304,7 @@ pub mod restricted_chars;
 pub mod shell_quote;
 #[cfg(all(not(target_os = "macos"), feature = "local-stt"))]
 mod speech;
+mod ssh_client_config;
 pub mod ssh_config_import;
 mod ssh_shell;
 pub mod sync;
