@@ -1,0 +1,75 @@
+name: Peer L0 Workspace
+
+# Dedicated CI workflow for the isolated peer-l0 transport workspace
+# (`src-tauri/peer-l0`).
+#
+# Context: The peer-l0 workspace hosts deep-scan security and replica items
+# (items 14, 46, 82, 83, 114) and maintains its own workspace boundary to isolate
+# experimental transport dependencies. This workflow ensures that changes to
+# peer-l0 code or manifests undergo cargo clippy (-D warnings) and unit testing
+# with an assertion floor on every PR and push to main.
+#
+# Triggering policy: Path-filtered to `src-tauri/peer-l0/**`, `scripts/assert-tests-ran.sh`,
+# and this workflow file.
+# A weekly schedule provides a regular rerun of the pinned checks on the latest runner environment.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/peer-l0/**'
+      - 'scripts/assert-tests-ran.sh'
+      - '.github/workflows/peer-l0.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src-tauri/peer-l0/**'
+      - 'scripts/assert-tests-ran.sh'
+      - '.github/workflows/peer-l0.yml'
+  schedule:
+    - cron: '37 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peer-l0-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  check:
+    name: clippy + unit suite (peer-l0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: 1.97.1
+          components: clippy
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: './src-tauri/peer-l0 -> target'
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: cargo clippy (-D warnings)
+        working-directory: src-tauri/peer-l0
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Unit suite
+        working-directory: src-tauri/peer-l0
+        run: |
+          set -o pipefail
+          cargo test --locked | tee /tmp/peer-l0-unit.log
+          ../../scripts/assert-tests-ran.sh /tmp/peer-l0-unit.log 30 "peer-l0 unit suite"
