@@ -2,7 +2,7 @@ import { defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readFileSync, cpSync, existsSync } from 'fs'
 import { resolve } from 'path'
-import { resolveInstalledVersion, loadPackageManifest, loadPackageLock } from './scripts/lib/frontend-versions.ts'
+import { resolveInstalledVersion, loadPackageManifest, loadPackageLock } from './scripts/lib/frontend-versions'
 
 // Extract resolved versions for build-time injection into the About dialog.
 // Prefers the exact lockfile resolution (or the installed package.json in node_modules)
