@@ -107,7 +107,9 @@ describe('Permissions dialog session binding', () => {
     for (const { fn, call } of found.chmodCalls) {
       const guarded = guardsBefore(fn, call).some(guard => {
         const read = identifiers(guard.test as Node);
-        return read.has('remoteConnectPhaseRef') && read.has('activeSessionId') && returns(guard.consequent as Node);
+        // `backendServesLiveTab` reads the connect phase, a teardown in flight and an uncertain backend.
+        const phase = read.has('remoteConnectPhaseRef') || read.has('backendServesLiveTab');
+        return phase && read.has('activeSessionId') && returns(guard.consequent as Node);
       });
       expect(guarded, 'provider_chmod can run on another session: its save no longer checks the session the dialog was opened on').toBe(true);
     }

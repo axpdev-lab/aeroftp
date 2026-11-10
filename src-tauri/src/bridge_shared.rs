@@ -70,6 +70,8 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "storj" => "storj",
         "idrive" | "idrivee2" => "idrive-e2",
         "filebase" => "filebase",
+        // rclone >= 1.74.0 names Fastly Object Storage `Fastly`.
+        "fastly" => "fastly",
         "minio" => "minio",
         "ceph" => "custom-s3",
         "arvancloud" => "custom-s3",
@@ -112,6 +114,18 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
             if host == domain || host.ends_with(&format!(".{domain}")) {
                 return "tigris";
             }
+        }
+    }
+    // Fastly Object Storage, on its domain boundary and ahead of the substring
+    // rules for the same reason: `x.minio-y.us-east.object.fastlystorage.app`
+    // is a Fastly bucket host, not MinIO. At least one label must precede the
+    // suffix, so `object.fastlystorage.app.example` and the bare apex do not match.
+    {
+        let host = h.split(':').next().unwrap_or("");
+        if host.len() > ".object.fastlystorage.app".len()
+            && host.ends_with(".object.fastlystorage.app")
+        {
+            return "fastly";
         }
     }
     if h.is_empty() || h.contains("amazonaws.com") {
@@ -1307,6 +1321,59 @@ mod tests {
                 "{endpoint}"
             );
         }
+    }
+
+    #[test]
+    fn s3_provider_token_fastly_maps_to_the_preset() {
+        for token in ["Fastly", "fastly", "FASTLY"] {
+            assert_eq!(map_s3_provider(token), "fastly", "{token}");
+        }
+        // Another vendor's token must not reach the Fastly preset.
+        assert_ne!(map_s3_provider("Other"), "fastly");
+        assert_ne!(map_s3_provider("Filebase"), "fastly");
+    }
+
+    #[test]
+    fn s3_provider_from_endpoint_fastly_uses_a_domain_boundary() {
+        for endpoint in [
+            "https://eu-central-1.object.fastlystorage.app",
+            "eu-central-1.object.fastlystorage.app",
+            "https://us-east.object.fastlystorage.app:443/bucket",
+            "HTTPS://US-EAST-1.OBJECT.FASTLYSTORAGE.APP",
+            "https://my-bucket.eu-central-1.object.fastlystorage.app",
+            // A bucket whose name carries another vendor's marker.
+            "https://x.b2-y.us-east.object.fastlystorage.app",
+            "https://minio-mirror.us-east.object.fastlystorage.app",
+            "https://idrivee2-copy.eu-west-1.object.fastlystorage.app",
+            "https://backblazeb2.us-west.object.fastlystorage.app",
+        ] {
+            assert_eq!(
+                map_s3_provider_from_endpoint(endpoint),
+                "fastly",
+                "{endpoint}"
+            );
+        }
+        // Lookalikes must not classify as fastly.
+        for endpoint in [
+            "https://eu-central-1.object.fastlystorage.app.example",
+            "https://eu-central-1.object.fastlystorage.app.evil.com/bucket",
+            "https://object.fastlystorage.app",
+            "https://notobject.fastlystorage.app",
+            "https://eu-central-1.myobject.fastlystorage.app",
+            "https://fastlystorage.app",
+            "https://eu-central-1.object.fastlystorage.com",
+        ] {
+            assert_ne!(
+                map_s3_provider_from_endpoint(endpoint),
+                "fastly",
+                "{endpoint}"
+            );
+        }
+        // And the vendor rules after it are untouched.
+        assert_eq!(
+            map_s3_provider_from_endpoint("https://s3.us-east-1.amazonaws.com"),
+            "amazon-s3"
+        );
     }
 
     #[test]

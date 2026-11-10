@@ -289,6 +289,55 @@ impl DirectoryProvider {
         self.contained(&fs)
     }
 
+    /// Open `src`, the resolved path of `vpath`, for reading, without the
+    /// window that lay between the containment check and the open
+    /// (deep-scan 50): a link at the final name is refused by the open itself
+    /// (`O_NOFOLLOW` on unix), and `vpath` resolved again afterwards must
+    /// still be inside the root and name the file that was opened, so a
+    /// folder swapped for a link in between is caught.
+    async fn open_contained(
+        &self,
+        vpath: &str,
+        src: &Path,
+    ) -> Result<tokio::fs::File, ProviderError> {
+        let mut options = tokio::fs::OpenOptions::new();
+        options.read(true);
+        self.open_contained_with(vpath, src, options).await
+    }
+
+    /// `open_contained` with the caller's open mode (an append for a resumed
+    /// upload), under the same checks.
+    async fn open_contained_with(
+        &self,
+        vpath: &str,
+        src: &Path,
+        options: tokio::fs::OpenOptions,
+    ) -> Result<tokio::fs::File, ProviderError> {
+        // The flag is unix-only, so the options are made mutable only there.
+        #[cfg(unix)]
+        let options = {
+            let mut options = options;
+            options.custom_flags(libc::O_NOFOLLOW);
+            options
+        };
+        let file = options.open(src).await.map_err(ProviderError::IoError)?;
+        // A link swap is a local folder's threat; an MTP device under gvfs
+        // has no links, and its FUSE inode numbers are not guaranteed to
+        // hold across opens.
+        if self.identity != DirectoryIdentity::Local {
+            return Ok(file);
+        }
+        let opened = file.metadata().await.map_err(ProviderError::IoError)?;
+        let again = self.resolve_existing(vpath)?;
+        let named = std::fs::metadata(&again).map_err(ProviderError::IoError)?;
+        if !same_file(src, &again, &opened, &named) {
+            return Err(ProviderError::InvalidPath(format!(
+                "{vpath} changed while it was being opened"
+            )));
+        }
+        Ok(file)
+    }
+
     /// The entry a mutation acts on: its folder must exist inside the root,
     /// and the leaf is the entry itself, not what it points to. Deleting or
     /// renaming `/alias` acts on the link, and leaves the file it names
@@ -584,9 +633,7 @@ impl StorageProvider for DirectoryProvider {
             }
         }
         let total = meta.len();
-        let mut reader = tokio::fs::File::open(&src)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let mut reader = self.open_contained(&vpath, &src).await?;
         if let Some(parent) = Path::new(local_path).parent() {
             if !parent.as_os_str().is_empty() {
                 tokio::fs::create_dir_all(parent)
@@ -641,9 +688,7 @@ impl StorageProvider for DirectoryProvider {
         use tokio::io::{AsyncReadExt, AsyncSeekExt};
         let vpath = self.virtual_path(path)?;
         let src = self.resolve_existing(&vpath)?;
-        let mut file = tokio::fs::File::open(&src)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let mut file = self.open_contained(&vpath, &src).await?;
         let meta = file.metadata().await.map_err(ProviderError::IoError)?;
         if meta.is_dir() {
             return Err(ProviderError::InvalidPath(format!(
@@ -688,9 +733,16 @@ impl StorageProvider for DirectoryProvider {
                 max_bytes as f64 / 1_048_576.0,
             )));
         }
-        let data = tokio::fs::read(&src)
-            .await
-            .map_err(ProviderError::IoError)?;
+        let mut data = Vec::new();
+        {
+            use tokio::io::AsyncReadExt;
+            self.open_contained(&vpath, &src)
+                .await?
+                .take(max_bytes.saturating_add(1))
+                .read_to_end(&mut data)
+                .await
+                .map_err(ProviderError::IoError)?;
+        }
         if data.len() as u64 > max_bytes {
             return Err(ProviderError::TransferFailed(format!(
                 "{vpath} exceeded the {:.0} MB in-memory cap (stream to disk instead).",
@@ -744,9 +796,48 @@ impl StorageProvider for DirectoryProvider {
                 .await
                 .map_err(ProviderError::IoError)?;
         }
-        let mut writer = tokio::fs::File::create(&dest)
-            .await
-            .map_err(ProviderError::IoError)?;
+        // `File::create` followed a link planted at the name after
+        // `resolve_for_create` checked it, and truncated the file it points
+        // to (deep-scan 51). A link already at the name and inside the root is
+        // written through to the file it names, as before: that file is
+        // resolved here and opened itself. The open refuses a link at the
+        // name (`O_NOFOLLOW` on unix). The open does not truncate: the file
+        // is emptied only once the folder it is in still resolves inside the
+        // root and, for a local folder, the open named the destination itself,
+        // so a folder swapped for a link during the open never truncates a
+        // file outside the root.
+        let dest = if dest
+            .symlink_metadata()
+            .is_ok_and(|meta| meta.file_type().is_symlink())
+        {
+            self.contained(&dest)?
+        } else {
+            dest
+        };
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create(true);
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW);
+        #[cfg(test)]
+        BEFORE_UPLOAD_OPEN.with(|hook| {
+            if let Some(hook) = hook.borrow().as_ref() {
+                hook(&dest)
+            }
+        });
+        let mut writer = options.open(&dest).await.map_err(ProviderError::IoError)?;
+        if let Some(parent) = dest.parent() {
+            self.contained(parent)?;
+        }
+        if self.identity == DirectoryIdentity::Local {
+            let opened = writer.metadata().await.map_err(ProviderError::IoError)?;
+            let named = std::fs::metadata(&dest).map_err(ProviderError::IoError)?;
+            if !same_file(&dest, &dest, &opened, &named) {
+                return Err(ProviderError::InvalidPath(format!(
+                    "{vpath} changed while it was being opened"
+                )));
+            }
+        }
+        writer.set_len(0).await.map_err(ProviderError::IoError)?;
         let mut buf = vec![0u8; 1024 * 1024];
         let mut done: u64 = 0;
         loop {
@@ -999,11 +1090,14 @@ impl StorageProvider for DirectoryProvider {
         algorithm: &str,
     ) -> Result<HashMap<String, String>, ProviderError> {
         self.local_only("checksum")?;
-        let (_, real) = self.resolve_file(path)?;
+        let (vpath, real) = self.resolve_file(path)?;
+        // Hashed from the file that was opened and checked, never reopened by
+        // path (deep-scan 50).
+        let file = self.open_contained(&vpath, &real).await?.into_std().await;
         let algorithm = algorithm.to_ascii_lowercase();
         let digest = {
             let algorithm = algorithm.clone();
-            tokio::task::spawn_blocking(move || file_digest(&real, &algorithm))
+            tokio::task::spawn_blocking(move || file_digest(file, &algorithm))
                 .await
                 .map_err(|e| ProviderError::Other(format!("hash worker failed: {e}")))?
                 .map_err(ProviderError::IoError)?
@@ -1039,7 +1133,9 @@ impl StorageProvider for DirectoryProvider {
     /// (inside the root), as `cp` and `upload` do, instead of being replaced.
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.local_only("server_copy")?;
-        let (_, src) = self.resolve_file(from)?;
+        let (from_v, src) = self.resolve_file(from)?;
+        // Copied from the file that was opened and checked (deep-scan 50).
+        let mut source = self.open_contained(&from_v, &src).await?.into_std().await;
         let to_v = self.virtual_path(to)?;
         let mut dest = self.resolve_for_create(&to_v)?;
         if dest
@@ -1058,10 +1154,15 @@ impl StorageProvider for DirectoryProvider {
             .ok_or_else(|| ProviderError::InvalidPath(format!("{to_v} has no folder")))?
             .to_path_buf();
         tokio::task::spawn_blocking(move || -> std::io::Result<()> {
-            let staged = tempfile::Builder::new()
+            let mut staged = tempfile::Builder::new()
                 .prefix(".aeroftp-copy-")
                 .tempfile_in(&parent)?;
-            std::fs::copy(&src, staged.path())?;
+            std::io::copy(&mut source, staged.as_file_mut())?;
+            // As `fs::copy` did: the copy has the source's permissions, not
+            // the temporary's 0600.
+            staged
+                .as_file()
+                .set_permissions(source.metadata()?.permissions())?;
             staged.persist(&dest).map_err(|e| e.error)?;
             Ok(())
         })
@@ -1089,8 +1190,16 @@ impl StorageProvider for DirectoryProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         self.local_only("resume_download")?;
-        let (_, src) = self.resolve_file(remote_path)?;
-        append_from(&src, Path::new(local_path), offset, on_progress).await
+        let (vpath, src) = self.resolve_file(remote_path)?;
+        // Read from the file that was opened and checked (deep-scan 50).
+        let reader = self.open_contained(&vpath, &src).await?;
+        let mut append = tokio::fs::OpenOptions::new();
+        append.append(true);
+        let writer = append
+            .open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        append_from(reader, writer, Path::new(local_path), offset, on_progress).await
     }
 
     /// Append the local file from `offset` to the stored one, which must hold
@@ -1103,8 +1212,16 @@ impl StorageProvider for DirectoryProvider {
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
         self.local_only("resume_upload")?;
-        let (_, dest) = self.resolve_file(remote_path)?;
-        append_from(Path::new(local_path), &dest, offset, on_progress).await
+        let (vpath, dest) = self.resolve_file(remote_path)?;
+        let reader = tokio::fs::File::open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        // Appended through the file that was opened and checked: a link
+        // swapped in at the name or above it is refused (deep-scan 51).
+        let mut append = tokio::fs::OpenOptions::new();
+        append.append(true);
+        let writer = self.open_contained_with(&vpath, &dest, append).await?;
+        append_from(reader, writer, &dest, offset, on_progress).await
     }
 
     fn transfer_capabilities(&self) -> TransferCapabilities {
@@ -1128,10 +1245,9 @@ impl StorageProvider for DirectoryProvider {
 
 /// The hex digest of a file for one of the algorithms a local folder offers,
 /// `None` for any other.
-fn file_digest(path: &Path, algorithm: &str) -> std::io::Result<Option<String>> {
+fn file_digest(mut file: std::fs::File, algorithm: &str) -> std::io::Result<Option<String>> {
     use std::io::Read;
-    fn stream<D: sha2::Digest>(path: &Path) -> std::io::Result<String> {
-        let mut file = std::fs::File::open(path)?;
+    fn stream<D: sha2::Digest>(file: &mut std::fs::File) -> std::io::Result<String> {
         let mut hasher = D::new();
         let mut buf = vec![0u8; 1024 * 1024];
         loop {
@@ -1144,28 +1260,31 @@ fn file_digest(path: &Path, algorithm: &str) -> std::io::Result<Option<String>> 
         Ok(hex::encode(hasher.finalize()))
     }
     Ok(Some(match algorithm {
-        "md5" => stream::<md5::Md5>(path)?,
-        "sha1" => stream::<sha1::Sha1>(path)?,
-        "sha256" => stream::<sha2::Sha256>(path)?,
-        "sha512" => stream::<sha2::Sha512>(path)?,
+        "md5" => stream::<md5::Md5>(&mut file)?,
+        "sha1" => stream::<sha1::Sha1>(&mut file)?,
+        "sha256" => stream::<sha2::Sha256>(&mut file)?,
+        "sha512" => stream::<sha2::Sha512>(&mut file)?,
         "blake3" => {
             let mut hasher = blake3::Hasher::new();
-            hasher.update_reader(std::fs::File::open(path)?)?;
+            hasher.update_reader(&mut file)?;
             hasher.finalize().to_hex().to_string()
         }
         _ => return Ok(None),
     }))
 }
 
-/// Append `from[offset..]` to `to`, which must hold exactly `offset` bytes.
+/// Append `reader[offset..]` to `writer` (opened for append, named `to` in
+/// errors), which must hold exactly `offset` bytes.
 async fn append_from(
-    from: &Path,
+    mut reader: tokio::fs::File,
+    mut writer: tokio::fs::File,
     to: &Path,
     offset: u64,
     on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
 ) -> Result<(), ProviderError> {
     use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
-    let held = tokio::fs::metadata(to)
+    let held = writer
+        .metadata()
         .await
         .map_err(ProviderError::IoError)?
         .len();
@@ -1175,9 +1294,6 @@ async fn append_from(
             to.display()
         )));
     }
-    let mut reader = tokio::fs::File::open(from)
-        .await
-        .map_err(ProviderError::IoError)?;
     let total = reader
         .metadata()
         .await
@@ -1190,11 +1306,6 @@ async fn append_from(
     }
     reader
         .seek(std::io::SeekFrom::Start(offset))
-        .await
-        .map_err(ProviderError::IoError)?;
-    let mut writer = tokio::fs::OpenOptions::new()
-        .append(true)
-        .open(to)
         .await
         .map_err(ProviderError::IoError)?;
     let mut buf = vec![0u8; 1024 * 1024];
@@ -1218,6 +1329,18 @@ async fn append_from(
     }
     writer.flush().await.map_err(ProviderError::IoError)?;
     Ok(())
+}
+
+/// What the upload test seam runs right before the upload's open.
+#[cfg(test)]
+type UploadOpenHook = Box<dyn Fn(&Path)>;
+
+#[cfg(test)]
+thread_local! {
+    /// Test seam: run right before the upload's open, to swap a link in at
+    /// the destination after every check that precedes the open.
+    static BEFORE_UPLOAD_OPEN: std::cell::RefCell<Option<UploadOpenHook>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// Whether `a` and `b` (with their metadata) are one file: the same inode
@@ -1248,6 +1371,176 @@ fn same_file(
 
 #[cfg(test)]
 mod tests {
+    /// Deep-scan 50, 51: a link at the name is refused by the open itself,
+    /// for a read and for an upload, and its target is left alone.
+    /// Deep-scan 50, 51, on the provider's own open: a link at the name is
+    /// refused by the open, and a file other than the one the path resolves
+    /// to now (what a folder swapped during the open leaves) is refused by
+    /// the identity check, for a read and for an append.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_contained_open_refuses_a_link_and_a_swapped_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::write(root.join("a.txt"), b"A").unwrap();
+        std::fs::write(root.join("b.txt"), b"B").unwrap();
+        std::os::unix::fs::symlink(root.join("a.txt"), root.join("link.txt")).unwrap();
+        let mut provider = super::DirectoryProvider::local(root.clone());
+        provider.connect().await.unwrap();
+
+        assert!(provider
+            .open_contained("/link.txt", &root.join("link.txt"))
+            .await
+            .is_err());
+        assert!(matches!(
+            provider.open_contained("/a.txt", &root.join("b.txt")).await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        let mut append = tokio::fs::OpenOptions::new();
+        append.append(true);
+        assert!(matches!(
+            provider
+                .open_contained_with("/a.txt", &root.join("b.txt"), append)
+                .await,
+            Err(ProviderError::InvalidPath(_))
+        ));
+        assert!(provider
+            .open_contained("/a.txt", &root.join("a.txt"))
+            .await
+            .is_ok());
+        assert_eq!(std::fs::read(root.join("b.txt")).unwrap(), b"B");
+    }
+
+    /// Deep-scan 51: a link swapped in at the destination after every check
+    /// and right before the upload's open is refused by that open, and the
+    /// file it points to is left alone.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_upload_refuses_a_link_swapped_in_right_before_its_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(root.join("dest.txt"), b"old").unwrap();
+        let victim = outside.join("secret.txt");
+        std::fs::write(&victim, b"secret").unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"new").unwrap();
+        let mut provider = super::DirectoryProvider::local(root.clone());
+        provider.connect().await.unwrap();
+
+        let planted = victim.clone();
+        super::BEFORE_UPLOAD_OPEN.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |dest: &Path| {
+                let _ = std::fs::remove_file(dest);
+                std::os::unix::fs::symlink(&planted, dest).unwrap();
+            }))
+        });
+        let result = provider
+            .upload(src.to_str().unwrap(), "/dest.txt", None)
+            .await;
+        super::BEFORE_UPLOAD_OPEN.with(|hook| *hook.borrow_mut() = None);
+        assert!(result.is_err(), "the open refuses the planted link");
+        assert_eq!(std::fs::read(&victim).unwrap(), b"secret");
+    }
+
+    /// The capped read stops at the cap instead of loading the whole file.
+    #[tokio::test]
+    async fn a_capped_read_refuses_a_file_over_the_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("big.bin"), vec![7u8; 64]).unwrap();
+        let mut provider = super::DirectoryProvider::local(dir.path().to_path_buf());
+        provider.connect().await.unwrap();
+        assert!(matches!(
+            provider.download_to_bytes_capped("/big.bin", 16).await,
+            Err(ProviderError::TransferFailed(_))
+        ));
+        assert_eq!(
+            provider
+                .download_to_bytes_capped("/big.bin", 64)
+                .await
+                .unwrap()
+                .len(),
+            64
+        );
+    }
+
+    /// Deep-scan 51, through the provider: an upload to a link inside the
+    /// root writes the file it names and keeps the link, and an upload to a
+    /// link that leaves the root is refused and leaves its target alone.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_upload_writes_through_an_inside_link_and_refuses_an_escaping_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("root");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(root.join("target.txt"), b"old").unwrap();
+        std::os::unix::fs::symlink(root.join("target.txt"), root.join("in.txt")).unwrap();
+        std::fs::write(outside.join("secret.txt"), b"secret").unwrap();
+        std::os::unix::fs::symlink(outside.join("secret.txt"), root.join("out.txt")).unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"new").unwrap();
+
+        let mut provider = super::DirectoryProvider::local(root.clone());
+        provider.connect().await.unwrap();
+        provider
+            .upload(src.to_str().unwrap(), "/in.txt", None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(root.join("target.txt")).unwrap(), b"new");
+        assert!(std::fs::symlink_metadata(root.join("in.txt"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+
+        assert!(provider
+            .upload(src.to_str().unwrap(), "/out.txt", None)
+            .await
+            .is_err());
+        assert_eq!(
+            std::fs::read(outside.join("secret.txt")).unwrap(),
+            b"secret"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_link_planted_at_the_name_is_refused_by_the_open() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"secret").unwrap();
+        let link = dir.path().join("link.txt");
+        std::os::unix::fs::symlink(&src, &link).unwrap();
+        // The containment check resolved `link.txt` to `src.txt` (inside),
+        // then the open is handed the link: the open refuses it.
+        let mut options = tokio::fs::OpenOptions::new();
+        options.read(true);
+        options.custom_flags(libc::O_NOFOLLOW);
+        assert!(options.open(&link).await.is_err());
+        let mut options = tokio::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        options.custom_flags(libc::O_NOFOLLOW);
+        assert!(options.open(&link).await.is_err());
+        assert_eq!(
+            std::fs::read(&src).unwrap(),
+            b"secret",
+            "the target is untouched"
+        );
+
+        // A link inside the root still reads: the provider opens the path
+        // it resolved, which is the link's target, and finds it unchanged.
+        let mut provider = super::DirectoryProvider::local(dir.path().to_path_buf());
+        provider.connect().await.unwrap();
+        assert_eq!(
+            provider.download_to_bytes("/link.txt").await.unwrap(),
+            b"secret"
+        );
+        assert_eq!(provider.read_range("/src.txt", 1, 3).await.unwrap(), b"ecr");
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn probe_contract_directory_cannot_hide_an_unreadable_item() {

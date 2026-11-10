@@ -261,6 +261,13 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       healthCheckUrl: 'https://t3.storage.dev',
       searchAliases: ['tigris', 'tigris data', 'fly storage', 'fly.io', 't3.storage.dev'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'tigris', category: 'object-storage' }] },
+    // Plan card confirmed by the owner (2026-11-06): 5 GB free, a card is required at signup.
+    // ONE S3 method (appendix decision D3); card convention: free tier behind a card = paid:true.
+    { company: 'Fastly', logoId: 'fastly', countryCode: 'US', freeStorageGb: 5,
+      freeNote: 'card req.', freeRequiresCard: true,
+      healthCheckUrl: 'https://us-east-1.object.fastlystorage.app/',
+      searchAliases: ['fastly', 'fos', 'fastly s3', 'fastlystorage', 'fastly object storage'],
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'fastly', category: 'object-storage', paid: true }] },
     { company: 'IBM Cloud Object Storage', parentCompany: 'IBM', logoId: 'ibm-cos', countryCode: 'US', freeStorageGb: null,
       freeNote: '12-month trial',
       healthCheckUrl: 'https://s3.eu-de.cloud-object-storage.appdomain.cloud',
@@ -444,6 +451,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'idrive-e2', icon: 'idrive_e2.png', docsPath: 'providers/idrive-e2' },
     { logoId: 'filebase', icon: 'filebase.png', docsPath: 'providers/filebase' },
     { logoId: 'tigris', icon: 'tigris.png', docsPath: 'providers/tigris' },
+    { logoId: 'fastly', icon: 'fastly.png', docsPath: 'providers/fastly-object-storage' },
     { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
@@ -690,6 +698,7 @@ const REGIONS_BY_LOGO: Record<string, string[]> = {
     's3drive': ['global'],
     'filebase': ['global'],
     'tigris': ['global'],
+    'fastly': ['US', 'GB', 'FR', 'DE', 'IT', 'JP', 'AU'],
     'yandex-storage': ['RU'],
 };
 

@@ -765,7 +765,10 @@
             },
             "stagedCount": "Naka-stage: {count}",
             "pendingCount": "Naghihintay: {count}",
-            "failedCount": "Nabigo: {count}"
+            "failedCount": "Nabigo: {count}",
+            "queuedForAnotherServer": "Hindi nasimulan: ang paglilipat na ito ay naka-queue para sa ibang server o account. Bumalik sa tab nito, pagkatapos subukan muli.",
+            "queuedOverlayChanged": "Hindi nasimulan: ang naka-encrypt na overlay kung saan na-queue ang paglilipat na ito ay naka-lock o hindi na sumasaklaw sa folder na ito. I-unlock ito sa server na iyon, pagkatapos ay subukan muli.",
+            "pasteFromAnotherServer": "Hindi na-paste: ang mga file na ito ay na-cut o nakopya sa isang server, account o naka-encrypt na overlay na hindi aktibo ngayon. Bumalik sa tab nito, pagkatapos mag-paste muli."
         },
         "settings": {
             "title": "Mga Setting",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} ay dumating na may ibang custom na OAuth app kaysa sa nasa device na ito para sa provider na iyon. Pinanatili ang nakaimbak na app, kaya mag-sign in muli kung hindi na makakonekta ang mga profile na ito.",
             "importTargetChanged": "Hindi na-overwrite ang {names}: itinuturo sila ng file sa ibang server, at hindi dapat mapunta roon ang kanilang mga naka-save na password at token. Mag-import gamit ang I-duplicate para idagdag ang kopya mula sa file, o burahin muna ang profile.",
             "importSharedSecretsFailed": "Na-import ang {names}, ngunit hindi ma-store ang isang nakabahaging lihim o session mula sa file. Mag-sign in muli sa mga profile na ito kung hindi sila kumokonekta.",
-            "keystoreDatabasesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga database na ito at nananatili ang laman ng mga ito: {names}."
+            "keystoreDatabasesFailed": "Tapos na ang pag-import, pero hindi naibalik ang mga database na ito at nananatili ang laman ng mga ito: {names}.",
+            "importSecurityTitle": "Mga setting ng seguridad sa backup na ito",
+            "importSecurityHelp": "Pinapatay ng mga opsyon na ito ang isang security check. Bawat isa ay ini-import sa ligtas na estado maliban kung lagyan mo ng tsek para manatili ito gaya ng nasa file.",
+            "importSecurityVerifyCert": "Naka-off ang pagsusuri ng certificate",
+            "importSecurityCleartextEndpoint": "Pinapayagan ang hindi naka-encrypt na S3 endpoint",
+            "importSecurityCleartextStorage": "Pinapayagan ang hindi naka-encrypt na address ng storage",
+            "importSecurityPlainHttp": "Karaniwang HTTP sa halip na HTTPS",
+            "importSecurityPasvAddress": "Koneksyon ng data sa address na itinuturo ng server (PASV)",
+            "importSecurityUnknownHostKeys": "Tinatanggap ang mga hindi kilalang SSH host key",
+            "keystoreSecurityReset": "{count} naibalik na server ang may mga opsyon na nag-o-off ng security check; ibinalik ang mga ito sa ligtas na setting: {details}.",
+            "keystoreSecurityResetFailed": "Hindi nasuri o na-reset ang mga setting ng seguridad ng {count} naibalik na account. Nakalista ang mga ito rito sa halip na manatiling aktibo nang walang babala.",
+            "keystoreSecurityResetQuarantine": "Hindi naprotektahan ang na-restore na database ng mga account at inilagay sa quarantine bilang {path}. Walang aktibong na-restore na account. Ayusin ang problema sa disk o pahintulot, saka i-restore muli ang backup. Ang naka-quarantine na file ay available pa rin para sa recovery."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Nabigo ang paglikha",
             "unknownServer": "Hindi kilala",
             "scpModeTitle": "Nakakonekta gamit ang SCP",
-            "scpModeBody": "Walang SFTP ang {host}, kaya gumagamit ang AeroFTP ng SCP sa parehong koneksyon."
+            "scpModeBody": "Walang SFTP ang {host}, kaya gumagamit ang AeroFTP ng SCP sa parehong koneksyon.",
+            "saveOnAnotherServer": "Hindi na-save: ang file na ito ay binuksan mula sa isang server, account o naka-encrypt na overlay na hindi aktibo ngayon. Bumalik sa tab nito, pagkatapos mag-save muli.",
+            "openedOnAnotherServer": "Hindi nabuksan: nagbago ang server habang binabasa ang file. Buksan itong muli.",
+            "remoteTargetChanged": "Walang binago: nagbago ang server, account o naka-encrypt na overlay mula nang magsimula ang aksyon, o muling kumokonekta pa rin. Subukan muli sa kasalukuyang koneksyon."
         },
         "about": {
             "tagline": "Higit pa sa FTP. Isang kumpletong developer toolkit.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Payagan ang SCP bilang kapalit",
             "allowScpFallbackHint": "Kung walang SFTP ang server, magpapatuloy ang koneksyon sa SCP, gaya ng ginagawa ng WinSCP.",
             "discoverScp": "Pagkopya ng file sa SSH para sa mga server na walang SFTP",
-            "discoverTigris": "Tigris: globally distributed na storage na compatible sa S3, walang bayad sa egress (5 GB libre)"
+            "discoverTigris": "Tigris: globally distributed na storage na compatible sa S3, walang bayad sa egress (5 GB libre)",
+            "trustPasvAddress": "Gamitin ang passive address na ibinibigay ng server",
+            "trustPasvAddressHelp": "Naka-off: ang mga koneksyon ng data ay pupunta sa host na kinonektahan mo, tulad ng ginagawa ng curl. I-on lang para sa server na nagpapadala ng data mula sa ibang address.",
+            "discoverFastly": "Fastly Object Storage: storage na compatible sa S3 sa 12 rehiyon (5 GB libre, kailangan ng card)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3068,7 +3088,8 @@
                 "diff": "Ihambing sa orihinal",
                 "diffNoFile": "Walang bukas na file para ihambing",
                 "commandBlocked": "Naharang ang utos: posibleng mapaminsala",
-                "confirmRun": "Kumpirmahin ang pagpapatakbo: {command}"
+                "confirmRun": "Kumpirmahin ang pagpapatakbo: {command}",
+                "reopenEditor": "Ipakita ang editor na bukas ang file na ito, pagkatapos subukan muli."
             },
             "thinkingBlock": {
                 "thinking": "Nag-iisip...",
@@ -5661,7 +5682,8 @@
             "managePasswordProtected": "Pinoprotektahan ng password",
             "expirationHoursOne": "{count} oras",
             "expirationHoursMany": "{count} oras",
-            "expirationDaysMany": "{count} araw"
+            "expirationDaysMany": "{count} araw",
+            "expiresSoonerThanChosen": "mas maikli kaysa sa napili"
         },
         "introHub": {
             "tab": {
@@ -6687,7 +6709,9 @@
             "dirtyTitle": "Hindi naka-save na mga pagbabago",
             "dirtyBody": "May hindi naka-save na mga pagbabago. Itapon at isara?",
             "keepEditing": "Magpatuloy sa pag-edit",
-            "discardAndClose": "Itapon at isara"
+            "discardAndClose": "Itapon at isara",
+            "busyBodyKeepsRunning": "May operasyong tumatakbo pa. Magpapatuloy ito pagkatapos isara ang window na ito, at hindi ipapakita rito ang resulta nito. Isara pa rin?",
+            "closeAnyway": "Isara pa rin"
         },
         "modalView": {
             "listView": "Tingnan bilang listahan",

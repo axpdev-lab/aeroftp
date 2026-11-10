@@ -4,6 +4,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import modalSource from '../components/ShareLinkModal.tsx?raw';
 import {
+    expirationChoicesWithin,
     loadShareLinkCapabilities,
     NO_SHARE_LINK_CAPABILITIES,
     shareLinkCapabilitiesFromBackend,
@@ -36,7 +37,53 @@ describe('Share Link capabilities come from the provider', () => {
             hasAdvancedOptions: true,
             supportsList: false,
             supportsRevoke: false,
+            maxExpirationSecs: null,
         });
+    });
+
+    /**
+     * #1506 Requested 174: every S3 preset caps a presigned link at seven days
+     * (SigV4), and the modal offered 30 days to all of them, a link AWS
+     * refuses at once. The modal now offers nothing above the stated limit,
+     * exactly, with no rounding.
+     */
+    it('offers no expiry above the limit the provider states', () => {
+        const presets = [
+            { value: 3600 },
+            { value: 86400 },
+            { value: 604800 },
+            { value: 2592000 },
+        ] as const;
+        const s3 = shareLinkCapabilitiesFromBackend({
+            supports_expiration: true,
+            supports_password: false,
+            supports_permissions: false,
+            available_permissions: [],
+            supports_list_links: false,
+            supports_revoke: false,
+            max_expiration_secs: 604800,
+        });
+        expect(s3.maxExpirationSecs).toBe(604800);
+        expect(expirationChoicesWithin(presets, s3).map(p => p.value)).toEqual([3600, 86400, 604800]);
+        expect(expirationChoicesWithin(presets, { maxExpirationSecs: 86399 }).map(p => p.value)).toEqual([3600]);
+        expect(expirationChoicesWithin(presets, { maxExpirationSecs: null })).toHaveLength(4);
+        for (const bad of [0, -1, undefined, null]) {
+            const caps = shareLinkCapabilitiesFromBackend({
+                supports_expiration: true,
+                supports_password: false,
+                supports_permissions: false,
+                available_permissions: [],
+                supports_list_links: false,
+                supports_revoke: false,
+                max_expiration_secs: bad as number | null | undefined,
+            });
+            expect(caps.maxExpirationSecs).toBeNull();
+        }
+    });
+
+    it('lets the modal list only the expiry choices within the provider limit', () => {
+        expect(modalSource).toContain('expirationChoicesWithin(EXPIRATION_PRESETS, caps)');
+        expect(modalSource).not.toContain('{EXPIRATION_PRESETS.map(');
     });
 
     it('counts expiry alone as an advanced option (B2, S3, Azure)', () => {

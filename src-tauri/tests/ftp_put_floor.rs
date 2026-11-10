@@ -234,6 +234,7 @@ async fn transfer_session_sends_type_exactly_once() {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: Some("/".to_string()),
+        trust_pasv_address: false,
     };
     let mut provider = FtpProvider::new(config);
     provider.connect().await.expect("connect to fake FTP");

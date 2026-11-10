@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { AlertTriangle, GitBranch, Upload, X } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 interface GitHubLocalSyncWarningProps {
   unpushedCount: number;
@@ -26,17 +27,13 @@ export function GitHubLocalSyncWarning({
     { count: unpushedCount, branch: '{branch}' },
   ).split('{branch}');
 
-  React.useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
-    };
-    window.addEventListener('keydown', handleKey);
-    return () => window.removeEventListener('keydown', handleKey);
-  }, [onCancel]);
+  // A question before an upload: the backdrop is inert, and ESC is the safe
+  // answer, cancel (Discussion #1527).
+  const guarded = useGuardedClose({ guard: null, onClose: onCancel, backdrop: 'never', escape: true });
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[15vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         className="relative border border-amber-200 dark:border-amber-700 rounded-lg shadow-2xl w-[480px] animate-scale-in overflow-hidden"
         style={{ backgroundColor: 'var(--color-bg-secondary)' }}

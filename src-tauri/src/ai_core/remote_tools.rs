@@ -9,6 +9,7 @@
 
 use serde_json::{json, Value};
 
+use crate::ai_core::pinned_source::PinnedSource;
 use crate::ai_core::remote_backend::RemoteBackend;
 use crate::ai_core::tools::{ToolCtx, ToolError};
 use crate::dedupe::{self, SimilarityMode};
@@ -85,9 +86,10 @@ fn validate_remote_path(path: &str, label: &str) -> Result<(), ToolError> {
 /// against the target backend. If its type cannot be resolved, fail closed:
 /// a later write could reconnect, so skipping this check is unsafe.
 async fn reject_restricted_leaf(backend: &dyn RemoteBackend, path: &str) -> Result<(), ToolError> {
-    let provider = backend.provider_type().await.ok_or_else(|| {
-        ToolError::Exec("Cannot validate destination name: remote provider unavailable".to_string())
-    })?;
+    let provider = backend
+        .provider_type_or_reason()
+        .await
+        .map_err(|e| ToolError::Exec(format!("Cannot validate destination name: {e}")))?;
     crate::restricted_chars::validate_path(provider, path)
         .map_err(|e| ToolError::Exec(e.to_string()))
 }
@@ -101,12 +103,10 @@ fn validate_local_path(path: &str, label: &str) -> Result<(), ToolError> {
     })
 }
 
+/// Every context now provides a backend, so a refusal to give one is a
+/// failure of the call, not a tool missing from this surface.
 fn backend_error(e: String) -> ToolError {
-    if e.contains("remote_backend not wired") {
-        ToolError::NotMigrated("remote_backend".to_string())
-    } else {
-        ToolError::Exec(e)
-    }
+    ToolError::Exec(e)
 }
 
 /// Hard cap per pagina per `aeroftp_list_files` / `aeroftp_search_files`.
@@ -799,9 +799,19 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     }
     if native_guard {
         let staged;
-        let local = if let Some(local) = get_str_opt(args, "local_path") {
-            validate_local_path(&local, "local_path")?;
-            local
+        let pinned = match get_str_opt(args, "local_path") {
+            Some(local) => {
+                validate_local_path(&local, "local_path")?;
+                Some(PinnedSource::pin(
+                    &local,
+                    "local_path",
+                    validate_local_path,
+                )?)
+            }
+            None => None,
+        };
+        let local = if let Some(source) = &pinned {
+            source.path().to_string()
         } else if let Some(content) = get_str_opt(args, "content") {
             staged = tempfile::NamedTempFile::new().map_err(|e| ToolError::Exec(e.to_string()))?;
             std::fs::write(staged.path(), content.as_bytes())
@@ -819,8 +829,9 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             .map_err(ToolError::Exec)?
         {
             true => {
-                if get_str_opt(args, "local_path").is_some() {
-                    Ok(local_file_uploaded(&server, &local, &remote_path))
+                if let Some(source) = &pinned {
+                    source.verify_unchanged()?;
+                    Ok(local_file_uploaded(&server, source, &remote_path))
                 } else {
                     Ok(
                         json!({"server":server,"remote_path":remote_path,"uploaded":true,"bytes":get_str_opt(args,"content").map_or(0,|content|content.len())}),
@@ -832,11 +843,13 @@ async fn upload_file(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
     }
     if let Some(local_path) = get_str_opt(args, "local_path") {
         validate_local_path(&local_path, "local_path")?;
+        let source = PinnedSource::pin(&local_path, "local_path", validate_local_path)?;
         backend
-            .upload(&local_path, &remote_path)
+            .upload(source.path(), &remote_path)
             .await
             .map_err(ToolError::Exec)?;
-        Ok(local_file_uploaded(&server, &local_path, &remote_path))
+        source.verify_unchanged()?;
+        Ok(local_file_uploaded(&server, &source, &remote_path))
     } else if let Some(content) = get_str_opt(args, "content") {
         backend
             .upload_from_bytes(content.as_bytes(), &remote_path)
@@ -868,14 +881,14 @@ fn no_clobber_skipped(server: &str, remote_path: &str) -> Value {
     })
 }
 
-/// The result `upload_file` reports when a local file reached the server.
-fn local_file_uploaded(server: &str, local_path: &str, remote_path: &str) -> Value {
-    let bytes = std::fs::metadata(local_path).map(|m| m.len()).unwrap_or(0);
+/// The result `upload_file` reports when a local file reached the server:
+/// the size of the file the policy checked and the upload sent.
+fn local_file_uploaded(server: &str, source: &PinnedSource, remote_path: &str) -> Value {
     json!({
         "server": server,
         "remote_path": remote_path,
         "uploaded": true,
-        "bytes": bytes,
+        "bytes": source.size(),
     })
 }
 
@@ -1190,23 +1203,37 @@ async fn run_bulk_uploads(
             tally,
         )
         .await;
+        // Each source is pinned right before its write (deep scan item 27):
+        // one the policy refuses now, or that changed since the plan, fails
+        // alone, and the rest still travel together.
+        let mut pending_sources = Vec::with_capacity(pending.len());
+        for (index, member) in pending {
+            match PinnedSource::pin(&member.local_path, "local_path", validate_local_path) {
+                Ok(source) => pending_sources.push((index, member, source)),
+                Err(error) => {
+                    tally.record(index, Err(error));
+                }
+            }
+        }
+        let pending = pending_sources;
         if pending.len() < 2 {
             // Its checks are settled: only the write is left.
-            for (index, member) in pending {
+            for (index, member, source) in pending {
                 crate::ai_core::tools::check_cancelled(ctx)?;
                 tally.pace(ctx).await?;
-                let outcome = backend
-                    .upload(&member.local_path, &member.remote_path)
-                    .await
-                    .map(|()| local_file_uploaded(server, &member.local_path, &member.remote_path))
-                    .map_err(ToolError::Exec);
+                let outcome = match backend.upload(source.path(), &member.remote_path).await {
+                    Ok(()) => source
+                        .verify_unchanged()
+                        .map(|()| local_file_uploaded(server, &source, &member.remote_path)),
+                    Err(error) => Err(ToolError::Exec(error)),
+                };
                 tally.record(index, outcome);
             }
             continue;
         }
         let items: Vec<BulkTransferItem> = pending
             .iter()
-            .map(|(_, m)| bulk_item(&m.local_path, &m.remote_path, m.size))
+            .map(|(_, m, source)| bulk_item(source.path(), &m.remote_path, source.size()))
             .collect();
         tally.pace(ctx).await?;
         // A bulk carries the whole group, so Stop does not wait for it: the
@@ -1225,7 +1252,7 @@ async fn run_bulk_uploads(
             // connection can change under a batch): one `upload_file` per
             // item from here on, each with its own checks again.
             native = false;
-            let indices: Vec<usize> = pending.iter().map(|(index, _)| *index).collect();
+            let indices: Vec<usize> = pending.iter().map(|(index, ..)| *index).collect();
             upload_each(ctx, &item_args, &indices, tally).await?;
             continue;
         };
@@ -1247,11 +1274,11 @@ async fn run_bulk_uploads(
                 if error_goes_back_to_single_file(&crate::providers::ProviderError::TransferFailed(
                     error.clone(),
                 )) {
-                    let indices: Vec<usize> = pending.iter().map(|(index, _)| *index).collect();
+                    let indices: Vec<usize> = pending.iter().map(|(index, ..)| *index).collect();
                     upload_each(ctx, &item_args, &indices, tally).await?;
                 } else {
                     let safe_error = crate::providers::sanitize_api_error(&error);
-                    for (index, _) in pending {
+                    for (index, ..) in pending {
                         tally.record(index, Err(ToolError::Exec(safe_error.clone())));
                     }
                 }
@@ -1259,7 +1286,7 @@ async fn run_bulk_uploads(
             }
         };
         let mut single_file = Vec::new();
-        for ((index, member), outcome) in pending.into_iter().zip(outcomes) {
+        for ((index, member, source), outcome) in pending.into_iter().zip(outcomes) {
             // The settlement classifies a failure; the provider's own words
             // say what it was. MCP sanitizes every provider error it hands an
             // agent, and a bulk outcome arrives raw, so it is sanitized here.
@@ -1271,11 +1298,9 @@ async fn run_bulk_uploads(
                 BulkSettlement::Done => {
                     tally.record(
                         index,
-                        Ok(local_file_uploaded(
-                            server,
-                            &member.local_path,
-                            &member.remote_path,
-                        )),
+                        source
+                            .verify_unchanged()
+                            .map(|()| local_file_uploaded(server, &source, &member.remote_path)),
                     );
                 }
                 BulkSettlement::SingleFile => single_file.push(index),
@@ -2122,7 +2147,11 @@ async fn remote_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
             // real whole-bucket sweep needs an explicit acknowledgement.
             let dry_run = get_bool_opt(args, "dry_run").unwrap_or(true);
             let confirm_whole_bucket = get_bool_opt(args, "confirm_whole_bucket").unwrap_or(false);
-            if !dry_run && prefix.is_empty() && !confirm_whole_bucket {
+            // S3 drops a leading slash from the prefix (`providers/s3.rs`), so
+            // "/" or "//" sweeps the whole bucket too and needs the same
+            // acknowledgement as an empty prefix.
+            let whole_bucket = prefix.trim_start_matches('/').is_empty();
+            if !dry_run && whole_bucket && !confirm_whole_bucket {
                 return Err(ToolError::InvalidArgs {
                     tool: "remote_trash".to_string(),
                     reason: "action=empty with an empty prefix permanently purges every version and delete marker in the whole bucket: pass a non-empty 'prefix' to scope the purge, or set confirm_whole_bucket=true to acknowledge a whole-bucket purge".to_string(),
@@ -2783,11 +2812,22 @@ fn validate_transfer_path(path: &str, label: &str) -> Result<(), ToolError> {
 /// Resolve a fuzzy server query to a concrete `SavedServerInfo`. Same logic as
 /// [`crate::ai_tools::find_server_by_name_or_id`] but returns
 /// [`ToolError::Exec`] so the dispatcher can surface a structured error.
-fn resolve_profile(
+/// The profile a transfer endpoint names, and the identity it was approved
+/// for. An approved transfer names its profiles by id ([`args_pinned_to`]):
+/// each is reached by that id only, and opened only while it still connects
+/// where it did at the approval. A call approved for nothing keeps the name
+/// lookup.
+///
+/// [`args_pinned_to`]: crate::ai_core::tools::args_pinned_to
+fn resolve_transfer_endpoint<'a>(
+    ctx: &'a dyn ToolCtx,
     profiles: &[crate::ai_tools::SavedServerInfo],
     query: &str,
-) -> Result<crate::ai_tools::SavedServerInfo, ToolError> {
-    crate::ai_tools::find_server_by_name_or_id(profiles, query).map_err(ToolError::Exec)
+) -> Result<(crate::ai_tools::SavedServerInfo, Option<&'a str>), ToolError> {
+    let expected = ctx.approved_identity(query);
+    let server = crate::ai_tools::resolve_approved_server(profiles, query, expected)
+        .map_err(ToolError::Exec)?;
+    Ok((server, expected))
 }
 
 /// Reject identical source/destination profiles by id (preferred) or by
@@ -2805,7 +2845,7 @@ fn ensure_distinct_profiles(
     Ok(())
 }
 
-async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
+async fn transfer_one(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> {
     let src_server_query = get_str(args, "src_server")?;
     let dst_server_query = get_str(args, "dst_server")?;
     let src_path = get_str(args, "src_path")?;
@@ -2816,15 +2856,15 @@ async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     let dry_run = get_bool_opt(args, "dry_run").unwrap_or(false);
 
     let profiles = crate::ai_tools::load_saved_servers().map_err(ToolError::Exec)?;
-    let src_server = resolve_profile(&profiles, &src_server_query)?;
-    let dst_server = resolve_profile(&profiles, &dst_server_query)?;
+    let (src_server, src_expected) = resolve_transfer_endpoint(ctx, &profiles, &src_server_query)?;
+    let (dst_server, dst_expected) = resolve_transfer_endpoint(ctx, &profiles, &dst_server_query)?;
     ensure_distinct_profiles(&src_server, &dst_server)?;
 
     let started = std::time::Instant::now();
 
     // Connect to source first to stat the file. The dest connection is opened
     // only when actually needed (skip_existing check or transfer).
-    let src_box = crate::ai_tools::create_temp_provider(&src_server)
+    let src_box = crate::ai_tools::create_temp_provider_expecting(&src_server, src_expected)
         .await
         .map_err(ToolError::Exec)?;
     let mut src_provider = src_box;
@@ -2842,7 +2882,7 @@ async fn transfer_one(_ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         });
     }
 
-    let dst_box = crate::ai_tools::create_temp_provider(&dst_server)
+    let dst_box = crate::ai_tools::create_temp_provider_expecting(&dst_server, dst_expected)
         .await
         .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
     let mut dst_provider = dst_box;
@@ -2969,8 +3009,8 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
         .unwrap_or(DEFAULT_TRANSFER_TREE_FILES);
 
     let profiles = crate::ai_tools::load_saved_servers().map_err(ToolError::Exec)?;
-    let src_server = resolve_profile(&profiles, &src_server_query)?;
-    let dst_server = resolve_profile(&profiles, &dst_server_query)?;
+    let (src_server, src_expected) = resolve_transfer_endpoint(ctx, &profiles, &src_server_query)?;
+    let (dst_server, dst_expected) = resolve_transfer_endpoint(ctx, &profiles, &dst_server_query)?;
     ensure_distinct_profiles(&src_server, &dst_server)?;
 
     let started = std::time::Instant::now();
@@ -2978,12 +3018,14 @@ async fn transfer_tree(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErr
     // Open BOTH connections once and reuse them across the whole batch: the
     // cap on `max_files` keeps temp-file fan-out bounded while sticking to
     // 2 underlying TCP/SSH sessions (Option A in the Gap 10 handoff).
-    let mut src_provider = crate::ai_tools::create_temp_provider(&src_server)
-        .await
-        .map_err(ToolError::Exec)?;
-    let mut dst_provider = crate::ai_tools::create_temp_provider(&dst_server)
-        .await
-        .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
+    let mut src_provider =
+        crate::ai_tools::create_temp_provider_expecting(&src_server, src_expected)
+            .await
+            .map_err(ToolError::Exec)?;
+    let mut dst_provider =
+        crate::ai_tools::create_temp_provider_expecting(&dst_server, dst_expected)
+            .await
+            .map_err(|e| ToolError::Exec(format!("destination connect failed: {e}")))?;
 
     let request = crate::cross_profile_transfer::CrossProfileTransferRequest {
         source_profile: src_server.name.clone(),
@@ -3337,10 +3379,13 @@ type ScannedRemoteFiles = std::collections::HashMap<String, ScannedRemoteFile>;
 /// folder at the depth cap marks it truncated, as `aeroftp-cli sync-doctor`
 /// and `reconcile` report it: a file never seen would otherwise read as
 /// missing on this side.
+/// The files of a local tree, whether the walk read all of it, and how many
+/// entries the path policy left out. A policy skip is not a read error: the
+/// reports name it apart, and still call the counts partial.
 fn scan_local_files(
     local_path: &std::path::Path,
     exclude: &crate::sync_exclude::ExcludeMatcher,
-) -> (LocalFiles, crate::sync_core::ScanCompleteness) {
+) -> (LocalFiles, crate::sync_core::ScanCompleteness, usize) {
     let relative_of = |path: &std::path::Path| {
         crate::sync::normalize_relative_key(
             &path
@@ -3351,11 +3396,29 @@ fn scan_local_files(
     };
     let mut files = LocalFiles::new();
     let mut completeness = crate::sync_core::ScanCompleteness::default();
+    // A local_dir the policy allows says nothing of what lies below it: a
+    // protected file is never listed, sized or read for a checksum.
+    // Each one skipped makes the scan partial, the way a refused remote
+    // listing does: the comparison must not report it missing locally.
+    let policy = crate::ai_core::local_tools::PathPolicy::current();
+    let protected_skipped = std::cell::Cell::new(0usize);
     for entry in walkdir::WalkDir::new(local_path)
         .follow_links(false)
         .max_depth(MAX_BFS_DEPTH)
         .into_iter()
-        .filter_entry(|e| e.depth() == 0 || !exclude.is_excluded(&relative_of(e.path())))
+        .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
+            if exclude.is_excluded(&relative_of(e.path())) {
+                return false;
+            }
+            if policy.refuses(e.path()) {
+                protected_skipped.set(protected_skipped.get() + 1);
+                return false;
+            }
+            true
+        })
     {
         let entry = match entry {
             Ok(entry) => entry,
@@ -3392,7 +3455,7 @@ fn scan_local_files(
             .map(|d| d.as_secs() as i64);
         files.insert(rel, (metadata.len(), mtime_secs));
     }
-    (files, completeness)
+    (files, completeness, protected_skipped.get())
 }
 
 /// The files under `remote_dir` a sync would read, each path once, and
@@ -3798,7 +3861,7 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
 
     // Both scans say whether they read the whole tree: counts from a scan
     // that missed part of it are partial, and the report says so.
-    let (local_map, local_scan) = scan_local_files(local_path, &exclude_matchers);
+    let (local_map, local_scan, local_protected) = scan_local_files(local_path, &exclude_matchers);
     let local_files = local_map.len();
     let local_bytes = local_map
         .values()
@@ -3826,17 +3889,19 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
         .values()
         .fold(0u64, |sum, file| sum.saturating_add(file.size));
     let scans = [("local", &local_scan), ("remote", &remote_scan)];
-    let scans_complete = scans.iter().all(|(_, scan)| scan.is_complete());
+    let scans_complete = scans.iter().all(|(_, scan)| scan.is_complete()) && local_protected == 0;
 
     let mut checks = vec![
         json!({"name": "local_path_exists", "ok": true, "path": local_dir}),
         json!({"name": "remote_path_reachable", "ok": remote_root_ok, "path": remote_dir}),
     ];
     for (side, scan) in scans {
+        let protected = if side == "local" { local_protected } else { 0 };
         checks.push(json!({
             "name": format!("{side}_scan_complete"),
-            "ok": scan.is_complete(),
+            "ok": scan.is_complete() && protected == 0,
             "errors": scan.list_errors,
+            "protected_skipped": protected,
             "truncated": scan.truncated,
         }));
     }
@@ -3871,6 +3936,12 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             ));
         }
     }
+    if local_protected > 0 {
+        risks.push(format!(
+            "the local scan left out {local_protected} protected entr{} that the path policy keeps from every AI tool; the file counts are partial",
+            if local_protected == 1 { "y" } else { "ies" }
+        ));
+    }
     if local_files == 0 && remote_files == 0 && scans_complete {
         risks.push("both sides are empty; sync will be a no-op".to_string());
     }
@@ -3902,8 +3973,9 @@ async fn sync_doctor(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError
             "delete": delete,
             "track_renames": track_renames,
             "checksum": checksum,
-            "local_scan_incomplete": !local_scan.is_complete(),
+            "local_scan_incomplete": !local_scan.is_complete() || local_protected > 0,
             "local_scan_errors": local_scan.list_errors,
+            "local_protected_skipped": local_protected,
             "local_scan_truncated": local_scan.truncated,
             "remote_scan_incomplete": !remote_scan.is_complete(),
             "remote_scan_errors": remote_scan.list_errors,
@@ -4352,7 +4424,7 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     // Both scans say whether they read the whole tree: a comparison against
     // a scan that missed part of it is `partial`, not a verdict, since a file
     // never seen reads as missing on that side.
-    let (local_map, local_scan) = scan_local_files(local_path, &exclude_matchers);
+    let (local_map, local_scan, local_protected) = scan_local_files(local_path, &exclude_matchers);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
     let (remote_map, remote_scan) = scan_remote_files(
         ctx,
@@ -4454,10 +4526,18 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
             }
         }
     }
+    // A remote file whose local counterpart the policy keeps out of the scan
+    // is not missing locally: it was never looked at. It is counted apart.
+    let policy = crate::ai_core::local_tools::PathPolicy::current();
+    let mut protected_skipped: usize = 0;
     if !one_way {
         for (rel, remote) in &remote_map {
             let rsize = remote.size;
             if !local_map.contains_key(rel) {
+                if policy.refuses(&local_path.join(rel)) {
+                    protected_skipped += 1;
+                    continue;
+                }
                 missing_local_g.push(json!({
                     "path": rel,
                     "remote_size": rsize,
@@ -4470,7 +4550,14 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
     let suggested_next_command =
         suggest_sync_command(&server, &local_dir, &remote_dir, " --dry-run --json");
 
-    let status = if checksum_errors > 0 || !local_scan.is_complete() || !remote_scan.is_complete() {
+    // A file left out on either side was not compared: also one present only
+    // on the server under a protected local path.
+    let status = if checksum_errors > 0
+        || protected_skipped > 0
+        || local_protected > 0
+        || !local_scan.is_complete()
+        || !remote_scan.is_complete()
+    {
         "partial"
     } else if differ_g.is_empty() && missing_remote_g.is_empty() && missing_local_g.is_empty() {
         "ok"
@@ -4483,8 +4570,10 @@ async fn reconcile(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolError> 
         "differ_count": differ_g.len(),
         "missing_remote_count": missing_remote_g.len(),
         "missing_local_count": missing_local_g.len(),
-        "local_scan_incomplete": !local_scan.is_complete(),
+        "protected_skipped_count": protected_skipped,
+        "local_scan_incomplete": !local_scan.is_complete() || local_protected > 0,
         "local_scan_errors": local_scan.list_errors,
+        "local_protected_skipped": local_protected,
         "local_scan_truncated": local_scan.truncated,
         "remote_scan_incomplete": !remote_scan.is_complete(),
         "remote_scan_errors": remote_scan.list_errors,
@@ -4563,13 +4652,43 @@ mod tests {
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, bytes).unwrap();
         }
-        let (files, complete) =
+        let (files, complete, protected) =
             scan_local_files(dir.path(), &crate::sync_exclude::ExcludeMatcher::default());
         assert!(complete.is_complete());
+        assert_eq!(protected, 0);
         assert_eq!(files.len(), 4);
         for (rel, bytes) in entries {
             assert_eq!(files[rel].0, bytes.len() as u64);
         }
+    }
+
+    // A reconcile or sync doctor of the home lists, sizes and checksums what
+    // it finds: a protected file below the root is never among it.
+    #[test]
+    fn a_local_scan_of_the_home_leaves_protected_files_out() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        for rel in [".ssh/id_fixture", ".config/aeroftp/vault.db", "notes.txt"] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let (files, scan, protected) =
+            scan_local_files(&home, &crate::sync_exclude::ExcludeMatcher::default());
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let listed: Vec<&String> = files.keys().collect();
+        assert_eq!(listed, vec!["notes.txt"], "{listed:?}");
+        // What it left out is counted apart from read errors, so a policy
+        // skip cannot be mistaken for an unreadable folder.
+        assert!(scan.is_complete());
+        assert_eq!(scan.list_errors, 0);
+        assert_eq!(protected, 2);
     }
 
     #[test]
@@ -4616,35 +4735,46 @@ mod tests {
     #[test]
     fn resolve_profile_exact_id() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
-        let r = resolve_profile(&profiles, "id-b").unwrap();
+        let r = crate::ai_tools::find_server_by_name_or_id(&profiles, "id-b").unwrap();
         assert_eq!(r.id, "id-b");
+    }
+
+    #[test]
+    fn resolve_profile_takes_an_id_over_a_profile_named_like_it() {
+        let profiles = vec![server("id-a", "id-b"), server("id-b", "Beta")];
+        assert_eq!(
+            crate::ai_tools::find_server_by_name_or_id(&profiles, "id-b")
+                .unwrap()
+                .id,
+            "id-b"
+        );
     }
 
     #[test]
     fn resolve_profile_exact_name_case_insensitive() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
-        let r = resolve_profile(&profiles, "alpha").unwrap();
+        let r = crate::ai_tools::find_server_by_name_or_id(&profiles, "alpha").unwrap();
         assert_eq!(r.id, "id-a");
     }
 
     #[test]
     fn resolve_profile_substring_match() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Beta")];
-        let r = resolve_profile(&profiles, "et").unwrap();
+        let r = crate::ai_tools::find_server_by_name_or_id(&profiles, "et").unwrap();
         assert_eq!(r.id, "id-b");
     }
 
     #[test]
     fn resolve_profile_no_match_errors() {
         let profiles = vec![server("id-a", "Alpha")];
-        assert!(resolve_profile(&profiles, "Gamma").is_err());
+        assert!(crate::ai_tools::find_server_by_name_or_id(&profiles, "Gamma").is_err());
     }
 
     #[test]
     fn resolve_profile_ambiguous_errors() {
         let profiles = vec![server("id-a", "Alpha"), server("id-b", "Alpine")];
         // "alp" matches both "Alpha" and "Alpine" via fuzzy contains.
-        assert!(resolve_profile(&profiles, "alp").is_err());
+        assert!(crate::ai_tools::find_server_by_name_or_id(&profiles, "alp").is_err());
     }
 
     #[test]
@@ -4860,6 +4990,9 @@ mod tests {
         }
         async fn upload_if_absent(&self, local: &str, remote: &str) -> Result<bool, String> {
             let result = self.conditional_result.clone().ok_or("unavailable")?;
+            if let Some(hook) = &self.on_upload {
+                hook();
+            }
             if result == Ok(true) {
                 let bytes = std::fs::read(local).map_err(|e| e.to_string())?;
                 self.uploads.lock().unwrap().push((remote.into(), bytes));
@@ -4989,6 +5122,9 @@ mod tests {
             let outcome = self.bulk_outcome.as_ref()?;
             if items.is_empty() {
                 return Some(Ok(Vec::new()));
+            }
+            if let Some(hook) = &self.on_upload {
+                hook();
             }
             self.bulk_calls
                 .lock()
@@ -5212,6 +5348,137 @@ mod tests {
         let plain = test_ctx(Arc::clone(&backend));
         let report = upload_many(&plain, &args).await.unwrap();
         assert_eq!(report["summary"]["processed"], 2);
+    }
+
+    /// Deep scan item 27: the policy checked one file and the backend opened
+    /// the path again. The upload reports the size of the file it pinned,
+    /// and a source replaced while the upload ran is an error that names it,
+    /// not a success.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_upload_whose_source_is_replaced_meanwhile_is_not_reported_as_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("report.pdf");
+        std::fs::write(&local, b"checked").unwrap();
+        let path = local.to_string_lossy().to_string();
+        let args = json!({"server": "srv", "local_path": path, "remote_path": "/root/report.pdf"});
+
+        let plain = Arc::new(FakeBackend {
+            upload_succeeds: true,
+            ..FakeBackend::sample()
+        });
+        let done = upload_file(&test_ctx(Arc::clone(&plain)), &args)
+            .await
+            .unwrap();
+        assert_eq!(done["bytes"], 7, "{done}");
+
+        let swap_from = dir.path().join("swap.bin");
+        let swap_to = local.clone();
+        let swapping = Arc::new(FakeBackend {
+            upload_succeeds: true,
+            on_upload: Some(Arc::new(move || {
+                std::fs::write(&swap_from, b"checked").unwrap();
+                std::fs::rename(&swap_from, &swap_to).unwrap();
+            })),
+            ..FakeBackend::sample()
+        });
+        let err = upload_file(&test_ctx(Arc::clone(&swapping)), &args)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("changed during the upload"),
+            "{err}"
+        );
+        assert!(err.to_string().contains(&path), "{err}");
+    }
+
+    /// A hook that replaces `path` with another file of the same content,
+    /// the way a download over it would while its upload runs.
+    #[cfg(unix)]
+    fn replaces(path: std::path::PathBuf) -> Option<Arc<dyn Fn() + Send + Sync>> {
+        Some(Arc::new(move || {
+            let swap = path.with_extension("swap");
+            std::fs::write(&swap, std::fs::read(&path).unwrap()).unwrap();
+            std::fs::rename(&swap, &path).unwrap();
+        }))
+    }
+
+    /// The same for the server-side no-clobber upload: a source replaced
+    /// while it was sent is an error that names it.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_conditional_upload_whose_source_is_replaced_meanwhile_is_not_reported_as_done() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("report.pdf");
+        std::fs::write(&local, b"checked").unwrap();
+        let path = local.to_string_lossy().to_string();
+        let mut fake = FakeBackend::sample();
+        fake.conditional_result = Some(Ok(true));
+        fake.on_upload = replaces(local.clone());
+        let err = upload_file(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "srv", "local_path": path, "remote_path": "/root/report.pdf", "no_clobber": true}),
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("changed during the upload"),
+            "{err}"
+        );
+        assert!(err.to_string().contains(&path), "{err}");
+    }
+
+    /// A native bulk that completed every file still reports, alone, the one
+    /// whose source was replaced while it ran; the others are uploaded.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_completed_bulk_reports_the_member_whose_source_was_replaced() {
+        let names = ["n0.txt", "n1.txt", "n2.txt"];
+        let (dir, items) = bulk_fixture(&names);
+        let mut fake = bulk_backend(|_| BulkTransferOutcome::Completed);
+        fake.on_upload = replaces(dir.path().join("n1.txt"));
+        let fake = Arc::new(fake);
+        let report = upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(fake.bulk_calls.lock().unwrap().len(), 1);
+        let results = report["results"].as_array().unwrap();
+        assert_eq!(results[0]["uploaded"], true, "{report}");
+        assert_eq!(results[2]["uploaded"], true, "{report}");
+        assert_eq!(results[1]["uploaded"], false, "{report}");
+        let error = results[1]["error"].as_str().unwrap();
+        assert!(error.contains("changed during the upload"), "{error}");
+        assert_eq!(report["summary"]["errors"], 1);
+    }
+
+    /// The member left alone in its group (the other one already exists, so
+    /// no-clobber skips it) takes the single-file write, and a replacement
+    /// during it is reported the same way.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_lone_pending_bulk_member_whose_source_was_replaced_is_not_reported_as_done() {
+        let (dir, items) = bulk_fixture(&["a.txt", "fresh1.txt"]);
+        let mut fake = bulk_backend(|_| BulkTransferOutcome::Completed);
+        fake.on_upload = replaces(dir.path().join("fresh1.txt"));
+        let fake = Arc::new(fake);
+        let report = upload_many(
+            &test_ctx(Arc::clone(&fake)),
+            &json!({"server": "srv", "items": items, "no_clobber": true}),
+        )
+        .await
+        .unwrap();
+        assert!(fake.bulk_calls.lock().unwrap().is_empty());
+        assert_eq!(
+            *fake.local_uploads.lock().unwrap(),
+            vec!["/root/fresh1.txt"]
+        );
+        assert_eq!(report["results"][0]["skipped"], true, "{report}");
+        assert_eq!(report["results"][1]["uploaded"], false, "{report}");
+        let error = report["results"][1]["error"].as_str().unwrap();
+        assert!(error.contains("changed during the upload"), "{error}");
     }
 
     /// Local files named as their remote leaves under `/root`, the shape a
@@ -7353,6 +7620,27 @@ mod tests {
         assert!(backend.empty_calls.lock().unwrap().is_empty());
     }
 
+    // Deep scan item 28: S3 drops a leading slash from the prefix, so "/"
+    // sweeps the whole bucket and needs the same acknowledgement.
+    #[tokio::test]
+    async fn trash_empty_with_a_slash_only_prefix_requires_confirm_flag() {
+        for prefix in ["/", "//"] {
+            let backend = Arc::new(FakeBackend::sample());
+            let ctx = test_ctx(Arc::clone(&backend));
+            let err = remote_trash(
+                &ctx,
+                &json!({"server": "s", "action": "empty", "dry_run": false, "prefix": prefix}),
+            )
+            .await
+            .unwrap_err();
+            assert!(
+                err.to_string().contains("confirm_whole_bucket"),
+                "{prefix}: {err}"
+            );
+            assert!(backend.empty_calls.lock().unwrap().is_empty(), "{prefix}");
+        }
+    }
+
     #[tokio::test]
     async fn trash_empty_scoped_prefix_purges_without_confirm() {
         let backend = Arc::new(FakeBackend::sample());
@@ -8106,6 +8394,143 @@ mod tests {
     /// `reconcile` compares only what sits under the remote folder, and a
     /// comparison against a scan that missed part of the tree is `partial`,
     /// not a verdict: a file it never saw would read as missing.
+    /// A protected file present on both sides was reported missing locally:
+    /// the local scan leaves it out. It is counted apart, and the comparison
+    /// stays partial.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn reconcile_of_the_home_does_not_call_a_protected_file_missing_locally() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        for rel in [".ssh/id_fixture", "notes.txt"] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let mut fake = FakeBackend::sample();
+        fake.tree.insert(
+            "/remote".into(),
+            vec![
+                entry("/remote/.ssh", true, 0),
+                entry("/remote/notes.txt", false, 1),
+            ],
+        );
+        fake.tree.insert(
+            "/remote/.ssh".into(),
+            vec![entry("/remote/.ssh/id_fixture", false, 1)],
+        );
+        let report = reconcile(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "s", "local_dir": home.to_string_lossy(), "remote_dir": "/remote"}),
+        )
+        .await;
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let report = report.unwrap();
+        let summary = &report["summary"];
+        assert_eq!(summary["missing_local_count"], 0, "{report}");
+        assert_eq!(summary["protected_skipped_count"], 1, "{report}");
+        assert_eq!(summary["match_count"], 1, "{report}");
+        assert_eq!(report["status"], "partial", "{report}");
+        // The local skip is reported as such, not as a read error.
+        assert_eq!(summary["local_scan_errors"], 0, "{report}");
+        assert_eq!(summary["local_protected_skipped"], 1, "{report}");
+        assert_eq!(summary["local_scan_incomplete"], true, "{report}");
+    }
+
+    /// The sync doctor of the home names the entries the path policy left out
+    /// apart from read errors: in the local scan check, in the summary and in
+    /// its own risk line, with the counts still partial.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn the_sync_doctor_names_protected_entries_apart_from_read_errors() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        for rel in [".ssh/id_fixture", "notes.txt"] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"x").unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let mut fake = FakeBackend::sample();
+        fake.tree
+            .insert("/remote".into(), vec![entry("/remote/notes.txt", false, 1)]);
+        let doctor = sync_doctor(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "s", "local_dir": home.to_string_lossy(), "remote_dir": "/remote"}),
+        )
+        .await;
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let doctor = doctor.unwrap();
+        let local_check = doctor["checks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|check| check["name"] == "local_scan_complete")
+            .cloned()
+            .unwrap();
+        assert_eq!(local_check["ok"], false, "{doctor}");
+        assert_eq!(local_check["errors"], 0, "{doctor}");
+        assert_eq!(local_check["protected_skipped"], 1, "{doctor}");
+        assert_eq!(doctor["summary"]["local_scan_errors"], 0, "{doctor}");
+        assert_eq!(doctor["summary"]["local_protected_skipped"], 1, "{doctor}");
+        let risks = doctor["risks"].to_string();
+        assert!(risks.contains("left out 1 protected entry"), "{risks}");
+        assert!(!risks.contains("did not read the whole tree"), "{risks}");
+        assert_eq!(doctor["status"], "attention", "{doctor}");
+    }
+
+    /// A protected file only on the server, under a home without `~/.ssh`:
+    /// the local scan met nothing protected and reads as complete, yet that
+    /// file was not compared, so the result is partial, not an all-clear.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn reconcile_is_partial_when_a_server_only_file_is_protected_locally() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::write(home.join("notes.txt"), b"x").unwrap();
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let mut fake = FakeBackend::sample();
+        fake.tree.insert(
+            "/remote".into(),
+            vec![
+                entry("/remote/.ssh", true, 0),
+                entry("/remote/notes.txt", false, 1),
+            ],
+        );
+        fake.tree.insert(
+            "/remote/.ssh".into(),
+            vec![entry("/remote/.ssh/id_fixture", false, 1)],
+        );
+        let report = reconcile(
+            &test_ctx(Arc::new(fake)),
+            &json!({"server": "s", "local_dir": home.to_string_lossy(), "remote_dir": "/remote"}),
+        )
+        .await;
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let report = report.unwrap();
+        let summary = &report["summary"];
+        assert_eq!(summary["local_scan_incomplete"], false, "{report}");
+        assert_eq!(summary["protected_skipped_count"], 1, "{report}");
+        assert_eq!(summary["missing_local_count"], 0, "{report}");
+        assert_eq!(report["status"], "partial", "{report}");
+    }
+
     #[tokio::test]
     async fn reconcile_compares_each_remote_path_once_and_says_when_it_did_not() {
         for (case, backend, root, files, _, _, _, refused) in defective_listings() {
@@ -8418,5 +8843,185 @@ mod tests {
                 "{root:?}: {reconciled}"
             );
         }
+    }
+
+    // --- an approved change reaches its profile by id only (Greptile, #1522) --
+
+    fn saved(id: &str, name: &str, host: &str) -> crate::ai_tools::SavedServerInfo {
+        crate::ai_tools::SavedServerInfo {
+            id: id.to_string(),
+            name: name.to_string(),
+            host: host.to_string(),
+            port: 22,
+            username: "tester".to_string(),
+            protocol: "sftp".to_string(),
+            initial_path: None,
+            provider_id: None,
+        }
+    }
+
+    /// `staging` approved, then deleted before the call reached its server:
+    /// the name lookup a read uses would take `staging-old`, whose name
+    /// contains it. An approved change is refused instead.
+    #[test]
+    fn an_approved_change_never_reaches_a_profile_named_like_a_deleted_one() {
+        let after_delete = vec![saved("id-old", "staging-old", "old.example.com")];
+        assert_eq!(
+            crate::ai_tools::resolve_approved_server(&after_delete, "staging", None)
+                .unwrap()
+                .id,
+            "id-old",
+            "a read keeps the name lookup"
+        );
+        let refused =
+            crate::ai_tools::resolve_approved_server(&after_delete, "id-staging", Some("sftp://x"))
+                .unwrap_err();
+        assert!(
+            refused.contains("was removed after the call was approved"),
+            "{refused}"
+        );
+    }
+
+    /// Deleted and recreated under the same name: the new profile has another
+    /// id, and the call approved for the old one does not reach it.
+    #[test]
+    fn an_approved_change_never_reaches_a_profile_recreated_under_the_same_name() {
+        let recreated = vec![saved("id-new", "staging", "new.example.com")];
+        assert!(crate::ai_tools::resolve_approved_server(
+            &recreated,
+            "id-staging",
+            Some("sftp://x")
+        )
+        .is_err());
+        let unchanged = vec![saved("id-staging", "staging", "staging.example.com")];
+        assert_eq!(
+            crate::ai_tools::resolve_approved_server(&unchanged, "id-staging", Some("sftp://x"))
+                .unwrap()
+                .id,
+            "id-staging"
+        );
+    }
+
+    /// Same id, edited to another host after the approval: the identity check
+    /// that `create_temp_provider_expecting` runs on the profile JSON it then
+    /// connects with refuses it, and passes the profile left unchanged.
+    #[test]
+    fn an_approved_change_never_opens_a_profile_edited_to_another_host() {
+        let profile = json!({"id": "id-staging", "name": "staging", "host": "staging.example.com",
+            "port": 22, "username": "tester", "protocol": "sftp"});
+        let approved = crate::ai_core::credential_provider::profile_identity(&profile).unwrap();
+        let mut edited = profile.clone();
+        edited["host"] = json!("elsewhere.example.com");
+        let current = crate::ai_core::credential_provider::profile_identity(&edited);
+        assert!(
+            crate::ai_core::credential_provider::approved_target_unchanged(
+                "staging",
+                Some(&approved),
+                current.as_deref()
+            )
+            .is_err()
+        );
+        assert!(
+            crate::ai_core::credential_provider::approved_target_unchanged(
+                "staging",
+                Some(&approved),
+                Some(&approved)
+            )
+            .is_ok()
+        );
+    }
+
+    /// The desktop resolves the backend each time a tool asks for it, the way
+    /// `TauriToolCtx` does: by the approved id only. `create_parents` asks a
+    /// second time, after network round trips; a profile deleted in between
+    /// is refused there too, and every resolution names the approved id.
+    struct ResolvingCtx {
+        profiles: Mutex<Vec<crate::ai_tools::SavedServerInfo>>,
+        approved: std::collections::HashMap<String, String>,
+        backend: Arc<dyn RemoteBackend>,
+        asked: Mutex<Vec<String>>,
+        sink: NoopSink,
+        creds: NoopCreds,
+    }
+
+    #[async_trait::async_trait]
+    impl ToolCtx for ResolvingCtx {
+        fn event_sink(&self) -> &dyn EventSink {
+            &self.sink
+        }
+        fn credentials(&self) -> &dyn CredentialProvider {
+            &self.creds
+        }
+        async fn remote_backend(&self, server_id: &str) -> Result<Arc<dyn RemoteBackend>, String> {
+            self.asked.lock().unwrap().push(server_id.to_string());
+            let mut profiles = self.profiles.lock().unwrap();
+            crate::ai_tools::resolve_approved_server(
+                &profiles,
+                server_id,
+                self.approved_identity(server_id),
+            )?;
+            // Deleted right after this resolution, leaving a profile whose
+            // name contains the deleted one's.
+            *profiles = vec![saved("id-old", "staging-old", "old.example.com")];
+            Ok(Arc::clone(&self.backend))
+        }
+        fn approved_identity(&self, profile_id: &str) -> Option<&str> {
+            self.approved.get(profile_id).map(String::as_str)
+        }
+        fn surface(&self) -> crate::ai_core::tools::Surfaces {
+            crate::ai_core::tools::Surfaces::GUI
+        }
+    }
+
+    #[tokio::test]
+    async fn create_parents_resolves_the_approved_id_again_and_refuses_a_profile_deleted_meanwhile()
+    {
+        let ctx = ResolvingCtx {
+            profiles: Mutex::new(vec![saved("id-staging", "staging", "staging.example.com")]),
+            approved: [("id-staging".to_string(), "sftp://x".to_string())]
+                .into_iter()
+                .collect(),
+            backend: Arc::new(FakeBackend::sample()),
+            asked: Mutex::new(Vec::new()),
+            sink: NoopSink,
+            creds: NoopCreds::default(),
+        };
+        let args = json!({"server": "id-staging", "remote_path": "/new/dir/a.txt",
+            "content": "payload", "create_parents": true});
+        let refused = upload_file(&ctx, &args).await.unwrap_err();
+        assert!(
+            refused
+                .to_string()
+                .contains("was removed after the call was approved"),
+            "{refused}"
+        );
+        assert_eq!(*ctx.asked.lock().unwrap(), vec!["id-staging", "id-staging"]);
+    }
+
+    /// The transfer tools open their two profiles themselves, outside the
+    /// backend: they take the same path, by the approved id and identity, and
+    /// a call approved for nothing keeps the name lookup.
+    #[test]
+    fn a_transfer_endpoint_is_reached_by_its_approved_id_only() {
+        let ctx = ResolvingCtx {
+            profiles: Mutex::new(Vec::new()),
+            approved: [("id-staging".to_string(), "sftp://x".to_string())]
+                .into_iter()
+                .collect(),
+            backend: Arc::new(FakeBackend::sample()),
+            asked: Mutex::new(Vec::new()),
+            sink: NoopSink,
+            creds: NoopCreds::default(),
+        };
+        let after_delete = vec![saved("id-old", "staging-old", "old.example.com")];
+        assert!(resolve_transfer_endpoint(&ctx, &after_delete, "id-staging").is_err());
+        let present = vec![saved("id-staging", "staging", "staging.example.com")];
+        let (server, expected) = resolve_transfer_endpoint(&ctx, &present, "id-staging").unwrap();
+        assert_eq!(
+            (server.id.as_str(), expected),
+            ("id-staging", Some("sftp://x"))
+        );
+        let (read, expected) = resolve_transfer_endpoint(&ctx, &after_delete, "staging").unwrap();
+        assert_eq!((read.id.as_str(), expected), ("id-old", None));
     }
 }

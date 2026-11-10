@@ -765,7 +765,10 @@
             },
             "stagedCount": "Klaargezet: {count}",
             "pendingCount": "{count} in wachtrij",
-            "failedCount": "Mislukt: {count}"
+            "failedCount": "Mislukt: {count}",
+            "queuedForAnotherServer": "Niet gestart: deze overdracht stond in de wachtrij voor een andere server of een ander account. Ga terug naar het tabblad ervan en probeer het opnieuw.",
+            "queuedOverlayChanged": "Niet gestart: de versleutelde overlay waaronder deze overdracht in de wachtrij was gezet, is vergrendeld of dekt deze map niet meer. Ontgrendel hem op die server en probeer het opnieuw.",
+            "pasteFromAnotherServer": "Niet geplakt: deze bestanden zijn geknipt of gekopieerd op een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en plak opnieuw."
         },
         "settings": {
             "title": "Instellingen",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} kwamen mee met een andere aangepaste OAuth-app dan die dit apparaat voor die provider heeft. De opgeslagen app is behouden, dus log opnieuw in als deze profielen niet meer verbinden.",
             "importTargetChanged": "{names} zijn niet overschreven: het bestand laat ze naar een andere server wijzen, en hun opgeslagen wachtwoorden en tokens mogen daar niet naartoe. Importeer met Dupliceren om de kopie uit het bestand toe te voegen, of verwijder eerst het profiel.",
             "importSharedSecretsFailed": "{names} zijn geïmporteerd, maar een gedeeld geheim of een sessie uit het bestand kon niet worden opgeslagen. Meld u opnieuw aan bij deze profielen als ze geen verbinding maken.",
-            "keystoreDatabasesFailed": "De import is voltooid, maar deze databases konden niet worden hersteld en behouden hun inhoud: {names}."
+            "keystoreDatabasesFailed": "De import is voltooid, maar deze databases konden niet worden hersteld en behouden hun inhoud: {names}.",
+            "importSecurityTitle": "Beveiligingsinstellingen in deze back-up",
+            "importSecurityHelp": "Deze opties schakelen een beveiligingscontrole uit. Elke optie wordt in de veilige staat geïmporteerd, tenzij u die aanvinkt om hem te behouden zoals in het bestand.",
+            "importSecurityVerifyCert": "Certificaatcontrole uitgeschakeld",
+            "importSecurityCleartextEndpoint": "Niet-versleuteld S3-eindpunt toegestaan",
+            "importSecurityCleartextStorage": "Niet-versleuteld opslagadres toegestaan",
+            "importSecurityPlainHttp": "Gewoon HTTP in plaats van HTTPS",
+            "importSecurityPasvAddress": "Dataverbinding naar het adres dat de server opgeeft (PASV)",
+            "importSecurityUnknownHostKeys": "Onbekende SSH-hostsleutels geaccepteerd",
+            "keystoreSecurityReset": "{count} herstelde servers hadden opties die een beveiligingscontrole uitschakelen; ze zijn teruggezet naar de veilige instelling: {details}.",
+            "keystoreSecurityResetFailed": "De beveiligingsinstellingen van {count} herstelde accounts konden niet worden gecontroleerd of opnieuw ingesteld. Ze worden hier vermeld in plaats van zonder waarschuwing actief te blijven.",
+            "keystoreSecurityResetQuarantine": "De herstelde accountdatabase kon niet worden beveiligd en is in quarantaine geplaatst als {path}. Geen enkel hersteld account is actief. Los het schijf- of machtigingsprobleem op en herstel daarna de back-up opnieuw. Het bestand in quarantaine blijft beschikbaar voor herstel."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Aanmaken mislukt",
             "unknownServer": "Onbekend",
             "scpModeTitle": "Verbonden met SCP",
-            "scpModeBody": "{host} heeft geen SFTP, dus AeroFTP gebruikt SCP op dezelfde verbinding."
+            "scpModeBody": "{host} heeft geen SFTP, dus AeroFTP gebruikt SCP op dezelfde verbinding.",
+            "saveOnAnotherServer": "Niet opgeslagen: dit bestand is geopend vanaf een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en sla opnieuw op.",
+            "openedOnAnotherServer": "Niet geopend: de server is gewijzigd tijdens het lezen van het bestand. Open het opnieuw.",
+            "remoteTargetChanged": "Er is niets gewijzigd: de server, het account of de versleutelde overlay is veranderd sinds de actie begon, of maakt nog opnieuw verbinding. Probeer het opnieuw op de huidige verbinding."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "SCP als terugvaloptie toestaan",
             "allowScpFallbackHint": "Als de server geen SFTP heeft, gaat de verbinding verder via SCP, zoals WinSCP doet.",
             "discoverScp": "Bestanden kopiëren via SSH voor servers zonder SFTP",
-            "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)"
+            "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)",
+            "trustPasvAddress": "Het door de server opgegeven passieve adres gebruiken",
+            "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt.",
+            "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",
@@ -3068,7 +3088,8 @@
                 "diff": "Vergelijken met origineel",
                 "diffNoFile": "Geen bestand geopend om te vergelijken",
                 "commandBlocked": "Opdracht geblokkeerd: mogelijk destructief",
-                "confirmRun": "Uitvoeren bevestigen: {command}"
+                "confirmRun": "Uitvoeren bevestigen: {command}",
+                "reopenEditor": "Toon de editor met dit bestand geopend en probeer het opnieuw."
             },
             "thinkingBlock": {
                 "thinking": "Nadenken...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Beveiligd met wachtwoord",
             "expirationHoursOne": "{count} uur",
             "expirationHoursMany": "{count} uur",
-            "expirationDaysMany": "{count} dagen"
+            "expirationDaysMany": "{count} dagen",
+            "expiresSoonerThanChosen": "korter dan gekozen"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Niet-opgeslagen wijzigingen",
             "dirtyBody": "U hebt niet-opgeslagen wijzigingen. Verwerpen en sluiten?",
             "keepEditing": "Verder bewerken",
-            "discardAndClose": "Verwerpen en sluiten"
+            "discardAndClose": "Verwerpen en sluiten",
+            "busyBodyKeepsRunning": "Er loopt nog een bewerking. Die gaat door nadat dit venster is gesloten en het resultaat wordt hier niet getoond. Toch sluiten?",
+            "closeAnyway": "Toch sluiten"
         },
         "modalView": {
             "listView": "Lijstweergave",

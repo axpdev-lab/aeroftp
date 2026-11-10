@@ -244,6 +244,29 @@ impl ProviderState {
         Ok(Some(pin))
     }
 
+    /// Holds the connection whose generation is `expected` until the guard is
+    /// dropped: swaps and disconnects take the write side of the gate first,
+    /// so they wait. An error when another connection is live already. A read
+    /// for the editor takes it, so the content it returns is that
+    /// connection's and not one switched to while the read ran.
+    pub(crate) async fn pin_connection_generation(
+        &self,
+        expected: u64,
+    ) -> Result<RwLockReadGuard<'_, ()>, String> {
+        let pin = self.transfer_owner_gate.read().await;
+        // Read under the provider lock, which every bump also holds.
+        let live = {
+            let _slot = self.provider.lock().await;
+            self.connection_generation.load(Ordering::SeqCst)
+        };
+        if live != expected {
+            return Err(format!(
+                "{CONNECTION_CHANGED_MARKER}: the server changed while the file was open; nothing was done"
+            ));
+        }
+        Ok(pin)
+    }
+
     /// Writers leave the current connection/overlay untouched if a pinned
     /// transfer cannot finish within the bound. In particular, scoped cleanup
     /// must never cancel somebody else's active transfer to obtain this lock.
@@ -1120,10 +1143,17 @@ pub struct ProviderConnectionParams {
     pub tls_mode: Option<String>,
     /// FTP/FTPS: Accept invalid/self-signed certificates
     pub verify_cert: Option<bool>,
+    /// FTP/FTPS: use the address a PASV reply names for the data connection
+    /// (absent or false: the control connection's peer, #1506 Requested 188).
+    #[serde(default)]
+    pub trust_pasv_address: Option<bool>,
     /// Swift only. Accept a catalog-issued cleartext object-store endpoint after
     /// an HTTPS Keystone session. Absent or false means the downgrade guard is
     /// armed, which is the default for every profile that does not ask for it.
     pub allow_cleartext_storage: Option<bool>,
+    /// S3: explicit consent to a non-loopback HTTP endpoint.
+    #[serde(default)]
+    pub allow_cleartext_endpoint: Option<bool>,
     /// Filen: Optional TOTP 2FA code
     pub two_factor_code: Option<String>,
     /// Filen/MEGA/Internxt: Optional persisted base32 TOTP secret. When set,
@@ -1293,6 +1323,9 @@ impl ProviderConnectionParams {
             }
             if let Some(path_style) = self.path_style {
                 extra.insert("path_style".to_string(), path_style.to_string());
+            }
+            if let Some(allow) = self.allow_cleartext_endpoint {
+                extra.insert("allow_cleartext_endpoint".to_string(), allow.to_string());
             }
             // Preset endpoint templates (Wasabi, IBM COS, R2, ...): callers
             // that build a config from raw form fields (bucket Fetch
@@ -1465,6 +1498,9 @@ impl ProviderConnectionParams {
             }
             if let Some(verify) = self.verify_cert {
                 extra.insert("verify_cert".to_string(), verify.to_string());
+            }
+            if self.trust_pasv_address == Some(true) {
+                extra.insert("trust_pasv_address".to_string(), "true".to_string());
             }
         }
 
@@ -2712,6 +2748,35 @@ pub async fn provider_crypt_cwd_in_view(state: State<'_, ProviderState>) -> Resu
             .map_err(|e| e.to_string()),
         None => Ok(true),
     }
+}
+
+/// The login folder of the live connection, which a `~` Remote Path or
+/// Overlays Path (the rclone import writes `~/docs` for an SFTP `nas:docs`)
+/// is placed under. Only the session knows it: read as a path, `~/docs` was
+/// `/~/docs`, a folder nobody wrote to.
+#[tauri::command]
+pub async fn provider_login_folder(state: State<'_, ProviderState>) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    crate::crypt_overlay_provider::login_folder(&mut **provider).await
+}
+
+/// The connect's start folder as the absolute folder it opened, for the
+/// window to list once: a relative `docs` listed as given resolved against
+/// the folder the connect had already opened (`docs/docs`). See
+/// [`crate::crypt_overlay_provider::place_start_folder`].
+#[tauri::command]
+pub async fn provider_start_folder(
+    state: State<'_, ProviderState>,
+    path: String,
+) -> Result<String, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard
+        .as_mut()
+        .ok_or_else(|| "Not connected to any provider".to_string())?;
+    crate::crypt_overlay_provider::place_start_folder(&mut **provider, &path).await
 }
 
 /// How long the liveness probe may take, its listing included. A server that
@@ -7462,6 +7527,7 @@ mod site_connection_tests {
             tls_mode: FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         })));
         state
     }
@@ -14868,6 +14934,268 @@ pub(crate) fn bound_compare_rows(
 mod tests {
     use super::*;
 
+    /// The editor's remote read is bound to the connection it was opened on:
+    /// refused once another connection took the slot, and while it holds the
+    /// connection a swap waits for it instead of changing what it reads.
+    #[tokio::test]
+    async fn a_read_pinned_to_a_connection_holds_it_and_refuses_another() {
+        let state = ProviderState::new();
+        let opened_on = state.connection_generation.load(Ordering::SeqCst);
+        let pin = state
+            .pin_connection_generation(opened_on)
+            .await
+            .expect("the live connection");
+        assert!(
+            state
+                .transfer_owner_write(Duration::from_millis(50))
+                .await
+                .is_err(),
+            "a swap waits while the read holds the connection"
+        );
+        drop(pin);
+        state.invalidate_overlay_key_cache();
+        let refused = state
+            .pin_connection_generation(opened_on)
+            .await
+            .unwrap_err();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        assert!(state.pin_connection_generation(opened_on + 1).await.is_ok());
+    }
+
+    /// The editor's read command honours the connection it was opened on: a
+    /// generation another connection replaced is refused before any read,
+    /// the live one goes on to the read (which fails here: nothing is
+    /// connected).
+    #[tokio::test]
+    async fn the_editor_preview_reads_only_on_the_connection_it_was_opened_on() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        let opened_on = state.connection_generation.load(Ordering::SeqCst);
+        state.invalidate_overlay_key_cache();
+        let refused =
+            crate::read_remote_file_for_preview(&app, &state, "/a.txt".into(), Some(opened_on))
+                .await
+                .unwrap_err();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        let live = state.connection_generation.load(Ordering::SeqCst);
+        let read =
+            crate::read_remote_file_for_preview(&app, &state, "/a.txt".into(), Some(live)).await;
+        assert!(
+            read.as_ref()
+                .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
+            "{read:?}"
+        );
+    }
+
+    /// The editor's save honours the connection it was checked on: a
+    /// generation another connection replaced is refused before anything is
+    /// written, the live one goes on to the write (which fails here: nothing
+    /// is connected).
+    #[tokio::test]
+    async fn the_editor_save_writes_only_on_the_connection_it_was_checked_on() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        let checked_on = state.connection_generation.load(Ordering::SeqCst);
+        state.invalidate_overlay_key_cache();
+        let refused = crate::write_remote_file_from_editor(
+            &app,
+            &state,
+            "/a.txt".into(),
+            "sentinel".into(),
+            Some(checked_on),
+        )
+        .await
+        .unwrap_err();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        let live = state.connection_generation.load(Ordering::SeqCst);
+        let saved = crate::write_remote_file_from_editor(
+            &app,
+            &state,
+            "/a.txt".into(),
+            "sentinel".into(),
+            Some(live),
+        )
+        .await;
+        assert!(
+            saved
+                .as_ref()
+                .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
+            "{saved:?}"
+        );
+    }
+
+    /// A provider whose upload says when it starts and then waits to be let
+    /// go, so a test can act while a write is under way.
+    struct PausedUpload {
+        started: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for PausedUpload {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "paused".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(())
+        }
+        async fn mkdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _: &str, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, _: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+    }
+
+    /// CodeRabbit on #1526: a switch that comes while the editor's save is
+    /// uploading waits for it. The save reaches the provider's upload, which
+    /// pauses there: a switch cannot take the connection over until the
+    /// upload has ended, then it can. A save that let the pin go before the
+    /// upload would let the switch through and fail this test.
+    #[tokio::test]
+    async fn a_switch_waits_for_an_editor_save_in_flight() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        *state.provider.lock().await = Some(Box::new(PausedUpload {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        }));
+        let live = state.connection_generation.load(Ordering::SeqCst);
+        let save = crate::write_remote_file_from_editor(
+            &app,
+            &state,
+            "/a.txt".into(),
+            "sentinel".into(),
+            Some(live),
+        );
+        tokio::pin!(save);
+        tokio::select! {
+            saved = &mut save => panic!("the save ended before its upload paused: {saved:?}"),
+            _ = started.notified() => {}
+        }
+        assert!(
+            state
+                .transfer_owner_write(Duration::from_millis(50))
+                .await
+                .is_err(),
+            "a switch waits while the upload is under way"
+        );
+        release.notify_one();
+        save.await.expect("the save completes");
+        assert!(
+            state
+                .transfer_owner_write(Duration::from_millis(50))
+                .await
+                .is_ok(),
+            "the switch goes ahead once the save is done"
+        );
+    }
+
+    /// A preview and a session switch racing, over and over: the read takes
+    /// the gate then the provider lock, and so does a swap, so neither waits
+    /// on the other for good. Each read either ran before the swap or was
+    /// refused after it.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_pinned_read_racing_a_session_switch_never_deadlocks() {
+        let state = ProviderState::new();
+        let raced = tokio::time::timeout(Duration::from_secs(10), async {
+            for _ in 0..200 {
+                let opened_on = state.connection_generation.load(Ordering::SeqCst);
+                let read = async {
+                    let pin = state.pin_connection_generation(opened_on).await?;
+                    let _slot = state.provider.lock().await;
+                    tokio::task::yield_now().await;
+                    drop(pin);
+                    Ok::<(), String>(())
+                };
+                let switch = async {
+                    let _change = state.transfer_owner_write(Duration::from_secs(5)).await?;
+                    let _slot = state.provider.lock().await;
+                    state.invalidate_overlay_key_cache();
+                    Ok::<(), String>(())
+                };
+                let (read, switch) = tokio::join!(read, switch);
+                switch.expect("the switch completes");
+                if let Err(refused) = read {
+                    assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+                }
+            }
+        })
+        .await;
+        assert!(raced.is_ok(), "a preview and a session switch deadlocked");
+    }
+
     #[test]
     fn a_cancelled_download_removes_only_what_it_wrote() {
         let dir = tempfile::tempdir().unwrap();
@@ -16427,6 +16755,23 @@ mod tests {
         assert!(swift.allow_cleartext_storage_endpoint);
     }
 
+    #[test]
+    fn s3_cleartext_consent_reaches_the_provider_config() {
+        let mut params = s3_params(None);
+        params.endpoint = Some("http://minio.example.test:9000".into());
+        params.allow_cleartext_endpoint = Some(true);
+        let config = params.to_provider_config().expect("config");
+        assert_eq!(
+            config
+                .extra
+                .get("allow_cleartext_endpoint")
+                .map(String::as_str),
+            Some("true")
+        );
+        let s3 = crate::providers::types::S3Config::from_provider_config(&config).expect("s3");
+        assert!(s3.allow_cleartext_endpoint);
+    }
+
     fn s3_params(path_style: Option<bool>) -> ProviderConnectionParams {
         ProviderConnectionParams {
             protocol: "s3".to_string(),
@@ -16463,7 +16808,9 @@ mod tests {
             timeout: None,
             tls_mode: None,
             verify_cert: None,
+            trust_pasv_address: None,
             allow_cleartext_storage: None,
+            allow_cleartext_endpoint: None,
             two_factor_code: None,
             totp_secret: None,
             filen_api_key: None,
@@ -19673,6 +20020,68 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_provider_params_fastly_fetch_resolves_region_endpoint_and_path_style() {
+        // Quick Connect Fetch sends the keys, the preset id and the region the
+        // user picked, but no endpoint. Fastly signs with the host label as the
+        // region and answers 400 when the two differ (Tier 0, 2026-11-06), so
+        // the template, the signing region and path-style must all come from
+        // the manifest, for every caller.
+        let fastly = |region: Option<&str>, endpoint: Option<&str>| {
+            let mut params = s3_params(None);
+            params.server = String::new();
+            // The shared helper models a Garage box on port 3900; a preset
+            // Fetch carries no such port.
+            params.port = None;
+            params.provider_id = Some("fastly".to_string());
+            params.region = region.map(String::from);
+            params.endpoint = endpoint.map(String::from);
+            params.to_provider_config().unwrap()
+        };
+        // No region: the Frankfurt default, never the generic us-east-1.
+        let config = fastly(None, None);
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://eu-central-1.object.fastlystorage.app")
+        );
+        assert_eq!(
+            config.extra.get("region").map(String::as_str),
+            Some("eu-central-1")
+        );
+        let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+        assert_eq!(s3.region, "eu-central-1");
+        assert!(s3.path_style);
+        // The older regions are separate hosts, not prefixes of the -1 ones.
+        for (region, host) in [
+            ("us-east", "https://us-east.object.fastlystorage.app"),
+            ("us-east-1", "https://us-east-1.object.fastlystorage.app"),
+            ("eu-central", "https://eu-central.object.fastlystorage.app"),
+            (
+                "jp-central-1",
+                "https://jp-central-1.object.fastlystorage.app",
+            ),
+        ] {
+            let config = fastly(Some(region), None);
+            assert_eq!(
+                config.extra.get("endpoint").map(String::as_str),
+                Some(host),
+                "{region}"
+            );
+            let s3 = crate::providers::S3Config::from_provider_config(&config).unwrap();
+            assert_eq!(s3.region, region);
+            assert!(s3.path_style, "{region}");
+        }
+        // An explicit endpoint still wins over the template.
+        let config = fastly(
+            Some("eu-central-1"),
+            Some("https://us-west-1.object.fastlystorage.app"),
+        );
+        assert_eq!(
+            config.extra.get("endpoint").map(String::as_str),
+            Some("https://us-west-1.object.fastlystorage.app")
+        );
+    }
+
+    #[test]
     fn test_s3_provider_params_absent_session_token() {
         let config = s3_params(None).to_provider_config().unwrap();
         assert!(!config.extra.contains_key("session_token"));
@@ -21338,6 +21747,7 @@ mod overlay_activation_discard_tests {
             tls_mode: crate::providers::FtpTlsMode::None,
             verify_cert: true,
             initial_path: None,
+            trust_pasv_address: false,
         });
         *state.provider.lock().await = Some(Box::new(CryptOverlayProvider::new(
             Box::new(raw),

@@ -765,7 +765,10 @@
             },
             "stagedCount": "Zilizoandaliwa: {count}",
             "pendingCount": "Zinazosubiri: {count}",
-            "failedCount": "Zilizoshindwa: {count}"
+            "failedCount": "Zilizoshindwa: {count}",
+            "queuedForAnotherServer": "Haijaanza: uhamishaji huu uliwekwa kwenye foleni kwa seva au akaunti nyingine. Rudi kwenye kichupo chake, kisha jaribu tena.",
+            "queuedOverlayChanged": "Haijaanza: overlay iliyosimbwa ambayo uhamishaji huu uliwekwa kwenye foleni chini yake imefungwa au haifuniki tena folda hii. Ifungue kwenye seva hiyo, kisha jaribu tena.",
+            "pasteFromAnotherServer": "Haijabandikwa: faili hizi zilikatwa au kunakiliwa kwenye seva, akaunti au tabaka lililosimbwa ambalo halitumiki sasa. Rudi kwenye kichupo chake, kisha bandika tena."
         },
         "settings": {
             "title": "Mipangilio",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} zilikuja na programu maalum ya OAuth tofauti na ile ambayo kifaa hiki kina kwa mtoa huduma huyo. Programu iliyohifadhiwa ilibaki, kwa hivyo ingia tena ikiwa wasifu huu utaacha kuunganisha.",
             "importTargetChanged": "{names} hazikuandikwa upya: faili inazielekeza kwenye seva nyingine, na nywila na tokeni zilizohifadhiwa hazipaswi kwenda huko. Leta kwa Nakili ili kuongeza nakala kutoka kwenye faili, au futa wasifu kwanza.",
             "importSharedSecretsFailed": "{names} zimeletwa, lakini siri iliyoshirikiwa au kipindi kutoka kwenye faili hakikuweza kuhifadhiwa. Ingia tena kwenye wasifu hizi ikiwa hazitaunganishwa.",
-            "keystoreDatabasesFailed": "Uingizaji umekamilika, lakini hifadhidata hizi hazikuweza kurejeshwa na zinabaki na kilichokuwemo: {names}."
+            "keystoreDatabasesFailed": "Uingizaji umekamilika, lakini hifadhidata hizi hazikuweza kurejeshwa na zinabaki na kilichokuwemo: {names}.",
+            "importSecurityTitle": "Mipangilio ya usalama katika nakala hii",
+            "importSecurityHelp": "Chaguo hizi huzima ukaguzi wa usalama. Kila moja huingizwa katika hali salama isipokuwa uitiki ili ibaki kama ilivyo kwenye faili.",
+            "importSecurityVerifyCert": "Ukaguzi wa cheti umezimwa",
+            "importSecurityCleartextEndpoint": "Kiishio cha S3 kisichosimbwa kinaruhusiwa",
+            "importSecurityCleartextStorage": "Anwani ya hifadhi isiyosimbwa inaruhusiwa",
+            "importSecurityPlainHttp": "HTTP ya kawaida badala ya HTTPS",
+            "importSecurityPasvAddress": "Muunganisho wa data kwa anwani inayotajwa na seva (PASV)",
+            "importSecurityUnknownHostKeys": "Funguo za mwenyeji wa SSH zisizojulikana zimekubaliwa",
+            "keystoreSecurityReset": "Seva {count} zilizorejeshwa zilikuwa na chaguo zinazozima ukaguzi wa usalama; zilirudishwa kwenye mpangilio salama: {details}.",
+            "keystoreSecurityResetFailed": "Mipangilio ya usalama ya akaunti {count} zilizorejeshwa haikuweza kukaguliwa au kuwekwa upya. Zimeorodheshwa hapa badala ya kuachwa zikifanya kazi bila onyo.",
+            "keystoreSecurityResetQuarantine": "Hifadhidata ya akaunti iliyorejeshwa haikuweza kulindwa, na imewekwa karantini kama {path}. Hakuna akaunti iliyorejeshwa iliyo hai. Rekebisha tatizo la diski au ruhusa, kisha rejesha nakala rudufu tena. Faili iliyowekwa karantini bado inapatikana kwa ajili ya urejeshaji."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Kuunda kumeshindwa",
             "unknownServer": "Haijulikani",
             "scpModeTitle": "Imeunganishwa kwa SCP",
-            "scpModeBody": "{host} haina SFTP, kwa hivyo AeroFTP inatumia SCP kwenye muunganisho uleule."
+            "scpModeBody": "{host} haina SFTP, kwa hivyo AeroFTP inatumia SCP kwenye muunganisho uleule.",
+            "saveOnAnotherServer": "Haijahifadhiwa: faili hii ilifunguliwa kutoka kwa seva, akaunti au tabaka lililosimbwa ambalo halitumiki sasa. Rudi kwenye kichupo chake, kisha hifadhi tena.",
+            "openedOnAnotherServer": "Haikufunguliwa: seva ilibadilika wakati faili ilikuwa ikisomwa. Ifungue tena.",
+            "remoteTargetChanged": "Hakuna kilichobadilishwa: seva, akaunti au safu iliyosimbwa imebadilika tangu kitendo kianze, au bado inaunganisha upya. Jaribu tena kwenye muunganisho wa sasa."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Ruhusu SCP kama mbadala",
             "allowScpFallbackHint": "Ikiwa seva haina SFTP, muunganisho unaendelea kupitia SCP, kama WinSCP inavyofanya.",
             "discoverScp": "Kunakili faili kupitia SSH kwa seva zisizo na SFTP",
-            "discoverTigris": "Tigris: hifadhi iliyosambazwa duniani kote inayooana na S3, bila ada za data inayotoka nje (5 GB bila malipo)"
+            "discoverTigris": "Tigris: hifadhi iliyosambazwa duniani kote inayooana na S3, bila ada za data inayotoka nje (5 GB bila malipo)",
+            "trustPasvAddress": "Tumia anwani ya passive inayotolewa na seva",
+            "trustPasvAddressHelp": "Zima: miunganisho ya data huenda kwa mwenyeji uliyeunganishwa naye, kama curl inavyofanya. Washa tu kwa seva inayotuma data kutoka anwani nyingine.",
+            "discoverFastly": "Fastly Object Storage: hifadhi inayooana na S3 katika maeneo 12 (5 GB bila malipo, kadi inahitajika)"
         },
         "shortcuts": {
             "title": "Njia za Mkato",
@@ -3068,7 +3088,8 @@
                 "diff": "Linganisha na asili",
                 "diffNoFile": "Hakuna faili iliyofunguliwa kwa kulinganisha",
                 "commandBlocked": "Amri imezuiwa: inaweza kuharibu",
-                "confirmRun": "Thibitisha kuendesha: {command}"
+                "confirmRun": "Thibitisha kuendesha: {command}",
+                "reopenEditor": "Onyesha kihariri kikiwa na faili hii wazi, kisha jaribu tena."
             },
             "thinkingBlock": {
                 "thinking": "Inafikiria...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Inalindwa na nenosiri",
             "expirationHoursOne": "Saa {count}",
             "expirationHoursMany": "Saa {count}",
-            "expirationDaysMany": "Siku {count}"
+            "expirationDaysMany": "Siku {count}",
+            "expiresSoonerThanChosen": "fupi kuliko ilivyochaguliwa"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Mabadiliko hayajahifadhiwa",
             "dirtyBody": "Una mabadiliko ambayo hayajahifadhiwa. Tupa na funga?",
             "keepEditing": "Endelea kuhariri",
-            "discardAndClose": "Tupa na funga"
+            "discardAndClose": "Tupa na funga",
+            "busyBodyKeepsRunning": "Operesheni bado inaendelea. Itaendelea baada ya dirisha hili kufungwa, na matokeo yake hayataonyeshwa hapa. Funga hata hivyo?",
+            "closeAnyway": "Funga hata hivyo"
         },
         "modalView": {
             "listView": "Mwonekano wa orodha",

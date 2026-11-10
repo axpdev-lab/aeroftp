@@ -1,4 +1,5 @@
-use crate::ai_core::local_tools::{get_str_opt, resolve_local_path, validate_path};
+use crate::ai_core::local_tools::{get_str_opt, resolve_local_path, validate_path, PathPolicy};
+use crate::ai_core::pinned_source::PinnedSource;
 use crate::ai_core::tools::ToolError;
 use crate::ai_tools::{
     create_temp_provider, download_from_provider, emit_tool_progress, find_server_by_name_or_id,
@@ -16,6 +17,45 @@ fn get_str_array_s(args: &Value, key: &str) -> Result<Vec<String>, String> {
 }
 
 /// Expand a local directory for AeroAgent upload, keeping its top-level name.
+/// Whether `sync_preview` can compare a remote name with the local folder:
+/// one plain path component under this platform's rules, so it names an entry
+/// of that folder and nothing outside it. A backslash is a separator only on
+/// Windows; on Unix `report\\2026.txt` is an ordinary name.
+fn preview_remote_name_comparable(name: &str) -> bool {
+    let mut parts = std::path::Path::new(name).components();
+    matches!(
+        (parts.next(), parts.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    ) && !name.contains('/')
+        && !(cfg!(windows) && name.contains('\\'))
+}
+
+/// The files directly in `local_path` that `sync_preview` compares, with
+/// their sizes, and how many entries the policy left out: a protected entry
+/// is neither listed nor sized.
+fn list_preview_local_files(
+    local_path: &str,
+    policy: &PathPolicy,
+) -> Result<(std::collections::HashMap<String, u64>, usize), String> {
+    let mut files = std::collections::HashMap::new();
+    let mut protected = 0usize;
+    for entry in std::fs::read_dir(local_path)
+        .map_err(|e| format!("Failed to read local directory: {}", e))?
+        .filter_map(|e| e.ok())
+    {
+        if policy.refuses(&entry.path()) {
+            protected += 1;
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if meta.is_file() {
+                files.insert(entry.file_name().to_string_lossy().to_string(), meta.len());
+            }
+        }
+    }
+    Ok((files, protected))
+}
+
 fn expand_upload_directory(base: &std::path::Path) -> Result<Vec<(String, String)>, String> {
     let mut expanded_paths = Vec::new();
     // Walk directory recursively
@@ -139,6 +179,125 @@ async fn publish_remote_edit_on_ftp_manager(
 ) -> Result<(), String> {
     let mut lease = super::ftp_manager_provider::FtpManagerProvider::borrow(manager);
     publish_remote_edit(&mut lease.provider, local_temp, path, allow_non_atomic).await
+}
+
+/// One file of `upload_files`: reported as uploaded only when the upload went
+/// through and its source is still the file the policy checked, else as an
+/// error naming it.
+pub(crate) fn record_upload_outcome(
+    source: &PinnedSource,
+    sent: Result<(), String>,
+    name: String,
+    uploaded: &mut Vec<String>,
+    errors: &mut Vec<Value>,
+) {
+    match source.settle_upload(sent) {
+        Ok(()) => uploaded.push(name),
+        Err(e) => errors.push(json!({ "file": name, "error": e })),
+    }
+}
+
+/// The remote side `upload_files` writes through, so the steps of one file
+/// can run against a recording fake in a test.
+#[async_trait::async_trait]
+pub(crate) trait UploadRemote: Send {
+    /// Make one remote folder; an existing one is fine, and a failure is the
+    /// upload's to report.
+    async fn mkdir(&mut self, path: &str);
+    /// Upload one file: the outer error ends the whole call (no connection
+    /// at all), the inner one is that file's.
+    async fn upload(&mut self, local: &str, remote: &str) -> Result<Result<(), String>, String>;
+}
+
+/// The live connection: the provider when one is active, else the legacy
+/// FTP session, looked up again for every call as before.
+struct LiveUploadRemote<'a> {
+    state: &'a crate::provider_commands::ProviderState,
+    app_state: &'a crate::AppState,
+}
+
+#[async_trait::async_trait]
+impl UploadRemote for LiveUploadRemote<'_> {
+    async fn mkdir(&mut self, path: &str) {
+        if has_provider(self.state).await {
+            let mut provider = self.state.provider.lock().await;
+            if let Some(p) = provider.as_mut() {
+                let _ = p.mkdir(path).await;
+            }
+        } else if has_ftp(self.app_state).await {
+            let mut manager = self.app_state.ftp_manager.lock().await;
+            let _ = manager.mkdir(path).await;
+        }
+    }
+
+    async fn upload(&mut self, local: &str, remote: &str) -> Result<Result<(), String>, String> {
+        if has_provider(self.state).await {
+            let mut provider = self.state.provider.lock().await;
+            let provider = provider
+                .as_mut()
+                .ok_or_else(|| "No active provider connection".to_string())?;
+            Ok(provider
+                .upload(local, remote, None)
+                .await
+                .map_err(|e| e.to_string()))
+        } else if has_ftp(self.app_state).await {
+            let mut manager = self.app_state.ftp_manager.lock().await;
+            Ok(manager
+                .upload_file(local, remote)
+                .await
+                .map_err(|e| e.to_string()))
+        } else {
+            Ok(Err("Not connected to any server".to_string()))
+        }
+    }
+}
+
+/// One file of `upload_files`. The file the policy approves is the file sent
+/// (deep scan item 27): pinned before any remote side effect, its parent
+/// folders included, and checked again after the upload. A refused source is
+/// that file's error, with nothing done on the remote side for it; the others
+/// still go. `progress` is told the file's name just before its upload.
+pub(crate) async fn upload_one_file(
+    remote: &mut dyn UploadRemote,
+    local_path: &str,
+    rel_path: &str,
+    remote_dir: &str,
+    progress: &(dyn Fn(&str) + Send + Sync),
+    uploaded: &mut Vec<String>,
+    errors: &mut Vec<Value>,
+) -> Result<(), String> {
+    let display_name = rel_path.to_string();
+    let source = match PinnedSource::pin(local_path, "path", |path, label| {
+        validate_path(path, label).map_err(ToolError::Denied)
+    }) {
+        Ok(source) => source,
+        Err(e) => {
+            errors.push(json!({ "file": display_name, "error": e.to_string() }));
+            return Ok(());
+        }
+    };
+    let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), rel_path);
+
+    // Ensure remote parent directory exists (create each level)
+    if let Some(parent) = std::path::Path::new(&remote_path).parent() {
+        let parent_str = parent.to_string_lossy().to_string();
+        let base = remote_dir.trim_end_matches('/');
+        if parent_str != base {
+            // Build list of directories to create, from shallowest to deepest
+            let rel_to_base = parent_str.strip_prefix(base).unwrap_or(&parent_str);
+            let parts: Vec<&str> = rel_to_base.split('/').filter(|s| !s.is_empty()).collect();
+            let mut current = base.to_string();
+            for part in &parts {
+                current = format!("{}/{}", current, part);
+                remote.mkdir(&current).await;
+            }
+        }
+    }
+
+    progress(&display_name);
+    let result = remote.upload(source.path(), &remote_path).await?;
+    record_upload_outcome(&source, result, display_name, uploaded, errors);
+    Ok(())
 }
 
 pub async fn dispatch_gui_tool(
@@ -690,68 +849,24 @@ pub async fn dispatch_gui_tool(
             }
 
             let total = expanded_paths.len();
+            let mut remote = LiveUploadRemote {
+                state: state.inner(),
+                app_state: app_state.inner(),
+            };
             for (idx, (local_path, rel_path)) in expanded_paths.iter().enumerate() {
-                validate_path(local_path, "path").map_err(|e| e.to_string())?;
-                let remote_path = format!("{}/{}", remote_dir.trim_end_matches('/'), rel_path);
-
-                // Ensure remote parent directory exists (create each level)
-                if let Some(parent) = std::path::Path::new(&remote_path).parent() {
-                    let parent_str = parent.to_string_lossy().to_string();
-                    let base = remote_dir.trim_end_matches('/');
-                    if parent_str != base {
-                        // Build list of directories to create, from shallowest to deepest
-                        let rel_to_base = parent_str.strip_prefix(base).unwrap_or(&parent_str);
-                        let parts: Vec<&str> =
-                            rel_to_base.split('/').filter(|s| !s.is_empty()).collect();
-                        let mut current = base.to_string();
-                        for part in &parts {
-                            current = format!("{}/{}", current, part);
-                            if has_provider(&state).await {
-                                let mut provider = state.provider.lock().await;
-                                if let Some(p) = provider.as_mut() {
-                                    let _ = p.mkdir(&current).await;
-                                }
-                            } else if has_ftp(&app_state).await {
-                                let mut manager = app_state.ftp_manager.lock().await;
-                                let _ = manager.mkdir(&current).await;
-                            }
-                        }
-                    }
-                }
-
-                let display_name = rel_path.clone();
-                emit_tool_progress(
-                    &app,
-                    "upload_files",
-                    idx as u32 + 1,
-                    total as u32,
-                    &display_name,
-                );
-
-                let result = if has_provider(&state).await {
-                    let mut provider = state.provider.lock().await;
-                    let provider = match provider.as_mut() {
-                        Some(p) => p,
-                        None => return Err("No active provider connection".into()),
-                    };
-                    provider
-                        .upload(local_path, &remote_path, None)
-                        .await
-                        .map_err(|e| e.to_string())
-                } else if has_ftp(&app_state).await {
-                    let mut manager = app_state.ftp_manager.lock().await;
-                    manager
-                        .upload_file(local_path, &remote_path)
-                        .await
-                        .map_err(|e| e.to_string())
-                } else {
-                    Err("Not connected to any server".to_string())
+                let progress = |name: &str| {
+                    emit_tool_progress(&app, "upload_files", idx as u32 + 1, total as u32, name)
                 };
-
-                match result {
-                    Ok(_) => uploaded.push(display_name),
-                    Err(e) => errors.push(json!({ "file": display_name, "error": e })),
-                }
+                upload_one_file(
+                    &mut remote,
+                    local_path,
+                    rel_path,
+                    &remote_dir,
+                    &progress,
+                    &mut uploaded,
+                    &mut errors,
+                )
+                .await?;
             }
 
             Ok(json!({
@@ -845,23 +960,17 @@ pub async fn dispatch_gui_tool(
             validate_path(&local_path, "local_path")?;
             validate_path(&remote_path, "remote_path")?;
 
-            // Collect local files
-            let local_files: std::collections::HashMap<String, u64> =
-                std::fs::read_dir(&local_path)
-                    .map_err(|e| format!("Failed to read local directory: {}", e))?
-                    .filter_map(|e| e.ok())
-                    .filter_map(|e| {
-                        let meta = e.metadata().ok()?;
-                        if meta.is_file() {
-                            Some((e.file_name().to_string_lossy().to_string(), meta.len()))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+            // Collect local files. A protected entry in the folder (the home's
+            // `.vault-token`) is not listed or sized, and a remote file under a
+            // protected local name is not reported as only remote: neither was
+            // compared, which `protected_skipped` and `synced` say.
+            let policy = PathPolicy::current();
+            let protected_here =
+                |name: &str| policy.refuses(&std::path::Path::new(&local_path).join(name));
+            let (local_files, protected_local) = list_preview_local_files(&local_path, &policy)?;
 
             // Collect remote files
-            let remote_files: std::collections::HashMap<String, u64> = if has_provider(&state).await
+            let mut remote_files: std::collections::HashMap<String, u64> = if has_provider(&state).await
             {
                 let mut provider = state.provider.lock().await;
                 let provider = match provider.as_mut() {
@@ -893,6 +1002,18 @@ pub async fn dispatch_gui_tool(
                 return Err("Not connected to any server".to_string());
             };
 
+            // A listed name is compared as an entry of `local_path`: an absolute
+            // name or one with a separator would make `join` leave that folder,
+            // and a protected path there could hide the entry. Such a name is
+            // reported as not compared, and the rest of the folder still is.
+            let mut not_compared: Vec<String> = remote_files
+                .keys()
+                .filter(|name| !preview_remote_name_comparable(name))
+                .map(|name| name.chars().flat_map(char::escape_debug).collect())
+                .collect();
+            not_compared.sort();
+            remote_files.retain(|name, _| preview_remote_name_comparable(name));
+
             // Compare
             let mut only_local: Vec<Value> = Vec::new();
             let mut only_remote: Vec<Value> = Vec::new();
@@ -916,8 +1037,17 @@ pub async fn dispatch_gui_tool(
                     }
                 }
             }
+            // Each protected name counts once, whether it was met locally, on
+            // the server, or on both sides.
+            let mut protected_skipped = protected_local;
             for (name, remote_size) in &remote_files {
                 if !local_files.contains_key(name) {
+                    if protected_here(name) {
+                        if !std::path::Path::new(&local_path).join(name).exists() {
+                            protected_skipped += 1;
+                        }
+                        continue;
+                    }
                     only_remote.push(json!({ "name": name, "size": remote_size }));
                 }
             }
@@ -931,7 +1061,13 @@ pub async fn dispatch_gui_tool(
                 "only_local": only_local,
                 "only_remote": only_remote,
                 "size_different": size_diff,
-                "synced": only_local.is_empty() && only_remote.is_empty() && size_diff.is_empty(),
+                "protected_skipped": protected_skipped,
+                "not_compared": not_compared,
+                "synced": protected_skipped == 0
+                    && not_compared.is_empty()
+                    && only_local.is_empty()
+                    && only_remote.is_empty()
+                    && size_diff.is_empty(),
             }))
 
         }
@@ -974,13 +1110,11 @@ pub async fn dispatch_gui_tool(
                 content.replacen(&find, &replace, 1)
             };
 
-            // Write back via temp file + upload
-            let tmp_path = std::env::temp_dir()
-                .join(format!("aeroftp_{}", uuid::Uuid::new_v4()))
-                .to_string_lossy()
-                .to_string();
-            std::fs::write(&tmp_path, &new_content)
-                .map_err(|e| format!("Failed to write temp file: {}", e))?;
+            // Write back via temp file + upload. The file holds the remote
+            // content in clear: it is created private (0600) and new, never
+            // through a name someone else could have placed (deep-scan 90).
+            let staged = stage_private_temp("aeroftp_", new_content.as_bytes())?;
+            let tmp_path = staged_path(&staged)?.to_string();
 
             let allow_non_atomic = args
                 .get("allow_non_atomic")
@@ -1042,10 +1176,215 @@ pub async fn dispatch_gui_tool(
     }
 }
 
+/// A new private temporary file (0600 where the platform has modes, created
+/// with `O_EXCL`) holding `content`. The file is removed when the returned
+/// handle is dropped. #1506 Requested 186.
+/// The path of a staged temporary as the upload APIs take it. A temp folder
+/// whose path is not UTF-8 is reported, instead of handing on an empty or
+/// lossily rewritten path that names some other file.
+pub(crate) fn staged_path(staged: &tempfile::NamedTempFile) -> Result<&str, String> {
+    staged.path().to_str().ok_or_else(|| {
+        format!(
+            "The temporary folder path is not valid UTF-8: {}",
+            staged.path().display()
+        )
+    })
+}
+
+pub(crate) fn stage_private_temp(
+    prefix: &str,
+    content: &[u8],
+) -> Result<tempfile::NamedTempFile, String> {
+    let mut staged = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempfile()
+        .map_err(|e| format!("Failed to create temp file: {}", e))?;
+    std::io::Write::write_all(staged.as_file_mut(), content)
+        .and_then(|()| staged.as_file_mut().sync_all())
+        .map_err(|e| format!("Failed to write temp file: {}", e))?;
+    Ok(staged)
+}
+
 #[cfg(test)]
 mod tests {
     use super::publish_remote_edit;
+
+    /// A staged temporary whose path is not UTF-8 is reported, not handed on as
+    /// an empty or lossy path (review of #1528).
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_staged_temporary_with_a_non_utf8_path_is_reported() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let odd = dir.path().join(std::ffi::OsStr::from_bytes(b"temp-\xff"));
+        std::fs::create_dir(&odd).unwrap();
+        let staged = tempfile::Builder::new()
+            .prefix("aeroftp_upload_")
+            .tempfile_in(&odd)
+            .unwrap();
+        let err = super::staged_path(&staged).unwrap_err();
+        assert!(err.contains("not valid UTF-8"), "{err}");
+    }
     use crate::providers::edit_replace_tests::EditFake;
+
+    /// The GUI's `upload_files`, as it runs: every file goes through
+    /// `upload_one_file`, which pins its source before any remote side effect
+    /// (its parent folders included) and reports every outcome through
+    /// `record_upload_outcome`, which reports a source replaced during the
+    /// upload as an error (tested in `pinned_source`).
+    #[test]
+    fn upload_files_sends_every_file_through_upload_one_file() {
+        let src = include_str!("gui_tools.rs");
+        // The code alone: a comment may name any of the calls checked below.
+        let production: String = src[..src.find("#[cfg(test)]").expect("tests")]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let start = production
+            .find("\"upload_files\" => {")
+            .expect("upload_files");
+        let arm = &production[start..];
+        let arm = &arm[..arm[1..]
+            .find("\n        \"")
+            .map_or(arm.len(), |end| end + 1)];
+        assert_eq!(arm.matches("upload_one_file(").count(), 1);
+        for direct in [".upload(", ".upload_file(", ".mkdir(", "PinnedSource::pin("] {
+            assert!(
+                !arm.contains(direct),
+                "the arm writes only through upload_one_file: {direct}"
+            );
+        }
+        let one = &production[production
+            .find("pub(crate) async fn upload_one_file(")
+            .expect("upload_one_file")..];
+        let one = &one[..one.find("\n}\n").expect("its end")];
+        assert_eq!(one.matches("PinnedSource::pin(").count(), 1);
+        assert_eq!(one.matches("record_upload_outcome(").count(), 1);
+    }
+
+    /// Records what `upload_one_file` asks of the remote side.
+    #[cfg(unix)]
+    #[derive(Default)]
+    struct RecordingRemote {
+        mkdirs: Vec<String>,
+        uploads: Vec<(String, String)>,
+    }
+
+    #[cfg(unix)]
+    #[async_trait::async_trait]
+    impl super::UploadRemote for RecordingRemote {
+        async fn mkdir(&mut self, path: &str) {
+            self.mkdirs.push(path.to_string());
+        }
+        async fn upload(
+            &mut self,
+            local: &str,
+            remote: &str,
+        ) -> Result<Result<(), String>, String> {
+            self.uploads.push((local.to_string(), remote.to_string()));
+            Ok(Ok(()))
+        }
+    }
+
+    /// CodeRabbit on #1526: a link under a protected folder that points to a
+    /// file outside it is refused, and nothing is done on the remote side for
+    /// it, no parent folder and no upload. A plain file next to it goes.
+    #[cfg(unix)]
+    #[test]
+    fn a_refused_source_makes_no_remote_folder_and_no_upload() {
+        // Sync, with its own runtime: the HOME lock is never held across an
+        // await.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        let outside = home.join("outside.txt");
+        std::fs::write(&outside, b"sentinel").unwrap();
+        let link = home.join(".ssh").join("id_ed25519");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+
+        let mut remote = RecordingRemote::default();
+        let (mut uploaded, mut errors) = (Vec::new(), Vec::new());
+        let progress = |_: &str| {};
+        let refused = runtime.block_on(super::upload_one_file(
+            &mut remote,
+            &link.to_string_lossy(),
+            "keys/id_ed25519",
+            "/up",
+            &progress,
+            &mut uploaded,
+            &mut errors,
+        ));
+        let sent = runtime.block_on(super::upload_one_file(
+            &mut remote,
+            &outside.to_string_lossy(),
+            "docs/outside.txt",
+            "/up",
+            &progress,
+            &mut uploaded,
+            &mut errors,
+        ));
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+
+        refused.unwrap();
+        sent.unwrap();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0]["file"], "keys/id_ed25519");
+        assert_eq!(remote.mkdirs, vec!["/up/docs".to_string()]);
+        assert_eq!(remote.uploads.len(), 1);
+        assert_eq!(remote.uploads[0].1, "/up/docs/outside.txt");
+        assert_eq!(uploaded, vec!["docs/outside.txt".to_string()]);
+    }
+
+    /// A listed name that is absolute, holds a separator or is `..` would make
+    /// the comparison leave the local folder.
+    #[test]
+    fn a_sync_preview_compares_only_names_of_one_component() {
+        for name in ["/home/u/.ssh/id", "../up", "a/b", "..", "."] {
+            assert!(!super::preview_remote_name_comparable(name), "{name}");
+        }
+        for name in ["notes.txt", ".hidden", "with space", "caf\u{e9}.txt"] {
+            assert!(super::preview_remote_name_comparable(name), "{name}");
+        }
+        // A backslash separates only on Windows.
+        assert_eq!(
+            super::preview_remote_name_comparable("report\\2026.txt"),
+            !cfg!(windows)
+        );
+    }
+
+    /// `sync_preview` of the home listed the protected files directly in it
+    /// with their sizes; it now leaves them out and counts them.
+    #[test]
+    fn the_sync_preview_listing_leaves_protected_entries_out() {
+        let _env = crate::test_env::lock();
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::write(home.join(".vault-token"), b"SECRETWORD").unwrap();
+        std::fs::create_dir_all(home.join(".ssh")).unwrap();
+        std::fs::write(home.join("notes.txt"), b"x").unwrap();
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        let listed =
+            super::list_preview_local_files(&home.to_string_lossy(), &super::PathPolicy::current());
+        match previous {
+            Some(value) => std::env::set_var("HOME", value),
+            None => std::env::remove_var("HOME"),
+        }
+        let (files, protected) = listed.unwrap();
+        assert_eq!(files.len(), 1, "{files:?}");
+        assert_eq!(files["notes.txt"], 1);
+        assert_eq!(protected, 2);
+    }
 
     /// A link back to the upload root must not repeat files or escape it.
     #[cfg(unix)]
@@ -1512,5 +1851,22 @@ mod tests {
             "{text}"
         );
         assert_eq!(p.files.get("/t.txt").map(Vec::as_slice), Some(&b"old"[..]));
+    }
+}
+
+/// Deep-scan 90, 96: the staged plaintext is private and goes away with
+/// its handle.
+#[cfg(all(test, unix))]
+mod private_temp_tests {
+    #[test]
+    fn a_staged_temporary_is_private_and_removed_on_drop() {
+        use std::os::unix::fs::PermissionsExt;
+        let staged = super::stage_private_temp("aeroftp_test_", b"secret").unwrap();
+        let path = staged.path().to_path_buf();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "mode {mode:o}");
+        assert_eq!(std::fs::read(&path).unwrap(), b"secret");
+        drop(staged);
+        assert!(!path.exists());
     }
 }

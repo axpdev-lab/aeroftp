@@ -161,6 +161,7 @@ async fn connected_provider(port: u16) -> FtpProvider {
         tls_mode: FtpTlsMode::None,
         verify_cert: false,
         initial_path: None,
+        trust_pasv_address: false,
     });
     p.connect()
         .await

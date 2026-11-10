@@ -765,7 +765,10 @@
             },
             "stagedCount": "Valmisteltu: {count}",
             "pendingCount": "Odottaa: {count}",
-            "failedCount": "Epäonnistui: {count}"
+            "failedCount": "Epäonnistui: {count}",
+            "queuedForAnotherServer": "Ei käynnistetty: tämä siirto oli jonossa toiselle palvelimelle tai tilille. Vaihda takaisin sen välilehteen ja yritä uudelleen.",
+            "queuedOverlayChanged": "Ei käynnistynyt: salattu overlay, jonka alla tämä siirto jonotettiin, on lukittu tai ei enää kata tätä kansiota. Avaa se kyseisellä palvelimella ja yritä uudelleen.",
+            "pasteFromAnotherServer": "Ei liimattu: nämä tiedostot leikattiin tai kopioitiin palvelimella, tilillä tai salatulla kerroksella, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja liimaa uudelleen."
         },
         "settings": {
             "title": "Asetukset",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} tuli mukana eri mukautetun OAuth-sovelluksen kanssa kuin mikä tällä laitteella on kyseiselle palveluntarjoajalle. Tallennettu sovellus säilytettiin, joten kirjaudu uudelleen, jos nämä profiilit lakkaavat yhdistämästä.",
             "importTargetChanged": "{names} ei korvattu: tiedosto ohjaa ne toiselle palvelimelle, eikä niiden tallennettuja salasanoja ja tokeneita saa lähettää sinne. Tuo Monista-valinnalla lisätäksesi tiedoston kopion tai poista profiili ensin.",
             "importSharedSecretsFailed": "{names} tuotiin, mutta tiedoston jaettua salaisuutta tai istuntoa ei voitu tallentaa. Kirjaudu näihin profiileihin uudelleen, jos ne eivät yhdistä.",
-            "keystoreDatabasesFailed": "Tuonti valmistui, mutta näitä tietokantoja ei voitu palauttaa, ja ne säilyttävät aiemman sisältönsä: {names}."
+            "keystoreDatabasesFailed": "Tuonti valmistui, mutta näitä tietokantoja ei voitu palauttaa, ja ne säilyttävät aiemman sisältönsä: {names}.",
+            "importSecurityTitle": "Tämän varmuuskopion suojausasetukset",
+            "importSecurityHelp": "Nämä asetukset poistavat suojaustarkistuksen käytöstä. Jokainen tuodaan turvallisessa tilassa, ellet valitse sitä säilyttääksesi sen tiedoston mukaisena.",
+            "importSecurityVerifyCert": "Varmenteen tarkistus poistettu käytöstä",
+            "importSecurityCleartextEndpoint": "Salaamaton S3-päätepiste sallittu",
+            "importSecurityCleartextStorage": "Salaamaton tallennusosoite sallittu",
+            "importSecurityPlainHttp": "Pelkkä HTTP HTTPS:n sijaan",
+            "importSecurityPasvAddress": "Tietoyhteys palvelimen ilmoittamaan osoitteeseen (PASV)",
+            "importSecurityUnknownHostKeys": "Tuntemattomat SSH-isäntäavaimet hyväksytty",
+            "keystoreSecurityReset": "{count} palautetulla palvelimella oli asetuksia, jotka poistavat turvatarkistuksen käytöstä; ne palautettiin turvalliseen asetukseen: {details}.",
+            "keystoreSecurityResetFailed": "{count} palautetun tilin suojausasetuksia ei voitu tarkistaa tai nollata. Ne on lueteltu tässä sen sijaan, että ne jäisivät aktiivisiksi ilman ilmoitusta.",
+            "keystoreSecurityResetQuarantine": "Palautettua tilitietokantaa ei voitu suojata, ja se asetettiin karanteeniin nimellä {path}. Yksikään palautettu tili ei ole aktiivinen. Korjaa levy- tai käyttöoikeusongelma ja palauta sitten varmuuskopio uudelleen. Karanteeniin asetettu tiedosto on edelleen käytettävissä palauttamista varten."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Luonti epäonnistui",
             "unknownServer": "Tuntematon",
             "scpModeTitle": "Yhdistetty SCP:llä",
-            "scpModeBody": "Palvelimella {host} ei ole SFTP:tä, joten AeroFTP käyttää SCP:tä samassa yhteydessä."
+            "scpModeBody": "Palvelimella {host} ei ole SFTP:tä, joten AeroFTP käyttää SCP:tä samassa yhteydessä.",
+            "saveOnAnotherServer": "Ei tallennettu: tämä tiedosto avattiin palvelimelta, tililtä tai salatulta kerrokselta, joka ei ole nyt aktiivinen. Vaihda takaisin sen välilehteen ja tallenna uudelleen.",
+            "openedOnAnotherServer": "Ei avattu: palvelin vaihtui tiedoston lukemisen aikana. Avaa se uudelleen.",
+            "remoteTargetChanged": "Mitään ei muutettu: palvelin, tili tai salattu kerros on muuttunut toiminnon alun jälkeen tai yhdistää vielä uudelleen. Yritä uudelleen nykyisellä yhteydellä."
         },
         "about": {
             "tagline": "Enemmän kuin FTP. Täydellinen kehittäjän työkalupakki.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Salli SCP-varatoiminto",
             "allowScpFallbackHint": "Jos palvelimella ei ole SFTP:tä, jatketaan SCP:llä samassa yhteydessä, kuten WinSCP tekee.",
             "discoverScp": "Tiedostojen kopiointi SSH:n kautta palvelimille, joissa ei ole SFTP:tä",
-            "discoverTigris": "Tigris: maailmanlaajuisesti hajautettu S3-yhteensopiva tallennustila, ei lähtevän liikenteen maksuja (5 GB ilmaiseksi)"
+            "discoverTigris": "Tigris: maailmanlaajuisesti hajautettu S3-yhteensopiva tallennustila, ei lähtevän liikenteen maksuja (5 GB ilmaiseksi)",
+            "trustPasvAddress": "Käytä palvelimen antamaa passiivista osoitetta",
+            "trustPasvAddressHelp": "Pois: tietoyhteydet menevät isäntään, johon yhdistit, kuten curl tekee. Ota käyttöön vain palvelimelle, joka lähettää dataa toisesta osoitteesta.",
+            "discoverFastly": "Fastly Object Storage: S3-yhteensopiva tallennustila 12 alueella (5 GB ilmaiseksi, kortti vaaditaan)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",
@@ -3068,7 +3088,8 @@
                 "diff": "Vertaa alkuperäiseen",
                 "diffNoFile": "Ei tiedostoa auki vertailua varten",
                 "commandBlocked": "Komento estetty: mahdollisesti tuhoava",
-                "confirmRun": "Vahvista suoritus: {command}"
+                "confirmRun": "Vahvista suoritus: {command}",
+                "reopenEditor": "Näytä editori tämä tiedosto avattuna ja yritä uudelleen."
             },
             "thinkingBlock": {
                 "thinking": "Ajattelee...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Salasanasuojattu",
             "expirationHoursOne": "{count} tunti",
             "expirationHoursMany": "{count} tuntia",
-            "expirationDaysMany": "{count} päivää"
+            "expirationDaysMany": "{count} päivää",
+            "expiresSoonerThanChosen": "lyhyempi kuin valittu"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Tallentamattomia muutoksia",
             "dirtyBody": "Sinulla on tallentamattomia muutoksia. Hylätäänkö ja suljetaan?",
             "keepEditing": "Jatka muokkausta",
-            "discardAndClose": "Hylkää ja sulje"
+            "discardAndClose": "Hylkää ja sulje",
+            "busyBodyKeepsRunning": "Toiminto on yhä käynnissä. Se jatkuu, kun tämä ikkuna on suljettu, eikä sen tulosta näytetä täällä. Suljetaanko silti?",
+            "closeAnyway": "Sulje silti"
         },
         "modalView": {
             "listView": "Luettelonäkymä",

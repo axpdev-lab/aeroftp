@@ -30,7 +30,7 @@ const MAX_PENDING: usize = 256;
 
 static PENDING: Mutex<Vec<OpenRequest>> = Mutex::new(Vec::new());
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub enum OpenKind {
     /// `.aerovault` or `.aerozip`: the vault panel.
@@ -42,20 +42,39 @@ pub enum OpenKind {
     /// A compressed archive the archive browser reads.
     Archive,
     /// Any other file, or a folder: AeroFile.
+    #[default]
     Local,
+    /// A remote server connection requested via URL (sftp://, scp://, ftp://, etc.).
+    RemoteUrl,
+    /// A saved profile requested by name via `--profile <NAME>`.
+    Profile,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct OpenRequest {
     pub kind: OpenKind,
-    /// Absolute path of the file or folder.
+    /// Absolute path of the file or folder (or synthetic URL/profile URI).
     pub path: String,
     /// The folder AeroFile shows: the parent of a file, a folder itself.
     pub folder: String,
     /// The entry to select in `folder`; empty for a folder.
     pub name: String,
     pub is_dir: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub server: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub initial_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile_name: Option<String>,
 }
 
 /// The surface for a file name. Matching is case-insensitive, and `.aeroftp`
@@ -105,6 +124,170 @@ fn without_verbatim_prefix(path: &Path) -> PathBuf {
     path.to_path_buf()
 }
 
+/// Schemes recognized as remote server connection requests.
+const REMOTE_SCHEMES: &[&str] = &[
+    "sftp://",
+    "scp://",
+    "ftp://",
+    "ftps://",
+    "ftpes://",
+    "webdav://",
+    "webdavs://",
+    "ssh://",
+];
+
+/// Whether `raw` starts with a supported remote URL scheme.
+pub fn is_remote_url(raw: &str) -> bool {
+    let lower = raw.to_ascii_lowercase();
+    REMOTE_SCHEMES
+        .iter()
+        .any(|scheme| lower.starts_with(scheme))
+}
+
+/// Redact credentials in a URL so it is safe to log or serialize.
+pub fn redact_url_for_log(raw: &str) -> String {
+    if let Ok(mut u) = url::Url::parse(raw) {
+        if u.password().is_some() {
+            let _ = u.set_password(Some("***"));
+        }
+        u.to_string()
+    } else {
+        if let Some(scheme_end) = raw.find("://") {
+            let after_scheme = &raw[scheme_end + 3..];
+            if let Some(at_pos) = after_scheme.find('@') {
+                let user_info = &after_scheme[..at_pos];
+                if let Some(colon_pos) = user_info.find(':') {
+                    let user = &user_info[..colon_pos];
+                    let rest = &after_scheme[at_pos..];
+                    return format!("{}{user}:***{rest}", &raw[..scheme_end + 3]);
+                }
+            }
+        }
+        raw.to_string()
+    }
+}
+
+/// Look up a password in environment variables for the given protocol.
+fn resolve_env_password(protocol: &str) -> Option<String> {
+    let specific_var = match protocol {
+        "sftp" | "scp" => "SFTP_PASSWORD",
+        "ftp" | "ftps" => "FTP_PASSWORD",
+        "webdav" => "WEBDAV_PASSWORD",
+        _ => "",
+    };
+    if !specific_var.is_empty() {
+        if let Ok(val) = std::env::var(specific_var) {
+            if !val.is_empty() {
+                return Some(val);
+            }
+        }
+    }
+    if let Ok(val) = std::env::var("AEROFTP_PASSWORD") {
+        if !val.is_empty() {
+            return Some(val);
+        }
+    }
+    None
+}
+
+/// Parse a remote connection URL into an OpenRequest.
+pub fn parse_remote_url(raw: &str) -> Option<OpenRequest> {
+    if !is_remote_url(raw) {
+        return None;
+    }
+    let u = url::Url::parse(raw).ok()?;
+    let scheme = u.scheme().to_ascii_lowercase();
+    let protocol = match scheme.as_str() {
+        "sftp" | "ssh" => "sftp",
+        "scp" => "scp",
+        "ftp" => "ftp",
+        "ftps" | "ftpes" => "ftps",
+        "webdav" | "webdavs" => "webdav",
+        _ => return None,
+    };
+    let host = u.host_str()?;
+    if host.is_empty() {
+        return None;
+    }
+    let server = host.to_string();
+    let port = u.port().unwrap_or(match scheme.as_str() {
+        "sftp" | "scp" | "ssh" => 22,
+        "ftp" => 21,
+        "ftps" | "ftpes" => 990,
+        "webdavs" => 443,
+        "webdav" => 80,
+        _ => 22,
+    });
+
+    let raw_user = u.username();
+    let user_decoded = urlencoding::decode(raw_user)
+        .map(|s| s.into_owned())
+        .unwrap_or_else(|_| raw_user.to_string());
+    let username = if !user_decoded.is_empty() {
+        Some(user_decoded)
+    } else if protocol == "ftp" || protocol == "ftps" {
+        Some("anonymous".to_string())
+    } else {
+        None
+    };
+
+    let password = if let Some(raw_pass) = u.password() {
+        let pass_decoded = urlencoding::decode(raw_pass)
+            .map(|s| s.into_owned())
+            .unwrap_or_else(|_| raw_pass.to_string());
+        if !pass_decoded.is_empty() {
+            Some(pass_decoded)
+        } else {
+            resolve_env_password(protocol)
+        }
+    } else {
+        resolve_env_password(protocol)
+    };
+
+    let raw_path = u.path();
+    let decoded_path = urlencoding::decode(raw_path)
+        .map(|s| s.into_owned())
+        .unwrap_or_else(|_| raw_path.to_string());
+
+    let (initial_path, folder, name, is_dir) = if decoded_path.is_empty() || decoded_path == "/" {
+        (Some("/".to_string()), "/".to_string(), String::new(), true)
+    } else if decoded_path.ends_with('/') {
+        (
+            Some(decoded_path.clone()),
+            decoded_path,
+            String::new(),
+            true,
+        )
+    } else {
+        let path_buf = Path::new(&decoded_path);
+        let file_name = path_buf
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let parent = path_buf
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .filter(|p| !p.is_empty())
+            .unwrap_or_else(|| "/".to_string());
+        (Some(parent.clone()), parent, file_name, false)
+    };
+
+    Some(OpenRequest {
+        kind: OpenKind::RemoteUrl,
+        path: redact_url_for_log(raw),
+        folder,
+        name,
+        is_dir,
+        protocol: Some(protocol.to_string()),
+        server: Some(server),
+        port: Some(port),
+        username,
+        password,
+        initial_path,
+        profile_name: None,
+    })
+}
+
 /// The local path an argument names. The Linux packages launch
 /// `/usr/bin/aeroftp %U` (the same entry handles `ftp://` links), so a file
 /// manager passes `file:///home/me/a%20b.zip` rather than a path: since the
@@ -134,7 +317,13 @@ fn local_path(raw: &str, cwd: Option<&Path>) -> Option<PathBuf> {
 /// folder when `None`). `None` for a flag, a URL, or anything that is not an
 /// existing regular file or folder once symlinks are resolved.
 pub fn classify(raw: &str, cwd: Option<&Path>) -> Option<OpenRequest> {
-    if raw.is_empty() || raw.starts_with("--") {
+    if raw.is_empty() {
+        return None;
+    }
+    if is_remote_url(raw) {
+        return parse_remote_url(raw);
+    }
+    if raw.starts_with("--") {
         return None;
     }
     let canonical = without_verbatim_prefix(&std::fs::canonicalize(local_path(raw, cwd)?).ok()?);
@@ -147,6 +336,7 @@ pub fn classify(raw: &str, cwd: Option<&Path>) -> Option<OpenRequest> {
             path,
             name: String::new(),
             is_dir: true,
+            ..Default::default()
         });
     }
     if !meta.is_file() {
@@ -160,6 +350,7 @@ pub fn classify(raw: &str, cwd: Option<&Path>) -> Option<OpenRequest> {
         folder,
         name,
         is_dir: false,
+        ..Default::default()
     })
 }
 
@@ -180,6 +371,35 @@ pub fn from_argv<S: AsRef<str>>(argv: &[S], cwd: Option<&Path>) -> Vec<OpenReque
     let mut requests = Vec::new();
     let mut args = argv.iter().skip(1).map(AsRef::as_ref);
     while let Some(arg) = args.next() {
+        if arg == "--profile" {
+            if let Some(name) = args.next() {
+                if !name.is_empty() {
+                    requests.push(OpenRequest {
+                        kind: OpenKind::Profile,
+                        path: format!("profile://{name}"),
+                        folder: String::new(),
+                        name: name.to_string(),
+                        is_dir: false,
+                        profile_name: Some(name.to_string()),
+                        ..Default::default()
+                    });
+                }
+            }
+            continue;
+        } else if let Some(name) = arg.strip_prefix("--profile=") {
+            if !name.is_empty() {
+                requests.push(OpenRequest {
+                    kind: OpenKind::Profile,
+                    path: format!("profile://{name}"),
+                    folder: String::new(),
+                    name: name.to_string(),
+                    is_dir: false,
+                    profile_name: Some(name.to_string()),
+                    ..Default::default()
+                });
+            }
+            continue;
+        }
         if INTERNAL_OPTIONS_WITH_VALUE.contains(&arg) {
             args.next();
             continue;
@@ -206,11 +426,18 @@ pub fn deliver(app: &AppHandle, requests: Vec<OpenRequest>) {
         return;
     }
     for request in &requests {
-        // The entry name only, a folder's own name for a folder: no full path.
-        let shown = Path::new(&request.path)
-            .file_name()
-            .map(|name| name.to_string_lossy().to_string())
-            .unwrap_or_default();
+        let shown = match request.kind {
+            OpenKind::RemoteUrl => redact_url_for_log(&request.path),
+            OpenKind::Profile => request
+                .profile_name
+                .as_deref()
+                .unwrap_or(&request.name)
+                .to_string(),
+            _ => Path::new(&request.path)
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default(),
+        };
         log::info!("OS open request: {:?} ({shown})", request.kind);
     }
     enqueue(
@@ -300,7 +527,7 @@ mod tests {
         let argv = [
             "aeroftp",
             "--autostart",
-            "sftp://host/path",
+            "gopher://host/path",
             missing.to_str().unwrap(),
         ];
         assert!(from_argv(&argv, None).is_empty());
@@ -395,7 +622,11 @@ mod tests {
             local_path("sftp://host/a.zip", None),
             Some(PathBuf::from("sftp://host/a.zip"))
         );
-        assert_eq!(classify("sftp://host/a.zip", None), None);
+        assert_eq!(classify("gopher://host/a.zip", None), None);
+        assert_eq!(
+            classify("sftp://host/a.zip", None).unwrap().kind,
+            OpenKind::RemoteUrl
+        );
         // A multi-byte start must not split a character while probing.
         assert_eq!(classify("èèèè.png", None), None);
     }
@@ -435,6 +666,7 @@ mod tests {
             folder: "/q".into(),
             name: n.to_string(),
             is_dir: false,
+            ..Default::default()
         };
         {
             let mut pending = PENDING.lock().unwrap();
@@ -457,6 +689,7 @@ mod tests {
             folder: "/q".into(),
             name: n.to_string(),
             is_dir: false,
+            ..Default::default()
         };
         // A full queue, then a selection larger than the bound.
         let mut pending: Vec<_> = (0..MAX_PENDING).map(entry).collect();
@@ -470,5 +703,150 @@ mod tests {
         assert_eq!(pending.len(), MAX_PENDING);
         assert_eq!(pending[..4], [entry(6), entry(7), entry(8), entry(9)]);
         assert_eq!(pending[4..], batch[..]);
+    }
+
+    #[test]
+    fn remote_url_with_credentials_and_port() {
+        let req = parse_remote_url("sftp://bob:secret@example.com:2222/var/www/file.txt").unwrap();
+        assert_eq!(req.kind, OpenKind::RemoteUrl);
+        assert_eq!(req.protocol.as_deref(), Some("sftp"));
+        assert_eq!(req.server.as_deref(), Some("example.com"));
+        assert_eq!(req.port, Some(2222));
+        assert_eq!(req.username.as_deref(), Some("bob"));
+        assert_eq!(req.password.as_deref(), Some("secret"));
+        assert_eq!(req.initial_path.as_deref(), Some("/var/www"));
+        assert_eq!(req.folder, "/var/www");
+        assert_eq!(req.name, "file.txt");
+        assert!(!req.is_dir);
+        // Ensure path is redacted
+        assert_eq!(req.path, "sftp://bob:***@example.com:2222/var/www/file.txt");
+    }
+
+    #[test]
+    fn remote_url_trailing_slash_folder() {
+        let req = parse_remote_url("sftp://bob:secret@example.com:2222/var/www/").unwrap();
+        assert_eq!(req.kind, OpenKind::RemoteUrl);
+        assert_eq!(req.initial_path.as_deref(), Some("/var/www/"));
+        assert_eq!(req.folder, "/var/www/");
+        assert_eq!(req.name, "");
+        assert!(req.is_dir);
+    }
+
+    #[test]
+    fn remote_url_root_path_defaulting() {
+        let req = parse_remote_url("ftp://ftp.example.com").unwrap();
+        assert_eq!(req.protocol.as_deref(), Some("ftp"));
+        assert_eq!(req.server.as_deref(), Some("ftp.example.com"));
+        assert_eq!(req.port, Some(21));
+        assert_eq!(req.username.as_deref(), Some("anonymous"));
+        assert_eq!(req.initial_path.as_deref(), Some("/"));
+        assert_eq!(req.folder, "/");
+        assert_eq!(req.name, "");
+        assert!(req.is_dir);
+    }
+
+    #[test]
+    fn remote_url_schemes_and_default_ports() {
+        let cases = [
+            ("sftp://example.com/", "sftp", 22),
+            ("scp://example.com/", "scp", 22),
+            ("ssh://example.com/", "sftp", 22),
+            ("ftp://example.com/", "ftp", 21),
+            ("ftps://example.com/", "ftps", 990),
+            ("ftpes://example.com/", "ftps", 990),
+            ("webdav://example.com/", "webdav", 80),
+            ("webdavs://example.com/", "webdav", 443),
+        ];
+        for (raw, expected_proto, expected_port) in cases {
+            let req = parse_remote_url(raw).unwrap();
+            assert_eq!(req.protocol.as_deref(), Some(expected_proto), "{raw}");
+            assert_eq!(req.port, Some(expected_port), "{raw}");
+        }
+    }
+
+    #[test]
+    fn remote_url_percent_encoding_decoding() {
+        let req = parse_remote_url(
+            "sftp://user%40work.com:p%40ss%23123@host:22/my%20folder/file%201.txt",
+        )
+        .unwrap();
+        assert_eq!(req.username.as_deref(), Some("user@work.com"));
+        assert_eq!(req.password.as_deref(), Some("p@ss#123"));
+        assert_eq!(req.folder, "/my folder");
+        assert_eq!(req.name, "file 1.txt");
+        assert_eq!(req.initial_path.as_deref(), Some("/my folder"));
+    }
+
+    #[test]
+    fn remote_url_env_var_password_fallback() {
+        unsafe {
+            std::env::set_var("SFTP_PASSWORD", "env_sftp_secret");
+        }
+        let req = parse_remote_url("sftp://alice@host/").unwrap();
+        assert_eq!(req.password.as_deref(), Some("env_sftp_secret"));
+        unsafe {
+            std::env::remove_var("SFTP_PASSWORD");
+            std::env::set_var("AEROFTP_PASSWORD", "env_generic_secret");
+        }
+        let req2 = parse_remote_url("sftp://alice@host/").unwrap();
+        assert_eq!(req2.password.as_deref(), Some("env_generic_secret"));
+        unsafe {
+            std::env::remove_var("AEROFTP_PASSWORD");
+        }
+    }
+
+    #[test]
+    fn profile_flag_parsing() {
+        let argv1 = ["aeroftp", "--profile", "Production NAS"];
+        let reqs1 = from_argv(&argv1, None);
+        assert_eq!(reqs1.len(), 1);
+        assert_eq!(reqs1[0].kind, OpenKind::Profile);
+        assert_eq!(reqs1[0].profile_name.as_deref(), Some("Production NAS"));
+        assert_eq!(reqs1[0].name, "Production NAS");
+        assert_eq!(reqs1[0].path, "profile://Production NAS");
+
+        let argv2 = ["aeroftp", "--profile=Home Lab"];
+        let reqs2 = from_argv(&argv2, None);
+        assert_eq!(reqs2.len(), 1);
+        assert_eq!(reqs2[0].kind, OpenKind::Profile);
+        assert_eq!(reqs2[0].profile_name.as_deref(), Some("Home Lab"));
+
+        // Empty profile name should be ignored
+        let argv3 = ["aeroftp", "--profile", "", "--profile="];
+        let reqs3 = from_argv(&argv3, None);
+        assert!(reqs3.is_empty());
+    }
+
+    #[test]
+    fn interleaved_profile_and_remote_url() {
+        let argv = ["aeroftp", "--profile", "Dev Box", "sftp://bob@host/data/"];
+        let reqs = from_argv(&argv, None);
+        assert_eq!(reqs.len(), 2);
+        assert_eq!(reqs[0].kind, OpenKind::Profile);
+        assert_eq!(reqs[0].profile_name.as_deref(), Some("Dev Box"));
+        assert_eq!(reqs[1].kind, OpenKind::RemoteUrl);
+        assert_eq!(reqs[1].server.as_deref(), Some("host"));
+    }
+
+    #[test]
+    fn redact_url_for_log_masks_passwords() {
+        assert_eq!(
+            redact_url_for_log("sftp://admin:VerySecret123@files.corp.internal:2222/var/log"),
+            "sftp://admin:***@files.corp.internal:2222/var/log"
+        );
+        assert_eq!(
+            redact_url_for_log("ftp://guest@example.com/pub"),
+            "ftp://guest@example.com/pub"
+        );
+        assert_eq!(redact_url_for_log("not-a-url"), "not-a-url");
+    }
+
+    #[test]
+    fn malformed_and_unsupported_urls_return_none() {
+        assert_eq!(parse_remote_url("sftp://"), None);
+        assert_eq!(parse_remote_url("sftp:///path"), None);
+        assert_eq!(parse_remote_url("gopher://host/path"), None);
+        assert_eq!(parse_remote_url("https://example.com/"), None);
+        assert_eq!(classify("gopher://host/path", None), None);
     }
 }

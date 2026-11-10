@@ -106,3 +106,44 @@ it('keeps the running scan counters when switching between Compare and Plan', as
     expect(host.textContent).toContain('12');
     expect(host.textContent).not.toContain('aerosync.planUnavailable');
 });
+
+// Discussion #1527: a click outside AeroSync closed it during a compare scan
+// (the scan was cancelled silently) and after one (the comparison was lost).
+const backdrop = () => host.querySelector('[data-gui-owned="aerosync"]') as HTMLElement;
+const clickBackdrop = () => React.act(async () => { backdrop().dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+const button = (label: string) => Array.from(host.querySelectorAll('button')).find(b => b.textContent === label || b.getAttribute('aria-label') === label)!;
+const withContext = (context: Partial<AeroSyncDialogProps['context']>, extra: Partial<AeroSyncDialogProps> = {}) => {
+    const base = props();
+    return { ...base, ...extra, context: { ...base.context, ...context } } as AeroSyncDialogProps;
+};
+
+it('keeps a compare scan running when the backdrop is clicked, and stops it only through the X and its confirm', async () => {
+    const onClose = vi.fn();
+    const onStopCompare = vi.fn();
+    await React.act(async () => root.render(React.createElement(AeroSyncDialog, withContext({ compareLoading: true }, { onClose, onStopCompare }))));
+    await clickBackdrop();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onStopCompare).not.toHaveBeenCalled();
+    await React.act(async () => button('common.close').click());
+    expect(onClose).not.toHaveBeenCalled();
+    await React.act(async () => button('modalGuard.stopAndClose').click());
+    expect(onStopCompare).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('keeps a finished comparison when the backdrop is clicked, and closes from the X at once', async () => {
+    const onClose = vi.fn();
+    const compareResult = { differences: [], identical: 0 } as unknown as NonNullable<AeroSyncDialogProps['context']['compareResult']>;
+    await React.act(async () => root.render(React.createElement(AeroSyncDialog, withContext({ compareLoading: false, compareResult }, { onClose }))));
+    await clickBackdrop();
+    expect(onClose).not.toHaveBeenCalled();
+    await React.act(async () => button('common.close').click());
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('closes from the backdrop when it holds no comparison and runs nothing', async () => {
+    const onClose = vi.fn();
+    await React.act(async () => root.render(React.createElement(AeroSyncDialog, withContext({ compareLoading: false, compareResult: null, compareIdle: true }, { onClose }))));
+    await clickBackdrop();
+    expect(onClose).toHaveBeenCalledTimes(1);
+});

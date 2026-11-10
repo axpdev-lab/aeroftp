@@ -765,7 +765,10 @@
             },
             "stagedCount": "Preparats: {count}",
             "pendingCount": "Pendents: {count}",
-            "failedCount": "Fallits: {count}"
+            "failedCount": "Fallits: {count}",
+            "queuedForAnotherServer": "No iniciat: aquesta transferència estava a la cua per a un altre servidor o compte. Torna a la seva pestanya i reintenta.",
+            "queuedOverlayChanged": "No s'ha iniciat: l'overlay xifrat sota el qual es va posar en cua aquesta transferència està bloquejat o ja no cobreix aquesta carpeta. Desbloqueja'l en aquell servidor i torna-ho a provar.",
+            "pasteFromAnotherServer": "No enganxat: aquests fitxers es van retallar o copiar en un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i enganxa de nou."
         },
         "settings": {
             "title": "Configuració",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} han arribat amb una aplicació OAuth personalitzada diferent de la que aquest dispositiu té per a aquest proveïdor. S'ha mantingut l'aplicació emmagatzemada: torni a iniciar la sessió si aquests perfils deixen de connectar-se.",
             "importTargetChanged": "{names} no s'han sobreescrit: el fitxer els fa apuntar a un altre servidor, i les contrasenyes i els tokens desats no hi han d'anar. Importi amb Duplica per afegir la còpia del fitxer, o elimini primer el perfil.",
             "importSharedSecretsFailed": "S'ha importat {names}, però no s'ha pogut desar un secret compartit o una sessió del fitxer. Torni a iniciar la sessió en aquests perfils si no es connecten.",
-            "keystoreDatabasesFailed": "La importació ha acabat, però no s'han pogut restaurar aquestes bases de dades i conserven el que contenien: {names}."
+            "keystoreDatabasesFailed": "La importació ha acabat, però no s'han pogut restaurar aquestes bases de dades i conserven el que contenien: {names}.",
+            "importSecurityTitle": "Configuració de seguretat d'aquesta còpia",
+            "importSecurityHelp": "Aquestes opcions desactiven una comprovació de seguretat. Cadascuna s'importa en estat segur, tret que la marqueu per mantenir-la tal com és al fitxer.",
+            "importSecurityVerifyCert": "Comprovació del certificat desactivada",
+            "importSecurityCleartextEndpoint": "Punt final S3 sense xifrar permès",
+            "importSecurityCleartextStorage": "Adreça d'emmagatzematge sense xifrar permesa",
+            "importSecurityPlainHttp": "HTTP simple en lloc d'HTTPS",
+            "importSecurityPasvAddress": "Connexió de dades a l'adreça que indica el servidor (PASV)",
+            "importSecurityUnknownHostKeys": "Claus d'amfitrió SSH desconegudes acceptades",
+            "keystoreSecurityReset": "{count} servidors restaurats tenien opcions que desactiven una comprovació de seguretat; s'han tornat a la configuració segura: {details}.",
+            "keystoreSecurityResetFailed": "No s'han pogut comprovar ni restablir els paràmetres de seguretat de {count} comptes restaurats. Es mostren aquí en lloc de deixar-los actius sense avís.",
+            "keystoreSecurityResetQuarantine": "No s'ha pogut protegir la base de dades de comptes restaurada i s'ha posat en quarantena com a {path}. No hi ha cap compte restaurat actiu. Corregeix el problema del disc o dels permisos i torna a restaurar la còpia de seguretat. El fitxer en quarantena continua disponible per a la recuperació."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Ha fallat la creació",
             "unknownServer": "Desconegut",
             "scpModeTitle": "Connectat amb SCP",
-            "scpModeBody": "{host} no té SFTP, així que AeroFTP fa servir SCP a la mateixa connexió."
+            "scpModeBody": "{host} no té SFTP, així que AeroFTP fa servir SCP a la mateixa connexió.",
+            "saveOnAnotherServer": "No desat: aquest fitxer es va obrir des d'un servidor, compte o superposició xifrada que ara no és actiu. Torna a la seva pestanya i desa de nou.",
+            "openedOnAnotherServer": "No s'ha obert: el servidor ha canviat mentre es llegia el fitxer. Torna a obrir-lo.",
+            "remoteTargetChanged": "No s'ha canviat res: el servidor, el compte o la capa xifrada ha canviat des que l'acció va començar, o encara s'està reconnectant. Torna-ho a provar amb la connexió actual."
         },
         "about": {
             "tagline": "Més que FTP. Un conjunt complet d'eines per a desenvolupadors.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Permet recórrer a SCP",
             "allowScpFallbackHint": "Si el servidor no té SFTP, continua per SCP a la mateixa connexió, com fa WinSCP.",
             "discoverScp": "Còpia de fitxers per SSH per a servidors sense SFTP",
-            "discoverTigris": "Tigris: emmagatzematge distribuït globalment compatible amb S3, sense càrrecs per sortida de dades (5 GB gratis)"
+            "discoverTigris": "Tigris: emmagatzematge distribuït globalment compatible amb S3, sense càrrecs per sortida de dades (5 GB gratis)",
+            "trustPasvAddress": "Usa l'adreça passiva indicada pel servidor",
+            "trustPasvAddressHelp": "Desactivat: les connexions de dades van al host al qual t'has connectat, com fa curl. Activa'l només per a un servidor que envia les dades des d'una altra adreça.",
+            "discoverFastly": "Fastly Object Storage: emmagatzematge compatible amb S3 en 12 regions (5 GB gratis, cal targeta)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",
@@ -3068,7 +3088,8 @@
                 "diff": "Comparar amb l'original",
                 "diffNoFile": "No hi ha cap fitxer obert per comparar",
                 "commandBlocked": "Ordre bloquejada: potencialment destructiva",
-                "confirmRun": "Confirmi l'execució: {command}"
+                "confirmRun": "Confirmi l'execució: {command}",
+                "reopenEditor": "Mostra l'editor amb aquest fitxer obert i torna-ho a provar."
             },
             "thinkingBlock": {
                 "thinking": "Pensant...",
@@ -5661,7 +5682,8 @@
             "managePasswordProtected": "Protegit amb contrasenya",
             "expirationHoursOne": "{count} hora",
             "expirationHoursMany": "{count} hores",
-            "expirationDaysMany": "{count} dies"
+            "expirationDaysMany": "{count} dies",
+            "expiresSoonerThanChosen": "més curt que l'escollit"
         },
         "introHub": {
             "tab": {
@@ -6687,7 +6709,9 @@
             "dirtyTitle": "Canvis sense desar",
             "dirtyBody": "Té canvis sense desar. Descartar-los i tancar?",
             "keepEditing": "Continua editant",
-            "discardAndClose": "Descarta i tanca"
+            "discardAndClose": "Descarta i tanca",
+            "busyBodyKeepsRunning": "Hi ha una operació en curs. Continuarà després de tancar aquesta finestra i el resultat no es mostrarà aquí. Tancar igualment?",
+            "closeAnyway": "Tanca igualment"
         },
         "modalView": {
             "listView": "Vista de llista",

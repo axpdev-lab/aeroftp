@@ -765,7 +765,10 @@
             },
             "stagedCount": "Klargjort: {count}",
             "pendingCount": "Ventende: {count}",
-            "failedCount": "Mislykket: {count}"
+            "failedCount": "Mislykket: {count}",
+            "queuedForAnotherServer": "Ikke startet: denne overføringen sto i kø for en annen server eller konto. Bytt tilbake til fanen og prøv igjen.",
+            "queuedOverlayChanged": "Ikke startet: det krypterte overlayet som denne overføringen ble satt i kø under, er låst eller dekker ikke lenger denne mappen. Lås det opp på den serveren, og prøv igjen.",
+            "pasteFromAnotherServer": "Ikke limt inn: disse filene ble klippet ut eller kopiert på en server, konto eller kryptert overlegg som ikke er aktivt nå. Bytt tilbake til fanen og lim inn på nytt."
         },
         "settings": {
             "title": "Innstillinger",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} kom med en annen tilpasset OAuth-app enn den denne enheten har for den leverandøren. Den lagrede appen ble beholdt, så logg inn på nytt hvis disse profilene slutter å koble til.",
             "importTargetChanged": "{names} ble ikke overskrevet: filen peker dem til en annen server, og de lagrede passordene og tokenene deres må ikke sendes dit. Importer med Dupliser for å legge til kopien fra filen, eller slett profilen først.",
             "importSharedSecretsFailed": "{names} ble importert, men en delt hemmelighet eller økt fra filen kunne ikke lagres. Logg inn på disse profilene på nytt hvis de ikke kobler til.",
-            "keystoreDatabasesFailed": "Importen er ferdig, men disse databasene kunne ikke gjenopprettes og beholder innholdet sitt: {names}."
+            "keystoreDatabasesFailed": "Importen er ferdig, men disse databasene kunne ikke gjenopprettes og beholder innholdet sitt: {names}.",
+            "importSecurityTitle": "Sikkerhetsinnstillinger i denne sikkerhetskopien",
+            "importSecurityHelp": "Disse valgene slår av en sikkerhetskontroll. Hvert valg importeres i sin trygge tilstand, med mindre du krysser det av for å beholde det slik det er i filen.",
+            "importSecurityVerifyCert": "Sertifikatkontroll slått av",
+            "importSecurityCleartextEndpoint": "Ukryptert S3-endepunkt tillatt",
+            "importSecurityCleartextStorage": "Ukryptert lagringsadresse tillatt",
+            "importSecurityPlainHttp": "Vanlig HTTP i stedet for HTTPS",
+            "importSecurityPasvAddress": "Datatilkobling til adressen serveren oppgir (PASV)",
+            "importSecurityUnknownHostKeys": "Ukjente SSH-vertsnøkler godtatt",
+            "keystoreSecurityReset": "{count} gjenopprettede servere hadde alternativer som slår av en sikkerhetskontroll; de ble satt tilbake til den sikre innstillingen: {details}.",
+            "keystoreSecurityResetFailed": "Sikkerhetsinnstillingene for {count} gjenopprettede kontoer kunne ikke kontrolleres eller tilbakestilles. De er oppført her i stedet for å forbli aktive uten varsel.",
+            "keystoreSecurityResetQuarantine": "Den gjenopprettede kontodatabasen kunne ikke sikres og ble satt i karantene som {path}. Ingen gjenopprettet konto er aktiv. Løs problemet med disken eller tillatelsene, og gjenopprett deretter sikkerhetskopien på nytt. Filen i karantene er fortsatt tilgjengelig for gjenoppretting."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Oppretting mislyktes",
             "unknownServer": "Ukjent",
             "scpModeTitle": "Koblet til med SCP",
-            "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruker SCP på samme tilkobling."
+            "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruker SCP på samme tilkobling.",
+            "saveOnAnotherServer": "Ikke lagret: denne filen ble åpnet fra en server, konto eller kryptert overlegg som ikke er aktivt nå. Bytt tilbake til fanen og lagre på nytt.",
+            "openedOnAnotherServer": "Ikke åpnet: serveren ble endret mens filen ble lest. Åpne den på nytt.",
+            "remoteTargetChanged": "Ingenting ble endret: serveren, kontoen eller det krypterte laget er endret siden handlingen startet, eller kobler fortsatt til på nytt. Prøv igjen på gjeldende tilkobling."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Tillat SCP som reserve",
             "allowScpFallbackHint": "Hvis serveren ikke har SFTP, fortsetter tilkoblingen via SCP, slik WinSCP gjør.",
             "discoverScp": "Filkopiering via SSH for servere uten SFTP",
-            "discoverTigris": "Tigris: globalt distribuert S3-kompatibel lagring, ingen gebyrer for utgående data (5 GB gratis)"
+            "discoverTigris": "Tigris: globalt distribuert S3-kompatibel lagring, ingen gebyrer for utgående data (5 GB gratis)",
+            "trustPasvAddress": "Bruk den passive adressen serveren oppgir",
+            "trustPasvAddressHelp": "Av: dataforbindelser går til verten du koblet til, slik curl gjør. Slå på bare for en server som sender data fra en annen adresse.",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort kreves)"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",
@@ -3068,7 +3088,8 @@
                 "diff": "Diff med original",
                 "diffNoFile": "Ingen fil åpen for diff",
                 "commandBlocked": "Kommando blokkert: potensielt destruktiv",
-                "confirmRun": "Bekreft kjøring: {command}"
+                "confirmRun": "Bekreft kjøring: {command}",
+                "reopenEditor": "Vis editoren med denne filen åpen og prøv igjen."
             },
             "thinkingBlock": {
                 "thinking": "Tenker...",
@@ -5661,7 +5682,8 @@
             "managePasswordProtected": "Passordbeskyttet",
             "expirationHoursOne": "{count} time",
             "expirationHoursMany": "{count} timer",
-            "expirationDaysMany": "{count} dager"
+            "expirationDaysMany": "{count} dager",
+            "expiresSoonerThanChosen": "kortere enn valgt"
         },
         "introHub": {
             "tab": {
@@ -6687,7 +6709,9 @@
             "dirtyTitle": "Ulagrede endringer",
             "dirtyBody": "Du har ulagrede endringer. Forkast og lukk?",
             "keepEditing": "Fortsett redigering",
-            "discardAndClose": "Forkast og lukk"
+            "discardAndClose": "Forkast og lukk",
+            "busyBodyKeepsRunning": "En operasjon pågår fortsatt. Den fortsetter etter at dette vinduet er lukket, og resultatet vises ikke her. Lukk likevel?",
+            "closeAnyway": "Lukk likevel"
         },
         "modalView": {
             "listView": "Listevisning",

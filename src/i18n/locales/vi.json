@@ -765,7 +765,10 @@
             },
             "stagedCount": "Đã chuẩn bị: {count}",
             "pendingCount": "Đang chờ: {count}",
-            "failedCount": "Thất bại: {count}"
+            "failedCount": "Thất bại: {count}",
+            "queuedForAnotherServer": "Chưa bắt đầu: lượt truyền này đã được xếp hàng cho máy chủ hoặc tài khoản khác. Hãy quay lại tab của nó, rồi thử lại.",
+            "queuedOverlayChanged": "Chưa bắt đầu: overlay được mã hóa mà lượt truyền này được xếp hàng đợi bên dưới đang bị khóa hoặc không còn bao phủ thư mục này. Hãy mở khóa nó trên máy chủ đó, rồi thử lại.",
+            "pasteFromAnotherServer": "Chưa dán: các tệp này đã được cắt hoặc sao chép trên máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi dán lại."
         },
         "settings": {
             "title": "Cài đặt",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} đi kèm một ứng dụng OAuth tùy chỉnh khác với ứng dụng mà thiết bị này có cho nhà cung cấp đó. Ứng dụng đã lưu được giữ lại, vì vậy hãy đăng nhập lại nếu các hồ sơ này không còn kết nối được.",
             "importTargetChanged": "{names} không bị ghi đè: tệp trỏ chúng tới một máy chủ khác, và mật khẩu cùng token đã lưu của chúng không được gửi tới đó. Hãy nhập bằng Nhân bản để thêm bản sao từ tệp, hoặc xóa hồ sơ trước.",
             "importSharedSecretsFailed": "{names} đã được nhập, nhưng không thể lưu một bí mật dùng chung hoặc phiên từ tệp. Hãy đăng nhập lại các hồ sơ này nếu chúng không kết nối được.",
-            "keystoreDatabasesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được các cơ sở dữ liệu này và chúng giữ nguyên nội dung cũ: {names}."
+            "keystoreDatabasesFailed": "Quá trình nhập đã xong, nhưng không khôi phục được các cơ sở dữ liệu này và chúng giữ nguyên nội dung cũ: {names}.",
+            "importSecurityTitle": "Cài đặt bảo mật trong bản sao lưu này",
+            "importSecurityHelp": "Các tùy chọn này tắt một bước kiểm tra bảo mật. Mỗi tùy chọn được nhập ở trạng thái an toàn, trừ khi bạn đánh dấu để giữ nguyên như trong tệp.",
+            "importSecurityVerifyCert": "Đã tắt kiểm tra chứng chỉ",
+            "importSecurityCleartextEndpoint": "Cho phép điểm cuối S3 không mã hóa",
+            "importSecurityCleartextStorage": "Cho phép địa chỉ lưu trữ không mã hóa",
+            "importSecurityPlainHttp": "HTTP thường thay vì HTTPS",
+            "importSecurityPasvAddress": "Kết nối dữ liệu tới địa chỉ do máy chủ chỉ định (PASV)",
+            "importSecurityUnknownHostKeys": "Chấp nhận khóa máy chủ SSH không xác định",
+            "keystoreSecurityReset": "{count} máy chủ được khôi phục có tùy chọn tắt kiểm tra bảo mật; chúng đã được đặt lại về cài đặt an toàn: {details}.",
+            "keystoreSecurityResetFailed": "Không thể kiểm tra hoặc đặt lại cài đặt bảo mật của {count} tài khoản đã khôi phục. Các tài khoản này được liệt kê tại đây thay vì tiếp tục hoạt động mà không có cảnh báo.",
+            "keystoreSecurityResetQuarantine": "Không thể bảo mật cơ sở dữ liệu tài khoản đã khôi phục và nó đã được cách ly thành {path}. Không có tài khoản nào được khôi phục đang hoạt động. Hãy khắc phục sự cố đĩa hoặc quyền, sau đó khôi phục lại bản sao lưu. Tệp bị cách ly vẫn sẵn sàng để phục hồi."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Tạo thất bại",
             "unknownServer": "Không xác định",
             "scpModeTitle": "Đã kết nối bằng SCP",
-            "scpModeBody": "{host} không có SFTP, nên AeroFTP đang dùng SCP trên cùng kết nối."
+            "scpModeBody": "{host} không có SFTP, nên AeroFTP đang dùng SCP trên cùng kết nối.",
+            "saveOnAnotherServer": "Chưa lưu: tệp này đã được mở từ máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi lưu lại.",
+            "openedOnAnotherServer": "Chưa mở: máy chủ đã thay đổi trong khi đọc tệp. Hãy mở lại.",
+            "remoteTargetChanged": "Không có gì được thay đổi: máy chủ, tài khoản hoặc lớp mã hóa đã thay đổi kể từ khi thao tác bắt đầu, hoặc vẫn đang kết nối lại. Hãy thử lại trên kết nối hiện tại."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Cho phép dự phòng bằng SCP",
             "allowScpFallbackHint": "Nếu máy chủ không có SFTP, kết nối sẽ tiếp tục qua SCP, như WinSCP vẫn làm.",
             "discoverScp": "Sao chép tệp qua SSH cho máy chủ không có SFTP",
-            "discoverTigris": "Tigris: lưu trữ phân tán toàn cầu tương thích S3, không tính phí băng thông ra (5 GB miễn phí)"
+            "discoverTigris": "Tigris: lưu trữ phân tán toàn cầu tương thích S3, không tính phí băng thông ra (5 GB miễn phí)",
+            "trustPasvAddress": "Dùng địa chỉ passive do máy chủ cung cấp",
+            "trustPasvAddressHelp": "Tắt: kết nối dữ liệu đi tới máy chủ bạn đã kết nối, như curl. Chỉ bật cho máy chủ gửi dữ liệu từ một địa chỉ khác.",
+            "discoverFastly": "Fastly Object Storage: lưu trữ tương thích S3 tại 12 khu vực (miễn phí 5 GB, cần thẻ)"
         },
         "shortcuts": {
             "title": "Phím tắt",
@@ -3068,7 +3088,8 @@
                 "diff": "So sánh với bản gốc",
                 "diffNoFile": "Không có tệp nào mở để so sánh",
                 "commandBlocked": "Lệnh bị chặn: có thể gây phá hủy",
-                "confirmRun": "Xác nhận chạy: {command}"
+                "confirmRun": "Xác nhận chạy: {command}",
+                "reopenEditor": "Hiển thị trình soạn thảo với tệp này đang mở, rồi thử lại."
             },
             "thinkingBlock": {
                 "thinking": "Đang suy nghĩ...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Được bảo vệ bằng mật khẩu",
             "expirationHoursOne": "{count} giờ",
             "expirationHoursMany": "{count} giờ",
-            "expirationDaysMany": "{count} ngày"
+            "expirationDaysMany": "{count} ngày",
+            "expiresSoonerThanChosen": "ngắn hơn thời hạn đã chọn"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Thay đổi chưa lưu",
             "dirtyBody": "Bạn có thay đổi chưa lưu. Bỏ và đóng?",
             "keepEditing": "Tiếp tục chỉnh sửa",
-            "discardAndClose": "Bỏ và đóng"
+            "discardAndClose": "Bỏ và đóng",
+            "busyBodyKeepsRunning": "Một thao tác vẫn đang chạy. Thao tác này sẽ tiếp tục sau khi đóng cửa sổ này, và kết quả sẽ không hiển thị ở đây. Vẫn đóng?",
+            "closeAnyway": "Vẫn đóng"
         },
         "modalView": {
             "listView": "Xem danh sách",

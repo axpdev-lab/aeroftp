@@ -264,9 +264,6 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/ConnectionScreen.tsx': [
         'demopublickey...', 'dxz9abc12', '003d90ca9d33900000000001', 'my-b2-bucket', 'glpat-xxxxxxxxxxxx',
         'FEF5078EA41D182EEF89A21E034BD680', 'AKIAIOSFODNN7EXAMPLE', 'aeroftp2026', 'FileLu', 'AeroFTP-ID',
-        'PixelUnion', 'Immich', 'Dropbox', 'Google Drive', 'OneDrive', 'Box', 'Google Photos', 'pCloud Drive',
-        'Filen', 'Internxt', 'Jottacloud', 'Proton Drive', 'kDrive', 'Yandex Disk', 'Zoho WorkDrive', '4shared',
-        'Backblaze B2', 'Drime', 'MEGA', 'Cloudinary', 'ImageKit', 'Twake Drive', 'Uploadcare', 'GitHub', 'GitLab',
         'Proton', 'API', 'CLI',
     ],
     // The Proton Drive tab (API or CLI) a mode switch goes to.
@@ -314,7 +311,7 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/Preview/controls/WebGLVisualizer.tsx': ['GL'],
     // Provider names as logo alt text.
     'src/components/ProviderLogos.tsx': [
-        'Koofr', 'OpenDrive', 'Filebase', 'Tigris', 'Yandex Disk', 'Proton Drive', 'Jianguoyun', 'PixelUnion', 'Twake Drive',
+        'Koofr', 'OpenDrive', 'Filebase', 'Tigris', 'Fastly', 'Yandex Disk', 'Proton Drive', 'Jianguoyun', 'PixelUnion', 'Twake Drive',
         'DriveHQ', 'FileLu', 'Felicloud', 'S3Drive', 'Blomp', 'AWS', 'MinIO', 'Quotaless', 'Hetzner', 'ASPnix',
         'ImageKit', 'Uploadcare', 'Cloudinary', 'IBM Cloud', 'Mail.ru Cloud',
     ],
@@ -324,7 +321,7 @@ const JSX_NEUTRAL: Record<string, string[]> = {
         'MEGA (MEGAcmd)', 'Filen', 'Internxt', 'kDrive', 'Jottacloud', 'FileLu', 'Twake Drive', 'Koofr', 'OpenDrive',
         'Yandex Disk', '4shared', 'GitHub', 'GitLab', 'Immich', 'PixelUnion', 'Google Photos', 'ImageKit',
         'Uploadcare', 'Cloudinary', 'Amazon Web Services (AWS)', 'Backblaze B2', 'Cloudflare R2', 'Wasabi',
-        'IDrive e2', 'Filebase', 'Tigris', 'Storj', 'DigitalOcean Spaces', 'Oracle Cloud', 'Alibaba OSS', 'Tencent COS',
+        'IDrive e2', 'Filebase', 'Tigris', 'Fastly Object Storage', 'Storj', 'DigitalOcean Spaces', 'Oracle Cloud', 'Alibaba OSS', 'Tencent COS',
         'FileLu S5', 'MEGA S4 Object Storage', 'MinIO', 'CloudMe', 'DriveHQ', 'Koofr (WebDAV)', 'Jianguoyun',
         'InfiniCloud', 'Seafile', 'FileLu WebDAV', 'Nextcloud', 'Felicloud', 'Hetzner Storage Box', 'Blomp', 'Drime',
     ],

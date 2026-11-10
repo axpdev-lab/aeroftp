@@ -765,7 +765,10 @@
             },
             "stagedCount": "Disediakan: {count}",
             "pendingCount": "Menunggu: {count}",
-            "failedCount": "Gagal: {count}"
+            "failedCount": "Gagal: {count}",
+            "queuedForAnotherServer": "Tidak dimulakan: pemindahan ini diberi baris gilir untuk pelayan atau akaun lain. Kembali ke tabnya, kemudian cuba lagi.",
+            "queuedOverlayChanged": "Belum dimulakan: overlay disulitkan yang menjadi asas pemindahan ini dibaris gilir telah dikunci atau tidak lagi meliputi folder ini. Buka kuncinya pada pelayan itu, kemudian cuba lagi.",
+            "pasteFromAnotherServer": "Tidak ditampal: fail ini dipotong atau disalin pada pelayan, akaun atau tindanan disulitkan yang tidak aktif sekarang. Kembali ke tabnya, kemudian tampal semula."
         },
         "settings": {
             "title": "Tetapan",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} datang dengan apl OAuth tersuai yang berbeza daripada yang ada pada peranti ini untuk penyedia itu. Apl yang disimpan dikekalkan, jadi log masuk semula jika profil ini tidak lagi bersambung.",
             "importTargetChanged": "{names} tidak ditimpa: fail itu mengarahkannya ke pelayan lain, dan kata laluan serta token yang disimpan tidak boleh dihantar ke sana. Import dengan Gandakan untuk menambah salinan daripada fail, atau padam profil dahulu.",
             "importSharedSecretsFailed": "{names} telah diimport, tetapi rahsia kongsi atau sesi daripada fail tidak dapat disimpan. Log masuk semula ke profil ini jika tidak dapat disambungkan.",
-            "keystoreDatabasesFailed": "Import selesai, tetapi pangkalan data ini tidak dapat dipulihkan dan kekal dengan kandungan asalnya: {names}."
+            "keystoreDatabasesFailed": "Import selesai, tetapi pangkalan data ini tidak dapat dipulihkan dan kekal dengan kandungan asalnya: {names}.",
+            "importSecurityTitle": "Tetapan keselamatan dalam sandaran ini",
+            "importSecurityHelp": "Pilihan ini mematikan pemeriksaan keselamatan. Setiap satu diimport dalam keadaan selamat melainkan anda menandainya untuk dikekalkan seperti dalam fail.",
+            "importSecurityVerifyCert": "Pemeriksaan sijil dimatikan",
+            "importSecurityCleartextEndpoint": "Titik akhir S3 tanpa penyulitan dibenarkan",
+            "importSecurityCleartextStorage": "Alamat storan tanpa penyulitan dibenarkan",
+            "importSecurityPlainHttp": "HTTP biasa dan bukannya HTTPS",
+            "importSecurityPasvAddress": "Sambungan data ke alamat yang dinyatakan oleh pelayan (PASV)",
+            "importSecurityUnknownHostKeys": "Kunci hos SSH tidak dikenali diterima",
+            "keystoreSecurityReset": "{count} pelayan yang dipulihkan mempunyai pilihan yang mematikan semakan keselamatan; pelayan itu dikembalikan kepada tetapan selamat: {details}.",
+            "keystoreSecurityResetFailed": "Tetapan keselamatan {count} akaun yang dipulihkan tidak dapat disemak atau ditetapkan semula. Akaun tersebut disenaraikan di sini dan bukannya dibiarkan aktif tanpa pemberitahuan.",
+            "keystoreSecurityResetQuarantine": "Pangkalan data akaun yang dipulihkan tidak dapat dilindungi dan telah diketepikan sebagai {path}. Tiada akaun yang dipulihkan aktif. Betulkan masalah cakera atau kebenaran, kemudian pulihkan sandaran sekali lagi. Fail yang diketepikan itu kekal tersedia untuk pemulihan."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Gagal mencipta",
             "unknownServer": "Tidak diketahui",
             "scpModeTitle": "Disambungkan dengan SCP",
-            "scpModeBody": "{host} tiada SFTP, jadi AeroFTP menggunakan SCP pada sambungan yang sama."
+            "scpModeBody": "{host} tiada SFTP, jadi AeroFTP menggunakan SCP pada sambungan yang sama.",
+            "saveOnAnotherServer": "Tidak disimpan: fail ini dibuka daripada pelayan, akaun atau tindanan disulitkan yang tidak aktif sekarang. Kembali ke tabnya, kemudian simpan semula.",
+            "openedOnAnotherServer": "Tidak dibuka: pelayan berubah semasa fail dibaca. Buka semula.",
+            "remoteTargetChanged": "Tiada apa yang diubah: pelayan, akaun atau lapisan tersulit telah berubah sejak tindakan bermula, atau masih menyambung semula. Cuba lagi pada sambungan semasa."
         },
         "about": {
             "tagline": "Lebih daripada FTP. Kit alat lengkap untuk pembangun.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Benarkan SCP sebagai sandaran",
             "allowScpFallbackHint": "Jika pelayan tiada SFTP, sambungan diteruskan melalui SCP, seperti yang dilakukan WinSCP.",
             "discoverScp": "Salinan fail melalui SSH untuk pelayan tanpa SFTP",
-            "discoverTigris": "Tigris: storan teragih secara global yang serasi dengan S3, tanpa yuran egress (5 GB percuma)"
+            "discoverTigris": "Tigris: storan teragih secara global yang serasi dengan S3, tanpa yuran egress (5 GB percuma)",
+            "trustPasvAddress": "Gunakan alamat pasif yang diberikan pelayan",
+            "trustPasvAddressHelp": "Mati: sambungan data menuju hos yang anda sambungkan, seperti yang dilakukan curl. Hidupkan hanya untuk pelayan yang menghantar data dari alamat lain.",
+            "discoverFastly": "Fastly Object Storage: storan serasi S3 di 12 wilayah (5 GB percuma, kad diperlukan)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",
@@ -3068,7 +3088,8 @@
                 "diff": "Beza dengan asal",
                 "diffNoFile": "Tiada fail dibuka untuk perbandingan",
                 "commandBlocked": "Arahan disekat: berpotensi merosakkan",
-                "confirmRun": "Sahkan jalankan: {command}"
+                "confirmRun": "Sahkan jalankan: {command}",
+                "reopenEditor": "Tunjukkan editor dengan fail ini dibuka, kemudian cuba lagi."
             },
             "thinkingBlock": {
                 "thinking": "Berfikir...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Dilindungi kata laluan",
             "expirationHoursOne": "{count} jam",
             "expirationHoursMany": "{count} jam",
-            "expirationDaysMany": "{count} hari"
+            "expirationDaysMany": "{count} hari",
+            "expiresSoonerThanChosen": "lebih singkat daripada yang dipilih"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Perubahan belum disimpan",
             "dirtyBody": "Anda mempunyai perubahan belum disimpan. Buang dan tutup?",
             "keepEditing": "Teruskan menyunting",
-            "discardAndClose": "Buang dan tutup"
+            "discardAndClose": "Buang dan tutup",
+            "busyBodyKeepsRunning": "Operasi masih berjalan. Ia akan terus berjalan selepas tetingkap ini ditutup, dan hasilnya tidak dipaparkan di sini. Tutup juga?",
+            "closeAnyway": "Tutup juga"
         },
         "modalView": {
             "listView": "Paparan senarai",

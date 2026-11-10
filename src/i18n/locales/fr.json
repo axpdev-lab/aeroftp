@@ -765,7 +765,10 @@
             },
             "stagedCount": "Préparés : {count}",
             "pendingCount": "En attente : {count}",
-            "failedCount": "Échecs : {count}"
+            "failedCount": "Échecs : {count}",
+            "queuedForAnotherServer": "Non démarré : ce transfert était en file d'attente pour un autre serveur ou compte. Revenez à son onglet, puis réessayez.",
+            "queuedOverlayChanged": "Non démarré : l'overlay chiffré sous lequel ce transfert a été mis en file d'attente est verrouillé ou ne couvre plus ce dossier. Déverrouillez-le sur ce serveur, puis réessayez.",
+            "pasteFromAnotherServer": "Non collé : ces fichiers ont été coupés ou copiés sur un serveur, compte ou surcouche chiffrée qui n'est pas actif actuellement. Revenez à son onglet, puis collez à nouveau."
         },
         "settings": {
             "title": "Paramètres",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} sont arrivés avec une app OAuth personnalisée différente de celle que cet appareil possède pour ce fournisseur. L'app enregistrée a été conservée, reconnectez-vous donc si ces profils n'arrivent plus à se connecter.",
             "importTargetChanged": "{names} n'ont pas été écrasés : le fichier les fait pointer vers un autre serveur, et leurs mots de passe et jetons enregistrés ne doivent pas y aller. Importez avec Dupliquer pour ajouter la copie du fichier, ou supprimez d'abord le profil.",
             "importSharedSecretsFailed": "{names} ont été importés, mais un secret partagé ou une session du fichier n'a pas pu être enregistré. Reconnectez-vous à ces profils s'ils ne se connectent pas.",
-            "keystoreDatabasesFailed": "L'importation est terminée, mais ces bases de données n'ont pas pu être restaurées et conservent leur contenu : {names}."
+            "keystoreDatabasesFailed": "L'importation est terminée, mais ces bases de données n'ont pas pu être restaurées et conservent leur contenu : {names}.",
+            "importSecurityTitle": "Paramètres de sécurité de cette sauvegarde",
+            "importSecurityHelp": "Ces options désactivent une vérification de sécurité. Chacune est importée dans son état sûr, sauf si vous la cochez pour la conserver telle qu'elle est dans le fichier.",
+            "importSecurityVerifyCert": "Vérification du certificat désactivée",
+            "importSecurityCleartextEndpoint": "Point de terminaison S3 non chiffré autorisé",
+            "importSecurityCleartextStorage": "Adresse de stockage non chiffrée autorisée",
+            "importSecurityPlainHttp": "HTTP simple au lieu de HTTPS",
+            "importSecurityPasvAddress": "Connexion de données vers l'adresse indiquée par le serveur (PASV)",
+            "importSecurityUnknownHostKeys": "Clés d'hôte SSH inconnues acceptées",
+            "keystoreSecurityReset": "{count} serveurs restaurés avaient des options qui désactivent une vérification de sécurité ; ils ont été remis au réglage sûr : {details}.",
+            "keystoreSecurityResetFailed": "Impossible de vérifier ou de réinitialiser les paramètres de sécurité de {count} comptes restaurés. Ils sont répertoriés ici au lieu de rester actifs sans avertissement.",
+            "keystoreSecurityResetQuarantine": "La base de données de comptes restaurée n’a pas pu être sécurisée et a été mise en quarantaine sous {path}. Aucun compte restauré n’est actif. Corrigez le problème de disque ou d’autorisation, puis restaurez à nouveau la sauvegarde. Le fichier en quarantaine reste disponible pour la récupération."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Échec de la création",
             "unknownServer": "Inconnu",
             "scpModeTitle": "Connecté avec SCP",
-            "scpModeBody": "{host} n'a pas de SFTP, AeroFTP utilise donc SCP sur la même connexion."
+            "scpModeBody": "{host} n'a pas de SFTP, AeroFTP utilise donc SCP sur la même connexion.",
+            "saveOnAnotherServer": "Non enregistré : ce fichier a été ouvert depuis un serveur, compte ou surcouche chiffrée qui n'est pas actif actuellement. Revenez à son onglet, puis enregistrez à nouveau.",
+            "openedOnAnotherServer": "Non ouvert : le serveur a changé pendant la lecture du fichier. Ouvrez-le à nouveau.",
+            "remoteTargetChanged": "Rien n'a été modifié : le serveur, le compte ou la couche chiffrée a changé depuis le début de l'action, ou se reconnecte encore. Réessayez sur la connexion actuelle."
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Autoriser le repli sur SCP",
             "allowScpFallbackHint": "Si le serveur n'a pas de SFTP, la connexion continue en SCP, comme le fait WinSCP.",
             "discoverScp": "Copie de fichiers via SSH pour les serveurs sans SFTP",
-            "discoverTigris": "Tigris : stockage compatible S3 distribué à l'échelle mondiale, sans frais de sortie de données (5 GB gratuits)"
+            "discoverTigris": "Tigris : stockage compatible S3 distribué à l'échelle mondiale, sans frais de sortie de données (5 GB gratuits)",
+            "trustPasvAddress": "Utiliser l'adresse passive fournie par le serveur",
+            "trustPasvAddressHelp": "Désactivé : les connexions de données vont vers l'hôte auquel vous vous êtes connecté, comme le fait curl. N'activez que pour un serveur qui envoie les données depuis une autre adresse.",
+            "discoverFastly": "Fastly Object Storage : stockage compatible S3 dans 12 régions (5 GB gratuits, carte requise)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",
@@ -3068,7 +3088,8 @@
                 "diff": "Comparer avec l'original",
                 "diffNoFile": "Aucun fichier ouvert pour la comparaison",
                 "commandBlocked": "Commande bloquée : potentiellement destructrice",
-                "confirmRun": "Confirmer l'exécution : {command}"
+                "confirmRun": "Confirmer l'exécution : {command}",
+                "reopenEditor": "Affichez l'éditeur avec ce fichier ouvert, puis réessayez."
             },
             "thinkingBlock": {
                 "thinking": "Réflexion en cours...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Protégé par mot de passe",
             "expirationHoursOne": "{count} heure",
             "expirationHoursMany": "{count} heures",
-            "expirationDaysMany": "{count} jours"
+            "expirationDaysMany": "{count} jours",
+            "expiresSoonerThanChosen": "plus court que celui choisi"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Modifications non enregistrées",
             "dirtyBody": "Vous avez des modifications non enregistrées. Les abandonner et fermer ?",
             "keepEditing": "Continuer l'édition",
-            "discardAndClose": "Abandonner et fermer"
+            "discardAndClose": "Abandonner et fermer",
+            "busyBodyKeepsRunning": "Une opération est en cours. Elle se poursuit après la fermeture de cette fenêtre et son résultat n'est pas affiché ici. Fermer quand même ?",
+            "closeAnyway": "Fermer quand même"
         },
         "modalView": {
             "listView": "Vue liste",

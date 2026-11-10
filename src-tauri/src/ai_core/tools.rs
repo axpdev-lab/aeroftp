@@ -119,6 +119,14 @@ pub trait ToolCtx: Send + Sync {
     fn approval_grant_id(&self) -> Option<&str> {
         None
     }
+    /// The connection identity the call was approved for, when `profile_id`
+    /// is a saved profile it changes ([`approve_change_targets`]): a tool
+    /// that opens that profile itself (a transfer) reaches it by this id only
+    /// and only while it still connects there. `None` for a call approved
+    /// for nothing.
+    fn approved_identity(&self, _profile_id: &str) -> Option<&str> {
+        None
+    }
     fn session_id(&self) -> Option<&str> {
         None
     }
@@ -2227,6 +2235,228 @@ pub fn find_tool(name: &str) -> Option<&'static ToolDef> {
     TOOL_DEFINITIONS.iter().find(|t| t.name == name)
 }
 
+/// Every argument of a tool schema that picks a saved server or profile:
+/// `server`, both ends of a transfer (`src_server`, `dst_server`) and of a
+/// cross-profile transfer (`source_server`, `dest_server`), a benchmark's
+/// `profile`, a GUI connect's `profile_id`. A test reads the registry so a new
+/// one cannot be left out.
+pub const TARGET_PROFILE_KEYS: [&str; 7] = [
+    "server",
+    "src_server",
+    "dst_server",
+    "source_server",
+    "dest_server",
+    "profile",
+    "profile_id",
+];
+
+/// A target of a change, as approved: the argument naming it, and the saved
+/// profile it names exactly with what that profile connects to (`None` when
+/// no profile is named exactly).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApprovedTarget {
+    pub key: &'static str,
+    pub profile: Option<(String, String)>,
+}
+
+/// The saved profile each target of a change names exactly, with its id and
+/// its connection identity. Taken before the approval and again before the
+/// call runs: when a name maps to another profile in between (replaced while
+/// the prompt was open), or the profile now connects elsewhere (edited to
+/// another host), the two differ and the call does not run. Empty for a call
+/// that only reads.
+pub fn change_targets(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Vec<ApprovedTarget> {
+    if !names_a_change_target(tool_name, args) {
+        return Vec::new();
+    }
+    change_targets_in(&creds.list_servers().unwrap_or_default(), tool_name, args)
+}
+
+/// Whether `args` of `tool_name` change something on a saved server they
+/// name: only then are the saved profiles read.
+fn names_a_change_target(tool_name: &str, args: &Value) -> bool {
+    find_tool(tool_name).is_some_and(|def| {
+        matches!(def.danger, DangerLevel::Medium | DangerLevel::High)
+            && TARGET_PROFILE_KEYS.iter().any(|key| {
+                args.get(*key)
+                    .and_then(Value::as_str)
+                    .is_some_and(|query| !query.trim().is_empty())
+            })
+    })
+}
+
+/// [`change_targets`] over the saved profiles `saved`.
+fn change_targets_in(
+    saved: &[crate::ai_core::ServerProfile],
+    tool_name: &str,
+    args: &Value,
+) -> Vec<ApprovedTarget> {
+    if !names_a_change_target(tool_name, args) {
+        return Vec::new();
+    }
+    let mut bound = Vec::new();
+    for key in TARGET_PROFILE_KEYS {
+        let Some(query) = args.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        if query.trim().is_empty() {
+            continue;
+        }
+        // The resolver execution uses, in its order, so the id bound here is
+        // the profile the call will run on.
+        let id = crate::ai_core::credential_provider::exact_profile_index(saved, query, |p| {
+            (p.id.as_str(), p.name.as_str())
+        })
+        .map(|index| (saved[index].id.clone(), saved[index].connection_identity()));
+        bound.push(ApprovedTarget { key, profile: id });
+    }
+    bound
+}
+
+/// [`change_targets`] as `key=id#identity` strings (`key=?`), the form the
+/// desktop's approval keys carry ([`target_ids`]).
+#[cfg(test)]
+pub(crate) fn change_target_ids(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Vec<String> {
+    target_ids(&change_targets(creds, tool_name, args))
+}
+
+/// How `targets` appear in an approval key: each one's argument with the
+/// profile id and the connection identity it resolved to, so a grant is for
+/// that profile as it connected then.
+pub fn target_ids(targets: &[ApprovedTarget]) -> Vec<String> {
+    targets
+        .iter()
+        .map(|target| match &target.profile {
+            Some((id, identity)) => format!("{}={id}#{identity}", target.key),
+            None => format!("{}=?", target.key),
+        })
+        .collect()
+}
+
+/// The targets a change is approved for, checked and bound from ONE read of
+/// the saved profiles: every one named exactly and resolved to a profile, or
+/// the reason it cannot be approved. Two separate reads let a profile removed
+/// between them leave the approval bound to nothing, and one recreated with
+/// that name later receive the write. Empty for a call that only reads.
+pub fn approve_change_targets(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Result<Vec<ApprovedTarget>, String> {
+    if !names_a_change_target(tool_name, args) {
+        return Ok(Vec::new());
+    }
+    let saved = creds.list_servers().unwrap_or_default();
+    if let Some(reason) = inexact_change_target_in(&saved, tool_name, args) {
+        return Err(reason);
+    }
+    let targets = change_targets_in(&saved, tool_name, args);
+    match unbound_change_target(&targets, args) {
+        Some(reason) => Err(reason),
+        None => Ok(targets),
+    }
+}
+
+/// Why a change cannot be approved from these targets: one names no saved
+/// profile in this snapshot, so it would be approved for nothing and run on
+/// whatever profile has that name when the call is dispatched. `None` when
+/// every target resolved. The check and the binding come from one snapshot,
+/// so a profile removed between an earlier check and this one is refused.
+pub fn unbound_change_target(targets: &[ApprovedTarget], args: &Value) -> Option<String> {
+    targets.iter().find(|target| target.profile.is_none()).map(|target| {
+        let named = args.get(target.key).and_then(Value::as_str).unwrap_or_default();
+        format!(
+            "{} '{named}' is not the name or id of a saved server, and a change runs only on a saved \
+             server named exactly",
+            target.key
+        )
+    })
+}
+
+/// `args` with every approved target replaced by its profile id, so the
+/// backend resolves the profile the approval named and no other: a name
+/// resolved again after the approval could reach a profile replaced since.
+pub fn args_pinned_to(args: &Value, targets: &[ApprovedTarget]) -> Value {
+    let mut pinned = args.clone();
+    for target in targets {
+        if let (Some((id, _)), Some(object)) = (&target.profile, pinned.as_object_mut()) {
+            object.insert(target.key.to_string(), Value::String(id.clone()));
+        }
+    }
+    pinned
+}
+
+/// Why a call that changes something may not run on the saved server it
+/// names: the name is not exactly a profile's name or id, though it is part of
+/// one or more. The backends match a part of a name, so `lab` acted on
+/// `lab-prod` while the approval said `lab`. A read keeps that convenience; a
+/// change acts only on a server named exactly. A name that is no saved
+/// server's at all is refused too: approved for nothing, a profile created
+/// with that name before the call reached the backend would receive the
+/// write. `None` when the call reads or every name is exact. The saved list
+/// comes from `creds`, never a connection.
+pub fn inexact_change_target(
+    creds: &dyn CredentialProvider,
+    tool_name: &str,
+    args: &Value,
+) -> Option<String> {
+    if !names_a_change_target(tool_name, args) {
+        return None;
+    }
+    inexact_change_target_in(&creds.list_servers().unwrap_or_default(), tool_name, args)
+}
+
+/// [`inexact_change_target`] over the saved profiles `saved`.
+fn inexact_change_target_in(
+    saved: &[crate::ai_core::ServerProfile],
+    tool_name: &str,
+    args: &Value,
+) -> Option<String> {
+    if !names_a_change_target(tool_name, args) {
+        return None;
+    }
+    for key in TARGET_PROFILE_KEYS {
+        let Some(query) = args.get(key).and_then(Value::as_str) else {
+            continue;
+        };
+        if query.trim().is_empty() {
+            continue;
+        }
+        let lower = query.to_lowercase();
+        if saved
+            .iter()
+            .any(|profile| profile.id == query || profile.name.to_lowercase() == lower)
+        {
+            continue;
+        }
+        let candidates: Vec<String> = saved
+            .iter()
+            .filter(|profile| profile.name.to_lowercase().contains(&lower))
+            .map(|profile| format!("'{}' (id {})", profile.name, profile.id))
+            .collect();
+        if candidates.is_empty() {
+            return Some(format!(
+                "{key} '{query}' is not the name or id of a saved server, and a change runs \
+                 only on a saved server named exactly"
+            ));
+        }
+        return Some(format!(
+            "{key} '{query}' is not the exact name or id of a saved server, and a change runs only \
+             on a server named exactly. Matching servers: {}",
+            candidates.join(", ")
+        ));
+    }
+    None
+}
+
 /// Entry point unico. Gate 1 scheletro:
 /// 1. lookup del tool in `TOOL_DEFINITIONS`
 /// 2. validazione surface
@@ -2255,6 +2485,12 @@ pub async fn dispatch_tool(
     })?;
     // M9: a tool of a turn the user already stopped does not start.
     check_cancelled(ctx)?;
+    if let Some(reason) = inexact_change_target(ctx.credentials(), tool_name, args) {
+        return Err(ToolError::InvalidArgs {
+            tool: tool_name.to_string(),
+            reason,
+        });
+    }
     match tool_name {
         // ─── Area A: local_* (T3 Gate 2) ─────────────────────────────
         "local_list" => local_tools::local_list(ctx, args).await,
@@ -2628,6 +2864,273 @@ mod tests {
         cancel: Option<tokio_util::sync::CancellationToken>,
     }
 
+    /// Saved servers and nothing else: what a name is resolved against.
+    struct SavedServers(Vec<crate::ai_core::ServerProfile>);
+
+    impl CredentialProvider for SavedServers {
+        fn list_servers(&self) -> Result<Vec<crate::ai_core::ServerProfile>, String> {
+            Ok(self.0.clone())
+        }
+        fn get_credentials(
+            &self,
+            _server_id: &str,
+        ) -> Result<crate::ai_core::ServerCredentials, String> {
+            Err("not in this test".into())
+        }
+        fn get_extra_options(
+            &self,
+            _server_id: &str,
+        ) -> Result<std::collections::HashMap<String, String>, String> {
+            Ok(std::collections::HashMap::new())
+        }
+    }
+
+    /// Saved profiles that change between reads, the way another surface
+    /// deletes and recreates one while the CLI asks: each read takes the next
+    /// list, and the last one stays. `reads` counts them.
+    struct ScriptedServers {
+        lists: std::sync::Mutex<std::collections::VecDeque<Vec<crate::ai_core::ServerProfile>>>,
+        reads: std::sync::atomic::AtomicUsize,
+    }
+
+    impl ScriptedServers {
+        fn new(lists: Vec<Vec<crate::ai_core::ServerProfile>>) -> Self {
+            ScriptedServers {
+                lists: std::sync::Mutex::new(lists.into()),
+                reads: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+    }
+
+    impl CredentialProvider for ScriptedServers {
+        fn list_servers(&self) -> Result<Vec<crate::ai_core::ServerProfile>, String> {
+            self.reads.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut lists = self.lists.lock().unwrap();
+            Ok(if lists.len() > 1 {
+                lists.pop_front().unwrap()
+            } else {
+                lists.front().cloned().unwrap_or_default()
+            })
+        }
+        fn get_credentials(
+            &self,
+            _server_id: &str,
+        ) -> Result<crate::ai_core::ServerCredentials, String> {
+            Err("not in this test".into())
+        }
+        fn get_extra_options(
+            &self,
+            _server_id: &str,
+        ) -> Result<std::collections::HashMap<String, String>, String> {
+            Ok(std::collections::HashMap::new())
+        }
+    }
+
+    /// CodeRabbit on 9bb82cabb: a profile removed and recreated around the
+    /// approval must never receive the write. The CLI's sequence, on profiles
+    /// that change between its reads: the approval is checked and bound from
+    /// one read, checked again after the prompt, and the call runs on the
+    /// approved id only.
+    #[test]
+    fn a_profile_removed_and_recreated_around_the_approval_receives_no_write() {
+        let args = json!({"server": "staging", "path": "/x"});
+        let original = saved("srv_2", "staging");
+        let recreated = saved("srv_9", "staging");
+
+        // Gone at the approval's one read: refused before any prompt, and that
+        // one read is all it takes, so nothing can change between two.
+        let creds = ScriptedServers::new(vec![vec![], vec![recreated.clone()]]);
+        let refused = approve_change_targets(&creds, "remote_delete", &args).unwrap_err();
+        assert!(
+            refused.starts_with("server 'staging' is not the name or id of a saved server"),
+            "{refused}"
+        );
+        assert_eq!(creds.reads.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        // Present at the approval, then removed, then recreated under another
+        // id: the recheck after the prompt sees another binding either way.
+        for after in [vec![], vec![recreated.clone()]] {
+            let creds = ScriptedServers::new(vec![vec![original.clone()], after]);
+            let approved =
+                approve_change_targets(&creds, "remote_delete", &args).expect("approved");
+            assert_eq!(
+                approved[0].profile.as_ref().map(|(id, _)| id.as_str()),
+                Some("srv_2")
+            );
+            assert_ne!(
+                change_targets(&creds, "remote_delete", &args),
+                approved,
+                "the recheck refuses"
+            );
+            // Had it gone on, the call names the approved id, which the
+            // recreated profile does not have: it cannot be reached.
+            let pinned = args_pinned_to(&args, &approved);
+            assert_eq!(pinned["server"], "srv_2");
+            assert_ne!(pinned["server"], json!(recreated.id));
+        }
+
+        // Unchanged: approved, rechecked equal, and run on its id.
+        let creds = ScriptedServers::new(vec![vec![original.clone()]]);
+        let approved = approve_change_targets(&creds, "remote_delete", &args).expect("approved");
+        assert_eq!(change_targets(&creds, "remote_delete", &args), approved);
+        // A read asks nothing and reads no profile.
+        let reads = ScriptedServers::new(vec![vec![]]);
+        assert!(approve_change_targets(&reads, "remote_list", &args)
+            .unwrap()
+            .is_empty());
+        assert_eq!(reads.reads.load(std::sync::atomic::Ordering::SeqCst), 0);
+    }
+
+    fn saved(id: &str, name: &str) -> crate::ai_core::ServerProfile {
+        serde_json::from_value(json!({
+            "id": id, "name": name, "host": "h", "port": 22, "username": "u", "protocol": "sftp"
+        }))
+        .unwrap()
+    }
+
+    // Every schema property that names a server or a profile is one the exact
+    // check reads: `src_server` and `dst_server` of the transfers were missing.
+    #[test]
+    fn every_server_or_profile_argument_is_checked_exactly() {
+        for def in TOOL_DEFINITIONS.iter() {
+            let Some(properties) = def
+                .input_schema
+                .get("properties")
+                .and_then(Value::as_object)
+            else {
+                continue;
+            };
+            for key in properties.keys() {
+                if key.contains("server") || key.contains("profile") {
+                    assert!(
+                        TARGET_PROFILE_KEYS.contains(&key.as_str()),
+                        "{}: `{key}` picks a server and is not checked",
+                        def.name
+                    );
+                }
+            }
+        }
+    }
+
+    // A profile replaced while the approval was open: its name now names
+    // another id, and the call does not run on the replacement.
+    #[test]
+    fn a_change_is_bound_to_the_profile_ids_it_was_approved_for() {
+        let before = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let after = SavedServers(vec![saved("srv_9", "lab-prod")]);
+        let args = json!({"server": "lab-prod", "path": "/x"});
+        let ids = change_target_ids(&before, "remote_delete", &args);
+        assert_eq!(ids.len(), 1);
+        assert!(ids[0].starts_with("server=srv_1#"), "{ids:?}");
+        assert_ne!(
+            change_target_ids(&before, "remote_delete", &args),
+            change_target_ids(&after, "remote_delete", &args)
+        );
+        assert!(change_target_ids(&before, "remote_list", &args).is_empty());
+    }
+
+    /// CodeRabbit on a91117d57: a profile edited to another host keeps its id,
+    /// so the binding names what it connects to as well; and the call runs
+    /// with each target pinned to the approved id.
+    #[test]
+    fn a_change_is_bound_to_what_its_profile_connects_to_and_runs_on_its_id() {
+        let mut moved = saved("srv_1", "lab-prod");
+        moved.host = "elsewhere".into();
+        let before = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let after = SavedServers(vec![moved]);
+        let args = json!({"server": "lab-prod", "dst_server": "nowhere", "path": "/x"});
+        assert_ne!(
+            change_target_ids(&before, "aeroftp_transfer", &args),
+            change_target_ids(&after, "aeroftp_transfer", &args)
+        );
+        let targets = change_targets(&before, "aeroftp_transfer", &args);
+        let pinned = args_pinned_to(&args, &targets);
+        assert_eq!(pinned["server"], "srv_1");
+        // No profile is named `nowhere`: the backend reports it, unchanged.
+        assert_eq!(pinned["dst_server"], "nowhere");
+        assert_eq!(pinned["path"], "/x");
+    }
+
+    /// Greptile on a91117d57: the approval took the first profile whose id OR
+    /// name matched, while execution takes an id before any name. A profile
+    /// named like another's id now binds the id profile, as execution runs
+    /// it; and when that profile is deleted while the approval is open, the
+    /// same query names the other one, so the recheck refuses.
+    #[test]
+    fn a_profile_named_like_another_ids_binds_the_id_profile_and_its_deletion_is_seen() {
+        let both = SavedServers(vec![saved("srv_1", "srv_2"), saved("srv_2", "lab")]);
+        let args = json!({"server": "srv_2", "path": "/x"});
+        let approved = change_target_ids(&both, "remote_delete", &args);
+        assert_eq!(approved.len(), 1);
+        assert!(approved[0].starts_with("server=srv_2#"), "{approved:?}");
+        // Execution resolves it the same way (`resolve_profile_takes_an_id_over_a_profile_named_like_it`).
+        let deleted = SavedServers(vec![saved("srv_1", "srv_2")]);
+        let after = change_target_ids(&deleted, "remote_delete", &args);
+        assert!(after[0].starts_with("server=srv_1#"), "{after:?}");
+        assert_ne!(
+            approved,
+            change_target_ids(&deleted, "remote_delete", &args)
+        );
+    }
+
+    // `server: "lab"` resolved to the one profile containing it, `lab-prod`,
+    // while the approval said `lab`: a change now runs only on a server named
+    // exactly, a read still finds it by a part of its name.
+    #[test]
+    fn a_change_runs_only_on_a_server_named_exactly() {
+        let creds = SavedServers(vec![saved("srv_1", "lab-prod"), saved("srv_2", "home")]);
+        for tool in [
+            "remote_delete",
+            "remote_upload",
+            "aeroftp_delete",
+            "aeroftp_upload_file",
+        ] {
+            let reason =
+                inexact_change_target(&creds, tool, &json!({"server": "lab", "path": "/x"}))
+                    .unwrap_or_else(|| panic!("{tool}: a partial name was accepted"));
+            assert!(reason.contains("'lab-prod' (id srv_1)"), "{tool}: {reason}");
+        }
+        for args in [
+            json!({"server": "lab-prod", "path": "/x"}),
+            json!({"server": "LAB-PROD", "path": "/x"}),
+            json!({"server": "srv_1", "path": "/x"}),
+            json!({"path": "/x"}),
+        ] {
+            assert_eq!(
+                inexact_change_target(&creds, "remote_delete", &args),
+                None,
+                "{args}"
+            );
+        }
+        // A read keeps the partial match.
+        assert_eq!(
+            inexact_change_target(
+                &creds,
+                "remote_list",
+                &json!({"server": "lab", "path": "/"})
+            ),
+            None
+        );
+        // Both ends of a transfer are checked.
+        for args in [
+            json!({"src_server": "home", "dst_server": "lab", "src_path": "/a", "dst_path": "/b"}),
+            json!({"src_server": "lab", "dst_server": "home", "src_path": "/a", "dst_path": "/b"}),
+        ] {
+            for tool in ["aeroftp_transfer", "aeroftp_transfer_tree"] {
+                assert!(
+                    inexact_change_target(&creds, tool, &args).is_some(),
+                    "{tool} {args}"
+                );
+            }
+        }
+        assert!(inexact_change_target(
+            &creds,
+            "cross_profile_transfer",
+            &json!({"source_server": "home", "dest_server": "lab", "source_path": "/a", "dest_path": "/b"})
+        )
+        .is_some());
+    }
+
     struct MockCreds;
 
     impl CredentialProvider for MockCreds {
@@ -2982,7 +3485,12 @@ mod tests {
     /// moment the code lost it, and would stay green on the one day it
     /// mattered: the day a tool stops being routed here while the CLI binary no
     /// longer keeps a legacy arm to answer it. This is where the list lives.
-    const ROUTED_CLI_TOOLS: [(&str, &[&str]); 33] = [
+    const ROUTED_CLI_TOOLS: [(&str, &[&str]); 35] = [
+        // `app_info` has no argument and only reads the version and the
+        // working folder; `hash_file` refuses the NUL path. The CLI binary
+        // keeps no legacy arm for either.
+        ("app_info", &[]),
+        ("hash_file", &["path"]),
         ("archive_compress", &["paths", "output_path"]),
         ("archive_decompress", &["archive_path", "output_dir"]),
         ("local_batch_rename", &["paths", "mode"]),
@@ -3023,7 +3531,7 @@ mod tests {
         ("server_exec", &["server", "operation"]),
     ];
 
-    /// The other four names of the thirty-seven. They are asserted more weakly
+    /// The other four names of the thirty-nine. They are asserted more weakly
     /// below, and the weaker claim is stated rather than disguised: a call that
     /// reached their handlers would run a shell command, write the clipboard,
     /// write to the memory database or list the saved profiles, and a test that
@@ -3068,6 +3576,62 @@ mod tests {
                 "{name} must be routed here, or removing its legacy arm makes it unreachable: {outcome:?}"
             );
         }
+    }
+
+    /// CodeRabbit on b1023ea2a: the exactness check and the approval binding
+    /// read the profiles separately, so a profile removed between them left
+    /// the approval bound to nothing, and one recreated with its name before
+    /// dispatch received the write. The binding itself now refuses an
+    /// unresolved target, from the same snapshot it binds.
+    #[test]
+    fn an_approval_snapshot_with_an_unresolved_target_is_refused() {
+        let gone = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let args = json!({"server": "staging", "path": "/x"});
+        // `staging` existed when the exact check ran, and is gone now.
+        let targets = change_targets(&gone, "remote_delete", &args);
+        assert_eq!(targets.len(), 1);
+        assert!(targets[0].profile.is_none());
+        let reason = unbound_change_target(&targets, &args).expect("refused");
+        assert!(
+            reason.starts_with("server 'staging' is not the name or id of a saved server"),
+            "{reason}"
+        );
+        // A snapshot where every target resolves is not refused, and nor is a read.
+        let present = SavedServers(vec![saved("srv_2", "staging")]);
+        assert!(
+            unbound_change_target(&change_targets(&present, "remote_delete", &args), &args)
+                .is_none()
+        );
+        assert!(change_targets(&gone, "remote_list", &args).is_empty());
+    }
+
+    /// CodeRabbit on #1522: a change naming no saved server was approved for
+    /// nothing (`change_targets` records no profile), so a profile created
+    /// with that name before the call reached the pool would have received
+    /// the write. A change runs only on a server that exists when it is
+    /// approved; a read still reports the name not found itself.
+    #[test]
+    fn a_change_on_a_name_no_saved_server_has_is_refused_before_approval() {
+        let creds = SavedServers(vec![saved("srv_1", "lab-prod")]);
+        let args = json!({"server": "staging", "path": "/x"});
+        let reason = inexact_change_target(&creds, "remote_delete", &args).expect("refused");
+        assert!(
+            reason.contains("'staging' is not the name or id of a saved server"),
+            "{reason}"
+        );
+        assert!(inexact_change_target(&creds, "remote_list", &args).is_none());
+        // Both ends of a transfer: the unknown one is named.
+        let transfer = json!({"server": "lab-prod", "dst_server": "staging", "path": "/x"});
+        let reason = inexact_change_target(&creds, "aeroftp_transfer", &transfer).expect("refused");
+        assert!(reason.starts_with("dst_server 'staging'"), "{reason}");
+        // The profile created later does not turn the approval into one for it:
+        // there was no approval to begin with.
+        let created = SavedServers(vec![saved("srv_1", "lab-prod"), saved("srv_2", "staging")]);
+        assert!(inexact_change_target(&created, "remote_delete", &args).is_none());
+        assert_ne!(
+            change_target_ids(&creds, "remote_delete", &args),
+            change_target_ids(&created, "remote_delete", &args)
+        );
     }
 
     /// The weaker half, declared as weaker: for these three the registry entry
@@ -3124,6 +3688,607 @@ mod tests {
     requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_tarxz, "tar.xz");
     #[cfg(unix)]
     requested102_dispatch_rejects_sensitive_alias!(requested102_dispatch_tarbz2, "tar.bz2");
+
+    /// A fake home with the protected locations the deep scan named, each
+    /// holding a secret line, and an ordinary file beside them. HOME points at
+    /// it until the returned guard drops; the caller holds the env lock.
+    struct FakeHome {
+        _dir: tempfile::TempDir,
+        home: std::path::PathBuf,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl Drop for FakeHome {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(home) => std::env::set_var("HOME", home),
+                None => std::env::remove_var("HOME"),
+            }
+        }
+    }
+
+    fn fake_home() -> FakeHome {
+        let dir = tempfile::tempdir().unwrap();
+        let home = std::fs::canonicalize(dir.path()).unwrap().join("home");
+        for (rel, body) in [
+            (".ssh/id_fixture", "-----BEGIN PRIVATE KEY----- SECRETWORD"),
+            (".aws/credentials", "aws_secret_access_key = SECRETWORD"),
+            (".docker/config.json", "{\"auths\": \"SECRETWORD\"}"),
+            (".config/aeroftp/vault.db", "SECRETWORD"),
+            (".config/other/settings.txt", "ordinary SECRETWORD"),
+            (
+                "notes.txt",
+                "ordinary SECRETWORD -----BEGIN PRIVATE KEY-----",
+            ),
+        ] {
+            let path = home.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, body).unwrap();
+        }
+        let previous = std::env::var_os("HOME");
+        std::env::set_var("HOME", &home);
+        FakeHome {
+            _dir: dir,
+            home,
+            previous,
+        }
+    }
+
+    fn mentions_protected(value: &Value) -> bool {
+        let text = value.to_string();
+        [
+            ".ssh",
+            ".aws",
+            ".docker",
+            "aeroftp/vault.db",
+            "id_fixture",
+            "credentials",
+        ]
+        .iter()
+        .any(|name| text.contains(name))
+    }
+
+    // Deep scan items 20, 21, 26 (read-only tier): the policy checked the root
+    // of a recursive read, and what lay below went to the AI provider.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn recursive_readers_never_read_a_protected_location_below_their_root() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let home = fake.home.to_string_lossy().to_string();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let indexed = dispatch_tool(&ctx, "rag_index", &json!({"path": home, "recursive": true}))
+            .await
+            .unwrap();
+        assert!(indexed.to_string().contains("notes.txt"), "{indexed}");
+        assert!(!mentions_protected(&indexed), "rag_index: {indexed}");
+        let searched = dispatch_tool(
+            &ctx,
+            "rag_search",
+            &json!({"path": home, "query": "SECRETWORD"}),
+        )
+        .await
+        .unwrap();
+        assert!(searched.to_string().contains("notes.txt"), "{searched}");
+        assert!(!mentions_protected(&searched), "rag_search: {searched}");
+        let grepped = dispatch_tool(
+            &ctx,
+            "local_grep",
+            &json!({"path": home, "pattern": "PRIVATE KEY"}),
+        )
+        .await
+        .unwrap();
+        assert!(grepped.to_string().contains("notes.txt"), "{grepped}");
+        assert!(!mentions_protected(&grepped), "local_grep: {grepped}");
+    }
+
+    // Deep scan items 22, 23: `$HOME/.` passed the spelling check and emptied
+    // the home; deleting `~/.config` took `~/.config/aeroftp` with it.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_delete_never_takes_the_home_or_a_protected_location_inside_a_folder() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let link = fake.home.parent().unwrap().join("home-link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&fake.home, &link).unwrap();
+        let mut roots = vec![
+            format!("{}/.", fake.home.display()),
+            format!("{}/", fake.home.display()),
+            fake.home.parent().unwrap().display().to_string(),
+        ];
+        if cfg!(unix) {
+            roots.push(link.display().to_string());
+        }
+        for root in roots {
+            let err = dispatch_tool(&ctx, "local_delete", &json!({"path": root}))
+                .await
+                .unwrap_err();
+            assert!(err.to_string().contains("dangerous path"), "{root}: {err}");
+            assert!(
+                fake.home.join("notes.txt").exists(),
+                "{root} deleted the home"
+            );
+        }
+        let config = fake.home.join(".config").display().to_string();
+        let err = dispatch_tool(&ctx, "local_delete", &json!({"path": config}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(fake.home.join(".config/aeroftp/vault.db").exists());
+        // A folder holding nothing protected is deleted as before.
+        let other = fake.home.join(".config/other").display().to_string();
+        dispatch_tool(&ctx, "local_delete", &json!({"path": other}))
+            .await
+            .expect("an ordinary folder");
+        assert!(!fake.home.join(".config/other").exists());
+        // Moving or trashing a folder that holds a protected location is
+        // refused the same way.
+        let away = fake.home.join("away").display().to_string();
+        let moved = dispatch_tool(
+            &ctx,
+            "local_move_files",
+            &json!({"paths": [config], "destination": away}),
+        )
+        .await
+        .unwrap();
+        assert!(moved.to_string().contains("protected path"), "{moved}");
+        assert!(fake.home.join(".config/aeroftp/vault.db").exists());
+        // Renaming one, alone or in a batch, and trashing one or the home are
+        // refused the same way.
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": config, "to": fake.home.join("config-old").display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(renamed.to_string().contains("protected path"), "{renamed}");
+        let batch = dispatch_tool(
+            &ctx,
+            "local_batch_rename",
+            &json!({"paths": [config], "mode": "add_suffix", "suffix": "-old"}),
+        )
+        .await;
+        assert!(format!("{batch:?}").contains("protected path"), "{batch:?}");
+        for path in [config.clone(), fake.home.display().to_string()] {
+            let trashed = dispatch_tool(&ctx, "local_trash", &json!({"paths": [path]}))
+                .await
+                .unwrap();
+            assert!(
+                trashed.to_string().contains("protected path")
+                    || trashed.to_string().contains("dangerous path"),
+                "{trashed}"
+            );
+        }
+        assert!(fake.home.join(".config/aeroftp/vault.db").exists());
+    }
+
+    // `~/.ssh` retargeted while a recursive copy runs: the copy reads the
+    // protected locations again at the next folder, so it does not write
+    // under the new target. Before, one reading for the whole tree missed it.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_recursive_copy_sees_a_protected_folder_retargeted_meanwhile() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let keys = fake.home.join("keys");
+        std::fs::rename(fake.home.join(".ssh"), &keys).unwrap();
+        std::os::unix::fs::symlink(&keys, fake.home.join(".ssh")).unwrap();
+        let source = fake.home.join("src");
+        std::fs::create_dir_all(source.join("inner")).unwrap();
+        std::fs::write(source.join("inner/planted.txt"), b"planted").unwrap();
+        let dest = fake.home.join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        let link = fake.home.join(".ssh");
+        let copied_root = dest.join("src");
+        let retargeted = std::rc::Rc::new(std::cell::Cell::new(false));
+        let flag = std::rc::Rc::clone(&retargeted);
+        let target = copied_root.clone();
+        super::local_tools::COPY_FOLDER_HOOK.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move |folder: &std::path::Path| {
+                if folder == target && !flag.get() {
+                    flag.set(true);
+                    std::fs::remove_file(&link).unwrap();
+                    std::os::unix::fs::symlink(&target, &link).unwrap();
+                }
+            }));
+        });
+        let outcome = dispatch_tool(
+            &ctx,
+            "local_copy_files",
+            &json!({"paths": [source.display().to_string()], "destination": dest.display().to_string()}),
+        )
+        .await;
+        super::local_tools::COPY_FOLDER_HOOK.with(|hook| *hook.borrow_mut() = None);
+        assert!(
+            retargeted.get(),
+            "the copy never entered {}",
+            copied_root.display()
+        );
+        let text = format!("{outcome:?}");
+        assert!(text.contains("sensitive path denied"), "{text}");
+        assert!(!copied_root.join("inner/planted.txt").exists());
+    }
+
+    // A case-insensitive find and replace matched in a lowercased copy and
+    // sliced the name at its offsets: `İ` grows when lowercased, so the cut
+    // fell elsewhere or inside a character.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_case_insensitive_rename_keeps_multibyte_names_whole() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let work = fake.home.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let file = work.join("\u{130}STANBUL-x.txt");
+        std::fs::write(&file, b"x").unwrap();
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_batch_rename",
+            &json!({"paths": [file.display().to_string()], "mode": "find_replace", "find": "-X", "replace": "-y"}),
+        )
+        .await
+        .unwrap();
+        assert!(work.join("\u{130}STANBUL-y.txt").exists(), "{renamed}");
+        assert!(!file.exists(), "{renamed}");
+    }
+
+    // A move or rename carries what the folder holds: a staged `.config`
+    // moved into a home without one would create `~/.config/aeroftp`.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_move_never_creates_a_protected_location_from_what_it_carries() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        std::fs::remove_dir_all(fake.home.join(".config")).unwrap();
+        let staged = fake.home.join("staging/.config");
+        std::fs::create_dir_all(staged.join("aeroftp")).unwrap();
+        std::fs::write(staged.join("aeroftp/vault.db"), b"planted").unwrap();
+        let moved = dispatch_tool(
+            &ctx,
+            "local_move_files",
+            &json!({"paths": [staged.display().to_string()], "destination": fake.home.display().to_string()}),
+        )
+        .await
+        .unwrap();
+        assert!(moved.to_string().contains("protected path"), "{moved}");
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": staged.display().to_string(), "to": fake.home.join(".config").display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(renamed.to_string().contains("protected path"), "{renamed}");
+        assert!(!fake.home.join(".config").exists());
+        assert!(staged.join("aeroftp/vault.db").exists());
+    }
+
+    // A folder that refuses traversal can still be renamed: what it holds
+    // cannot be seen, so a protected location in it counts as present. As
+    // root the location is simply seen; the refusal holds either way.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_folder_that_cannot_be_inspected_is_not_renamed_away() {
+        use std::os::unix::fs::PermissionsExt;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let config = fake.home.join(".config");
+        let plain = fake.home.join("plain");
+        std::fs::create_dir_all(plain.join("inner")).unwrap();
+        for folder in [&config, &plain] {
+            std::fs::set_permissions(folder, std::fs::Permissions::from_mode(0o000)).unwrap();
+        }
+        let refused = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": config.display().to_string(), "to": fake.home.join("config-old").display().to_string()}),
+        )
+        .await;
+        // The control: a folder that holds nothing protected is renamed.
+        let renamed = dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": plain.display().to_string(), "to": fake.home.join("plain-old").display().to_string()}),
+        )
+        .await;
+        for folder in [config.clone(), fake.home.join("plain-old"), plain.clone()] {
+            let _ = std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755));
+        }
+        let refused = refused.unwrap_err();
+        assert!(refused.to_string().contains("protected path"), "{refused}");
+        assert!(config.join("aeroftp/vault.db").exists());
+        renamed.expect("an ordinary folder is renamed");
+        assert!(fake.home.join("plain-old/inner").exists());
+        // The absent control: once `~/.config` is readable and holds nothing
+        // protected, a protected child that does not exist does not block it.
+        std::fs::remove_dir_all(config.join("aeroftp")).unwrap();
+        dispatch_tool(
+            &ctx,
+            "local_rename",
+            &json!({"from": config.display().to_string(), "to": fake.home.join("config-old").display().to_string()}),
+        )
+        .await
+        .expect("a readable folder without a protected child is renamed");
+        assert!(fake.home.join("config-old/other/settings.txt").exists());
+    }
+
+    // A protected location reached through a symlink is protected at its real
+    // path too: `~/.config -> /data/config`.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_protected_location_behind_a_symlink_is_protected_at_its_real_path() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let real = fake.home.parent().unwrap().join("data/config");
+        std::fs::create_dir_all(real.parent().unwrap()).unwrap();
+        std::fs::rename(fake.home.join(".config"), &real).unwrap();
+        std::os::unix::fs::symlink(&real, fake.home.join(".config")).unwrap();
+        let read = dispatch_tool(
+            &ctx,
+            "local_read",
+            &json!({"path": real.join("aeroftp/vault.db").display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(read.to_string().contains("sensitive path denied"), "{read}");
+        let deleted = dispatch_tool(
+            &ctx,
+            "local_delete",
+            &json!({"path": real.display().to_string()}),
+        )
+        .await
+        .unwrap_err();
+        assert!(deleted.to_string().contains("protected path"), "{deleted}");
+        assert!(real.join("aeroftp/vault.db").exists());
+    }
+
+    // Deep scan items 24, 25: a generated name or a copied child landed in a
+    // protected location though the folders passed.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn renames_and_copies_check_every_path_they_write() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let work = fake.home.join("work");
+        std::fs::create_dir_all(&work).unwrap();
+        let file = work.join("key.pub");
+        std::fs::write(&file, b"public").unwrap();
+        // A backslash is part of a name on Unix, a separator on Windows.
+        let report = work.join("report.txt");
+        std::fs::write(&report, b"r").unwrap();
+        let backslashed = dispatch_tool(
+            &ctx,
+            "local_batch_rename",
+            &json!({"paths": [report.display().to_string()], "mode": "add_prefix", "prefix": "2026\\"}),
+        )
+        .await;
+        assert_eq!(
+            work.join("2026\\report.txt").exists(),
+            !cfg!(windows),
+            "{backslashed:?}"
+        );
+        // The absolute prefix names a folder that exists and is writable, so
+        // only the refusal keeps the file in place, not a failed rename.
+        let elsewhere = fake.home.join("elsewhere");
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        let absolute = format!("{}/", elsewhere.display());
+        for prefix in ["../.ssh/", absolute.as_str()] {
+            let renamed = dispatch_tool(
+                &ctx,
+                "local_batch_rename",
+                &json!({"paths": [file.display().to_string()], "mode": "add_prefix", "prefix": prefix}),
+            )
+            .await;
+            let text = format!("{renamed:?}");
+            assert!(file.exists(), "{prefix}: the file moved ({text})");
+            assert!(!fake.home.join(".ssh/key.pub").exists(), "{prefix}");
+            assert_eq!(
+                std::fs::read_dir(&elsewhere).unwrap().count(),
+                0,
+                "{prefix}"
+            );
+        }
+        let source = fake.home.join("staging/.ssh");
+        std::fs::create_dir_all(&source).unwrap();
+        std::fs::write(source.join("authorized_keys"), b"attacker").unwrap();
+        let copied = dispatch_tool(
+            &ctx,
+            "local_copy_files",
+            &json!({"paths": [source.display().to_string()], "destination": fake.home.display().to_string()}),
+        )
+        .await
+        .unwrap();
+        assert!(
+            copied.to_string().contains("sensitive path denied"),
+            "{copied}"
+        );
+        assert!(!fake.home.join(".ssh/authorized_keys").exists());
+    }
+
+    // Deep scan item 42: an archive extracted into the home wrote
+    // `~/.ssh/authorized_keys`; the output folder alone was checked.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_archive_never_extracts_into_a_folder_holding_a_protected_location() {
+        use std::io::Write;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let archive = fake.home.join("bundle.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        zip.start_file(
+            ".ssh/authorized_keys",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"attacker").unwrap();
+        zip.finish().unwrap();
+        let args = |subfolder: bool| {
+            json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": fake.home.display().to_string(),
+                "create_subfolder": subfolder,
+            })
+        };
+        let err = dispatch_tool(&ctx, "archive_decompress", &args(false))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(!fake.home.join(".ssh/authorized_keys").exists());
+        // A protected location the home does not hold yet is refused as well:
+        // the extraction would create it.
+        std::fs::remove_dir_all(fake.home.join(".ssh")).unwrap();
+        let err = dispatch_tool(&ctx, "archive_decompress", &args(false))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(!fake.home.join(".ssh").exists());
+        // An archive whose own subfolder would be a protected location, with
+        // the tar suffix once or repeated: the check and every extractor read
+        // the subfolder through one helper.
+        for name in [".ssh.tar.gz", ".ssh.tgz"] {
+            let named = fake.home.join(name);
+            std::fs::write(&named, b"not reached").unwrap();
+            let err = dispatch_tool(
+                &ctx,
+                "archive_decompress",
+                &json!({
+                    "archive_path": named.display().to_string(),
+                    "output_dir": fake.home.display().to_string(),
+                }),
+            )
+            .await
+            .unwrap_err();
+            assert!(err.to_string().contains(".ssh"), "{name}: {err}");
+            assert!(!fake.home.join(".ssh").exists(), "{name}");
+        }
+        // Into its own subfolder the archive extracts as before.
+        dispatch_tool(&ctx, "archive_decompress", &args(true))
+            .await
+            .expect("a subfolder holds nothing protected");
+        assert!(fake.home.join("bundle/.ssh/authorized_keys").exists());
+    }
+
+    // The filesystem root holds every protected location: `path_matches_prefix`
+    // built `//` for it and found none, so an extraction into `/` passed.
+    #[cfg(unix)]
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn an_archive_is_never_extracted_into_the_filesystem_root() {
+        use std::io::Write;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let archive = fake.home.join("root.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        zip.start_file(
+            "aeroftp-root-extraction-must-not-exist.txt",
+            zip::write::SimpleFileOptions::default(),
+        )
+        .unwrap();
+        zip.write_all(b"x").unwrap();
+        zip.finish().unwrap();
+        let err = dispatch_tool(
+            &ctx,
+            "archive_decompress",
+            &json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": "/",
+                "create_subfolder": false,
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert!(err.to_string().contains("protected path"), "{err}");
+        assert!(!std::path::Path::new("/aeroftp-root-extraction-must-not-exist.txt").exists());
+    }
+
+    // `.ssh.tar.tar.gz` into the home: the check looked at `.ssh.tar`, the tar
+    // extractor wrote into `.ssh`. Both now name the same folder.
+    #[tokio::test]
+    #[allow(clippy::await_holding_lock)]
+    async fn a_repeated_tar_suffix_extracts_where_the_check_looked() {
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        std::fs::remove_dir_all(fake.home.join(".ssh")).unwrap();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let archive = fake.home.join(".ssh.tar.tar.gz");
+        {
+            let gz = flate2::write::GzEncoder::new(
+                std::fs::File::create(&archive).unwrap(),
+                flate2::Compression::default(),
+            );
+            let mut builder = tar::Builder::new(gz);
+            let body = b"planted";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(body.len() as u64);
+            header.set_mode(0o600);
+            header.set_cksum();
+            builder
+                .append_data(&mut header, "authorized_keys", &body[..])
+                .unwrap();
+            builder.into_inner().unwrap().finish().unwrap();
+        }
+        dispatch_tool(
+            &ctx,
+            "archive_decompress",
+            &json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": fake.home.display().to_string(),
+                "create_subfolder": true,
+            }),
+        )
+        .await
+        .expect("an ordinary subfolder");
+        assert!(fake.home.join(".ssh.tar/authorized_keys").exists());
+        assert!(!fake.home.join(".ssh").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    // The shared test-only env lock must cover the async call using this HOME.
+    #[allow(clippy::await_holding_lock)]
+    async fn an_archive_subfolder_that_is_a_symlink_does_not_lead_the_extraction_out() {
+        use std::io::Write;
+        let _env = crate::test_env::lock();
+        let fake = fake_home();
+        let ctx = mock_ctx(Surfaces::GUI);
+        let downloads = fake.home.join("downloads");
+        let elsewhere = fake.home.join("elsewhere");
+        std::fs::create_dir_all(&downloads).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, downloads.join("payload")).unwrap();
+        let archive = downloads.join("payload.zip");
+        let mut zip = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+        zip.start_file("planted.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(b"planted").unwrap();
+        zip.finish().unwrap();
+        let outcome = dispatch_tool(
+            &ctx,
+            "archive_decompress",
+            &json!({
+                "archive_path": archive.display().to_string(),
+                "output_dir": downloads.display().to_string(),
+                "create_subfolder": true,
+            }),
+        )
+        .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(!elsewhere.join("planted.txt").exists());
+    }
 
     #[tokio::test]
     // The shared test-only env lock must cover the async call using this HOME.

@@ -150,7 +150,6 @@ function renderTimeRefWrites(file: string, source: string): string[] {
 const LATEST_VALUE_REFS: Record<string, string[]> = {
     '/src/App.tsx': ['sortedLocalFilesRef', 'sortedRemoteFilesRef', 'handleToggleAeroFileRef', 'crossPanelDropRef', 'lockControllerInterrupt'],
     '/src/components/AISettings/AISettingsPanel.tsx': ['settingsRef'],
-    '/src/components/AeroSync/DeltaEligibilityDialog.tsx': ['skipFutureRef'],
     '/src/components/ConnectionScreen.tsx': ['onTabLabelChangeRef'],
     '/src/components/DevTools/AIChat.tsx': ['toolRegistryRef', 'rowHandlersRef'],
     '/src/components/DevTools/ChatSearchOverlay.tsx': ['onSearchResultsRef', 'onHighlightMessageRef'],

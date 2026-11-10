@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { canonicalPresetId } from './providers/connectionManifest';
+
 // Remote file from FTP server
 export interface RemoteFile {
   name: string;
@@ -359,6 +361,24 @@ export const s3PresetReportsUsage = (
   providerId?: string | null,
 ): boolean => protocol === "s3" && providerId === "tigris";
 
+/**
+ * S3 presets that have no object tagging: Fastly Object Storage answers 501
+ * NotImplemented to the tagging calls (Tier 0, 2026-11-06), and the backend
+ * refuses them as not supported. The file menu does not offer "Object Tags"
+ * for these. A profile saved from the Custom S3 form carries no preset id and
+ * still offers it; the backend refusal answers there.
+ */
+const S3_PRESETS_WITHOUT_OBJECT_TAGS = new Set<string>(["fastly"]);
+
+export const s3PresetOffersObjectTags = (providerId?: string | null): boolean => {
+  const preset = canonicalPresetId(providerId);
+  return !preset || !S3_PRESETS_WITHOUT_OBJECT_TAGS.has(preset);
+};
+
+/** Fastly has no object versions, so it has no version-based trash view. */
+export const s3PresetOffersTrash = (providerId?: string | null): boolean =>
+  canonicalPresetId(providerId) !== "fastly";
+
 // Check if a provider supports native share links
 export const supportsNativeShareLink = (type: ProviderType): boolean => {
   return [
@@ -425,6 +445,7 @@ export interface ProviderOptions {
    *  wrote `tlsMode` connects with its real mode (explicit on port 21). */
   ftpsMode?: FtpTlsMode;
   verifyCert?: boolean; // Verify server certificate (default: true)
+  trustPasvAddress?: boolean; // FTP: use the address a PASV reply names (default: false, the control peer)
   /** Swift only. Accept a catalog-issued cleartext object-store endpoint after
    *  an HTTPS Keystone session. Undefined or false keeps the downgrade guard
    *  armed: the storage endpoint carries the bearer token, so a silent
@@ -561,13 +582,20 @@ export interface LocalFile {
 
 // A file or folder the OS handed to the app (`open_request.rs`).
 export interface OpenRequest {
-  kind: 'vault' | 'keystore' | 'profiles' | 'archive' | 'local';
+  kind: 'vault' | 'keystore' | 'profiles' | 'archive' | 'local' | 'remoteUrl' | 'profile';
   path: string;
   /** The folder AeroFile shows: the parent of a file, a folder itself. */
   folder: string;
   /** The entry to select in `folder`; empty for a folder. */
   name: string;
   isDir: boolean;
+  protocol?: ProviderType;
+  server?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  initialPath?: string;
+  profileName?: string;
 }
 
 // Transfer progress event from backend

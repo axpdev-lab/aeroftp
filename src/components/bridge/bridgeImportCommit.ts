@@ -2,7 +2,67 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { ServerProfile } from '../../types';
+import { makeSafe } from '../../utils/profileSecurity';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
+
+/** A profile as `import_bridge_config` returns it, credentials redacted. */
+export interface ImportedServer {
+    id: string;
+    name: string;
+    host: string;
+    port: number;
+    username: string;
+    protocol?: string;
+    initialPath?: string;
+    options?: Record<string, unknown>;
+    providerId?: string;
+    hasStoredCredential?: boolean;
+    aeroCryptOverlay?: ServerProfile['aeroCryptOverlay'];
+    hasStoredAeroCryptPassword?: boolean;
+    hasStoredAeroCryptSalt?: boolean;
+    /** The Filen CLI API key the backend moved into the vault (#230). */
+    hasStoredFilenApiKey?: boolean;
+    /** The pre-reset host and options when `import_bridge_config` reset a relaxing option. */
+    relaxedHost?: string;
+    relaxedOptions?: Record<string, unknown>;
+}
+
+/**
+ * The saved profile an imported one becomes. Only the fields the backend
+ * returned are kept: what it took out of the options (a Filen API key, the
+ * crypt secrets) stays in the vault, each `hasStored*` flag says only what the
+ * vault holds, and security-relaxing options stay in their safe state unless
+ * explicitly kept in `keepRelaxed` (#1506 Requested 198).
+ */
+export const importedServerProfile = (
+    s: ImportedServer,
+    keepRelaxed: readonly string[] = [],
+): ServerProfile => {
+    const useRelaxed = keepRelaxed.length > 0 && (s.relaxedHost !== undefined || s.relaxedOptions !== undefined);
+    const { profile: safe } = makeSafe(
+        {
+            host: useRelaxed ? (s.relaxedHost ?? s.host) : s.host,
+            port: s.port,
+            providerId: s.providerId,
+            protocol: s.protocol,
+            options: useRelaxed ? (s.relaxedOptions ?? s.options) : s.options,
+        },
+        keepRelaxed,
+    );
+    return {
+        id: s.id, name: s.name, host: safe.host ?? s.host, port: s.port,
+        username: s.username,
+        protocol: s.protocol as ServerProfile['protocol'],
+        initialPath: s.initialPath,
+        options: safe.options as ServerProfile['options'],
+        providerId: s.providerId,
+        hasStoredCredential: s.hasStoredCredential || false,
+        aeroCryptOverlay: s.aeroCryptOverlay,
+        hasStoredAeroCryptPassword: s.hasStoredAeroCryptPassword,
+        hasStoredAeroCryptSalt: s.hasStoredAeroCryptSalt,
+        hasStoredFilenApiKey: s.hasStoredFilenApiKey,
+    };
+};
 
 export interface CommitOutcome {
     added: number;

@@ -55,6 +55,8 @@ mod ai_model_catalog;
 pub mod ai_native;
 pub mod ai_stream;
 mod ai_tools;
+/// The approval text of an AI tool call, shared with the CLI agent's prompt.
+pub use ai_tools::approval_message_for as ai_tool_approval_message;
 pub mod app_events;
 mod archive_browse;
 mod archive_source;
@@ -273,6 +275,7 @@ pub mod proc_stats;
 pub mod profile_auth_state;
 pub mod profile_export;
 pub mod profile_import_plan;
+pub mod profile_security;
 mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
 // consent, and they share the predicate with the S3 provider rather than
@@ -1622,6 +1625,10 @@ pub struct ConnectionParams {
     /// so legacy callers that omit it keep working.
     #[serde(default, alias = "connectToken")]
     connect_token: Option<String>,
+    /// The profile's "use the address the server gives for passive data
+    /// connections" option (#1506 Requested 188); absent means off.
+    #[serde(default, alias = "trustPasvAddress")]
+    trust_pasv_address: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -3509,6 +3516,7 @@ async fn connect_ftp_inner(
         .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     let mut ftp_manager = state.ftp_manager.lock().await;
+    ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
     let do_connect = async {
         ftp_manager
@@ -6836,6 +6844,28 @@ async fn delete_local_file(
     result
 }
 
+/// Whether a local delete of `path` walks into it as a folder: only a real
+/// directory, never a link to one (`symlink_metadata` does not follow it).
+fn local_delete_walks_into(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
+}
+
+/// Remove a file, or a link as itself. Windows removes a link to a folder
+/// (a directory symlink or junction) with `remove_dir`, which does not touch
+/// the target; elsewhere `remove_file` removes any link.
+async fn remove_local_file_or_link(path: &std::path::Path) -> std::io::Result<()> {
+    match tokio::fs::remove_file(path).await {
+        Err(err)
+            if cfg!(windows)
+                && std::fs::symlink_metadata(path)
+                    .is_ok_and(|meta| meta.file_type().is_symlink()) =>
+        {
+            tokio::fs::remove_dir(path).await.map_err(|_| err)
+        }
+        other => other,
+    }
+}
+
 async fn delete_local_file_inner(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -6849,7 +6879,10 @@ async fn delete_local_file_inner(
         .unwrap_or_else(|| path.clone());
 
     let delete_id = format!("del-local-{}", chrono::Utc::now().timestamp_millis());
-    let is_dir = path_buf.is_dir();
+    // `is_dir()` follows a link: deleting a link to a folder walked the
+    // target and deleted its files, outside what the user selected
+    // (deep-scan 38). A link is deleted as itself.
+    let is_dir = local_delete_walks_into(&path_buf);
 
     if !is_dir {
         // Single file delete
@@ -6868,7 +6901,7 @@ async fn delete_local_file_inner(
             },
         );
 
-        match tokio::fs::remove_file(&path).await {
+        match remove_local_file_or_link(&path_buf).await {
             Ok(_) => {
                 crate::transfer_event_sink::emit_gui_transfer_event(
                     &app,
@@ -7192,8 +7225,37 @@ async fn copy_then_delete_local(
     from: &std::path::Path,
     to: &std::path::Path,
 ) -> Result<(), String> {
-    if from.is_dir() {
-        copy_dir_recursive(from, to, 0).await?;
+    // What stands at the destination is replaced as rename replaces it: a
+    // link there is removed as itself, never written through to the file it
+    // names (deep-scan 39, 40).
+    if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        remove_local_file_or_link(to)
+            .await
+            .map_err(|e| format!("Failed to replace the link at the destination: {}", e))?;
+    }
+    let source = std::fs::symlink_metadata(from)
+        .map_err(|e| format!("Failed to read the source of a cross-device move: {}", e))?;
+    // A link is moved as rename moves it: the same link at the destination,
+    // never a copy of what it points to.
+    if source.file_type().is_symlink() {
+        let target = tokio::fs::read_link(from)
+            .await
+            .map_err(|e| format!("Failed to read the link for a cross-device move: {}", e))?;
+        if std::fs::symlink_metadata(to).is_ok_and(|meta| meta.is_file()) {
+            tokio::fs::remove_file(to)
+                .await
+                .map_err(|e| format!("Failed to replace the destination: {}", e))?;
+        }
+        recreate_link(&source, &target, to).await?;
+        remove_local_file_or_link(from)
+            .await
+            .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
+        return Ok(());
+    }
+    if local_delete_walks_into(from) {
+        // The links inside the folder move with it, as rename moves them: the
+        // copy recreates each, and the source is removed only after.
+        copy_dir_recursive(from, to, 0, NestedLinks::Recreate).await?;
         tokio::fs::remove_dir_all(from)
             .await
             .map_err(|e| format!("Failed to remove source after cross-device move: {}", e))?;
@@ -7250,7 +7312,7 @@ async fn rename_local_file_inner(
     // (cross-panel move, inline/batch rename), refuse if `to` already exists so
     // the frontend can prompt. Existing callers omit the flag -> None -> preserve
     // the historical overwrite behavior. (CLAUDE-AV-B1-10)
-    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+    if overwrite == Some(false) && local_entry_present(std::path::Path::new(&to)) {
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
 
@@ -7278,12 +7340,13 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
     }
     // See rename_local_file: refuse a silent overwrite when the caller opts out.
     // (CLAUDE-AV-B1-10)
-    if overwrite == Some(false) && std::path::Path::new(&to).exists() {
+    if overwrite == Some(false) && local_entry_present(std::path::Path::new(&to)) {
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
+    refuse_link_destination(std::path::Path::new(&to))?;
     if from_path.is_dir() {
         // Recursive directory copy
-        copy_dir_recursive(from_path, std::path::Path::new(&to), 0).await?;
+        copy_dir_recursive(from_path, std::path::Path::new(&to), 0, NestedLinks::Skip).await?;
     } else {
         tokio::fs::copy(&from, &to)
             .await
@@ -7292,14 +7355,68 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
     Ok(())
 }
 
+/// Whether anything is at `path`, a dangling link included: `exists()`
+/// follows a link and says false for one whose target is gone, and a copy
+/// with no overwrite then wrote through it (deep-scan 40).
+fn local_entry_present(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok()
+}
+
+/// A local copy never writes through a link at its destination: the data
+/// would land wherever the link points, outside the chosen folder
+/// (deep-scan 39, 40). The link is reported instead.
+fn refuse_link_destination(path: &std::path::Path) -> Result<(), String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(meta) if meta.file_type().is_symlink() => Err(format!(
+            "Refusing to write through a link at the destination: {}",
+            path.display()
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// What a folder copy does with a link inside the tree: a copy skips it, as
+/// it always has; a cross-device move recreates it as the same link, since
+/// the source is deleted afterwards and the link would otherwise be lost.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum NestedLinks {
+    Skip,
+    Recreate,
+}
+
+/// Make at `to` the same link as the one `source` describes, pointing at `target`.
+async fn recreate_link(
+    source: &std::fs::Metadata,
+    target: &std::path::Path,
+    to: &std::path::Path,
+) -> Result<(), String> {
+    #[cfg(unix)]
+    let made = {
+        let _ = source;
+        tokio::fs::symlink(target, to).await
+    };
+    #[cfg(windows)]
+    let made = {
+        use std::os::windows::fs::FileTypeExt;
+        if source.file_type().is_symlink_dir() {
+            tokio::fs::symlink_dir(target, to).await
+        } else {
+            tokio::fs::symlink_file(target, to).await
+        }
+    };
+    made.map_err(|e| format!("Failed to recreate the link for a cross-device move: {}", e))
+}
+
 async fn copy_dir_recursive(
     src: &std::path::Path,
     dst: &std::path::Path,
     depth: u32,
+    links: NestedLinks,
 ) -> Result<(), String> {
     if depth > 50 {
         return Err("Directory nesting too deep (max 50 levels)".to_string());
     }
+    refuse_link_destination(dst)?;
     tokio::fs::create_dir_all(dst)
         .await
         .map_err(|e| format!("Failed to create directory: {}", e))?;
@@ -7318,18 +7435,183 @@ async fn copy_dir_recursive(
             .await
             .map_err(|e| format!("Failed to read metadata: {}", e))?;
         if metadata.is_symlink() {
-            // Skip symlinks for security
+            // A copy skips links for security; a move keeps them as links,
+            // never by copying what they point to.
+            if links == NestedLinks::Recreate {
+                refuse_link_destination(&dst_path)?;
+                let target = tokio::fs::read_link(&src_path)
+                    .await
+                    .map_err(|e| format!("Failed to read link: {}", e))?;
+                recreate_link(&metadata, &target, &dst_path).await?;
+            }
             continue;
         }
         if metadata.is_dir() {
-            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1)).await?;
+            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1, links)).await?;
         } else {
+            refuse_link_destination(&dst_path)?;
             tokio::fs::copy(&src_path, &dst_path)
                 .await
                 .map_err(|e| format!("Failed to copy file: {}", e))?;
         }
     }
     Ok(())
+}
+
+/// Deep-scan 38, 39, 40: local delete and copy never act through a link.
+#[cfg(all(test, unix))]
+mod local_link_tests {
+    use super::{
+        copy_dir_recursive, copy_local_file, copy_then_delete_local, local_delete_walks_into,
+        remove_local_file_or_link,
+    };
+
+    /// Deep-scan 39, 40: a folder moved across devices arrives with the links
+    /// inside it, as links, and their targets are left alone; a copy still
+    /// skips them.
+    #[tokio::test]
+    async fn a_cross_device_folder_move_keeps_the_links_inside_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let elsewhere = dir.path().join("elsewhere");
+        std::fs::create_dir(&elsewhere).unwrap();
+        let from = dir.path().join("from");
+        std::fs::create_dir_all(from.join("sub")).unwrap();
+        std::fs::write(from.join("plain.txt"), b"plain").unwrap();
+        std::os::unix::fs::symlink(&target, from.join("sub/file_link")).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, from.join("dir_link")).unwrap();
+
+        let copied = dir.path().join("copied");
+        copy_dir_recursive(&from, &copied, 0, super::NestedLinks::Skip)
+            .await
+            .unwrap();
+        assert!(std::fs::symlink_metadata(copied.join("sub/file_link")).is_err());
+
+        let to = dir.path().join("to");
+        copy_then_delete_local(&from, &to).await.unwrap();
+        assert!(std::fs::symlink_metadata(&from).is_err());
+        assert_eq!(std::fs::read(to.join("plain.txt")).unwrap(), b"plain");
+        assert_eq!(
+            std::fs::read_link(to.join("sub/file_link")).unwrap(),
+            target
+        );
+        assert_eq!(std::fs::read_link(to.join("dir_link")).unwrap(), elsewhere);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+        assert!(elsewhere.is_dir());
+    }
+
+    /// Deep-scan 39, 40: the cross-device move keeps a link a link, and
+    /// replaces a link at the destination instead of writing through it.
+    #[tokio::test]
+    async fn a_cross_device_move_moves_links_as_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target.txt");
+        std::fs::write(&target, b"target").unwrap();
+        let folder = dir.path().join("folder");
+        std::fs::create_dir(&folder).unwrap();
+
+        let file_link = dir.path().join("file_link");
+        std::os::unix::fs::symlink(&target, &file_link).unwrap();
+        let moved = dir.path().join("moved_file_link");
+        copy_then_delete_local(&file_link, &moved).await.unwrap();
+        assert!(std::fs::symlink_metadata(&file_link).is_err());
+        assert!(std::fs::symlink_metadata(&moved)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read_link(&moved).unwrap(), target);
+        assert_eq!(std::fs::read(&target).unwrap(), b"target");
+
+        let dir_link = dir.path().join("dir_link");
+        std::os::unix::fs::symlink(&folder, &dir_link).unwrap();
+        let moved_dir = dir.path().join("moved_dir_link");
+        copy_then_delete_local(&dir_link, &moved_dir).await.unwrap();
+        assert_eq!(std::fs::read_link(&moved_dir).unwrap(), folder);
+        assert!(folder.is_dir());
+
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, b"outside").unwrap();
+        let dest = dir.path().join("dest.txt");
+        std::os::unix::fs::symlink(&outside, &dest).unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"moved").unwrap();
+        copy_then_delete_local(&src, &dest).await.unwrap();
+        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
+        assert!(!std::fs::symlink_metadata(&dest)
+            .unwrap()
+            .file_type()
+            .is_symlink());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"moved");
+    }
+
+    #[tokio::test]
+    async fn a_link_to_a_folder_is_deleted_as_itself() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        std::fs::create_dir(&target).unwrap();
+        std::fs::write(target.join("keep.txt"), b"keep").unwrap();
+        let link = dir.path().join("link");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(local_delete_walks_into(&target));
+        assert!(!local_delete_walks_into(&link), "a link is not walked into");
+        remove_local_file_or_link(&link).await.unwrap();
+        assert!(
+            std::fs::symlink_metadata(&link).is_err(),
+            "the link is gone"
+        );
+        assert_eq!(std::fs::read(target.join("keep.txt")).unwrap(), b"keep");
+    }
+
+    #[tokio::test]
+    async fn a_copy_with_no_overwrite_sees_a_dangling_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src.txt");
+        std::fs::write(&src, b"new").unwrap();
+        let elsewhere = dir.path().join("elsewhere.txt");
+        let to = dir.path().join("to.txt");
+        std::os::unix::fs::symlink(&elsewhere, &to).unwrap();
+        let refused = copy_local_file(
+            src.to_string_lossy().into(),
+            to.to_string_lossy().into(),
+            Some(false),
+        )
+        .await;
+        assert!(refused.is_err(), "{refused:?}");
+        let through = copy_local_file(
+            src.to_string_lossy().into(),
+            to.to_string_lossy().into(),
+            None,
+        )
+        .await;
+        assert!(through.is_err(), "{through:?}");
+        assert!(!elsewhere.exists(), "nothing written through the link");
+    }
+
+    #[tokio::test]
+    async fn a_folder_copy_refuses_a_link_at_the_destination() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("src");
+        std::fs::create_dir(&src).unwrap();
+        std::fs::write(src.join("a.txt"), b"a").unwrap();
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&outside).unwrap();
+        let dst = dir.path().join("dst");
+        std::fs::create_dir(&dst).unwrap();
+        std::os::unix::fs::symlink(outside.join("a.txt"), dst.join("a.txt")).unwrap();
+        assert!(copy_dir_recursive(&src, &dst, 0, super::NestedLinks::Skip)
+            .await
+            .is_err());
+        assert!(!outside.join("a.txt").exists(), "nothing written outside");
+        let dst_link = dir.path().join("dst_link");
+        std::os::unix::fs::symlink(&outside, &dst_link).unwrap();
+        assert!(
+            copy_dir_recursive(&src, &dst_link, 0, super::NestedLinks::Skip)
+                .await
+                .is_err()
+        );
+        assert!(!outside.join("a.txt").exists());
+    }
 }
 
 #[cfg(test)]
@@ -8214,14 +8496,9 @@ async fn extract_archive(
 
     // Determine actual output directory
     let actual_output = if create_subfolder {
-        let archive_stem = std::path::Path::new(&archive_path)
-            .file_stem()
-            .unwrap_or_default()
+        archive_subfolder(std::path::Path::new(&output_dir), &archive_path)
             .to_string_lossy()
-            .to_string();
-        let subfolder =
-            std::path::Path::new(&output_dir).join(safe_extract_folder_name(&archive_stem));
-        subfolder.to_string_lossy().to_string()
+            .to_string()
     } else {
         output_dir.clone()
     };
@@ -8885,12 +9162,7 @@ async fn extract_7z(
 
     // Determine output directory
     let final_output_dir = if create_subfolder {
-        let archive_name = Path::new(&archive_path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "extracted".to_string());
-        Path::new(&output_dir)
-            .join(safe_extract_folder_name(&archive_name))
+        archive_subfolder(Path::new(&output_dir), &archive_path)
             .to_string_lossy()
             .to_string()
     } else {
@@ -9914,9 +10186,7 @@ async fn extract_single_impl(
     let member_name = single_stream_member_name(&archive_name, &codec);
 
     let dest_dir = if create_subfolder {
-        Path::new(&output_dir).join(safe_extract_folder_name(&archive_extract_stem(
-            &archive_name,
-        )))
+        archive_subfolder(Path::new(&output_dir), &archive_path)
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -10140,16 +10410,7 @@ fn tar_final_output(
     use std::path::Path;
     let out = Path::new(output_dir);
     if create_subfolder {
-        let stem = Path::new(archive_path)
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy();
-        let folder_name = if stem.ends_with(".tar") {
-            stem.trim_end_matches(".tar").to_string()
-        } else {
-            stem.to_string()
-        };
-        let subfolder = out.join(safe_extract_folder_name(&folder_name));
+        let subfolder = archive_subfolder(out, archive_path);
         open_archive_output(out, &subfolder)?;
         Ok(subfolder)
     } else {
@@ -10362,11 +10623,7 @@ async fn extract_rar(
     use std::path::Path;
 
     let final_output = if create_subfolder {
-        let archive_name = Path::new(&archive_path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "extracted".to_string());
-        Path::new(&output_dir).join(safe_extract_folder_name(&archive_name))
+        archive_subfolder(Path::new(&output_dir), &archive_path)
     } else {
         Path::new(&output_dir).to_path_buf()
     };
@@ -10653,6 +10910,23 @@ pub(crate) fn safe_extract_folder_name(stem: &str) -> &str {
         _ if last.contains(':') => "extracted",
         _ => last,
     }
+}
+
+/// The per-archive subfolder an extraction with `create_subfolder` writes into,
+/// for every extractor (ZIP, 7z, RAR, tar, single stream) and for the AI path
+/// policy that checks it first. One derivation, so the folder checked is the
+/// folder written: the tar extractor stripped `.tar` repeatedly while the check
+/// stripped it once, and `.ssh.tar.tar.gz` passed the check for `.ssh.tar` and
+/// wrote into `.ssh`.
+pub(crate) fn archive_subfolder(
+    output_dir: &std::path::Path,
+    archive_path: &str,
+) -> std::path::PathBuf {
+    let file_name = std::path::Path::new(archive_path)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    output_dir.join(safe_extract_folder_name(&archive_extract_stem(&file_name)))
 }
 
 /// Strip the full archive extension from a file name, returning the stem used to
@@ -11334,11 +11608,34 @@ async fn preview_remote_file(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
+    expected_generation: Option<u64>,
 ) -> Result<String, String> {
-    let temp_path = std::env::temp_dir().join(format!(
-        "aeroftp_preview_{}",
-        chrono::Utc::now().timestamp_millis()
-    ));
+    read_remote_file_for_preview(&state, &provider_state, path, expected_generation).await
+}
+
+/// [`preview_remote_file`] without the Tauri state wrappers, so a test can run
+/// it on plain state.
+async fn read_remote_file_for_preview(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    expected_generation: Option<u64>,
+) -> Result<String, String> {
+    // The editor's read, bound to the connection it was opened on: held for
+    // the whole read, so a switch waits for it, and refused if one came first.
+    let _pin = match expected_generation {
+        Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
+        None => None,
+    };
+    // The preview lands in clear on disk: in a private folder (0700, a name
+    // no one can predict) rather than at a timestamped name in the shared
+    // temp folder with the default mode (deep-scan 105). The folder goes
+    // away with `preview_dir`.
+    let preview_dir = tempfile::Builder::new()
+        .prefix("aeroftp_preview_")
+        .tempdir()
+        .map_err(|e| format!("Failed to create preview folder: {}", e))?;
+    let temp_path = preview_dir.path().join("content");
     let temp_path_str = temp_path.to_string_lossy().to_string();
 
     // Try provider path first (cloud providers, GitHub, etc.)
@@ -11765,7 +12062,28 @@ async fn save_remote_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
     content: String,
+    expected_generation: Option<u64>,
 ) -> Result<(), String> {
+    write_remote_file_from_editor(&state, &provider_state, path, content, expected_generation).await
+}
+
+/// [`save_remote_file`] without the Tauri state wrappers, so a test can run
+/// it on plain state.
+async fn write_remote_file_from_editor(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    content: String,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
+    // The editor's save, bound to the connection read just before it: held
+    // through the write, so a switch waits for it, and refused if one came
+    // first (Greptile on #1526: the frontend check alone left the gap
+    // between it and the provider lock).
+    let _pin = match expected_generation {
+        Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
+        None => None,
+    };
     // Fail-closed: the remote editor save is a direct provider write, so it must
     // refuse when the session has a crypt overlay that is currently unwrapped
     // (badge locked / stepped outside the encrypted scope). Without this an
@@ -18899,8 +19217,13 @@ async fn import_server_profiles(
     file_path: String,
     password: String,
     existing: Option<profile_import_plan::ExistingProfileMode>,
+    keep_relaxed: Option<Vec<profile_security::KeptRelaxation>>,
+    reviewed_digest: Option<String>,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
     only_main_window(webview.label(), "import_server_profiles")?;
+    // A security-relaxing option of the file comes in safe unless the user
+    // ticked it in the preview (#1506 Requested 198).
+    let policy = profile_security::RelaxationPolicy::Keep(keep_relaxed.unwrap_or_default());
     // Argon2id and blocking vault, lock and database work, off the async workers
     // like the keystore commands (AUDIT 2026-05-11 M1).
     tokio::task::spawn_blocking(move || {
@@ -18909,10 +19232,76 @@ async fn import_server_profiles(
         let user = user_partitions::cli_get_active_user(&store)
             .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
             .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
-        import_server_profiles_blocking(file_path, password, existing.unwrap_or_default(), user.id)
+        import_server_profiles_blocking(
+            file_path,
+            password,
+            existing.unwrap_or_default(),
+            &policy,
+            reviewed_digest.as_deref(),
+            user.id,
+        )
     })
     .await
     .map_err(|e| format!("Import task failed: {e}"))?
+}
+
+/// GUI My Servers > Import, before the import: what the file would do to the
+/// active user's list, with the security-relaxing options it carries, so the
+/// user can choose which to keep. Nothing is written.
+#[tauri::command]
+async fn preview_server_import(
+    webview: tauri::Webview,
+    file_path: String,
+    password: String,
+    existing: Option<profile_import_plan::ExistingProfileMode>,
+) -> Result<profile_import_plan::ProfileImportReport, String> {
+    only_main_window(webview.label(), "preview_server_import")?;
+    tokio::task::spawn_blocking(move || {
+        let store =
+            credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
+        let user = user_partitions::cli_get_active_user(&store)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?
+            .ok_or_else(|| format!("{IMPORT_NEEDS_PARTITION}: NO_ACTIVE_USER"))?;
+        let (current, _) = user_partitions::cli_read_active_profiles_at_revision(&store, user.id)
+            .map_err(|e| format!("{IMPORT_NEEDS_PARTITION}: {e}"))?;
+        preview_server_profiles(
+            &file_path,
+            &password,
+            existing.unwrap_or_default(),
+            &profile_security::RelaxationPolicy::ResetAll,
+            &current,
+        )
+    })
+    .await
+    .map_err(|e| format!("Import preview task failed: {e}"))?
+}
+
+/// The file changed between its review and the import.
+const IMPORT_FILE_CHANGED: &str =
+    "IMPORT_FILE_CHANGED: The backup file changed since its review, so nothing was imported; review it again";
+
+/// Read an import file once: the same bytes are hashed for the review and
+/// decrypted for the import, so a file swapped between the two cannot slip in
+/// (Greptile on #1524).
+fn read_import_file(path: &str) -> Result<Vec<u8>, String> {
+    std::fs::read(path).map_err(|e| format!("Cannot read the backup file: {e}"))
+}
+
+/// SHA-256 of an import file's bytes, hex.
+fn import_bytes_digest(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(bytes))
+}
+
+/// Refuse bytes that are not the file the user reviewed. No digest (the CLI,
+/// a preview, an import with nothing to review) checks nothing.
+fn check_reviewed_file(bytes: &[u8], reviewed: Option<&str>) -> Result<(), String> {
+    match reviewed {
+        Some(reviewed) if import_bytes_digest(bytes) != reviewed => {
+            Err(IMPORT_FILE_CHANGED.to_string())
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Without an unlocked vault neither the list nor the secrets can be reached,
@@ -18932,6 +19321,9 @@ struct PreparedImport {
     provider_secrets: std::collections::HashMap<String, profile_export::ProviderSecrets>,
     plan: Vec<profile_import_plan::PlannedProfile>,
     target_changed: Vec<String>,
+    /// The security-relaxing options found per planned profile, and what the
+    /// policy did with them.
+    security: Vec<profile_import_plan::ImportedSecurity>,
 }
 
 impl PreparedImport {
@@ -18956,6 +19348,7 @@ fn prepare_import(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     current: &[serde_json::Value],
 ) -> PreparedImport {
     use profile_import_plan::{ImportCandidate, ImportOutcome};
@@ -18978,6 +19371,52 @@ fn prepare_import(
         profile_import_plan::new_profile_id,
     );
     drop(candidates);
+
+    // An imported file is untrusted: an option that turns a check off (TLS
+    // certificate, SSH host key, PASV address, cleartext consent) comes in its
+    // safe state unless the policy keeps it (#1506 Requested 198). Done before
+    // the target comparison, so an overwrite is judged on what will be stored.
+    // An overwrite that brings a setting the profile already has, same key and
+    // value, imports nothing new: it is neither reported nor reset, so it
+    // compares like with like (Greptile on #1506 Requested 198).
+    let mut security = Vec::new();
+    for planned in plan.iter().filter(|p| p.outcome != ImportOutcome::Skipped) {
+        let server = &mut servers[planned.index];
+        let mut relaxations = profile_security::security_relaxations_of(
+            &server.host,
+            u16::try_from(server.port).ok(),
+            server.provider_id.as_deref(),
+            server.protocol.as_deref(),
+            server.options.as_ref(),
+        );
+        if planned.outcome == ImportOutcome::Overwritten {
+            if let Some(existing) = current
+                .iter()
+                .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(planned.id.as_str()))
+            {
+                relaxations = profile_security::new_relaxations(relaxations, existing);
+            }
+        }
+        if relaxations.is_empty() {
+            continue;
+        }
+        let keep = policy.kept_keys(planned.index, &relaxations);
+        let removed = profile_security::make_parts_safe(
+            &mut server.host,
+            &mut server.options,
+            &relaxations,
+            &keep,
+        );
+        let (reset, kept) = relaxations
+            .into_iter()
+            .partition(|relaxation| removed.contains(&relaxation.key));
+        security.push(profile_import_plan::ImportedSecurity {
+            file_index: planned.index,
+            name: profile_import_plan::display_name(&server.name, &server.host),
+            reset,
+            kept,
+        });
+    }
 
     let mut target_changed = Vec::new();
     for planned in plan
@@ -19026,6 +19465,7 @@ fn prepare_import(
         provider_secrets,
         plan,
         target_changed,
+        security,
     }
 }
 
@@ -19055,6 +19495,18 @@ fn import_report(
         target_changed: prepared.target_changed.clone(),
         total_in_file: prepared.servers.len(),
         metadata,
+        file_digest: None,
+        security: prepared
+            .security
+            .iter()
+            .filter(|found| {
+                prepared
+                    .plan
+                    .iter()
+                    .any(|p| p.index == found.file_index && p.outcome != ImportOutcome::Skipped)
+            })
+            .cloned()
+            .collect(),
     };
     for planned in &prepared.plan {
         let server = &prepared.servers[planned.index];
@@ -19091,6 +19543,7 @@ fn import_report(
         }
         let mut profile = redact_imported_server(server, &restored);
         profile["importOutcome"] = serde_json::json!(planned.outcome);
+        profile["fileIndex"] = serde_json::json!(planned.index);
         report.servers.push(profile);
     }
     report
@@ -19102,20 +19555,24 @@ pub fn preview_server_profiles(
     file_path: &str,
     password: &str,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     current: &[serde_json::Value],
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let bytes = read_import_file(file_path)?;
+    let file_digest = import_bytes_digest(&bytes);
     let (servers, provider_secrets, metadata) =
-        profile_export::import_profiles(std::path::Path::new(file_path), password)
-            .map_err(|e| e.to_string())?;
-    let prepared = prepare_import(&servers, &provider_secrets, mode, current);
-    Ok(import_report(
+        profile_export::import_profiles_from_bytes(&bytes, password).map_err(|e| e.to_string())?;
+    let prepared = prepare_import(&servers, &provider_secrets, mode, policy, current);
+    let mut report = import_report(
         &prepared,
         &[],
         SharedImportSecrets::default(),
         current.to_vec(),
         Vec::new(),
         serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null),
-    ))
+    );
+    report.file_digest = Some(file_digest);
+    Ok(report)
 }
 
 /// Import a `.aeroftp` file into `user`, who must be the active account, as one
@@ -19147,20 +19604,24 @@ pub async fn import_server_profiles_with_mode(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
-    import_server_profiles_blocking(file_path, password, mode, user)
+    import_server_profiles_blocking(file_path, password, mode, policy, None, user)
 }
 
 fn import_server_profiles_blocking(
     file_path: String,
     password: String,
     mode: profile_import_plan::ExistingProfileMode,
+    policy: &profile_security::RelaxationPolicy,
+    reviewed_digest: Option<&str>,
     user: i64,
 ) -> Result<profile_import_plan::ProfileImportReport, String> {
+    let bytes = read_import_file(&file_path)?;
+    check_reviewed_file(&bytes, reviewed_digest)?;
     let (servers, provider_secrets, metadata) =
-        profile_export::import_profiles(std::path::Path::new(&file_path), &password)
-            .map_err(|e| e.to_string())?;
+        profile_export::import_profiles_from_bytes(&bytes, &password).map_err(|e| e.to_string())?;
     let metadata = serde_json::to_value(&metadata).unwrap_or(serde_json::Value::Null);
     let store = credential_store::CredentialStore::from_cache().ok_or(IMPORT_VAULT_NOT_READY)?;
     user_partitions::init_or_migrate_cli(&store)
@@ -19185,7 +19646,7 @@ fn import_server_profiles_blocking(
                     format!("{IMPORT_NEEDS_PARTITION}: {e}")
                 }
             })?;
-        let prepared = prepare_import(&servers, &provider_secrets, mode, &current);
+        let prepared = prepare_import(&servers, &provider_secrets, mode, policy, &current);
         let stored = prepared.stored();
         if stored.is_empty() {
             return Ok(import_report(
@@ -20274,6 +20735,328 @@ async fn mount_open_quick(id: String) -> Result<(), String> {
 pub fn install_crypto_provider() -> bool {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     rustls::crypto::CryptoProvider::get_default().is_some()
+}
+
+#[cfg(test)]
+mod import_security_tests {
+    use super::*;
+    use profile_import_plan::{ExistingProfileMode, ImportOutcome};
+    use profile_security::{KeptRelaxation, RelaxationPolicy};
+    use serde_json::json;
+
+    fn relaxed(id: &str) -> profile_export::ServerProfileExport {
+        profile_export::ServerProfileExport {
+            id: id.into(),
+            name: format!("{id} name"),
+            host: "files.example.com".into(),
+            port: 21,
+            username: "user".into(),
+            protocol: Some("ftp".into()),
+            options: Some(json!({"trustPasvAddress": true, "verifyCert": false, "timeout": 30})),
+            ..Default::default()
+        }
+    }
+
+    fn plan(
+        servers: &[profile_export::ServerProfileExport],
+        mode: ExistingProfileMode,
+        policy: &RelaxationPolicy,
+        current: &[serde_json::Value],
+    ) -> PreparedImport {
+        prepare_import(servers, &Default::default(), mode, policy, current)
+    }
+
+    /// #1506 Requested 198: a backup is untrusted input, so an option that
+    /// turns a check off comes in safe unless the user keeps it, per profile
+    /// and per key.
+    #[test]
+    fn an_import_brings_relaxing_options_in_safe_unless_kept() {
+        let servers = vec![relaxed("srv_a"), relaxed("srv_b")];
+
+        let reset = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        for server in &reset.servers {
+            assert_eq!(
+                server.options,
+                Some(json!({"timeout": 30, "verifyCert": true, "trustPasvAddress": false}))
+            );
+        }
+        assert_eq!(reset.security.len(), 2);
+        for entry in &reset.security {
+            assert!(entry.kept.is_empty());
+            let keys: Vec<&str> = entry.reset.iter().map(|r| r.key.as_str()).collect();
+            assert_eq!(keys, ["verifyCert", "trustPasvAddress"]);
+        }
+
+        let keep_one = RelaxationPolicy::Keep(vec![KeptRelaxation {
+            file_index: 1,
+            key: "trustPasvAddress".into(),
+        }]);
+        let partial = plan(&servers, ExistingProfileMode::Skip, &keep_one, &[]);
+        assert_eq!(
+            partial.servers[0].options,
+            Some(json!({"timeout": 30, "verifyCert": true, "trustPasvAddress": false}))
+        );
+        assert_eq!(
+            partial.servers[1].options,
+            Some(json!({"trustPasvAddress": true, "timeout": 30, "verifyCert": true}))
+        );
+        assert_eq!(partial.security[1].kept.len(), 1);
+
+        let all = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::KeepAll,
+            &[],
+        );
+        assert_eq!(all.servers[0].options, servers[0].options);
+        assert!(all.security.iter().all(|e| e.reset.is_empty()));
+    }
+
+    #[test]
+    fn a_skipped_profile_is_not_reported_or_changed() {
+        let current = vec![
+            json!({"id": "srv_a", "host": "files.example.com", "port": 21, "username": "user"}),
+        ];
+        let servers = vec![relaxed("srv_a"), relaxed("srv_b")];
+        let prepared = plan(
+            &servers,
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.servers[0].options, servers[0].options);
+        let report = import_report(
+            &prepared,
+            &[],
+            SharedImportSecrets::default(),
+            current.clone(),
+            Vec::new(),
+            serde_json::Value::Null,
+        );
+        let indices: Vec<usize> = report.security.iter().map(|e| e.file_index).collect();
+        assert_eq!(indices, [1]);
+        assert_eq!(report.servers[0]["fileIndex"], json!(1));
+    }
+
+    /// The digest a review is bound to changes with the file (CodeRabbit on
+    /// #1524): the import compares it before it reads the file again.
+    #[test]
+    fn the_review_digest_follows_the_file() {
+        let first = import_bytes_digest(b"first");
+        assert_eq!(first.len(), 64);
+        assert!(check_reviewed_file(b"first", Some(&first)).is_ok());
+        assert!(check_reviewed_file(b"second", None).is_ok());
+        let changed = check_reviewed_file(b"second", Some(&first)).unwrap_err();
+        assert!(changed.starts_with("IMPORT_FILE_CHANGED"), "{changed}");
+        assert!(read_import_file("/nonexistent/aeroftp-import.aeroftp").is_err());
+    }
+
+    /// Greptile round 1 on #1506 Requested 198: an overwrite that brings the
+    /// relaxed setting the profile already has imports nothing new, so it is
+    /// neither reset nor reported, and it lands instead of being skipped.
+    #[test]
+    fn an_overwrite_with_a_relaxation_the_profile_already_has_lands() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"verifyCert": false}
+        })];
+        let mut server = relaxed("srv_a");
+        server.options = Some(json!({"verifyCert": false, "timeout": 30}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Overwritten);
+        assert!(prepared.target_changed.is_empty());
+        assert!(prepared.security.is_empty());
+        assert_eq!(
+            prepared.servers[0].options,
+            Some(json!({"verifyCert": false, "timeout": 30}))
+        );
+    }
+
+    /// CodeRabbit on #1524: a kept backup that carries two spellings of one
+    /// option, the safe-looking one first, still loads as the weaker one, so
+    /// its overwrite is refused and the stored profile keeps its secrets.
+    #[test]
+    fn an_overwrite_with_conflicting_spellings_is_refused() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 22, "username": "user",
+            "protocol": "sftp", "options": {}
+        })];
+        let mut server = relaxed("srv_a");
+        server.port = 22;
+        server.protocol = Some("sftp".into());
+        server.options = Some(json!({"trustUnknownHosts": false, "trust_unknown_hosts": true}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::KeepAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.target_changed, ["srv_a name"]);
+        // Nothing of it is stored, so the stored profile and its secrets stay
+        // as they were.
+        assert!(prepared.stored().is_empty());
+    }
+
+    /// Greptile on #1524: a backup whose `tlsMode` is "explicit " (which FTP
+    /// reads as no TLS) does not overwrite a profile saved with "explicit", so
+    /// the saved password never goes out over plain FTP.
+    #[test]
+    fn an_overwrite_with_a_padded_tls_mode_is_refused() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"tlsMode": "explicit"}
+        })];
+        let mut server = relaxed("srv_a");
+        server.options = Some(json!({"tlsMode": "explicit "}));
+        let prepared = plan(
+            &[server],
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(prepared.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(prepared.target_changed, ["srv_a name"]);
+        assert!(prepared.stored().is_empty());
+    }
+
+    /// CodeRabbit on #1524: a bare `blomp` protocol off Blomp's host goes
+    /// through the import like an explicit providerId: an explicit opt-in is
+    /// reset, an omitted option has nothing to reset (the loader no longer
+    /// lends the preset default there).
+    #[test]
+    fn a_bare_blomp_protocol_off_its_host_imports_safe() {
+        let blomp = |options: serde_json::Value| profile_export::ServerProfileExport {
+            id: "srv_b".into(),
+            name: "Blomp".into(),
+            host: "https://keystone.attacker.example".into(),
+            port: 443,
+            username: "user".into(),
+            protocol: Some("blomp".into()),
+            options: Some(options),
+            ..Default::default()
+        };
+        let explicit = plan(
+            &[blomp(json!({"allowCleartextStorage": true}))],
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert_eq!(explicit.security.len(), 1);
+        assert_eq!(explicit.security[0].reset[0].key, "allowCleartextStorage");
+        assert_eq!(
+            explicit.servers[0].options,
+            Some(json!({"allowCleartextStorage": false}))
+        );
+        let omitted = plan(
+            &[blomp(json!({}))],
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::ResetAll,
+            &[],
+        );
+        assert!(omitted.security.is_empty());
+    }
+
+    /// The reset happens before the overwrite's target check: the safe copy
+    /// overwrites as before, while a kept PASV trust is a weaker connection
+    /// the stored secrets were not saved for, so that overwrite is refused.
+    #[test]
+    fn an_overwrite_is_judged_on_the_options_it_stores() {
+        let current = vec![json!({
+            "id": "srv_a", "host": "files.example.com", "port": 21, "username": "user",
+            "protocol": "ftp", "options": {"timeout": 30}
+        })];
+        let servers = vec![relaxed("srv_a")];
+        let safe = plan(
+            &servers,
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::ResetAll,
+            &current,
+        );
+        assert_eq!(safe.plan[0].outcome, ImportOutcome::Overwritten);
+        assert!(safe.target_changed.is_empty());
+        let kept = plan(
+            &servers,
+            ExistingProfileMode::Overwrite,
+            &RelaxationPolicy::KeepAll,
+            &current,
+        );
+        assert_eq!(kept.plan[0].outcome, ImportOutcome::Skipped);
+        assert_eq!(kept.target_changed, ["srv_a name"]);
+    }
+
+    #[test]
+    fn retained_s3_consent_survives_the_native_file_and_effective_config() {
+        use crate::providers::{ProviderConfig, ProviderType, S3Config};
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("s3-consent.aeroftp");
+        let server = profile_export::ServerProfileExport {
+            id: "srv_s3".into(),
+            name: "S3 fixture".into(),
+            host: "minio.example.com".into(),
+            port: 9000,
+            username: "user".into(),
+            protocol: Some("s3".into()),
+            options: Some(json!({
+                "bucket": "backups",
+                "endpoint": "http://minio.example.com:9000",
+                "allowCleartextEndpoint": true
+            })),
+            ..Default::default()
+        };
+        profile_export::export_profiles(
+            vec![server],
+            Default::default(),
+            "fixture-password",
+            &file,
+        )
+        .unwrap();
+        let report = preview_server_profiles(
+            file.to_str().unwrap(),
+            "fixture-password",
+            ExistingProfileMode::Skip,
+            &RelaxationPolicy::Keep(vec![KeptRelaxation {
+                file_index: 0,
+                key: "allowCleartextEndpoint".into(),
+            }]),
+            &[],
+        )
+        .unwrap();
+        assert_eq!(report.security[0].kept[0].key, "allowCleartextEndpoint");
+        let imported = &report.servers[0];
+        assert_eq!(imported["options"]["allowCleartextEndpoint"], json!(true));
+        let (extra, host) = profile_loader::profile_connection_extra(
+            imported,
+            ProviderType::S3,
+            imported["host"].as_str().unwrap(),
+        );
+        let effective = S3Config::from_provider_config(&ProviderConfig {
+            name: "fixture".into(),
+            provider_type: ProviderType::S3,
+            host,
+            port: imported["port"]
+                .as_u64()
+                .and_then(|p| u16::try_from(p).ok()),
+            username: Some("user".into()),
+            password: Some("fixture-secret".into()),
+            initial_path: None,
+            extra,
+        })
+        .unwrap();
+        assert!(effective.allow_cleartext_endpoint);
+    }
 }
 
 #[cfg(test)]
@@ -21986,6 +22769,7 @@ pub fn run() {
             // Profile Export/Import
             export_server_profiles,
             import_server_profiles,
+            preview_server_import,
             // Generic profile bridge (12 expansion sources)
             bridge_commands::detect_bridge_config,
             bridge_commands::bridge_source_meta,
@@ -22200,6 +22984,8 @@ pub fn run() {
             provider_commands::provider_lock_crypt_overlay,
             provider_commands::provider_rearm_cached_crypt_overlay,
             provider_commands::provider_crypt_cwd_in_view,
+            provider_commands::provider_login_folder,
+            provider_commands::provider_start_folder,
             provider_commands::provider_probe_alive,
             provider_commands::provider_list_files,
             provider_commands::provider_change_dir,
@@ -22775,7 +23561,32 @@ mod window_size_heal_tests {
 
 #[cfg(test)]
 mod extract_intent_tests {
-    use super::{archive_extract_stem, parse_extract_intent, unique_extract_dir_with};
+    use super::{
+        archive_extract_stem, archive_subfolder, parse_extract_intent, unique_extract_dir_with,
+    };
+
+    /// Every extractor and the AI check take the subfolder from here. The tar
+    /// extractor stripped `.tar` again and again while the check stripped it
+    /// once, so the two named different folders for `.ssh.tar.tar.gz`.
+    #[test]
+    fn every_extractor_names_the_subfolder_the_same_way() {
+        let out = Path::new("/out");
+        for (archive, folder) in [
+            ("/in/photos.zip", "photos"),
+            ("/in/logs.tar.gz", "logs"),
+            ("/in/logs.tgz", "logs"),
+            ("/in/backup.7z", "backup"),
+            ("/in/notes.txt.gz", "notes.txt"),
+            ("/in/.ssh.tar.tar.gz", ".ssh.tar"),
+            ("/in/...zip", "extracted"),
+        ] {
+            assert_eq!(
+                archive_subfolder(out, archive),
+                out.join(folder),
+                "{archive}"
+            );
+        }
+    }
     use std::collections::HashSet;
     use std::path::{Path, PathBuf};
 

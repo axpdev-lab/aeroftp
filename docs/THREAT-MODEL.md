@@ -87,7 +87,7 @@ profiles and shares the foreground run's budget and cancellation.
 | OAuth access/refresh tokens | Critical | In-memory SecretString, vault.db |
 | SSH private keys | Critical | vault.db (encrypted PEM) |
 | Local files | High | User filesystem |
-| Remote files | High | 56 providers in `docs/PROVIDER-INVENTORY.json` on this revision |
+| Remote files | High | 58 providers in `docs/PROVIDER-INVENTORY.json` on this revision |
 | Agent memory | Medium | SQLite (agent_memory.db) |
 | Chat history | Medium | SQLite (chat_history.db) |
 | TOTP secrets | Critical | vault.db |
@@ -111,7 +111,7 @@ profiles and shares the foreground run's budget and cancellation.
 | ID | Threat | Attack Vector | Mitigation | Residual Risk |
 |----|--------|--------------|------------|---------------|
 | T-01 | Shell denylist bypass via encoding | `\rm`, `$(cmd)`, base64 tricks | 34 regex patterns blocking dangerous commands + meta-character block (`\|;&$(){}`) | Encoding-based evasion possible. Allowlist recommended but not implemented (UX trade-off) |
-| T-02 | Path traversal via AI tool args | AI requests `../../etc/passwd` | `validate_path()`: null byte rejection, component-level `..` detection, symlink canonicalization, system path denylist (23 paths) | TOCTOU window between validate and use (mitigated by single-threaded tool execution) |
+| T-02 | Path traversal via AI tool args | AI requests `../../etc/passwd` | `validate_path()`: null byte rejection, component-level `..` detection, symlink canonicalization, system path denylist (23 paths) | TOCTOU window between validate and use (mitigated by single-threaded tool execution). An upload source is pinned: the policy runs on its canonical path, which must name the opened file before and after the upload (on Windows the file is held with read-only sharing); a swap of the path and back inside the upload window is not detected on Unix |
 | T-03 | Agent memory poisoning | File with injected instructions read into context | `is_prompt_injection_line()`: 24 patterns (EN+IT) stripped before storage. Category sanitization (alphanumeric only) | Novel injection patterns not covered |
 | T-04 | Plugin tampering | Modified plugin script between install and execution | SHA-256 hash at install, verified before every execution. Env isolation | Plugin scripts have full shell access within user context |
 | T-05 | Sync journal tampering | Modified journal to skip/repeat files | HMAC-SHA512 journal integrity verification | Journal file writable by same user |
@@ -251,7 +251,7 @@ shared dump directory.
 | RR-07 | No persistent audit log for CLI | Medium | Accepted | stderr logging sufficient for interactive use. Daemon mode has SQLite job history |
 | RR-08 | Plugin shell access | Medium | Accepted | Plugins are user-installed. SHA-256 integrity prevents post-install tampering |
 | RR-09 | Vault key resident in process memory (no `mlock`) | Low | Accepted | 32-byte key held in a static `Mutex`; `mlock(2)` is not portable across that static layout and `secrecy::SecretBox` does not provide it either. Could in theory reach swap. Mitigated by encrypted swap on modern systems (default on macOS, LUKS on Linux) and by the short unlocked-vault lifetime. See `credential_store.rs` SECURITY NOTE |
-| RR-10 | Operator disables a safety check via a relaxation flag | Medium | Accepted | Flags such as `--insecure`, `--trust-host-key`, `--aimd-disable`, the abuse/cross-account/archive acknowledgements, and `--auto-approve`/`--yes` are explicit opt-ins. Unattended/agent runs can pass `--strict` / `AEROFTP_STRICT=1` to hard-refuse all of them (exit 5) |
+| RR-10 | Operator disables a safety check via a relaxation flag | Medium | Accepted | Flags such as `--insecure`, `--trust-host-key`, `--trust-pasv-address`, `--aimd-disable`, the abuse/cross-account/archive acknowledgements, and `--auto-approve`/`--yes` are explicit opt-ins. Unattended/agent runs can pass `--strict` / `AEROFTP_STRICT=1` to hard-refuse all of them (exit 5) |
 | RR-11 | Plaintext `.aerozip` archive mistaken for an encrypted vault | Medium | Mitigated | `.aerozip` is the passwordless aerovz lane: integrity + recovery, not confidentiality. The CLI labels reports with `encrypted:false` and `confidential:false`, rejects `--password`, and cross-lane rejects encrypted `vault` commands against plaintext archives (and `archive` commands against encrypted `.aerovault` containers). Use `.aerovault` / `vault create` for secrecy. |
 | RR-12 | AeroRsync env knobs widen checksum, compressor or flag surface, or dump wire bytes | Medium | Accepted | Same-user operator escape hatches for live endpoints. Unset they are no-ops. A mismatched `AEROFTP_RSYNC_SERVER_FLAGS` that inserts `o`/`g`/`D` or disagrees on `A`/`X` is rejected before wire open. An unsupported or `none` checksum winner is rejected pre-commit. `AEROFTP_STRICT` does not yet refuse them. |
 

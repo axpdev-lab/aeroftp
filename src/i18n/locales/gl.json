@@ -765,7 +765,10 @@
             },
             "stagedCount": "Preparados: {count}",
             "pendingCount": "Pendentes: {count}",
-            "failedCount": "Fallidos: {count}"
+            "failedCount": "Fallidos: {count}",
+            "queuedForAnotherServer": "Non iniciado: esta transferencia estaba na cola para outro servidor ou conta. Volve á súa lapela e téntao de novo.",
+            "queuedOverlayChanged": "Non iniciada: o overlay cifrado baixo o que se puxo en cola esta transferencia está bloqueado ou xa non cobre este cartafol. Desbloquéao nese servidor e téntao de novo.",
+            "pasteFromAnotherServer": "Non pegado: estes ficheiros cortáronse ou copiáronse nun servidor, conta ou superposición cifrada que agora non está activa. Volve á súa lapela e pega de novo."
         },
         "settings": {
             "title": "Axustes",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} chegaron cunha app OAuth personalizada distinta da que este dispositivo ten para ese provedor. Conservouse a app almacenada, así que inicia sesión de novo se estes perfís deixan de conectarse.",
             "importTargetChanged": "{names} non se sobrescribiron: o ficheiro apúntaos a outro servidor, e os seus contrasinais e tokens gardados non deben ir alí. Importa con Duplicar para engadir a copia do ficheiro, ou elimina primeiro o perfil.",
             "importSharedSecretsFailed": "Importouse {names}, pero non se puido gardar un segredo compartido ou unha sesión do ficheiro. Volve iniciar sesión nestes perfís se non se conectan.",
-            "keystoreDatabasesFailed": "A importación rematou, pero non se puideron restaurar estas bases de datos e conservan o que tiñan: {names}."
+            "keystoreDatabasesFailed": "A importación rematou, pero non se puideron restaurar estas bases de datos e conservan o que tiñan: {names}.",
+            "importSecurityTitle": "Axustes de seguridade desta copia",
+            "importSecurityHelp": "Estas opcións desactivan unha comprobación de seguridade. Cada unha impórtase no seu estado seguro, salvo que a marques para mantela tal como está no ficheiro.",
+            "importSecurityVerifyCert": "Comprobación do certificado desactivada",
+            "importSecurityCleartextEndpoint": "Punto final S3 sen cifrar permitido",
+            "importSecurityCleartextStorage": "Enderezo de almacenamento sen cifrar permitido",
+            "importSecurityPlainHttp": "HTTP simple en lugar de HTTPS",
+            "importSecurityPasvAddress": "Conexión de datos ao enderezo que indica o servidor (PASV)",
+            "importSecurityUnknownHostKeys": "Claves de host SSH descoñecidas aceptadas",
+            "keystoreSecurityReset": "{count} servidores restaurados tiñan opcións que desactivan unha comprobación de seguranza; volveuse á configuración segura: {details}.",
+            "keystoreSecurityResetFailed": "Non se puideron comprobar nin restablecer os axustes de seguranza de {count} contas restauradas. Móstranse aquí en lugar de deixalas activas sen aviso.",
+            "keystoreSecurityResetQuarantine": "Non se puido protexer a base de datos de contas restaurada e púxose en corentena como {path}. Non hai ningunha conta restaurada activa. Corrixe o problema do disco ou dos permisos e volve restaurar a copia de seguranza. O ficheiro en corentena segue dispoñible para a recuperación."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Fallou a creación",
             "unknownServer": "Descoñecido",
             "scpModeTitle": "Conectado con SCP",
-            "scpModeBody": "{host} non ten SFTP, así que AeroFTP usa SCP na mesma conexión."
+            "scpModeBody": "{host} non ten SFTP, así que AeroFTP usa SCP na mesma conexión.",
+            "saveOnAnotherServer": "Non gardado: este ficheiro abriuse desde un servidor, conta ou superposición cifrada que agora non está activa. Volve á súa lapela e garda de novo.",
+            "openedOnAnotherServer": "Non aberto: o servidor cambiou mentres se lía o ficheiro. Ábreo de novo.",
+            "remoteTargetChanged": "Non se cambiou nada: o servidor, a conta ou a capa cifrada cambiou desde que comezou a acción, ou aínda se está reconectando. Téntao de novo na conexión actual."
         },
         "about": {
             "tagline": "Máis que FTP. Unha caixa de ferramentas completa para desenvolvedores.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Permitir SCP como alternativa",
             "allowScpFallbackHint": "Se o servidor non ten SFTP, continúa por SCP na mesma conexión, como fai WinSCP.",
             "discoverScp": "Copia de ficheiros por SSH para servidores sen SFTP",
-            "discoverTigris": "Tigris: almacenamento distribuído globalmente compatible con S3, sen custos de saída de datos (5 GB gratis)"
+            "discoverTigris": "Tigris: almacenamento distribuído globalmente compatible con S3, sen custos de saída de datos (5 GB gratis)",
+            "trustPasvAddress": "Usar o enderezo pasivo indicado polo servidor",
+            "trustPasvAddressHelp": "Desactivado: as conexións de datos van ao host ao que te conectaches, como fai curl. Actívao só para un servidor que envía os datos desde outro enderezo.",
+            "discoverFastly": "Fastly Object Storage: almacenamento compatible con S3 en 12 rexións (5 GB gratis, require tarxeta)"
         },
         "shortcuts": {
             "title": "Atallos de teclado",
@@ -3068,7 +3088,8 @@
                 "diff": "Comparar co orixinal",
                 "diffNoFile": "Non hai ficheiro aberto para comparar",
                 "commandBlocked": "Orde bloqueada: potencialmente destrutiva",
-                "confirmRun": "Confirmar execución: {command}"
+                "confirmRun": "Confirmar execución: {command}",
+                "reopenEditor": "Mostra o editor con este ficheiro aberto e téntao de novo."
             },
             "thinkingBlock": {
                 "thinking": "Pensando...",
@@ -5661,7 +5682,8 @@
             "managePasswordProtected": "Protexida con contrasinal",
             "expirationHoursOne": "{count} hora",
             "expirationHoursMany": "{count} horas",
-            "expirationDaysMany": "{count} días"
+            "expirationDaysMany": "{count} días",
+            "expiresSoonerThanChosen": "máis curto que o escollido"
         },
         "introHub": {
             "tab": {
@@ -6687,7 +6709,9 @@
             "dirtyTitle": "Cambios sen gardar",
             "dirtyBody": "Tes cambios sen gardar. Descartalos e pechar?",
             "keepEditing": "Continuar a editar",
-            "discardAndClose": "Descartar e pechar"
+            "discardAndClose": "Descartar e pechar",
+            "busyBodyKeepsRunning": "Hai unha operación en curso. Continúa despois de pechar esta xanela e o seu resultado non se mostra aquí. Pechar igualmente?",
+            "closeAnyway": "Pechar igualmente"
         },
         "modalView": {
             "listView": "Vista de lista",

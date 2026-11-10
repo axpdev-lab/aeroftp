@@ -317,7 +317,12 @@ fn saved_profile(
 /// presets keep in it resolved, `/` when it has none. AeroCloud connects
 /// there, as every other surface opens the profile, so a crypt overlay bound
 /// to the profile anchors where it always does, and the sync creates the
-/// remote folder (which may not exist yet) inside it.
+/// remote folder (which may not exist yet) inside it. On SFTP and SCP a
+/// relative folder is under the login folder (`~/docs`), where the connect
+/// opens it: entered again as `docs`, the root became `docs/docs`. The root
+/// is also in the target identity, so a config made when `docs` read from
+/// the root starts a fresh index instead of reading the old folder's state
+/// against another folder.
 fn profile_root(profile: &serde_json::Value) -> String {
     let username = profile
         .get("username")
@@ -329,10 +334,14 @@ fn profile_root(profile: &serde_json::Value) -> String {
         .unwrap_or("")
         .replace("{username}", username);
     let root = root.trim();
+    let ssh = matches!(
+        profile.get("protocol").and_then(|v| v.as_str()),
+        Some("sftp" | "scp")
+    );
     if root.is_empty() {
         "/".to_string()
     } else {
-        root.to_string()
+        crate::crypt_overlay_provider::login_relative_form(root, ssh).into_owned()
     }
 }
 
@@ -1111,6 +1120,25 @@ mod tests {
                 "username": "ale"
             })),
             "/files/ale/"
+        );
+        // SFTP and SCP open a relative folder under the login folder.
+        for protocol in ["sftp", "scp"] {
+            assert_eq!(
+                profile_root(&serde_json::json!({ "protocol": protocol, "initialPath": "docs" })),
+                "~/docs"
+            );
+            assert_eq!(
+                profile_root(&serde_json::json!({ "protocol": protocol, "initialPath": "/srv" })),
+                "/srv"
+            );
+            assert_eq!(
+                profile_root(&serde_json::json!({ "protocol": protocol, "initialPath": "~/v" })),
+                "~/v"
+            );
+        }
+        assert_eq!(
+            profile_root(&serde_json::json!({ "protocol": "ftp", "initialPath": "docs" })),
+            "docs"
         );
     }
 

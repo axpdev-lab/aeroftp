@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
+import { getConnectionPreset } from './connectionManifest';
 import { getProviderById, presetDefaultS3Region, resolveProfileS3Location } from './registry';
 
 // One rule for every GUI path that turns a saved S3 profile into an address
@@ -91,6 +92,25 @@ describe('Tigris static endpoint', () => {
     });
 });
 
+describe('Fastly regional endpoint', () => {
+    it('resolves the template with the default Frankfurt region, path-style on', () => {
+        expect(resolveProfileS3Location('fastly', {}, ''))
+            .toEqual({ endpoint: 'https://eu-central-1.object.fastlystorage.app', region: 'eu-central-1', signingRegion: 'eu-central-1' });
+        expect(getProviderById('fastly')?.defaults?.pathStyle).toBe(true);
+    });
+
+    it('signs with the region it was given, which is also the host label', () => {
+        expect(resolveProfileS3Location('fastly', { region: 'us-east' }, ''))
+            .toEqual({ endpoint: 'https://us-east.object.fastlystorage.app', region: 'us-east', signingRegion: 'us-east' });
+        expect(resolveProfileS3Location('fastly', { region: 'us-east-1' }, ''))
+            .toEqual({ endpoint: 'https://us-east-1.object.fastlystorage.app', region: 'us-east-1', signingRegion: 'us-east-1' });
+    });
+
+    it('answers to the alias used by imports', () => {
+        expect(getConnectionPreset('fastly-object-storage')?.id).toBe('fastly');
+    });
+});
+
 describe('signing region read back from an explicit endpoint', () => {
     // Same case table as s3_region_is_read_back_from_a_regional_endpoint in
     // src-tauri/src/profile_loader.rs: the two sides must agree.
@@ -99,6 +119,12 @@ describe('signing region read back from an explicit endpoint', () => {
         ['ibm-cos', 'https://s3.eu-gb.cloud-object-storage.appdomain.cloud/bucket', 'eu-gb'],
         ['ibm-cos', 'https://S3.JP-OSA.cloud-object-storage.appdomain.cloud:443', 'jp-osa'],
         ['wasabi', 'https://s3.eu-central-2.wasabisys.com', 'eu-central-2'],
+        // Internal and accelerate endpoints (Greptile on #1525).
+        ['alibaba-oss', 'https://oss-cn-hangzhou-internal.aliyuncs.com', 'cn-hangzhou'],
+        ['alibaba-oss', 'https://oss-accelerate.aliyuncs.com', undefined],
+        ['alibaba-oss', 'https://oss-accelerate-overseas.aliyuncs.com', undefined],
+        ['tencent-cos', 'https://cos.accelerate.myqcloud.com', undefined],
+        ['ibm-cos', 'https://s3.private.us-south.cloud-object-storage.appdomain.cloud', undefined],
         ['wasabi', 's3.wasabisys.com', undefined],
         ['mega-s4', 's3.eu-central-2.s4.mega.io', 'eu-central-2'],
         ['mega-s4', 's3.eu-central-1.s4.mega.io', 'eu-central-1'],
@@ -113,6 +139,15 @@ describe('signing region read back from an explicit endpoint', () => {
         ['backblaze', 's3.eu-central-003.backblazeb2.com', undefined],
         ['tigris', 'https://t3.storage.dev', undefined],
         ['tigris', 'https://fly.storage.tigris.dev', undefined],
+        // Fastly: the region is the first host label. The original regions have
+        // no -1 and are not prefixes of each other's answer (us-east is not
+        // us-east-1, eu-central is not eu-central-1).
+        ['fastly', 'https://us-east.object.fastlystorage.app', 'us-east'],
+        ['fastly', 'https://us-east-1.object.fastlystorage.app', 'us-east-1'],
+        ['fastly', 'https://eu-central.object.fastlystorage.app', 'eu-central'],
+        ['fastly', 'eu-central-1.object.fastlystorage.app', 'eu-central-1'],
+        ['fastly', 'https://JP-CENTRAL-1.object.fastlystorage.app:443', 'jp-central-1'],
+        ['fastly', 'https://bucket.eu-west-1.object.fastlystorage.app', undefined],
     ];
     it.each(cases)('%s %s -> %s', (preset, endpoint, readBack) => {
         // Through both explicit forms: stored endpoint option and host. A host
@@ -135,8 +170,10 @@ describe('signing region read back from an explicit endpoint', () => {
     it('signs an IBM regional endpoint with its own region, not us-east-1', () => {
         expect(resolveProfileS3Location('ibm-cos', {}, 's3.us-south.cloud-object-storage.appdomain.cloud').signingRegion)
             .toBe('us-south');
+        // A stored region the host contradicts loses to the host's (#1506
+        // Requested 200): eu-gb cannot sign for the us-south endpoint.
         expect(resolveProfileS3Location('ibm-cos', { region: 'eu-gb' }, 's3.us-south.cloud-object-storage.appdomain.cloud').signingRegion)
-            .toBe('eu-gb');
+            .toBe('us-south');
     });
 });
 
@@ -179,11 +216,34 @@ describe('MEGA S4 preset', () => {
             region: 'eu-central-1',
             signingRegion: 'eu-central-1',
         });
+        // The region the host names wins over a stored one that contradicts
+        // it (#1506 Requested 200): this host signs eu-central-1.
         expect(resolveProfileS3Location(
             'mega-s4',
             { endpoint: 's3.eu-central-1.s4.mega.io', region: 'eu-central-2' },
             '',
-        ).signingRegion).toBe('eu-central-2');
+        ).signingRegion).toBe('eu-central-1');
+    });
+
+    // #1506 Requested 200, the same table as the Rust test
+    // the_region_an_endpoint_names_wins_over_a_contradicting_stored_one.
+    it.each([
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'us-east-1', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'eu-central-1', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', 'EU-CENTRAL-1', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', ' eu-central-1 ', 'eu-central-1'],
+        ['wasabi', 'https://s3.eu-central-1.wasabisys.com', undefined, 'eu-central-1'],
+        ['ibm-cos', 'https://s3.us-south.cloud-object-storage.appdomain.cloud', 'eu-de', 'us-south'],
+        ['digitalocean-spaces', 'https://fra1.digitaloceanspaces.com', 'us-east-1', 'fra1'],
+        ['wasabi', 'https://storage.example.com', 'us-west-1', 'us-west-1'],
+        ['wasabi', 'https://storage.example.com', ' us-west-1 ', 'us-west-1'],
+        ['alibaba-oss', 'https://oss-cn-hangzhou-internal.aliyuncs.com', 'cn-hangzhou', 'cn-hangzhou'],
+        ['alibaba-oss', 'https://oss-accelerate.aliyuncs.com', 'cn-shanghai', 'cn-shanghai'],
+        ['alibaba-oss', 'https://oss-accelerate-overseas.aliyuncs.com', 'cn-shanghai', 'cn-shanghai'],
+    ])('%s %s with stored %s signs %s', (provider, endpoint, region, expected) => {
+        const location = resolveProfileS3Location(provider, { endpoint, region }, '');
+        expect(location.region).toBe(expected);
+        expect(location.signingRegion).toBe(expected);
     });
 });
 

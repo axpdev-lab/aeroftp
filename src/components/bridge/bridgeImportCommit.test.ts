@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ServerProfile } from '../../types';
-import { appendImportedProfiles, bridgeProfileKey, commitImportedServers } from './bridgeImportCommit';
+import { appendImportedProfiles, bridgeProfileKey, commitImportedServers, importedServerProfile, type ImportedServer } from './bridgeImportCommit';
 import { readSavedServerProfilesForWrite, storeSavedServerProfiles } from '../../utils/serverProfileStore';
 
 vi.mock('../../utils/serverProfileStore', () => ({
@@ -225,5 +225,83 @@ describe('the import callback and the commit helper together', () => {
         expect(onImport).not.toHaveBeenCalled();
         expect(vault.writes).toBe(0);
         expect(vault.profiles.map(s => s.id)).toEqual(['base']);
+    });
+});
+
+describe('an imported Filen API key (#230)', () => {
+    // The two shapes `import_bridge_config` returns (pinned on the backend in
+    // `an_imported_filen_key_moves_to_the_vault_and_leaves_the_options`): the
+    // key stored in the vault, and a failed or locked write.
+    const filen = (stored: boolean): ImportedServer => ({
+        id: 'filen-1', name: 'f', host: 'filen.io', port: 443, username: 'a@example.test',
+        protocol: 'filen', options: { filen_2fa_code: '' }, hasStoredCredential: true,
+        hasStoredFilenApiKey: stored,
+    });
+
+    it.each([true, false])('commits the flag the vault reported (%s) and never a key', async (stored) => {
+        const state = { profiles: [base] as ServerProfile[] };
+        vi.mocked(readSavedServerProfilesForWrite).mockImplementation(async () => ({ profiles: [...state.profiles], userId: 3 }));
+        vi.mocked(storeSavedServerProfiles).mockImplementation(async (profiles: ServerProfile[]) => {
+            state.profiles = [...profiles];
+            return state.profiles;
+        });
+        const outcome = await commitImportedServers([importedServerProfile(filen(stored))], new Set(), async (servers) => {
+            await appendImportedProfiles(servers);
+        });
+        expect(outcome).toEqual({ added: 1, updated: 0 });
+        const saved = state.profiles.find(p => p.id === 'filen-1');
+        expect(saved?.hasStoredFilenApiKey).toBe(stored);
+        expect(saved?.options).not.toHaveProperty('filen_api_key');
+    });
+
+    it('carries no field the backend did not return', () => {
+        const withExtra = { ...filen(true), options: { filen_2fa_code: '' }, filen_api_key: 'FILEN-KEY-1' } as ImportedServer;
+        expect(JSON.stringify(importedServerProfile(withExtra))).not.toContain('FILEN-KEY-1');
+    });
+});
+
+describe('importedServerProfile security relaxations on bridge imports', () => {
+    const winscpWebdavResetByBackend: ImportedServer = {
+        id: 'winscp-webdav-1',
+        name: 'Public WebDAV',
+        host: 'dav.example.com',
+        port: 8080,
+        username: 'alice',
+        protocol: 'webdav',
+        options: { webdavScheme: 'https' },
+        relaxedOptions: { webdavScheme: 'http' },
+        hasStoredCredential: true,
+    };
+
+    const winscpWebdavRawHttp: ImportedServer = {
+        id: 'winscp-webdav-2',
+        name: 'Raw WebDAV',
+        host: 'dav.example.com',
+        port: 8080,
+        username: 'alice',
+        protocol: 'webdav',
+        options: { webdavScheme: 'http' },
+        hasStoredCredential: true,
+    };
+
+    it('defaults to resetting plain-HTTP WebDAV on a non-local host to https and strips relaxed metadata', () => {
+        const fromBackend = importedServerProfile(winscpWebdavResetByBackend);
+        expect(fromBackend.options?.webdavScheme).toBe('https');
+        expect(fromBackend).not.toHaveProperty('relaxedOptions');
+        expect(fromBackend).not.toHaveProperty('relaxedHost');
+
+        const fromRaw = importedServerProfile(winscpWebdavRawHttp);
+        expect(fromRaw.options?.webdavScheme).toBe('https');
+        expect(fromRaw).not.toHaveProperty('relaxedOptions');
+    });
+
+    it('preserves plain-HTTP WebDAV only when webdavScheme is explicitly kept in the security review', () => {
+        const keptFromBackend = importedServerProfile(winscpWebdavResetByBackend, ['webdavScheme']);
+        expect(keptFromBackend.options?.webdavScheme).toBe('http');
+        expect(keptFromBackend).not.toHaveProperty('relaxedOptions');
+        expect(keptFromBackend).not.toHaveProperty('relaxedHost');
+
+        const keptFromRaw = importedServerProfile(winscpWebdavRawHttp, ['webdavScheme']);
+        expect(keptFromRaw.options?.webdavScheme).toBe('http');
     });
 });

@@ -765,7 +765,10 @@
             },
             "stagedCount": "Pripremljeno: {count}",
             "pendingCount": "Na čekanju: {count}",
-            "failedCount": "Neuspjelo: {count}"
+            "failedCount": "Neuspjelo: {count}",
+            "queuedForAnotherServer": "Nije pokrenuto: ovaj prijenos bio je u redu za drugi poslužitelj ili račun. Vratite se na njegovu karticu pa pokušajte ponovno.",
+            "queuedOverlayChanged": "Nije pokrenuto: šifrirani overlay pod kojim je ovaj prijenos stavljen u red zaključan je ili više ne pokriva ovu mapu. Otključajte ga na tom poslužitelju, zatim pokušajte ponovno.",
+            "pasteFromAnotherServer": "Nije zalijepljeno: ove su datoteke izrezane ili kopirane na poslužitelju, računu ili šifriranom sloju koji trenutno nije aktivan. Vratite se na njegovu karticu pa ponovno zalijepite."
         },
         "settings": {
             "title": "Postavke",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} stigli su s drugom prilagođenom OAuth aplikacijom od one koju ovaj uređaj ima za tog pružatelja. Spremljena aplikacija je zadržana, pa se ponovno prijavite ako se ti profili prestanu povezivati.",
             "importTargetChanged": "{names} nisu prepisani: datoteka ih usmjerava na drugi poslužitelj, a njihove spremljene lozinke i tokeni ne smiju ići tamo. Uvezite s Dupliciraj da dodate kopiju iz datoteke ili prvo izbrišite profil.",
             "importSharedSecretsFailed": "{names} su uvezeni, ali zajednička tajna ili sesija iz datoteke nije mogla biti spremljena. Ponovno se prijavite u te profile ako se ne povežu.",
-            "keystoreDatabasesFailed": "Uvoz je završen, ali ove baze podataka nije bilo moguće vratiti i zadržavaju svoj sadržaj: {names}."
+            "keystoreDatabasesFailed": "Uvoz je završen, ali ove baze podataka nije bilo moguće vratiti i zadržavaju svoj sadržaj: {names}.",
+            "importSecurityTitle": "Sigurnosne postavke u ovoj sigurnosnoj kopiji",
+            "importSecurityHelp": "Ove opcije isključuju sigurnosnu provjeru. Svaka se uvozi u sigurnom stanju osim ako je ne označite da ostane kakva je u datoteci.",
+            "importSecurityVerifyCert": "Provjera certifikata isključena",
+            "importSecurityCleartextEndpoint": "Dopuštena nešifrirana S3 krajnja točka",
+            "importSecurityCleartextStorage": "Dopuštena nešifrirana adresa pohrane",
+            "importSecurityPlainHttp": "Obični HTTP umjesto HTTPS-a",
+            "importSecurityPasvAddress": "Podatkovna veza na adresu koju navodi poslužitelj (PASV)",
+            "importSecurityUnknownHostKeys": "Prihvaćeni nepoznati SSH ključevi poslužitelja",
+            "keystoreSecurityReset": "{count} vraćenih poslužitelja imalo je opcije koje isključuju sigurnosnu provjeru; vraćeni su na sigurnu postavku: {details}.",
+            "keystoreSecurityResetFailed": "Sigurnosne postavke {count} obnovljenih računa nije bilo moguće provjeriti ili resetirati. Navedeni su ovdje umjesto da ostanu aktivni bez upozorenja.",
+            "keystoreSecurityResetQuarantine": "Obnovljenu bazu podataka računa nije bilo moguće zaštititi i stavljena je u karantenu kao {path}. Nijedan obnovljeni račun nije aktivan. Riješite problem s diskom ili dopuštenjima, a zatim ponovno obnovite sigurnosnu kopiju. Datoteka u karanteni ostaje dostupna za oporavak."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Stvaranje nije uspjelo",
             "unknownServer": "nepoznatim poslužiteljem",
             "scpModeTitle": "Povezano putem SCP-a",
-            "scpModeBody": "{host} nema SFTP, pa AeroFTP koristi SCP na istoj vezi."
+            "scpModeBody": "{host} nema SFTP, pa AeroFTP koristi SCP na istoj vezi.",
+            "saveOnAnotherServer": "Nije spremljeno: ova je datoteka otvorena s poslužitelja, računa ili šifriranog sloja koji trenutno nije aktivan. Vratite se na njegovu karticu pa ponovno spremite.",
+            "openedOnAnotherServer": "Nije otvoreno: poslužitelj se promijenio tijekom čitanja datoteke. Otvorite je ponovno.",
+            "remoteTargetChanged": "Ništa nije promijenjeno: poslužitelj, račun ili šifrirani sloj promijenio se otkako je radnja započela ili se još ponovno povezuje. Pokušajte ponovno na trenutnoj vezi."
         },
         "about": {
             "tagline": "Više od FTP-a. Potpuni alat za programere.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Dopusti SCP kao zamjenu",
             "allowScpFallbackHint": "Ako poslužitelj nema SFTP, nastavlja se preko SCP-a na istoj vezi, kao što to radi WinSCP.",
             "discoverScp": "Kopiranje datoteka preko SSH-a za poslužitelje bez SFTP-a",
-            "discoverTigris": "Tigris: globalno distribuirana pohrana kompatibilna sa S3, bez naknada za izlazni promet (5 GB besplatno)"
+            "discoverTigris": "Tigris: globalno distribuirana pohrana kompatibilna sa S3, bez naknada za izlazni promet (5 GB besplatno)",
+            "trustPasvAddress": "Koristi pasivnu adresu koju navede poslužitelj",
+            "trustPasvAddressHelp": "Isključeno: podatkovne veze idu na host s kojim ste se povezali, kao što radi curl. Uključite samo za poslužitelj koji šalje podatke s druge adrese.",
+            "discoverFastly": "Fastly Object Storage: pohrana kompatibilna sa S3 u 12 regija (5 GB besplatno, potrebna kartica)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",
@@ -3068,7 +3088,8 @@
                 "diff": "Usporedi s originalom",
                 "diffNoFile": "Nema otvorene datoteke za usporedbu",
                 "commandBlocked": "Naredba blokirana: potencijalno destruktivna",
-                "confirmRun": "Potvrdi pokretanje: {command}"
+                "confirmRun": "Potvrdi pokretanje: {command}",
+                "reopenEditor": "Prikažite uređivač s otvorenom ovom datotekom pa pokušajte ponovno."
             },
             "thinkingBlock": {
                 "thinking": "Razmišljanje...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Zaštićeno lozinkom",
             "expirationHoursOne": "{count} sat",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "{count} d"
+            "expirationDaysMany": "{count} d",
+            "expiresSoonerThanChosen": "kraće od odabranog"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Nespremljene promjene",
             "dirtyBody": "Imate nespremljene promjene. Odbaciti i zatvoriti?",
             "keepEditing": "Nastavi uređivanje",
-            "discardAndClose": "Odbaci i zatvori"
+            "discardAndClose": "Odbaci i zatvori",
+            "busyBodyKeepsRunning": "Operacija je još u tijeku. Nastavit će se nakon zatvaranja ovog prozora, a njezin rezultat neće biti prikazan ovdje. Ipak zatvoriti?",
+            "closeAnyway": "Ipak zatvori"
         },
         "modalView": {
             "listView": "Prikaz popisa",

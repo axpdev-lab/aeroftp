@@ -24,6 +24,7 @@ import {
     ProtocolClass,
     getProfileProtocolClass,
 } from '../types';
+import { canonicalPresetId } from '../providers/connectionManifest';
 
 const OAUTH_PROTOCOLS: ReadonlyArray<ProviderType> = [
     'googledrive',
@@ -83,6 +84,7 @@ const S3_PRESET_IDS = new Set<string>([
     'filebase',
     'ibm-cos',
     'tigris',
+    'fastly',
 ]);
 
 /** Lowercase, trim, strip scheme + www. + trailing path. */
@@ -216,31 +218,34 @@ const defaultPort = (proto: ProviderType): number => {
  */
 export const getStorageDedupKey = (server: ServerProfile): string => {
     const proto = (server.protocol || 'ftp') as ProviderType;
+    // A stored alias (`fastly-object-storage`) keys like its preset, or one
+    // account counts twice, once per spelling. Mirrors the Rust `dedup_key`.
+    const providerId = canonicalPresetId(server.providerId) ?? undefined;
     const userNorm = normalizeUser(server.username);
     const userOrId = userNorm || `id:${server.id}`;
 
     // Family-based dedup wins when both family + dedup-able username exist.
-    const family = dedupFamily(server.providerId, proto);
+    const family = dedupFamily(providerId, proto);
     if (family && userNorm) {
         return `family:${family}:${userNorm}`;
     }
 
     if (OAUTH_PROTOCOLS.includes(proto)) {
-        const pid = server.providerId || proto;
+        const pid = providerId || proto;
         return `oauth:${pid}:${userOrId}`;
     }
 
     if (proto === 'webdav') {
-        if (isWebDavPreset(server.providerId)) {
-            return `webdav:${server.providerId}:${userOrId}`;
+        if (isWebDavPreset(providerId)) {
+            return `webdav:${providerId}:${userOrId}`;
         }
         return `webdav-host:${normalizeHost(server.host)}:${userOrId}`;
     }
 
     if (proto === 's3') {
         const hash = accessKeyHash(server.username);
-        if (isS3Preset(server.providerId)) {
-            return `s3:${server.providerId}:${hash}`;
+        if (isS3Preset(providerId)) {
+            return `s3:${providerId}:${hash}`;
         }
         return `s3-host:${normalizeHost(server.host)}:${hash}`;
     }
@@ -254,7 +259,7 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
     }
 
     if (NATIVE_API_PROTOCOLS.includes(proto)) {
-        const pid = server.providerId || proto;
+        const pid = providerId || proto;
         return `api:${pid}:${userOrId}`;
     }
 

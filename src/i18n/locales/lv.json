@@ -765,7 +765,10 @@
             },
             "stagedCount": "Sagatavoti: {count}",
             "pendingCount": "Gaida: {count}",
-            "failedCount": "Neizdevās: {count}"
+            "failedCount": "Neizdevās: {count}",
+            "queuedForAnotherServer": "Nav sākts: šī pārsūtīšana bija rindā citam serverim vai kontam. Atgriezieties tā cilnē un mēģiniet vēlreiz.",
+            "queuedOverlayChanged": "Nav sākts: šifrētais overlay, ar kuru šī pārsūtīšana tika ievietota rindā, ir bloķēts vai vairs neaptver šo mapi. Atbloķējiet to attiecīgajā serverī un mēģiniet vēlreiz.",
+            "pasteFromAnotherServer": "Nav ielīmēts: šie faili tika izgriezti vai kopēti serverī, kontā vai šifrētā slānī, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un ielīmējiet vēlreiz."
         },
         "settings": {
             "title": "Iestatījumi",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} atnāca ar citu pielāgotu OAuth lietotni nekā tā, kas šai ierīcei ir šim pakalpojumu sniedzējam. Saglabātā lietotne tika paturēta, tāpēc piesakieties vēlreiz, ja šie profili pārstāj savienoties.",
             "importTargetChanged": "{names} netika pārrakstīti: fails tos virza uz citu serveri, un to saglabātās paroles un pilnvaras nedrīkst nonākt tur. Importējiet ar Dublēt, lai pievienotu kopiju no faila, vai vispirms dzēsiet profilu.",
             "importSharedSecretsFailed": "{names} tika importēti, taču no faila nevarēja saglabāt kopīgu noslēpumu vai sesiju. Ja šie profili neizveido savienojumu, pierakstieties tajos vēlreiz.",
-            "keystoreDatabasesFailed": "Importēšana ir pabeigta, bet šīs datubāzes neizdevās atjaunot, un tajās saglabājies iepriekšējais saturs: {names}."
+            "keystoreDatabasesFailed": "Importēšana ir pabeigta, bet šīs datubāzes neizdevās atjaunot, un tajās saglabājies iepriekšējais saturs: {names}.",
+            "importSecurityTitle": "Drošības iestatījumi šajā dublējumā",
+            "importSecurityHelp": "Šīs opcijas izslēdz drošības pārbaudi. Katra tiek importēta drošā stāvoklī, ja vien to neatzīmējat, lai paturētu, kā tas ir failā.",
+            "importSecurityVerifyCert": "Sertifikāta pārbaude izslēgta",
+            "importSecurityCleartextEndpoint": "Atļauts nešifrēts S3 galapunkts",
+            "importSecurityCleartextStorage": "Atļauta nešifrēta krātuves adrese",
+            "importSecurityPlainHttp": "Parasts HTTP HTTPS vietā",
+            "importSecurityPasvAddress": "Datu savienojums ar adresi, ko norāda serveris (PASV)",
+            "importSecurityUnknownHostKeys": "Pieņemtas nezināmas SSH resursdatora atslēgas",
+            "keystoreSecurityReset": "{count} atjaunotiem serveriem bija opcijas, kas izslēdz drošības pārbaudi; tie tika atgriezti drošajā iestatījumā: {details}.",
+            "keystoreSecurityResetFailed": "Neizdevās pārbaudīt vai atiestatīt {count} atjaunoto kontu drošības iestatījumus. Tie ir uzskaitīti šeit, nevis atstāti aktīvi bez brīdinājuma.",
+            "keystoreSecurityResetQuarantine": "Atjaunoto kontu datubāzi neizdevās aizsargāt, un tā tika izolēta kā {path}. Neviens atjaunots konts nav aktīvs. Novērsiet diska vai atļauju problēmu, pēc tam vēlreiz atjaunojiet dublējumu. Izolētais fails joprojām ir pieejams atkopšanai."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Izveide neizdevās",
             "unknownServer": "nezināmu serveri",
             "scpModeTitle": "Savienots ar SCP",
-            "scpModeBody": "Serverim {host} nav SFTP, tāpēc AeroFTP izmanto SCP tajā pašā savienojumā."
+            "scpModeBody": "Serverim {host} nav SFTP, tāpēc AeroFTP izmanto SCP tajā pašā savienojumā.",
+            "saveOnAnotherServer": "Nav saglabāts: šis fails tika atvērts no servera, konta vai šifrēta slāņa, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un saglabājiet vēlreiz.",
+            "openedOnAnotherServer": "Nav atvērts: faila lasīšanas laikā serveris mainījās. Atveriet to vēlreiz.",
+            "remoteTargetChanged": "Nekas netika mainīts: serveris, konts vai šifrētais slānis ir mainījies kopš darbības sākuma vai vēl savienojas atkārtoti. Mēģiniet vēlreiz pašreizējā savienojumā."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Atļaut SCP rezerves režīmu",
             "allowScpFallbackHint": "Ja serverim nav SFTP, savienojums turpinās ar SCP, kā to dara WinSCP.",
             "discoverScp": "Failu kopēšana caur SSH serveriem bez SFTP",
-            "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)"
+            "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)",
+            "trustPasvAddress": "Izmantot servera norādīto pasīvo adresi",
+            "trustPasvAddressHelp": "Izslēgts: datu savienojumi iet uz resursdatoru, ar kuru izveidojāt savienojumu, kā to dara curl. Ieslēdziet tikai serverim, kas sūta datus no citas adreses.",
+            "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas, nepieciešama karte)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",
@@ -3068,7 +3088,8 @@
                 "diff": "Salīdzināt ar oriģinālu",
                 "diffNoFile": "Nav atvērta faila salīdzināšanai",
                 "commandBlocked": "Komanda bloķēta: potenciāli destruktīva",
-                "confirmRun": "Apstiprināt izpildi: {command}"
+                "confirmRun": "Apstiprināt izpildi: {command}",
+                "reopenEditor": "Parādiet redaktoru ar atvērtu šo failu un mēģiniet vēlreiz."
             },
             "thinkingBlock": {
                 "thinking": "Domā...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Aizsargāts ar paroli",
             "expirationHoursOne": "{count} stunda",
             "expirationHoursMany": "{count} stundas",
-            "expirationDaysMany": "{count} dienas"
+            "expirationDaysMany": "{count} dienas",
+            "expiresSoonerThanChosen": "īsāk nekā izvēlēts"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Nesaglabātas izmaiņas",
             "dirtyBody": "Tev ir nesaglabātas izmaiņas. Atmest un aizvērt?",
             "keepEditing": "Turpināt rediģēšanu",
-            "discardAndClose": "Atmest un aizvērt"
+            "discardAndClose": "Atmest un aizvērt",
+            "busyBodyKeepsRunning": "Darbība joprojām notiek. Tā turpināsies pēc šī loga aizvēršanas, un tās rezultāts šeit netiks rādīts. Tomēr aizvērt?",
+            "closeAnyway": "Tomēr aizvērt"
         },
         "modalView": {
             "listView": "Saraksta skats",

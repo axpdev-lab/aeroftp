@@ -155,16 +155,10 @@ impl CredentialProvider for VaultCredentialProvider {
     fn list_servers(&self) -> Result<Vec<ServerProfile>, String> {
         let store = crate::credential_store::CredentialStore::from_cache()
             .ok_or_else(|| "Credential vault not open. Unlock the vault first.".to_string())?;
-        let json_str = store
-            .get("config_server_profiles")
-            .map_err(|_| "No saved servers found in vault.".to_string())?;
-        let profiles: Vec<Value> = serde_json::from_str(&json_str)
-            .map_err(|e| format!("Failed to parse server profiles: {}", e))?;
-
-        Ok(profiles
-            .iter()
-            .filter_map(ServerProfile::from_profile_json)
-            .collect())
+        // The active user's servers, the list `find_server_by_name_or_id`
+        // resolves a name against: the legacy blob alone missed every
+        // partitioned profile of a multi-user install.
+        crate::ai_core::cli_impl::active_server_profiles(&store)
     }
 
     fn get_credentials(&self, server_id: &str) -> Result<ServerCredentials, String> {
@@ -500,14 +494,11 @@ impl RemoteBackend for TauriRemoteBackend {
                 }
                 let app_state = app.state::<AppState>();
                 let mut mgr = app_state.ftp_manager.lock().await;
-                let tmp = temp_upload_path();
-                std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-                let result = mgr
-                    .upload_file(tmp.to_str().unwrap_or(""), path)
+                let staged =
+                    crate::ai_core::gui_tools::stage_private_temp("aeroftp_upload_", data)?;
+                mgr.upload_file(crate::ai_core::gui_tools::staged_path(&staged)?, path)
                     .await
-                    .map_err(|e| e.to_string());
-                let _ = std::fs::remove_file(&tmp);
-                result
+                    .map_err(|e| e.to_string())
             }
             TauriRemoteBackend::Temp { provider } => {
                 let mut guard = provider.lock().await;
@@ -928,14 +919,6 @@ impl RemoteBackend for TauriRemoteBackend {
     }
 }
 
-fn temp_upload_path() -> std::path::PathBuf {
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!("aeroftp_upload_{}_{}", std::process::id(), nonce))
-}
-
 async fn download_provider_bytes(
     p: &mut Box<dyn StorageProvider>,
     path: &str,
@@ -957,15 +940,13 @@ async fn upload_provider_bytes(
     data: &[u8],
     path: &str,
 ) -> Result<(), String> {
-    // Write data to a secure temp file, upload, then clean up.
-    let tmp = temp_upload_path();
-    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
-    let result = p
-        .upload(tmp.to_str().unwrap_or(""), path, None)
+    // Write data to a private temp file (0600, created new: the name was
+    // predictable and the mode the default before, deep-scan 96), upload,
+    // and let the handle remove it.
+    let staged = crate::ai_core::gui_tools::stage_private_temp("aeroftp_upload_", data)?;
+    p.upload(crate::ai_core::gui_tools::staged_path(&staged)?, path, None)
         .await
-        .map_err(|e| e.to_string());
-    let _ = std::fs::remove_file(&tmp);
-    result
+        .map_err(|e| e.to_string())
 }
 
 async fn provider_storage_quota(p: &mut Box<dyn StorageProvider>) -> Result<StorageQuota, String> {
@@ -992,6 +973,23 @@ pub struct TauriToolCtx {
     /// The token of the chat turn this call belongs to, flipped by
     /// `ai_cancel_tool_turn` when the user presses Stop (M9).
     pub cancel: Option<tokio_util::sync::CancellationToken>,
+    /// The connection identity each approved profile id had when the call
+    /// was approved: a named server is then reached by that id only, and
+    /// only while it still connects there.
+    pub approved_identities: std::collections::HashMap<String, String>,
+}
+
+impl TauriToolCtx {
+    /// The context of a call approved for `targets`: each profile it names is
+    /// reached by its id, and only while it still connects where it did at
+    /// the approval.
+    pub fn approved_for(mut self, targets: &[crate::ai_core::tools::ApprovedTarget]) -> Self {
+        self.approved_identities = targets
+            .iter()
+            .filter_map(|target| target.profile.clone())
+            .collect();
+        self
+    }
 }
 
 #[async_trait]
@@ -1014,9 +1012,14 @@ impl ToolCtx for TauriToolCtx {
                 app: self.app.clone(),
             }));
         }
+        // An approved change names its profile by id (`args_pinned_to`): it
+        // is reached by that id only, never by a part of a name, and only
+        // while it connects where it did at the approval. A read keeps the
+        // name lookup.
+        let expected = self.approved_identity(server_id);
         let servers = crate::ai_tools::load_saved_servers()?;
-        let server = crate::ai_tools::find_server_by_name_or_id(&servers, server_id)?;
-        let provider = crate::ai_tools::create_temp_provider(&server).await?;
+        let server = crate::ai_tools::resolve_approved_server(&servers, server_id, expected)?;
+        let provider = crate::ai_tools::create_temp_provider_expecting(&server, expected).await?;
         Ok(Arc::new(TauriRemoteBackend::Temp {
             provider: tokio::sync::Mutex::new(provider),
         }))
@@ -1026,6 +1029,9 @@ impl ToolCtx for TauriToolCtx {
     }
     fn approval_grant_id(&self) -> Option<&str> {
         self.approval_grant_id.as_deref()
+    }
+    fn approved_identity(&self, profile_id: &str) -> Option<&str> {
+        self.approved_identities.get(profile_id).map(String::as_str)
     }
     fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()

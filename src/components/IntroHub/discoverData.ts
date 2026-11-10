@@ -4,7 +4,7 @@
  * protocol-level cloud services (OAuth providers).
  */
 import { ProviderType } from '../../types';
-import { getAllProviders, getProvidersByCategory } from '../../providers';
+import { getAllProviders, getProvidersByCategory, getProviderById } from '../../providers';
 import type { ProviderConfig, ProviderCategory } from '../../providers/types';
 import { CatalogCategoryId } from '../../types/catalog';
 
@@ -159,6 +159,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'filelu-s3': 'protocol.discoverFileLuS3',
     'filebase': 'protocol.discoverFilebase',
     'tigris': 'protocol.discoverTigris',
+    'fastly': 'protocol.discoverFastly',
     'yandex-storage': 'protocol.discoverYandexStorage',
     'digitalocean-spaces': 'protocol.discoverDigitalOceanSpaces',
     'oracle-cloud': 'protocol.discoverOracleCloud',
@@ -284,7 +285,7 @@ export function buildDiscoverCategories(): DiscoverCategory[] {
                 // Row 4+: remaining
                 'digitalocean-spaces': 10, 'filelu-s3': 11, 'wasabi': 12,
                 'oracle-cloud': 13, 's3drive': 14, 'filen-desktop-s3': 15,
-                'filebase': 16, 'tigris': 17,
+                'filebase': 16, 'tigris': 17, 'fastly': 18,
                 // Asian providers
                 'alibaba-oss': 20, 'tencent-cos': 21, 'yandex-storage': 22,
                 // Trial-only / restricted signup: kept at the end
@@ -406,3 +407,44 @@ export const SYNTHETIC_TILE_COUNT = 1;
 export function getTotalServiceCount(): number {
     return buildDiscoverCategories().reduce((sum, cat) => sum + cat.count, 0) + SYNTHETIC_TILE_COUNT;
 }
+
+/**
+ * Look up the full translated card description as shown in Add Services
+ * for a given providerId or protocol.
+ */
+export function getDiscoverCardDescription(
+    providerId: string | null | undefined,
+    protocol: string | null | undefined,
+    t: (key: string) => string,
+): string | undefined {
+    const candidates = [
+        providerId,
+        providerId === 'fourshared-webdav' ? '4shared-webdav' : undefined,
+        protocol ? `${protocol}-generic` : undefined,
+        protocol === 's3' && !providerId ? 'custom-s3' : undefined,
+        protocol === 'webdav' && !providerId ? 'custom-webdav' : undefined,
+        protocol === 'koofr' ? 'koofr-cloud' : undefined,
+        protocol === 'mtp' ? 'mtp-portable' : undefined,
+        protocol,
+    ].filter(Boolean) as string[];
+
+    for (const id of candidates) {
+        if (DISCOVER_DESC_KEYS[id]) {
+            return t(DISCOVER_DESC_KEYS[id]);
+        }
+    }
+
+    for (const id of candidates) {
+        const prov = getProviderById(id);
+        if (prov?.description) return prov.description;
+    }
+
+    const allItems = buildDiscoverCategories().flatMap(c => c.items);
+    for (const id of candidates) {
+        const item = allItems.find(it => it.id === id);
+        if (item?.description) return item.description;
+    }
+
+    return undefined;
+}
+

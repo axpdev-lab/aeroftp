@@ -34,6 +34,8 @@ pub fn normalize_profile_option_key(key: &str) -> &str {
         // connection read: an explicit site on port 21 was opened as implicit.
         "ftpsMode" => "tls_mode",
         "verifyCert" => "verify_cert",
+        // FTP passive data address opt-in (#1506 Requested 188).
+        "trustPasvAddress" => "trust_pasv_address",
         // Swift: the GUI stores `options.allowCleartextStorage`; the provider
         // reads `allow_cleartext_storage_endpoint`. Without this line a saved
         // profile loaded outside the GUI keeps the camelCase key, the provider
@@ -128,6 +130,11 @@ pub fn insert_profile_option(
     if key == "ftpsMode" && extra.contains_key(&normalized_key) {
         return;
     }
+    // An empty TLS mode is no mode: it must not hide an imported `ftpsMode`
+    // that came first, nor count as one set (CodeRabbit on #1524).
+    if normalized_key == "tls_mode" && value.as_str().is_some_and(|v| v.trim().is_empty()) {
+        return;
+    }
 
     if let Some(string_value) = value.as_str() {
         extra.insert(normalized_key, string_value.to_string());
@@ -176,6 +183,12 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
             insert_profile_option(extra, k, v);
         }
     }
+    // Every surface that loads a saved profile comes through here (CLI, MCP,
+    // AeroCloud, cross-profile transfers, AI tools), so the GUI's FTP TLS
+    // default is applied once, here (CodeRabbit on #1524).
+    if let Some(protocol) = profile.get("protocol").and_then(|v| v.as_str()) {
+        apply_saved_ftp_tls_default(extra, protocol);
+    }
 
     // Issue #214: bind Jottacloud (and OAuth) per-profile vault keys.
     // ProviderFactory reads extra["profile_id"] to call with_profile_id;
@@ -189,6 +202,31 @@ pub fn apply_profile_options(extra: &mut HashMap<String, String>, profile: &serd
         .filter(|s| !s.is_empty())
     {
         extra.insert("profile_id".to_string(), id.to_string());
+    }
+}
+
+/// Give a saved FTP or FTPS profile that names no TLS mode the one the GUI
+/// connects it with: TLS required, explicit on FTP and implicit on FTPS, the
+/// manifest default (owner decision 2026-11-06, #1506 Requested 198). Without
+/// it the CLI, MCP, AeroCloud and the agent read such a profile as plaintext
+/// and sent its password in the clear where the GUI refused to. A profile that
+/// sets `tlsMode` (`none` included, plain FTP on purpose) or the imported
+/// `ftpsMode` fallback keeps it: only a missing or empty mode is filled.
+pub fn apply_saved_ftp_tls_default(extra: &mut HashMap<String, String>, protocol: &str) {
+    let Some(spec) = crate::connection_manifest::connection_spec(protocol) else {
+        return;
+    };
+    if !matches!(spec.token.as_str(), "ftp" | "ftps") {
+        return;
+    }
+    if extra
+        .get("tls_mode")
+        .is_some_and(|mode| !mode.trim().is_empty())
+    {
+        return;
+    }
+    if let Some(mode) = spec.default_options.get("tlsMode").and_then(|v| v.as_str()) {
+        extra.insert("tls_mode".to_string(), mode.to_string());
     }
 }
 
@@ -222,10 +260,10 @@ pub fn profile_connection_extra(
             .filter(|preset| preset.protocol == spec.token);
         for (key, value) in crate::connection_manifest::default_options(spec, preset) {
             // Missing mode identifies a legacy CLI profile. Creation already
-            // materializes the native default in the saved options.
-            // Transport modes on saved FTP profiles retain the provider's
-            // legacy fallback, including imported ftpsMode. New profiles
-            // already store the manifest's TLS default at creation.
+            // materializes the native default in the saved options. The FTP
+            // TLS mode is filled after the profile's own options instead
+            // (`apply_saved_ftp_tls_default`), so an imported `ftpsMode`,
+            // which never replaces a mode already set, still applies.
             if (provider_type == ProviderType::Proton && key == "proton_mode")
                 || (matches!(provider_type, ProviderType::Ftp | ProviderType::Ftps)
                     && canonicalize_profile_option_key(&key) == "tls_mode")
@@ -234,6 +272,16 @@ pub fn profile_connection_extra(
             }
             if provider_type == ProviderType::S3
                 && matches!(key.as_str(), "region" | "endpoint" | "pathStyle")
+            {
+                continue;
+            }
+            // A preset's relaxed default (Filen Desktop S3's verifyCert=false,
+            // Blomp's cleartext storage) belongs to the preset's own address:
+            // a profile that names the preset but points elsewhere does not
+            // inherit it (CodeRabbit on #1524). An option the profile sets
+            // itself still wins below.
+            if crate::profile_security::is_relaxed_value(&key, &value)
+                && !crate::profile_security::preset_owns_profile_address(profile)
             {
                 continue;
             }
@@ -249,6 +297,11 @@ pub fn profile_connection_extra(
         }
     }
     apply_profile_options(&mut extra, profile);
+    // A profile without a `protocol` field still gets the FTP TLS default of
+    // the type it connects as.
+    if let Some(spec) = crate::connection_manifest::provider_spec(provider_type) {
+        apply_saved_ftp_tls_default(&mut extra, &spec.token);
+    }
 
     if provider_type == ProviderType::Azure && !extra.contains_key("container") {
         if let Some(bucket) = extra.remove("bucket") {
@@ -424,12 +477,29 @@ fn region_from_s3_template(template: &str, endpoint: &str) -> Option<String> {
         .next()?
         .to_ascii_lowercase();
     let region = host.strip_prefix(prefix)?.strip_suffix(suffix)?;
+    // Labels a vendor puts where the region goes that are not one (Greptile on
+    // #1525): an internal endpoint (`oss-cn-hangzhou-internal.aliyuncs.com`)
+    // names its region with a suffix, and an accelerate endpoint
+    // (`oss-accelerate.aliyuncs.com`, `cos.accelerate.myqcloud.com`) names
+    // none. Read as a region they would override a correct stored one.
+    let region = region
+        .strip_suffix(S3_INTERNAL_ENDPOINT_SUFFIX)
+        .unwrap_or(region);
     (!region.is_empty()
+        && !S3_NON_REGION_LABELS.contains(&region)
         && region
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-'))
     .then(|| region.to_string())
 }
+
+/// Suffix of an S3 vendor's internal (same-cloud) endpoint label. Mirrored in
+/// `regionFromS3Template` in src/providers/registry.ts.
+const S3_INTERNAL_ENDPOINT_SUFFIX: &str = "-internal";
+
+/// Endpoint labels in a region's place that name no region. Mirrored in
+/// `regionFromS3Template` in src/providers/registry.ts.
+const S3_NON_REGION_LABELS: [&str; 2] = ["accelerate", "accelerate-overseas"];
 
 pub fn s3_region_from_endpoint(provider_id: &str, endpoint: &str) -> Option<String> {
     let template = s3_profile_endpoint_template(provider_id)?;
@@ -508,19 +578,38 @@ pub fn apply_s3_profile_defaults(
                 .then(|| host.to_string())
         });
 
-    let region_source = if extra.contains_key("region") {
-        "profile"
-    } else if let Some(region) = explicit_endpoint
+    // The region the endpoint names wins over a stored one (#1506 Requested
+    // 200): an importer (kopia, restic, mc, aws, rclone) stores its source's
+    // region as given, often us-east-1, and a host that carries its region in
+    // the preset's template signs with that region, spelled as the host
+    // spells it (SigV4's credential scope is case-sensitive), as the same
+    // profile made in the form does. The source says "profile" only when the
+    // stored value is exactly that region. A stored region beside an
+    // endpoint the template does not parse stays, trimmed.
+    let named_region = explicit_endpoint
         .as_deref()
-        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint))
-    {
-        extra.insert("region".to_string(), region);
-        "endpoint"
-    } else {
-        if let Some(default_region) = s3_profile_default_region(provider_id) {
-            extra.insert("region".to_string(), default_region.to_string());
+        .and_then(|endpoint| s3_region_from_endpoint(provider_id, endpoint));
+    let stored_region = extra.get("region").map(|region| region.trim().to_string());
+    let region_source = match (stored_region, named_region) {
+        (stored, Some(named)) => {
+            let source = if stored.as_deref() == Some(named.as_str()) {
+                "profile"
+            } else {
+                "endpoint"
+            };
+            extra.insert("region".to_string(), named);
+            source
         }
-        "preset"
+        (Some(stored), None) => {
+            extra.insert("region".to_string(), stored);
+            "profile"
+        }
+        (None, None) => {
+            if let Some(default_region) = s3_profile_default_region(provider_id) {
+                extra.insert("region".to_string(), default_region.to_string());
+            }
+            "preset"
+        }
     };
     extra.insert(
         S3_REGION_SOURCE_META_KEY.to_string(),
@@ -647,6 +736,10 @@ mod tests {
     fn normalize_known_camel_case_keys() {
         assert_eq!(normalize_profile_option_key("tlsMode"), "tls_mode");
         assert_eq!(
+            normalize_profile_option_key("trustPasvAddress"),
+            "trust_pasv_address"
+        );
+        assert_eq!(
             normalize_profile_option_key("allowCleartextStorage"),
             "allow_cleartext_storage_endpoint"
         );
@@ -768,6 +861,45 @@ mod tests {
             Some("https://s3.us-south.cloud-object-storage.appdomain.cloud")
         );
         assert_eq!(explicit.get("path_style").map(String::as_str), Some("true"));
+    }
+
+    #[test]
+    fn fastly_preset_resolves_region_path_style_and_endpoint() {
+        // Fastly Object Storage: the endpoint is `https://{region}.object.fastlystorage.app`,
+        // path-style only, Frankfurt by default. Explicit profile values win
+        // over the preset, and `us-east` stays a different host from `us-east-1`.
+        let mut extra = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut extra, Some("fastly"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://eu-central-1.object.fastlystorage.app")
+        );
+        assert_eq!(
+            extra.get("region").map(String::as_str),
+            Some("eu-central-1")
+        );
+        assert_eq!(extra.get("path_style").map(String::as_str), Some("true"));
+
+        let mut explicit = HashMap::new();
+        explicit.insert("region".to_string(), "us-east".to_string());
+        explicit.insert("path_style".to_string(), "false".to_string());
+        let endpoint = apply_s3_profile_defaults(&mut explicit, Some("fastly"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://us-east.object.fastlystorage.app")
+        );
+        assert_eq!(
+            explicit.get("path_style").map(String::as_str),
+            Some("false")
+        );
+
+        // The alias used by imports resolves to the same preset.
+        let mut aliased = HashMap::new();
+        let endpoint = apply_s3_profile_defaults(&mut aliased, Some("fastly-object-storage"), "");
+        assert_eq!(
+            endpoint.as_deref(),
+            Some("https://eu-central-1.object.fastlystorage.app")
+        );
     }
 
     #[test]
@@ -920,6 +1052,24 @@ mod tests {
                 "https://bucket.s3.eu-amsterdam-1.megas4.com",
                 None,
             ),
+            // Internal and accelerate endpoints (Greptile on #1525).
+            (
+                "alibaba-oss",
+                "https://oss-cn-hangzhou-internal.aliyuncs.com",
+                Some("cn-hangzhou"),
+            ),
+            ("alibaba-oss", "https://oss-accelerate.aliyuncs.com", None),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate-overseas.aliyuncs.com",
+                None,
+            ),
+            ("tencent-cos", "https://cos.accelerate.myqcloud.com", None),
+            (
+                "ibm-cos",
+                "https://s3.private.us-south.cloud-object-storage.appdomain.cloud",
+                None,
+            ),
             (
                 "alibaba-oss",
                 "https://oss-eu-central-1.aliyuncs.com",
@@ -949,6 +1099,39 @@ mod tests {
             // Tigris has one global region: nothing to read back from either host.
             ("tigris", "https://t3.storage.dev", None),
             ("tigris", "https://fly.storage.tigris.dev", None),
+            // Fastly: the region is the first host label. The original regions
+            // have no -1 and must not be read as the -1 ones (or the other way
+            // round). Same table as s3ProfileLocation.test.ts.
+            (
+                "fastly",
+                "https://us-east.object.fastlystorage.app",
+                Some("us-east"),
+            ),
+            (
+                "fastly",
+                "https://us-east-1.object.fastlystorage.app",
+                Some("us-east-1"),
+            ),
+            (
+                "fastly",
+                "https://eu-central.object.fastlystorage.app",
+                Some("eu-central"),
+            ),
+            (
+                "fastly",
+                "eu-central-1.object.fastlystorage.app",
+                Some("eu-central-1"),
+            ),
+            (
+                "fastly",
+                "https://JP-CENTRAL-1.object.fastlystorage.app:443",
+                Some("jp-central-1"),
+            ),
+            (
+                "fastly",
+                "https://bucket.eu-west-1.object.fastlystorage.app",
+                None,
+            ),
         ] {
             assert_eq!(
                 s3_region_from_endpoint(preset, endpoint).as_deref(),
@@ -984,7 +1167,9 @@ mod tests {
             extra.get("region").map(String::as_str),
             Some("eu-central-2")
         );
-        // A stored region always wins; an unreadable host keeps the default.
+        // A stored region the host contradicts loses to the host's (#1506
+        // Requested 200: eu-gb cannot sign for the us-south endpoint); an
+        // unreadable host keeps the default.
         let mut extra = HashMap::new();
         extra.insert("region".to_string(), "eu-gb".to_string());
         apply_s3_profile_defaults(
@@ -992,10 +1177,124 @@ mod tests {
             Some("ibm-cos"),
             "s3.us-south.cloud-object-storage.appdomain.cloud",
         );
-        assert_eq!(extra.get("region").map(String::as_str), Some("eu-gb"));
+        assert_eq!(extra.get("region").map(String::as_str), Some("us-south"));
         let mut extra = HashMap::new();
         apply_s3_profile_defaults(&mut extra, Some("ibm-cos"), "cos.example.internal");
         assert_eq!(extra.get("region").map(String::as_str), Some("eu-de"));
+    }
+
+    /// #1506 Requested 200: an imported region that contradicts the region
+    /// the preset's endpoint template names is replaced by the named one; a
+    /// matching one, or one beside a host the template does not parse, stays.
+    #[test]
+    fn the_region_an_endpoint_names_wins_over_a_contradicting_stored_one() {
+        let resolve = |provider: &str, endpoint: &str, region: Option<&str>| {
+            let mut extra = HashMap::new();
+            extra.insert("endpoint".to_string(), endpoint.to_string());
+            if let Some(region) = region {
+                extra.insert("region".to_string(), region.to_string());
+            }
+            apply_s3_profile_defaults(&mut extra, Some(provider), "");
+            (
+                extra.get("region").cloned(),
+                extra.get(S3_REGION_SOURCE_META_KEY).cloned(),
+            )
+        };
+        let cases = [
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("us-east-1"),
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("eu-central-1"),
+                "eu-central-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some("EU-CENTRAL-1"),
+                // SigV4's scope is case-sensitive: the host's spelling signs.
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                Some(" eu-central-1 "),
+                "eu-central-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://s3.eu-central-1.wasabisys.com",
+                None,
+                "eu-central-1",
+                "endpoint",
+            ),
+            (
+                "ibm-cos",
+                "https://s3.us-south.cloud-object-storage.appdomain.cloud",
+                Some("eu-de"),
+                "us-south",
+                "endpoint",
+            ),
+            (
+                "digitalocean-spaces",
+                "https://fra1.digitaloceanspaces.com",
+                Some("us-east-1"),
+                "fra1",
+                "endpoint",
+            ),
+            // A host the template does not produce keeps the stored region.
+            (
+                "wasabi",
+                "https://storage.example.com",
+                Some("us-west-1"),
+                "us-west-1",
+                "profile",
+            ),
+            (
+                "wasabi",
+                "https://storage.example.com",
+                Some(" us-west-1 "),
+                "us-west-1",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-cn-hangzhou-internal.aliyuncs.com",
+                Some("cn-hangzhou"),
+                "cn-hangzhou",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate.aliyuncs.com",
+                Some("cn-shanghai"),
+                "cn-shanghai",
+                "profile",
+            ),
+            (
+                "alibaba-oss",
+                "https://oss-accelerate-overseas.aliyuncs.com",
+                Some("cn-shanghai"),
+                "cn-shanghai",
+                "profile",
+            ),
+        ];
+        for (provider, endpoint, stored, region, source) in cases {
+            assert_eq!(
+                resolve(provider, endpoint, stored),
+                (Some(region.to_string()), Some(source.to_string())),
+                "{provider} {endpoint} {stored:?}"
+            );
+        }
     }
 
     #[test]
@@ -1100,6 +1399,73 @@ mod tests {
             ("ale".to_string(), "12345".to_string()),
             "a numeric password is the bare secret"
         );
+    }
+
+    /// Owner decision 2026-11-06 (#1506 Requested 198): a saved FTP profile
+    /// with no TLS mode requires TLS on every non-GUI surface, as in the GUI;
+    /// a mode the profile sets, `none` included, and the imported `ftpsMode`
+    /// fallback keep their value.
+    #[test]
+    fn a_saved_ftp_profile_without_a_tls_mode_requires_tls_like_the_gui() {
+        let mode = |profile: serde_json::Value, provider_type: ProviderType| {
+            let (extra, _) = profile_connection_extra(&profile, provider_type, "ftp.example.com");
+            extra.get("tls_mode").cloned()
+        };
+        let cases = [
+            (json!({"protocol": "ftp"}), ProviderType::Ftp, "explicit"),
+            (
+                json!({"protocol": "ftp", "options": {}}),
+                ProviderType::Ftp,
+                "explicit",
+            ),
+            (
+                json!({"protocol": "ftp", "options": {"tlsMode": ""}}),
+                ProviderType::Ftp,
+                "explicit",
+            ),
+            (json!({"protocol": "ftps"}), ProviderType::Ftps, "implicit"),
+            (
+                json!({"protocol": "ftp", "options": {"tlsMode": "none"}}),
+                ProviderType::Ftp,
+                "none",
+            ),
+            (
+                json!({"protocol": "ftp", "options": {"ftpsMode": "implicit"}}),
+                ProviderType::Ftp,
+                "implicit",
+            ),
+            (
+                json!({"protocol": "ftp", "options": {"tlsMode": "explicit_if_available", "ftpsMode": "implicit"}}),
+                ProviderType::Ftp,
+                "explicit_if_available",
+            ),
+        ];
+        for (profile, provider_type, expected) in cases {
+            assert_eq!(
+                mode(profile.clone(), provider_type).as_deref(),
+                Some(expected),
+                "{profile}"
+            );
+        }
+        // An empty tlsMode does not hide an imported ftpsMode (CodeRabbit on
+        // #1524), whichever order the options come in.
+        assert_eq!(
+            mode(
+                json!({"protocol": "ftp", "options": {"tlsMode": "", "ftpsMode": "none"}}),
+                ProviderType::Ftp
+            )
+            .as_deref(),
+            Some("none")
+        );
+        // The shared loader every temporary provider uses (cross-profile
+        // transfers, AI tools) applies the same default.
+        let mut extra = HashMap::new();
+        apply_profile_options(&mut extra, &json!({"protocol": "ftp", "options": {}}));
+        assert_eq!(extra.get("tls_mode").map(String::as_str), Some("explicit"));
+        // Other protocols are not given an FTP mode.
+        let mut extra = HashMap::new();
+        apply_saved_ftp_tls_default(&mut extra, "sftp");
+        assert!(extra.is_empty());
     }
 
     #[test]

@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "6dc053e905841ed5b6de3f1a24b31617a757d6d82b471a91090ad0886722a2f9",
+    "enHash": "f40874d603e7816a5cdec77313c0617189d6e2163bef02096cb9947fcd7971fa",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -536,6 +536,9 @@
             "MTP is exclusive: close the file manager if open fails. Transfers are whole-file only (no resume, no drive letter).",
             "MTP is exclusive: on Linux, Connect soft-releases the system file manager mount. Transfers are whole-file only (no resume, no drive letter)."
         ],
+        "protocol.discoverFastly": [
+            "Fastly Object Storage: S3-compatible storage in 12 regions (5 GB free)"
+        ],
         "protocol.discoverFileLu": [
             "Cloud storage with FTP, WebDAV, S3 and native API (1 GB free)"
         ],
@@ -858,6 +861,9 @@
         ],
         "transfer.modeUnavailable": [
             "Transfer mode presets are currently available for FTP/FTPS only"
+        ],
+        "transfer.queuedForAnotherServer": [
+            "Not started: this transfer was queued for another server. Switch back to that server's tab, then retry."
         ],
         "transfer.restoredHint": [
             "Restored from a previous session. Reconnect to the same server, then press Retry to re-run."

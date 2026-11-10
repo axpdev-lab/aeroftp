@@ -765,7 +765,10 @@
             },
             "stagedCount": "Pregătite: {count}",
             "pendingCount": "În așteptare: {count}",
-            "failedCount": "Eșuate: {count}"
+            "failedCount": "Eșuate: {count}",
+            "queuedForAnotherServer": "Nu a început: acest transfer era în coadă pentru alt server sau cont. Reveniți la fila lui, apoi încercați din nou.",
+            "queuedOverlayChanged": "Nepornit: overlay-ul criptat sub care a fost pus în coadă acest transfer este blocat sau nu mai acoperă acest folder. Deblochează-l pe acel server, apoi încearcă din nou.",
+            "pasteFromAnotherServer": "Nu a fost lipit: aceste fișiere au fost decupate sau copiate pe un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi lipiți din nou."
         },
         "settings": {
             "title": "Setări",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} au venit cu o aplicație OAuth personalizată diferită de cea pe care acest dispozitiv o are pentru furnizorul respectiv. Aplicația stocată a fost păstrată, așa că autentificați-vă din nou dacă aceste profiluri nu se mai conectează.",
             "importTargetChanged": "{names} nu au fost suprascrise: fișierul le îndreaptă către alt server, iar parolele și token-urile lor salvate nu trebuie să ajungă acolo. Importați cu Duplicați pentru a adăuga copia din fișier sau ștergeți mai întâi profilul.",
             "importSharedSecretsFailed": "{names} au fost importate, dar un secret partajat sau o sesiune din fișier nu a putut fi stocat. Autentificați-vă din nou în aceste profiluri dacă nu se conectează.",
-            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}."
+            "keystoreDatabasesFailed": "Importul s-a încheiat, dar aceste baze de date nu au putut fi restaurate și păstrează ce conțineau: {names}.",
+            "importSecurityTitle": "Setări de securitate în această copie de rezervă",
+            "importSecurityHelp": "Aceste opțiuni dezactivează o verificare de securitate. Fiecare se importă în starea sigură, dacă nu o bifați pentru a o păstra așa cum este în fișier.",
+            "importSecurityVerifyCert": "Verificarea certificatului este dezactivată",
+            "importSecurityCleartextEndpoint": "Punct final S3 necriptat permis",
+            "importSecurityCleartextStorage": "Adresă de stocare necriptată permisă",
+            "importSecurityPlainHttp": "HTTP simplu în loc de HTTPS",
+            "importSecurityPasvAddress": "Conexiune de date la adresa indicată de server (PASV)",
+            "importSecurityUnknownHostKeys": "Chei de gazdă SSH necunoscute acceptate",
+            "keystoreSecurityReset": "{count} servere restaurate aveau opțiuni care dezactivează o verificare de securitate; au fost readuse la setarea sigură: {details}.",
+            "keystoreSecurityResetFailed": "Setările de securitate pentru {count} conturi restaurate nu au putut fi verificate sau resetate. Acestea sunt listate aici în loc să rămână active fără avertisment.",
+            "keystoreSecurityResetQuarantine": "Baza de date restaurată a conturilor nu a putut fi securizată și a fost pusă în carantină ca {path}. Niciun cont restaurat nu este activ. Remediați problema de disc sau de permisiuni, apoi restaurați din nou copia de rezervă. Fișierul aflat în carantină rămâne disponibil pentru recuperare."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Crearea a eșuat",
             "unknownServer": "Necunoscut",
             "scpModeTitle": "Conectat cu SCP",
-            "scpModeBody": "{host} nu are SFTP, așa că AeroFTP folosește SCP pe aceeași conexiune."
+            "scpModeBody": "{host} nu are SFTP, așa că AeroFTP folosește SCP pe aceeași conexiune.",
+            "saveOnAnotherServer": "Nu a fost salvat: acest fișier a fost deschis dintr-un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi salvați din nou.",
+            "openedOnAnotherServer": "Nedeschis: serverul s-a schimbat în timpul citirii fișierului. Deschide-l din nou.",
+            "remoteTargetChanged": "Nu s-a modificat nimic: serverul, contul sau stratul criptat s-a schimbat de când a început acțiunea sau se reconectează încă. Încearcă din nou pe conexiunea curentă."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Permite revenirea la SCP",
             "allowScpFallbackHint": "Dacă serverul nu are SFTP, conexiunea continuă prin SCP, așa cum face WinSCP.",
             "discoverScp": "Copiere de fișiere prin SSH pentru servere fără SFTP",
-            "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)"
+            "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)",
+            "trustPasvAddress": "Folosește adresa pasivă indicată de server",
+            "trustPasvAddressHelp": "Dezactivat: conexiunile de date merg la gazda la care te-ai conectat, ca la curl. Activează doar pentru un server care trimite datele de la altă adresă.",
+            "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",
@@ -3068,7 +3088,8 @@
                 "diff": "Diferențe față de original",
                 "diffNoFile": "Niciun fișier deschis pentru comparare",
                 "commandBlocked": "Comandă blocată: potențial distructivă",
-                "confirmRun": "Confirmați rularea: {command}"
+                "confirmRun": "Confirmați rularea: {command}",
+                "reopenEditor": "Afișați editorul cu acest fișier deschis, apoi încercați din nou."
             },
             "thinkingBlock": {
                 "thinking": "Se gândește...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Protejat cu parolă",
             "expirationHoursOne": "{count} oră",
             "expirationHoursMany": "{count} h",
-            "expirationDaysMany": "Zile: {count}"
+            "expirationDaysMany": "Zile: {count}",
+            "expiresSoonerThanChosen": "mai scurt decât cel ales"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Modificări nesalvate",
             "dirtyBody": "Aveți modificări nesalvate. Renunțați la ele și închideți?",
             "keepEditing": "Continuați editarea",
-            "discardAndClose": "Renunțați și închideți"
+            "discardAndClose": "Renunțați și închideți",
+            "busyBodyKeepsRunning": "O operațiune este încă în curs. Continuă după închiderea acestei ferestre, iar rezultatul ei nu este afișat aici. Închideți oricum?",
+            "closeAnyway": "Închideți oricum"
         },
         "modalView": {
             "listView": "Vizualizare listă",

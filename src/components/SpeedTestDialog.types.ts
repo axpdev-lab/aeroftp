@@ -67,6 +67,7 @@ export interface SpeedTestProviderConnectionParams {
     allow_scp_fallback?: false;
     tls_mode?: string | null;
     verify_cert?: boolean | null;
+    trust_pasv_address?: boolean;
 }
 
 export interface SpeedTestRunRequest {
@@ -148,4 +149,7 @@ export interface SpeedTestDialogProps {
     initialServerId?: string;
     initialMode?: SpeedTestMode;
     onClose: () => void;
+    /** False while the dialog stays mounted but out of sight (its tab hidden):
+     *  it then claims no ESC. Default true. */
+    active?: boolean;
 }

@@ -119,7 +119,9 @@ describe('deriveProviderId Tigris host boundary', () => {
             expect(deriveProviderId(s3(`${bucket}.t3.storage.dev`))).toBe('tigris');
             expect(deriveProviderId(s3(`https://${bucket}.fly.storage.tigris.dev`))).toBe('tigris');
         }
-        expect(deriveProviderId(s3('backblaze-backups.t3.storage.dev.example.com'))).toBe('backblaze');
+        // Not a Backblaze host either: vendor words count only as a domain
+        // (src/shared/s3-host-map.json), never as a substring (#1506 Requested 173).
+        expect(deriveProviderId(s3('backblaze-backups.t3.storage.dev.example.com'))).toBeUndefined();
     });
 
     it('rejects lookalikes', () => {

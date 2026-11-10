@@ -10,6 +10,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+use crate::ai_core::credential_provider::{approved_target_unchanged, profile_identity};
 use crate::credential_store::CredentialStore;
 use crate::profile_loader::{
     apply_local_bridge_credential_defaults, parse_server_credential, profile_connection_extra,
@@ -36,6 +37,9 @@ struct PooledConnection {
     connected_at: DateTime<Utc>,
     auth_deadline: Option<i64>,
     requests_served: AtomicU64,
+    /// What the profile connected to when this connection was opened: one
+    /// opened before the profile was edited to another host is not reused.
+    identity: Option<String>,
 }
 
 /// Process-wide monotonic anchor used to convert `Instant` to a 64-bit
@@ -85,13 +89,30 @@ impl ConnectionPool {
         &self,
         server_query: &str,
     ) -> Result<Arc<Mutex<Box<dyn StorageProvider>>>, String> {
-        let profile_id = resolve_profile_id(server_query)?;
+        self.get_provider_expecting(server_query, None).await
+    }
 
-        // Expired authentication is never returned from a hot pooled session.
+    /// [`Self::get_provider`] for a call approved while the profile connected
+    /// to `expected` ([`crate::ai_core::ServerProfile::connection_identity`]):
+    /// a profile that connects elsewhere now is refused, and a pooled
+    /// connection is reused only when it was opened to what the profile names
+    /// now. A call approved for one host never writes to another.
+    pub async fn get_provider_expecting(
+        &self,
+        server_query: &str,
+        expected: Option<&str>,
+    ) -> Result<Arc<Mutex<Box<dyn StorageProvider>>>, String> {
+        let (profile_id, identity) = resolve_profile_target(server_query)?;
+        approved_target_unchanged(server_query, expected, identity.as_deref())?;
+
+        // Expired authentication is never returned from a hot pooled session,
+        // nor a connection opened before the profile was edited.
         let expired = {
             let mut conns = self.connections.lock().await;
             if let Some(entry) = conns.get(&profile_id) {
-                if authentication_current(entry.auth_deadline, Utc::now().timestamp()) {
+                if entry.identity == identity
+                    && authentication_current(entry.auth_deadline, Utc::now().timestamp())
+                {
                     entry.last_used_ms.store(now_ms(), Ordering::Relaxed);
                     entry.requests_served.fetch_add(1, Ordering::Relaxed);
                     return Ok(Arc::clone(&entry.provider));
@@ -106,9 +127,10 @@ impl ConnectionPool {
             });
         }
 
-        // Create new connection
+        // Create new connection, by the id resolved above and only while the
+        // profile still connects where it did then.
         let (provider, name, protocol, auth_deadline) =
-            create_provider_from_vault(server_query).await?;
+            create_provider_from_vault(&profile_id, identity.as_deref()).await?;
         let mut connected = provider;
         connected.connect().await.map_err(|e| {
             // Sanitize connection errors to prevent credential leakage to AI clients
@@ -127,7 +149,7 @@ impl ConnectionPool {
         // `OverlayUnlockParams` that MCP Compare builds via
         // `resolve_overlay_secrets`. Fail-closed: a bound profile with no usable
         // secret returns Err and the raw provider is never pooled.
-        let connected = match resolve_overlay_secrets(server_query, "") {
+        let connected = match resolve_overlay_secrets(&profile_id, "") {
             Ok(Some((params, password, salt, keyfile_digest))) => {
                 // Tier 1 keyfile second factor: the digest comes resolved
                 // (fail-closed) from resolve_overlay_secrets, so a keyfile
@@ -156,6 +178,7 @@ impl ConnectionPool {
             connected_at: Utc::now(),
             auth_deadline,
             requests_served: AtomicU64::new(1),
+            identity,
         };
 
         // Evict oldest if at capacity. Candidates are selected inside the map
@@ -347,18 +370,19 @@ pub(crate) fn find_unique_profile<'a>(
     profiles: &'a [serde_json::Value],
     server_query: &str,
 ) -> Result<&'a serde_json::Value, String> {
-    let query_lower = server_query.to_lowercase();
-    if let Some(profile) = profiles.iter().find(|p| {
-        let name = p
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_lowercase();
-        let id = p.get("id").and_then(|v| v.as_str()).unwrap_or("");
-        name == query_lower || id == server_query
-    }) {
-        return Ok(profile);
+    // An exact id, then an exact name: the order every surface shares, so
+    // the CLI agent runs a change on the profile its approval was bound to.
+    if let Some(index) =
+        crate::ai_core::credential_provider::exact_profile_index(profiles, server_query, |p| {
+            (
+                p.get("id").and_then(|v| v.as_str()).unwrap_or(""),
+                p.get("name").and_then(|v| v.as_str()).unwrap_or(""),
+            )
+        })
+    {
+        return Ok(&profiles[index]);
     }
+    let query_lower = server_query.to_lowercase();
 
     let matches: Vec<&serde_json::Value> = profiles
         .iter()
@@ -537,21 +561,19 @@ pub fn resolve_overlay_secrets(
 }
 
 /// Resolve a server query (name, ID, or unique substring) to a profile ID.
-fn resolve_profile_id(server_query: &str) -> Result<String, String> {
+/// The profile `server_query` names, as its id and connection identity.
+fn resolve_profile_target(server_query: &str) -> Result<(String, Option<String>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
-    // MUV-5: resolve the active user's profiles (env-passphrase unlock supported)
-    // instead of the legacy single-user blob; falls back to the blob during the
-    // rollout when the partition cannot serve.
+    // MUV-5: the active user's profiles (env-passphrase unlock supported).
     let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
-
     let matched = find_unique_profile(&profiles, server_query)?;
-
-    Ok(matched
+    let id = matched
         .get("id")
         .and_then(|v| v.as_str())
         .unwrap_or(server_query)
-        .to_string())
+        .to_string();
+    Ok((id, profile_identity(matched)))
 }
 
 /// Map a saved profile's protocol string to its provider type. Extracted from
@@ -564,6 +586,22 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
     ProviderType::from_lowercase(protocol)
 }
 
+fn refuse_relaxed_vault_profile(profile: &serde_json::Value, strict: bool) -> Result<(), String> {
+    match crate::profile_security::strict_profile_refusal_when(strict, profile) {
+        Some(refusal) => Err(refusal),
+        None => Ok(()),
+    }
+}
+
+fn credential_after_strict_check<T>(
+    profile: &serde_json::Value,
+    strict: bool,
+    read: impl FnOnce() -> T,
+) -> Result<T, String> {
+    refuse_relaxed_vault_profile(profile, strict)?;
+    Ok(read())
+}
+
 /// Create a StorageProvider from vault credentials. Supports all non-OAuth2 protocols
 /// plus OAuth2 providers when valid tokens exist in the vault.
 ///
@@ -571,15 +609,42 @@ fn protocol_to_provider_type(protocol: &str) -> Option<ProviderType> {
 /// (upper-case) so the pool can surface it via `aeroftp://connections`.
 async fn create_provider_from_vault(
     server_query: &str,
+    identity: Option<&str>,
+) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
+    create_provider_from_vault_with_reader(
+        server_query,
+        identity,
+        crate::user_partitions::mcp_list_active_server_profiles,
+        crate::profile_security::strict_profiles_enabled(),
+        |store, key| {
+            crate::user_partitions::resolve_active_credential(store, key)
+                .ok()
+                .flatten()
+                .map(|s| s.to_string())
+                .unwrap_or_default()
+        },
+    )
+    .await
+}
+
+async fn create_provider_from_vault_with_reader(
+    server_query: &str,
+    identity: Option<&str>,
+    read_profiles: impl FnOnce(&CredentialStore) -> Result<Vec<serde_json::Value>, String>,
+    strict: bool,
+    read_credential: impl FnOnce(&CredentialStore, &str) -> String,
 ) -> Result<(Box<dyn StorageProvider>, String, String, Option<i64>), String> {
     let store = CredentialStore::from_cache()
         .ok_or_else(|| "Vault not open. Cannot connect to server.".to_string())?;
-    // MUV-5: active-user profiles (see resolve_profile_id). The transient
+    // MUV-5: active-user profiles (see resolve_profile_target). The transient
     // env-passphrase unlock done inside also primes the session so the
     // `resolve_active_credential` read below decrypts the per-user `server_<id>`.
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(&store)?;
+    let profiles = read_profiles(&store)?;
 
     let matched = find_unique_profile(&profiles, server_query)?;
+    // The profile read again here is the one opened: it must still connect
+    // where it did when the pool checked it.
+    approved_target_unchanged(server_query, identity, profile_identity(matched).as_deref())?;
 
     let profile_id = matched.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let profile_name = matched
@@ -609,14 +674,11 @@ async fn create_provider_from_vault(
     // profile listing above already unlocked a passphrase account from
     // AEROFTP_USER_PASSPHRASE, so this resolves its own `server_<id>` row;
     // otherwise the dual-written vault copy still answers.
-    let raw_cred = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("server_{}", profile_id),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .unwrap_or_default();
+    // Strict mode holds here too: the read is never attempted for a relaxed
+    // saved profile when strict mode is active.
+    let raw_cred = credential_after_strict_check(matched, strict, || {
+        read_credential(&store, &format!("server_{}", profile_id))
+    })?;
 
     let (mut resolved_username, mut password) = parse_server_credential(&raw_cred, username);
 
@@ -715,7 +777,112 @@ async fn create_provider_from_vault(
 
 #[cfg(test)]
 mod tests {
+
+    /// Greptile on #1524: `agent --mcp --strict` connected saved profiles that
+    /// turn a security check off. The full vault path refuses them before any
+    /// credential is read; non-strict mode keeps its existing behavior.
+    #[tokio::test]
+    async fn the_vault_connect_path_applies_strict_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key = [0x24; 32];
+        CredentialStore::write_test_vault(&path, &key);
+        CredentialStore::cache_vault(path, key);
+        struct ClearCache;
+        impl Drop for ClearCache {
+            fn drop(&mut self) {
+                CredentialStore::clear_cache();
+            }
+        }
+        let _clear = ClearCache;
+        let profile = serde_json::json!({
+            "id": "srv_relaxed", "name": "lab", "host": "files.example.com",
+            "port": 22, "username": "user", "protocol": "sftp",
+            "options": {"trustUnknownHosts": true}
+        });
+
+        let read = std::cell::Cell::new(false);
+        let refused = create_provider_from_vault_with_reader(
+            "lab",
+            None,
+            {
+                let profile = profile.clone();
+                move |_| Ok(vec![profile])
+            },
+            true,
+            |_, key| {
+                assert_eq!(key, "server_srv_relaxed");
+                read.set(true);
+                "fixture-secret".to_string()
+            },
+        )
+        .await
+        .err()
+        .expect("strict mode must refuse the relaxed profile");
+        assert!(refused.contains("strict mode"), "{refused}");
+        assert!(!read.get(), "strict refusal precedes credential resolution");
+
+        let allowed = credential_after_strict_check(&profile, false, || {
+            read.set(true);
+            "fixture-secret".to_string()
+        });
+        assert_eq!(allowed.unwrap(), "fixture-secret");
+        assert!(read.get());
+    }
     use super::*;
+
+    /// A call approved while the profile connected to one host never opens
+    /// another: the pool compares what the profile connects to now with what
+    /// the approval saw, computed the same way on both sides.
+    #[test]
+    fn a_profile_edited_after_the_approval_is_refused() {
+        let profile = serde_json::json!({"id": "srv_1", "name": "lab", "host": "a.example", "port": 21, "username": "u", "protocol": "ftp"});
+        let approved = crate::ai_core::ServerProfile::from_profile_json(&profile)
+            .unwrap()
+            .connection_identity();
+        assert_eq!(
+            profile_identity(&profile).as_deref(),
+            Some(approved.as_str())
+        );
+        assert!(approved_target_unchanged(
+            "lab",
+            Some(&approved),
+            profile_identity(&profile).as_deref()
+        )
+        .is_ok());
+        let mut edited = profile.clone();
+        edited["host"] = serde_json::json!("b.example");
+        let refused =
+            approved_target_unchanged("lab", Some(&approved), profile_identity(&edited).as_deref())
+                .unwrap_err();
+        assert!(
+            refused.contains("changed after the call was approved"),
+            "{refused}"
+        );
+        // A call with no approval behind it (a read) is not bound.
+        assert!(
+            approved_target_unchanged("lab", None, profile_identity(&edited).as_deref()).is_ok()
+        );
+    }
+
+    /// The CLI agent and MCP resolve like the desktop: an id first, then a
+    /// name, so a profile named like another's id never stands for it.
+    #[test]
+    fn find_unique_profile_takes_an_id_over_a_profile_named_like_it() {
+        let profiles = vec![
+            serde_json::json!({"id": "srv_1", "name": "srv_2"}),
+            serde_json::json!({"id": "srv_2", "name": "Lab"}),
+        ];
+        let id = |query: &str| {
+            find_unique_profile(&profiles, query).unwrap()["id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        };
+        assert_eq!(id("srv_2"), "srv_2");
+        assert_eq!(id("lab"), "srv_2");
+        assert_eq!(id("SRV_2"), "srv_1");
+    }
 
     /// MI-02 regression pin: the five providers the resources surface
     /// announced but the pool could not build must map, in every spelling the

@@ -8,6 +8,7 @@ import {
     SpeedTestResult,
     SpeedTestRunOutcome,
 } from '../components/SpeedTestDialog.types';
+import { loadedCertificateCheck, loadedOptionOn } from './profileSecurity';
 
 export const SPEEDTEST_SIZES = [
     { bytes: 1024 * 1024, labelKey: 'speedTest.size1MB', expert: false },
@@ -119,7 +120,8 @@ export async function buildSpeedTestConnection(server: ServerProfile): Promise<S
         timeout: options.timeout || 30,
         ...scpFallbackConnectParam(protocol, options),
         tls_mode: options.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : null),
-        verify_cert: options.verifyCert !== undefined ? options.verifyCert : true,
+        verify_cert: loadedCertificateCheck(options),
+        trust_pasv_address: loadedOptionOn(options, 'trustPasvAddress'),
     };
 }
 

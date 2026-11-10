@@ -765,7 +765,10 @@
             },
             "stagedCount": "Vorgemerkt: {count}",
             "pendingCount": "Ausstehend: {count}",
-            "failedCount": "Fehlgeschlagen: {count}"
+            "failedCount": "Fehlgeschlagen: {count}",
+            "queuedForAnotherServer": "Nicht gestartet: Diese Übertragung war für einen anderen Server oder ein anderes Konto eingereiht. Wechseln Sie zurück zu dessen Tab und versuchen Sie es erneut.",
+            "queuedOverlayChanged": "Nicht gestartet: Das verschlüsselte Overlay, unter dem diese Übertragung eingereiht wurde, ist gesperrt oder deckt diesen Ordner nicht mehr ab. Entsperre es auf diesem Server und versuche es dann erneut.",
+            "pasteFromAnotherServer": "Nicht eingefügt: Diese Dateien wurden auf einem Server, Konto oder verschlüsselten Overlay ausgeschnitten oder kopiert, das jetzt nicht aktiv ist. Wechseln Sie zurück zu dessen Tab und fügen Sie sie erneut ein."
         },
         "settings": {
             "title": "Einstellungen",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} kamen mit einer anderen benutzerdefinierten OAuth-App als die, die dieses Gerät für diesen Anbieter hat. Die gespeicherte App wurde beibehalten. Melden Sie sich erneut an, falls diese Profile keine Verbindung mehr herstellen.",
             "importTargetChanged": "{names} wurden nicht überschrieben: Die Datei verweist sie auf einen anderen Server, und ihre gespeicherten Passwörter und Tokens dürfen nicht dorthin gelangen. Importieren Sie mit Duplizieren, um die Kopie aus der Datei hinzuzufügen, oder löschen Sie zuerst das Profil.",
             "importSharedSecretsFailed": "{names} wurden importiert, aber ein geteiltes Geheimnis oder eine Sitzung aus der Datei konnte nicht gespeichert werden. Melden Sie sich bei diesen Profilen erneut an, wenn sie keine Verbindung herstellen.",
-            "keystoreDatabasesFailed": "Der Import ist abgeschlossen, aber diese Datenbanken konnten nicht wiederhergestellt werden und behalten ihren bisherigen Inhalt: {names}."
+            "keystoreDatabasesFailed": "Der Import ist abgeschlossen, aber diese Datenbanken konnten nicht wiederhergestellt werden und behalten ihren bisherigen Inhalt: {names}.",
+            "importSecurityTitle": "Sicherheitseinstellungen in dieser Sicherung",
+            "importSecurityHelp": "Diese Optionen schalten eine Sicherheitsprüfung ab. Jede wird im sicheren Zustand importiert, es sei denn, Sie haken sie an, um sie wie in der Datei beizubehalten.",
+            "importSecurityVerifyCert": "Zertifikatsprüfung ausgeschaltet",
+            "importSecurityCleartextEndpoint": "Unverschlüsselter S3-Endpunkt erlaubt",
+            "importSecurityCleartextStorage": "Unverschlüsselte Speicheradresse erlaubt",
+            "importSecurityPlainHttp": "Einfaches HTTP statt HTTPS",
+            "importSecurityPasvAddress": "Datenverbindung zur vom Server genannten Adresse (PASV)",
+            "importSecurityUnknownHostKeys": "Unbekannte SSH-Hostschlüssel akzeptiert",
+            "keystoreSecurityReset": "{count} wiederhergestellte Server hatten Optionen, die eine Sicherheitsprüfung deaktivieren; sie wurden auf die sichere Einstellung zurückgesetzt: {details}.",
+            "keystoreSecurityResetFailed": "Die Sicherheitseinstellungen von {count} wiederhergestellten Konten konnten nicht überprüft oder zurückgesetzt werden. Sie werden hier aufgeführt, anstatt ohne Hinweis aktiv zu bleiben.",
+            "keystoreSecurityResetQuarantine": "Die wiederhergestellte Kontodatenbank konnte nicht gesichert werden und wurde als {path} unter Quarantäne gestellt. Kein wiederhergestelltes Konto ist aktiv. Behebe das Datenträger- oder Berechtigungsproblem und stelle dann die Sicherung erneut wieder her. Die unter Quarantäne gestellte Datei bleibt zur Wiederherstellung verfügbar."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Erstellen fehlgeschlagen",
             "unknownServer": "Unbekannt",
             "scpModeTitle": "Mit SCP verbunden",
-            "scpModeBody": "{host} hat kein SFTP, daher verwendet AeroFTP SCP auf derselben Verbindung."
+            "scpModeBody": "{host} hat kein SFTP, daher verwendet AeroFTP SCP auf derselben Verbindung.",
+            "saveOnAnotherServer": "Nicht gespeichert: Diese Datei wurde von einem Server, Konto oder verschlüsselten Overlay geöffnet, das jetzt nicht aktiv ist. Wechseln Sie zurück zu dessen Tab und speichern Sie erneut.",
+            "openedOnAnotherServer": "Nicht geöffnet: Der Server hat sich während des Lesens der Datei geändert. Öffne sie erneut.",
+            "remoteTargetChanged": "Nichts wurde geändert: Server, Konto oder verschlüsseltes Overlay haben sich seit dem Start der Aktion geändert oder verbinden sich noch neu. Versuchen Sie es erneut mit der aktuellen Verbindung."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "SCP als Ausweichlösung erlauben",
             "allowScpFallbackHint": "Hat der Server kein SFTP, geht es über SCP auf derselben Verbindung weiter, wie bei WinSCP.",
             "discoverScp": "Dateikopie über SSH für Server ohne SFTP",
-            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)"
+            "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)",
+            "trustPasvAddress": "Vom Server genannte passive Adresse verwenden",
+            "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet.",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",
@@ -3068,7 +3088,8 @@
                 "diff": "Mit Original vergleichen",
                 "diffNoFile": "Keine Datei zum Vergleichen geöffnet",
                 "commandBlocked": "Befehl blockiert: potenziell destruktiv",
-                "confirmRun": "Ausführung bestätigen: {command}"
+                "confirmRun": "Ausführung bestätigen: {command}",
+                "reopenEditor": "Zeigen Sie den Editor mit dieser geöffneten Datei an und versuchen Sie es erneut."
             },
             "thinkingBlock": {
                 "thinking": "Denke nach...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Passwortgeschützt",
             "expirationHoursOne": "{count} Stunde",
             "expirationHoursMany": "{count} Stunden",
-            "expirationDaysMany": "{count} Tage"
+            "expirationDaysMany": "{count} Tage",
+            "expiresSoonerThanChosen": "kürzer als gewählt"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Nicht gespeicherte Änderungen",
             "dirtyBody": "Es gibt nicht gespeicherte Änderungen. Verwerfen und schließen?",
             "keepEditing": "Weiter bearbeiten",
-            "discardAndClose": "Verwerfen und schließen"
+            "discardAndClose": "Verwerfen und schließen",
+            "busyBodyKeepsRunning": "Ein Vorgang läuft noch. Er läuft nach dem Schließen dieses Fensters weiter, und sein Ergebnis wird hier nicht angezeigt. Trotzdem schließen?",
+            "closeAnyway": "Trotzdem schließen"
         },
         "modalView": {
             "listView": "Listenansicht",

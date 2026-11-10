@@ -349,6 +349,33 @@ pub struct PeerRuntime {
     inbound_rate: std::sync::Arc<std::sync::Mutex<HashMap<String, Vec<u64>>>>,
 }
 
+/// Runs the steps between a publisher's spawn and its registration. On any
+/// failure the publisher is cancelled and awaited before the error returns;
+/// on success its task comes back for the registry.
+async fn started_or_stopped<T>(
+    cancel: &CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+    steps: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<(T, tokio::task::JoinHandle<()>), String> {
+    match steps.await {
+        Ok(value) => Ok((value, task)),
+        Err(e) => {
+            stop_unregistered_publisher(cancel, task).await;
+            Err(e)
+        }
+    }
+}
+
+/// Cancels a publish task that never made it into the share registry and
+/// waits for it to end, so nothing serves the drive once the start failed.
+async fn stop_unregistered_publisher(
+    cancel: &CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+) {
+    cancel.cancel();
+    let _ = task.await;
+}
+
 impl PeerRuntime {
     /// Idempotently ensure the replication task for the drive described by a
     /// peer `ProviderConfig` is running (the `provider_connect` seam).
@@ -475,12 +502,15 @@ impl PeerRuntime {
         drive_name: &str,
         identity_secret: &[u8],
     ) -> Result<(String, String, zeroize::Zeroizing<Vec<u8>>), String> {
-        // Reuse a live publish of the same folder.
+        // Reuse a live publish of the same folder. Both key lookups below are
+        // the starting account's: under another one active meanwhile the key is
+        // missing, and the resume would re-key the drive out from under the
+        // grants made with it.
         {
             let shares = self.shares.read().await;
             if let Some((ns, handle)) = shares.iter().find(|(_, h)| h.dir == dir) {
                 if handle.is_live() {
-                    let (_uid, key) = crate::user_partitions::gui_peer_drive_load(app, ns)?
+                    let key = crate::user_partitions::gui_peer_drive_load_as(app, user_id, ns)?
                         .ok_or_else(|| {
                             format!("the live drive {ns} has no content key in the vault")
                         })?;
@@ -511,11 +541,11 @@ impl PeerRuntime {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .and_then(|prev_ns| {
-                crate::user_partitions::gui_peer_drive_load(app, &prev_ns).transpose()
+                crate::user_partitions::gui_peer_drive_load_as(app, user_id, &prev_ns).transpose()
             })
             .transpose()?
         {
-            Some((_uid, existing)) => (existing, false),
+            Some(existing) => (existing, false),
             None => (
                 zeroize::Zeroizing::new(crate::peer::fresh_content_key().to_vec()),
                 true,
@@ -535,40 +565,49 @@ impl PeerRuntime {
             ready_tx,
         ));
 
-        // Wait for the engine to report the namespace + ticket, or fail
-        // closed (the task has already emitted the error on its event
-        // channel; cancel keeps a half-started publish from serving).
-        let published = match tokio::time::timeout(
-            std::time::Duration::from_secs(PUBLISH_READY_TIMEOUT_SECS),
-            ready_rx,
-        )
-        .await
-        {
-            Ok(Ok(published)) => published,
-            Ok(Err(_)) => {
-                cancel.cancel();
-                return Err(
-                    "publish ended before it was ready (see peer://share-status)".to_string(),
-                );
+        // Everything between the spawn and the registry runs inside
+        // `started_or_stopped`: any way out of it, an early return or a `?`
+        // as much as an error, cancels and awaits the publisher first, so it
+        // never keeps serving outside the registry where Stop cannot find it.
+        let (published, task) = started_or_stopped(&cancel, task, async {
+            // Wait for the engine to report the namespace + ticket, or fail
+            // closed (the task has already emitted the error on its event
+            // channel).
+            let published = match tokio::time::timeout(
+                std::time::Duration::from_secs(PUBLISH_READY_TIMEOUT_SECS),
+                ready_rx,
+            )
+            .await
+            {
+                Ok(Ok(published)) => published,
+                Ok(Err(_)) => {
+                    return Err(
+                        "publish ended before it was ready (see peer://share-status)".to_string(),
+                    )
+                }
+                Err(_) => {
+                    return Err(format!(
+                        "publish not ready within {PUBLISH_READY_TIMEOUT_SECS}s (folder too large for P1?)"
+                    ))
+                }
+            };
+            // Custody + continuity records (CLI publish precedent: custody
+            // after ready). Failing to custody the key would strand the drive
+            // -> error. The account that started the share, captured before
+            // the wait above: another one may be active by now, and one
+            // locked meanwhile refuses.
+            if key_is_fresh {
+                crate::user_partitions::gui_peer_drive_store_as(
+                    app,
+                    user_id,
+                    &published.namespace_id,
+                    "publisher",
+                    &content_key,
+                )?;
             }
-            Err(_) => {
-                cancel.cancel();
-                return Err(format!(
-                    "publish not ready within {PUBLISH_READY_TIMEOUT_SECS}s (folder too large for P1?)"
-                ));
-            }
-        };
-
-        // Custody + continuity records (CLI publish precedent: custody after
-        // ready). Failing to custody the key would strand the drive -> error.
-        if key_is_fresh {
-            crate::user_partitions::gui_peer_drive_store(
-                app,
-                &published.namespace_id,
-                "publisher",
-                &content_key,
-            )?;
-        }
+            Ok(published)
+        })
+        .await?;
         if let Err(e) = std::fs::write(&namespace_sidecar, &published.namespace_id) {
             tracing::warn!(
                 "AeroShare: cannot write namespace sidecar {}: {e} (re-sharing this folder after \
@@ -1382,5 +1421,142 @@ mod tests {
         stopped.sort();
         assert_eq!(stopped, vec!["ns-a".to_string(), "ns-b".to_string()]);
         assert!(runtime.live_share_namespaces().await.is_empty());
+    }
+
+    // Deep scan item 46: the key of a new share was custodied under whichever
+    // account was active when publication completed, after a wait the account
+    // can change in. It goes to the account that started the share.
+    #[test]
+    fn a_published_drive_key_goes_to_the_account_that_started_the_share() {
+        let src = include_str!("runtime.rs");
+        // The code alone: a comment may name a call or say "return".
+        let production: String = src[..src.find("#[cfg(test)]").expect("tests")]
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let start = production
+            .find("pub async fn start_share(")
+            .expect("start_share");
+        let body = &production[start..];
+        let wait = body
+            .find("PUBLISH_READY_TIMEOUT_SECS")
+            .expect("the publication wait");
+        let start_share = &body[..body[1..]
+            .find("\n    pub ")
+            .map_or(body.len(), |end| end + 1)];
+        // The custody call, up to its closing parenthesis (its arguments hold
+        // none): its account is the one that started the share.
+        let custody = start_share
+            .find("gui_peer_drive_store_as(")
+            .expect("custody under an explicit account");
+        assert!(wait < custody);
+        let call = &start_share[custody..];
+        let call = &call[..call.find(')').expect("the end of the call")];
+        assert!(call.contains("user_id"), "{call}");
+        assert!(!start_share.contains("gui_peer_drive_store("));
+        // Both key lookups are the starting account's too.
+        assert!(!start_share.contains("gui_peer_drive_load("));
+        assert_eq!(
+            start_share
+                .matches("gui_peer_drive_load_as(app, user_id,")
+                .count(),
+            2
+        );
+        // Between the spawn and the registry, every step runs inside
+        // `started_or_stopped`, which stops the publisher on any failure
+        // (tested below); nothing after it can return before the insert.
+        let spawned = start_share
+            .find("tokio::spawn(share_loop(")
+            .expect("the publisher");
+        let registered = start_share.find("shares.insert(").expect("the registry");
+        // The code alone: a comment may say "return" or end in a question mark.
+        let code = |text: &str| {
+            text.lines()
+                .filter(|line| !line.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let unregistered = &start_share[spawned..registered];
+        let steps = unregistered
+            .find("started_or_stopped(&cancel, task, async {")
+            .expect("the post-spawn steps run inside started_or_stopped");
+        let before = code(&unregistered[..steps]);
+        assert!(
+            !before.contains('?') && !before.contains("return"),
+            "nothing between the spawn and the steps can return: {before}"
+        );
+        assert!(unregistered[steps..]
+            .find("gui_peer_drive_store_as(")
+            .is_some());
+        let after = &unregistered[unregistered
+            .find("})\n        .await?;")
+            .expect("the steps' end")
+            + "})\n        .await?;".len()..];
+        let after = code(after);
+        assert!(
+            !after.contains('?') && !after.contains("return"),
+            "nothing after the steps can return before the registry: {after}"
+        );
+    }
+
+    /// The steps between a publisher's spawn and its registration: a failure
+    /// of any kind stops the publisher before the error returns, a success
+    /// hands its live task back.
+    #[tokio::test]
+    async fn the_steps_after_a_publisher_spawn_stop_it_on_any_failure() {
+        let spawn = |cancel: &CancellationToken| {
+            let cancel = cancel.clone();
+            let ended = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let flag = std::sync::Arc::clone(&ended);
+            let task = tokio::spawn(async move {
+                cancel.cancelled().await;
+                flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+            (task, ended)
+        };
+        let early_exit = async {
+            let ready: Result<u32, String> = Err("publish ended before it was ready".into());
+            let value = ready?;
+            Ok::<u32, String>(value)
+        };
+        let cancel = CancellationToken::new();
+        let (task, ended) = spawn(&cancel);
+        let failed = started_or_stopped(&cancel, task, early_exit).await;
+        assert_eq!(failed.unwrap_err(), "publish ended before it was ready");
+        assert!(cancel.is_cancelled());
+        assert!(ended.load(std::sync::atomic::Ordering::SeqCst));
+
+        let cancel = CancellationToken::new();
+        let (task, ended) = spawn(&cancel);
+        let (value, task) = started_or_stopped(&cancel, task, async { Ok::<u32, String>(7) })
+            .await
+            .expect("started");
+        assert_eq!(value, 7);
+        assert!(!cancel.is_cancelled());
+        assert!(!ended.load(std::sync::atomic::Ordering::SeqCst));
+        assert!(!task.is_finished());
+        cancel.cancel();
+        task.await.unwrap();
+    }
+
+    /// A publisher that never reached the registry is cancelled and awaited,
+    /// so nothing keeps serving once the start has failed.
+    #[tokio::test]
+    async fn an_unregistered_publisher_is_stopped_before_the_start_fails() {
+        let cancel = CancellationToken::new();
+        let ended = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let task = {
+            let cancel = cancel.clone();
+            let ended = std::sync::Arc::clone(&ended);
+            tokio::spawn(async move {
+                cancel.cancelled().await;
+                tokio::task::yield_now().await;
+                ended.store(true, std::sync::atomic::Ordering::SeqCst);
+            })
+        };
+        stop_unregistered_publisher(&cancel, task).await;
+        assert!(cancel.is_cancelled());
+        assert!(ended.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

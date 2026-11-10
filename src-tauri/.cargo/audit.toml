@@ -71,6 +71,11 @@
 #           fires none of them. Also BUMPED tokio 1.53.1 -> 1.54.1 in
 #           tests/portal-chooser/fake-portal/Cargo.lock (RUSTSEC-2026-0386,
 #           AsyncFd I/O safety, test helper only); the app lock already had 1.54.1.)
+# Reviewed: 2026-11-10 (added RUSTSEC-2026-0459, libsqlite3-sys 0.30.1 via
+#           rusqlite 0.32.1: SQLite CVE-2026-119375 uninitialized page-cache
+#           memory on mismatched WAL page size; AeroFTP uses rusqlite strictly
+#           for app-owned local state databases, never untrusted DB files.
+#           Upgrade requires rusqlite 0.41+ and Rust 1.89+; documented below.)
 
 [advisories]
 ignore = [
@@ -398,6 +403,37 @@ ignore = [
     # crypto-bigint >= 0.7.6, i.e. when `cargo tree -i crypto-bigint@0.5.5`
     # prints nothing.
     "RUSTSEC-2026-0387",  # crypto-bigint timing variability (0.7 bumped to 0.7.6; 0.5.5 copy via proton-srp, pgp, openidconnect, no patched 0.5)
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0459 - libsqlite3-sys via C SQLite CVE-2026-119375
+    # ----------------------------------------------------------------
+    # SQLite versions before 3.54.0 can return uninitialized page-cache
+    # memory when a process opens a database file together with a sibling
+    # write-ahead-log (-wal) file whose page size differs from the database's.
+    # The attack vector is local and requires opening crafted database files.
+    #
+    # Path: libsqlite3-sys 0.30.1 <- rusqlite 0.32.1 <- aeroftp 4.2.7 (and dev-deps).
+    #
+    # Exposure in AeroFTP: rusqlite is used strictly for application-managed
+    # internal state databases:
+    #   - user_partitions.db (and staging/backup snapshots in portable.rs)
+    #   - MCP client tables (mcp_client_config.rs, mcp_client_oauth.rs, mcp_client_http_config.rs)
+    #   - file_tags.db (file_tags.rs)
+    #   - agent_memory.db and chat_history.db (lib.rs, chat_history.rs)
+    #   - S3 delta sync baseline cache (s3_delta_baseline.rs)
+    #   - CLI jobs tracking (aeroftp_cli.rs jobs.db)
+    #
+    # All of these files reside strictly within the user's private local
+    # application/config/portable directory. AeroFTP never opens untrusted,
+    # external, or remote SQLite database files via rusqlite. An attacker
+    # capable of planting a crafted -wal file in these directories already
+    # possesses local user execution privileges.
+    #
+    # Upgrade blocker: patched libsqlite3-sys >= 0.39.0 bundles SQLite >= 3.54.0,
+    # which is only available starting with rusqlite 0.41.0 (a breaking semver
+    # bump from 0.32 with Rust 1.89+ MSRV and API revisions).
+    #
+    # Exit path: remove this ignore when AeroFTP bumps to rusqlite >= 0.41.0.
+    "RUSTSEC-2026-0459",  # libsqlite3-sys via C SQLite CVE-2026-119375 (internal app-owned DBs only; upgrade needs rusqlite 0.41+ and Rust 1.89)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is

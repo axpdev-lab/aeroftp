@@ -436,6 +436,38 @@ mod tests {
         assert!(!ledger.scheduled_full_scan_due("p", start + HOUR, 2 * HOUR));
     }
 
+    /// A manual "Sync now" is the first scan of a pair: it records the scan
+    /// (`trigger_cloud_sync`) and, on connecting, the provider's traits
+    /// (`sync_one_config`). A pair whose provider declares a 30 minute floor
+    /// then holds its scheduled scans back even though the user's interval is
+    /// five minutes. Without the traits learned, the next tick scans again.
+    #[test]
+    fn a_manual_first_scan_holds_the_next_scheduled_scan_back_for_the_floor() {
+        let half_hour = Duration::from_secs(30 * 60);
+        let start = Instant::now();
+        let mut learned = ScanLedger::default();
+        learned.record_full_scan("p", start);
+        learned.learn("p", traits(Some(half_hour)));
+        for minutes in [5, 10, 29] {
+            let now = start + Duration::from_secs(minutes * 60);
+            assert!(
+                !learned.scheduled_full_scan_due("p", now, FIVE_MIN),
+                "{minutes} min after a manual scan"
+            );
+        }
+        assert!(learned.scheduled_full_scan_due("p", start + half_hour, FIVE_MIN));
+
+        // The same pair with its traits never learned scans again at once: the
+        // gap the learn call in `sync_one_config` closes.
+        let mut unlearned = ScanLedger::default();
+        unlearned.record_full_scan("p", start);
+        assert!(unlearned.scheduled_full_scan_due(
+            "p",
+            start + Duration::from_secs(5 * 60),
+            FIVE_MIN
+        ));
+    }
+
     /// A full scan asked for outside the schedule waits for the floor only:
     /// not for the user's interval, and never sooner than the floor.
     #[test]

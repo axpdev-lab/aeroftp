@@ -85,6 +85,10 @@ pub struct FtpConnectionSpec {
     pub password: SecretString,
     pub initial_path: String,
     pub timeouts: FtpTimeoutConfig,
+    /// The profile's PASV-address trust, so a pooled transfer connection
+    /// dials its data connections as the browsing one does (#1506 Requested
+    /// 188).
+    pub trust_pasv_address: bool,
 }
 
 pub struct FtpManager {
@@ -100,6 +104,9 @@ pub struct FtpManager {
     /// control channel is then out of step, so `disconnect` sends no QUIT,
     /// whose reply could be the one the login was waiting for.
     abandoned_command: bool,
+    /// Use the address a PASV reply names (off by default, see
+    /// `FtpConfig::trust_pasv_address`).
+    trust_pasv_address: bool,
 }
 
 #[allow(dead_code)]
@@ -113,7 +120,21 @@ impl FtpManager {
             password: None,
             timeouts: FtpTimeoutConfig::default(),
             abandoned_command: false,
+            trust_pasv_address: false,
         }
+    }
+
+    /// Whether the next connection uses the address a PASV reply names.
+    pub fn set_trust_pasv_address(&mut self, trust: bool) {
+        self.trust_pasv_address = trust;
+    }
+
+    /// Take the per-connection settings of `spec` (timeouts and PASV-address
+    /// trust) before `connect`, as every pooled session does, so a transfer
+    /// connection behaves like the session it was derived from.
+    pub fn apply_connection_spec(&mut self, spec: &FtpConnectionSpec) {
+        self.timeouts = spec.timeouts;
+        self.trust_pasv_address = spec.trust_pasv_address;
     }
 
     /// Apply GUI transfer timeout to connection-oriented FTP operations.
@@ -125,10 +146,6 @@ impl FtpManager {
         self.timeouts.command_timeout = Duration::from_secs(command_seconds);
         self.timeouts.list_timeout = Duration::from_secs(command_seconds.max(30));
         self.timeouts.upload_timeout = Duration::from_secs(timeout_seconds.max(30) * 10);
-    }
-
-    pub fn set_timeout_config(&mut self, timeouts: FtpTimeoutConfig) {
-        self.timeouts = timeouts;
     }
 
     pub fn timeout_config(&self) -> FtpTimeoutConfig {
@@ -150,6 +167,7 @@ impl FtpManager {
             password,
             initial_path: self.current_path.clone(),
             timeouts: self.timeouts,
+            trust_pasv_address: self.trust_pasv_address,
         })
     }
 
@@ -177,6 +195,10 @@ impl FtpManager {
         .await
         .context("Connection timeout")?
         .map_err(|e| FtpManagerError::ConnectionError(e.to_string()))?;
+        let mut stream = stream;
+        // Data connections go to the control peer unless the profile trusts
+        // the PASV address (#1506 Requested 188).
+        stream.set_passive_nat_workaround(!self.trust_pasv_address);
 
         self.stream = Some(stream);
         // A new control connection owes nothing.
@@ -579,8 +601,13 @@ impl FtpManager {
             }
         }
 
-        // Write to local file
-        tokio::fs::write(local_path, buf).await?;
+        // Write to the local file through a temporary renamed over the
+        // name: the rename replaces a link standing at the name instead of
+        // writing through it to the link's target, as `fs::write` did
+        // (deep-scan 37).
+        let mut file = crate::providers::atomic_write::AtomicFile::new(local_path).await?;
+        file.write_all(&buf).await?;
+        file.commit().await?;
 
         info!("Download completed: {}", remote_path);
         Ok(())
@@ -692,8 +719,11 @@ impl FtpManager {
             .await
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
 
-        // Stream directly to disk in 8KB chunks (no full-file RAM buffering)
-        let mut local_file = tokio::fs::File::create(local_path).await?;
+        // Stream to disk in 8KB chunks (no full-file RAM buffering), through
+        // a temporary renamed over the name at the end: a link standing at
+        // the name is replaced, not written through (deep-scan 37), and a
+        // cancelled download leaves the existing file as it was.
+        let mut local_file = crate::providers::atomic_write::AtomicFile::new(local_path).await?;
         let mut chunk = [0u8; 8192];
         let mut total_read: u64 = 0;
         let mut cancelled = false;
@@ -715,19 +745,19 @@ impl FtpManager {
             }
         }
 
-        local_file.flush().await?;
-
         // Finalize the stream (must always finalize to keep FTP connection clean)
         // On cancel, FTP server sends 426: ignore that error
         let finalize_result = data_stream.finish().await;
         if cancelled {
             let _ = finalize_result; // Ignore 426 error on cancel
-            let _ = tokio::fs::remove_file(local_path).await;
+                                     // Dropping the uncommitted writer removes its temporary.
+            drop(local_file);
             return Err(
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
         finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        local_file.commit().await?;
 
         info!("Download completed: {} ({} bytes)", remote_path, total_read);
         Ok(())
@@ -1493,6 +1523,36 @@ pub(crate) mod exists_tests {
 /// A login abandoned before its reply (a cancelled `connect_ftp`) leaves the
 /// control channel out of step: the disconnect that follows sends no QUIT and
 /// does not wait for one.
+#[cfg(test)]
+mod connection_spec_tests {
+    use super::*;
+
+    /// A pooled transfer session dials with the PASV-address trust of the
+    /// session it was derived from, both ways (CodeRabbit on #1506 Requested
+    /// 188: the pool used to build its managers with the default).
+    #[test]
+    fn a_pooled_session_keeps_the_pasv_address_trust() {
+        for trust in [true, false] {
+            let mut browsing = FtpManager::new();
+            browsing.server = Some("ftp.example.com:21".to_string());
+            browsing.username = Some("user".to_string());
+            browsing.password = Some(SecretString::from("unused".to_string()));
+            browsing.set_trust_pasv_address(trust);
+            let spec = browsing.connection_spec().expect("spec");
+            assert_eq!(spec.trust_pasv_address, trust);
+
+            let mut pooled = FtpManager::new();
+            pooled.set_trust_pasv_address(!trust);
+            pooled.apply_connection_spec(&spec);
+            assert_eq!(pooled.trust_pasv_address, trust);
+            assert_eq!(
+                pooled.timeouts.connect_timeout,
+                spec.timeouts.connect_timeout
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod abandoned_login_tests {
     use super::*;

@@ -126,6 +126,23 @@ pub fn preview_coding_patch(req: ApplyCodingPatchRequest) -> Result<CodingPatchR
     })
 }
 
+/// Every file a patch touches, in patch order, with what it does to it:
+/// `created`, `deleted` or `modified`. Read by the same parser the apply runs,
+/// so the approval names exactly the files the patch would write.
+pub(crate) fn patch_targets(patch: &str) -> Result<Vec<(String, &'static str)>, String> {
+    Ok(parse_unified_diff(patch)?
+        .into_iter()
+        .map(|file| {
+            let change = match (&file.old_path, &file.new_path) {
+                (None, Some(_)) => "created",
+                (Some(_), None) => "deleted",
+                _ => "modified",
+            };
+            (file.target_path, change)
+        })
+        .collect())
+}
+
 fn parse_unified_diff(patch: &str) -> Result<Vec<FilePatch>, String> {
     if patch.trim().is_empty() {
         return Err("Patch is empty".to_string());
@@ -183,18 +200,22 @@ fn parse_unified_diff(patch: &str) -> Result<Vec<FilePatch>, String> {
                 if line.is_empty() {
                     return Err("Malformed hunk line".to_string());
                 }
-                let (prefix, content) = line.split_at(1);
+                // The prefix is one character, not one byte: a line opening
+                // with a multibyte character split inside it and panicked.
+                let mut chars = line.chars();
+                let prefix = chars.next().unwrap_or(' ');
+                let content = chars.as_str();
                 match prefix {
-                    " " => {
+                    ' ' => {
                         old_seen += 1;
                         new_seen += 1;
                         hunk_lines.push(HunkLine::Context(content.to_string()));
                     }
-                    "-" => {
+                    '-' => {
                         old_seen += 1;
                         hunk_lines.push(HunkLine::Remove(content.to_string()));
                     }
-                    "+" => {
+                    '+' => {
                         new_seen += 1;
                         hunk_lines.push(HunkLine::Add(content.to_string()));
                     }
@@ -745,6 +766,31 @@ fn diag(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A hunk line opening with a multibyte character is malformed, and the
+    /// parser says so instead of panicking inside the character: the
+    /// approval reads the patch before it is applied.
+    #[test]
+    fn a_hunk_line_opening_with_a_multibyte_character_is_refused() {
+        let patch = "--- a/x\n+++ b/x\n@@ -1 +1 @@\n\u{e9}\n";
+        let err = patch_targets(patch).unwrap_err();
+        assert!(err.contains("Malformed hunk line"), "{err}");
+    }
+
+    /// The prefix is read as a character and the content after it kept whole:
+    /// a line adding and one removing multibyte text apply exactly.
+    #[test]
+    fn a_multibyte_line_is_applied_exactly() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(dir.path().join("a.txt"), "caf\u{e9}\n").expect("write");
+        let patch = "--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-caf\u{e9}\n+\u{e9}t\u{e9} \u{1f600}\n";
+        let result = apply_coding_patch(request(dir.path(), patch, false)).expect("apply");
+        assert!(result.success, "{:?}", result.diagnostics);
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("a.txt")).expect("read"),
+            "\u{e9}t\u{e9} \u{1f600}\n"
+        );
+    }
 
     fn request(root: &Path, patch: &str, dry_run: bool) -> ApplyCodingPatchRequest {
         ApplyCodingPatchRequest {

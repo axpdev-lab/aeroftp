@@ -765,7 +765,10 @@
             },
             "stagedCount": "Undirbúið: {count}",
             "pendingCount": "Bíður: {count}",
-            "failedCount": "Mistókst: {count}"
+            "failedCount": "Mistókst: {count}",
+            "queuedForAnotherServer": "Ekki ræst: þessi flutningur var í biðröð fyrir annan netþjón eða reikning. Farðu aftur á flipa hans og reyndu aftur.",
+            "queuedOverlayChanged": "Ekki hafið: dulkóðaða overlay-lagið sem þessi flutningur var settur í biðröð undir er læst eða nær ekki lengur yfir þessa möppu. Opnaðu það á þeim netþjóni og reyndu aftur.",
+            "pasteFromAnotherServer": "Ekki límt: þessar skrár voru klipptar eða afritaðar á netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og límdu aftur."
         },
         "settings": {
             "title": "Stillingar",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} komu með annað sérsniðið OAuth-forrit en það sem þetta tæki hefur fyrir þann þjónustuaðila. Vistaða forritið var varðveitt, svo skráðu þig inn aftur ef þessi snið hætta að tengjast.",
             "importTargetChanged": "{names} voru ekki skrifuð yfir: skráin beinir þeim á annan netþjón og vistuð lykilorð þeirra og tókenar mega ekki fara þangað. Fluttu inn með Afrita til að bæta við afritinu úr skránni, eða eyddu sniðinu fyrst.",
             "importSharedSecretsFailed": "{names} voru flutt inn, en ekki tókst að vista sameiginlegt leyndarmál eða lotu úr skránni. Skráðu þig aftur inn á þessi snið ef þau tengjast ekki.",
-            "keystoreDatabasesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta þessa gagnagrunna og þeir halda því sem þeir höfðu að geyma: {names}."
+            "keystoreDatabasesFailed": "Innflutningi er lokið, en ekki tókst að endurheimta þessa gagnagrunna og þeir halda því sem þeir höfðu að geyma: {names}.",
+            "importSecurityTitle": "Öryggisstillingar í þessu afriti",
+            "importSecurityHelp": "Þessir valkostir slökkva á öryggisathugun. Hver er fluttur inn í öruggu ástandi nema þú hakir við hann til að halda honum eins og hann er í skránni.",
+            "importSecurityVerifyCert": "Slökkt á vottorðsathugun",
+            "importSecurityCleartextEndpoint": "Ódulkóðaður S3 endapunktur leyfður",
+            "importSecurityCleartextStorage": "Ódulkóðað geymsluvistfang leyft",
+            "importSecurityPlainHttp": "Venjulegt HTTP í stað HTTPS",
+            "importSecurityPasvAddress": "Gagnatenging við vistfangið sem þjónninn gefur upp (PASV)",
+            "importSecurityUnknownHostKeys": "Óþekktir SSH hýsillyklar samþykktir",
+            "keystoreSecurityReset": "{count} endurheimtir netþjónar voru með valkosti sem slökkva á öryggisathugun; þeir voru færðir aftur í öruggar stillingar: {details}.",
+            "keystoreSecurityResetFailed": "Ekki var hægt að athuga eða endurstilla öryggisstillingar {count} endurheimtra reikninga. Þeir eru taldir upp hér í stað þess að vera áfram virkir án viðvarunar.",
+            "keystoreSecurityResetQuarantine": "Ekki var hægt að tryggja endurheimta reikningagagnagrunninn og hann var einangraður sem {path}. Enginn endurheimtur reikningur er virkur. Leystu vandamálið með diskinn eða heimildir og endurheimttu síðan afritið aftur. Skráin í einangrun er áfram tiltæk til endurheimtar."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Stofnun mistókst",
             "unknownServer": "Óþekkt",
             "scpModeTitle": "Tengt með SCP",
-            "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu."
+            "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu.",
+            "saveOnAnotherServer": "Ekki vistað: þessi skrá var opnuð frá netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og vistaðu aftur.",
+            "openedOnAnotherServer": "Ekki opnað: þjóninum var breytt meðan skráin var lesin. Opnaðu hana aftur.",
+            "remoteTargetChanged": "Engu var breytt: þjónninn, reikningurinn eða dulkóðaða lagið hefur breyst frá því aðgerðin hófst, eða er enn að tengjast aftur. Reyndu aftur á núverandi tengingu."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "Leyfa SCP til vara",
             "allowScpFallbackHint": "Ef netþjónninn hefur ekki SFTP er haldið áfram um SCP á sömu tengingu, eins og WinSCP gerir.",
             "discoverScp": "Afritun skráa um SSH fyrir netþjóna án SFTP",
-            "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)"
+            "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)",
+            "trustPasvAddress": "Nota óvirka vistfangið sem þjónninn gefur upp",
+            "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi.",
+            "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",
@@ -3068,7 +3088,8 @@
                 "diff": "Mismunur frá upprunalegri",
                 "diffNoFile": "Engin skrá opin fyrir samanburð",
                 "commandBlocked": "Skipun lokuð: getur valdið eyðileggingu",
-                "confirmRun": "Staðfesta keyrslu: {command}"
+                "confirmRun": "Staðfesta keyrslu: {command}",
+                "reopenEditor": "Sýndu ritilinn með þessa skrá opna og reyndu aftur."
             },
             "thinkingBlock": {
                 "thinking": "Hugsar...",
@@ -5661,7 +5682,8 @@
             "managePasswordProtected": "Lykilordavarinn",
             "expirationHoursOne": "{count} klukkustund",
             "expirationHoursMany": "{count} klukkustundir",
-            "expirationDaysMany": "{count} dagar"
+            "expirationDaysMany": "{count} dagar",
+            "expiresSoonerThanChosen": "styttra en valið"
         },
         "introHub": {
             "tab": {
@@ -6687,7 +6709,9 @@
             "dirtyTitle": "Óvistaðar breytingar",
             "dirtyBody": "Þú ert með óvistaðar breytingar. Henda og loka?",
             "keepEditing": "Halda áfram að breyta",
-            "discardAndClose": "Henda og loka"
+            "discardAndClose": "Henda og loka",
+            "busyBodyKeepsRunning": "Aðgerð er enn í gangi. Hún heldur áfram eftir að glugganum er lokað og niðurstaðan birtist ekki hér. Loka samt?",
+            "closeAnyway": "Loka samt"
         },
         "modalView": {
             "listView": "Listasýn",

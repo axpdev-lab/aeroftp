@@ -765,7 +765,10 @@
             },
             "stagedCount": "{count} 件ステージ済み",
             "pendingCount": "{count} 件保留中",
-            "failedCount": "{count} 件失敗"
+            "failedCount": "{count} 件失敗",
+            "queuedForAnotherServer": "開始されませんでした: この転送は別のサーバーまたはアカウント向けにキューに入っていました。そのタブに戻ってから、もう一度お試しください。",
+            "queuedOverlayChanged": "開始されませんでした: この転送がキューに入れられたときの暗号化オーバーレイがロックされているか、このフォルダーをカバーしなくなりました。そのサーバーでロックを解除してから、もう一度お試しください。",
+            "pasteFromAnotherServer": "貼り付けられませんでした: これらのファイルは、現在アクティブではないサーバー、アカウント、または暗号化オーバーレイで切り取りまたはコピーされました。そのタブに戻ってから、もう一度貼り付けてください。"
         },
         "settings": {
             "title": "設定",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} は、このデバイスにあるそのプロバイダー用のものとは異なるカスタム OAuth アプリと共にインポートされました。保存済みのアプリは維持されたため、これらのプロファイルが接続できなくなった場合は再度サインインしてください。",
             "importTargetChanged": "{names} は上書きされませんでした。ファイルがこれらを別のサーバーに向けており、保存されているパスワードとトークンをそこへ送ってはならないためです。ファイルのコピーを追加するには「複製」でインポートするか、先にプロファイルを削除してください。",
             "importSharedSecretsFailed": "{names} をインポートしましたが、ファイル内の共有シークレットまたはセッションを保存できませんでした。接続できない場合は、これらのプロファイルに再度サインインしてください。",
-            "keystoreDatabasesFailed": "インポートは完了しましたが、次のデータベースは復元できず、元の内容のままです: {names}。"
+            "keystoreDatabasesFailed": "インポートは完了しましたが、次のデータベースは復元できず、元の内容のままです: {names}。",
+            "importSecurityTitle": "このバックアップ内のセキュリティ設定",
+            "importSecurityHelp": "これらのオプションはセキュリティチェックを無効にします。チェックを入れない限り、各項目は安全な状態でインポートされます。チェックすると、ファイルの内容のまま保持されます。",
+            "importSecurityVerifyCert": "証明書の検証が無効",
+            "importSecurityCleartextEndpoint": "暗号化されていない S3 エンドポイントを許可",
+            "importSecurityCleartextStorage": "暗号化されていないストレージアドレスを許可",
+            "importSecurityPlainHttp": "HTTPS ではなく通常の HTTP",
+            "importSecurityPasvAddress": "サーバーが指定したアドレスへのデータ接続 (PASV)",
+            "importSecurityUnknownHostKeys": "未知の SSH ホストキーを受け入れる",
+            "keystoreSecurityReset": "復元された {count} 台のサーバーに、セキュリティチェックを無効にするオプションがありました。安全な設定に戻しました: {details}。",
+            "keystoreSecurityResetFailed": "{count} 件の復元されたアカウントのセキュリティ設定を確認またはリセットできませんでした。通知なく有効なままにせず、ここに一覧表示しています。",
+            "keystoreSecurityResetQuarantine": "復元されたアカウントデータベースを保護できなかったため、{path} として隔離されました。復元されたアカウントはいずれも有効ではありません。ディスクまたはアクセス権の問題を修正してから、バックアップを再度復元してください。隔離されたファイルは、回復用に引き続き利用できます。"
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "作成に失敗しました",
             "unknownServer": "不明なサーバー",
             "scpModeTitle": "SCPで接続しました",
-            "scpModeBody": "{host} にはSFTPがないため、AeroFTPは同じ接続でSCPを使用しています。"
+            "scpModeBody": "{host} にはSFTPがないため、AeroFTPは同じ接続でSCPを使用しています。",
+            "saveOnAnotherServer": "保存されませんでした: このファイルは、現在アクティブではないサーバー、アカウント、または暗号化オーバーレイから開かれました。そのタブに戻ってから、もう一度保存してください。",
+            "openedOnAnotherServer": "開けませんでした：ファイルの読み取り中にサーバーが変更されました。もう一度開いてください。",
+            "remoteTargetChanged": "変更はありませんでした: 操作の開始後にサーバー、アカウント、または暗号化オーバーレイが変更されたか、まだ再接続中です。現在の接続でもう一度お試しください。"
         },
         "about": {
             "tagline": "FTPを超えて。完全な開発者ツールキット。",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "SCPへのフォールバックを許可",
             "allowScpFallbackHint": "サーバーにSFTPがない場合、WinSCPと同様に同じ接続のままSCPで続行します。",
             "discoverScp": "SFTPのないサーバー向けのSSH経由ファイルコピー",
-            "discoverTigris": "Tigris: グローバル分散型の S3 互換ストレージ、エグレス料金なし（5 GB 無料）"
+            "discoverTigris": "Tigris: グローバル分散型の S3 互換ストレージ、エグレス料金なし（5 GB 無料）",
+            "trustPasvAddress": "サーバーが示すパッシブアドレスを使用する",
+            "trustPasvAddressHelp": "オフ: データ接続は curl と同様に、接続したホストへ向かいます。別のアドレスからデータを送信するサーバーの場合のみオンにしてください。",
+            "discoverFastly": "Fastly Object Storage: 12リージョンで利用できるS3互換ストレージ (5 GB無料、カードが必要)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",
@@ -3032,7 +3052,8 @@
                 "diff": "元のコードと差分",
                 "diffNoFile": "比較するファイルが開かれていません",
                 "commandBlocked": "コマンドをブロックしました: 破壊的な可能性があります",
-                "confirmRun": "実行を確認: {command}"
+                "confirmRun": "実行を確認: {command}",
+                "reopenEditor": "このファイルを開いた状態でエディターを表示してから、もう一度お試しください。"
             },
             "thinkingBlock": {
                 "thinking": "考え中...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "パスワード保護",
             "expirationHoursOne": "{count} 時間",
             "expirationHoursMany": "{count} 時間",
-            "expirationDaysMany": "{count} 日"
+            "expirationDaysMany": "{count} 日",
+            "expiresSoonerThanChosen": "選択した期間より短い"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "未保存の変更",
             "dirtyBody": "未保存の変更があります。破棄して閉じますか？",
             "keepEditing": "編集を続ける",
-            "discardAndClose": "破棄して閉じる"
+            "discardAndClose": "破棄して閉じる",
+            "busyBodyKeepsRunning": "操作がまだ実行中です。このウィンドウを閉じても処理は続行され、結果はここには表示されません。それでも閉じますか？",
+            "closeAnyway": "それでも閉じる"
         },
         "modalView": {
             "listView": "リスト表示",

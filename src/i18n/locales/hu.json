@@ -765,7 +765,10 @@
             },
             "stagedCount": "Előkészítve: {count}",
             "pendingCount": "Függőben: {count}",
-            "failedCount": "Sikertelen: {count}"
+            "failedCount": "Sikertelen: {count}",
+            "queuedForAnotherServer": "Nem indult el: ez az átvitel egy másik szerverhez vagy fiókhoz volt sorba állítva. Váltson vissza a lapjára, majd próbálja újra.",
+            "queuedOverlayChanged": "Nem indult el: a titkosított overlay, amely alatt ezt az átvitelt sorba állították, zárolva van, vagy már nem fedi le ezt a mappát. Oldja fel azon a szerveren, majd próbálja újra.",
+            "pasteFromAnotherServer": "Nincs beillesztve: ezeket a fájlokat egy most nem aktív szerveren, fiókban vagy titkosított rétegen vágták ki vagy másolták. Váltson vissza a lapjára, majd illessze be újra."
         },
         "settings": {
             "title": "Beállítások",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names} a szolgáltatóhoz ezen az eszközön megadottól eltérő egyéni OAuth-alkalmazással érkezett. A tárolt alkalmazás megmaradt, ezért jelentkezzen be újra, ha ezek a profilok nem tudnak csatlakozni.",
             "importTargetChanged": "{names} nem lettek felülírva: a fájl egy másik szerverre irányítja őket, és a mentett jelszavaik és tokenjeik nem kerülhetnek oda. Importáljon a Duplikálás opcióval a fájlból származó másolat hozzáadásához, vagy előbb törölje a profilt.",
             "importSharedSecretsFailed": "A(z) {names} importálva lett, de a fájlból egy megosztott titkot vagy munkamenetet nem sikerült tárolni. Jelentkezzen be újra ezekbe a profilokba, ha nem csatlakoznak.",
-            "keystoreDatabasesFailed": "Az importálás befejeződött, de ezeket az adatbázisokat nem sikerült visszaállítani, így megtartják a korábbi tartalmukat: {names}."
+            "keystoreDatabasesFailed": "Az importálás befejeződött, de ezeket az adatbázisokat nem sikerült visszaállítani, így megtartják a korábbi tartalmukat: {names}.",
+            "importSecurityTitle": "Biztonsági beállítások ebben a mentésben",
+            "importSecurityHelp": "Ezek a beállítások kikapcsolnak egy biztonsági ellenőrzést. Mindegyik biztonságos állapotban kerül importálásra, hacsak nem jelöli be, hogy a fájlban szereplő módon maradjon.",
+            "importSecurityVerifyCert": "Tanúsítvány-ellenőrzés kikapcsolva",
+            "importSecurityCleartextEndpoint": "Titkosítatlan S3 végpont engedélyezve",
+            "importSecurityCleartextStorage": "Titkosítatlan tárolási cím engedélyezve",
+            "importSecurityPlainHttp": "Sima HTTP HTTPS helyett",
+            "importSecurityPasvAddress": "Adatkapcsolat a kiszolgáló által megadott címre (PASV)",
+            "importSecurityUnknownHostKeys": "Ismeretlen SSH gazdakulcsok elfogadva",
+            "keystoreSecurityReset": "{count} visszaállított szerver olyan beállításokat használt, amelyek kikapcsolnak egy biztonsági ellenőrzést; visszaállítottuk őket a biztonságos beállításra: {details}.",
+            "keystoreSecurityResetFailed": "Nem sikerült ellenőrizni vagy alaphelyzetbe állítani {count} visszaállított fiók biztonsági beállításait. Ahelyett, hogy figyelmeztetés nélkül aktívak maradnának, itt vannak felsorolva.",
+            "keystoreSecurityResetQuarantine": "A visszaállított fiókadatbázist nem sikerült biztonságossá tenni, ezért karanténba került: {path}. Egyetlen visszaállított fiók sem aktív. Oldja meg a lemezzel vagy a jogosultságokkal kapcsolatos problémát, majd állítsa vissza újra a biztonsági mentést. A karanténba helyezett fájl továbbra is rendelkezésre áll a helyreállításhoz."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "A létrehozás sikertelen",
             "unknownServer": "Ismeretlen",
             "scpModeTitle": "Csatlakozva SCP-vel",
-            "scpModeBody": "A(z) {host} szerveren nincs SFTP, ezért az AeroFTP SCP-t használ ugyanazon a kapcsolaton."
+            "scpModeBody": "A(z) {host} szerveren nincs SFTP, ezért az AeroFTP SCP-t használ ugyanazon a kapcsolaton.",
+            "saveOnAnotherServer": "Nincs mentve: ezt a fájlt egy most nem aktív szerverről, fiókból vagy titkosított rétegből nyitották meg. Váltson vissza a lapjára, majd mentse újra.",
+            "openedOnAnotherServer": "Nincs megnyitva: a szerver megváltozott a fájl olvasása közben. Nyissa meg újra.",
+            "remoteTargetChanged": "Nem történt módosítás: a szerver, a fiók vagy a titkosított réteg megváltozott a művelet indítása óta, vagy még újracsatlakozik. Próbálja újra az aktuális kapcsolaton."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "SCP tartalék engedélyezése",
             "allowScpFallbackHint": "Ha a szerveren nincs SFTP, a kapcsolat SCP-n folytatódik, ahogy a WinSCP is teszi.",
             "discoverScp": "Fájlmásolás SSH-n keresztül SFTP nélküli szerverekhez",
-            "discoverTigris": "Tigris: globálisan elosztott, S3-kompatibilis tárhely, kimenő forgalmi díj nélkül (5 GB ingyenes)"
+            "discoverTigris": "Tigris: globálisan elosztott, S3-kompatibilis tárhely, kimenő forgalmi díj nélkül (5 GB ingyenes)",
+            "trustPasvAddress": "A szerver által megadott passzív cím használata",
+            "trustPasvAddressHelp": "Ki: az adatkapcsolatok arra a gazdagépre mennek, amelyhez csatlakozott, ahogy a curl is teszi. Csak olyan szervernél kapcsolja be, amely más címről küldi az adatokat.",
+            "discoverFastly": "Fastly Object Storage: S3-kompatibilis tárhely 12 régióban (5 GB ingyenes, kártya szükséges)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",
@@ -3068,7 +3088,8 @@
                 "diff": "Összehasonlítás az eredetivel",
                 "diffNoFile": "Nincs megnyitott fájl az összehasonlításhoz",
                 "commandBlocked": "Parancs letiltva: potenciálisan romboló",
-                "confirmRun": "Futtatás megerősítése: {command}"
+                "confirmRun": "Futtatás megerősítése: {command}",
+                "reopenEditor": "Jelenítse meg a szerkesztőt ezzel a megnyitott fájllal, majd próbálja újra."
             },
             "thinkingBlock": {
                 "thinking": "Gondolkodás...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Jelszóval védett",
             "expirationHoursOne": "{count} óra",
             "expirationHoursMany": "{count} óra",
-            "expirationDaysMany": "{count} nap"
+            "expirationDaysMany": "{count} nap",
+            "expiresSoonerThanChosen": "rövidebb a választottnál"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Nem mentett változások",
             "dirtyBody": "Nem mentett változásai vannak. Elveti és bezárja?",
             "keepEditing": "Szerkesztés folytatása",
-            "discardAndClose": "Elvetés és bezárás"
+            "discardAndClose": "Elvetés és bezárás",
+            "busyBodyKeepsRunning": "Egy művelet még folyamatban van. Az ablak bezárása után is tovább fut, az eredménye pedig nem jelenik meg itt. Mégis bezárja?",
+            "closeAnyway": "Bezárás mégis"
         },
         "modalView": {
             "listView": "Listanézet",

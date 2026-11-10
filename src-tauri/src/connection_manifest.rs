@@ -109,6 +109,18 @@ pub fn preset(raw: &str) -> Option<&'static ConnectionPreset> {
     manifest().presets.iter().find(|p| p.id == id)
 }
 
+/// The canonical preset id for a stored provider id: an alias of the manifest
+/// (`fastly-object-storage`, `backblaze-b2`, `azure-blob`) becomes its target,
+/// any other id comes back unchanged. One rule for every surface that keys or
+/// maps on the id, so an old or hand-edited profile that carries the alias
+/// behaves like one that carries the canonical id.
+pub fn canonical_preset_id(raw: &str) -> &str {
+    manifest()
+        .preset_aliases
+        .get(raw)
+        .map_or(raw, String::as_str)
+}
+
 pub fn canonical_protocol_and_provider<'a>(
     raw: &'a str,
     provider_id: Option<&'a str>,
@@ -361,7 +373,16 @@ mod tests {
     #[test]
     fn saved_ftp_modes_survive_creation_defaults() {
         for (protocol, kind, options, expected) in [
-            ("ftp", ProviderType::Ftp, json!({}), FtpTlsMode::None),
+            // A saved FTP profile without a mode requires TLS, as in the GUI
+            // (owner decision 2026-11-06, #1506 Requested 198); it read as
+            // plain FTP before.
+            ("ftp", ProviderType::Ftp, json!({}), FtpTlsMode::Explicit),
+            (
+                "ftp",
+                ProviderType::Ftp,
+                json!({"tlsMode":"none"}),
+                FtpTlsMode::None,
+            ),
             ("ftps", ProviderType::Ftps, json!({}), FtpTlsMode::Implicit),
             (
                 "ftps",

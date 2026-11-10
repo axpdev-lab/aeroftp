@@ -5,6 +5,7 @@ import React from 'react';
 import { Fingerprint, ShieldAlert } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 export interface HostKeyInfo {
     status: 'known' | 'unknown' | 'changed' | 'error';
@@ -18,7 +19,8 @@ interface HostKeyDialogProps {
     info: HostKeyInfo | null;
     host: string;
     port: number;
-    onAccept: () => void;
+    /** Saves the key; the dialog waits for it before anything else answers. */
+    onAccept: () => void | Promise<void>;
     onReject: () => void;
 }
 
@@ -32,15 +34,41 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
 }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
+    const asking = visible && !!info && (info.status === 'unknown' || info.status === 'changed');
+    // Accept writes the key and then resumes the connect: until it settles,
+    // a reject (ESC or Cancel) would abort the connect with the key already
+    // saved, and a second accept would write it twice.
+    const [accepting, setAccepting] = React.useState(false);
+    React.useEffect(() => {
+        if (!asking) setAccepting(false);
+    }, [asking]);
+    const accept = async () => {
+        if (accepting) return;
+        setAccepting(true);
+        try {
+            await onAccept();
+        } finally {
+            setAccepting(false);
+        }
+    };
+    // A trust decision: the backdrop is inert, and ESC is the safe answer,
+    // reject, which trusts nothing (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: null,
+        onClose: onReject,
+        backdrop: 'never',
+        escape: asking,
+        escapeSuspended: accepting,
+    });
 
-    if (!visible || !info || (info.status !== 'unknown' && info.status !== 'changed')) return null;
+    if (!asking || !info) return null;
 
     const isChanged = info.status === 'changed';
 
     return (
         <div
             className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
-            onClick={onReject}
+            onClick={guarded.onBackdropClick}
             role="dialog"
             aria-modal="true"
             aria-label={t('protocol.hostKeyDialogLabel')}
@@ -109,13 +137,15 @@ export const HostKeyDialog: React.FC<HostKeyDialogProps> = ({
                 <div className="flex border-t border-gray-200 dark:border-gray-700">
                     <button
                         onClick={onReject}
-                        className="flex-1 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        disabled={accepting}
+                        className="flex-1 px-4 py-3 text-sm font-medium disabled:opacity-50 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                     >
                         {t('common.cancel')}
                     </button>
                     <button
-                        onClick={onAccept}
-                        className={`flex-1 px-4 py-3 text-sm font-medium border-l border-gray-200 dark:border-gray-700 transition-colors ${
+                        onClick={() => { void accept(); }}
+                        disabled={accepting}
+                        className={`flex-1 px-4 py-3 disabled:opacity-50 text-sm font-medium border-l border-gray-200 dark:border-gray-700 transition-colors ${
                             isChanged
                                 ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20'
                                 : 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'

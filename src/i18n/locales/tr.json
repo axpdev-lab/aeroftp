@@ -765,7 +765,10 @@
             },
             "stagedCount": "Hazırlanan: {count}",
             "pendingCount": "Bekleyen: {count}",
-            "failedCount": "Başarısız: {count}"
+            "failedCount": "Başarısız: {count}",
+            "queuedForAnotherServer": "Başlatılmadı: bu aktarım başka bir sunucu veya hesap için kuyruğa alınmıştı. Sekmesine geri dönün, ardından yeniden deneyin.",
+            "queuedOverlayChanged": "Başlatılmadı: bu aktarımın kuyruğa alındığı şifreli overlay kilitli veya artık bu klasörü kapsamıyor. Onu o sunucuda kilidini açın, ardından tekrar deneyin.",
+            "pasteFromAnotherServer": "Yapıştırılmadı: bu dosyalar şu anda etkin olmayan bir sunucuda, hesapta veya şifreli katmanda kesildi ya da kopyalandı. Sekmesine geri dönün, ardından yeniden yapıştırın."
         },
         "settings": {
             "title": "Ayarlar",
@@ -1375,7 +1378,18 @@
             "importOauthAppKept": "{names}, bu cihazda o sağlayıcı için bulunandan farklı bir özel OAuth uygulamasıyla geldi. Kayıtlı uygulama korundu, bu yüzden bu profiller bağlanmayı bırakırsa yeniden oturum açın.",
             "importTargetChanged": "{names} üzerine yazılmadı: dosya bunları başka bir sunucuya yönlendiriyor ve kayıtlı parolalarıyla belirteçlerinin oraya gitmemesi gerekir. Dosyadaki kopyayı eklemek için Çoğalt ile içe aktarın veya önce profili silin.",
             "importSharedSecretsFailed": "{names} içe aktarıldı, ancak dosyadaki paylaşılan bir gizli bilgi veya oturum saklanamadı. Bağlanmazlarsa bu profillerde yeniden oturum açın.",
-            "keystoreDatabasesFailed": "İçe aktarma tamamlandı ancak bu veritabanları geri yüklenemedi ve önceki içeriklerini koruyor: {names}."
+            "keystoreDatabasesFailed": "İçe aktarma tamamlandı ancak bu veritabanları geri yüklenemedi ve önceki içeriklerini koruyor: {names}.",
+            "importSecurityTitle": "Bu yedekteki güvenlik ayarları",
+            "importSecurityHelp": "Bu seçenekler bir güvenlik denetimini kapatır. Her biri, dosyadaki haliyle korumak için işaretlemediğiniz sürece güvenli durumda içe aktarılır.",
+            "importSecurityVerifyCert": "Sertifika denetimi kapalı",
+            "importSecurityCleartextEndpoint": "Şifrelenmemiş S3 uç noktasına izin verildi",
+            "importSecurityCleartextStorage": "Şifrelenmemiş depolama adresine izin verildi",
+            "importSecurityPlainHttp": "HTTPS yerine düz HTTP",
+            "importSecurityPasvAddress": "Sunucunun belirttiği adrese veri bağlantısı (PASV)",
+            "importSecurityUnknownHostKeys": "Bilinmeyen SSH ana makine anahtarları kabul edildi",
+            "keystoreSecurityReset": "Geri yüklenen {count} sunucuda bir güvenlik denetimini kapatan seçenekler vardı; bunlar güvenli ayara geri döndürüldü: {details}.",
+            "keystoreSecurityResetFailed": "{count} geri yüklenen hesabın güvenlik ayarları denetlenemedi veya sıfırlanamadı. Bu hesaplar, uyarı verilmeden etkin bırakılmak yerine burada listeleniyor.",
+            "keystoreSecurityResetQuarantine": "Geri yüklenen hesap veritabanı güvenceye alınamadı ve {path} olarak karantinaya alındı. Hiçbir geri yüklenen hesap etkin değil. Disk veya izin sorununu giderin, ardından yedeği yeniden geri yükleyin. Karantinaya alınan dosya kurtarma için erişilebilir durumda kalır."
         },
         "devtools": {
             "title": "AeroTools",
@@ -1751,7 +1765,10 @@
             "createFailed": "Oluşturma başarısız",
             "unknownServer": "Bilinmeyen",
             "scpModeTitle": "SCP ile bağlandı",
-            "scpModeBody": "{host} sunucusunda SFTP yok, bu yüzden AeroFTP aynı bağlantıda SCP kullanıyor."
+            "scpModeBody": "{host} sunucusunda SFTP yok, bu yüzden AeroFTP aynı bağlantıda SCP kullanıyor.",
+            "saveOnAnotherServer": "Kaydedilmedi: bu dosya şu anda etkin olmayan bir sunucudan, hesaptan veya şifreli katmandan açıldı. Sekmesine geri dönün, ardından yeniden kaydedin.",
+            "openedOnAnotherServer": "Açılmadı: dosya okunurken sunucu değişti. Tekrar açın.",
+            "remoteTargetChanged": "Hiçbir şey değiştirilmedi: sunucu, hesap veya şifreli katman işlem başladığından beri değişti ya da hâlâ yeniden bağlanıyor. Geçerli bağlantıda tekrar deneyin."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",
@@ -2359,7 +2376,10 @@
             "allowScpFallback": "SCP'ye geri dönüşe izin ver",
             "allowScpFallbackHint": "Sunucuda SFTP yoksa, WinSCP'nin yaptığı gibi aynı bağlantıda SCP ile devam edilir.",
             "discoverScp": "SFTP'si olmayan sunucular için SSH üzerinden dosya kopyalama",
-            "discoverTigris": "Tigris: küresel olarak dağıtık, S3 uyumlu depolama, çıkış ücreti yok (5 GB ücretsiz)"
+            "discoverTigris": "Tigris: küresel olarak dağıtık, S3 uyumlu depolama, çıkış ücreti yok (5 GB ücretsiz)",
+            "trustPasvAddress": "Sunucunun verdiği pasif adresi kullan",
+            "trustPasvAddressHelp": "Kapalı: veri bağlantıları, curl gibi bağlandığınız ana makineye gider. Yalnızca verileri başka bir adresten gönderen sunucu için açın.",
+            "discoverFastly": "Fastly Object Storage: 12 bölgede S3 uyumlu depolama (5 GB ücretsiz, kart gerekli)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
@@ -3068,7 +3088,8 @@
                 "diff": "Orijinalle karşılaştır",
                 "diffNoFile": "Karşılaştırma için açık dosya yok",
                 "commandBlocked": "Komut engellendi: yıkıcı olabilir",
-                "confirmRun": "Çalıştırmayı onayla: {command}"
+                "confirmRun": "Çalıştırmayı onayla: {command}",
+                "reopenEditor": "Düzenleyiciyi bu dosya açık olarak gösterin, ardından yeniden deneyin."
             },
             "thinkingBlock": {
                 "thinking": "Düşünülüyor...",
@@ -5642,7 +5663,8 @@
             "managePasswordProtected": "Şifre korumalı",
             "expirationHoursOne": "{count} saat",
             "expirationHoursMany": "{count} saat",
-            "expirationDaysMany": "{count} gün"
+            "expirationDaysMany": "{count} gün",
+            "expiresSoonerThanChosen": "seçilenden daha kısa"
         },
         "introHub": {
             "tab": {
@@ -6668,7 +6690,9 @@
             "dirtyTitle": "Kaydedilmemiş değişiklikler",
             "dirtyBody": "Kaydedilmemiş değişiklikleriniz var. Atıp kapat?",
             "keepEditing": "Düzenlemeye devam et",
-            "discardAndClose": "At ve kapat"
+            "discardAndClose": "At ve kapat",
+            "busyBodyKeepsRunning": "Bir işlem hâlâ sürüyor. Bu pencere kapandıktan sonra da devam eder ve sonucu burada gösterilmez. Yine de kapatılsın mı?",
+            "closeAnyway": "Yine de kapat"
         },
         "modalView": {
             "listView": "Liste görünümü",

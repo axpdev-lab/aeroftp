@@ -514,6 +514,41 @@ pub fn migrate_legacy_rclone_crypt_on_load(
     notes
 }
 
+/// Issue #230: an imported Filen CLI API key lives in the vault under
+/// `filen_api_key_<id>`, never in the saved profile's options, which reach the
+/// renderer and the profile store; the one-time startup migration does not run
+/// again, so the import moves it. The key leaves the options either way, and
+/// `hasStoredFilenApiKey` is set only once `store_secret` succeeded. The GUI
+/// import and `import rclone --apply` both call this, so neither can keep it.
+pub fn move_imported_filen_api_key(
+    server: &mut Value,
+    mut store_secret: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<(), String> {
+    let Some(key) = server
+        .get_mut("options")
+        .and_then(|o| o.as_object_mut())
+        .and_then(|o| o.remove("filen_api_key"))
+    else {
+        return Ok(());
+    };
+    let key = zeroize::Zeroizing::new(key.as_str().map(str::trim).unwrap_or("").to_string());
+    let id = server
+        .get("id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if key.is_empty() {
+        return Ok(());
+    }
+    // Already out of the options: dropped without a word, it was lost.
+    if id.is_empty() {
+        return Err("the imported profile has no id to store it under".to_string());
+    }
+    store_secret(&format!("filen_api_key_{id}"), &key)?;
+    server["hasStoredFilenApiKey"] = Value::Bool(true);
+    Ok(())
+}
+
 /// Turn the legacy import options into the binding used by Quick Connect and
 /// My Servers. Secrets leave the options before the preview crosses IPC.
 pub fn materialize_imported_crypt_overlay(
@@ -579,12 +614,28 @@ pub fn materialize_imported_crypt_overlay(
     Ok(())
 }
 
+/// `entry` without the private `__aeroftp_*` options. Only the backend writes
+/// them, from the vault, when credentials are exported (`inject_rclone_*`): a
+/// caller that sends them would otherwise get its own token and app keys
+/// written into a file that reports no credentials (Codex review, 2026-11-06).
+fn without_private_export_options(entry: &Value) -> Value {
+    let mut entry = entry.clone();
+    if let Some(options) = entry.get_mut("options").and_then(|o| o.as_object_mut()) {
+        options.retain(|key, _| !key.starts_with("__aeroftp_"));
+    }
+    entry
+}
+
 /// Import profiles from a third-party config file. Validates the path
 /// (traversal reject + canonicalize + regular-file + 10 MB cap),
 /// upgrades any recovered secret into the AES-256-GCM vault and returns
 /// credential-redacted profiles, exactly like `import_rclone_config`.
 #[tauri::command]
-pub async fn import_bridge_config(source: String, file_path: String) -> Result<Value, String> {
+pub async fn import_bridge_config(
+    source: String,
+    file_path: String,
+    keep_relaxed: Option<Vec<crate::profile_security::KeptRelaxation>>,
+) -> Result<Value, String> {
     known(&source)?;
 
     let path = Path::new(&file_path);
@@ -615,6 +666,58 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
     } else {
         dispatch_import(&source, &canonical)?
     };
+    let store = CredentialStore::from_cache();
+    let mut write = |key: &str, secret: &str| -> Result<(), String> {
+        let store = store.as_ref().ok_or("the credential vault is locked")?;
+        crate::user_partitions::store_active_credential_dual(store, key, secret)
+            .map_err(|e| e.to_string())
+    };
+    let vault: Option<VaultWrite<'_>> = if store.is_some() {
+        Some(&mut write)
+    } else {
+        None
+    };
+    match keep_relaxed {
+        Some(keep) => {
+            let policy = crate::profile_security::RelaxationPolicy::Keep(keep);
+            finish_bridge_import_with_policy(&source, &value, secret_failures, vault, &policy)
+        }
+        None => finish_bridge_import(&source, &value, secret_failures, vault),
+    }
+}
+
+/// One vault write: the entry's key and its secret.
+type VaultWrite<'a> = &'a mut dyn FnMut(&str, &str) -> Result<(), String>;
+
+/// What an import does once the file is parsed: the rclone crypt and Filen
+/// secrets move into the vault, the recovered passwords are stored, and the
+/// profiles go back to the window redacted and with security-relaxing options
+/// reset (`RelaxationPolicy::ResetAll`), with every secret that was not
+/// stored named in the warnings. `vault` writes one vault entry; `None` is a
+/// locked vault. Split from [`import_bridge_config`] so a test reads the
+/// response the window commits, not only the helpers.
+pub(crate) fn finish_bridge_import(
+    source: &str,
+    value: &Value,
+    secret_failures: Vec<(String, String)>,
+    vault: Option<VaultWrite<'_>>,
+) -> Result<Value, String> {
+    finish_bridge_import_with_policy(
+        source,
+        value,
+        secret_failures,
+        vault,
+        &crate::profile_security::RelaxationPolicy::ResetAll,
+    )
+}
+
+pub(crate) fn finish_bridge_import_with_policy(
+    source: &str,
+    value: &Value,
+    mut secret_failures: Vec<(String, String)>,
+    mut vault: Option<VaultWrite<'_>>,
+    policy: &crate::profile_security::RelaxationPolicy,
+) -> Result<Value, String> {
     let mut servers = value
         .get("servers")
         .and_then(|s| s.as_array())
@@ -622,15 +725,30 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         .unwrap_or_default();
 
     if source == "rclone" {
-        let store = CredentialStore::from_cache();
         for server in &mut servers {
-            materialize_imported_crypt_overlay(server, |key, secret| {
-                let store = store
-                    .as_ref()
-                    .ok_or("Unlock the credential vault before importing Crypt profiles")?;
-                crate::user_partitions::store_active_credential_dual(store, key, secret)
-                    .map_err(|e| e.to_string())
+            materialize_imported_crypt_overlay(server, |key, secret| match vault.as_mut() {
+                Some(write) => write(key, secret),
+                None => Err("Unlock the credential vault before importing Crypt profiles".into()),
             })?;
+        }
+        for server in &mut servers {
+            let id = server
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            let moved = move_imported_filen_api_key(server, |key, secret| match vault.as_mut() {
+                Some(write) => write(key, secret),
+                None => Err("the credential vault is locked".into()),
+            });
+            // The error names the vault failure, never the key, which is
+            // only ever passed as the value.
+            if let Err(e) = moved {
+                secret_failures.push((
+                    id,
+                    format!("its Filen API key was not stored: {e} (unlock the vault and import again, or add the key in the profile)"),
+                ));
+            }
         }
     }
 
@@ -649,8 +767,8 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         std::collections::HashSet::new();
     let mut stored = 0usize;
     let mut stored_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    match CredentialStore::from_cache() {
-        Some(store) => {
+    match vault.as_mut() {
+        Some(write) => {
             for s in &servers {
                 if stored >= MAX_IMPORTED_CREDENTIALS {
                     cred_errors.push(format!(
@@ -679,11 +797,7 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                     stored += 1;
                     stored_ids.insert(id.to_string());
                     // MUV-3: dual-write into vault + active user's partition.
-                    if let Err(e) = crate::user_partitions::store_active_credential_dual(
-                        &store,
-                        &format!("server_{}", id),
-                        cred,
-                    ) {
+                    if let Err(e) = write(&format!("server_{}", id), cred) {
                         cred_errors.push(format!("{id}: {e}"));
                         unsaved_credentials.insert(id.to_string());
                         secret_failures
@@ -725,16 +839,54 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         log::warn!("{} import credential issues: {:?}", source, cred_errors);
     }
 
+    // A third-party config is untrusted input: any option that turns a
+    // security check off (`webdavScheme=http`, `verifyCert=false`,
+    // `allowCleartextEndpoint`, `allowCleartextStorage`, `trustPasvAddress`,
+    // `trustUnknownHosts`) comes back in its safe state unless kept by
+    // `policy`, and `security` lists what was reset or kept so the GUI bridge
+    // panel can offer the same per-option review as `.aeroftp` imports (#1506
+    // Requested 198). The pre-reset host and options travel beside a reset
+    // profile so ticking an option in the review restores only what was asked.
+    let mut security: Vec<crate::profile_import_plan::ImportedSecurity> = Vec::new();
+    let mut relaxed_before_reset: HashMap<usize, (Value, Value)> = HashMap::new();
+    for (file_index, server) in servers.iter_mut().enumerate() {
+        let relaxations = crate::profile_security::security_relaxations(server);
+        if relaxations.is_empty() {
+            continue;
+        }
+        let raw_host = server.get("host").cloned().unwrap_or(Value::Null);
+        let raw_options = server.get("options").cloned().unwrap_or(Value::Null);
+        let name = crate::profile_import_plan::display_name(
+            server.get("name").and_then(Value::as_str).unwrap_or(""),
+            server.get("host").and_then(Value::as_str).unwrap_or(""),
+        );
+        let keep = policy.kept_keys(file_index, &relaxations);
+        let removed = crate::profile_security::make_profile_safe(server, &keep);
+        if !removed.is_empty() {
+            relaxed_before_reset.insert(file_index, (raw_host, raw_options));
+        }
+        let (reset, kept) = relaxations
+            .into_iter()
+            .partition(|relaxation| removed.contains(&relaxation.key));
+        security.push(crate::profile_import_plan::ImportedSecurity {
+            file_index,
+            name,
+            reset,
+            kept,
+        });
+    }
+
     // Redact credentials before crossing back to the renderer.
     let redacted: Vec<Value> = servers
         .iter()
-        .map(|s| {
+        .enumerate()
+        .map(|(file_index, s)| {
             let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("");
             let has_cred = !unsaved_credentials.contains(id)
                 && s.get("credential")
                     .map(|c| !c.is_null() && c.as_str().map(|x| !x.is_empty()).unwrap_or(true))
                     .unwrap_or(false);
-            json!({
+            let mut item = json!({
                 "id": s.get("id").cloned().unwrap_or(Value::Null),
                 "name": s.get("name").cloned().unwrap_or(Value::Null),
                 "host": s.get("host").cloned().unwrap_or(Value::Null),
@@ -747,8 +899,14 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
                 "aeroCryptOverlay": s.get("aeroCryptOverlay").cloned().unwrap_or(Value::Null),
                 "hasStoredAeroCryptPassword": s.get("hasStoredAeroCryptPassword").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredAeroCryptSalt": s.get("hasStoredAeroCryptSalt").cloned().unwrap_or(Value::Bool(false)),
+                "hasStoredFilenApiKey": s.get("hasStoredFilenApiKey").cloned().unwrap_or(Value::Bool(false)),
                 "hasStoredCredential": has_cred,
-            })
+            });
+            if let Some((raw_host, raw_options)) = relaxed_before_reset.get(&file_index) {
+                item["relaxedHost"] = raw_host.clone();
+                item["relaxedOptions"] = raw_options.clone();
+            }
+            item
         })
         .collect();
 
@@ -769,10 +927,11 @@ pub async fn import_bridge_config(source: String, file_path: String) -> Result<V
         })
         .collect();
     Ok(bridge_import_response(
-        &value,
+        value,
         redacted,
         servers.len(),
         secret_warnings,
+        security,
     ))
 }
 
@@ -785,6 +944,7 @@ fn bridge_import_response(
     redacted: Vec<Value>,
     imported: usize,
     secret_warnings: Vec<Value>,
+    security: Vec<crate::profile_import_plan::ImportedSecurity>,
 ) -> Value {
     let mut warnings = parsed
         .get("warnings")
@@ -799,6 +959,7 @@ fn bridge_import_response(
         // password that does not reveal), and any profile whose secret could not be
         // stored here: it is listed as imported, and will not sign in.
         "warnings": warnings,
+        "security": security,
         "sourcePath": parsed.get("sourcePath").cloned().unwrap_or(Value::Null),
         "totalRemotes": parsed
             .get("totalRemotes")
@@ -1612,7 +1773,7 @@ async fn export_bridge_profiles(
                 // refreshable remote. Other sources are untouched.
                 let injected_entry;
                 let entry: &Value = if source == "rclone" && include_credentials {
-                    let mut e = entry.clone();
+                    let mut e = without_private_export_options(entry);
                     if let Some(st) = store {
                         let id = e
                             .get("id")
@@ -1644,13 +1805,14 @@ async fn export_bridge_profiles(
                     injected_entry = e;
                     &injected_entry
                 } else if include_credentials {
-                    entry
+                    injected_entry = without_private_export_options(entry);
+                    &injected_entry
                 } else {
                     // Review L10: a secret an older import left in `options`
                     // (the load-time crypt migration refuses a profile whose
                     // crypt password is empty, and keeps its salt there) is
                     // still a credential, and this export has none.
-                    let mut e = entry.clone();
+                    let mut e = without_private_export_options(entry);
                     if let Some(o) =
                         crate::rclone_import::options_without_secrets(e.get("options"))
                     {
@@ -1757,6 +1919,122 @@ async fn export_bridge_profiles(
 mod tests {
     use super::*;
 
+    #[test]
+    fn an_imported_filen_key_moves_to_the_vault_and_leaves_the_options() {
+        // Issue #230, through the rclone import itself: the window and the
+        // saved profile never carry the key.
+        let obscured = crate::rclone_import::obscure_password("FILEN-KEY-1").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let conf = dir.path().join("rclone.conf");
+        std::fs::write(
+            &conf,
+            format!("[f]\ntype = filen\nemail = a@example.test\napi_key = {obscured}\n"),
+        )
+        .unwrap();
+        let result = crate::rclone_import::import_rclone(&conf).unwrap();
+        let value = serde_json::to_value(&result).unwrap();
+        let mut server = value["servers"][0].clone();
+        assert_eq!(
+            server
+                .pointer("/options/filen_api_key")
+                .and_then(|v| v.as_str()),
+            Some("FILEN-KEY-1")
+        );
+        let id = server["id"].as_str().unwrap().to_string();
+
+        let mut vault = HashMap::new();
+        move_imported_filen_api_key(&mut server, |k, v| {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(vault[&format!("filen_api_key_{id}")], "FILEN-KEY-1");
+        assert!(server.pointer("/options/filen_api_key").is_none());
+        assert_eq!(server["hasStoredFilenApiKey"], true);
+        assert!(!server.to_string().contains("FILEN-KEY-1"));
+
+        // A failed write still takes the key out of the options, and does not
+        // claim it was stored.
+        let mut server = value["servers"][0].clone();
+        let err = move_imported_filen_api_key(&mut server, |_, _| Err("locked".into()));
+        assert!(err.is_err());
+        assert!(server.pointer("/options/filen_api_key").is_none());
+        assert!(server.get("hasStoredFilenApiKey").is_none());
+        assert!(!server.to_string().contains("FILEN-KEY-1"));
+
+        // A profile with no id has nowhere to keep it: said, not dropped.
+        let mut server = value["servers"][0].clone();
+        server.as_object_mut().unwrap().remove("id");
+        let err = move_imported_filen_api_key(&mut server, |_, _| Ok(())).unwrap_err();
+        assert!(err.contains("no id"), "{err}");
+        assert!(server.pointer("/options/filen_api_key").is_none());
+        assert!(server.get("hasStoredFilenApiKey").is_none());
+
+        // Through the import the window commits: the response it builds the
+        // saved profiles from carries the flag only after a stored key, and
+        // never the key itself.
+        let mut vault = HashMap::new();
+        let mut write = |k: &str, v: &str| -> Result<(), String> {
+            vault.insert(k.to_string(), v.to_string());
+            Ok(())
+        };
+        let response =
+            finish_bridge_import("rclone", &value, Vec::new(), Some(&mut write)).unwrap();
+        let committed = &response["servers"][0];
+        assert_eq!(committed["id"].as_str(), Some(id.as_str()));
+        assert_eq!(committed["hasStoredFilenApiKey"], true);
+        assert!(committed.pointer("/options/filen_api_key").is_none());
+        assert!(!response.to_string().contains("FILEN-KEY-1"));
+        assert_eq!(vault[&format!("filen_api_key_{id}")], "FILEN-KEY-1");
+        assert_eq!(response["warnings"], json!([]));
+
+        // A failed write and a locked vault: no flag, no key, and a warning
+        // that names the profile and what the vault answered.
+        let mut refuse = |k: &str, _: &str| -> Result<(), String> {
+            if k.starts_with("filen_api_key_") {
+                Err("disk full".into())
+            } else {
+                Ok(())
+            }
+        };
+        let failed = finish_bridge_import("rclone", &value, Vec::new(), Some(&mut refuse)).unwrap();
+        let locked = finish_bridge_import("rclone", &value, Vec::new(), None).unwrap();
+        for (response, reason) in [
+            (&failed, "disk full"),
+            (&locked, "the credential vault is locked"),
+        ] {
+            let committed = &response["servers"][0];
+            assert_eq!(committed["hasStoredFilenApiKey"], false, "{reason}");
+            assert!(
+                committed.pointer("/options/filen_api_key").is_none(),
+                "{reason}"
+            );
+            assert!(!response.to_string().contains("FILEN-KEY-1"), "{reason}");
+            let warning = &response["warnings"][0];
+            assert_eq!(warning["name"], committed["name"], "{reason}");
+            let text = warning["reason"].as_str().unwrap_or_default();
+            assert!(
+                text.contains("its Filen API key was not stored") && text.contains(reason),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    fn private_export_options_never_come_from_the_caller() {
+        let entry = json!({
+            "id": "x",
+            "options": {
+                "__aeroftp_oauth_token": "{}",
+                "__aeroftp_oauth_client_id": "app",
+                "__aeroftp_oauth_client_secret": "secret",
+                "region": "eu"
+            }
+        });
+        let cleaned = without_private_export_options(&entry);
+        assert_eq!(cleaned["options"], json!({ "region": "eu" }));
+    }
+
     /// The GUI Export greys out a profile whose protocol is not in
     /// `supportedProtocols` and, for FileLu, used to say the tool does not
     /// support it: rclone does, with a secret the vault lacks. The reason has
@@ -1807,6 +2085,7 @@ mod tests {
             Vec::new(),
             1,
             vec![json!({ "name": "box1", "reason": "its password was not stored: test" })],
+            Vec::new(),
         );
         let warnings = response["warnings"].as_array().expect("warnings list");
         assert_eq!(warnings.len(), 2, "{response}");
@@ -1827,8 +2106,13 @@ mod tests {
         let result = crate::rclone_import::import_rclone(&config).unwrap();
         let parsed = serde_json::to_value(&result).unwrap();
 
-        let response =
-            bridge_import_response(&parsed, Vec::new(), result.servers.len(), Vec::new());
+        let response = bridge_import_response(
+            &parsed,
+            Vec::new(),
+            result.servers.len(),
+            Vec::new(),
+            Vec::new(),
+        );
 
         let warnings = response["warnings"].as_array().expect("warnings list");
         assert_eq!(warnings.len(), 1, "{response}");
@@ -2552,6 +2836,45 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn caller_supplied_private_options_never_reach_the_exported_file() {
+        // Only the backend writes `__aeroftp_*`, from the vault. Sent by the
+        // window, a token and app keys went into a file that reports no
+        // credentials. Both credential settings, with no vault to inject from.
+        let servers = json!([{
+            "id": "gd-id", "name": "gd", "host": "www.googleapis.com", "port": 443,
+            "username": "u", "protocol": "googledrive",
+            "options": {
+                "__aeroftp_oauth_token": "{\"access_token\":\"CALLER-TOKEN\"}",
+                "__aeroftp_oauth_client_id": "CALLER-APP",
+                "__aeroftp_oauth_client_secret": "CALLER-SECRET"
+            }
+        }])
+        .to_string();
+        for include_credentials in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("rclone.conf");
+            export_bridge_profiles(
+                "rclone",
+                &servers,
+                include_credentials,
+                &path.to_string_lossy(),
+                None,
+                |_| None,
+            )
+            .await
+            .unwrap();
+            let conf = std::fs::read_to_string(&path).unwrap();
+            assert!(conf.contains("type = drive"), "{conf}");
+            for secret in ["CALLER-TOKEN", "CALLER-APP", "CALLER-SECRET"] {
+                assert!(
+                    !conf.contains(secret),
+                    "include_credentials={include_credentials}: {secret} in\n{conf}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn legacy_export_servers_deserialize_from_profile_json() {
         // The run_export! macro deserializes each profile entry into the
@@ -2635,6 +2958,56 @@ mod tests {
         assert!(
             conf.contains("key_file = /home/admin/.ssh/id_ed25519"),
             "{conf}"
+        );
+    }
+
+    #[test]
+    fn dispatch_import_and_finish_bridge_import_reset_winscp_webdav_http_unless_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("winscp_webdav_plain_http.ini");
+        std::fs::write(
+            &path,
+            "[Sessions\\Remote%20WebDAV]\r\nHostName=dav.example.com\r\nPortNumber=8080\r\nUserName=alice\r\nFSProtocol=6\r\nFtps=0\r\n",
+        )
+        .unwrap();
+        let parsed = dispatch_import("winscp", &path).expect("winscp import");
+
+        let safe = finish_bridge_import("winscp", &parsed, Vec::new(), None).expect("safe import");
+        assert_eq!(safe["servers"][0]["options"]["webdavScheme"], "https");
+        assert_eq!(safe["servers"][0]["relaxedOptions"]["webdavScheme"], "http");
+        assert_eq!(
+            safe["security"],
+            json!([{
+                "fileIndex": 0,
+                "name": "Remote WebDAV",
+                "reset": [{ "key": "webdavScheme", "value": "http" }],
+                "kept": [],
+            }])
+        );
+
+        let kept = finish_bridge_import_with_policy(
+            "winscp",
+            &parsed,
+            Vec::new(),
+            None,
+            &crate::profile_security::RelaxationPolicy::Keep(vec![
+                crate::profile_security::KeptRelaxation {
+                    file_index: 0,
+                    key: "webdavScheme".into(),
+                },
+            ]),
+        )
+        .expect("kept import");
+        assert_eq!(kept["servers"][0]["options"]["webdavScheme"], "http");
+        assert!(kept["servers"][0].get("relaxedOptions").is_none());
+        assert_eq!(
+            kept["security"],
+            json!([{
+                "fileIndex": 0,
+                "name": "Remote WebDAV",
+                "reset": [],
+                "kept": [{ "key": "webdavScheme", "value": "http" }],
+            }])
         );
     }
 }

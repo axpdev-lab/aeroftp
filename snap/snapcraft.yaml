@@ -1,6 +1,6 @@
 name: aeroftp
 title: AeroFTP
-version: '4.2.6'
+version: '4.2.7'
 summary: Modern Multi-Protocol File Transfer & Cloud Client for Humans and Agents
 description: |
   AeroFTP is a modern file transfer client that goes beyond traditional FTP.
@@ -236,7 +236,7 @@ parts:
       Type=Application
       Categories=Network;FileTransfer;Development;
       Keywords=ftp;sftp;file;transfer;upload;download;
-      MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;
+      MimeType=x-scheme-handler/ftp;x-scheme-handler/ftps;x-scheme-handler/sftp;x-scheme-handler/scp;application/x-aerovault;application/x-aeroftp;application/x-aeroftp-keystore;
       StartupWMClass=AeroFTP
       DESKTOP
       # Remove leading whitespace from desktop file

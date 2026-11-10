@@ -17,6 +17,8 @@ import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
+import { loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS } from './utils/profileSecurity';
+import { keystoreImportModalResult, keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
@@ -34,7 +36,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   FileListResponse, ConnectionParams, DownloadParams, UploadParams,
   LocalFile, TransferEvent, TransferProgress, RemoteFile, FtpSession, ServerProfile,
-  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, supportsNativeShareLink,
+  ProviderType, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, isNonFtpProvider, usesProviderApi, isFtpProtocol, isSshProtocol, providerSupportsCryptOverlay, connectionSupportsStorageQuota, s3PresetReportsUsage, s3PresetOffersObjectTags, s3PresetOffersTrash, supportsNativeShareLink,
   resolveEffectiveQuota, effectiveManualCap,
   AeroVaultOverlaySession,
   DeltaEligibilityProbeResult,
@@ -44,7 +46,7 @@ import {
 import { assertOverlayActivationCurrent, profileOverlayApplyParams } from './utils/profileOverlayUnlock';
 import { cryptUnlockTargetKey, overlayAnchor, type CryptUnlockTarget } from './utils/cryptUnlockTarget';
 import type { OverlayActivationOwnership, ProviderCryptOverlayApply, ProviderCryptOverlayKind } from './utils/profileOverlayUnlock';
-import { bannerOverlayParams } from './utils/rcloneCryptBanner';
+import { bannerAnchorFolder, bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
 import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
@@ -214,12 +216,13 @@ import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
-import { normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
+import { loginRelativeForm, normalizeOverlayAnchor } from './utils/overlayScope';
+import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
 import { ExportImportDialog } from './components/ExportImportDialog';
 import { WindowResizeEdges } from './components/WindowResizeEdges';
-import { DevToolsV2, isPreviewable } from './components/DevTools';
+import { DevToolsV2, isPreviewable, type PreviewFile } from './components/DevTools';
 import { UniversalPreview, isPreviewable as isMediaPreviewable } from './components/Preview';
 // GAP-1: legacy connected-remote sync engine, restored as a safety net
 // while the unified AeroSync modal absorbs delete/verify/journal/retry
@@ -309,6 +312,7 @@ import { LockScreen } from './components/LockScreen';
 import { AccountLockScreen } from './components/AccountLockScreen';
 import {
     ACCOUNT_LOCK_SCREEN_REQUESTED_EVENT,
+    SECURITY_RESET_EVENT,
     decideBootAccountAction,
     defaultUserIdFromList,
     getUnlockStatus,
@@ -521,6 +525,8 @@ import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
 import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
+import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, sameQuickConnectTarget } from './utils/probeAliveArgs';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
@@ -562,6 +568,13 @@ const STILL_CONNECTING_DELAY_MS = 8000;
 // backstop well above any legitimate slow login (real logins are seconds), not
 // a policy timeout; the "Keep waiting" button re-arms it for another window.
 const CONNECT_HARD_TIMEOUT_MS = 120000;
+// Connection options that are credentials picking the account, compared on
+// their own by the queued-target check (isSameConnection leaves them out).
+const ACCOUNT_KEY_OPTIONS = ['filen_api_key', 'accessKey', 'apiKey', 'clientSecret', 'sasToken'] as const;
+
+// How long a cancelled connect's or switch's backend teardown may run before
+// the backend is treated as uncertain (the backend's own gates wait 30 s).
+const BACKEND_TEARDOWN_BOUND_MS = 30000;
 
 // Minimum time the finished update progress bar stays on screen before the
 // result card replaces it. Signature verification normally takes longer than
@@ -859,6 +872,7 @@ const App: React.FC = () => {
   const [lockedFiles, setLockedFiles] = useState<Map<string, string>>(new Map());
   // Provider capabilities (cached per session)
   const [providerCaps, setProviderCaps] = useState<{ versions: boolean; thumbnails: boolean; permissions: boolean; locking: boolean }>({ versions: false, thumbnails: false, permissions: false, locking: false });
+  const providerCapsVersionRef = useRef(0); // Guard against stale async capability responses across session switches/disconnects
   const [remoteFiles, setRemoteFiles] = useState<RemoteFile[]>([]);
   const localPanel = useLocalPanel({ panelId: 'local' });
   const localPanel2 = useLocalPanel({ panelId: 'local2' });
@@ -1001,6 +1015,24 @@ const App: React.FC = () => {
   // is already usable (false) must not cost the user the session: it just
   // aborts the listing and leaves them in the directory they were in.
   const remoteConnectPhaseRef = useRef<false | 'connect' | 'switch'>(false);
+  // Backend teardowns still running after a cancelled connect or switch: the
+  // phase is over, but until the half-open connection is gone the live tab is
+  // not what the backend serves.
+  const backendTeardownsRef = useRef(0);
+  // A teardown that did not end within its bound: the backend's state is
+  // unknown, so nothing is bound to the live tab until a connect or a switch
+  // has connected the backend to a tab again (instead of until a restart). A
+  // connect that fails before that leaves it set.
+  const backendUncertainRef = useRef(false);
+  // Connections confirmed so far: a teardown that times out leaves the
+  // backend uncertain unless one was confirmed after it started.
+  const backendConfirmationsRef = useRef(0);
+  /** A tab is connected to the backend again: its state is known. Called at
+   *  the points a connect or a switch confirms its connection, and only there. */
+  const confirmBackendConnection = () => {
+    backendUncertainRef.current = false;
+    backendConfirmationsRef.current += 1;
+  };
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
   // Connect form started, keyed by its phase version: a Cancel of that connect
@@ -1089,9 +1121,9 @@ const App: React.FC = () => {
     onCommit: (message: string) => void;
     onCancel?: () => void;
   } | null>(null);
-  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: BatchRenameSibling[] } | null>(null);
+  const [batchRenameDialog, setBatchRenameDialog] = useState<{ files: BatchRenameFile[]; isRemote: boolean; siblings: BatchRenameSibling[]; target?: QueuedTarget } | null>(null);
   // Inline rename state: tracks which file is being renamed directly in the list
-  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean } | null>(null);
+  const [inlineRename, setInlineRename] = useState<{ path: string; name: string; isRemote: boolean; target?: QueuedTarget } | null>(null);
   const [inlineRenameValue, setInlineRenameValue] = useState('');
   const inlineRenameRef = useRef<HTMLInputElement>(null);
 
@@ -1219,7 +1251,6 @@ const App: React.FC = () => {
     salt?: string;
     filenameEncryption?: string;
     directoryNameEncryption?: boolean;
-    initialPath?: string;
   }>(null);
   const rcloneCryptBannerHandledRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1253,7 +1284,6 @@ const App: React.FC = () => {
       directoryNameEncryption: typeof opts.rcloneCryptDirectoryNameEncryption === 'boolean'
         ? (opts.rcloneCryptDirectoryNameEncryption as boolean)
         : true,
-      initialPath: typeof opts.rcloneCryptRemote === 'string' ? (opts.rcloneCryptRemote as string) : undefined,
     });
   }, [isConnected, liveConnectionParams.options, liveConnectionParams.server, liveConnectionParams.protocol, liveConnectionParams.username, rcloneCryptVaultId, rcloneCryptImportBanner]);
   useEffect(() => {
@@ -1512,7 +1542,7 @@ const App: React.FC = () => {
   // AeroCloud state + event listeners managed by useCloudSync hook (initialized below after core hooks)
   const [isSyncNavigation, setIsSyncNavigation] = useState(false); // Navigation Sync feature
   const [syncBasePaths, setSyncBasePaths] = useState<{ remote: string; local: string } | null>(null);
-  const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string } | null>(null);
+  const [syncNavDialog, setSyncNavDialog] = useState<{ missingPath: string; isRemote: boolean; targetPath: string; target?: QueuedTarget } | null>(null);
   // AeroFile sidebar state (persisted in localStorage)
   const [showSidebar, setShowSidebar] = useState(() => localStorage.getItem('aerofile_show_sidebar') !== 'false');
   // Boot always starts on the single default panel (left, "L") even if the
@@ -1810,6 +1840,9 @@ const App: React.FC = () => {
     sourceDir: string;
     isRemote: boolean;
     operation: 'cut' | 'copy';
+    // The server (and crypt overlay) remote files were cut or copied on:
+    // their paths name files there, and nowhere else.
+    target: QueuedTarget | null;
   } | null>(null);
   const [hasClipboard, setHasClipboard] = React.useState(false);
 
@@ -2328,7 +2361,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const protocol = liveConnectionParams.protocol;
     const isFtpFamily = protocol === 'ftp' || protocol === 'ftps';
-    const insecureEnabled = isFtpFamily && liveConnectionParams.options?.verifyCert === false;
+    const insecureEnabled = isFtpFamily && !loadedCertificateCheck(liveConnectionParams.options);
 
     if (insecureEnabled && !insecureCertPreviouslyEnabledRef.current) {
       logActivity(
@@ -2342,7 +2375,7 @@ const App: React.FC = () => {
     }
 
     insecureCertPreviouslyEnabledRef.current = insecureEnabled;
-  }, [liveConnectionParams.protocol, liveConnectionParams.options?.verifyCert, liveConnectionParams.server, logActivity, t]);
+  }, [liveConnectionParams.protocol, liveConnectionParams.options, liveConnectionParams.server, logActivity, t]);
 
   // Auto-Update: handled by useAutoUpdate hook
   const { updateAvailable, checkForUpdate } = useAutoUpdate({ activityLog, disabled: disableUpdateChecks });
@@ -2436,6 +2469,22 @@ const App: React.FC = () => {
       return showToastNotifications ? toastWarning(title, message) : null;
     }
   }), [showToastNotifications, toastSuccess, toastError, toastInfo, toastWarning, logActivity]);
+
+  useEffect(() => {
+    const report = (event: Event) => {
+      const resets = (event as CustomEvent<{ name: string; keys: string[] }[]>).detail;
+      if (!resets?.length) return;
+      const details = resets
+        .map(r => `${r.name} (${r.keys.map(k => t(RELAXATION_LABEL_KEYS[k] ?? k)).join(', ')})`)
+        .join('; ');
+      notify.success(
+        t('settings.importKeystore'),
+        t('settings.keystoreSecurityReset', { count: resets.length, details }),
+      );
+    };
+    window.addEventListener(SECURITY_RESET_EVENT, report);
+    return () => window.removeEventListener(SECURITY_RESET_EVENT, report);
+  }, [notify, t]);
 
   // ── W3 (#270.5 / #275.9): cancellable connect + "still connecting" modal ──
   // A connect is a single awaited invoke with no abort path. These refs/state
@@ -2633,7 +2682,16 @@ const App: React.FC = () => {
   }, []);
 
   // Preview: handled by usePreview hook
-  const preview = usePreview({ notify, toast });
+  // Called on a click, long after the render that declares these.
+  const preview = usePreview({
+    notify,
+    toast,
+    remoteTarget: {
+      snapshot: () => snapshotQueuedTarget(),
+      changedSince: (target: QueuedTarget) => queuedTargetProblem(target) !== null,
+      changedMessage: () => t('toast.openedOnAnotherServer'),
+    },
+  });
   const {
     showLocalPreview, setShowLocalPreview, previewFile, setPreviewFile, previewImageBase64, previewImageDimensions,
     devToolsOpen, setDevToolsOpen, devToolsPreviewFile, setDevToolsPreviewFile, openDevToolsPreview, openDevToolsFromData,
@@ -3191,15 +3249,9 @@ const App: React.FC = () => {
       else if (showShortcutsDialog) setShowShortcutsDialog(false);
       else if (showAboutDialog) setShowAboutDialog(false);
       else if (showSettingsPanel) setShowSettingsPanel(false);
-      else if (inputDialog) setInputDialog(null);
-      // Through onCancel, not a bare clear: several confirmations are awaited
-      // as promises (trash choices, overwrite prompts) and settle only there,
-      // so clearing the dialog directly left them pending, and a batch latch
-      // with them.
-      else if (confirmDialog) {
-        if (confirmDialog.onCancel) confirmDialog.onCancel();
-        else setConfirmDialog(null);
-      }
+      // The input and confirm dialogs answer ESC themselves (useGuardedClose),
+      // the confirm through its onCancel: several confirmations are awaited as
+      // promises (trash choices, overwrite prompts) and settle only there.
       else if (selectedRemoteFiles.size > 0 || selectedLocalFiles.size > 0 || selectedLocalFiles2.size > 0) {
         setSelectedRemoteFiles(new Set());
         setSelectedLocalFiles(new Set());
@@ -3209,7 +3261,7 @@ const App: React.FC = () => {
         setLastSelectedLocalIndex2(null);
       }
     }
-  }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel, inputDialog, confirmDialog,
+  }, [showCyberTools, showShortcutsDialog, showAboutDialog, showSettingsPanel,
     universalPreviewOpen, quickLookOpen, selectedRemoteFiles, selectedLocalFiles, selectedLocalFiles2, remoteFiles, localFiles, localFiles2,
     activePanel, activeLocalPanelId, currentRemotePath, currentLocalPath, currentLocalPath2,
     isConnected, showRemotePanel, cardLayout, toggleCardLayout, toggleDualLocalPanel, showDualLocalPanel]);
@@ -4030,9 +4082,10 @@ const App: React.FC = () => {
   // Check provider capabilities when connected
   useEffect(() => {
     if (isConnected) {
-      refreshProviderCaps();
+      void refreshProviderCaps();
       setLockedFiles(new Map());
     } else {
+      providerCapsVersionRef.current++;
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
     }
   }, [isConnected, liveConnectionParams.protocol]);
@@ -4273,7 +4326,7 @@ const App: React.FC = () => {
   }) => {
     const bound = await getEnabledProfileOverlay(locked.savedServerId);
     const target: CryptUnlockTarget = {
-      scope: overlayAnchor(bound?.anchor),
+      scope: isLoginRelativeScope(bound?.anchor) ? bound!.anchor! : overlayAnchor(bound?.anchor),
       savedServerId: locked.savedServerId,
     };
     if (locked.kind === 'aerocrypt') setShowAeroCryptUnlock(target);
@@ -5102,6 +5155,8 @@ const App: React.FC = () => {
 
       // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
       // savedServerId makes activeProfileIds pulse the My Servers card.
+      // The backend is connected to this tab's server: no longer uncertain.
+      confirmBackendConnection();
       const newSession: FtpSession = {
         id: `session_mtp_${Date.now()}`,
         serverId: displayName,
@@ -6289,6 +6344,35 @@ const App: React.FC = () => {
   // (regardless of whether a password/keyfile is stored). Used to surface the
   // LT2b locked affordance when auto-unlock never arms, including the case where
   // there is no stored unlock factor so the suppress-listing path does not run.
+  // A start folder given relative (`docs`) or under the login folder
+  // (`~/docs`), as the absolute folder the connect opened: listed again as
+  // given, `docs` resolved against the folder already open and listed
+  // `docs/docs`. Absolute folders come back as given. A relative folder the
+  // session cannot place is the folder the connect left it in (null), never
+  // listed again as given; a `~` one is resolved by the listing itself.
+  const placeStartFolder = async (path: string | null | undefined): Promise<string | null> => (
+    path && !path.startsWith('/')
+      ? await invoke<string>('provider_start_folder', { path }).catch(() => isLoginRelativeScope(path) ? path : null)
+      : path ?? null
+  );
+
+  // A binding scope under the login folder, placed where the live session
+  // reports it; '' from knownCryptScope (every path inside) when it cannot.
+  const placeLoginRelativeScope = async (scope: string | null | undefined): Promise<string | null> => (
+    isLoginRelativeScope(scope)
+      ? placeUnderLoginFolder(scope, await invoke<string>('provider_login_folder').catch(() => ''))
+      : scope ?? null
+  );
+
+  // The login folder of the live session, asked only for a profile whose
+  // overlay sits under it; null when the session cannot report it, which
+  // leaves the scope unplaced (fail closed).
+  const restoredTransferLoginFolder = async (profile: ServerProfile): Promise<string | null> => (
+    profile.aeroCryptOverlay?.enabled && isLoginRelativeScope(profileOverlayScope(profile))
+      ? await invoke<string>('provider_login_folder').catch(() => '') || null
+      : null
+  );
+
   const getEnabledProfileOverlay = async (
     savedServerId?: string,
   ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null } | null> => {
@@ -6298,8 +6382,12 @@ const App: React.FC = () => {
       const profile = profiles.find((p) => p.id === savedServerId);
       const binding = profile?.aeroCryptOverlay;
       if (!profile || !binding?.enabled) return null;
-      const scope = binding.remoteScope || profile.initialPath || '';
-      return { kind: binding.kind, anchor: scope && scope !== '/' ? scope : null };
+      // A scope under the login folder is placed through the live session, as
+      // on activation. Unplaced it stays `~/...`, which only SFTP and SCP
+      // write and resolve themselves; dropped, the prompt opened at the root.
+      const scope = await placeLoginRelativeScope(profileOverlayScope(profile));
+      if (!scope || scope === '/') return { kind: binding.kind, anchor: null };
+      return { kind: binding.kind, anchor: isLoginRelativeScope(scope) ? normalizeOverlayAnchor(scope) : scope };
     } catch {
       return null;
     }
@@ -6314,7 +6402,7 @@ const App: React.FC = () => {
   const getProfileOverlayHint = async (
     savedServerId?: string,
     landingPath?: string | null,
-  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean } | null> => {
+  ): Promise<{ kind: 'rclone-crypt' | 'aerocrypt'; anchor: string | null; opensOutside: boolean; loginFolder: string | null } | null> => {
     if (!savedServerId) return null;
     try {
       const profiles = await loadSavedServerProfiles();
@@ -6326,18 +6414,30 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      const initialPath = landingPath === undefined
+      // On SFTP and SCP a relative Remote Path opens under the login folder,
+      // as the scope below reads it.
+      const configuredLanding = loginRelativeForm(landingPath === undefined
         ? profileInitialPath
-        : resolveUsernameTemplate(landingPath, profile.username);
-      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const scope = remoteScope || profileInitialPath || '';
+        : resolveUsernameTemplate(landingPath, profile.username), profile.protocol) || null;
+      const configuredScope = profileOverlayScope(profile);
+      // `~/docs` (the rclone import of an SFTP `nas:docs`) names a folder only
+      // the session knows: it is placed under the login folder the connection
+      // reports, as the backend anchors the overlay.
+      const loginFolder = isLoginRelativeScope(configuredScope) || isLoginRelativeScope(configuredLanding)
+        ? await invoke<string>('provider_login_folder').catch(() => '') || null
+        : null;
+      const scope = placeUnderLoginFolder(configuredScope, loginFolder) || '';
+      const initialPath = placeUnderLoginFolder(configuredLanding, loginFolder);
       return {
         kind: binding.kind,
-        anchor: scope && scope !== '/' ? scope : null,
+        // A scope still under the login folder (the session did not report
+        // it) has no anchor: the panel opens where the connect landed.
+        anchor: scope && scope !== '/' && !isLoginRelativeScope(scope) ? scope : null,
         // Remote Path is the opening. An empty Overlays Path means that
         // folder is the encrypted one. A root, or any parent of the island,
         // opens in plaintext and must not point the panel at the island.
         opensOutside: connectLandsOutsideOverlay(initialPath, scope),
+        loginFolder,
       };
     } catch {
       return null;
@@ -6383,7 +6483,7 @@ const App: React.FC = () => {
           ...profileOverlayApplyParams({
             binding,
             savedServerId,
-            overlayScope: binding.remoteScope || profile.initialPath || '',
+            overlayScope: profileOverlayScope(profile),
             password: typed.password,
             salt: typed.salt || storedSalt,
             keyfilePath: typed.keyfilePath || storedKeyfile,
@@ -6466,9 +6566,11 @@ const App: React.FC = () => {
       // connect flash the scramble/reveal on a plain server's real filenames,
       // because pendingOverlayUnlock fires for every saved profile, not just
       // overlay ones.
+      const badgeScope = knownCryptScope(await placeLoginRelativeScope(profileOverlayScope(profile)));
+      assertOverlayActivationCurrent(ownership);
       setCryptOverlayOwner({ savedServerId, sessionId: null });
       // Show the path-bar badge immediately (grey) for the whole decrypt window.
-      markSessionOverlayKind({ savedServerId }, binding.kind, binding.remoteScope ?? null);
+      markSessionOverlayKind({ savedServerId }, binding.kind, badgeScope);
       setOverlayDecrypting(true);
 
       // T3: live activity-log entry, settled to green by the phase-2 reload.
@@ -6480,9 +6582,7 @@ const App: React.FC = () => {
       // Filen reset pwd to "/" on connect and never cd when they merely list a
       // folder, so after applying we explicitly move the wrapped provider to the
       // plaintext anchor.
-      const initialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      const remoteScope = resolveUsernameTemplate(binding.remoteScope, profile.username);
-      const overlayScope = remoteScope || initialPath || '';
+      const overlayScope = profileOverlayScope(profile);
 
       try {
         await invoke('provider_arm_crypt_capability', ownership ? { expectedGeneration: ownership.generation } : undefined);
@@ -6588,13 +6688,13 @@ const App: React.FC = () => {
           const profiles = await loadSavedServerProfiles();
           const profile = profiles.find((p) => p.id === savedId);
           const binding = profile?.aeroCryptOverlay;
-          if (binding?.enabled) {
+          if (profile && binding?.enabled) {
             locked = {
               savedServerId: savedId,
               kind: binding.kind,
               reason: refusalFor(overlayRefusalRef.current, savedId),
             };
-            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, binding.remoteScope ?? null);
+            markSessionOverlayKind({ savedServerId: savedId }, binding.kind, knownCryptScope(await placeLoginRelativeScope(profileOverlayScope(profile))));
           }
         } catch {
           // best-effort: fall through as plain if the profile re-read fails
@@ -7018,11 +7118,14 @@ const App: React.FC = () => {
   };
 
   // Check provider capabilities after connection (for context menu features)
-  const refreshProviderCaps = useLatestCallback(async () => {
-    const protocol = liveConnectionParams.protocol;
+  const refreshProviderCaps = useLatestCallback(async (protocolOverride?: string) => {
+    const reqVersion = ++providerCapsVersionRef.current;
+    const protocol = protocolOverride ?? liveConnectionParams.protocol;
     if (!protocol || ['ftp', 'ftps'].includes(protocol) || isSshProtocol(protocol)) {
       // FTP/SFTP/SCP don't use provider_* capability commands
-      setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
+      if (reqVersion === providerCapsVersionRef.current) {
+        setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: protocol === 'webdav' });
+      }
       return;
     }
     try {
@@ -7032,8 +7135,10 @@ const App: React.FC = () => {
         invoke<boolean>('provider_supports_permissions').catch(() => false),
         invoke<boolean>('provider_supports_locking').catch(() => false),
       ]);
+      if (reqVersion !== providerCapsVersionRef.current) return;
       setProviderCaps({ versions, thumbnails, permissions, locking });
     } catch {
+      if (reqVersion !== providerCapsVersionRef.current) return;
       setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
     }
   });
@@ -7114,6 +7219,8 @@ const App: React.FC = () => {
     onCrossPanelDrop: async (files, fromRemote, targetDir, sourceKey) => {
       await crossPanelDropRef.current?.(files, fromRemote, targetDir, sourceKey);
     },
+    // Called on a drop, long after the render that declares it.
+    remoteActionGuard: () => remoteActionGuard(),
   });
 
   // --- Connection step logging helpers ---
@@ -7591,10 +7698,12 @@ const App: React.FC = () => {
       timeout: effectiveParams.options?.timeout || 30,
       ...scpFallbackConnectParam(protocol, effectiveParams.options),
       tls_mode: protocol === 'webdav'
-        ? effectiveParams.options?.webdavScheme
+        ? (loadedOption(effectiveParams.options, 'webdavScheme') as string | undefined)
         : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
-      verify_cert: effectiveParams.options?.verifyCert !== undefined ? effectiveParams.options.verifyCert : true,
-      allow_cleartext_storage: effectiveParams.options?.allowCleartextStorage === true,
+      verify_cert: loadedCertificateCheck(effectiveParams.options),
+      trust_pasv_address: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
+      allow_cleartext_endpoint: loadedOptionOn(effectiveParams.options, 'allowCleartextEndpoint'),
+      allow_cleartext_storage: loadedOptionOn(effectiveParams.options, 'allowCleartextStorage'),
       two_factor_code: effectiveParams.options?.two_factor_code || null,
       totp_secret: effectiveParams.options?.totp_secret || null,
       filen_api_key: filenApiKey,
@@ -8109,7 +8218,7 @@ const App: React.FC = () => {
   // FTP operations
   const connectToFtpImpl = async (
     overrideParams?: ConnectionParams,
-    opts?: { isAutoRetry?: boolean; existingLogId?: string },
+    opts?: { isAutoRetry?: boolean; existingLogId?: string; initialRemotePath?: string },
   ) => {
     // Snapshot the abort epoch: a Cancel on the connect listing bumps it, and
     // the branches below that swallow a failed listing (rather than throwing out
@@ -8130,6 +8239,7 @@ const App: React.FC = () => {
     // Use a local copy to avoid direct React state mutation (C3 audit fix)
     // overrideParams: used by IntroHub form tabs to pass params directly (avoids stale React state)
     let effectiveParams = overrideParams || connectionParams;
+    const remoteDirInput = opts?.initialRemotePath ?? quickConnectDirs.remoteDir;
     if (connectionParams.server && connectionParams.server.includes(':')) {
       const lastColon = connectionParams.server.lastIndexOf(':');
       const possiblePort = connectionParams.server.substring(lastColon + 1);
@@ -8222,7 +8332,7 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      let oauthInitialPath = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username) || '/';
+      let oauthInitialPath = resolveUsernameTemplate(remoteDirInput, effectiveParams.username) || '/';
       let overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
@@ -8373,6 +8483,8 @@ const App: React.FC = () => {
             setActiveSessionId(reusable.id);
             setConnectionParams(reusable.connectionParams);
             setSessions(prev => prev.map(s => s.id === reusable.id ? { ...s, status: 'connected' } : s));
+            // The backend is connected to this tab's server: no longer uncertain.
+            confirmBackendConnection();
             setIsConnected(true);
             setShowRemotePanel(true);
             setShowLocalPreview(false);
@@ -8473,7 +8585,7 @@ const App: React.FC = () => {
         // doc comment. Then strip the literal Nextcloud WebDAV root for
         // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles saved before
         // basePath was dropped from the preset.
-        const qcTemplateResolved = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+        const qcTemplateResolved = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
         const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
           qcTemplateResolved,
           effectiveParams.providerId,
@@ -8524,11 +8636,14 @@ const App: React.FC = () => {
         // Listing a path need not change a provider's cwd (for example Filen).
         // An outside-scope landing must also survive Refresh at path:null.
         const overlaySavedId = effectiveParams.savedServerId;
-        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, resolvedRemoteDir) : null;
+        // A relative or `~` start folder, as one absolute folder, before
+        // anything lists it (the connect may have opened it already).
+        const startFolder = await placeStartFolder(resolvedRemoteDir);
+        const overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, startFolder) : null;
         logger.debug('[connectToFtp] Calling provider_list_files for:', protocol);
         const response = await withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
-          path: overlayHint?.opensOutside ? resolvedRemoteDir || '/' : resolvedRemoteDir || null
-        }), listingReason(resolvedRemoteDir));
+          path: overlayHint?.opensOutside ? startFolder || '/' : startFolder || null
+        }), listingReason(startFolder));
         logger.debug('[connectToFtp] provider_list_files response:', {
           fileCount: response.files?.length ?? 0,
           currentPath: response.current_path,
@@ -8600,7 +8715,7 @@ const App: React.FC = () => {
           quickConnectDirs.localDir || currentLocalPath,
           overlayHint && !overlayHint.opensOutside ? [] : files,
           undefined,
-          overlayHint ? resolvedRemoteDir || '/' : undefined
+          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
         );
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -8661,7 +8776,11 @@ const App: React.FC = () => {
       }
       const ftpProto = effectiveParams.protocol || 'ftp';
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
-      await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', effectiveParams as unknown as Record<string, unknown>));
+      await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', {
+        ...(effectiveParams as unknown as Record<string, unknown>),
+        // #1506 Requested 188: the PASV address opt-in rides with the legacy command.
+        trustPasvAddress: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
+      }));
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
       // login (#180 / 4486730822). Separate signal from health.
@@ -8680,7 +8799,7 @@ const App: React.FC = () => {
       // resolution (Nextcloud-based presets) happens here too, mirroring the
       // provider-API path above.
       let ftpResponse: FileListResponse | null = null;
-      const ftpResolvedRemoteDir = resolveUsernameTemplate(quickConnectDirs.remoteDir, effectiveParams.username);
+      const ftpResolvedRemoteDir = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
       if (ftpResolvedRemoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
         await changeRemoteDirectory(ftpResolvedRemoteDir, effectiveParams.protocol || 'ftp');
@@ -8702,7 +8821,7 @@ const App: React.FC = () => {
       await createSession(
         effectiveParams.displayName || effectiveParams.server,
         effectiveParams,
-        ftpResponse?.current_path || quickConnectDirs.remoteDir || currentRemotePath,
+        ftpResponse?.current_path || remoteDirInput || currentRemotePath,
         quickConnectDirs.localDir || currentLocalPath,
         ftpResponse?.files
       );
@@ -8714,7 +8833,7 @@ const App: React.FC = () => {
       // A 550 after a successful login is a Remote Path problem, not a
       // credentials one (see isRemotePathNotFoundOnConnect): report it honestly.
       if (isRemotePathNotFoundOnConnect(error)) {
-        const badPath = quickConnectDirs.remoteDir || '/';
+        const badPath = remoteDirInput || '/';
         const pathMsg = t('activity.connect_error_path_not_found', { server: effectiveParams.server, path: badPath });
         humanLog.updateEntry(logId, { status: 'error', message: pathMsg });
         notify.error(t('connection.connectionFailed'), pathMsg);
@@ -8831,6 +8950,8 @@ const App: React.FC = () => {
       }
     } catch { /* ignore */ }
 
+    // The backend is connected to this tab's server: no longer uncertain.
+    confirmBackendConnection();
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
       serverId: serverName,
@@ -8973,6 +9094,9 @@ const App: React.FC = () => {
     quotaVersionRef.current++; // Invalidate any in-flight quota response
     quotaConnectionRef.current++; // ...and any scan of the session left behind
     setStorageQuota(null); // Clear stale quota while reconnecting
+    providerCapsVersionRef.current++; // Invalidate any in-flight capability response from the previous session
+    setProviderCaps({ versions: false, thumbnails: false, permissions: false, locking: false });
+    setLockedFiles(new Map());
 
     // Load cached data immediately (zero latency UX)
     setRemoteFiles(targetSession.remoteFiles);
@@ -9130,7 +9254,7 @@ const App: React.FC = () => {
                 lower.includes('token expired') ||
                 (lower.includes('token') && lower.includes('refresh'))) {
               logger.debug('[switchSession] OAuth token invalid, re-authenticating...');
-              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } }))));
+              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } })))));
               await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
             } else {
               throw connectErr;
@@ -9193,7 +9317,10 @@ const App: React.FC = () => {
         } catch { connectScope.assert();
           // Ignore if not connected to OAuth
         }
-        await connectScope.step(() => runConnect('connect_ftp', targetSession.connectionParams as unknown as Record<string, unknown>, connectScope));
+        await connectScope.step(() => runConnect('connect_ftp', {
+          ...(targetSession.connectionParams as unknown as Record<string, unknown>),
+          trustPasvAddress: loadedOptionOn(targetSession.connectionParams.options, 'trustPasvAddress'),
+        }, connectScope));
 
         // Navigate to the saved path to restore session state.
         // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
@@ -9295,6 +9422,8 @@ const App: React.FC = () => {
       }
 
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
+      // The backend is connected to this tab's server: no longer uncertain.
+      confirmBackendConnection();
       // The tab bar calls here directly, and a parked tab left the workspace
       // marked disconnected. It reads as connected again only now: earlier,
       // its cached files would take remote actions while another server still
@@ -9326,6 +9455,9 @@ const App: React.FC = () => {
 
       // Fetch storage quota after successful reconnection
       fetchStorageQuota(protocol, targetSession.connectionParams, { newConnection: true });
+      // Refresh provider capabilities for the newly active session (e.g. switching between AWS S3 and Fastly S3 where isConnected and protocol stay unchanged)
+      void refreshProviderCaps(protocol);
+      setLockedFiles(new Map());
 
       // Also refresh local files for this session's local path. The remote
       // session is up by now: a local folder that is gone or unreadable must
@@ -9670,6 +9802,7 @@ const App: React.FC = () => {
             : { endpoint: (cloudServer.options?.endpoint as string | undefined) || null, signingRegion: cloudServer.options?.region as string | undefined };
           const providerParams = {
             protocol,
+            provider_id: cloudServer.providerId || null,
             profile_id: cloudServer.id || null,
             server: cloudServer.host,
             port: cloudServer.port || (isSshProtocol(protocol) ? 22 : 443),
@@ -9686,9 +9819,13 @@ const App: React.FC = () => {
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,
             ...scpFallbackConnectParam(protocol, cloudServer.options),
-            tls_mode: cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
-            verify_cert: cloudServer.options?.verifyCert !== undefined ? cloudServer.options.verifyCert : true,
-            allow_cleartext_storage: cloudServer.options?.allowCleartextStorage === true,
+            tls_mode: protocol === 'webdav'
+              ? (loadedOption(cloudServer.options, 'webdavScheme') as string | undefined)
+              : cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
+            verify_cert: loadedCertificateCheck(cloudServer.options),
+            trust_pasv_address: loadedOptionOn(cloudServer.options, 'trustPasvAddress'),
+            allow_cleartext_endpoint: loadedOptionOn(cloudServer.options, 'allowCleartextEndpoint'),
+            allow_cleartext_storage: loadedOptionOn(cloudServer.options, 'allowCleartextStorage'),
             two_factor_code: cloudServer.options?.two_factor_code || null,
             totp_secret: cloudServer.options?.totp_secret || null,
             filen_api_key: cloudFilenApiKey,
@@ -10134,6 +10271,35 @@ const App: React.FC = () => {
   // protocol, so issue both. Shared by the connect abort (which then clears the
   // remote view and the tabs the connect added) and the switch abort (which
   // keeps every healthy tab).
+  /** The teardown of a cancelled connect or switch, counted while it runs
+   *  (nothing is bound to the live tab meanwhile) and bounded: one that hangs
+   *  while it still owns the backend leaves it marked uncertain, which only a
+   *  connection confirmed afterwards clears, and reports not dropped. */
+  const boundedTeardown = async (owns: () => boolean): Promise<boolean> => {
+    backendTeardownsRef.current += 1;
+    const confirmedBefore = backendConfirmationsRef.current;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const outcome = await Promise.race([
+        lockAndDropBackendConnection(owns),
+        new Promise<'timeout'>(resolve => { timer = setTimeout(() => resolve('timeout'), BACKEND_TEARDOWN_BOUND_MS); }),
+      ]);
+      if (outcome === 'timeout') {
+        // Unless a connection was confirmed since this teardown started: its
+        // outcome is the backend's now, which an old timeout must not
+        // overrule. A newer connect that took over but stopped before
+        // connecting (a missing field, a refused host key) replaced nothing,
+        // so the backend stays uncertain (CodeRabbit on #1526).
+        if (backendConfirmationsRef.current === confirmedBefore) backendUncertainRef.current = true;
+        return false;
+      }
+      return outcome;
+    } finally {
+      clearTimeout(timer);
+      backendTeardownsRef.current -= 1;
+    }
+  };
+
   const lockAndDropBackendConnection = async (owns: () => boolean) => {
     const overlaySessionId = aeroVaultOverlaySession?.sessionId;
     return runOwnedConnectionCleanup(owns, [
@@ -10164,7 +10330,7 @@ const App: React.FC = () => {
   const abortConnectAfterCancel = async (owns: () => boolean, phaseVersion: number) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    if (!await boundedTeardown(owns) || !owns()) return;
     clearCryptOverlayState();
     setIsConnected(false);
     setLoading(false);
@@ -10202,7 +10368,7 @@ const App: React.FC = () => {
   const abortSwitchAfterCancel = async (owns: () => boolean) => {
     if (!owns()) return;
     remoteConnectPhaseRef.current = false;
-    if (!await lockAndDropBackendConnection(owns) || !owns()) return;
+    if (!await boundedTeardown(owns) || !owns()) return;
     clearCryptOverlayState();
   };
 
@@ -10339,7 +10505,7 @@ const App: React.FC = () => {
             setRemoteSearchResults(null);
           } catch {
             if (navId !== remoteNavCounter.current) return null;
-            setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath });
+            setSyncNavDialog({ missingPath: newRemotePath, isRemote: true, targetPath: newRemotePath, target: snapshotQueuedTarget() });
           }
         } else if (action.kind === 'navigate') {
           const response: FileListResponse = await invoke('provider_change_dir', { path: action.path });
@@ -10349,7 +10515,7 @@ const App: React.FC = () => {
           setSelectedRemoteFiles(new Set());
           setRemoteSearchResults(null);
         } else if (action.kind === 'missing') {
-          setSyncNavDialog({ missingPath: action.path, isRemote: true, targetPath: action.path });
+          setSyncNavDialog({ missingPath: action.path, isRemote: true, targetPath: action.path, target: snapshotQueuedTarget() });
         } else if (action.kind === 'conflict') {
           notify.error(t('cloud.conflict'), syncMirrorConflictText(action.path, action.candidates));
         }
@@ -10492,18 +10658,22 @@ const App: React.FC = () => {
 
   // Handle sync nav dialog actions
   const handleSyncNavCreateFolder = async () => {
+    // The server the navigation was on when it asked to create the folder.
+    const onTarget = remoteActionGuard(syncNavDialog?.target);
     if (!syncNavDialog) return;
     const protocol = (liveConnectionParams.protocol) as ProviderType | undefined;
     const isProviderConn = usesProviderApi(protocol);
     try {
       if (syncNavDialog.isRemote) {
         if (isProviderConn) {
+          onTarget();
           await invoke('provider_mkdir', { path: syncNavDialog.targetPath });
           const response: FileListResponse = await invoke('provider_change_dir', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
           setSelectedRemoteFiles(new Set());
         } else {
+          onTarget();
           await invoke('create_remote_folder', { path: syncNavDialog.targetPath });
           const response: FileListResponse = await invoke('change_directory', { path: syncNavDialog.targetPath });
           setRemoteFiles(response.files);
@@ -10600,7 +10770,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }): Promise<boolean> => {
+  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }, onTarget?: () => void): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -10612,8 +10782,12 @@ const App: React.FC = () => {
     // True only when the file or folder actually landed: a "cut" paste deletes
     // the source on this answer, so a skip, a cancel or an error must say no.
     let completed = false;
+    // Bound to the server live now, unless the caller bound it earlier: the
+    // overwrite question below gives the user time to switch tabs.
+    const checkTarget = onTarget ?? queuedTargetGuard(snapshotQueuedTarget());
 
     const assertOwnership = () => {
+      checkTarget();
       if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
         throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
       }
@@ -10778,11 +10952,16 @@ const App: React.FC = () => {
     explicitRemoteDir?: string,
     onError: TransferErrorMode = 'notify',
     ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean },
+    // The caller's target check, run with the ownership one right before each
+    // write (see `queuedTargetGuard`); by default the server live at the call.
+    onTarget?: () => void,
   ): Promise<boolean> => {
     const startTime = Date.now();
     // True only when the file or folder actually landed (see downloadFile).
     let completed = false;
+    const checkTarget = onTarget ?? queuedTargetGuard(snapshotQueuedTarget());
     const assertOwnership = () => {
+      checkTarget();
       if (ownership && !isLiveOnProfile(ownership.profileId, ownership.requireOverlay)) {
         throw new Error('CONNECTION_CHANGED: the restored transfer profile is no longer active');
       }
@@ -10926,7 +11105,7 @@ const App: React.FC = () => {
             workingBranch: gitHubRepoInfo.workingBranch || undefined,
             onCommit: (message: string) => {
               setGitHubCommitDialog(null);
-              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership);
+              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership, checkTarget);
             },
           });
           // Deferred to the commit dialog: not uploaded yet.
@@ -11004,15 +11183,21 @@ const App: React.FC = () => {
       if (entry.profile_id) {
         const profiles = await loadSavedServerProfiles();
         const profile = profiles.find(p => p.id === entry.profile_id);
-        const requireOverlay = !!profile && restoredTransferRequiresOverlay(profile, entry.remote_path);
-        if (!profile || !isLiveOnProfile(entry.profile_id, requireOverlay)) {
+        if (!profile || !isLiveOnProfile(entry.profile_id)) {
+          throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
+        }
+        // The backend compares the active overlay's absolute anchor, so a
+        // scope under the login folder is placed through the live session.
+        const loginFolder = await restoredTransferLoginFolder(profile);
+        const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path, loginFolder);
+        if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile is not ready');
         }
         const generation = await invoke<number>('provider_connection_generation');
         if (!isLiveOnProfile(entry.profile_id, requireOverlay)) {
           throw new Error('CONNECTION_CHANGED: the restored transfer profile changed');
         }
-        ownership = { profileId: entry.profile_id, generation, requireOverlay, cryptScope: restoredTransferCryptScope(profile) };
+        ownership = { profileId: entry.profile_id, generation, requireOverlay, cryptScope: restoredTransferCryptScope(profile, loginFolder) };
       }
       if (direction === 'download') {
         await downloadFile(
@@ -11136,7 +11321,181 @@ const App: React.FC = () => {
 
   const { isLiveOnProfile, waitForLiveProfile } = useResumeProfileGuard(isConnected, sessions, activeSessionId);
 
-  const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay = restoredTransferRequiresOverlay(profile, profile.initialPath || '/')): Promise<boolean> => {
+  // The crypt overlay over the live connection, by its vault: `null` when the
+  // provider is not wrapped (no overlay, or one locked or left out of scope).
+  // The overlay as a queued write is bound to it: the vault, its kind and the
+  // scope it covers. The same vault unlocked again matches, so a Retry after a
+  // relock still runs; another vault of the same kind does not.
+  const liveOverlay = useLatestCallback((): string | null => {
+    const overlay = sessions.find(session => session.id === activeSessionId)?.cryptOverlay;
+    return overlay ? JSON.stringify([overlay.vaultId, overlay.kind, overlay.remoteScope ?? null]) : null;
+  });
+  const liveProfileId = useLatestCallback((): string | null =>
+    savedProfileIdOf(liveConnectionParams, sessions.find(session => session.id === activeSessionId)));
+
+  /** What a batch is queued for: the live server, its account and the overlay
+   *  over it, taken when the batch starts, before a destination listing or an
+   *  overwrite question gives the user time to switch tabs. */
+  const snapshotQueuedTarget = useLatestCallback((): QueuedTarget => ({
+    params: { ...liveConnectionParams },
+    profileId: liveProfileId(),
+    sessionId: activeSessionId,
+    connection: connectionNumberOf(liveConnectionParams),
+    oauthLogins: oauthLoginCount(oauthLoginKey(liveConnectionParams.protocol, liveProfileId())),
+    overlay: liveOverlay(),
+  }));
+
+  /** A queued transfer's Start or Retry, bound to the server it was queued
+   *  for and to its crypt overlay. The callback ran on whatever backend was
+   *  live when the user clicked, so after a tab switch a staged or failed
+   *  upload went to the other server (deep scan item 6), and after the overlay
+   *  was locked an encrypted upload went out in plaintext. It now fails with
+   *  the reason instead, and runs again once that target is live. */
+  const boundToQueuedServer = useLatestCallback((queuedFor: QueuedTarget, id: string, run: () => unknown): (() => Promise<void>) => async () => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (problem) {
+      transferQueue.failTransfer(id, t(problem));
+      return;
+    }
+    await run();
+  });
+
+  /** Whether two connections log in with other account keys: the options the
+   *  target comparison leaves out as credentials, yet that pick the account
+   *  (Filen's API key, an S3 access key, an API key, a client secret, a SAS
+   *  token). Absent and empty are the same absence. */
+  const accountKeysDiffer = (live: ConnectionParams, queued: ConnectionParams) => {
+    const liveOptions = (live.options ?? {}) as Record<string, unknown>;
+    const queuedOptions = (queued.options ?? {}) as Record<string, unknown>;
+    return ACCOUNT_KEY_OPTIONS.some(key => (liveOptions[key] || '') !== (queuedOptions[key] || ''));
+  };
+
+  /** Whether the backend serves the live tab now: not while a connect or a
+   *  tab switch runs (the tab is the new one, the backend not yet), while a
+   *  cancelled one is torn down, or after a teardown that hung. */
+  const backendServesLiveTab = () =>
+    !remoteConnectPhaseRef.current && backendTeardownsRef.current === 0 && !backendUncertainRef.current;
+
+  /** The target check of a direct remote action (a rename, a delete, a new
+   *  folder), on the target taken when the action started: run right before
+   *  each of its writes, so a dialog the user answered meanwhile, a tab
+   *  switch or a reconnect cannot move the write to another server. */
+  const remoteActionGuard = (target: QueuedTarget = snapshotQueuedTarget()) => () => {
+    if (queuedTargetProblem(target)) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
+  };
+
+  /** Why the live connection is no longer the target a batch was queued for,
+   *  as the message key, or `null` when it still is. */
+  const queuedTargetProblem = useLatestCallback((queuedFor: QueuedTarget): string | null => {
+    // A tab switch or a connect activates the new tab before the backend has
+    // reconnected, and a cancelled one drops the half-open connection after
+    // its phase ends: until either is done, the live tab is not the server the
+    // backend writes to, or reads from.
+    if (!backendServesLiveTab()) return 'transfer.queuedForAnotherServer';
+    if (!isConnected || !isSameConnection(liveConnectionParams, queuedFor.params)) return 'transfer.queuedForAnotherServer';
+    // The same server fields can reach another account: FileLu's API key is
+    // the password, and an OAuth account is told apart only by its profile.
+    // A Quick Connect queued with no profile may be linked to a saved one by a
+    // reconnect: with every field and the key unchanged it is the same
+    // account, so only a profile it was queued under has to match. Not for
+    // OAuth: its account is in a token the params do not carry, so the same
+    // fields can be another account and only the profile tells them apart.
+    const queuedProtocol = queuedFor.params.protocol as ProviderType | undefined;
+    const accountInParams = !queuedProtocol || !(isOAuthProvider(queuedProtocol) || isFourSharedProvider(queuedProtocol));
+    const profileMustMatch = queuedFor.profileId !== null || !accountInParams;
+    if ((liveConnectionParams.password || '') !== (queuedFor.params.password || '')
+      || accountKeysDiffer(liveConnectionParams, queuedFor.params)
+      || (profileMustMatch && liveProfileId() !== queuedFor.profileId)) {
+      return 'transfer.queuedForAnotherServer';
+    }
+    // An interactive OAuth login since the batch was queued (a reconnect of the
+    // same tab with an expired token, say) may have picked another account,
+    // and nothing in the params or the profile would show it.
+    if (!accountInParams
+      && oauthLoginCount(oauthLoginKey(queuedProtocol, queuedFor.profileId)) !== queuedFor.oauthLogins) return 'transfer.queuedForAnotherServer';
+    // An OAuth connection with no saved profile has nothing in the params that
+    // names its account: only the very connection it was queued on is known
+    // to be that account, so another tab or a new login is refused.
+    if (!accountInParams && queuedFor.profileId === null
+      && (activeSessionId !== queuedFor.sessionId || connectionNumberOf(liveConnectionParams) !== queuedFor.connection)) {
+      return 'transfer.queuedForAnotherServer';
+    }
+    if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';
+    return null;
+  });
+
+  /** The check a batch runs right before each write, after every await: a
+   *  check at the start alone left the overwrite question, the destination
+   *  listing and the files before it as windows in which the user could switch
+   *  to another server, and the write then went there. */
+  const queuedTargetGuard = (queuedFor: QueuedTarget) => () => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (problem) throw new QueuedTargetChangedError(t(problem));
+  };
+
+  /** Fails the rows from `from` on when the batch's target is gone, so the
+   *  files left neither ask their overwrite question nor start; true when it
+   *  did. */
+  const failQueuedRestIfRetargeted = (queuedFor: QueuedTarget, items: { id: string }[], from: number): boolean => {
+    const problem = queuedTargetProblem(queuedFor);
+    if (!problem) return false;
+    for (let j = from; j < items.length; j++) transferQueue.failTransfer(items[j].id, t(problem));
+    return true;
+  };
+
+  /** The editor's save: a local file to its path, a remote one to its own
+   *  server only (see `PreviewFile.target`). */
+  const saveDevToolsFile = useLatestCallback(async (content: string, file: PreviewFile) => {
+    // A remote file is its server's: saved after a switch to another
+    // tab, the content went to the file at the same path there.
+    // A refused or failed save rejects, so the editor keeps the buffer
+    // marked modified: it was not saved.
+    const refuse = (): never => {
+      notify.error(t('toast.saveFailed'), t('toast.saveOnAnotherServer'));
+      throw new QueuedTargetChangedError(t('toast.saveOnAnotherServer'));
+    };
+    if (file.isRemote && (!file.target || queuedTargetProblem(file.target))) refuse();
+    const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
+    try {
+      if (file.isRemote) {
+        // The connection read now, between two checks, and held by the
+        // backend through the write: a switch that comes first gets the
+        // save refused, never written to the server now in the slot. Read
+        // at save time, not at open, so a reconnect to the same server in
+        // between does not refuse the save.
+        const expectedGeneration = await invoke<number>('provider_connection_generation');
+        if (!file.target || queuedTargetProblem(file.target)) refuse();
+        try {
+          await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
+        } catch (error) {
+          if (String(error).includes('CONNECTION_CHANGED')) refuse();
+          throw error;
+        }
+        humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
+        notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
+      } else {
+        await invoke('save_local_file', { path: file.path, content });
+        humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
+        notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
+      }
+    } catch (error) {
+      humanLog.logError('UPLOAD', { filename: file.name }, logId);
+      // A refusal has said why already.
+      if (!(error instanceof QueuedTargetChangedError)) notify.error(t('toast.saveFailed'), String(error));
+      throw error;
+    }
+    // The save is done; a listing that fails to refresh does not undo it.
+    try {
+      if (file.isRemote) await loadRemoteFiles(undefined, true);
+      else await refreshLocalPanelForPath(parentDir(file.path));
+    } catch {
+      // The panel shows its own error; the file was saved.
+    }
+  });
+
+  // `requireOverlay` is the caller's: before the connect no session can place
+  // a scope under the login folder, so a default read here left it unplaced.
+  const connectSavedProfileForResume = async (profile: ServerProfile, requireOverlay: boolean): Promise<boolean> => {
     const protocol = (profile.protocol || 'ftp') as ProviderType;
 
     // Reuse an open session tab when one already exists for this profile.
@@ -11208,7 +11567,7 @@ const App: React.FC = () => {
           provider: oauthProvider,
           profileId: profile.id,
         });
-        if (!hasTokens) await invoke('oauth2_full_auth', { params: baseParams });
+        if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
         let oauthResult: { display_name?: string; account_email?: string | null };
         try {
           oauthResult = await invoke('oauth2_connect', { params: baseParams });
@@ -11221,7 +11580,7 @@ const App: React.FC = () => {
             || lower.includes('authentication failed')
             || (lower.includes('invalid') && lower.includes('access_token'))
           ) {
-            await invoke('oauth2_full_auth', { params: baseParams });
+            await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
             oauthResult = await invoke('oauth2_connect', { params: baseParams });
           } else {
             throw connectErr;
@@ -11265,11 +11624,11 @@ const App: React.FC = () => {
         }
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });
         const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };
-        if (!hasTokens) await invoke('fourshared_full_auth', { params });
+        if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
         try {
           await invoke('fourshared_connect', { params });
         } catch {
-          await invoke('fourshared_full_auth', { params });
+          await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
           await invoke('fourshared_connect', { params });
         }
         await connectToFtp({
@@ -11390,11 +11749,14 @@ const App: React.FC = () => {
       // Plaintext entries do not wait behind an encrypted sibling. Each
       // callback retains its own requirement through the queued microtask and
       // the backend ownership check, even after the user navigates elsewhere.
+      // The session is live on the profile here, so a scope under the login
+      // folder is placed through it, as on a retry (`retryRestoredEntry`).
       const resumeOwnedEntries = async () => {
+        const loginFolder = await restoredTransferLoginFolder(profile);
         await Promise.all(groupIds.map(async id => {
           const entry = journalDescriptorsRef.current.get(id);
           if (!entry) return;
-          const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path);
+          const requireOverlay = restoredTransferRequiresOverlay(profile, entry.remote_path, loginFolder);
           if (!await waitForLiveProfile(profileId, requireOverlay)) return;
           transferQueue.clearRestoredFlags([id]);
           logResume(1, profile.name);
@@ -11575,7 +11937,7 @@ const App: React.FC = () => {
   const formatClipboardFileCount = (count: number) => count === 1 ? '1 file' : `${count} files`;
 
   const clipboardCopy = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
-    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy' };
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'copy', target: isRemote ? snapshotQueuedTarget() : null };
     setHasClipboard(true);
     notify.success(t('contextMenu.copied') || 'Copied', formatClipboardFileCount(files.length));
   };
@@ -12829,7 +13191,7 @@ const App: React.FC = () => {
   ]);
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
-    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut' };
+    fileClipboardRef.current = { files, sourceDir, isRemote, operation: 'cut', target: isRemote ? snapshotQueuedTarget() : null };
     setHasClipboard(true);
     notify.success(t('contextMenu.cut') || 'Cut', formatClipboardFileCount(files.length));
   };
@@ -12839,6 +13201,29 @@ const App: React.FC = () => {
     if (!cb) return;
 
     const { files, isRemote: sourceIsRemote, operation, sourceDir } = cb;
+    // Remote files pasted after a switch to another server named that
+    // server's files at the same paths, and a cut then deleted or moved them
+    // there. The paste waits, clipboard kept, until their server is live.
+    if (cb.target && queuedTargetProblem(cb.target)) {
+      notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
+      return;
+    }
+    // The server of the paste: the source's, or the destination live now. Each
+    // remote write below checks it again, since every await is a window.
+    const pasteTarget = cb.target ?? snapshotQueuedTarget();
+    const onPasteTarget = queuedTargetGuard(pasteTarget);
+    /** True, said once, when the paste's server is no longer live. */
+    let retargetNotified = false;
+    /** The files a cut has moved all the way: the rest stay on the clipboard
+     *  when a switch stops it, so Paste can finish the move once their server
+     *  is live again (Greptile on #1526). */
+    const moveFinished = new Set<string>();
+    const pasteRetargeted = () => {
+      if (!queuedTargetProblem(pasteTarget)) return false;
+      if (!retargetNotified) notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
+      retargetNotified = true;
+      return true;
+    };
 
     // Cross-panel paste → upload or download using clipboard paths directly
     if (sourceIsRemote !== targetIsRemote) {
@@ -12875,7 +13260,7 @@ const App: React.FC = () => {
             };
           }),
           targetDir,
-          { allowStaging: false },
+          { allowStaging: false, queuedTarget: pasteTarget },
         );
         const landedSources = new Set(outcome.succeededSources);
         for (const file of pasteBatch) {
@@ -12886,13 +13271,13 @@ const App: React.FC = () => {
       const pasteItems = stopAfterBatch ? [] : pasteBatch.length > 0 ? pasteRest : files;
 
       for (const file of pasteItems) {
-        if (batchCancelledRef.current) break;
+        if (batchCancelledRef.current || pasteRetargeted()) break;
         try {
           const ok = sourceIsRemote
             // Remote → Local: download into the paste target panel path (not always panel 1)
-            ? await downloadFile(file.path, file.name, targetDir, file.is_dir)
+            ? await downloadFile(file.path, file.name, targetDir, file.is_dir, undefined, false, 'notify', undefined, onPasteTarget)
             // Local → Remote: upload each file using stored path (not current listing)
-            : await uploadFile(file.path, file.name, file.is_dir);
+            : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'notify', undefined, onPasteTarget);
           if (ok) landed.push(file);
         } catch (e) {
           if (!batchCancelledRef.current) {
@@ -12903,20 +13288,27 @@ const App: React.FC = () => {
       if (sourceIsRemote) await refreshLocalPanelForPath(targetDir);
       else loadRemoteFiles();
 
+      // The sources deleted: a remote one only while its server is live.
+      let moved = 0;
       if (operation === 'cut' && landed.length > 0) {
         // Delete source after successful transfer, and only those sources.
         if (sourceIsRemote && aeroVaultOverlaySession?.sessionId) {
-          try {
-            await invoke<number>('aerovault_overlay_delete_entries', {
-              sessionId: aeroVaultOverlaySession?.sessionId,
-              entryPaths: landed.map((f) => f.path),
-              recursive: true,
-            });
-          } catch (e) {
-            console.error('Failed to delete overlay source after cut', e);
+          if (!pasteRetargeted()) {
+            try {
+              await invoke<number>('aerovault_overlay_delete_entries', {
+                sessionId: aeroVaultOverlaySession?.sessionId,
+                entryPaths: landed.map((f) => f.path),
+                recursive: true,
+              });
+              moved = landed.length;
+              for (const file of landed) moveFinished.add(file.path);
+            } catch (e) {
+              console.error('Failed to delete overlay source after cut', e);
+            }
           }
         } else {
           for (const file of landed) {
+            if (sourceIsRemote && pasteRetargeted()) break;
             try {
               if (sourceIsRemote) {
                 const protocol = liveConnectionParams.protocol;
@@ -12928,6 +13320,8 @@ const App: React.FC = () => {
               } else {
                 await invoke('delete_local_file', { path: file.path });
               }
+              moved++;
+              moveFinished.add(file.path);
             } catch (e) {
               console.error(`Failed to delete source after cut: ${file.name}`, e);
             }
@@ -12936,9 +13330,9 @@ const App: React.FC = () => {
         if (sourceIsRemote) loadRemoteFiles(undefined, true);
         else await refreshLocalPanelForPath(sourceDir);
       }
-      if (operation === 'cut' && landed.length < files.length) {
+      if (operation === 'cut' && moved < files.length) {
         notify.warning(
-          t('toast.cutPartial', { moved: landed.length, total: files.length }),
+          t('toast.cutPartial', { moved, total: files.length }),
         );
       }
     }
@@ -12951,6 +13345,7 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = targetIsRemote && !!aeroVaultOverlaySession?.sessionId;
 
         for (const file of files) {
+          if (targetIsRemote && pasteRetargeted()) break;
           const sep = targetIsRemote ? '/' : (targetDir.includes('\\') ? '\\' : '/');
           const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
           try {
@@ -12971,6 +13366,7 @@ const App: React.FC = () => {
               // the target directory (irreversible, no trash). (audit C-F01)
               await invoke('rename_local_file', { from: file.path, to: destPath, overwrite: false });
             }
+            moveFinished.add(file.path);
           } catch (e) {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
           }
@@ -13016,6 +13412,10 @@ const App: React.FC = () => {
           // Remote copy via server-side copy API
           let anyFailed = false;
           for (const file of files) {
+            if (pasteRetargeted()) {
+              anyFailed = true;
+              break;
+            }
             const destPath = `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
             const from = file.path || `${targetDir}${targetDir.endsWith('/') ? '' : '/'}${file.name}`;
             // Same directory: add " (copy)" suffix
@@ -13049,10 +13449,16 @@ const App: React.FC = () => {
       }
     }
 
-    // Clear clipboard after cut (not after copy, so user can paste multiple times)
+    // Clear clipboard after cut (not after copy, so user can paste multiple
+    // times). A cut a switch stopped keeps the files it did not move.
     if (operation === 'cut') {
-      fileClipboardRef.current = null;
-      setHasClipboard(false);
+      const left = files.filter(file => !moveFinished.has(file.path));
+      if (retargetNotified && left.length > 0) {
+        fileClipboardRef.current = { ...cb, files: left };
+      } else {
+        fileClipboardRef.current = null;
+        setHasClipboard(false);
+      }
     }
   };
 
@@ -13119,8 +13525,14 @@ const App: React.FC = () => {
     targetDir: string,
     // Clipboard paste and the planner never staged (they run, then maybe
     // delete the source); only the panel entry points honour auto-start OFF.
-    options: { allowStaging?: boolean } = {},
+    // A caller that started before a wait (a picker, a listing, a paste of
+    // files cut earlier) passes the target it took then.
+    options: { allowStaging?: boolean; queuedTarget?: QueuedTarget } = {},
   ): Promise<FileBatchResult> => {
+    // Taken before any await: the listing and the overwrite questions below
+    // give the user time to switch to another server.
+    const queuedTarget = options.queuedTarget ?? snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     const isDownload = direction === 'download';
     const activeSession = sessions.find(s => s.id === activeSessionId);
     const protocol = liveConnectionParams.protocol;
@@ -13170,6 +13582,16 @@ const App: React.FC = () => {
       return result;
     }
     for (let i = 0; i < items.length; i++) {
+      // After a switch the questions left would be about the other server's
+      // folder: the batch stops as a failed preflight does, before any row.
+      const retargeted = queuedTargetProblem(queuedTarget);
+      if (retargeted) {
+        resetOverwriteSettings();
+        result.failed = items.length - result.skipped;
+        result.aborted = true;
+        notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), t(retargeted));
+        return result;
+      }
       const item = items[i];
       let overwriteResult: Awaited<ReturnType<typeof checkOverwrite>>;
       try {
@@ -13253,7 +13675,16 @@ const App: React.FC = () => {
     const setPrivate = async (landedEntries: Entry[]) => {
       if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return;
       const command = protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy';
-      for (const entry of landedEntries) {
+      for (const [index, entry] of landedEntries.entries()) {
+        // Privacy is set on the server the batch was queued for, or not at
+        // all; the files left as the provider made them are named, not
+        // dropped in silence (Greptile on #1526: they can stay public).
+        if (queuedTargetProblem(queuedTarget)) {
+          const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
+          const left = landedEntries.slice(index).map(rest => rest.display_name);
+          notify.error(t('activity.set_private_error', { provider }), left.join(', '));
+          return;
+        }
         try {
           await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false });
         } catch { /* already private, or removed meanwhile */ }
@@ -13283,6 +13714,7 @@ const App: React.FC = () => {
         } : {}),
       };
       try {
+        onQueuedTarget();
         if (isProvider) {
           const outcome = await invoke<{
             completed: number; failed: number; cancelled: boolean; message: string; succeeded: number[];
@@ -13330,6 +13762,7 @@ const App: React.FC = () => {
         result.sent++;
         transferQueue.startTransfer(queueIds[i]);
         try {
+          onQueuedTarget();
           if (isDownload) {
             await invoke('provider_download_file', {
               remotePath: entry.remote_path,
@@ -13388,8 +13821,8 @@ const App: React.FC = () => {
     // A Start of staged rows or a Retry clears a Stop left from an earlier
     // transfer when the user acts; a Stop during this run still holds.
     const cancelFlags = { batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef };
-    for (const id of batchIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id)));
-    for (const id of singleIds) retryCallbacksRef.current.set(id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id)));
+    for (const id of batchIds) retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id))));
+    for (const id of singleIds) retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id))));
     if (staged) {
       result.staged = true;
       return result;
@@ -13402,6 +13835,9 @@ const App: React.FC = () => {
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
     if (!isConnected) return;
+    // The target its Start and Retry are bound to, taken before any await.
+    const queuedTarget = snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     // A timeout or 5xx can follow a committed upload. Providers own their safe
     // transport retries; the GUI must not start that write again automatically.
     // The queue's explicit Retry remains available to the user.
@@ -13502,6 +13938,7 @@ const App: React.FC = () => {
               modified: file.modified || null,
             })),
             remoteDir,
+            { queuedTarget },
           );
           if (outcome.aborted) {
             folderOverwriteApplyToAll.current = { action: 'merge_overwrite', enabled: false };
@@ -13554,10 +13991,10 @@ const App: React.FC = () => {
             size,
             is_folder: !!file?.is_dir,
           });
-          retryCallbacksRef.current.set(id, async () => {
+          retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
               transferQueue.completeTransfer(id);
             } catch (error) {
               // Stopped during this Retry: the file reads as cancelled and the
@@ -13570,7 +14007,7 @@ const App: React.FC = () => {
                 notify.error(t('toast.uploadFailed'), String(error));
               }
             }
-          });
+          }));
           return { id, filePath, fileName, file };
         });
 
@@ -13600,6 +14037,7 @@ const App: React.FC = () => {
             const kept: typeof queueItems = [];
             let skippedInCommit = 0;
             for (let i = 0; i < queueItems.length; i++) {
+              if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
               const item = queueItems[i];
               const remainingInQueue = queueItems.length - i - 1;
               let action: string;
@@ -13639,6 +14077,7 @@ const App: React.FC = () => {
             const keptFiles = kept.filter(i => !i.file.is_dir);
             if (keptFiles.length > 0) {
               try {
+                onQueuedTarget();
                 const files = keptFiles.map(item => ({
                   localPath: item.filePath,
                   remotePath: `${remoteDir}${remoteDir.endsWith('/') ? '' : '/'}${item.fileName}`,
@@ -13666,7 +14105,7 @@ const App: React.FC = () => {
             for (const item of kept.filter(i => i.file.is_dir)) {
               transferQueue.startTransfer(item.id);
               try {
-                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw');
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
                 transferQueue.completeTransfer(item.id);
               } catch (error) {
                 transferQueue.failTransfer(item.id, String(error));
@@ -13688,6 +14127,7 @@ const App: React.FC = () => {
         // Upload sequentially with queue tracking and overwrite checking
         let skippedCount = 0;
         for (let i = 0; i < queueItems.length; i++) {
+          if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
           const item = queueItems[i];
           const remainingInQueue = queueItems.length - i - 1;
 
@@ -13801,7 +14241,7 @@ const App: React.FC = () => {
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw');
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
               if (attempt > 0) transferQueue.retryItem(item.id);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
@@ -13814,7 +14254,7 @@ const App: React.FC = () => {
               }
               // A folder with failed files is not sent again, nor counted
               // toward the pause: its command has retried each file.
-              const result = error instanceof FolderTransferFailedError ? null : await circuitBreaker.recordFailure(String(error));
+              const result = error instanceof FolderTransferFailedError || error instanceof QueuedTargetChangedError ? null : await circuitBreaker.recordFailure(String(error));
               if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
                 transferQueue.failTransfer(item.id, String(error));
                 notify.error(t('toast.uploadFailed'), String(error));
@@ -13861,7 +14301,9 @@ const App: React.FC = () => {
       const { batch: pickedBatch } = splitForFileBatch(picked, fileBatchSessionFlags('upload'));
       if (pickedBatch.length > 0) {
         resetOverwriteSettings();
-        const outcome = await runFileBatch('upload', pickedBatch, remoteDir);
+        // The target taken before the picker opened: the user can switch tabs
+        // while it is open.
+        const outcome = await runFileBatch('upload', pickedBatch, remoteDir, { queuedTarget });
         if (!outcome.aborted && !outcome.staged) loadRemoteFiles();
         return;
       }
@@ -13899,10 +14341,10 @@ const App: React.FC = () => {
           size: 0,
           is_folder: false,
         });
-        retryCallbacksRef.current.set(id, async () => {
+        retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -13915,7 +14357,7 @@ const App: React.FC = () => {
               notify.error(t('toast.uploadFailed'), String(error));
             }
           }
-        });
+        }));
         return { id, filePath, fileName };
       });
 
@@ -13924,6 +14366,7 @@ const App: React.FC = () => {
       }
 
       for (let i = 0; i < queueItems.length; i++) {
+        if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
@@ -14018,7 +14461,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw');
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -14029,8 +14472,9 @@ const App: React.FC = () => {
               transferQueue.cancelTransfer(item.id, t('transfer.cancelledByUser'));
               break;
             }
-            const result = await circuitBreaker.recordFailure(String(error));
-            if (result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
+            // A target that changed is not retried, nor counted toward the pause.
+            const result = error instanceof QueuedTargetChangedError ? null : await circuitBreaker.recordFailure(String(error));
+            if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= maxUploadRetries) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.uploadFailed'), String(error));
               break;
@@ -14050,6 +14494,9 @@ const App: React.FC = () => {
   // === Bulk Operations ===
   const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localDir: string = currentLocalPath) => {
     if (!isConnected) return;
+    // The target its Start and Retry are bound to, taken before any await.
+    const queuedTarget = snapshotQueuedTarget();
+    const onQueuedTarget = queuedTargetGuard(queuedTarget);
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -14075,6 +14522,7 @@ const App: React.FC = () => {
           'download',
           batchFiles.map(f => ({ name: f.name, sourcePath: f.path, size: f.size || 0, modified: f.modified || null })),
           localDir,
+          { queuedTarget },
         );
         if (outcome.aborted) return;
         batchStaged = outcome.staged;
@@ -14118,10 +14566,10 @@ const App: React.FC = () => {
           size: file.size || 0,
           is_folder: !!file.is_dir,
         });
-        retryCallbacksRef.current.set(id, async () => {
+        retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw');
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -14134,7 +14582,7 @@ const App: React.FC = () => {
               notify.error(t('toast.downloadFailed'), String(error));
             }
           }
-        });
+        }));
         return { id, file };
       });
 
@@ -14152,6 +14600,7 @@ const App: React.FC = () => {
       // Download sequentially with queue tracking and overwrite checking
       let skippedCount = 0;
       for (let i = 0; i < queueItems.length; i++) {
+        if (failQueuedRestIfRetargeted(queuedTarget, queueItems, i)) break;
         const item = queueItems[i];
         const remainingInQueue = queueItems.length - i - 1;
 
@@ -14272,7 +14721,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw');
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw', undefined, onQueuedTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -14285,7 +14734,7 @@ const App: React.FC = () => {
             }
             // A folder with failed files is not downloaded again, nor counted
             // toward the pause: its command has retried each file.
-            const result = error instanceof FolderTransferFailedError ? null : await circuitBreaker.recordFailure(String(error));
+            const result = error instanceof FolderTransferFailedError || error instanceof QueuedTargetChangedError ? null : await circuitBreaker.recordFailure(String(error));
             if (!result || result.isFatal || !result.retryable || result.shouldPause || attempt >= circuitBreaker.config.maxRetriesPerFile) {
               transferQueue.failTransfer(item.id, String(error));
               notify.error(t('toast.downloadFailed'), String(error));
@@ -14352,6 +14801,8 @@ const App: React.FC = () => {
   const deleteMultipleRemoteFiles = withBatchLatch((filesOverride?: string[]) => {
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
+    // The server this delete is for, taken before its confirmation.
+    const onTarget = remoteActionGuard();
 
     const performDelete = async () => {
       const deletedFiles: string[] = [];
@@ -14395,6 +14846,7 @@ const App: React.FC = () => {
           .filter(Boolean) as RemoteFile[];
         const entryPaths = resolvedFiles.map(f => f.path);
         try {
+          onTarget();
           await invoke<number>('aerovault_overlay_delete_entries', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPaths,
@@ -14421,6 +14873,9 @@ const App: React.FC = () => {
         if (filePaths.length > 0) {
           try {
             const deleteCommand = protocol === 'gitlab' ? 'gitlab_batch_delete' : 'github_batch_delete';
+            // The commit message dialog gave the user time to switch tabs:
+            // the batch runs on the server it was started for (CodeRabbit on #1526).
+            onTarget();
             await invoke(deleteCommand, {
               paths: filePaths,
               message: batchCommitMessage,
@@ -14435,6 +14890,7 @@ const App: React.FC = () => {
         for (const dir of dirFiles) {
           if (batchCancelledRef.current) break;
           try {
+            onTarget();
             await invoke('provider_delete_dir', { path: dir.path, recursive: true, commitMessage: batchCommitMessage });
             deletedFolders.push(dir.path);
           } catch (err) {
@@ -14456,11 +14912,14 @@ const App: React.FC = () => {
             try {
               if (isProvider) {
                 if (file.is_dir) {
+                  onTarget();
                   await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null });
                 } else {
+                  onTarget();
                   await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null });
                 }
               } else {
+                onTarget();
                 await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir });
               }
 
@@ -14640,8 +15099,12 @@ const App: React.FC = () => {
   });
 
   // File operations with proper confirm BEFORE action (respects confirmBeforeDelete setting)
-  const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string) => {
+  const deleteRemoteFile = (path: string, isDir: boolean, commitMessage?: string, startedFor?: () => void) => {
     const fileName = path.split('/').pop() || path;
+    // The server this delete is for, taken before its confirmation, or before
+    // the commit message dialog when it runs again after it (CodeRabbit on
+    // #1526: a fresh snapshot then was the server live after the dialog).
+    const onTarget = startedFor ?? remoteActionGuard();
     const protocol = liveConnectionParams.protocol;
     const isGitHubRepoMode = (protocol === 'github' && !path.startsWith('/.github-releases')) || protocol === 'gitlab';
 
@@ -14654,7 +15117,7 @@ const App: React.FC = () => {
         workingBranch: gitHubRepoInfo.workingBranch || undefined,
         onCommit: (message: string) => {
           setGitHubCommitDialog(null);
-          deleteRemoteFile(path, isDir, message);
+          deleteRemoteFile(path, isDir, message, onTarget);
         },
       });
       return;
@@ -14667,6 +15130,7 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
         if (isAeroVaultOverlay) {
+          onTarget();
           await invoke<number>('aerovault_overlay_delete_entries', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPaths: [path],
@@ -14674,11 +15138,14 @@ const App: React.FC = () => {
           });
         } else if (isProvider) {
           if (isDir) {
+            onTarget();
             await invoke('provider_delete_dir', { path, recursive: true });
           } else {
+            onTarget();
             await invoke('provider_delete_file', { path, commitMessage: commitMessage || null });
           }
         } else {
+          onTarget();
           await invoke('delete_remote_file', { path, isDir });
         }
         humanLog.logSuccess('DELETE', { filename: path }, logId);
@@ -14706,6 +15173,8 @@ const App: React.FC = () => {
   };
 
   const renameFile = (path: string, currentName: string, isRemote: boolean) => {
+    // The server this rename is for, taken before its dialog.
+    const onTarget = remoteActionGuard();
     setInputDialog({
       title: t('common.rename'),
       defaultValue: currentName,
@@ -14732,14 +15201,17 @@ const App: React.FC = () => {
             const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
             if (isAeroVaultOverlay) {
+              onTarget();
               await invoke<string>('aerovault_overlay_rename_entry', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 entryPath: path,
                 newName,
               });
             } else if (isProvider) {
+              onTarget();
               await invoke('provider_rename', { from: path, to: newPath });
             } else {
+              onTarget();
               await invoke('rename_remote_file', { from: path, to: newPath });
             }
             await loadRemoteFiles(undefined, true);
@@ -14780,7 +15252,7 @@ const App: React.FC = () => {
   const startInlineRename = (path: string, name: string, isRemote: boolean) => {
     if (name === '..') return;
     if (isRemote && liveConnectionParams.protocol === 'immich') return;
-    setInlineRename({ path, name, isRemote });
+    setInlineRename({ path, name, isRemote, target: isRemote ? snapshotQueuedTarget() : undefined });
     setInlineRenameValue(name);
     // Focus input after render
     setTimeout(() => {
@@ -14801,6 +15273,8 @@ const App: React.FC = () => {
   const commitInlineRename = async () => {
     if (!inlineRename) return;
     const { path, name, isRemote } = inlineRename;
+    // The server the inline rename started on.
+    const onTarget = remoteActionGuard(inlineRename.target);
     const newName = inlineRenameValue.trim();
 
     // Cancel if empty or unchanged
@@ -14827,14 +15301,17 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
         if (isAeroVaultOverlay) {
+          onTarget();
           await invoke<string>('aerovault_overlay_rename_entry', {
             sessionId: aeroVaultOverlaySession?.sessionId,
             entryPath: path,
             newName,
           });
         } else if (isProvider) {
+          onTarget();
           await invoke('provider_rename', { from: path, to: newPath });
         } else {
+          onTarget();
           await invoke('rename_remote_file', { from: path, to: newPath });
         }
         await loadRemoteFiles(undefined, true);
@@ -14891,6 +15368,8 @@ const App: React.FC = () => {
 
   // Batch rename handler for multiple selected files
   const handleBatchRename = async (renames: Map<string, string>) => {
+    // The server the batch rename dialog was opened on.
+    const onTarget = remoteActionGuard(batchRenameDialog?.target);
     const isRemote = batchRenameDialog?.isRemote ?? true;
     const logId = humanLog.logStart('BATCH_RENAME', {
       count: renames.size,
@@ -14914,14 +15393,17 @@ const App: React.FC = () => {
           const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
           if (isAeroVaultOverlay) {
+            onTarget();
             await invoke<string>('aerovault_overlay_rename_entry', {
               sessionId: aeroVaultOverlaySession?.sessionId,
               entryPath: oldPath,
               newName,
             });
           } else if (isProvider) {
+            onTarget();
             await invoke('provider_rename', { from: oldPath, to: newPath });
           } else {
+            onTarget();
             await invoke('rename_remote_file', { from: oldPath, to: newPath });
           }
         } else {
@@ -14965,6 +15447,8 @@ const App: React.FC = () => {
   };
 
   const createFolder = useLatestCallback((isRemote: boolean, localPanelId: 'local' | 'local2' = focusedLocalPanelId) => {
+    // The server the new folder is for, taken before its dialog.
+    const onTarget = remoteActionGuard();
     setInputDialog({
       title: t('dialog.newFolder'),
       defaultValue: '',
@@ -14982,13 +15466,16 @@ const App: React.FC = () => {
             const path = currentRemotePath + (currentRemotePath.endsWith('/') ? '' : '/') + name;
 
             if (isAeroVaultOverlay) {
+              onTarget();
               await invoke('aerovault_overlay_create_directory', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
                 dirName: name,
               });
             } else if (isProvider) {
+              onTarget();
               await invoke('provider_mkdir', { path });
             } else {
+              onTarget();
               await invoke('create_remote_folder', { path });
             }
             await loadRemoteFiles(undefined, true);
@@ -15075,7 +15562,7 @@ const App: React.FC = () => {
           // C-F02: pre-existing siblings NOT in this batch, captured at open time,
           // so the dialog can pre-flag a rename target that would collide with one.
           const siblings = remoteFiles.filter(f => !selection.has(f.name)).map(f => f.name);
-          setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings });
+          setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target: snapshotQueuedTarget() });
         }
       }] : []),
       ...(!currentProtocol || !isNonFtpProvider(currentProtocol) || isSshProtocol(currentProtocol) ? [{ label: t('contextMenu.permissions'), icon: <Shield size={14} />, action: async () => {
@@ -15791,11 +16278,13 @@ const App: React.FC = () => {
         action: () => setObjectTierTarget({ mode: 's3-class', path: file.path, name: file.name, current: storageClass ?? 'STANDARD' }),
         divider: true,
       });
-      items.push({
-        label: t('s3.objectTags'),
-        icon: <Tag size={14} className="text-cyan-500" />,
-        action: () => setS3TagsTarget({ path: file.path, name: file.name }),
-      });
+      if (s3PresetOffersObjectTags(liveConnectionParams.providerId)) {
+        items.push({
+          label: t('s3.objectTags'),
+          icon: <Tag size={14} className="text-cyan-500" />,
+          action: () => setS3TagsTarget({ path: file.path, name: file.name }),
+        });
+      }
       if (needsGlacierRestore(storageClass)) {
         items.push({
           label: t('s3.restoreFromGlacier'),
@@ -15987,6 +16476,9 @@ const App: React.FC = () => {
             userPartitionsUnreadable?: number;
             userPartitionsBackupPath?: string;
             sqliteDbsFailed?: string[];
+            securityReset?: { name: string; keys: string[] }[];
+            securityResetFailed?: number;
+            securityResetQuarantine?: string;
           }>('import_keystore', {
             password,
             filePath,
@@ -16016,26 +16508,13 @@ const App: React.FC = () => {
           // F-012 W1/W2: when the import needs a restart or carried cross-machine
           // partitions (re-keyed or unreadable) or snapshotted the local DB,
           // surface a modal that cannot be missed instead of a transient toast.
-          const needsModal =
-            !!result.requiresRestart ||
-            (result.userPartitionsUnreadable ?? 0) > 0 ||
-            (result.userPartitionsRekeyed ?? 0) > 0 ||
-            !!result.userPartitionsBackupPath ||
-            !!result.sqliteDbsFailed?.length;
-          if (needsModal) {
-            setKeystoreImportResult({
-              imported: result.imported,
-              skipped: result.skipped,
-              requiresRestart: result.requiresRestart,
-              userPartitionsRekeyed: result.userPartitionsRekeyed,
-              userPartitionsUnreadable: result.userPartitionsUnreadable,
-              userPartitionsBackupPath: result.userPartitionsBackupPath,
-              sqliteDbsFailed: result.sqliteDbsFailed,
-            });
+          const modalResult = keystoreImportModalResult(result);
+          if (modalResult) {
+            setKeystoreImportResult(modalResult);
           } else {
             notify.success(
               t('settings.importKeystore') || 'Import Keystore',
-              t('settings.keystoreImported', { imported: result.imported, skipped: result.skipped }),
+              keystoreImportSummary(result, null, t).text,
             );
           }
         } catch (err) {
@@ -17213,6 +17692,113 @@ const App: React.FC = () => {
     if (file) await openUniversalPreview(file, false);
   };
 
+  const profileConnector = useRef<ProfileConnector | null>(null);
+  const registerProfileConnector = useCallback<RegisterProfileConnector>(connector => {
+    profileConnector.current = connector;
+    return () => { if (profileConnector.current === connector) profileConnector.current = null; };
+  }, []);
+
+  const openProfileByName = async (name?: string) => {
+    if (!name) return;
+    const profiles = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+    const matched = profiles.find(s => s.name === name)
+      || profiles.find(s => s.name.toLowerCase() === name.toLowerCase());
+
+    if (!matched) {
+      notify.warning(
+        t('toast.serverNotFound'),
+        t('toast.serverProfileNotFound', { name }),
+      );
+      return;
+    }
+
+    const existing = sessions.find(
+      s => s.savedServerId === matched.id || s.connectionParams?.savedServerId === matched.id,
+    );
+    if (existing) {
+      setShowConnectionScreen(false);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
+      await goToActiveSession(matched.id);
+      return;
+    }
+
+    if (profileConnector.current) {
+      const scope = new ConnectScope();
+      await profileConnector.current(matched.id, scope);
+    }
+  };
+
+  const openRemoteUrlSession = async (req: OpenRequest) => {
+    if (!req.server) return;
+
+    const targetProtocol = (req.protocol as ProviderType) || 'sftp';
+    const defaultPort = targetProtocol === 'sftp' || targetProtocol === 'scp' ? 22 : targetProtocol === 'ftps' ? 990 : targetProtocol === 'webdav' ? 80 : 21;
+    const targetPort = req.port || defaultPort;
+    const targetUser = req.username || '';
+    const initialRemotePath = req.initialPath || '/';
+
+    const existingSession = sessions.find(s => {
+      const p = s.connectionParams;
+      const sProto = p.protocol || 'ftp';
+      if (sProto !== targetProtocol) return false;
+      if ((p.server || '').toLowerCase() !== req.server!.toLowerCase()) return false;
+      const sPort = p.port || (sProto === 'sftp' || sProto === 'scp' ? 22 : sProto === 'ftps' ? 990 : sProto === 'webdav' ? 80 : 21);
+      if (sPort !== targetPort) return false;
+      return (p.username || '') === targetUser;
+    });
+
+    if (existingSession) {
+      setShowConnectionScreen(false);
+      setShowRemotePanel(true);
+      setShowLocalPreview(false);
+      await switchSession(existingSession.id);
+      if (initialRemotePath && initialRemotePath !== '/' && initialRemotePath !== '') {
+        await changeRemoteDirectory(initialRemotePath, targetProtocol);
+      }
+      return;
+    }
+
+    const params: ConnectionParams = {
+      server: req.server,
+      username: targetUser,
+      password: req.password || '',
+      protocol: targetProtocol,
+      port: targetPort,
+      displayName: req.server,
+      options: {
+        allowScpFallback: true,
+      },
+    };
+
+    if (!params.password) {
+      const all = await loadSavedServerProfiles().catch(() => [] as ServerProfile[]);
+      const match = all.find(s =>
+        (s.protocol || 'ftp') === targetProtocol &&
+        (s.host || '').toLowerCase() === req.server!.toLowerCase() &&
+        (s.port || defaultPort) === targetPort &&
+        (s.username || '') === targetUser
+      );
+      if (match) {
+        params.savedServerId = match.id;
+        params.displayName = match.name;
+        params.providerId = match.providerId;
+        params.options = {
+          ...match.options,
+          allowScpFallback: match.options?.allowScpFallback ?? true,
+        };
+        try {
+          const stored = await getCredentialWithRetry(`server_${match.id}`, 2);
+          if (stored) params.password = stored;
+        } catch {
+          // Vault lookup failed or no stored password
+        }
+      }
+    }
+
+    await connectToFtp(params, { initialRemotePath });
+  };
+
   const handleOpenRequests = async (requests: OpenRequest[]) => {
     const local: OpenRequest[] = [];
     for (const request of requests) {
@@ -17234,6 +17820,12 @@ const App: React.FC = () => {
         case 'local':
           local.push(request);
           break;
+        case 'profile':
+          await openProfileByName(request.profileName || request.name);
+          break;
+        case 'remoteUrl':
+          await openRemoteUrlSession(request);
+          break;
       }
     }
     if (local.length > 0) await openLocalPathsInAeroFile(local);
@@ -17242,12 +17834,6 @@ const App: React.FC = () => {
     vaultBootComplete && !isAppLocked && accountLockState === 'ready' && localFilesBootstrapped,
     handleOpenRequests,
   );
-
-  const profileConnector = useRef<ProfileConnector | null>(null);
-  const registerProfileConnector = useCallback<RegisterProfileConnector>(connector => {
-    profileConnector.current = connector;
-    return () => { if (profileConnector.current === connector) profileConnector.current = null; };
-  }, []);
 
   // === Safe Settings surface for the GUI controller ===
   // aiPublicSettings is the field-by-field projection of the public AI
@@ -17919,7 +18505,9 @@ const App: React.FC = () => {
           isOpen={!!deltaEligibilityPrompt}
           reason={deltaEligibilityPrompt?.reason || ''}
           serverLabel={deltaEligibilityPrompt?.serverLabel || ''}
-          onClose={(skipFuturePrompts) => {
+          // Cancel drops the queued plan: it runs only on Continue.
+          onCancel={() => setDeltaEligibilityPrompt(null)}
+          onContinue={(skipFuturePrompts) => {
             const prompt = deltaEligibilityPrompt;
             setDeltaEligibilityPrompt(null);
             if (!prompt) return;
@@ -18316,7 +18904,7 @@ const App: React.FC = () => {
               setPermissionsDialog(null);
               notify.error(t('common.failed'), t('toast.permissionsSessionChanged'));
             };
-            if (remoteConnectPhaseRef.current || dialog.sessionId !== activeSessionId) {
+            if (!backendServesLiveTab() || dialog.sessionId !== activeSessionId) {
               sessionChanged();
               return;
             }
@@ -18717,7 +19305,7 @@ const App: React.FC = () => {
                     setCryptOverlayOwner({ savedServerId: null, sessionId: activeSessionId });
                     await activateProviderCryptOverlay(
                       { sessionId: activeSessionId ?? undefined },
-                      bannerOverlayParams(banner),
+                      bannerOverlayParams(banner, bannerAnchorFolder(sessions.find(s => s.id === activeSessionId)?.serverInitialPath, currentRemotePath)),
                       activeSessionId,
                     );
                     await loadRemoteFiles(undefined, true);
@@ -19078,6 +19666,7 @@ const App: React.FC = () => {
               the foreground: zero remount = zero flash of the empty state. */}
           <div className={showConnectionScreen ? 'flex-1 min-h-0 flex flex-col' : 'hidden'}>
             <IntroHub
+              visible={showConnectionScreen}
               vaultReady={vaultBootComplete && !isAppLocked && !showMasterPasswordSetup}
               registerProfileConnector={registerProfileConnector}
               connectionParams={connectionParams}
@@ -19344,10 +19933,11 @@ const App: React.FC = () => {
                     // initialPath (e.g. `/remote.php/dav/files/{username}/`) does
                     // not reach the backend with the placeholder unresolved.
                     const overlaySavedId = connectedParams.savedServerId || normalizedParams.savedServerId;
-                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId));
+                    const startFolder = await connectScope.step(() => placeStartFolder(resolvedSavedInitialPath));
+                    const overlayHint = await connectScope.step(() => getProfileOverlayHint(overlaySavedId, startFolder));
                     const response = await connectScope.step(() => withRemoteListSpinner(() => invoke<{ files: any[]; current_path: string }>(overlayHint?.opensOutside ? 'provider_change_dir' : 'provider_list_files', {
-                      path: overlayHint?.opensOutside ? resolvedSavedInitialPath || '/' : resolvedSavedInitialPath || null
-                    }), listingReason(resolvedSavedInitialPath)));
+                      path: overlayHint?.opensOutside ? startFolder || '/' : startFolder || null
+                    }), listingReason(startFolder)));
 
                     const files = response.files.map(f => ({
                       name: f.name,
@@ -19396,7 +19986,7 @@ const App: React.FC = () => {
                       resolvedLocalPath2,
                       overlayHint && !overlayHint.opensOutside ? [] : files,
                       undefined,
-                      overlayHint ? resolvedSavedInitialPath || '/' : undefined
+                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
                     ));
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -20131,7 +20721,10 @@ const App: React.FC = () => {
                         backblaze: () => setShowB2Hidden(true),
                         s3: () => setShowS3Trash(true),
                       };
-                      let handler = trashMap[proto || ''];
+                      let handler: (() => void) | undefined = trashMap[proto || ''];
+                      if (proto === 's3' && !s3PresetOffersTrash(activeProviderId)) {
+                        handler = undefined;
+                      }
                       // Azure rides on the s3 protocol key: its own trash view wins
                       // over the generic S3 version/trash browser.
                       if (isAzure) {
@@ -21207,25 +21800,7 @@ const App: React.FC = () => {
               }
             }, 300);
           }}
-          onSaveFile={async (content, file) => {
-            const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
-            try {
-              if (file.isRemote) {
-                await invoke('save_remote_file', { path: file.path, content });
-                humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
-                notify.success(t('toast.fileSaved'), t('toast.fileSavedRemote', { name: file.name }));
-                await loadRemoteFiles(undefined, true);
-              } else {
-                await invoke('save_local_file', { path: file.path, content });
-                humanLog.logRaw('activity.upload_success', 'INFO', { filename: file.name, size: formatBytes(content.length), location: 'Local', time: '' }, 'success');
-                notify.success(t('toast.fileSaved'), t('toast.fileSavedLocal', { name: file.name }));
-                await refreshLocalPanelForPath(parentDir(file.path));
-              }
-            } catch (error) {
-              humanLog.logError('UPLOAD', { filename: file.name }, logId);
-              notify.error(t('toast.saveFailed'), String(error));
-            }
-          }}
+          onSaveFile={saveDevToolsFile}
         />
 
         <GuiControllerBanner lease={guiController.lease} preferences={settings.guiPresentation} onSpeed={guiController.setSpeed} onPause={guiController.setPaused} onStop={() => { void guiController.stop(); }} />
@@ -21250,7 +21825,7 @@ const App: React.FC = () => {
             connectionSecurity={isConnected ? (() => {
               const protocol = liveConnectionParams.protocol;
               const opts = liveConnectionParams.options;
-              const verifyCert = opts?.verifyCert ?? true;
+              const verifyCert = loadedCertificateCheck(opts);
               if (protocol === 'ftp') {
                 const tlsMode = opts?.tlsMode ?? 'explicit';
                 if (tlsMode === 'none') return 'insecure' as const;

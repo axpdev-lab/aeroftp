@@ -62,7 +62,7 @@ find "$(root_path /var/tmp)" -maxdepth 1 -name 'aeroftp-update-*.pkg' -type f -u
 HICOLOR="$(root_path /usr/share/icons/hicolor)"
 ICON_NAMES="application-x-aerovault application-x-aeroftp application-x-aeroftp-keystore application-x-aerozip application-x-aeroftp-script"
 SIZES="16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512"
-REQUIRED_DESKTOP_MIMES="application/x-aerovault application/x-aeroftp application/x-aeroftp-keystore application/x-aerozip application/x-aeroftp-script application/zip application/x-7z-compressed application/vnd.rar application/x-rar-compressed application/x-tar application/x-compressed-tar application/gzip application/x-xz application/x-bzip2 x-scheme-handler/ftp x-scheme-handler/ftps x-scheme-handler/sftp"
+REQUIRED_DESKTOP_MIMES="application/x-aerovault application/x-aeroftp application/x-aeroftp-keystore application/x-aerozip application/x-aeroftp-script application/zip application/x-7z-compressed application/vnd.rar application/x-rar-compressed application/x-tar application/x-compressed-tar application/gzip application/x-xz application/x-bzip2 x-scheme-handler/ftp x-scheme-handler/ftps x-scheme-handler/sftp x-scheme-handler/scp"
 
 # Detect active icon themes from all user accounts
 copy_to_theme() {

@@ -2629,6 +2629,18 @@ async fn authenticate_with_key(
     }
     Ok(false)
 }
+/// The folder a session opens in: the profile's start folder, resolved from
+/// the login folder (`docs` is `~/docs`, as OpenSSH, WinSCP and rclone read
+/// it), or the login folder when there is none. SFTP read `docs` from `/`
+/// while its SCP fallback read it from the login folder, so one profile opened
+/// two folders depending on the transport.
+pub(crate) fn resolve_start_dir(home: &str, initial: Option<&str>) -> String {
+    match initial.filter(|p| !p.is_empty()) {
+        Some(initial) => resolve_remote_path(home, home, initial),
+        None => home.to_string(),
+    }
+}
+
 /// `path` as an absolute remote path: absolute as given, relative to
 /// `current`, `~` and `~/...` under `home`, `.` and `..` from `current`.
 /// SFTP and SCP resolve paths the same way.
@@ -2802,12 +2814,8 @@ impl StorageProvider for SftpProvider {
 
                 self.home_dir = home;
 
-                // Set initial directory
-                if let Some(initial) = &self.config.initial_path {
-                    self.current_dir = self.normalize_path(initial);
-                } else {
-                    self.current_dir = self.home_dir.clone();
-                }
+                self.current_dir =
+                    resolve_start_dir(&self.home_dir, self.config.initial_path.as_deref());
 
                 self.ssh_handle = Some(handle);
                 self.sftp = Some(sftp);
@@ -6773,6 +6781,22 @@ impl HostHashMemory {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_relative_start_folder_opens_under_the_login_folder() {
+        // OpenSSH, WinSCP and rclone read `docs` from the login folder; SFTP
+        // read it from `/` while the SCP fallback read it from the login one.
+        let home = "/home/u";
+        assert_eq!(super::resolve_start_dir(home, Some("docs")), "/home/u/docs");
+        assert_eq!(
+            super::resolve_start_dir(home, Some("~/docs")),
+            "/home/u/docs"
+        );
+        assert_eq!(super::resolve_start_dir(home, Some("/docs")), "/docs");
+        assert_eq!(super::resolve_start_dir(home, Some("/")), "/");
+        assert_eq!(super::resolve_start_dir(home, Some("")), "/home/u");
+        assert_eq!(super::resolve_start_dir(home, None), "/home/u");
+    }
+
     #[test]
     fn one_file_without_a_digest_does_not_end_the_check_for_the_session() {
         let mut memory = super::HostHashMemory::default();

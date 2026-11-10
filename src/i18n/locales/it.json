@@ -605,6 +605,8 @@
             "encryptionImplicit": "Richiedi FTP implicito su TLS",
             "encryptionExplicitIfAvailable": "Usa FTP esplicito su TLS se disponibile",
             "acceptInvalidCerts": "Accetta certificati non validi o autofirmati",
+            "trustPasvAddress": "Usa l'indirizzo passivo indicato dal server",
+            "trustPasvAddressHelp": "Disattivato: le connessioni dati vanno all'host a cui ti sei connesso, come fa curl. Attivalo solo per un server che invia i dati da un altro indirizzo.",
             "selectRegion": "Seleziona regione...",
             "providerDocumentation": "Documentazione {name}",
             "webdavExampleLabel": "Esempio:",
@@ -849,7 +851,8 @@
             "allowScpFallback": "Consenti il ripiego su SCP",
             "allowScpFallbackHint": "Se il server non ha SFTP, prosegue con SCP sulla stessa connessione, come fa WinSCP.",
             "discoverScp": "Copia di file via SSH per i server senza SFTP",
-            "discoverTigris": "Tigris: archiviazione distribuita globalmente compatibile con S3, senza costi di egress (5 GB gratis)"
+            "discoverTigris": "Tigris: archiviazione distribuita globalmente compatibile con S3, senza costi di egress (5 GB gratis)",
+            "discoverFastly": "Fastly Object Storage: archiviazione compatibile con S3 in 12 regioni (5 GB gratis, carta richiesta)"
         },
         "browser": {
             "remote": "Remoto",
@@ -1241,7 +1244,10 @@
             },
             "stagedCount": "In preparazione: {count}",
             "pendingCount": "In attesa: {count}",
-            "failedCount": "Non riusciti: {count}"
+            "failedCount": "Non riusciti: {count}",
+            "queuedForAnotherServer": "Non avviato: questo trasferimento era in coda per un altro server o account. Torna alla sua scheda, poi riprova.",
+            "queuedOverlayChanged": "Non avviato: l'overlay cifrato sotto cui era in coda questo trasferimento è bloccato o non copre più questa cartella. Sbloccalo su quel server, poi riprova.",
+            "pasteFromAnotherServer": "Non incollato: questi file sono stati tagliati o copiati su un server, account o overlay cifrato che ora non è attivo. Torna alla sua scheda, poi incolla di nuovo."
         },
         "scanning": {
             "deleting": "Eliminazione",
@@ -1857,7 +1863,18 @@
             "importOauthAppKept": "{names} sono arrivati con un'app OAuth personalizzata diversa da quella che questo dispositivo ha per quel provider. L'app memorizzata è stata mantenuta: accedi di nuovo se questi profili smettono di connettersi.",
             "importTargetChanged": "{names} non sono stati sovrascritti: il file li fa puntare a un altro server, e le password e i token memorizzati non devono arrivarci. Importa con Duplica per aggiungere la copia dal file, oppure elimina prima il profilo.",
             "importSharedSecretsFailed": "{names} sono stati importati, ma non è stato possibile salvare un segreto condiviso o una sessione del file. Accedi di nuovo a questi profili se non si connettono.",
-            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}."
+            "keystoreDatabasesFailed": "L'importazione è terminata, ma questi database non sono stati ripristinati e mantengono il loro contenuto: {names}.",
+            "importSecurityTitle": "Impostazioni di sicurezza in questo backup",
+            "importSecurityHelp": "Queste opzioni disattivano un controllo di sicurezza. Ognuna viene importata nello stato sicuro, a meno che tu non la spunti per mantenerla com'è nel file.",
+            "importSecurityVerifyCert": "Controllo del certificato disattivato",
+            "importSecurityCleartextEndpoint": "Endpoint S3 non cifrato consentito",
+            "importSecurityCleartextStorage": "Indirizzo di archiviazione non cifrato consentito",
+            "importSecurityPlainHttp": "HTTP semplice invece di HTTPS",
+            "importSecurityPasvAddress": "Connessione dati all'indirizzo indicato dal server (PASV)",
+            "importSecurityUnknownHostKeys": "Chiavi host SSH sconosciute accettate",
+            "keystoreSecurityReset": "{count} server ripristinati avevano opzioni che disattivano un controllo di sicurezza; sono state riportate all'impostazione sicura: {details}.",
+            "keystoreSecurityResetFailed": "Impossibile controllare o reimpostare le impostazioni di sicurezza di {count} account ripristinati. Sono elencati qui invece di essere lasciati attivi senza avviso.",
+            "keystoreSecurityResetQuarantine": "Non è stato possibile proteggere il database degli account ripristinato, che è stato messo in quarantena come {path}. Nessun account ripristinato è attivo. Correggi il problema del disco o delle autorizzazioni, quindi ripristina di nuovo il backup. Il file in quarantena rimane disponibile per il recupero."
         },
         "appearance": {
             "patternCross": "Croce",
@@ -2333,7 +2350,10 @@
             "createFailed": "Creazione non riuscita",
             "unknownServer": "Sconosciuto",
             "scpModeTitle": "Connesso con SCP",
-            "scpModeBody": "{host} non ha SFTP, quindi AeroFTP usa SCP sulla stessa connessione."
+            "scpModeBody": "{host} non ha SFTP, quindi AeroFTP usa SCP sulla stessa connessione.",
+            "saveOnAnotherServer": "Non salvato: questo file è stato aperto da un server, account o overlay cifrato che ora non è attivo. Torna alla sua scheda, poi salva di nuovo.",
+            "openedOnAnotherServer": "Non aperto: il server è cambiato durante la lettura del file. Aprilo di nuovo.",
+            "remoteTargetChanged": "Nessuna modifica: il server, l'account o l'overlay cifrato è cambiato da quando l'azione è iniziata, oppure si sta ancora riconnettendo. Riprova sulla connessione attuale."
         },
         "about": {
             "tagline": "Più che FTP. Un toolkit completo per sviluppatori.",
@@ -3305,7 +3325,8 @@
                 "diff": "Confronta con originale",
                 "diffNoFile": "Nessun file aperto per il confronto",
                 "commandBlocked": "Comando bloccato: potenzialmente distruttivo",
-                "confirmRun": "Conferma esecuzione: {command}"
+                "confirmRun": "Conferma esecuzione: {command}",
+                "reopenEditor": "Mostra l'editor con questo file aperto, poi riprova."
             },
             "thinkingBlock": {
                 "thinking": "Ragionamento...",
@@ -6001,7 +6022,8 @@
             "managePasswordProtected": "Protetto da password",
             "expirationHoursOne": "{count} ora",
             "expirationHoursMany": "{count} ore",
-            "expirationDaysMany": "{count} giorni"
+            "expirationDaysMany": "{count} giorni",
+            "expiresSoonerThanChosen": "più breve di quella scelta"
         },
         "introHub": {
             "tab": {
@@ -6677,7 +6699,9 @@
             "dirtyTitle": "Modifiche non salvate",
             "dirtyBody": "Hai modifiche non salvate. Scartarle e chiudere?",
             "keepEditing": "Continua a modificare",
-            "discardAndClose": "Scarta e chiudi"
+            "discardAndClose": "Scarta e chiudi",
+            "busyBodyKeepsRunning": "C'è ancora un'operazione in corso. Continuerà dopo la chiusura di questa finestra e il suo risultato non verrà mostrato qui. Chiudere comunque?",
+            "closeAnyway": "Chiudi comunque"
         },
         "modalView": {
             "listView": "Vista elenco",

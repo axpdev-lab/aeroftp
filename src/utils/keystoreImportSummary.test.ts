@@ -5,7 +5,7 @@
 // the import that failed or needs a restart must reach the user.
 
 import { describe, expect, it } from 'vitest';
-import { keystoreImportSummary } from './keystoreImportSummary';
+import { keystoreImportModalResult, keystoreImportSummary } from './keystoreImportSummary';
 
 // Echo the key and its parameters, so the assertions read what was asked for.
 const t = (key: string, params?: Record<string, string | number>) => {
@@ -21,6 +21,43 @@ describe('keystoreImportSummary', () => {
             type: 'success',
             text: 'settings.keystoreImported(imported=12,skipped=1)',
         });
+    });
+
+    it('names the restored servers whose security options were put back to safe', () => {
+        const summary = keystoreImportSummary({
+            imported: 4, skipped: 0,
+            securityReset: [{ name: 'lab', keys: ['trustUnknownHosts', 'verifyCert'] }],
+        }, null, t);
+        expect(summary.text).toContain(
+            'settings.keystoreSecurityReset(count=1,details=lab (settings.importSecurityUnknownHostKeys, settings.importSecurityVerifyCert))',
+        );
+    });
+
+    it('reports reset failures instead of hiding them in logs', () => {
+        const summary = keystoreImportSummary({ imported: 2, skipped: 0, securityResetFailed: 1 }, null, t);
+        expect(summary.type).toBe('info');
+        expect(summary.text).toContain('settings.keystoreSecurityResetFailed(count=1)');
+    });
+
+    it('reports the quarantined database and carries its path into the result modal', () => {
+        const result = {
+            imported: 2, skipped: 0,
+            securityResetQuarantine: '/tmp/user_partitions.db.security-reset-failed-test',
+        };
+        const summary = keystoreImportSummary(result, null, t);
+        expect(summary.type).toBe('info');
+        expect(summary.text).toContain('settings.keystoreSecurityResetQuarantine(path=/tmp/user_partitions.db.security-reset-failed-test)');
+        expect(keystoreImportModalResult(result)).toEqual(result);
+    });
+
+    it('carries reset details and failures into the Settings result modal', () => {
+        const result = {
+            imported: 2, skipped: 0,
+            securityReset: [{ name: 'lab', keys: ['trustUnknownHosts'] }],
+            securityResetFailed: 1,
+        };
+        expect(keystoreImportModalResult(result)).toEqual(result);
+        expect(keystoreImportModalResult({ imported: 2, skipped: 0 })).toBeNull();
     });
 
     it('reports the databases that could not be restored, by name', () => {

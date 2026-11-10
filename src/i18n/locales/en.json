@@ -9,8 +9,10 @@
         "modalGuard": {
             "busyTitle": "Operation in progress",
             "busyBody": "An operation is still running. Stop it and close, or keep it running?",
+            "busyBodyKeepsRunning": "An operation is still running. It goes on after this window closes, and its result is not shown here. Close anyway?",
             "wait": "Keep running",
             "stopAndClose": "Stop and close",
+            "closeAnyway": "Close anyway",
             "dirtyTitle": "Unsaved changes",
             "dirtyBody": "You have unsaved changes. Discard them and close?",
             "keepEditing": "Keep editing",
@@ -410,7 +412,8 @@
                 "insert": "Insert in Editor",
                 "run": "Run in Terminal",
                 "commandBlocked": "Command blocked: potentially destructive",
-                "confirmRun": "Confirm run: {command}"
+                "confirmRun": "Confirm run: {command}",
+                "reopenEditor": "Show the editor with this file open, then try again."
             },
             "codeContext": "Regarding this code from `{file}`:",
             "codeExec": {
@@ -3469,6 +3472,8 @@
         },
         "protocol": {
             "acceptInvalidCerts": "Accept invalid or self-signed certificates",
+            "trustPasvAddress": "Use the passive address the server gives",
+            "trustPasvAddressHelp": "Off: data connections go to the host you connected to, as curl does. Turn on only for a server that sends data from another address.",
             "advanced": "Advanced",
             "advancedWarning": "These fields are pre-configured for this provider. Changing them may prevent the connection from working correctly.",
             "advancedUnlock": "Edit anyway",
@@ -3658,6 +3663,7 @@
             "discoverIDriveE2": "S3-compatible hot storage (10 GB free)",
             "discoverFilebase": "Filebase: S3-compatible object storage (5 GB free)",
             "discoverTigris": "Tigris: globally distributed S3-compatible storage, no egress fees (5 GB free)",
+            "discoverFastly": "Fastly Object Storage: S3-compatible storage in 12 regions (5 GB free, card required)",
             "discoverWasabi": "Hot cloud storage, no egress fees",
             "discoverStorj": "Decentralized S3-compatible cloud storage",
             "discoverAlibabaOSS": "S3-compatible object storage (China & global)",
@@ -4078,6 +4084,14 @@
             "importSharedSecretsFailed": "{names} were imported, but a shared secret or session from the file could not be stored. Sign these profiles in again if they do not connect.",
             "importOauthAppKept": "{names} came with a different custom OAuth app than the one this device has for that provider. The stored app was kept, so sign in again if these profiles stop connecting.",
             "importTargetChanged": "{names} were not overwritten: the file points them at another server, and their stored passwords and tokens must not go there. Import with Duplicate to add the copy from the file, or delete the profile first.",
+            "importSecurityTitle": "Security settings in this backup",
+            "importSecurityHelp": "These options turn a security check off. Each one is imported in its safe state unless you tick it to keep it as the file has it.",
+            "importSecurityVerifyCert": "Certificate check turned off",
+            "importSecurityCleartextEndpoint": "Unencrypted S3 endpoint allowed",
+            "importSecurityCleartextStorage": "Unencrypted storage address allowed",
+            "importSecurityPlainHttp": "Plain HTTP instead of HTTPS",
+            "importSecurityPasvAddress": "Data connection to the address the server names (PASV)",
+            "importSecurityUnknownHostKeys": "Unknown SSH host keys accepted",
             "importJottaChainWarning": "Jottacloud renews its sign-in on every connection, and {names} now shares one with another copy: the copy that connects first signs the other out (the device the file came from, or the profile it was duplicated from). Sign the other one in again with a new Personal Login Token.",
             "includeCredentials": "Include saved credentials",
             "serversUpdated": "{count} updated",
@@ -4449,7 +4463,10 @@
             "aiKeysCount": "{count} AI keys",
             "oauthTokensCount": "{count} OAuth tokens",
             "configEntriesCount": "{count} config entries",
-            "keystoreDatabasesFailed": "The import finished, but these databases could not be restored and keep what they held: {names}."
+            "keystoreDatabasesFailed": "The import finished, but these databases could not be restored and keep what they held: {names}.",
+            "keystoreSecurityReset": "{count} restored server(s) had options that turn a security check off; they were put back to the safe setting: {details}.",
+            "keystoreSecurityResetFailed": "The security settings of {count} restored account(s) could not be checked or reset. They are reported here instead of being silently left active.",
+            "keystoreSecurityResetQuarantine": "The restored account database could not be secured and was set aside as {path}. No restored account is active. Fix the disk or permission problem, then restore the backup again. The quarantined file remains available for recovery."
         },
         "sharing": {
             "add": "Add",
@@ -4928,6 +4945,9 @@
             "renameSuccess": "Renamed successfully",
             "restoreFailed": "Restore failed",
             "saveFailed": "Save Failed",
+            "saveOnAnotherServer": "Not saved: this file was opened from a server, account or encrypted overlay that is not active now. Switch back to its tab, then save again.",
+            "openedOnAnotherServer": "Not opened: the server changed while the file was being read. Open it again.",
+            "remoteTargetChanged": "Nothing was changed: the server, account or encrypted overlay changed since this action started, or is still reconnecting. Try again on the current connection.",
             "saveServerFirst": "Please save your server first",
             "serverNotFound": "Server not found",
             "serverProfileNotFound": "Server profile \"{name}\" not found",
@@ -5139,7 +5159,10 @@
             },
             "stagedCount": "{count} staged",
             "pendingCount": "{count} Pending",
-            "failedCount": "{count} Failed"
+            "failedCount": "{count} Failed",
+            "queuedForAnotherServer": "Not started: this transfer was queued for another server or account. Switch back to its tab, then retry.",
+            "queuedOverlayChanged": "Not started: the encrypted overlay this transfer was queued under is locked or no longer covers this folder. Unlock it on that server, then retry.",
+            "pasteFromAnotherServer": "Not pasted: these files were cut or copied on a server, account or encrypted overlay that is not active now. Switch back to its tab, then paste again."
         },
         "scanning": {
             "deleting": "Deleting",
@@ -5868,6 +5891,7 @@
             "manageRevokeConfirm": "Revoke this share link? Anyone with the link will lose access.",
             "manageCreated": "Created",
             "manageExpires": "Expires",
+            "expiresSoonerThanChosen": "shorter than chosen",
             "manageNeverExpires": "Never",
             "managePasswordProtected": "Password protected",
             "expirationHoursOne": "{count} hour",

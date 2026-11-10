@@ -5,6 +5,7 @@
 // and every part of the import that needs the user's attention.
 
 import type { TranslationFunction } from '../i18n';
+import { RELAXATION_LABEL_KEYS } from './profileSecurity';
 
 /** The fields of the `import_keystore` result that the message reports. */
 export interface KeystoreImportOutcome {
@@ -13,10 +14,15 @@ export interface KeystoreImportOutcome {
     requiresRestart?: boolean;
     userPartitionsRekeyed?: number;
     userPartitionsUnreadable?: number;
+    userPartitionsBackupPath?: string;
     /** The backup's account partition was left out: unreadable here (review of #980). */
     profilePartitionSkipped?: boolean;
     profileDecisionsError?: string;
     sqliteDbsFailed?: string[];
+    /** Restored profiles whose security-relaxing options were put back to safe. */
+    securityReset?: { name: string; keys: string[] }[];
+    securityResetFailed?: number;
+    securityResetQuarantine?: string;
 }
 
 /** What the caller knows about the import that the result does not carry. */
@@ -39,6 +45,18 @@ const asSentence = (error: string): string => {
     const trimmed = error.trim();
     return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 };
+
+export function keystoreImportModalResult(result: KeystoreImportOutcome): KeystoreImportOutcome | null {
+    const needed = !!result.requiresRestart
+        || (result.userPartitionsUnreadable ?? 0) > 0
+        || (result.userPartitionsRekeyed ?? 0) > 0
+        || !!result.userPartitionsBackupPath
+        || !!result.sqliteDbsFailed?.length
+        || (result.securityResetFailed ?? 0) > 0
+        || !!result.securityResetQuarantine
+        || !!result.securityReset?.length;
+    return needed ? { ...result } : null;
+}
 
 /**
  * Build the message for a finished import. `preferencesError` is the failure,
@@ -78,6 +96,20 @@ export function keystoreImportSummary(
         const key = context.reviewed ? 'settings.keystoreDecisionsFailed' : 'settings.keystoreListMergeFailed';
         extraNotes.push(t(key, { error: asSentence(result.profileDecisionsError) }));
     }
+    if (result.securityReset?.length) {
+        // CodeRabbit on #1524: a restore takes no option that turns a
+        // security check off from the backup, and says which it put back.
+        const details = result.securityReset
+            .map(r => `${r.name} (${r.keys.map(k => t(RELAXATION_LABEL_KEYS[k] ?? k)).join(', ')})`)
+            .join('; ');
+        extraNotes.push(t('settings.keystoreSecurityReset', { count: result.securityReset.length, details }));
+    }
+    if ((result.securityResetFailed ?? 0) > 0) {
+        extraNotes.push(t('settings.keystoreSecurityResetFailed', { count: result.securityResetFailed ?? 0 }));
+    }
+    if (result.securityResetQuarantine) {
+        extraNotes.push(t('settings.keystoreSecurityResetQuarantine', { path: result.securityResetQuarantine }));
+    }
     if (result.sqliteDbsFailed?.length) {
         extraNotes.push(t('settings.keystoreDatabasesFailed', { names: result.sqliteDbsFailed.join(', ') }));
     }
@@ -91,6 +123,8 @@ export function keystoreImportSummary(
         || !!result.profilePartitionSkipped
         || !!result.requiresRestart
         || !!result.profileDecisionsError
+        || (result.securityResetFailed ?? 0) > 0
+        || !!result.securityResetQuarantine
         || !!result.sqliteDbsFailed?.length
         || !!preferencesError;
     return {

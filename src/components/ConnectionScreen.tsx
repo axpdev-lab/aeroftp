@@ -9,6 +9,7 @@
 import { presetConnectionOptions, connectionProfileDefaults } from '../providers/connectionManifest';
 import React, { useState, useEffect, useRef, useMemo, useId, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { countedOAuthLogin, oauthLoginKey } from '../utils/oauthLogins';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
@@ -36,10 +37,11 @@ import { ManualStorageField } from './common/ManualStorageField';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
 import { discoveryRequestParams, discoveryRequestResetKey, type DiscoveryProtocol } from './common/discoveryRequest';
 import { findActiveMode, findActiveModeGroup, modeGroupProviderIds, modeLabel, resolveModeHeader, resolveModeSwitchCredentials } from './providerModeGroups';
+import { getDiscoverCardDescription } from './IntroHub/discoverData';
 import { loadModeCredentials, storeModeCredentials, deleteModeCredentials, type ModeCredentialMap } from '../utils/modeCredentialStore';
 import { openUrl } from '../utils/openUrl';
 import { safePickerStartDir } from '../utils/safePickerDir';
-import { isValidOverlayScope, normalizeRemotePath, resolveOverlayScope } from '../utils/overlayScope';
+import { isValidOverlayScope, loginRelativeForm, normalizeOverlayAnchor, resolveOverlayScope } from '../utils/overlayScope';
 import { overlayEditDiffers } from '../utils/overlayEditDiff';
 import { DefaultSaltDisclosure } from './common/DefaultSaltDisclosure';
 import { CopyLinkButton } from './common/CopyLinkButton';
@@ -54,6 +56,7 @@ import { getProviderById, resolveS3Endpoint, resolveProfileS3Location, presetDef
 import { isBlompAuthUrl, swiftOptionsForAuthUrl } from './swiftAuthUrl';
 import { getProviderDocsUrl, PROVIDER_DOCS_INDEX } from '../providers/docsLinks';
 import { getMegaConnectionMode, normalizeMegaOptions } from '../utils/providerConnectionMeta';
+import { canonicalOptionsForEdit } from '../utils/profileSecurity';
 import { createProfileCredentialJournal, type ProfileCredentialJournal, type ProfileCredentialWriter } from '../utils/profileCredentialJournal';
 import { loadSavedServerProfiles, readSavedServerProfilesForWrite, revertConvertedProfile, storeSavedServerProfiles, type SavedProfilesRead } from '../utils/serverProfileStore';
 import { carryFavoriteServer } from '../utils/favoriteServers';
@@ -194,7 +197,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         try {
             // One call: an import or another window must not see half of the pair.
             await invoke('store_oauth_app', { provider: 'fourshared', clientId: consumerKey, clientSecret: consumerSecret });
-            await invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } });
+            await countedOAuthLogin(oauthLoginKey('fourshared', null), () => invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } }));
             setHasExistingTokens(true);
             setWantsNewAccount(false);
             await handleConnect();
@@ -514,10 +517,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // Validate the RESOLVED scope: a bare subfolder name is nested under the
         // Remote Path (#369 relative UX), so it is always in scope and the error
         // never fires for normal input; the guard only survives as a safety net.
-        const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
+        const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir, protocol), quickConnectDirs.remoteDir, protocol);
         setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [overlaysRemotePath, quickConnectDirs.remoteDir, t]);
+    }, [overlaysRemotePath, quickConnectDirs.remoteDir, protocol, t]);
 
     // The overlay section back to the fresh-form default. A profile made after
     // an edit session must not inherit that session's overlay: its locked
@@ -1009,10 +1012,10 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // land somewhere else. It stays editable, with one rule: it must remain the
     // Overlays Path or one of its parents, otherwise the encrypted folder would
     // sit outside the session and the vault would look empty.
-    const pinnedOverlayAnchor = overlayFieldsLocked ? normalizeRemotePath(overlaysRemotePath) : '';
+    const pinnedOverlayAnchor = overlayFieldsLocked ? normalizeOverlayAnchor(overlaysRemotePath) : '';
     const remotePathEscapesOverlay =
         !!pinnedOverlayAnchor
-        && !isValidOverlayScope(pinnedOverlayAnchor, quickConnectDirs.remoteDir);
+        && !isValidOverlayScope(pinnedOverlayAnchor, quickConnectDirs.remoteDir, protocol);
     // Node 2: enabling an overlay on an EXISTING profile that had none means its
     // remote may already hold plaintext files; those stay unencrypted and render
     // as an undecryptable mix under the overlay. Warn (do not block: a brand-new
@@ -1104,7 +1107,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // so it persists identically to how the backend reads it. A blank
                 // or "/" scope collapses to '' and falls back to the Remote Path,
                 // preserving today's behavior and every existing profile (#369).
-                remoteScope: resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir),
+                remoteScope: resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir, protocol),
                 localScope: quickConnectDirs.localDir || '',
                 filenameEncryption: isRclone ? aeroCryptFilenameEnc : 'standard',
                 ...(isRclone ? { directoryNameEncryption: aeroCryptDirNameEnc } : {}),
@@ -1339,9 +1342,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // MTP save requires a fingerprint (from Detect or hydrated edit profile).
         if (protocol === 'mtp' && !mtpFingerprint?.canonical) return;
 
-        const optionsToSave = protocol === 'mega'
+        const optionsToSave = canonicalOptionsForEdit(protocol === 'mega'
             ? normalizeMegaOptions(connectionParams.options)
-            : { ...connectionParams.options };
+            : connectionParams.options, protocol) as ProviderOptions;
         // Persist default tlsMode for FTP/FTPS so saved servers show correct badge
         if ((protocol === 'ftp' || protocol === 'ftps') && !optionsToSave.tlsMode) {
             optionsToSave.tlsMode = protocol === 'ftps' ? 'implicit' : 'explicit';
@@ -1848,6 +1851,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                     directoryNameEncryption: aeroCryptDirNameEnc,
                     overlaysRemotePath,
                     remoteDir: quickConnectDirs.remoteDir || '',
+                    protocol,
                     password: aeroCryptPassword,
                     salt: aeroCryptSalt,
                     keyfilePath: aeroCryptKeyfilePath,
@@ -2227,7 +2231,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         setSelectedProviderId(profile.providerId || null);
 
         // Resolve endpoint and accountId from registry for S3 profiles
-        let profileOptions = profile.options || {};
+        let profileOptions = canonicalOptionsForEdit(profile.options, profile.protocol) as ProviderOptions;
         if (profile.protocol === 's3' && profile.providerId) {
             const provider = getProviderById(profile.providerId);
             if (provider) {
@@ -2341,7 +2345,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 // Remote Path". The Remote Path is editable from here on, and a
                 // blank anchor would silently follow it and orphan the encrypted
                 // data; pinning it makes the anchor independent of that edit.
-                setOverlaysRemotePath(overlayBinding.remoteScope || profileRemote);
+                // On SFTP and SCP a relative Remote Path is under the login folder.
+                setOverlaysRemotePath(overlayBinding.remoteScope || loginRelativeForm(profileRemote, profile.protocol));
             } else {
                 setOverlaysRemotePath('');
             }
@@ -3161,7 +3166,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 onChange={(e) => {
                                     const v = e.target.value;
                                     setOverlaysRemotePath(v);
-                                    const valid = isValidOverlayScope(resolveOverlayScope(v, quickConnectDirs.remoteDir), quickConnectDirs.remoteDir);
+                                    const valid = isValidOverlayScope(resolveOverlayScope(v, quickConnectDirs.remoteDir, protocol), quickConnectDirs.remoteDir, protocol);
                                     setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
                                 }}
                                 className="w-full px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-sm disabled:opacity-60 disabled:cursor-not-allowed"
@@ -3712,6 +3717,86 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const isTwoColumnProtocol = protocol && twoColProtocols.includes(protocol);
     const cardMaxW = isTwoColumnProtocol ? 'max-w-4xl' : 'max-w-lg';
 
+    // Quick Connect header data (logo, name, description, Docs link).
+    // Hoisted so the description can render as a full-width badge on the
+    // left while logo, name and Docs stay in the top-right corner.
+    const qcHeader = (() => {
+        const PROTOCOL_DISPLAY: Record<string, { name: string; desc?: string }> = {
+            pixelunion: { name: 'PixelUnion', desc: t('protocol.discoverPixelUnion') },
+            immich: { name: 'Immich', desc: t('protocol.discoverImmich') },
+        };
+        // #369: single-preset OAuth/API providers launched by protocol
+        // alone (no providerId) used to fall back to protocol.toUpperCase(),
+        // rendering the header as DROPBOX / ONEDRIVE / BOX and so on. Map
+        // the protocol to its properly cased brand name so the header reads
+        // consistently (MEGA stays all-caps because that is its real style).
+        const PROTOCOL_FALLBACK_NAMES: Record<string, string> = {
+            dropbox: 'Dropbox', onedrive: 'OneDrive', googledrive: 'Google Drive',
+            googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud Drive',
+            jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt', proton: 'Proton Drive',
+            kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
+            drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
+            imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary', twake: 'Twake Drive',
+            filelu: 'FileLu', github: 'GitHub', gitlab: 'GitLab',
+            mtp: t('protocol.mtpName'),
+        };
+        const pid = connectionParams.providerId || '';
+        // When the active config belongs to a mode
+        // group (Koofr/OpenDrive/...), the header
+        // (logo+name+description+Docs link) is the
+        // group's canonical one for EVERY tab, so it
+        // no longer flickers between a full WebDAV
+        // preset header and a linkless native
+        // fallback. selectedProvider still drives the
+        // form fields / connection config.
+        const modeHeader = resolveModeHeader(connectionParams.providerId, connectionParams.protocol, t);
+        const headerProv = modeHeader?.providerId
+            ? (getProviderById(modeHeader.providerId) || selectedProvider)
+            : selectedProvider;
+        const logoId = modeHeader?.providerId || selectedProviderId || pid || protocol || '';
+        const LogoComponent = PROVIDER_LOGOS[logoId];
+        const display = PROTOCOL_DISPLAY[pid] || PROTOCOL_DISPLAY[protocol || ''];
+        const providerName = modeHeader?.name || headerProv?.name || display?.name || PROTOCOL_FALLBACK_NAMES[protocol || ''] || protocol?.toUpperCase() || '';
+        // Description fallback: registry > PROTOCOL_DISPLAY > i18n protocol.<protocol>Desc
+        const tryProtocolDesc = (key: string): string | undefined => {
+            if (!key) return undefined;
+            const i18nKey = `protocol.${key}Desc`;
+            const v = t(i18nKey);
+            return v && v !== i18nKey ? v : undefined;
+        };
+        // Short description (shown in the header under logo on right).
+        // Mode-group neutral description wins: the
+        // canonical preset's text can be protocol-
+        // specific (e.g. OpenDrive WebDAV preset says
+        // "...via WebDAV"), wrong for the API tab (#270).
+        const shortDesc = modeHeader?.description
+            || headerProv?.description
+            || display?.desc
+            || tryProtocolDesc(pid)
+            || tryProtocolDesc(protocol || '');
+
+        // Specific Discover/Add-Services card description (shown in the info badge).
+        // For multi-connector providers (MEGA, Filen, Proton, Koofr...), this resolves
+        // the specific card description for the active connector/preset.
+        const cardDesc = getDiscoverCardDescription(selectedProviderId || pid, protocol, t)
+            || headerProv?.description
+            || shortDesc;
+
+        // When the card description is identical to the header short description,
+        // omit the badge to avoid repeating the exact same text twice.
+        const normalize = (s?: string) => s ? s.trim().toLowerCase().replace(/[.:\s]+/g, ' ') : '';
+        const showCardBadge = Boolean(cardDesc && (!shortDesc || normalize(cardDesc) !== normalize(shortDesc)));
+
+        // Docs link on every Quick Connect page (#270):
+        // prefer the per-provider AeroFTP docs page, fall
+        // back to the provider's own help URL, then the
+        // providers index so a link always renders.
+        const docsUrl = getProviderDocsUrl(modeHeader?.providerId || selectedProviderId || pid, protocol)
+            || headerProv?.helpUrl
+            || PROVIDER_DOCS_INDEX;
+        return { LogoComponent, providerName, shortDesc, cardDesc, showCardBadge, docsUrl };
+    })();
+
     return (
         <>
         <CopyableFormFields enabled={active && !!editingProfileId} className={`w-full mx-auto relative z-10 ${cardMaxW}`}>
@@ -3738,66 +3823,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 })()}
                             </div>
                             {(() => {
-                                const PROTOCOL_DISPLAY: Record<string, { name: string; desc?: string }> = {
-                                    pixelunion: { name: 'PixelUnion', desc: t('protocol.discoverPixelUnion') },
-                                    immich: { name: 'Immich', desc: t('protocol.discoverImmich') },
-                                };
-                                // #369: single-preset OAuth/API providers launched by protocol
-                                // alone (no providerId) used to fall back to protocol.toUpperCase(),
-                                // rendering the header as DROPBOX / ONEDRIVE / BOX and so on. Map
-                                // the protocol to its properly cased brand name so the header reads
-                                // consistently (MEGA stays all-caps because that is its real style).
-                                const PROTOCOL_FALLBACK_NAMES: Record<string, string> = {
-                                    dropbox: 'Dropbox', onedrive: 'OneDrive', googledrive: 'Google Drive',
-                                    googlephotos: 'Google Photos', box: 'Box', pcloud: 'pCloud Drive',
-                                    jottacloud: 'Jottacloud', filen: 'Filen', internxt: 'Internxt', proton: 'Proton Drive',
-                                    kdrive: 'kDrive', zohoworkdrive: 'Zoho WorkDrive', yandexdisk: 'Yandex Disk',
-                                    drime: 'Drime', mega: 'MEGA', backblaze: 'Backblaze B2', fourshared: '4shared',
-                                    imagekit: 'ImageKit', uploadcare: 'Uploadcare', cloudinary: 'Cloudinary', twake: 'Twake Drive',
-                                    filelu: 'FileLu', github: 'GitHub', gitlab: 'GitLab',
-                                    mtp: t('protocol.mtpName'),
-                                };
-                                const pid = connectionParams.providerId || '';
-                                // When the active config belongs to a mode
-                                // group (Koofr/OpenDrive/...), the header
-                                // (logo+name+description+Docs link) is the
-                                // group's canonical one for EVERY tab, so it
-                                // no longer flickers between a full WebDAV
-                                // preset header and a linkless native
-                                // fallback. selectedProvider still drives the
-                                // form fields / connection config.
-                                const modeHeader = resolveModeHeader(connectionParams.providerId, connectionParams.protocol, t);
-                                const headerProv = modeHeader?.providerId
-                                    ? (getProviderById(modeHeader.providerId) || selectedProvider)
-                                    : selectedProvider;
-                                const logoId = modeHeader?.providerId || selectedProviderId || pid || protocol || '';
-                                const LogoComponent = PROVIDER_LOGOS[logoId];
-                                const display = PROTOCOL_DISPLAY[pid] || PROTOCOL_DISPLAY[protocol || ''];
-                                const providerName = modeHeader?.name || headerProv?.name || display?.name || PROTOCOL_FALLBACK_NAMES[protocol || ''] || protocol?.toUpperCase() || '';
-                                // Description fallback: registry > PROTOCOL_DISPLAY > i18n protocol.<protocol>Desc
-                                const tryProtocolDesc = (key: string): string | undefined => {
-                                    if (!key) return undefined;
-                                    const i18nKey = `protocol.${key}Desc`;
-                                    const v = t(i18nKey);
-                                    return v && v !== i18nKey ? v : undefined;
-                                };
-                                // Mode-group neutral description wins: the
-                                // canonical preset's text can be protocol-
-                                // specific (e.g. OpenDrive WebDAV preset says
-                                // "...via WebDAV"), wrong for the API tab (#270).
-                                const providerDesc = modeHeader?.description
-                                    || headerProv?.description
-                                    || display?.desc
-                                    || tryProtocolDesc(pid)
-                                    || tryProtocolDesc(protocol || '');
+                                const { LogoComponent, providerName, docsUrl } = qcHeader;
                                 if (!LogoComponent && !providerName) return null;
-                                // Docs link on every Quick Connect page (#270):
-                                // prefer the per-provider AeroFTP docs page, fall
-                                // back to the provider's own help URL, then the
-                                // providers index so a link always renders.
-                                const docsUrl = getProviderDocsUrl(modeHeader?.providerId || selectedProviderId || pid, protocol)
-                                    || headerProv?.helpUrl
-                                    || PROVIDER_DOCS_INDEX;
                                 return (
                                     <div className="flex flex-col items-end gap-0.5">
                                         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
@@ -3820,13 +3847,21 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             {LogoComponent && <LogoComponent size={20} />}
                                             <span className="font-medium">{providerName}</span>
                                         </div>
-                                        {providerDesc && (
-                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-md text-right leading-tight">{providerDesc}</span>
+                                        {qcHeader.shortDesc && (
+                                            <span className="text-[11px] text-gray-400 dark:text-gray-500 max-w-md text-right leading-tight">{qcHeader.shortDesc}</span>
                                         )}
                                     </div>
                                 );
                             })()}
                         </div>
+                        {qcHeader.showCardBadge && qcHeader.cardDesc && (
+                            // Full provider description from Add Services cards, shown when
+                            // it provides distinct detail beyond the short header text.
+                            <div className="mt-3 flex items-start gap-2 rounded-md border border-blue-100 dark:border-blue-500/20 bg-blue-50/60 dark:bg-blue-500/10 px-3 py-2 text-xs leading-snug text-gray-600 dark:text-gray-300">
+                                <Info size={14} className="mt-px shrink-0 text-blue-500 dark:text-blue-400" />
+                                <span>{qcHeader.cardDesc}</span>
+                            </div>
+                        )}
                     </div>
                     <div className="space-y-3">
                         {/* Account-wide mode credentials affect which protocol can

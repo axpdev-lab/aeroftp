@@ -76,10 +76,6 @@ fn partial_rename_message(
     }
 }
 
-/// Returns true when the S3 endpoint targets a loopback address or a known
-/// local-bridge hostname (Filen Desktop S3 at local.s3.filen.io, MEGAcmd, ...).
-/// Used to auto-trust self-signed TLS certificates in S3Provider::new without
-/// requiring the user to flip verify_cert manually for every loopback profile.
 /// URL-encode an S3 key path segment-by-segment, preserving `/` as the
 /// path separator. AWS SigV4 and any compliant S3 server expect the wire
 /// URL to contain percent-encoded keys (spaces -> `%20`, emojis -> UTF-8
@@ -105,6 +101,41 @@ fn encode_s3_key_path(key: &str) -> String {
         .collect::<Vec<_>>()
         .join("/")
 }
+
+/// Refuse a request whose path the URL parser rewrote. S3 allows a key with
+/// `.` or `..` segments (`a/../b.txt`), but URL parsing removes dot segments,
+/// `%2e%2e` included (WHATWG), so the request and its signature would address
+/// `b.txt`, or in path-style even another bucket: a GET or a delete on the
+/// wrong object, accepted by the server. No URL form keeps such a segment, so
+/// the operation is refused with the key named instead (#1506 Requested 189).
+/// Batch deletes carry keys in the XML body and copy sources in a header, which
+/// are not rewritten.
+fn refuse_rewritten_path(url: &str, parsed: &url::Url) -> Result<(), ProviderError> {
+    let after_scheme = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let built = after_scheme.find('/').map_or("/", |i| &after_scheme[i..]);
+    let built = built.split(['?', '#']).next().unwrap_or(built);
+    let built = if built.is_empty() { "/" } else { built };
+    // Compared on the decoded bytes: the parser also percent-encodes what the
+    // endpoint's base path left raw (`/My Files` becomes `/My%20Files`), which
+    // addresses the same object. Only a removed segment changes the bytes
+    // (CodeRabbit on #1524).
+    if built == parsed.path()
+        || urlencoding::decode_binary(built.as_bytes())
+            == urlencoding::decode_binary(parsed.path().as_bytes())
+    {
+        return Ok(());
+    }
+    Err(ProviderError::InvalidPath(format!(
+        "S3 cannot address '{}': a '.' or '..' segment in an object name is \
+         rewritten by every HTTP client, so the request would reach '{}' instead. \
+         Rename the object with a tool that sends raw paths, or work on its folder.",
+        urlencoding::decode(built).unwrap_or(std::borrow::Cow::Borrowed(built)),
+        urlencoding::decode(parsed.path()).unwrap_or(std::borrow::Cow::Borrowed(parsed.path()))
+    )))
+}
+
+/// The longest validity SigV4 allows a presigned URL: seven days.
+const SIGV4_MAX_PRESIGN_SECS: u64 = 604_800;
 
 /// The SigV4 canonical URI of a request path as it travels on the wire.
 ///
@@ -417,24 +448,12 @@ fn plan_copy_parts(
 /// and "nobody else can read this" are different questions with different
 /// answers. Do not merge the two predicates.
 fn is_local_s3_endpoint(endpoint: &str) -> bool {
-    let lower = endpoint.trim().to_ascii_lowercase();
-    let stripped = lower
-        .strip_prefix("http://")
-        .or_else(|| lower.strip_prefix("https://"))
-        .unwrap_or(&lower);
-    let host_only = stripped
-        .split('/')
-        .next()
-        .unwrap_or(stripped)
-        .split('@')
-        .next_back()
-        .unwrap_or(stripped);
-    let host = host_only
-        .rsplit_once(':')
-        .filter(|(_, p)| p.chars().all(|c| c.is_ascii_digit()))
-        .map(|(h, _)| h)
-        .unwrap_or(host_only);
-    matches!(host, "127.0.0.1" | "::1" | "[::1]" | "localhost")
+    // The host the request reaches (#1506 Requested 188): a split string kept
+    // `?` and `#`, so a schemeless `evil.com?.local` read as an mDNS name.
+    let Some(host) = crate::util::endpoint::endpoint_host(endpoint) else {
+        return false;
+    };
+    matches!(host.as_str(), "127.0.0.1" | "::1" | "localhost")
         || host.ends_with(".localhost")
         || host.ends_with(".local")
         || host == "local.s3.filen.io"
@@ -479,6 +498,34 @@ fn s3_slowdown_delay(
     config: &super::HttpRetryConfig,
 ) -> Option<std::time::Duration> {
     if status != 503 || attempt >= config.max_retries || !s3_is_rate_limited(503, body) {
+        return None;
+    }
+    let cap = std::time::Duration::from_millis(config.max_delay_ms);
+    Some(
+        retry_after
+            .map(|hint| hint.min(cap))
+            .unwrap_or_else(|| super::http_retry::calculate_delay(attempt, config)),
+    )
+}
+
+/// Delay before another attempt of an upload request that Fastly Object
+/// Storage answered with 408: the request ran past its 120 s limit and was not
+/// completed (RFC 9110 15.5.9). The repeat targets the same key (a part
+/// overwrites by number), so nothing is stored twice. A part repeats the same
+/// buffer; a single PUT reads the open file again, so an in-place edit during
+/// the wait changes its bytes, as for every streamed upload. Only a 408 qualifies. A plain 503 on a
+/// write is an uncertain outcome and stays on its response like on every
+/// other S3 endpoint (`docs/HTTP-RETRY-SAFETY.md`); a 429 is already repeated
+/// by the shared layer. Bounded by the shared retry allowance, `Retry-After`
+/// honored up to the configured cap. `attempt` is how many 408 replies were
+/// already followed.
+fn fastly_timeout_delay(
+    status: u16,
+    retry_after: Option<std::time::Duration>,
+    attempt: u32,
+    config: &super::HttpRetryConfig,
+) -> Option<std::time::Duration> {
+    if status != 408 || attempt >= config.max_retries {
         return None;
     }
     let cap = std::time::Duration::from_millis(config.max_delay_ms);
@@ -645,11 +692,23 @@ pub struct S3Provider {
     /// Makes a loopback test double answer to the Tigris detector.
     #[cfg(test)]
     force_tigris: bool,
+    /// Makes a loopback test double answer to the Fastly detector.
+    #[cfg(test)]
+    force_fastly: bool,
+    /// Stands in for the region label of a Fastly endpoint host on a loopback
+    /// double, whose host has no label.
+    #[cfg(test)]
+    force_fastly_label: Option<&'static str>,
 }
 
 /// The shortest gap AeroCloud leaves between two full remote scans of a
 /// Tigris pair.
 const TIGRIS_MIN_FULL_SCAN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
+/// The shortest gap AeroCloud leaves between two full remote scans of a
+/// Fastly pair (owner decision, 2026-11-06): Fastly bills a listing as a
+/// Class A request, like Tigris.
+const FASTLY_MIN_FULL_SCAN_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 /// `X-Tigris-Rename` not tried yet on this session.
 const TIGRIS_RENAME_UNKNOWN: u8 = 0;
@@ -892,6 +951,10 @@ impl S3Provider {
             tigris_rename_state: Arc::new(std::sync::atomic::AtomicU8::new(TIGRIS_RENAME_UNKNOWN)),
             #[cfg(test)]
             force_tigris: false,
+            #[cfg(test)]
+            force_fastly: false,
+            #[cfg(test)]
+            force_fastly_label: None,
         })
     }
 
@@ -1787,6 +1850,96 @@ impl S3Provider {
         self.config.endpoint.as_deref().is_some_and(is_tigris_host)
     }
 
+    /// Detect Fastly Object Storage: a host that ends in
+    /// `.object.fastlystorage.app` on a domain boundary, never a substring.
+    /// Host-parsed so a profile saved from the "Custom S3" form gets the same
+    /// behaviour as the preset.
+    fn is_fastly_endpoint(&self) -> bool {
+        #[cfg(test)]
+        if self.force_fastly {
+            return true;
+        }
+        self.config.endpoint.as_deref().is_some_and(is_fastly_host)
+    }
+
+    /// The Fastly region label of the endpoint when it differs from the
+    /// configured region, `None` for any other endpoint or a matching region.
+    fn fastly_mismatch_label(&self) -> Option<String> {
+        #[cfg(test)]
+        if let Some(label) = self.force_fastly_label {
+            return (self.config.region != label).then(|| label.to_string());
+        }
+        fastly_region_mismatch(self.config.endpoint.as_deref()?, &self.config.region)
+    }
+
+    /// The message for Fastly's answer to a request signed for the wrong
+    /// region, or `None` when the answer is anything else. Decided on the HTTP
+    /// status (400), the S3 error code (`InvalidRequest`) and the host (a
+    /// Fastly regional endpoint whose label differs from the configured
+    /// region), never on the message text, so a real 400 on a matching region
+    /// keeps its own error.
+    fn fastly_region_mismatch_hint(&self, status: u16, body: &str) -> Option<String> {
+        if status != 400 || s3_error_code(body) != Some("InvalidRequest") {
+            return None;
+        }
+        let label = self.fastly_mismatch_label()?;
+        let shown = match self.config.region.trim() {
+            "" => "empty".to_string(),
+            region => region.to_string(),
+        };
+        Some(format!(
+            "Fastly Object Storage refused the request: the Region ({shown}) does not match \
+             the endpoint ({label}.object.fastlystorage.app). Set Region to {label}."
+        ))
+    }
+
+    /// Turn a Fastly region-mismatch answer into its guided error. Any other
+    /// response goes back untouched: its body is read only for a 400 on a
+    /// Fastly regional host whose region differs from the label, and is then
+    /// put back.
+    async fn fastly_region_mismatch_check(
+        &self,
+        response: reqwest::Response,
+    ) -> Result<reqwest::Response, ProviderError> {
+        if response.status() != StatusCode::BAD_REQUEST {
+            return Ok(response);
+        }
+        if self.fastly_mismatch_label().is_none() {
+            return Ok(response);
+        }
+        let status = response.status();
+        let version = response.version();
+        let headers = response.headers().clone();
+        let body = super::response_bytes_with_limit(response, 64 * 1024).await?;
+        if let Some(message) =
+            self.fastly_region_mismatch_hint(status.as_u16(), &String::from_utf8_lossy(&body))
+        {
+            return Err(ProviderError::InvalidConfig(message));
+        }
+        let mut rebuilt = http::Response::builder().status(status).version(version);
+        if let Some(target) = rebuilt.headers_mut() {
+            *target = headers;
+        }
+        rebuilt
+            .body(body)
+            .map(reqwest::Response::from)
+            .map_err(|error| ProviderError::ServerError(error.to_string()))
+    }
+
+    /// Fastly Object Storage answers 501 NotImplemented to `GetBucketVersioning`
+    /// (Tier 0, 2026-11-06), so every version call is refused here as "not
+    /// supported", the same answer the capability flag gives, instead of
+    /// surfacing the 501 as a server error. The GUI, CLI and MCP already check
+    /// `supports_versions` first; this covers a direct trait call.
+    fn reject_fastly_versioning(&self) -> Result<(), ProviderError> {
+        if self.is_fastly_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Fastly Object Storage does not support object versioning".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     /// Whether a server-side copy of `source_size` bytes is composed as a
     /// multipart `UploadPartCopy` sequence instead of a single-PUT
     /// `CopyObject`. Filebase is the exception: it rejects `UploadPartCopy`
@@ -2399,6 +2552,7 @@ impl S3Provider {
         // Parse URL to get host and path
         let parsed =
             url::Url::parse(url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        refuse_rewritten_path(url, &parsed)?;
 
         let host = parsed.host_str().unwrap_or("");
         let path = parsed.path();
@@ -2504,13 +2658,14 @@ impl S3Provider {
             .await
     }
 
-    /// The dotted-bucket message (C6) when a request failed on the TLS name of
-    /// a Tigris bucket with dots in its name under virtual-host addressing.
+    /// The dotted-bucket message when a request failed on the TLS name of a
+    /// bucket with dots in its name under virtual-host addressing. Every
+    /// virtual-host service has the same limit: its wildcard certificate
+    /// (`*.s3.amazonaws.com`, `*.t3.storage.dev`, ...) covers one label, so
+    /// `my.bucket.<host>` cannot be verified (#1506 Requested 175; Tigris C6
+    /// first). Users used to get a bare certificate error.
     fn dotted_bucket_tls_error(&self, error: &reqwest::Error) -> Option<ProviderError> {
-        if !(self.is_tigris_endpoint()
-            && !self.config.path_style
-            && self.config.bucket.contains('.'))
-        {
+        if self.config.path_style || !self.config.bucket.contains('.') {
             return None;
         }
         let mut text = error.to_string();
@@ -2520,9 +2675,51 @@ impl S3Provider {
             text.push_str(&cause.to_string());
             source = cause.source();
         }
-        is_tls_name_failure(&text).then(|| {
-            ProviderError::ConnectionFailed(tigris_dotted_bucket_message(&self.config.bucket))
+        self.dotted_bucket_error_for(&text)
+    }
+
+    /// [`Self::dotted_bucket_tls_error`] on the error text with its sources.
+    fn dotted_bucket_error_for(&self, text: &str) -> Option<ProviderError> {
+        if self.config.path_style || !self.config.bucket.contains('.') {
+            return None;
+        }
+        if self.is_tigris_endpoint() {
+            return is_tls_name_failure(text).then(|| {
+                ProviderError::ConnectionFailed(tigris_dotted_bucket_message(&self.config.bucket))
+            });
+        }
+        // Elsewhere only a failure that names the host is the dot limit: a
+        // self-signed or expired certificate keeps its own text.
+        is_tls_hostname_failure(text).then(|| {
+            ProviderError::ConnectionFailed(dotted_bucket_message(
+                &self.config.bucket,
+                self.supports_path_style(),
+            ))
         })
+    }
+
+    /// Whether the service still accepts path-style requests, the remedy the
+    /// dotted-bucket message offers. Alibaba OSS and Tencent COS serve
+    /// virtual-host requests only.
+    fn supports_path_style(&self) -> bool {
+        let host = self
+            .config
+            .endpoint
+            .as_deref()
+            .and_then(|endpoint| {
+                let with_scheme = if endpoint.contains("://") {
+                    endpoint.to_string()
+                } else {
+                    format!("https://{endpoint}")
+                };
+                url::Url::parse(&with_scheme)
+                    .ok()
+                    .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+            })
+            .unwrap_or_default();
+        !["aliyuncs.com", "myqcloud.com"]
+            .iter()
+            .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
     }
 
     /// The error for a request that failed before any answer. A TLS name
@@ -2549,6 +2746,35 @@ impl S3Provider {
         body: Option<Vec<u8>>,
         extra_headers: &[(&str, &str)],
     ) -> Result<reqwest::Response, ProviderError> {
+        self.s3_request_bytes(
+            method,
+            key,
+            query_params,
+            body.map(bytes::Bytes::from),
+            extra_headers,
+            None,
+        )
+        .await
+    }
+
+    /// [`Self::s3_request_ext`] for a payload that is already refcounted
+    /// `Bytes`, so a caller that repeats a request clones a pointer, not the
+    /// payload.
+    ///
+    /// `budget` is the caller's remaining retries for one logical request. With
+    /// `Some`, this send spends from that allowance (a 429 or a connection
+    /// refusal uses one) instead of starting a fresh one, so an outer loop that
+    /// repeats the request on its own signal (the Fastly 408) cannot multiply
+    /// the sends. With `None` the shared wrapper applies its own allowance.
+    async fn s3_request_bytes(
+        &self,
+        method: Method,
+        key: &str,
+        query_params: Option<&[(&str, &str)]>,
+        body: Option<bytes::Bytes>,
+        extra_headers: &[(&str, &str)],
+        budget: Option<&mut u32>,
+    ) -> Result<reqwest::Response, ProviderError> {
         use sha2::{Digest, Sha256};
 
         // The payload lives once, as refcounted `Bytes`: the signature hashes
@@ -2556,7 +2782,6 @@ impl S3Provider {
         // slices it. A multipart part is therefore resident exactly once
         // while it is on the wire (it used to be copied again by the retry
         // helper, doubling the memory of every in-flight part).
-        let body: Option<bytes::Bytes> = body.map(bytes::Bytes::from);
 
         // Refresh STS credentials before they expire (issue #301, Fase 3).
         // Covers list / delete / stat / mkdir and every multipart part upload,
@@ -2656,18 +2881,31 @@ impl S3Provider {
         // ERR-03: Use retry wrapper for transient errors (429, 500, 502, 503, 504).
         // The request is rebuilt per attempt from the same `Bytes`, so a retry
         // never copies the payload and a paced body is simply built again.
-        let response = super::send_with_retry_replayable(
-            &self.client,
-            build_request,
-            &super::HttpRetryConfig::default(),
-        )
-        .await
-        .map_http_err(|e| self.transport_error(&e))?;
+        let retry_config = super::HttpRetryConfig::default();
+        let response = match budget {
+            None => super::send_with_retry_replayable(&self.client, build_request, &retry_config)
+                .await
+                .map_http_err(|e| self.transport_error(&e))?,
+            Some(remaining) => {
+                super::http_retry::send_rebuilt_async_with_budget(
+                    || std::future::ready(Ok::<_, ProviderError>(build_request())),
+                    &retry_config,
+                    |e| self.transport_error(&e),
+                    true,
+                    remaining,
+                )
+                .await?
+            }
+        };
 
         let status = response.status();
         if !status.is_success() {
             warn!("S3 Response Status: {} for {} {}", status, method, url);
         }
+
+        // A Fastly 400 for a region that does not match the host gets a message
+        // that names the fix. Every other answer passes through unchanged.
+        let response = self.fastly_region_mismatch_check(response).await?;
 
         Ok(response)
     }
@@ -2722,6 +2960,9 @@ impl S3Provider {
             })?;
         let body = String::from_utf8_lossy(&body);
         if !status.is_success() {
+            if let Some(message) = self.fastly_region_mismatch_hint(status.as_u16(), &body) {
+                return Err(ProviderError::InvalidConfig(message));
+            }
             let message = format_s3_error("ListBuckets failed", status, &body, None);
             return if matches!(status, StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN) {
                 Err(ProviderError::AuthenticationFailed(message))
@@ -3337,6 +3578,14 @@ impl S3Provider {
     /// number of parts (e.g. 1 GiB → 64 parts) without flooding the part
     /// list with thousands of tiny segments.
     const MULTIPART_PART_SIZE: usize = 16 * 1024 * 1024;
+    /// Fastly Object Storage ends any upload request that runs past 120 s
+    /// with a 408. A 200 MiB single PUT needs 13 Mbit/s sustained to make it,
+    /// so Fastly gets a lower cutoff (16 MiB needs about 1.1 Mbit/s) and
+    /// smaller parts (8 MiB needs about 0.6 Mbit/s).
+    const FASTLY_MULTIPART_THRESHOLD: usize = 16 * 1024 * 1024;
+    const FASTLY_MULTIPART_PART_SIZE: usize = 8 * 1024 * 1024;
+    /// S3 allows at most 10000 parts in one multipart upload.
+    const MULTIPART_MAX_PARTS: u64 = 10_000;
 
     /// S3 spec: single-PUT CopyObject (`x-amz-copy-source`) is hard-capped
     /// at 5 GiB. Above this size the copy must be expressed as a multipart
@@ -3355,8 +3604,42 @@ impl S3Provider {
     /// is now 200 MiB and would otherwise reject any sane part size).
     fn effective_part_size(&self) -> usize {
         self.upload_chunk_override
-            .unwrap_or(Self::MULTIPART_PART_SIZE)
+            .unwrap_or_else(|| self.default_part_size())
             .max(Self::MULTIPART_PART_MIN)
+    }
+
+    /// File size above which an upload goes multipart: the provider's own
+    /// request-duration limit when it has one (Fastly), else the global cutoff.
+    fn multipart_threshold(&self) -> usize {
+        if self.is_fastly_endpoint() {
+            Self::FASTLY_MULTIPART_THRESHOLD
+        } else {
+            Self::MULTIPART_THRESHOLD
+        }
+    }
+
+    /// Part size when no override is set.
+    fn default_part_size(&self) -> usize {
+        if self.is_fastly_endpoint() {
+            Self::FASTLY_MULTIPART_PART_SIZE
+        } else {
+            Self::MULTIPART_PART_SIZE
+        }
+    }
+
+    /// The part size for an upload of `total_size` bytes: the effective part
+    /// size, grown in whole MiB only as far as needed to stay within the 10000
+    /// parts S3 allows. A part larger than the base can run past a provider's
+    /// request-duration limit on a slow link (Fastly: 120 s); that is the price
+    /// of reaching the largest object size at all.
+    fn part_size_for(&self, total_size: u64) -> usize {
+        let base = self.effective_part_size() as u64;
+        let needed = total_size.div_ceil(Self::MULTIPART_MAX_PARTS);
+        if needed <= base {
+            return base as usize;
+        }
+        const MIB: u64 = 1024 * 1024;
+        (needed.div_ceil(MIB) * MIB) as usize
     }
 
     /// The part size handed to the DAG, snapped up to a whole number of delta
@@ -3451,6 +3734,9 @@ impl S3Provider {
             .map(String::from);
         let body = response.text().await.unwrap_or_default();
 
+        if let Some(message) = self.fastly_region_mismatch_hint(status.as_u16(), &body) {
+            return Err(ProviderError::InvalidConfig(message).into());
+        }
         if !status.is_success() || body.to_ascii_lowercase().contains("<error>") {
             return Err(self.delta_response_error(
                 DeltaOperation::Create,
@@ -3493,9 +3779,12 @@ impl S3Provider {
         let part_num_str = part_number.to_string();
         let params: &[(&str, &str)] = &[("partNumber", &part_num_str), ("uploadId", upload_id)];
 
-        let response = self
-            .s3_request(Method::PUT, key, Some(params), Some(data))
-            .await?;
+        let response = if self.is_fastly_endpoint() {
+            self.fastly_upload_part_request(key, params, data).await?
+        } else {
+            self.s3_request(Method::PUT, key, Some(params), Some(data))
+                .await?
+        };
 
         let status = response.status();
         if !status.is_success() {
@@ -3524,6 +3813,46 @@ impl S3Provider {
             })?;
 
         Ok(etag)
+    }
+
+    /// `UploadPart` on Fastly: a 408 answer is repeated with backoff
+    /// (`fastly_timeout_delay`), because a part is overwritten by number and
+    /// a repeat stores nothing twice. One allowance covers the whole part: the
+    /// 408 repeats and the shared 429 and connection-refusal retries inside each
+    /// send spend from the same counter, so a part goes out at most
+    /// `max_retries + 1` times. The last answer is returned as it came.
+    async fn fastly_upload_part_request(
+        &self,
+        key: &str,
+        params: &[(&str, &str)],
+        data: Vec<u8>,
+    ) -> Result<reqwest::Response, ProviderError> {
+        let retry = super::HttpRetryConfig::default();
+        let mut remaining = retry.max_retries;
+        // One refcounted payload: a repeat clones a pointer, not the part.
+        let data = bytes::Bytes::from(data);
+        loop {
+            let response = self
+                .s3_request_bytes(
+                    Method::PUT,
+                    key,
+                    Some(params),
+                    Some(data.clone()),
+                    &[],
+                    Some(&mut remaining),
+                )
+                .await?;
+            let status = response.status().as_u16();
+            let retry_after = super::http_retry::parse_retry_after(&response);
+            let attempt = retry.max_retries.saturating_sub(remaining);
+            match fastly_timeout_delay(status, retry_after, attempt, &retry) {
+                Some(delay) => {
+                    remaining = remaining.saturating_sub(1);
+                    tokio::time::sleep(delay).await;
+                }
+                None => return Ok(response),
+            }
+        }
     }
 
     /// UploadPartCopy: server-side copy of a byte range from `copy_source`
@@ -3747,7 +4076,7 @@ impl S3Provider {
         let mut part_number = 1u32;
         let mut uploaded: u64 = 0;
 
-        let part_size = self.effective_part_size();
+        let part_size = self.part_size_for(total_size);
         // KE-B1.1: parallelism override (default 4). Each part is held in
         // RAM during upload, so the actual memory footprint is
         // `max_parallel * part_size`; document this for users who push the
@@ -6122,7 +6451,7 @@ impl StorageProvider for S3Provider {
         // single-PUT path on that dialect (the server buffers the whole
         // request body in memory by design, per filen-s3 README).
         let force_single_put = self.is_filen_s3_endpoint();
-        if total_size > Self::MULTIPART_THRESHOLD as u64 && !force_single_put {
+        if total_size > self.multipart_threshold() as u64 && !force_single_put {
             return self
                 .upload_multipart_streaming(key, local_path, total_size, on_progress)
                 .await;
@@ -6217,7 +6546,13 @@ impl StorageProvider for S3Provider {
                 &mut remaining_retries,
             )
             .await?;
-            if response.status() != StatusCode::SERVICE_UNAVAILABLE {
+            // Fastly also repeats a 408 (see `fastly_timeout_delay`); a plain 503
+            // stays on its response, as everywhere (docs/HTTP-RETRY-SAFETY.md).
+            let status = response.status();
+            let fastly = self.is_fastly_endpoint();
+            if status != StatusCode::SERVICE_UNAVAILABLE
+                && !(fastly && status == StatusCode::REQUEST_TIMEOUT)
+            {
                 break response;
             }
             let retry_after = super::http_retry::parse_retry_after(&response);
@@ -6227,20 +6562,23 @@ impl StorageProvider for S3Provider {
                 .and_then(|value| value.to_str().ok())
                 .map(str::to_owned);
             let body = response.text().await.unwrap_or_default();
-            if let Some(delay) = s3_slowdown_delay(
-                StatusCode::SERVICE_UNAVAILABLE.as_u16(),
-                &body,
-                retry_after,
-                retry.max_retries.saturating_sub(remaining_retries),
-                &retry,
-            ) {
+            let attempt = retry.max_retries.saturating_sub(remaining_retries);
+            let delay = s3_slowdown_delay(status.as_u16(), &body, retry_after, attempt, &retry)
+                .or_else(|| {
+                    if fastly {
+                        fastly_timeout_delay(status.as_u16(), retry_after, attempt, &retry)
+                    } else {
+                        None
+                    }
+                });
+            if let Some(delay) = delay {
                 remaining_retries -= 1;
                 tokio::time::sleep(delay).await;
                 continue;
             }
             return Err(ProviderError::TransferFailed(format_s3_error(
                 "Upload failed",
-                StatusCode::SERVICE_UNAVAILABLE,
+                status,
                 &body,
                 retry_header.as_deref(),
             )));
@@ -6271,6 +6609,12 @@ impl StorageProvider for S3Provider {
                     .and_then(|v| v.to_str().ok())
                     .map(String::from);
                 let body = response.text().await.unwrap_or_default();
+                // The single PUT sends its own request, so the Fastly region
+                // hint is applied here too (it matters with --s3-no-check-bucket,
+                // where nothing else has probed the bucket).
+                if let Some(message) = self.fastly_region_mismatch_hint(status.as_u16(), &body) {
+                    return Err(ProviderError::InvalidConfig(message));
+                }
                 Err(ProviderError::TransferFailed(format_s3_error(
                     "Upload failed",
                     status,
@@ -6631,6 +6975,13 @@ impl StorageProvider for S3Provider {
         if self.is_tigris_endpoint() {
             return self.tigris_storage_info().await;
         }
+        if self.is_fastly_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Fastly Object Storage does not report storage usage over S3, so no used and \
+                 total figure is shown."
+                    .to_string(),
+            ));
+        }
         Err(ProviderError::NotSupported("storage_info".to_string()))
     }
 
@@ -6644,6 +6995,7 @@ impl StorageProvider for S3Provider {
             supports_password: false,
             supports_permissions: false,
             available_permissions: vec![],
+            max_expiration_secs: Some(SIGV4_MAX_PRESIGN_SECS),
             ..Default::default()
         }
     }
@@ -6672,17 +7024,34 @@ impl StorageProvider for S3Provider {
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
-        // MEGA S4 presigned URLs have a maximum expiration of 7 days (604800 seconds)
-        // Tigris documents 90 days, but its own engineering blog (2026-07-14)
-        // says one week: clamp at 7 days until a live probe settles it (C5).
-        let max_expires = if self.is_mega_s4_endpoint() || self.is_tigris_endpoint() {
-            604800_u64
-        } else {
-            u64::MAX
-        };
-        let expires = options.expires_in_secs.unwrap_or(3600).min(max_expires);
-
+        // SigV4 caps X-Amz-Expires at seven days for every S3 service (AWS
+        // answers AuthorizationQueryParametersError above it; R2, B2, MinIO,
+        // MEGA S4 and Tigris state the same limit). Asking for more used to
+        // build a link that was dead at once on AWS, or clamped without a word.
         let now: DateTime<Utc> = self.now_adjusted();
+        // A link signed with temporary (STS / AssumeRole) credentials stops
+        // working when they expire, whatever X-Amz-Expires says, so both the
+        // signed expiry and the reported one end there (Greptile on #1525).
+        let session_left = self
+            .temp_credentials
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .as_ref()
+            .and_then(|creds| creds.expiration)
+            .map(|expiration| (expiration - now).num_seconds().max(1) as u64);
+        // SigV4 needs at least one second; a zero would sign a link that is
+        // dead on arrival (CodeRabbit on #1525).
+        if options.expires_in_secs == Some(0) {
+            return Err(ProviderError::InvalidConfig(
+                "A share link needs an expiry of at least one second".to_string(),
+            ));
+        }
+        let expires = options
+            .expires_in_secs
+            .unwrap_or(3600)
+            .min(SIGV4_MAX_PRESIGN_SECS)
+            .min(session_left.unwrap_or(u64::MAX));
+
         let date_stamp = now.format("%Y%m%d").to_string();
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
 
@@ -6696,6 +7065,7 @@ impl StorageProvider for S3Provider {
         self.validate_request_url_confidentiality(&url)?;
         let parsed =
             url::Url::parse(&url).map_err(|e| ProviderError::InvalidConfig(e.to_string()))?;
+        refuse_rewritten_path(&url, &parsed)?;
 
         let host = parsed.host_str().unwrap_or("");
         let raw_path = parsed.path();
@@ -6765,10 +7135,13 @@ impl StorageProvider for S3Provider {
         let k_signing = hmac_sha256(&k_service, b"aws4_request");
         let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
 
+        // The real expiry, so the caller shows when the link stops working.
+        let expires_at = (now + chrono::Duration::seconds(expires as i64))
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         Ok(ShareLinkResult {
             url: format!("{}?{}&X-Amz-Signature={}", url, query_params, signature),
             password: None,
-            expires_at: None,
+            expires_at: Some(expires_at),
         })
     }
 
@@ -7173,7 +7546,7 @@ impl StorageProvider for S3Provider {
         super::TransferOptimizationHints {
             supports_multipart,
             multipart_threshold: if supports_multipart {
-                Self::MULTIPART_THRESHOLD as u64
+                self.multipart_threshold() as u64
             } else {
                 u64::MAX
             },
@@ -7420,17 +7793,26 @@ impl StorageProvider for S3Provider {
     /// includes 10,000 of those a month, so AeroCloud may not repeat a full
     /// scan more often than this; the watcher syncs changes path by path in
     /// between (C8).
+    ///
+    /// Fastly bills a listing as a Class A request too, so it gets the same
+    /// floor.
     fn min_full_scan_interval(&self) -> Option<std::time::Duration> {
-        self.is_tigris_endpoint()
-            .then_some(TIGRIS_MIN_FULL_SCAN_INTERVAL)
+        if self.is_tigris_endpoint() {
+            Some(TIGRIS_MIN_FULL_SCAN_INTERVAL)
+        } else if self.is_fastly_endpoint() {
+            Some(FASTLY_MIN_FULL_SCAN_INTERVAL)
+        } else {
+            None
+        }
     }
 
     fn supports_versions(&self) -> bool {
-        // MEGA S4 and Filebase do not support object versioning
-        !self.is_mega_s4_endpoint() && !self.is_filebase_endpoint()
+        // MEGA S4, Filebase and Fastly do not support object versioning
+        !self.is_mega_s4_endpoint() && !self.is_filebase_endpoint() && !self.is_fastly_endpoint()
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -7703,6 +8085,7 @@ impl StorageProvider for S3Provider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -7758,6 +8141,7 @@ impl StorageProvider for S3Provider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -7822,6 +8206,7 @@ impl StorageProvider for S3Provider {
     /// object (makes the prior version current again with no data copy); with a
     /// content version's id it permanently purges that version.
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -7869,6 +8254,7 @@ impl StorageProvider for S3Provider {
         prefix: &str,
         include_noncurrent: bool,
     ) -> Result<Vec<TrashEntry>, ProviderError> {
+        self.reject_fastly_versioning()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -8252,6 +8638,11 @@ impl S3Provider {
                 "Filebase does not support object tagging".to_string(),
             ));
         }
+        if self.is_fastly_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Fastly Object Storage does not support object tagging".to_string(),
+            ));
+        }
         let key = path.trim_start_matches('/');
         let response = self
             .s3_request(Method::GET, key, Some(&[("tagging", "")]), None)
@@ -8367,6 +8758,11 @@ impl S3Provider {
                 "Filebase does not support object tagging".to_string(),
             ));
         }
+        if self.is_fastly_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Fastly Object Storage does not support object tagging".to_string(),
+            ));
+        }
         let key = path.trim_start_matches('/');
 
         let tag_elements: String = tags
@@ -8439,6 +8835,11 @@ impl S3Provider {
         if self.is_filebase_endpoint() {
             return Err(ProviderError::NotSupported(
                 "Filebase does not support object tagging".to_string(),
+            ));
+        }
+        if self.is_fastly_endpoint() {
+            return Err(ProviderError::NotSupported(
+                "Fastly Object Storage does not support object tagging".to_string(),
             ));
         }
         let key = path.trim_start_matches('/');
@@ -9200,6 +9601,58 @@ fn is_tigris_host(endpoint: &str) -> bool {
         })
 }
 
+/// The suffix of every Fastly Object Storage endpoint host.
+const FASTLY_HOST_SUFFIX: &str = ".object.fastlystorage.app";
+
+/// The lowercase host of `endpoint` (URL or bare host) when it is a Fastly
+/// Object Storage host: it ends in `.object.fastlystorage.app` with at least
+/// one label in front, so `object.fastlystorage.app.example.com`,
+/// `notobject.fastlystorage.app` and the bare apex do not match.
+fn fastly_host(endpoint: &str) -> Option<String> {
+    let endpoint = endpoint.trim();
+    let with_scheme = if endpoint.contains("://") {
+        endpoint.to_string()
+    } else {
+        format!("https://{endpoint}")
+    };
+    url::Url::parse(&with_scheme)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_ascii_lowercase))
+        .filter(|host| host.len() > FASTLY_HOST_SUFFIX.len() && host.ends_with(FASTLY_HOST_SUFFIX))
+}
+
+fn is_fastly_host(endpoint: &str) -> bool {
+    fastly_host(endpoint).is_some()
+}
+
+/// The region label of a Fastly regional endpoint (`us-east` for
+/// `us-east.object.fastlystorage.app`), `None` for any other host or for a
+/// host with a bucket label in front of the region.
+fn fastly_region_label(endpoint: &str) -> Option<String> {
+    let host = fastly_host(endpoint)?;
+    let label = host.strip_suffix(FASTLY_HOST_SUFFIX)?;
+    (!label.is_empty() && !label.contains('.')).then(|| label.to_string())
+}
+
+/// The endpoint's region label when it differs from the configured signing
+/// region. Fastly signs with the host label as the region, so a profile with
+/// another value (an empty one included) gets a 400 `InvalidRequest`. The
+/// comparison is exact, because the request is signed with the region as
+/// stored: `EU-CENTRAL-1` is refused like `us-east-1`.
+fn fastly_region_mismatch(endpoint: &str, region: &str) -> Option<String> {
+    let label = fastly_region_label(endpoint)?;
+    (region != label).then_some(label)
+}
+
+/// The `<Code>` of an S3 XML error body, `None` when there is none.
+fn s3_error_code(body: &str) -> Option<&str> {
+    body.split("<Code>")
+        .nth(1)
+        .and_then(|rest| rest.split("</Code>").next())
+        .map(str::trim)
+        .filter(|code| !code.is_empty())
+}
+
 /// `Stats.TotalStorageBytes` of a Tigris `ListBuckets?IncludeStats=true`
 /// answer. `None` when the body is not JSON or carries no such figure, which
 /// is how a gateway without the extension looks.
@@ -9231,6 +9684,40 @@ fn is_tls_name_failure(text: &str) -> bool {
     lower.contains("certificate")
         || lower.contains("notvalidforname")
         || lower.contains("not valid for name")
+}
+
+/// Whether a transport error text is a certificate that does not cover the
+/// host name, in the wording of rustls (`NotValidForName`) and of the native
+/// TLS stacks (OpenSSL "hostname mismatch", Schannel and Secure Transport
+/// "not valid for" / "does not match"). Narrower than
+/// [`is_tls_name_failure`]: it is used where any other certificate problem
+/// must keep its own text.
+fn is_tls_hostname_failure(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    lower.contains("notvalidforname")
+        || lower.contains("not valid for name")
+        || lower.contains("hostname mismatch")
+        || lower.contains("does not match the target host")
+        || lower.contains("certificate is not valid for")
+}
+
+/// The message for a TLS name failure on a bucket with dots in its name under
+/// virtual-host addressing, for every service but Tigris (which has its own,
+/// naming its certificate).
+fn dotted_bucket_message(bucket: &str, path_style_supported: bool) -> String {
+    if path_style_supported {
+        format!(
+            "The bucket name '{bucket}' contains dots, and with virtual-host addressing \
+             the server's certificate does not cover a host name with extra dots. Turn \
+             on Path-Style Access for this profile, or use a bucket name without dots."
+        )
+    } else {
+        format!(
+            "The bucket name '{bucket}' contains dots, and with virtual-host addressing \
+             the server's certificate does not cover a host name with extra dots. This \
+             service serves virtual-host requests only: use a bucket name without dots."
+        )
+    }
 }
 
 /// The message for a TLS name failure on a Tigris bucket with dots in its
@@ -9978,6 +10465,96 @@ mod tests {
                 .is_err(),
             "an mDNS host is on a network: cleartext to it needs consent"
         );
+    }
+
+    /// #1506 Requested 188: the certificate predicate keeps its documented
+    /// names (owner decision 2026-11-06) but reads the host with the URL
+    /// parser, so a query, a fragment or userinfo cannot fake one.
+    #[test]
+    fn local_certificate_trust_reads_the_real_host() {
+        for local in [
+            "http://minio.local:9000",
+            "https://nas.local",
+            "gateway.localhost:8443",
+            "https://127.0.0.1:1800",
+            "https://[::1]:1800",
+            "local.s3.filen.io:1800",
+        ] {
+            assert!(is_local_s3_endpoint(local), "{local}");
+        }
+        for public in [
+            "evil.com?.local",
+            "evil.com#.local",
+            "https://evil.com/?x=.local",
+            "https://user@evil.com/a.local",
+            "https://minio.local.evil.com",
+            "https://s3.amazonaws.com",
+        ] {
+            assert!(!is_local_s3_endpoint(public), "{public}");
+        }
+    }
+
+    /// #1506 Requested 189: a key with `.` or `..` segments is refused before
+    /// signing, on both signers, instead of reaching another object (another
+    /// bucket in path-style). Ordinary names, dots inside a name included,
+    /// still sign.
+    #[tokio::test]
+    async fn dot_segment_keys_are_refused_not_rewritten() {
+        for path_style in [true, false] {
+            let mut provider = make_provider(Some("https://s3.example.com"));
+            provider.config.path_style = path_style;
+            for key in ["a/../b.txt", "../other/x", "./x", "dir/./y", "dir/.."] {
+                let url = provider.build_url(key);
+                let mut headers = std::collections::HashMap::new();
+                let signed =
+                    provider.sign_request("DELETE", &url, &mut headers, "UNSIGNED-PAYLOAD");
+                assert!(
+                    matches!(signed, Err(ProviderError::InvalidPath(ref m)) if m.contains("'.' or '..'")),
+                    "path_style={path_style} key={key}: {signed:?}"
+                );
+                let link = provider
+                    .create_share_link(&format!("/{key}"), ShareLinkOptions::default())
+                    .await;
+                assert!(
+                    matches!(link, Err(ProviderError::InvalidPath(_))),
+                    "path_style={path_style} key={key}: {link:?}"
+                );
+            }
+            for key in ["a.b/c..d.txt", "...", "dir/.hidden", "x/..y/z", "a b/c"] {
+                let url = provider.build_url(key);
+                let mut headers = std::collections::HashMap::new();
+                assert!(
+                    provider
+                        .sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD")
+                        .is_ok(),
+                    "path_style={path_style} key={key}"
+                );
+            }
+        }
+    }
+
+    /// CodeRabbit on #1524: a path-style endpoint whose base path holds a
+    /// space is encoded by the URL parser (`/My%20Files`), which is not a
+    /// rewrite, so the request still signs and a share link is still made. A
+    /// dot segment under that base is still refused.
+    #[tokio::test]
+    async fn an_encoded_base_path_is_not_a_rewrite() {
+        let mut provider = make_provider(Some("https://gateway.example.com/My Files"));
+        provider.config.path_style = true;
+        let url = provider.build_url("report.pdf");
+        let mut headers = std::collections::HashMap::new();
+        let signed = provider.sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD");
+        assert!(signed.is_ok(), "{signed:?}");
+        let link = provider
+            .create_share_link("/report.pdf", ShareLinkOptions::default())
+            .await;
+        assert!(link.is_ok(), "{link:?}");
+        let url = provider.build_url("a/../b.txt");
+        let mut headers = std::collections::HashMap::new();
+        assert!(matches!(
+            provider.sign_request("GET", &url, &mut headers, "UNSIGNED-PAYLOAD"),
+            Err(ProviderError::InvalidPath(_))
+        ));
     }
 
     #[test]
@@ -12847,6 +13424,952 @@ mod tests {
             .any(|r| r.header("x-amz-storage-class") == Some("STANDARD_IA")));
     }
 
+    // ---- Fastly Object Storage -------------------------------------------
+
+    fn fastly_provider(endpoint: &str, region: &str) -> S3Provider {
+        let mut provider = make_provider(Some(endpoint));
+        provider.config.region = region.to_string();
+        provider.connected = true;
+        provider
+    }
+
+    #[test]
+    fn fastly_endpoint_detection_uses_a_domain_boundary() {
+        for endpoint in [
+            "https://eu-central-1.object.fastlystorage.app",
+            "https://us-east.object.fastlystorage.app",
+            "HTTPS://EU-CENTRAL-1.OBJECT.FASTLYSTORAGE.APP",
+            "https://us-east-1.object.fastlystorage.app:443",
+            "jp-central-1.object.fastlystorage.app",
+            "https://my-bucket.eu-central-1.object.fastlystorage.app",
+        ] {
+            assert!(
+                make_provider(Some(endpoint)).is_fastly_endpoint(),
+                "{endpoint}"
+            );
+        }
+        for endpoint in [
+            "https://eu-central-1.object.fastlystorage.app.example",
+            "https://eu-central-1.object.fastlystorage.app.attacker.com",
+            "https://object.fastlystorage.app",
+            "https://notobject.fastlystorage.app",
+            "https://eu-central-1.myobject.fastlystorage.app",
+            "https://fastlystorage.app",
+            "https://eu-central-1.object.fastlystorage.com",
+            "https://s3.us-east-1.amazonaws.com",
+            "http://localhost:9000",
+        ] {
+            assert!(
+                !make_provider(Some(endpoint)).is_fastly_endpoint(),
+                "{endpoint}"
+            );
+        }
+        assert!(!make_provider(None).is_fastly_endpoint());
+    }
+
+    /// A bucket named after another vendor on a Fastly host is still Fastly,
+    /// and a Fastly name in the bucket label of another host is not.
+    #[test]
+    fn fastly_detection_ignores_the_bucket_label() {
+        assert!(make_provider(Some(
+            "https://backblaze-backups.us-east.object.fastlystorage.app"
+        ))
+        .is_fastly_endpoint());
+        assert!(
+            !make_provider(Some("https://fastly.s3.us-east-1.amazonaws.com")).is_fastly_endpoint()
+        );
+    }
+
+    #[test]
+    fn fastly_region_label_is_the_first_host_label_of_a_regional_endpoint() {
+        for (endpoint, label) in [
+            ("https://us-east.object.fastlystorage.app", Some("us-east")),
+            (
+                "https://us-east-1.object.fastlystorage.app",
+                Some("us-east-1"),
+            ),
+            (
+                "eu-central.object.fastlystorage.app:443",
+                Some("eu-central"),
+            ),
+            (
+                "https://EU-CENTRAL-1.object.fastlystorage.app/",
+                Some("eu-central-1"),
+            ),
+            ("https://b.eu-central-1.object.fastlystorage.app", None),
+            ("https://object.fastlystorage.app", None),
+            ("https://us-east.object.fastlystorage.app.example", None),
+            ("https://s3.us-east-1.amazonaws.com", None),
+        ] {
+            assert_eq!(
+                fastly_region_label(endpoint).as_deref(),
+                label,
+                "{endpoint}"
+            );
+        }
+    }
+
+    #[test]
+    fn fastly_region_mismatch_is_a_label_that_differs_from_the_region() {
+        let host = "https://eu-central-1.object.fastlystorage.app";
+        assert_eq!(
+            fastly_region_mismatch(host, "").as_deref(),
+            Some("eu-central-1")
+        );
+        assert_eq!(
+            fastly_region_mismatch(host, "us-east-1").as_deref(),
+            Some("eu-central-1")
+        );
+        // The older regions are not prefixes of the -1 ones, and the other way round.
+        assert_eq!(
+            fastly_region_mismatch(host, "eu-central").as_deref(),
+            Some("eu-central-1")
+        );
+        assert_eq!(
+            fastly_region_mismatch("https://us-east.object.fastlystorage.app", "us-east-1")
+                .as_deref(),
+            Some("us-east")
+        );
+        assert_eq!(fastly_region_mismatch(host, "eu-central-1"), None);
+        // Surrounding spaces and case both count, as the region is signed as stored.
+        assert_eq!(
+            fastly_region_mismatch(host, " eu-central-1 ").as_deref(),
+            Some("eu-central-1")
+        );
+        assert_eq!(
+            fastly_region_mismatch(host, "EU-Central-1").as_deref(),
+            Some("eu-central-1")
+        );
+        // Not a Fastly regional host: nothing to compare.
+        assert_eq!(
+            fastly_region_mismatch("https://s3.us-east-1.amazonaws.com", ""),
+            None
+        );
+        assert_eq!(
+            fastly_region_mismatch("https://bucket.eu-central-1.object.fastlystorage.app", "x"),
+            None
+        );
+    }
+
+    fn invalid_request_body() -> &'static str {
+        r#"<?xml version="1.0"?><Error><Code>InvalidRequest</Code><Message>Invalid request</Message></Error>"#
+    }
+
+    #[test]
+    fn fastly_region_mismatch_gets_a_message_that_names_the_fix() {
+        let provider = fastly_provider("https://eu-central-1.object.fastlystorage.app", "");
+        let message = provider
+            .fastly_region_mismatch_hint(400, invalid_request_body())
+            .expect("a 400 InvalidRequest on a mismatched region");
+        assert!(message.contains("Set Region to eu-central-1"), "{message}");
+        assert!(message.contains("(empty)"), "{message}");
+        assert!(!message.contains("Invalid request"), "{message}");
+
+        let provider = fastly_provider("https://us-east.object.fastlystorage.app", "us-east-1");
+        let message = provider
+            .fastly_region_mismatch_hint(400, invalid_request_body())
+            .unwrap();
+        assert!(message.contains("(us-east-1)"), "{message}");
+        assert!(message.contains("Set Region to us-east."), "{message}");
+    }
+
+    /// The message appears only for the status, the code and the host together.
+    #[test]
+    fn fastly_region_mismatch_keeps_every_other_error() {
+        let mismatched =
+            fastly_provider("https://eu-central-1.object.fastlystorage.app", "us-east-1");
+        // A matching region: a real 400 keeps its own error.
+        let matching = fastly_provider(
+            "https://eu-central-1.object.fastlystorage.app",
+            "eu-central-1",
+        );
+        assert_eq!(
+            matching.fastly_region_mismatch_hint(400, invalid_request_body()),
+            None
+        );
+        // Another status or another code on the mismatched region.
+        assert_eq!(
+            mismatched.fastly_region_mismatch_hint(403, invalid_request_body()),
+            None
+        );
+        assert_eq!(
+            mismatched.fastly_region_mismatch_hint(500, invalid_request_body()),
+            None
+        );
+        assert_eq!(
+            mismatched.fastly_region_mismatch_hint(
+                400,
+                "<Error><Code>InvalidArgument</Code><Message>Invalid request</Message></Error>"
+            ),
+            None
+        );
+        // The text alone decides nothing.
+        assert_eq!(
+            mismatched.fastly_region_mismatch_hint(400, "Invalid request"),
+            None
+        );
+        // Another host with the same answer.
+        let other = fastly_provider("https://s3.us-east-1.amazonaws.com", "");
+        assert_eq!(
+            other.fastly_region_mismatch_hint(400, invalid_request_body()),
+            None
+        );
+    }
+
+    fn fake_response(status: u16, body: &str) -> reqwest::Response {
+        reqwest::Response::from(
+            http::Response::builder()
+                .status(status)
+                .header("x-amz-request-id", "req-1")
+                .body(body.to_string())
+                .unwrap(),
+        )
+    }
+
+    #[tokio::test]
+    async fn fastly_region_mismatch_check_turns_the_400_into_a_config_error() {
+        let provider = fastly_provider("https://eu-central-1.object.fastlystorage.app", "");
+        let error = provider
+            .fastly_region_mismatch_check(fake_response(400, invalid_request_body()))
+            .await
+            .expect_err("the guided error");
+        assert!(
+            matches!(&error, ProviderError::InvalidConfig(m) if m.contains("Set Region to eu-central-1")),
+            "{error:?}"
+        );
+    }
+
+    /// A 400 that is not the mismatch, and every other status, reach the
+    /// caller with the status, the headers and the whole body.
+    #[tokio::test]
+    async fn fastly_region_mismatch_check_hands_back_every_other_answer_whole() {
+        let provider = fastly_provider("https://eu-central-1.object.fastlystorage.app", "");
+        let other_code = "<Error><Code>BadDigest</Code><Message>no</Message></Error>";
+        let response = provider
+            .fastly_region_mismatch_check(fake_response(400, other_code))
+            .await
+            .expect("not the mismatch");
+        assert_eq!(response.status().as_u16(), 400);
+        assert_eq!(
+            response
+                .headers()
+                .get("x-amz-request-id")
+                .and_then(|v| v.to_str().ok()),
+            Some("req-1")
+        );
+        assert_eq!(response.text().await.unwrap(), other_code);
+
+        let response = provider
+            .fastly_region_mismatch_check(fake_response(200, "<ok/>"))
+            .await
+            .expect("success passes");
+        assert_eq!(response.status().as_u16(), 200);
+        assert_eq!(response.text().await.unwrap(), "<ok/>");
+
+        // A matching region never reads the body at all.
+        let matching = fastly_provider(
+            "https://eu-central-1.object.fastlystorage.app",
+            "eu-central-1",
+        );
+        let response = matching
+            .fastly_region_mismatch_check(fake_response(400, invalid_request_body()))
+            .await
+            .expect("a real 400 on a matching region");
+        assert_eq!(response.status().as_u16(), 400);
+        assert!(response.text().await.unwrap().contains("InvalidRequest"));
+
+        // Not Fastly: the same answer is left alone.
+        let other = fastly_provider("https://s3.us-east-1.amazonaws.com", "");
+        let response = other
+            .fastly_region_mismatch_check(fake_response(400, invalid_request_body()))
+            .await
+            .expect("not Fastly");
+        assert_eq!(response.status().as_u16(), 400);
+    }
+
+    /// 120 s per upload request: Fastly gets a 16 MiB cutoff and 8 MiB parts,
+    /// everyone else keeps 200 MiB and 16 MiB.
+    #[test]
+    fn fastly_upload_sizing_fits_inside_its_request_limit() {
+        let fastly = make_provider(Some("https://eu-central-1.object.fastlystorage.app"));
+        assert_eq!(fastly.multipart_threshold(), 16 * 1024 * 1024);
+        assert_eq!(fastly.effective_part_size(), 8 * 1024 * 1024);
+        let hints = fastly.transfer_optimization_hints();
+        assert_eq!(hints.multipart_threshold, 16 * 1024 * 1024);
+        assert_eq!(hints.multipart_part_size, 8 * 1024 * 1024);
+
+        let aws = make_provider(Some("https://s3.us-east-1.amazonaws.com"));
+        assert_eq!(aws.multipart_threshold(), 200 * 1024 * 1024);
+        assert_eq!(aws.effective_part_size(), 16 * 1024 * 1024);
+        let hints = aws.transfer_optimization_hints();
+        assert_eq!(hints.multipart_threshold, 200 * 1024 * 1024);
+        assert_eq!(hints.multipart_part_size, 16 * 1024 * 1024);
+    }
+
+    /// An explicit part size (the CLI upload buffer) still wins on Fastly.
+    #[test]
+    fn fastly_part_size_override_wins() {
+        let mut fastly = make_provider(Some("https://eu-central-1.object.fastlystorage.app"));
+        fastly.upload_chunk_override = Some(32 * 1024 * 1024);
+        assert_eq!(fastly.effective_part_size(), 32 * 1024 * 1024);
+        assert_eq!(fastly.part_size_for(1024 * 1024 * 1024), 32 * 1024 * 1024);
+    }
+
+    /// 8 MiB parts alone stop at 78 GiB; the part size grows with the file so
+    /// the 5 TiB object limit stays reachable and no plan needs a 10001st part.
+    #[test]
+    fn fastly_part_size_grows_to_keep_the_part_count_legal() {
+        let fastly = make_provider(Some("https://eu-central-1.object.fastlystorage.app"));
+        let mib = 1024u64 * 1024;
+        let gib = 1024 * mib;
+        assert_eq!(fastly.part_size_for(1), 8 * 1024 * 1024);
+        assert_eq!(fastly.part_size_for(20 * mib), 8 * 1024 * 1024);
+        assert_eq!(fastly.part_size_for(78 * gib), 8 * 1024 * 1024);
+        for total in [79 * gib, 100 * gib, 1024 * gib, 5 * 1024 * gib] {
+            let part = fastly.part_size_for(total) as u64;
+            assert!(part >= 8 * mib, "{total}: {part}");
+            assert_eq!(part % mib, 0, "{total}: whole MiB");
+            assert!(
+                total.div_ceil(part) <= 10_000,
+                "{total} bytes in {part}-byte parts"
+            );
+            assert!(part <= 5 * gib, "S3 caps a part at 5 GiB: {part}");
+        }
+        // The same rule holds for the default sizing of any other provider.
+        let aws = make_provider(Some("https://s3.us-east-1.amazonaws.com"));
+        assert_eq!(aws.part_size_for(100 * gib), 16 * 1024 * 1024);
+        assert!(200 * gib / aws.part_size_for(200 * gib) as u64 <= 10_000);
+    }
+
+    /// The default of four parts in flight stays: Fastly allows 100 requests a
+    /// second per bucket across all clients.
+    #[test]
+    fn fastly_upload_concurrency_stays_at_four_unless_the_user_sets_it() {
+        let mut fastly = make_provider(Some("https://eu-central-1.object.fastlystorage.app"));
+        assert_eq!(fastly.effective_upload_concurrency(), 4);
+        assert_eq!(
+            fastly.transfer_optimization_hints().multipart_max_parallel,
+            4
+        );
+        fastly.set_upload_concurrency(8);
+        assert_eq!(fastly.effective_upload_concurrency(), 8);
+    }
+
+    #[test]
+    fn fastly_timeout_delay_covers_408_only_within_the_budget() {
+        let config = super::super::HttpRetryConfig::default();
+        let zero = Some(std::time::Duration::ZERO);
+        assert!(fastly_timeout_delay(408, zero, 0, &config).is_some());
+        assert!(fastly_timeout_delay(408, None, 1, &config).is_some());
+        assert_eq!(
+            fastly_timeout_delay(408, zero, config.max_retries, &config),
+            None,
+            "past the budget"
+        );
+        // Everything else is the caller's to report. A 503 on a write is an
+        // uncertain outcome and stays on its response like on every other S3
+        // endpoint (docs/HTTP-RETRY-SAFETY.md); a 429 is the shared layer's; a 4xx
+        // is a refusal and a 500 may have done its work.
+        for status in [200u16, 400, 403, 404, 412, 429, 500, 502, 503, 504] {
+            assert_eq!(
+                fastly_timeout_delay(status, zero, 0, &config),
+                None,
+                "{status}"
+            );
+        }
+        // Retry-After is honored, up to the configured cap.
+        assert_eq!(
+            fastly_timeout_delay(408, Some(std::time::Duration::from_secs(2)), 0, &config),
+            Some(std::time::Duration::from_secs(2))
+        );
+        assert_eq!(
+            fastly_timeout_delay(408, Some(std::time::Duration::from_secs(9999)), 0, &config),
+            Some(std::time::Duration::from_millis(config.max_delay_ms))
+        );
+    }
+
+    /// PUT double: answers `first` for the first requests (with `Retry-After: 0`
+    /// so a test does not wait), then 200 with an ETag. Counts every PUT.
+    async fn fastly_put_double(
+        first: Vec<(u16, &'static str)>,
+    ) -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let puts = std::sync::Arc::new(AtomicUsize::new(0));
+        let seen = std::sync::Arc::clone(&puts);
+        let app = axum::Router::new().route(
+            "/test-bucket/{*key}",
+            axum::routing::put(move |_body: axum::body::Bytes| {
+                let seen = std::sync::Arc::clone(&seen);
+                let first = first.clone();
+                async move {
+                    let n = seen.fetch_add(1, Ordering::SeqCst);
+                    match first.get(n) {
+                        Some((status, body)) => axum::http::Response::builder()
+                            .status(*status)
+                            .header("retry-after", "0")
+                            .body(axum::body::Body::from(*body))
+                            .unwrap(),
+                        None => axum::http::Response::builder()
+                            .status(200)
+                            .header("etag", "\"abc\"")
+                            .body(axum::body::Body::empty())
+                            .unwrap(),
+                    }
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        (format!("http://{addr}"), puts)
+    }
+
+    /// A single PUT on Fastly repeats a 408 (it ran past 120 s and was not
+    /// completed) and a 503 SlowDown (like every S3 endpoint), and leaves a
+    /// plain 503, a 500 and a 403 on the first answer.
+    #[tokio::test]
+    async fn fastly_single_put_repeats_a_408_and_a_slowdown_only() {
+        use std::sync::atomic::Ordering;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("src.bin");
+        std::fs::write(&path, b"payload").expect("write");
+        let local = path.to_str().unwrap();
+
+        for (status, body, sends) in [
+            (408u16, "<Error><Code>RequestTimeout</Code></Error>", 2usize),
+            (503, "<Error><Code>SlowDown</Code></Error>", 2),
+            (503, "<Error><Code>ServiceUnavailable</Code></Error>", 1),
+            (500, "<Error><Code>InternalError</Code></Error>", 1),
+            (403, "<Error><Code>AccessDenied</Code></Error>", 1),
+        ] {
+            let (origin, puts) = fastly_put_double(vec![(status, body)]).await;
+            let mut provider = make_provider(Some(&origin));
+            provider.connected = true;
+            provider.force_fastly = true;
+            let outcome = provider.upload(local, "/x.bin", None).await;
+            assert_eq!(
+                puts.load(Ordering::SeqCst),
+                sends,
+                "{status} {body}: {outcome:?}"
+            );
+            assert_eq!(outcome.is_ok(), sends == 2, "{status} {body}: {outcome:?}");
+        }
+
+        // The retry allowance is bounded and the last answer is reported.
+        let (origin, puts) = fastly_put_double(vec![(408, ""); 10]).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.connected = true;
+        provider.force_fastly = true;
+        let outcome = provider.upload(local, "/slow.bin", None).await;
+        let error = outcome.expect_err("408 on every attempt").to_string();
+        assert_eq!(puts.load(Ordering::SeqCst), 4, "one send and three repeats");
+        assert!(error.contains("408"), "{error}");
+    }
+
+    /// A single PUT repeated after a 408 reads the open file again, so a file
+    /// edited in place during the wait is not a snapshot (the retry notes say
+    /// so). What happens, pinned: a same-length edit uploads the new bytes under
+    /// the unchanged Content-Length; an edit that shortens the file fails the
+    /// repeat instead of storing a short object.
+    #[tokio::test]
+    async fn fastly_single_put_repeat_after_an_in_place_edit_never_stores_a_short_object() {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc, Mutex,
+        };
+        async fn run(
+            original: &'static [u8],
+            edited: &'static [u8],
+        ) -> (Result<(), ProviderError>, Vec<Vec<u8>>, Vec<Option<String>>) {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let path = dir.path().join("src.bin");
+            std::fs::write(&path, original).expect("write");
+            let bodies: Arc<Mutex<Vec<Vec<u8>>>> = Arc::default();
+            let lengths: Arc<Mutex<Vec<Option<String>>>> = Arc::default();
+            let count = Arc::new(AtomicUsize::new(0));
+            let (b, l, c, edit_path) = (
+                Arc::clone(&bodies),
+                Arc::clone(&lengths),
+                Arc::clone(&count),
+                path.clone(),
+            );
+            let app = axum::Router::new().route(
+                "/test-bucket/{*key}",
+                axum::routing::put(
+                    move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                        let (b, l, c, edit_path) = (
+                            Arc::clone(&b),
+                            Arc::clone(&l),
+                            Arc::clone(&c),
+                            edit_path.clone(),
+                        );
+                        async move {
+                            let n = c.fetch_add(1, Ordering::SeqCst);
+                            b.lock().unwrap().push(body.to_vec());
+                            l.lock().unwrap().push(
+                                headers
+                                    .get("content-length")
+                                    .and_then(|v| v.to_str().ok())
+                                    .map(String::from),
+                            );
+                            if n == 0 {
+                                // The user edits the file while the client waits.
+                                std::fs::write(&edit_path, edited).expect("edit in place");
+                                axum::http::Response::builder()
+                                    .status(408)
+                                    .header("retry-after", "0")
+                                    .body(axum::body::Body::empty())
+                                    .unwrap()
+                            } else {
+                                axum::http::Response::builder()
+                                    .status(200)
+                                    .header("etag", "\"abc\"")
+                                    .body(axum::body::Body::empty())
+                                    .unwrap()
+                            }
+                        }
+                    },
+                ),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind");
+            let addr = listener.local_addr().unwrap();
+            tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+            let mut provider = make_provider(Some(&format!("http://{addr}")));
+            provider.connected = true;
+            provider.force_fastly = true;
+            let outcome = provider
+                .upload(path.to_str().unwrap(), "/x.bin", None)
+                .await;
+            let bodies = bodies.lock().unwrap().clone();
+            let lengths = lengths.lock().unwrap().clone();
+            (outcome, bodies, lengths)
+        }
+
+        // Same length, new bytes: the repeat sends what the file holds now.
+        let (outcome, bodies, lengths) = run(b"original-bytes", b"rewritten-byte").await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(bodies.len(), 2, "{bodies:?}");
+        assert_eq!(bodies[0], b"original-bytes");
+        assert_eq!(bodies[1], b"rewritten-byte");
+        assert_eq!(lengths[0], lengths[1], "Content-Length is unchanged");
+
+        // A shorter file: the repeat cannot complete, and no short body is
+        // ever accepted as the object.
+        let (outcome, bodies, lengths) = run(b"original-bytes", b"short").await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let declared: usize = lengths[0].as_deref().unwrap().parse().unwrap();
+        assert!(
+            bodies.iter().all(|body| body.len() == declared),
+            "a body of another length was delivered: {bodies:?}"
+        );
+    }
+
+    /// The repeat is Fastly's alone: every other endpoint keeps leaving a 408
+    /// on the first answer.
+    #[tokio::test]
+    async fn a_408_is_not_repeated_on_other_endpoints() {
+        use std::sync::atomic::Ordering;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("src.bin");
+        std::fs::write(&path, b"payload").expect("write");
+        let (origin, puts) = fastly_put_double(vec![(408, "")]).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.connected = true;
+        let outcome = provider
+            .upload(path.to_str().unwrap(), "/x.bin", None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(puts.load(Ordering::SeqCst), 1);
+    }
+
+    /// One part on Fastly repeats a 408 under the same bound. A 503 of any
+    /// kind, a 500 and a 403 come back at once: a write whose outcome is
+    /// uncertain is not replayed (docs/HTTP-RETRY-SAFETY.md).
+    #[tokio::test]
+    async fn fastly_part_upload_repeats_a_408_only() {
+        use std::sync::atomic::Ordering;
+        for (status, body, sends, ok) in [
+            (408u16, "", 2usize, true),
+            (503, "", 1, false),
+            (
+                503,
+                "<Error><Code>ServiceUnavailable</Code></Error>",
+                1,
+                false,
+            ),
+            (500, "", 1, false),
+            (403, "", 1, false),
+        ] {
+            let (origin, puts) = fastly_put_double(vec![(status, body)]).await;
+            let mut provider = make_provider(Some(&origin));
+            provider.force_fastly = true;
+            let outcome = provider
+                .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+                .await;
+            assert_eq!(puts.load(Ordering::SeqCst), sends, "{status}: {outcome:?}");
+            assert_eq!(outcome.is_ok(), ok, "{status}: {outcome:?}");
+        }
+        let (origin, puts) = fastly_put_double(vec![(408, ""); 10]).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.force_fastly = true;
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(puts.load(Ordering::SeqCst), 4);
+
+        let (origin, puts) = fastly_put_double(vec![(408, "")]).await;
+        let provider = make_provider(Some(&origin));
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(puts.load(Ordering::SeqCst), 1, "not Fastly: no repeat");
+    }
+
+    /// One allowance covers a part: 429 replies and a 408 spend from the same
+    /// counter, so a part never goes out more than `max_retries + 1` times.
+    /// (Before the shared budget, three 429s then a 408 restarted the inner
+    /// allowance and one part could be sent 16 times.)
+    #[tokio::test]
+    async fn fastly_part_upload_shares_one_retry_budget_across_429_and_408() {
+        use std::sync::atomic::Ordering;
+        let max = super::super::HttpRetryConfig::default().max_retries as usize;
+        // Three 429s, then 408 on every later send.
+        let mut mixed = vec![(429u16, ""); 3];
+        mixed.extend(vec![(408u16, ""); 20]);
+        let (origin, puts) = fastly_put_double(mixed).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.force_fastly = true;
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            puts.load(Ordering::SeqCst) <= max + 1,
+            "{} sends for one part",
+            puts.load(Ordering::SeqCst)
+        );
+
+        // 408s then 429s: same bound.
+        let mut mixed = vec![(408u16, ""); 2];
+        mixed.extend(vec![(429u16, ""); 20]);
+        let (origin, puts) = fastly_put_double(mixed).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.force_fastly = true;
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(puts.load(Ordering::SeqCst) <= max + 1);
+
+        // A 429 that clears is still retried, and so is a 408 that clears.
+        let (origin, puts) = fastly_put_double(vec![(429, ""), (408, "")]).await;
+        let mut provider = make_provider(Some(&origin));
+        provider.force_fastly = true;
+        let outcome = provider
+            .upload_part_internal("m.bin", "upload-1", 1, b"part".to_vec())
+            .await;
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(puts.load(Ordering::SeqCst), 3);
+    }
+
+    /// A double that answers every request with 400 InvalidRequest, the answer
+    /// Fastly gives to a request signed for another region.
+    async fn fastly_invalid_request_double() -> String {
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |_body: axum::body::Bytes| async {
+                axum::http::Response::builder()
+                    .status(400)
+                    .body(axum::body::Body::from(
+                        "<Error><Code>InvalidRequest</Code><Message>Invalid request</Message></Error>",
+                    ))
+                    .unwrap()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind");
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        format!("http://{addr}")
+    }
+
+    /// The single PUT and the multipart initiation send their own requests, so
+    /// they carry the Region hint themselves (with --s3-no-check-bucket nothing
+    /// else has probed the bucket first).
+    #[tokio::test]
+    async fn fastly_upload_and_multipart_start_name_the_region_to_set() {
+        let origin = fastly_invalid_request_double().await;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("src.bin");
+        std::fs::write(&path, b"payload").expect("write");
+        let local = path.to_str().unwrap();
+        let provider_with = |region: &str| {
+            let mut provider = make_provider(Some(&origin));
+            provider.config.region = region.to_string();
+            provider.connected = true;
+            provider.force_fastly = true;
+            provider.force_fastly_label = Some("eu-central-1");
+            provider
+        };
+
+        // Mismatched region: the guided message, on both paths.
+        let mut provider = provider_with("us-east-1");
+        let error = provider.upload(local, "/x.bin", None).await.unwrap_err();
+        assert!(
+            matches!(&error, ProviderError::InvalidConfig(m) if m.contains("Set Region to eu-central-1")),
+            "{error:?}"
+        );
+        let error = provider
+            .create_multipart_upload("m.bin", None, None)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, ProviderError::InvalidConfig(m) if m.contains("Set Region to eu-central-1")),
+            "{error:?}"
+        );
+
+        // Matching region: a real 400 keeps its own error on both paths.
+        let mut provider = provider_with("eu-central-1");
+        let error = provider.upload(local, "/x.bin", None).await.unwrap_err();
+        assert!(
+            matches!(&error, ProviderError::TransferFailed(m) if m.contains("400") && m.contains("InvalidRequest")),
+            "{error:?}"
+        );
+        let error = provider
+            .create_multipart_upload("m.bin", None, None)
+            .await
+            .unwrap_err();
+        assert!(
+            !matches!(&error, ProviderError::InvalidConfig(_)),
+            "{error:?}"
+        );
+        assert!(error.to_string().contains("400"), "{error}");
+    }
+
+    /// FOS answers 500 to a DeleteObjects that names a missing key, after it
+    /// deleted the others. The batch is sent once (no repeat of the POST), then
+    /// every key is deleted on its own, a missing one counts as deleted, and
+    /// the whole call succeeds.
+    #[tokio::test]
+    async fn fastly_batch_delete_500_goes_to_per_key_deletes_without_a_repeat() {
+        use std::sync::{Arc, Mutex};
+        let log: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&log);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, _body: axum::body::Bytes| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {}", uri.path()));
+                    if method == Method::POST {
+                        return axum::http::Response::builder()
+                            .status(500)
+                            .body(axum::body::Body::from(
+                                "<Error><Code>InternalError</Code></Error>",
+                            ))
+                            .unwrap();
+                    }
+                    let status = if uri.path().ends_with("/gone") {
+                        404
+                    } else {
+                        204
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .body(axum::body::Body::empty())
+                        .unwrap()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.force_fastly = true;
+        provider
+            .batch_delete_objects(&[
+                ("a".into(), None),
+                ("gone".into(), None),
+                ("b".into(), None),
+            ])
+            .await
+            .expect("a missing key counts as deleted");
+        let log = log.lock().unwrap().clone();
+        assert_eq!(
+            log.iter().filter(|line| line.starts_with("POST")).count(),
+            1,
+            "{log:?}"
+        );
+        for key in ["a", "gone", "b"] {
+            assert!(
+                log.contains(&format!("DELETE /test-bucket/{key}")),
+                "{key}: {log:?}"
+            );
+        }
+        server.abort();
+    }
+
+    /// Versions, tags and usage are not offered, with a message that names
+    /// Fastly. AWS keeps versions.
+    #[tokio::test]
+    async fn fastly_does_not_offer_versions_tags_or_a_usage_figure() {
+        let mut provider = fastly_provider("https://us-east.object.fastlystorage.app", "us-east");
+        assert!(!provider.supports_versions());
+        for result in [
+            provider.get_object_tags("/a.txt").await.map(|_| ()),
+            provider.set_object_tags("/a.txt", &HashMap::new()).await,
+            provider.delete_object_tags("/a.txt").await,
+        ] {
+            assert!(
+                matches!(&result, Err(ProviderError::NotSupported(m)) if m.contains("Fastly") && m.contains("tagging")),
+                "{result:?}"
+            );
+        }
+        // A direct version call is refused as not supported (FOS answers 501).
+        for result in [
+            provider.list_versions("/a.txt").await.map(|_| ()),
+            provider.restore_version("/a.txt", "v1").await,
+            provider.delete_version("/a.txt", "v1").await,
+            provider.list_object_versions("/", true).await.map(|_| ()),
+            provider
+                .download_version("/a.txt", "v1", "/nonexistent/never-written.bin")
+                .await,
+            provider
+                .empty_object_versions("/", true, true)
+                .await
+                .map(|_| ()),
+        ] {
+            assert!(
+                matches!(&result, Err(ProviderError::NotSupported(m)) if m.contains("Fastly") && m.contains("versioning")),
+                "{result:?}"
+            );
+        }
+        let usage = provider.storage_info().await.map(|_| ());
+        assert!(
+            matches!(&usage, Err(ProviderError::NotSupported(m)) if m.contains("Fastly") && m.contains("usage")),
+            "{usage:?}"
+        );
+        assert!(make_provider(Some("https://s3.us-east-1.amazonaws.com")).supports_versions());
+    }
+
+    /// Copy stays the server-side CopyObject on Fastly (Tier 0, 2026-11-06:
+    /// 1 KiB and 24 MiB copies work), and the share link keeps its 7-day cap.
+    #[test]
+    fn fastly_keeps_server_side_copy_and_share_links() {
+        let provider = make_provider(Some("https://eu-central-1.object.fastlystorage.app"));
+        assert!(provider.supports_server_copy());
+        assert!(provider.supports_server_side_copy());
+        assert!(provider.supports_share_links());
+        assert!(provider.share_link_capabilities().supports_expiration);
+    }
+
+    /// Fastly ETags behave like AWS (Tier 0, 2026-11-06): a single PUT has the
+    /// content MD5 as its ETag, a multipart upload has the `-N` form. The
+    /// first is used as an MD5, the second never is.
+    #[test]
+    fn fastly_etag_is_an_md5_only_when_it_has_no_part_suffix() {
+        let md5 = "d41d8cd98f00b204e9800998ecf8427e";
+        assert_eq!(
+            etag_to_md5(&format!("\"{md5}\""), false).as_deref(),
+            Some(md5)
+        );
+        assert_eq!(etag_to_md5(&format!("\"{md5}-14\""), false), None);
+        assert_eq!(etag_to_md5(&format!("{md5}-3"), false), None);
+    }
+
+    /// Fastly sends no vendor header in this tier, every `x-amz-*` header it
+    /// sends is signed, and no request carries `If-None-Match` (FOS ignores it
+    /// on PUT, so the app must not lean on it for no-clobber).
+    #[tokio::test]
+    async fn fastly_requests_are_fully_signed_and_never_conditional() {
+        let (mut provider, _, log) = tigris_double(
+            &[("a.txt", "A"), ("b.txt", "B")],
+            TigrisDoubleConfig::default(),
+        )
+        .await;
+        provider.force_tigris = false;
+        provider.force_fastly = true;
+        provider.set_storage_class_override(Some("STANDARD_IA".to_string()));
+
+        let local = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(local.path(), b"payload").unwrap();
+
+        let _ = provider.list("/").await;
+        let _ = provider.stat("/a.txt").await;
+        let _ = provider.mkdir("/d").await;
+        let _ = provider
+            .upload(local.path().to_str().unwrap(), "/up.txt", None)
+            .await;
+        let _ = provider.read_range("/a.txt", 0, 1).await;
+        let _ = provider.server_side_copy_single("a.txt", "copy.txt").await;
+        let _ = provider.rename("/b.txt", "/renamed.txt").await;
+        let _ = provider
+            .batch_delete_objects(&[("copy.txt".to_string(), None)])
+            .await;
+        let _ = provider.create_multipart_upload("m.bin", None, None).await;
+        let _ = provider
+            .upload_part_internal("m.bin", "u1", 1, b"part".to_vec())
+            .await;
+        let _ = provider
+            .complete_multipart_upload_internal("m.bin", "u1", &[(1, "\"part-etag\"".to_string())])
+            .await;
+        let _ = provider
+            .upload_part_copy_internal("m2.bin", "u1", 1, "/test-bucket/a.txt", 0, 0, None)
+            .await;
+        let _ = provider
+            .abort_multipart_upload_internal("m.bin", "u1")
+            .await;
+        let _ = provider.delete("/a.txt").await;
+
+        let seen = log.lock().unwrap().clone();
+        assert!(seen.len() >= 12, "{} requests", seen.len());
+        let mut checked_amz = 0;
+        for request in &seen {
+            let authorization = request
+                .header("authorization")
+                .unwrap_or_else(|| panic!("unsigned request: {request:?}"));
+            let signed: HashSet<&str> = authorization
+                .split("SignedHeaders=")
+                .nth(1)
+                .and_then(|rest| rest.split(',').next())
+                .unwrap_or_default()
+                .split(';')
+                .collect();
+            assert!(signed.contains("host"), "{request:?}");
+            for name in request.headers.keys() {
+                assert!(
+                    !name.starts_with("x-tigris-") && !name.starts_with("fastly-"),
+                    "no vendor header in this tier: {name}"
+                );
+                if name.starts_with("x-amz-") {
+                    checked_amz += 1;
+                    assert!(
+                        signed.contains(name.as_str()),
+                        "{name} is sent but not signed on {} {}: {authorization}",
+                        request.method,
+                        request.uri
+                    );
+                }
+            }
+            assert!(
+                !request.headers.contains_key("if-none-match"),
+                "If-None-Match sent on {} {}",
+                request.method,
+                request.uri
+            );
+        }
+        assert!(checked_amz > 30, "{checked_amz} x-amz headers");
+    }
+
     /// The F2 shortcut: one CopyObject with the header, no DELETE.
     #[tokio::test]
     async fn tigris_file_rename_is_one_signed_copy_without_a_delete() {
@@ -13066,11 +14589,126 @@ mod tests {
         assert_eq!(tigris_requests(&log, "DELETE").len(), 1);
     }
 
+    /// A manual "Sync now" teaches the shared scheduler the Fastly floor: after
+    /// it, a scheduled tick with a 5 minute interval does not scan the pair
+    /// again for 30 minutes. (Before the learn call existed, the floor was not
+    /// known when the first scan of a pair was a manual one.)
     #[test]
-    fn only_tigris_declares_a_full_scan_floor() {
+    fn a_manual_sync_teaches_the_scheduler_the_fastly_floor() {
+        let config = crate::cloud_config::CloudConfig {
+            local_folder: std::path::PathBuf::from("/tmp/fastly-floor-test-local"),
+            remote_folder: "/fastly-floor-test-remote".to_string(),
+            ..Default::default()
+        };
+        let key = crate::cloud_scan_schedule::pair_key(&config);
+        let start = std::time::Instant::now();
+        crate::cloud_scan_schedule::ledger().record_full_scan(&key, start);
+        crate::cloud_service::remember_scan_traits(
+            &config,
+            &make_provider(Some("https://eu-central-1.object.fastlystorage.app")),
+        );
+        let five_minutes = std::time::Duration::from_secs(300);
+        let ledger = crate::cloud_scan_schedule::ledger();
+        for minutes in [5u64, 29] {
+            assert!(
+                !ledger.scheduled_full_scan_due(
+                    &key,
+                    start + std::time::Duration::from_secs(minutes * 60),
+                    five_minutes
+                ),
+                "{minutes} min after a manual scan"
+            );
+        }
+        assert!(ledger.scheduled_full_scan_due(
+            &key,
+            start + std::time::Duration::from_secs(30 * 60),
+            five_minutes
+        ));
+    }
+
+    /// Fastly refuses a presigned URL older than the SigV4 7 days (Tier 0,
+    /// 2026-11-06: a 1 h link answered 200, an 8 day link 403). The S3-wide cap
+    /// of #1525 covers Fastly, so a 30 day request signs 604800 seconds, and the
+    /// share dialog is told the same maximum.
+    #[tokio::test]
+    async fn fastly_share_link_expiry_never_exceeds_seven_days() {
+        let mut provider = make_provider(Some("https://eu-central-1.object.fastlystorage.app"));
+        provider.connected = true;
+        assert_eq!(
+            provider.share_link_capabilities().max_expiration_secs,
+            Some(604_800)
+        );
+        for (requested, signed) in [
+            (30 * 24 * 3600_u64, 604_800_u64),
+            (8 * 24 * 3600, 604_800),
+            (604_800, 604_800),
+            (3600, 3600),
+        ] {
+            let link = provider
+                .create_share_link(
+                    "/a.txt",
+                    ShareLinkOptions {
+                        expires_in_secs: Some(requested),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("presign");
+            assert!(
+                link.url.contains(&format!("X-Amz-Expires={signed}&")),
+                "{requested}: {}",
+                link.url
+            );
+            // Path-style on the regional host, signed for the host's own region.
+            assert!(
+                link.url.starts_with(
+                    "https://eu-central-1.object.fastlystorage.app/test-bucket/a.txt?"
+                ),
+                "{}",
+                link.url
+            );
+        }
+    }
+
+    /// What `sync_one_config` hands the scheduler for a Fastly profile.
+    #[test]
+    fn a_fastly_provider_reports_the_thirty_minute_floor_as_scan_traits() {
+        let traits = crate::cloud_service::ProviderScanTraits::of(&make_provider(Some(
+            "https://eu-central-1.object.fastlystorage.app",
+        )));
+        assert_eq!(
+            traits.min_full_scan_interval,
+            Some(std::time::Duration::from_secs(1800))
+        );
+        let aws = crate::cloud_service::ProviderScanTraits::of(&make_provider(Some(
+            "https://s3.us-east-1.amazonaws.com",
+        )));
+        assert_eq!(aws.min_full_scan_interval, None);
+    }
+
+    #[test]
+    fn only_tigris_and_fastly_declare_a_full_scan_floor() {
         assert_eq!(
             make_provider(Some("https://t3.storage.dev")).min_full_scan_interval(),
             Some(std::time::Duration::from_secs(1800))
+        );
+        // Fastly bills a listing as Class A: the same 30 minutes (owner, 2026-11-06).
+        for endpoint in [
+            "https://eu-central-1.object.fastlystorage.app",
+            "https://us-east.object.fastlystorage.app",
+        ] {
+            assert_eq!(
+                make_provider(Some(endpoint)).min_full_scan_interval(),
+                Some(std::time::Duration::from_secs(1800)),
+                "{endpoint}"
+            );
+        }
+        assert_eq!(
+            make_provider(Some(
+                "https://eu-central-1.object.fastlystorage.app.example"
+            ))
+            .min_full_scan_interval(),
+            None
         );
         assert_eq!(
             make_provider(Some("https://s3.us-east-1.amazonaws.com")).min_full_scan_interval(),
@@ -13226,9 +14864,11 @@ mod tests {
             )
             .await
             .expect("presign");
+        // Every S3 endpoint is capped at the SigV4 limit (#1506 Requested
+        // 174): AWS refuses more, and Fastly answered 403 to an 8-day link.
         assert!(
-            link.url.contains("X-Amz-Expires=7776000&"),
-            "other endpoints keep their own limit: {}",
+            link.url.contains("X-Amz-Expires=604800&"),
+            "other endpoints are capped at seven days too: {}",
             link.url
         );
     }
@@ -13413,6 +15053,119 @@ mod tests {
             }
             other => panic!("a refused connection is not a name failure: {other:?}"),
         }
+    }
+
+    /// #1506 Requested 175: every virtual-host service gets the dotted-bucket
+    /// message for a certificate that does not cover the host, and the remedy
+    /// fits the service; any other failure keeps its own text.
+    #[test]
+    fn dotted_bucket_message_covers_every_virtual_host_service() {
+        assert!(is_tls_hostname_failure(
+            "invalid peer certificate: NotValidForName"
+        ));
+        assert!(is_tls_hostname_failure(
+            "certificate verify failed: Hostname mismatch"
+        ));
+        assert!(!is_tls_hostname_failure(
+            "invalid peer certificate: UnknownIssuer"
+        ));
+        assert!(!is_tls_hostname_failure("certificate has expired"));
+
+        let provider = |endpoint: &str, bucket: &str, path_style: bool| {
+            let mut provider = make_provider(Some(endpoint));
+            provider.config.bucket = bucket.to_string();
+            provider.config.path_style = path_style;
+            provider
+        };
+        assert!(provider("https://s3.us-east-1.amazonaws.com", "a", false).supports_path_style());
+        assert!(!provider("https://oss-us-west-1.aliyuncs.com", "a", false).supports_path_style());
+        assert!(
+            !provider("https://cos.ap-guangzhou.myqcloud.com", "a", false).supports_path_style()
+        );
+
+        let aws = dotted_bucket_message("my.bucket", true);
+        assert!(
+            aws.contains("'my.bucket'") && aws.contains("Path-Style Access"),
+            "{aws}"
+        );
+        let oss = dotted_bucket_message("my.bucket", false);
+        assert!(!oss.contains("Path-Style"), "{oss}");
+        assert!(oss.contains("without dots"), "{oss}");
+
+        // A refused connection is not a name failure on any service.
+        let client = reqwest::Client::new();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let error = runtime
+            .block_on(client.get("http://127.0.0.1:1/").send())
+            .expect_err("connection refused");
+        for endpoint in [
+            "https://s3.us-east-1.amazonaws.com",
+            "https://s3.eu-central-1.wasabisys.com",
+        ] {
+            match provider(endpoint, "my.bucket", false).transport_error(&error) {
+                ProviderError::NetworkError(_) => {}
+                other => panic!("{endpoint}: {other:?}"),
+            }
+        }
+    }
+
+    /// The classification itself, on the error texts the TLS stacks produce:
+    /// a loopback double cannot present a trusted certificate for another host
+    /// (it fails as an unknown issuer first), so the matrix runs on the text.
+    #[test]
+    fn dotted_bucket_error_matrix_across_services() {
+        let provider = |endpoint: &str, bucket: &str, path_style: bool| {
+            let mut provider = make_provider(Some(endpoint));
+            provider.config.bucket = bucket.to_string();
+            provider.config.path_style = path_style;
+            provider
+        };
+        let name = "error sending request: invalid peer certificate: NotValidForName";
+        let issuer = "error sending request: invalid peer certificate: UnknownIssuer";
+        let message = |p: &S3Provider, text: &str| match p.dotted_bucket_error_for(text) {
+            Some(ProviderError::ConnectionFailed(m)) => Some(m),
+            None => None,
+            other => panic!("{other:?}"),
+        };
+        for endpoint in [
+            "https://s3.us-east-1.amazonaws.com",
+            "https://s3.eu-central-1.wasabisys.com",
+            "https://nyc3.digitaloceanspaces.com",
+        ] {
+            let m = message(&provider(endpoint, "my.bucket", false), name).expect(endpoint);
+            assert!(
+                m.contains("'my.bucket'") && m.contains("Path-Style Access"),
+                "{m}"
+            );
+            assert!(
+                message(&provider(endpoint, "my.bucket", true), name).is_none(),
+                "{endpoint}"
+            );
+            assert!(
+                message(&provider(endpoint, "plain", false), name).is_none(),
+                "{endpoint}"
+            );
+            assert!(
+                message(&provider(endpoint, "my.bucket", false), issuer).is_none(),
+                "{endpoint}"
+            );
+        }
+        let oss = message(
+            &provider("https://oss-us-west-1.aliyuncs.com", "my.bucket", false),
+            name,
+        )
+        .expect("oss");
+        assert!(!oss.contains("Path-Style"), "{oss}");
+        // Tigris keeps its own message, and its broad match (C6).
+        let tigris = message(
+            &provider("https://t3.storage.dev", "my.bucket", false),
+            issuer,
+        )
+        .expect("tigris");
+        assert!(tigris.contains("t3.storage.dev"), "{tigris}");
     }
 
     #[tokio::test]
@@ -14003,6 +15756,112 @@ mod tests {
     /// The presigned URL of a key with a space, `+`, `%`, `&` or a non-ASCII
     /// character must carry the signature a server computes over the path it
     /// receives. The presigner used to sign `a%2520b` for a URL with `a%20b`.
+    /// #1506 Requested 174: every S3 preset caps a presigned link at the SigV4
+    /// limit, says so in its capabilities, and reports the real expiry.
+    #[tokio::test]
+    async fn share_link_is_capped_at_seven_days_and_reports_its_expiry() {
+        let mut provider = aws_doc_provider(false);
+        assert_eq!(
+            provider.share_link_capabilities().max_expiration_secs,
+            Some(604_800)
+        );
+        for (asked, granted) in [
+            (3600_u64, 3600_u64),
+            (604_800, 604_800),
+            (2_592_000, 604_800),
+        ] {
+            let link = provider
+                .create_share_link(
+                    "/test.txt",
+                    ShareLinkOptions {
+                        expires_in_secs: Some(asked),
+                        password: None,
+                        permissions: None,
+                    },
+                )
+                .await
+                .expect("presign failed");
+            assert!(
+                link.url.contains(&format!("&X-Amz-Expires={granted}&")),
+                "{asked}: {}",
+                link.url
+            );
+            let expires_at = DateTime::parse_from_rfc3339(link.expires_at.as_deref().unwrap())
+                .unwrap()
+                .with_timezone(&Utc);
+            assert_eq!(
+                (expires_at - provider.now_adjusted()).num_seconds(),
+                granted as i64,
+                "{asked}"
+            );
+        }
+    }
+
+    /// Greptile on #1525: a link signed by a one-hour AssumeRole session
+    /// stops working when the session ends, so it is signed and reported for
+    /// at most the session's remaining time, not the seven days asked.
+    #[tokio::test]
+    async fn a_share_link_ends_with_the_session_that_signed_it() {
+        let mut provider = aws_doc_provider(false);
+        let session_end = provider.now_adjusted() + chrono::Duration::seconds(3600);
+        *provider
+            .temp_credentials
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(temp_creds(Some(session_end)));
+        let link = provider
+            .create_share_link(
+                "/test.txt",
+                ShareLinkOptions {
+                    expires_in_secs: Some(604_800),
+                    password: None,
+                    permissions: None,
+                },
+            )
+            .await
+            .expect("presign failed");
+        let expires_at = DateTime::parse_from_rfc3339(link.expires_at.as_deref().unwrap())
+            .unwrap()
+            .with_timezone(&Utc);
+        assert!(
+            expires_at <= session_end,
+            "{expires_at} after {session_end}"
+        );
+        // The whole remaining session, not merely less than asked
+        // (CodeRabbit on #1525): signed and reported for about an hour.
+        assert!(
+            expires_at >= session_end - chrono::Duration::seconds(5),
+            "{expires_at} well before {session_end}"
+        );
+        let signed: u64 = link
+            .url
+            .split("X-Amz-Expires=")
+            .nth(1)
+            .and_then(|rest| rest.split('&').next())
+            .and_then(|secs| secs.parse().ok())
+            .expect("X-Amz-Expires in the URL");
+        assert!((3595..=3600).contains(&signed), "{signed}");
+        assert!(link.url.contains("X-Amz-Security-Token="), "{}", link.url);
+    }
+
+    #[tokio::test]
+    async fn a_share_link_with_no_lifetime_is_refused() {
+        let mut provider = aws_doc_provider(false);
+        let refused = provider
+            .create_share_link(
+                "/test.txt",
+                ShareLinkOptions {
+                    expires_in_secs: Some(0),
+                    password: None,
+                    permissions: None,
+                },
+            )
+            .await;
+        assert!(
+            matches!(refused, Err(ProviderError::InvalidConfig(_))),
+            "{refused:?}"
+        );
+    }
+
     #[tokio::test]
     async fn share_link_signs_the_path_it_puts_on_the_wire() {
         for path_style in [false, true] {

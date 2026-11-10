@@ -53,7 +53,7 @@ case "$(basename "$0")" in
             sed "s#<STAGE>/up#$srcdir#g" "$real/put.stdout"
             while [ $# -gt 1 ]; do
                 size=$(wc -c < "$1" | tr -d ' ')
-                echo "----  1  $size  15Jan2026  14:30  $(basename "$1")" >> "$here/listing.txt"
+                echo "----  1  $size  15Jan2026  14:30 $(basename "$1")" >> "$here/listing.txt"
                 shift
             done
             exit 0
@@ -83,7 +83,7 @@ case "$(basename "$0")" in
             [ "$state" = COMPLETED ] || continue
             size=$(wc -c < "$src" | tr -d ' ')
             [ -f "$here/put-size-$name" ] && size=$(cat "$here/put-size-$name")
-            echo "----  1  $size  15Jan2026  14:30  $name" >> "$here/listing.txt"
+            echo "----  1  $size  15Jan2026  14:30 $name" >> "$here/listing.txt"
         done
         [ -f "$here/put-hang" ] && exec sleep 30
         exit 0
