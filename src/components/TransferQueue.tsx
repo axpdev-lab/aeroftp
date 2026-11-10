@@ -836,7 +836,17 @@ export const TransferQueue: React.FC<TransferQueueProps> = ({
 let transferId = 0;
 
 export const useTransferQueue = () => {
-    const [items, setItems] = useState<TransferItem[]>([]);
+    const [items, setItemsState] = useState<TransferItem[]>([]);
+    const itemsRef = useRef<TransferItem[]>([]);
+
+    // Every write MUST go through setItems; never resync itemsRef from render state
+    // (an effect resync loses updates landing between commit and passive effects).
+    const setItems = useCallback((updater: TransferItem[] | ((prev: TransferItem[]) => TransferItem[])) => {
+        const next = typeof updater === 'function' ? updater(itemsRef.current) : updater;
+        itemsRef.current = next;
+        setItemsState(next);
+        return next;
+    }, []);
     const [isVisible, setIsVisible] = useState(true);
     const autoHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const userDismissedRef = useRef(false);
@@ -995,20 +1005,18 @@ export const useTransferQueue = () => {
         ));
     };
 
-    // Re-queue all failed items (except user-cancelled): returns IDs for retry callback execution
+    // Re-queue all failed items (except user-cancelled): returns IDs for retry callback execution.
+    // Derived from the current queue state ref so synchronous and batched updates stay aligned.
     const retryAllFailed = (): string[] => {
-        const failedIds: string[] = [];
-        setItems(prev => {
-            const { next, ids } = retryAllFailedHelper(prev);
-            failedIds.splice(0, failedIds.length, ...ids);
-            return next;
-        });
-        return failedIds;
+        const { next, ids } = retryAllFailedHelper(itemsRef.current);
+        if (ids.length === 0) return [];
+        setItems(next);
+        return ids;
     };
 
     // TQ-7c: ids of restored+pending items (for Resume all / banner).
-    // Snapshot is taken from current state; callers fire retry callbacks after.
-    const getRestoredPendingIds = (): string[] => listRestoredPendingIds(items);
+    // Snapshot is taken from current state ref; callers fire retry callbacks after.
+    const getRestoredPendingIds = (): string[] => listRestoredPendingIds(itemsRef.current);
 
     // TQ-7c: clear restored badges (hides the startup banner after Resume all).
     const clearRestoredFlags = (ids?: string[]) => {
@@ -1016,10 +1024,9 @@ export const useTransferQueue = () => {
     };
 
     // TQ-7c: discard restored pending items; returns removed ids for cleanup.
-    // Snapshot ids from the latest render (event handlers always see current
-    // state); the setState updater re-filters so concurrent updates stay safe.
+    // Snapshot ids from the state ref so batched updates stay aligned.
     const discardRestored = (): string[] => {
-        const removed = listRestoredPendingIds(items);
+        const removed = listRestoredPendingIds(itemsRef.current);
         if (removed.length === 0) return [];
         setItems(prev => removeRestoredPendingHelper(prev).next);
         return removed;
