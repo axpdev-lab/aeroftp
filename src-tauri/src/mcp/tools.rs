@@ -1348,6 +1348,14 @@ pub async fn execute_tool(
                         &crate::crypt_compare::remote_scan_options(&opts, crypt_keys.is_some()),
                     )
                     .await;
+                    // The scan already retried a transport error once. Any listing
+                    // whose typed error is a dead transport sets
+                    // `transport_failure`, including one that was not the first.
+                    // `release_checked_session` reads that flag, not the first
+                    // failure sentence. Drop the pooled session after `p` and
+                    // `arc` are released, and do not scan again. NotFound, a
+                    // permission error, and `timed out listing` keep the entry.
+                    // No failure keeps it too.
                     let mut remotes = remote_rows;
                     if let Some(keys) = &crypt_keys {
                         // The scan read the list on ciphertext names; it is read again on
@@ -1361,6 +1369,9 @@ pub async fn execute_tool(
                         );
                         remotes = normalized.entries;
                         if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
+                            drop(p);
+                            drop(arc);
+                            release_checked_session(pool, &server, &remote_boundaries).await;
                             return finish(
                                 tool_name,
                                 Some(&server),
@@ -1378,6 +1389,9 @@ pub async fn execute_tool(
                         &mut local_boundaries,
                         &remote_boundaries,
                     ) {
+                        drop(p);
+                        drop(arc);
+                        release_checked_session(pool, &server, &remote_boundaries).await;
                         return finish(
                             tool_name,
                             Some(&server),
@@ -1387,7 +1401,7 @@ pub async fn execute_tool(
                         );
                     }
                     let diff = compare_trees(&locals, &remotes, one_way);
-                    if summary_only {
+                    let payload = if summary_only {
                         // Skip the per-entry arrays entirely. Agents call
                         // check_tree on large scopes (thousands of files) just
                         // to get the drift counters; the arrays push the
@@ -1430,7 +1444,7 @@ pub async fn execute_tool(
                                 true,
                             ));
                         }
-                        ok(payload)
+                        payload
                     } else {
                         let entries_to_json = |entries: &[crate::sync_core::DiffEntry],
                                                group_cap: usize|
@@ -1504,8 +1518,15 @@ pub async fn execute_tool(
                                 false,
                             ));
                         }
-                        ok(payload)
-                    }
+                        payload
+                    };
+                    // Release the provider lock and pool Arc BEFORE invalidate
+                    // so the pool sees `strong_count == 1` and actually closes
+                    // the underlying socket on the detached disconnect.
+                    drop(p);
+                    drop(arc);
+                    release_checked_session(pool, &server, &remote_boundaries).await;
+                    ok(payload)
                 }
             };
             finish(tool_name, Some(&server), Some(&remote_dir), result, start)
@@ -1963,6 +1984,28 @@ pub async fn execute_tool(
 /// Most entries of each boundary list a `sync_tree` result carries.
 const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
 
+/// Drop a check_tree session whose scan leftover is a dead transport.
+///
+/// The caller drops the provider mutex and the pool `Arc` first. A clean
+/// scan, a missing path, and a `timed out listing` sentence pass `false`
+/// and leave the entry. The flag comes from the walk, so a later transport
+/// failure drops the entry even when the first message is a business error.
+async fn invalidate_dead_check_session(pool: &ConnectionPool, server: &str, session_dead: bool) {
+    if session_dead {
+        let _ = pool.invalidate(server).await;
+    }
+}
+
+/// The check_tree return paths share this. The typed flag decides, so a
+/// business error whose text contains a transport phrase keeps the session.
+async fn release_checked_session(
+    pool: &ConnectionPool,
+    server: &str,
+    boundaries: &crate::sync_core::ScanBoundaries,
+) {
+    invalidate_dead_check_session(pool, server, boundaries.transport_failure).await;
+}
+
 /// Comparison can report incomplete observations, while a policy refusal with
 /// no named boundary cannot safely describe a permitted comparison scope.
 fn bound_check_tree(
@@ -2327,6 +2370,36 @@ mod tests {
         parse_benchmark_skipped, tool_definitions, validate_read_preview_target,
         MAX_READ_PREVIEW_BYTES,
     };
+
+    /// `aeroftp_check_tree` drops the pool only when the walk's typed flag
+    /// says the session is dead. The first failure sentence is not the
+    /// decision, even when it contains a transport phrase.
+    #[tokio::test]
+    async fn pooled_session_action_dead_check_session_is_removed() {
+        use crate::providers::probe_fake::ProbeFake;
+        use crate::sync_core::ScanBoundaries;
+
+        let pool = super::ConnectionPool::new(4, std::time::Duration::from_secs(300));
+        pool.insert_for_test("srv_probe", "probe", Box::new(ProbeFake::new()))
+            .await;
+        let kept = ScanBoundaries {
+            first_failure: Some(
+                "failed to list /remote/broken pipe: Permission denied: /remote/broken pipe"
+                    .to_string(),
+            ),
+            transport_failure: false,
+            ..ScanBoundaries::default()
+        };
+        super::release_checked_session(&pool, "probe", &kept).await;
+        assert_eq!(pool.status().await.len(), 1);
+        let dead = ScanBoundaries {
+            first_failure: kept.first_failure.clone(),
+            transport_failure: true,
+            ..ScanBoundaries::default()
+        };
+        super::release_checked_session(&pool, "probe", &dead).await;
+        assert!(pool.status().await.is_empty());
+    }
 
     /// A link is a gap without being a failure: no walk follows one, so the
     /// subtree behind it was never compared, while `list_errors` stays 0 and

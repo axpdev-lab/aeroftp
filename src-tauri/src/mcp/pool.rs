@@ -232,6 +232,33 @@ impl ConnectionPool {
         Some(name)
     }
 
+    /// Insert a provider without opening the vault or dialing a server.
+    /// Tests use it to prove [`Self::invalidate`] removes the entry.
+    #[cfg(test)]
+    pub(crate) async fn insert_for_test(
+        &self,
+        profile_id: &str,
+        profile_name: &str,
+        provider: Box<dyn StorageProvider>,
+    ) -> Arc<Mutex<Box<dyn StorageProvider>>> {
+        let arc = Arc::new(Mutex::new(provider));
+        let entry = PooledConnection {
+            provider: Arc::clone(&arc),
+            last_used_ms: AtomicU64::new(now_ms()),
+            profile_name: profile_name.to_string(),
+            protocol: "probe".to_string(),
+            connected_at: Utc::now(),
+            auth_deadline: None,
+            requests_served: AtomicU64::new(0),
+            identity: None,
+        };
+        self.connections
+            .lock()
+            .await
+            .insert(profile_id.to_string(), entry);
+        arc
+    }
+
     /// Resolve `server_query` to the matching pool entry id, matching by id
     /// (case-sensitive) then profile name (case-insensitive equal, then
     /// case-insensitive substring). Shared between `close_one` and
@@ -830,6 +857,30 @@ mod tests {
         assert!(read.get());
     }
     use super::*;
+
+    /// `invalidate` removes an inserted probe. No vault is opened and no
+    /// server is dialed. `with_provider` is not driven here:
+    /// `get_provider_expecting` reads the vault, and a retry would call
+    /// `create_provider_from_vault`. The classification and the post-retry
+    /// drop are pinned next to `pooled_session_action`.
+    #[tokio::test]
+    async fn invalidate_removes_an_inserted_probe() {
+        use crate::providers::probe_fake::ProbeFake;
+        use crate::providers::ProviderError;
+
+        let pool = ConnectionPool::new(4, std::time::Duration::from_secs(300));
+        let mut fake = ProbeFake::new();
+        fake.list_error = Some(|| ProviderError::ConnectionLost("broken pipe".into()));
+        let held = pool
+            .insert_for_test("srv_probe", "probe", Box::new(fake))
+            .await;
+        assert_eq!(pool.status().await.len(), 1);
+        let listed = held.lock().await.list("/").await.unwrap_err();
+        assert!(listed.to_string().contains("Connection lost"), "{listed}");
+        drop(held);
+        assert_eq!(pool.invalidate("probe").await.as_deref(), Some("probe"));
+        assert!(pool.status().await.is_empty());
+    }
 
     /// A call approved while the profile connected to one host never opens
     /// another: the pool compares what the profile connects to now with what
