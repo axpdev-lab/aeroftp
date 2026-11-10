@@ -1015,22 +1015,11 @@ impl Handler for SshHandler {
         // one. It is refused rather than left to a wildcard so that the answer
         // is a decision instead of an accident.
         //
-        // The default holding is the second half of that claim, and it was
-        // checked rather than assumed: this tree builds a `Preferred` of its
-        // own in exactly two places, `providers/sftp.rs` (compression only) and
-        // `aerorsync/russh_session_transport.rs` (host-key algorithms only),
-        // and both take `host_key_certificates` from the default. The one that
-        // does override `key` lists Ed25519, three ECDSA curves and two RSA
-        // hashes, every one of them a plain-key algorithm, so it does not
-        // reopen the door either. The arm goes live if any `Preferred` fills
-        // that list, or if a `key` list gains a `*-cert-v01@openssh.com`
-        // algorithm. Both of those edits are named by path on purpose, because
-        // this paragraph is repeated in three handlers and "not in this file"
-        // would be true in one of them and reassuring in exactly the file that
-        // owns the dangerous line: today they are `providers/sftp.rs` and
-        // `aerorsync/russh_session_transport.rs`, the two that build a
-        // `Preferred`, the second holding the only `key` override, plus
-        // wherever a new `Preferred` is added.
+        // Every client takes `host_key_certificates` from the default through
+        // `ssh_client_config.rs`. AeroRsync's only `key` override lists
+        // Ed25519, three ECDSA curves and two RSA hashes, every one a plain-key
+        // algorithm. The arm goes live if the shared policy fills that list,
+        // or if a `key` list gains a `*-cert-v01@openssh.com` algorithm.
         //
         // WHOEVER ENABLES HOST CERTIFICATES MUST COME BACK TO ALL FOUR
         // HANDLERS FIRST. Filling that list makes this arm live, and accepting
@@ -2466,10 +2455,10 @@ pub(crate) async fn ssh_login(
                 compression::ZLIB,
                 compression::NONE,
             ]),
-            ..Default::default()
+            ..crate::ssh_client_config::preferred()
         }
     } else {
-        Preferred::default()
+        crate::ssh_client_config::preferred()
     };
     let ssh_config = sftp_ssh_client_config(config.timeout_secs, preferred);
 

@@ -150,6 +150,11 @@ cartella piatta e rifiuta anche le forme che una scansione cieca non
 vedrebbe (import raggruppati, `super::super::`, attributo `path`, macro
 di inclusione, sottocartelle).
 
+The only other shared source is `src-tauri/src/ssh_client_config.rs`, a
+neutral SSH policy that does not read application state. The emitter copies it
+to the standalone crate root, so `crate::ssh_client_config` resolves to the same
+source in both builds without depending on the rest of the application.
+
 Tutto cio' che l'applicazione deve vedere passa da
 `src-tauri/src/aerorsync_adapter/`: li' vivono gli `impl` di
 `DeltaTransport` e `DeltaBatch` per il transport remoto e per quello

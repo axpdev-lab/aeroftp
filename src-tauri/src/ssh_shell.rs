@@ -140,6 +140,7 @@ pub async fn ssh_shell_open(
         inactivity_timeout: Some(std::time::Duration::from_secs(120)),
         keepalive_interval: Some(std::time::Duration::from_secs(15)),
         keepalive_max: 3,
+        preferred: crate::ssh_client_config::preferred(),
         ..Default::default()
     };
 

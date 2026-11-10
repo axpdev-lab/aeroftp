@@ -161,9 +161,14 @@ fn ed25519() -> PrivateKey {
 
 /// Start the server on loopback with `key` as its host key; returns its port.
 async fn start_server(key: PrivateKey) -> u16 {
+    start_server_with_preferred(key, russh::Preferred::default()).await
+}
+
+async fn start_server_with_preferred(key: PrivateKey, preferred: russh::Preferred) -> u16 {
     let config = Arc::new(russh::server::Config {
         methods: russh::MethodSet::from(&[russh::MethodKind::Password][..]),
         keys: vec![key],
+        preferred,
         ..Default::default()
     });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -282,6 +287,19 @@ async fn a_refused_host_key_is_named_and_not_taken_for_a_server_that_is_down() {
         }
         other => panic!("an unreadable known_hosts was refused as {other:?}"),
     }
+
+    // 5. A server that accepts only ECDH P-256 must reach authentication.
+    // Without the shared ECDH preference this fails earlier with NoCommonAlgo.
+    std::fs::remove_dir(&known_hosts).unwrap();
+    let ecdh_only = russh::Preferred {
+        kex: std::borrow::Cow::Borrowed(&[russh::kex::ECDH_SHA2_NISTP256]),
+        ..Default::default()
+    };
+    let port = start_server_with_preferred(ed25519(), ecdh_only).await;
+    let mut provider = connect(port, true)
+        .await
+        .expect("an ECDH P-256-only server connects");
+    provider.disconnect().await.unwrap();
 
     drop(_home_env);
     let _ = std::fs::remove_dir_all(&home);

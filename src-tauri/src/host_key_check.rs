@@ -23,7 +23,7 @@ const PENDING_KEY_TTL: Duration = Duration::from_secs(300);
 /// Result of a host key probe
 #[derive(Debug, Clone, Serialize)]
 pub struct HostKeyInfo {
-    /// "known" | "unknown" | "changed"
+    /// "known" | "unknown" | "changed" | "error"
     pub status: String,
     /// SHA-256 fingerprint: "SHA256:base64..."
     pub fingerprint: String,
@@ -65,22 +65,11 @@ impl Handler for ProbeHandler {
         // one. It is refused rather than left to a wildcard so that the answer
         // is a decision instead of an accident.
         //
-        // The default holding is the second half of that claim, and it was
-        // checked rather than assumed: this tree builds a `Preferred` of its
-        // own in exactly two places, `providers/sftp.rs` (compression only) and
-        // `aerorsync/russh_session_transport.rs` (host-key algorithms only),
-        // and both take `host_key_certificates` from the default. The one that
-        // does override `key` lists Ed25519, three ECDSA curves and two RSA
-        // hashes, every one of them a plain-key algorithm, so it does not
-        // reopen the door either. The arm goes live if any `Preferred` fills
-        // that list, or if a `key` list gains a `*-cert-v01@openssh.com`
-        // algorithm. Both of those edits are named by path on purpose, because
-        // this paragraph is repeated in three handlers and "not in this file"
-        // would be true in one of them and reassuring in exactly the file that
-        // owns the dangerous line: today they are `providers/sftp.rs` and
-        // `aerorsync/russh_session_transport.rs`, the two that build a
-        // `Preferred`, the second holding the only `key` override, plus
-        // wherever a new `Preferred` is added.
+        // Every client takes `host_key_certificates` from the default through
+        // `ssh_client_config.rs`. AeroRsync's only `key` override lists
+        // Ed25519, three ECDSA curves and two RSA hashes, every one a plain-key
+        // algorithm. The arm goes live if the shared policy fills that list,
+        // or if a `key` list gains a `*-cert-v01@openssh.com` algorithm.
         //
         // WHOEVER ENABLES HOST CERTIFICATES MUST COME BACK TO ALL FOUR
         // HANDLERS FIRST. Filling that list makes this arm live, and accepting
@@ -190,6 +179,7 @@ pub async fn sftp_check_host_key(host: String, port: u16) -> Result<HostKeyInfo,
 
     let config = Config {
         inactivity_timeout: Some(Duration::from_secs(10)),
+        preferred: crate::ssh_client_config::preferred(),
         ..Default::default()
     };
 
@@ -203,25 +193,36 @@ pub async fn sftp_check_host_key(host: String, port: u16) -> Result<HostKeyInfo,
     )
     .await;
 
-    // For known keys, probe succeeds: drop the handle
-    if let Ok(Ok(_handle)) = probe {
-        drop(_handle);
-    }
-    // For unknown/changed keys, probe fails: that's expected
+    let info = result.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let outcome = match probe {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(error)) => Err(format!("SSH handshake failed: {error}")),
+        Err(_) => Err("connection timed out after 10 seconds".to_string()),
+    };
+    resolve_host_key_probe(info, outcome, &host, port)
+}
 
-    // Retrieve captured result
-    let info = result
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .take()
-        .ok_or_else(|| {
+fn resolve_host_key_probe(
+    info: Option<HostKeyInfo>,
+    outcome: Result<(), String>,
+    host: &str,
+    port: u16,
+) -> Result<HostKeyInfo, String> {
+    match outcome {
+        Ok(()) => info.ok_or_else(|| {
             format!(
-                "Failed to retrieve host key from {}:{}: connection may have timed out",
-                host, port
+                "Failed to retrieve host key from {host}:{port}: the server provided no host key"
             )
-        })?;
-
-    Ok(info)
+        }),
+        Err(error) => match info {
+            // Unknown, changed and unreadable keys deliberately fail the
+            // connection after the handler has captured their details.
+            Some(info) if info.status != "known" => Ok(info),
+            _ => Err(format!(
+                "Failed to retrieve host key from {host}:{port}: {error}"
+            )),
+        },
+    }
 }
 
 /// Accept a pending host key and save it to ~/.ssh/known_hosts
@@ -413,6 +414,59 @@ mod tests {
 
     const KEY_OLD: &str = "AAAAC3NzaC1lZDI1NTE5AAAAIOLDSTALEKEYDOESNOTMATCHSERVERXXXXXXXXXXXXXX";
     const KEY_NEW: &str = "AAAAC3NzaC1lZDI1NTE5AAAAINEWKEYMATCHESSERVERXXXXXXXXXXXXXXXXXXXXXXX";
+
+    #[tokio::test]
+    async fn host_key_probe_preserves_the_underlying_handshake_error() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let Ok((stream, _)) = listener.accept().await else {
+                return;
+            };
+            drop(stream);
+        });
+
+        let error = sftp_check_host_key("127.0.0.1".to_string(), port)
+            .await
+            .unwrap_err();
+        server.await.unwrap();
+        assert!(error.contains("SSH handshake failed"), "{error}");
+        assert!(!error.contains("may have timed out"), "{error}");
+    }
+
+    #[test]
+    fn a_known_key_does_not_hide_a_failed_probe() {
+        let known = HostKeyInfo {
+            status: "known".to_string(),
+            fingerprint: "SHA256:test".to_string(),
+            algorithm: "ssh-ed25519".to_string(),
+            changed_line: None,
+        };
+        let error = resolve_host_key_probe(
+            Some(known.clone()),
+            Err("SSH handshake failed: connection closed".to_string()),
+            "example.com",
+            22,
+        )
+        .unwrap_err();
+        assert!(error.contains("connection closed"), "{error}");
+
+        let known = resolve_host_key_probe(Some(known), Ok(()), "example.com", 22).unwrap();
+        assert_eq!(known.status, "known");
+
+        let unknown = HostKeyInfo {
+            status: "unknown".to_string(),
+            ..known
+        };
+        let unknown = resolve_host_key_probe(
+            Some(unknown),
+            Err("SSH handshake failed: UnknownKey".to_string()),
+            "example.com",
+            22,
+        )
+        .unwrap();
+        assert_eq!(unknown.status, "unknown");
+    }
 
     #[test]
     fn host_pattern_strips_default_port() {

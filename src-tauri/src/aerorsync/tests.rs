@@ -2922,11 +2922,12 @@ fn production_unsafe_surface_matches_the_documented_count() {
 /// The module imports nothing from the application. That is the end state
 /// of the standalone-crate plan's first phase, and this is where it is
 /// enforced: every `crate::<application module>` line inside the module is
-/// coupling the crate cannot carry, and there are none left, so the
-/// inventory is empty and the assertion names the file and the line of
-/// anything that comes back. Unlike the `unsafe` count above, whole-file
-/// test harnesses are NOT excluded: in the crate, test code cannot import
-/// the application either.
+/// coupling the crate cannot carry. The only other allowed root module is
+/// `ssh_client_config`, a neutral policy file the emitter copies into the
+/// standalone crate instead of importing application state. The assertion
+/// names the file and line of anything else. Unlike the `unsafe` count above,
+/// whole-file test harnesses are NOT excluded: test code cannot import the
+/// application either.
 ///
 /// An empty inventory measured by a blind scan would be a false green, so
 /// every refusal the scan needs to stay honest is still here: the forms
@@ -2939,10 +2940,11 @@ fn production_unsafe_surface_matches_the_documented_count() {
 /// of substrings; until then, a new spelling that gets through belongs
 /// in this list the day it is found.
 ///
-/// The exclusion is `crate::aerorsync` compared as a whole identifier, never
-/// as a prefix: `crate::aerorsync_adapter`, the application-side adapter,
-/// is an application import and must be refused, because the crate must
-/// never depend on its own adapter. Grouped imports
+/// Both exclusions compare whole identifiers, never prefixes:
+/// `crate::aerorsync` is the module itself and `crate::ssh_client_config`
+/// is the neutral file emitted beside it. `crate::aerorsync_adapter`, the
+/// application-side adapter, must be refused because the crate must never
+/// depend on its own adapter. Grouped imports
 /// (`use crate::{a, b}`) fail outright so a mixed group cannot hide an
 /// application module next to `aerorsync`; `super::super::` is the crate
 /// root seen from a module file and is refused for the same reason.
@@ -3066,7 +3068,7 @@ fn aerorsync_module_imports_nothing_from_the_app() {
                     .chars()
                     .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
                     .collect();
-                if ident != "aerorsync" {
+                if ident != "aerorsync" && ident != "ssh_client_config" {
                     let module = if ident.is_empty() {
                         after.chars().take(1).collect()
                     } else {
