@@ -193,23 +193,35 @@ pub async fn sftp_check_host_key(host: String, port: u16) -> Result<HostKeyInfo,
     )
     .await;
 
-    // Unknown and changed keys deliberately fail the connection after the
-    // handler has captured their details. Any other failure keeps its cause.
     let info = result.lock().unwrap_or_else(|e| e.into_inner()).take();
-    if let Some(info) = info {
-        return Ok(info);
-    }
+    let outcome = match probe {
+        Ok(Ok(_)) => Ok(()),
+        Ok(Err(error)) => Err(format!("SSH handshake failed: {error}")),
+        Err(_) => Err("connection timed out after 10 seconds".to_string()),
+    };
+    resolve_host_key_probe(info, outcome, &host, port)
+}
 
-    match probe {
-        Ok(Err(error)) => Err(format!(
-            "Failed to retrieve host key from {host}:{port}: SSH handshake failed: {error}"
-        )),
-        Err(_) => Err(format!(
-            "Failed to retrieve host key from {host}:{port}: connection timed out after 10 seconds"
-        )),
-        Ok(Ok(_)) => Err(format!(
-            "Failed to retrieve host key from {host}:{port}: the server provided no host key"
-        )),
+fn resolve_host_key_probe(
+    info: Option<HostKeyInfo>,
+    outcome: Result<(), String>,
+    host: &str,
+    port: u16,
+) -> Result<HostKeyInfo, String> {
+    match outcome {
+        Ok(()) => info.ok_or_else(|| {
+            format!(
+                "Failed to retrieve host key from {host}:{port}: the server provided no host key"
+            )
+        }),
+        Err(error) => match info {
+            // Unknown, changed and unreadable keys deliberately fail the
+            // connection after the handler has captured their details.
+            Some(info) if info.status != "known" => Ok(info),
+            _ => Err(format!(
+                "Failed to retrieve host key from {host}:{port}: {error}"
+            )),
+        },
     }
 }
 
@@ -420,6 +432,40 @@ mod tests {
         server.await.unwrap();
         assert!(error.contains("SSH handshake failed"), "{error}");
         assert!(!error.contains("may have timed out"), "{error}");
+    }
+
+    #[test]
+    fn a_known_key_does_not_hide_a_failed_probe() {
+        let known = HostKeyInfo {
+            status: "known".to_string(),
+            fingerprint: "SHA256:test".to_string(),
+            algorithm: "ssh-ed25519".to_string(),
+            changed_line: None,
+        };
+        let error = resolve_host_key_probe(
+            Some(known.clone()),
+            Err("SSH handshake failed: connection closed".to_string()),
+            "example.com",
+            22,
+        )
+        .unwrap_err();
+        assert!(error.contains("connection closed"), "{error}");
+
+        let known = resolve_host_key_probe(Some(known), Ok(()), "example.com", 22).unwrap();
+        assert_eq!(known.status, "known");
+
+        let unknown = HostKeyInfo {
+            status: "unknown".to_string(),
+            ..known
+        };
+        let unknown = resolve_host_key_probe(
+            Some(unknown),
+            Err("SSH handshake failed: UnknownKey".to_string()),
+            "example.com",
+            22,
+        )
+        .unwrap();
+        assert_eq!(unknown.status, "unknown");
     }
 
     #[test]
