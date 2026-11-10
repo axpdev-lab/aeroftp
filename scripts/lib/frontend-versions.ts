@@ -58,7 +58,7 @@ export function resolveInstalledVersion(
   if (typeof locked === 'string' && locked) {
     return locked;
   }
-  if (packageLock === undefined) {
+  if (packageLock == null) {
     try {
       const modPkgPath = resolve(rootDir, `node_modules/${name}/package.json`);
       if (existsSync(modPkgPath)) {

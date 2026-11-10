@@ -100,6 +100,21 @@ describe('AboutDialog frontend dependency versions', () => {
         expect(resolved).toBe('8.3.0');
     });
 
+    it('shared resolver falls back to node_modules when packageLock is null (missing lockfile)', () => {
+        // When the lockfile cannot be loaded (returns null), the resolver should inspect node_modules
+        // to discover the real installed version instead of defaulting to the manifest range minimum.
+        const mockManifest = {
+            dependencies: {
+                vite: '^8.0.0',
+            },
+            devDependencies: {},
+        };
+
+        const resolved = resolveInstalledVersion('vite', undefined, rootDir, null, mockManifest);
+        expect(resolved).not.toBe('8.0.0');
+        expect(resolved).toMatch(/^\d+\.\d+\.\d+/);
+    });
+
     it('resolves concrete build versions without range prefixes for all AboutDialog frontend deps using real repo files', () => {
         const frontDeps: Record<string, string> = {
             react: resolveInstalledVersion('react', undefined, rootDir, lock, pkg),
