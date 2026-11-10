@@ -23,7 +23,7 @@ const PENDING_KEY_TTL: Duration = Duration::from_secs(300);
 /// Result of a host key probe
 #[derive(Debug, Clone, Serialize)]
 pub struct HostKeyInfo {
-    /// "known" | "unknown" | "changed"
+    /// "known" | "unknown" | "changed" | "error"
     pub status: String,
     /// SHA-256 fingerprint: "SHA256:base64..."
     pub fingerprint: String,

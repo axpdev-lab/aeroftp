@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MPL-2.0 OR GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
 use std::borrow::Cow;
 
 use russh::{kex, Preferred};
