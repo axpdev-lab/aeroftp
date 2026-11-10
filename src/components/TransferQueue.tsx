@@ -995,15 +995,14 @@ export const useTransferQueue = () => {
         ));
     };
 
-    // Re-queue all failed items (except user-cancelled): returns IDs for retry callback execution
+    // Re-queue all failed items (except user-cancelled): returns IDs for retry callback execution.
+    // Snapshot ids from the latest render (event handlers see current state);
+    // the setState updater re-filters so concurrent updates stay safe.
     const retryAllFailed = (): string[] => {
-        const failedIds: string[] = [];
-        setItems(prev => {
-            const { next, ids } = retryAllFailedHelper(prev);
-            failedIds.splice(0, failedIds.length, ...ids);
-            return next;
-        });
-        return failedIds;
+        const { ids } = retryAllFailedHelper(items);
+        if (ids.length === 0) return [];
+        setItems(prev => retryAllFailedHelper(prev).next);
+        return ids;
     };
 
     // TQ-7c: ids of restored+pending items (for Resume all / banner).

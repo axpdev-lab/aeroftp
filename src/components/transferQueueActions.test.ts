@@ -14,6 +14,7 @@ import {
     removeItem,
     removeRestoredPending,
     reorder,
+    retryAllFailed,
     rowForFileStart,
     stagedCount,
     startAll,
@@ -39,6 +40,7 @@ const makeItem = (
     isFolder: extra?.isFolder,
     isPlannedSync: extra?.isPlannedSync,
     error: extra?.error,
+    cancelled: extra?.cancelled,
 });
 
 describe('addItem', () => {
@@ -614,3 +616,57 @@ describe('rearmedOnUserAction (#591, cancel state across Stop, Start and Retry)'
         expect(cancelled).toEqual(['b', 'c']);
     });
 });
+
+describe('retryAllFailed helper (#139)', () => {
+    it('returns ids of failed items with errors and transitions them to pending', () => {
+        const input = [
+            makeItem('f1', 'error', { error: 'Connection lost' }),
+            makeItem('c1', 'completed'),
+            makeItem('f2', 'error', { error: 'Timeout' }),
+        ];
+        const { next, ids } = retryAllFailed(input);
+        expect(ids).toEqual(['f1', 'f2']);
+        expect(next.find(i => i.id === 'f1')?.status).toBe('pending');
+        expect(next.find(i => i.id === 'f1')?.error).toBeUndefined();
+        expect(next.find(i => i.id === 'f2')?.status).toBe('pending');
+        expect(next.find(i => i.id === 'f2')?.error).toBeUndefined();
+        expect(next.find(i => i.id === 'c1')?.status).toBe('completed');
+    });
+
+    it('excludes items cancelled by the user', () => {
+        const input = [
+            makeItem('stopped', 'error', { error: 'Stopped by user', cancelled: true }),
+            makeItem('failed', 'error', { error: 'Connection reset' }),
+        ];
+        const { next, ids } = retryAllFailed(input);
+        expect(ids).toEqual(['failed']);
+        expect(next.find(i => i.id === 'stopped')?.status).toBe('error');
+        expect(next.find(i => i.id === 'stopped')?.cancelled).toBe(true);
+        expect(next.find(i => i.id === 'failed')?.status).toBe('pending');
+    });
+
+    it('excludes staged, transferring, and pending items', () => {
+        const input = [
+            makeItem('s1', 'staged'),
+            makeItem('t1', 'transferring'),
+            makeItem('p1', 'pending'),
+            makeItem('f1', 'error', { error: 'Disk full' }),
+        ];
+        const { next, ids } = retryAllFailed(input);
+        expect(ids).toEqual(['f1']);
+        expect(next.find(i => i.id === 's1')?.status).toBe('staged');
+        expect(next.find(i => i.id === 't1')?.status).toBe('transferring');
+        expect(next.find(i => i.id === 'p1')?.status).toBe('pending');
+    });
+
+    it('returns empty ids and unchanged items when no failed rows exist', () => {
+        const input = [
+            makeItem('c1', 'completed'),
+            makeItem('p1', 'pending'),
+        ];
+        const { next, ids } = retryAllFailed(input);
+        expect(ids).toEqual([]);
+        expect(next).toEqual(input);
+    });
+});
+
