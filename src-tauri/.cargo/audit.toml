@@ -73,8 +73,10 @@
 #           AsyncFd I/O safety, test helper only); the app lock already had 1.54.1.)
 # Reviewed: 2026-11-10 (added RUSTSEC-2026-0459, libsqlite3-sys 0.30.1 via
 #           rusqlite 0.32.1: SQLite CVE-2026-119375 uninitialized page-cache
-#           memory on mismatched WAL page size; AeroFTP uses rusqlite strictly
-#           for app-owned local state databases, never untrusted DB files.
+#           memory on mismatched WAL page size; AeroFTP uses rusqlite across
+#           three controlled categories: app-owned local state databases,
+#           Flatpak host-config snapshots, and encrypted backup preview/restore
+#           which never materializes or accepts sibling -wal sidecars.
 #           Upgrade requires rusqlite 0.41+ and Rust 1.89+; documented below.)
 
 [advisories]
@@ -413,27 +415,42 @@ ignore = [
     #
     # Path: libsqlite3-sys 0.30.1 <- rusqlite 0.32.1 <- aeroftp 4.2.7 (and dev-deps).
     #
-    # Exposure in AeroFTP: rusqlite is used strictly for application-managed
-    # internal state databases:
-    #   - user_partitions.db (and staging/backup snapshots in portable.rs)
-    #   - MCP client tables (mcp_client_config.rs, mcp_client_oauth.rs, mcp_client_http_config.rs)
-    #   - file_tags.db (file_tags.rs)
-    #   - agent_memory.db and chat_history.db (lib.rs, chat_history.rs)
-    #   - S3 delta sync baseline cache (s3_delta_baseline.rs)
-    #   - CLI jobs tracking (aeroftp_cli.rs jobs.db)
-    #
-    # All of these files reside strictly within the user's private local
-    # application/config/portable directory. AeroFTP never opens untrusted,
-    # external, or remote SQLite database files via rusqlite. An attacker
-    # capable of planting a crafted -wal file in these directories already
-    # possesses local user execution privileges.
+    # Exposure in AeroFTP: rusqlite is used across three controlled categories:
+    #   1. App-owned local state databases:
+    #      - user_partitions.db
+    #      - MCP client tables (mcp_client_config.rs, mcp_client_oauth.rs, mcp_client_http_config.rs)
+    #      - file_tags.db (file_tags.rs)
+    #      - agent_memory.db and chat_history.db (lib.rs, chat_history.rs)
+    #      - S3 delta sync baseline cache (s3_delta_baseline.rs)
+    #      - CLI jobs tracking (aeroftp_cli.rs jobs.db)
+    #      All of these files reside strictly within the user's private local
+    #      application/config/portable directory. Planting a crafted -wal file
+    #      here already requires local user execution privileges.
+    #   2. Flatpak host-config migration (portable.rs copy_missing_node):
+    #      Opens the user's existing host configuration databases in
+    #      SQLITE_OPEN_READ_ONLY strictly from the user's owned host config
+    #      directory (~/.config/aeroftp, resolved by default_host_config_dir(),
+    #      not an arbitrary path) to create clean snapshots via `VACUUM main INTO`.
+    #      Any sibling -wal belongs to the same local user context.
+    #   3. Encrypted keystore backup preview and restore (keystore_export.rs):
+    #      During preview (open_backup_partition) and prepare_partition_restore,
+    #      the AES-GCM authenticated database bytes are materialised strictly
+    #      as a single file (user_partitions.db) in an isolated private
+    #      tempfile::tempdir() (mode 0700) without any sibling -wal or -shm file
+    #      (the SQLITE_DBS whitelist only admits known .db names and the backup
+    #      archive never transports WAL sidecars). Because CVE-2026-119375
+    #      requires opening a database together with a mismatched sibling -wal,
+    #      opening an isolated .db file without a sibling -wal cannot trigger the
+    #      vulnerability. During final publication (keystore_export.rs:2231-2232),
+    #      any pre-existing -wal and -shm files in config_dir are removed before
+    #      the restored database is reopened.
     #
     # Upgrade blocker: patched libsqlite3-sys >= 0.39.0 bundles SQLite >= 3.54.0,
     # which is only available starting with rusqlite 0.41.0 (a breaking semver
     # bump from 0.32 with Rust 1.89+ MSRV and API revisions).
     #
     # Exit path: remove this ignore when AeroFTP bumps to rusqlite >= 0.41.0.
-    "RUSTSEC-2026-0459",  # libsqlite3-sys via C SQLite CVE-2026-119375 (internal app-owned DBs only; upgrade needs rusqlite 0.41+ and Rust 1.89)
+    "RUSTSEC-2026-0459",  # libsqlite3-sys via C SQLite CVE-2026-119375 (isolated app DBs and no-WAL backup flow; upgrade needs rusqlite 0.41+ and Rust 1.89)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is

@@ -111,8 +111,10 @@ describe('AboutDialog frontend dependency versions', () => {
         };
 
         const resolved = resolveInstalledVersion('vite', undefined, rootDir, null, mockManifest);
-        expect(resolved).not.toBe('8.0.0');
-        expect(resolved).toMatch(/^\d+\.\d+\.\d+/);
+        const installedVite = JSON.parse(
+            readFileSync(resolve(rootDir, 'node_modules/vite/package.json'), 'utf-8'),
+        ).version;
+        expect(resolved).toBe(installedVite);
     });
 
     it('resolves concrete build versions without range prefixes for all AboutDialog frontend deps using real repo files', () => {
