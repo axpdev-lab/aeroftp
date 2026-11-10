@@ -2299,13 +2299,14 @@ async fn list_with_transport_retry(
     }
 }
 
-/// Same classifier shape used by the MCP pool: keep the two in sync.
+/// Whether this failure leaves the TCP/TLS/SSH session unusable.
 ///
-/// Any provider-level failure that leaves the underlying TCP/TLS/SSH session
-/// unusable qualifies. Pattern matching errs on the side of retrying: worst
-/// case we reconnect once on a spurious match; the correct case would have
-/// been a silently-skipped directory.
-fn is_transport_level(e: &ProviderError) -> bool {
+/// [`list_with_transport_retry`] reconnects and lists once on a match. The
+/// CLI and MCP pools call the same function and drop the pooled entry
+/// instead of running the failed call again. The string arm is
+/// [`transport_failure_text`], which `aeroftp_check_tree` also applies to a
+/// scan `first_failure` (the typed error is already rendered there).
+pub(crate) fn is_transport_level(e: &ProviderError) -> bool {
     match e {
         ProviderError::NotConnected
         | ProviderError::ConnectionFailed(_)
@@ -2316,37 +2317,53 @@ fn is_transport_level(e: &ProviderError) -> bool {
         ProviderError::TransferFailed(msg)
         | ProviderError::ServerError(msg)
         | ProviderError::Other(msg)
-        | ProviderError::Unknown(msg) => {
-            let lower = msg.to_ascii_lowercase();
-            const PATTERNS: &[&str] = &[
-                "data connection is already open",
-                "data connection already open",
-                "connection is already open",
-                "broken pipe",
-                "pipe closed",
-                "connection reset",
-                "connection closed",
-                "connection aborted",
-                "connection refused",
-                "not connected",
-                "eof from server",
-                "unexpected eof",
-                "channel closed",
-                "session closed",
-                "socket closed",
-                "stream closed",
-                "bad file descriptor",
-            ];
-            // A translated OS message carries none of these phrases; its
-            // code does (#1506 row 164).
-            let by_code = crate::providers::types::os_error_kind(msg).is_some_and(|kind| {
-                crate::providers::types::os_error_kind_closes_the_session(kind)
-                    || kind == std::io::ErrorKind::ConnectionRefused
-            });
-            by_code || PATTERNS.iter().any(|p| lower.contains(p))
-        }
+        | ProviderError::Unknown(msg) => transport_failure_text(msg),
         _ => false,
     }
+}
+
+/// True when `message` is the kind of text [`is_transport_level`] matches
+/// once a [`ProviderError`] has been rendered.
+///
+/// The scan stores that rendering in `first_failure` as
+/// `failed to list {path}: {Display}`. The string needles are the same ones
+/// the typed classifier uses, so the two cannot drift. `Connection lost:` is
+/// the Display of [`ProviderError::ConnectionLost`], whose detail (`idle`)
+/// is not itself a needle. `not connected` covers
+/// [`ProviderError::NotConnected`] (`Not connected to server`).
+///
+/// A scan that hit its own time limit says `timed out listing ...`. That
+/// sentence does not contain `operation timed out` and does not match here:
+/// the listing gave up, and this helper does not decide the pooled session
+/// is dead from those words alone.
+pub(crate) fn transport_failure_text(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    const PATTERNS: &[&str] = &[
+        "data connection is already open",
+        "data connection already open",
+        "connection is already open",
+        "broken pipe",
+        "pipe closed",
+        "connection reset",
+        "connection closed",
+        "connection aborted",
+        "connection refused",
+        "not connected",
+        "eof from server",
+        "unexpected eof",
+        "channel closed",
+        "session closed",
+        "socket closed",
+        "stream closed",
+        "bad file descriptor",
+    ];
+    // A translated OS message carries none of these phrases; its
+    // code does (#1506 row 164).
+    let by_code = crate::providers::types::os_error_kind(message).is_some_and(|kind| {
+        crate::providers::types::os_error_kind_closes_the_session(kind)
+            || kind == std::io::ErrorKind::ConnectionRefused
+    });
+    by_code || lower.contains("connection lost:") || PATTERNS.iter().any(|p| lower.contains(p))
 }
 
 /// Pick a preferred hash from a provider checksum map. Returns `(algo, hex)`.

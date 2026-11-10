@@ -1348,6 +1348,16 @@ pub async fn execute_tool(
                         &crate::crypt_compare::remote_scan_options(&opts, crypt_keys.is_some()),
                     )
                     .await;
+                    // The scan already retried a transport error once. A leftover
+                    // is text (`failed to list {path}: {Display}`). Drop the
+                    // pooled session only when that text is a dead transport,
+                    // after `p` and `arc` are released, and do not scan again.
+                    // NotFound, a permission error, and `timed out listing`
+                    // keep the entry. No failure keeps it too.
+                    let session_dead = remote_boundaries
+                        .first_failure
+                        .as_deref()
+                        .is_some_and(crate::sync_core::scan::transport_failure_text);
                     let mut remotes = remote_rows;
                     if let Some(keys) = &crypt_keys {
                         // The scan read the list on ciphertext names; it is read again on
@@ -1361,6 +1371,9 @@ pub async fn execute_tool(
                         );
                         remotes = normalized.entries;
                         if keys.wrong_key_suspected(raw_len, normalized.decrypted) {
+                            drop(p);
+                            drop(arc);
+                            invalidate_dead_check_session(pool, &server, session_dead).await;
                             return finish(
                                 tool_name,
                                 Some(&server),
@@ -1378,6 +1391,9 @@ pub async fn execute_tool(
                         &mut local_boundaries,
                         &remote_boundaries,
                     ) {
+                        drop(p);
+                        drop(arc);
+                        invalidate_dead_check_session(pool, &server, session_dead).await;
                         return finish(
                             tool_name,
                             Some(&server),
@@ -1387,7 +1403,7 @@ pub async fn execute_tool(
                         );
                     }
                     let diff = compare_trees(&locals, &remotes, one_way);
-                    if summary_only {
+                    let payload = if summary_only {
                         // Skip the per-entry arrays entirely. Agents call
                         // check_tree on large scopes (thousands of files) just
                         // to get the drift counters; the arrays push the
@@ -1430,7 +1446,7 @@ pub async fn execute_tool(
                                 true,
                             ));
                         }
-                        ok(payload)
+                        payload
                     } else {
                         let entries_to_json = |entries: &[crate::sync_core::DiffEntry],
                                                group_cap: usize|
@@ -1504,8 +1520,15 @@ pub async fn execute_tool(
                                 false,
                             ));
                         }
-                        ok(payload)
-                    }
+                        payload
+                    };
+                    // Release the provider lock and pool Arc BEFORE invalidate
+                    // so the pool sees `strong_count == 1` and actually closes
+                    // the underlying socket on the detached disconnect.
+                    drop(p);
+                    drop(arc);
+                    invalidate_dead_check_session(pool, &server, session_dead).await;
+                    ok(payload)
                 }
             };
             finish(tool_name, Some(&server), Some(&remote_dir), result, start)
@@ -1962,6 +1985,17 @@ pub async fn execute_tool(
 
 /// Most entries of each boundary list a `sync_tree` result carries.
 const SYNC_BOUNDARIES_JSON_CAP: usize = 1000;
+
+/// Drop a check_tree session whose scan leftover is a dead transport.
+///
+/// The caller drops the provider mutex and the pool `Arc` first. A clean
+/// scan, a missing path, and a `timed out listing` sentence pass `false`
+/// and leave the entry.
+async fn invalidate_dead_check_session(pool: &ConnectionPool, server: &str, session_dead: bool) {
+    if session_dead {
+        let _ = pool.invalidate(server).await;
+    }
+}
 
 /// Comparison can report incomplete observations, while a policy refusal with
 /// no named boundary cannot safely describe a permitted comparison scope.

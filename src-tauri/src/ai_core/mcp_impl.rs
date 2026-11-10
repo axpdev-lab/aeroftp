@@ -157,6 +157,40 @@ fn looks_like_auth_failure(msg: &str) -> bool {
         || m.contains("requires a valid access token")
 }
 
+/// What a pooled call does after a provider error.
+///
+/// Auth reloads the vault credential and runs the call once more: an auth
+/// failure means the server did not apply it. A transport failure removes
+/// the pool entry and returns the error. The call is not run again, because
+/// a write may already have reached the server. Every other failure,
+/// including a missing path and a permission error, leaves the entry in place.
+#[derive(Debug, PartialEq, Eq)]
+enum PooledSessionAction {
+    ReloadCredential,
+    DropSession,
+    KeepSession,
+}
+
+fn pooled_session_action(error: &crate::providers::ProviderError) -> PooledSessionAction {
+    // Auth before transport. A dead-session variant whose text is an auth
+    // failure still takes the one vault reload. `broken pipe` is not auth,
+    // so it drops.
+    if looks_like_auth_failure(&error.to_string()) {
+        PooledSessionAction::ReloadCredential
+    } else if crate::sync_core::scan::is_transport_level(error) {
+        PooledSessionAction::DropSession
+    } else {
+        PooledSessionAction::KeepSession
+    }
+}
+
+/// The provider call, or the pool's own failure to hand one over.
+enum PooledAttempt<T> {
+    Done(T),
+    Provider(crate::providers::ProviderError),
+    Pool(String),
+}
+
 impl McpRemoteBackend {
     /// A backend for `server` over `pool`: the MCP server's, and the CLI
     /// agent's over its own process-wide pool.
@@ -186,7 +220,9 @@ impl McpRemoteBackend {
                 >,
             > + Clone,
     {
-        // First attempt against the pooled (possibly stale-token) provider.
+        // The provider lock and the pool Arc both end with this block, before
+        // any invalidate. invalidate closes the socket only when this call is
+        // the last holder.
         let first = match self
             .pool
             .get_provider_expecting(&self.server, self.expected_identity.as_deref())
@@ -194,34 +230,66 @@ impl McpRemoteBackend {
         {
             Ok(arc) => {
                 let mut guard = arc.lock().await;
-                op.clone()(&mut guard)
-                    .await
-                    .map_err(|e| crate::providers::sanitize_api_error(&e.to_string()))
+                match op.clone()(&mut guard).await {
+                    Ok(value) => PooledAttempt::Done(value),
+                    // Classify the typed error before sanitize_api_error. A
+                    // redacted string can hide the words the decision uses.
+                    Err(error) => PooledAttempt::Provider(error),
+                }
             }
-            Err(e) => Err(e),
+            Err(error) => PooledAttempt::Pool(error),
         };
 
         match first {
-            Ok(v) => Ok(v),
-            Err(e) if looks_like_auth_failure(&e) => {
-                // F5 #2: hot-reload from the vault. Drop the pooled connection
-                // so the next get_provider() rebuilds it from the freshly
-                // refreshed credentials the desktop app wrote, then retry the
-                // operation exactly once. An auth failure means the operation
-                // did not take effect server-side, so the single retry is safe
-                // for mutating ops too.
-                let _ = self.pool.invalidate(&self.server).await;
-                let arc = self
-                    .pool
-                    .get_provider_expecting(&self.server, self.expected_identity.as_deref())
-                    .await?;
-                let mut guard = arc.lock().await;
-                op(&mut guard)
-                    .await
-                    .map_err(|e| crate::providers::sanitize_api_error(&e.to_string()))
+            PooledAttempt::Done(value) => Ok(value),
+            PooledAttempt::Provider(error) => match pooled_session_action(&error) {
+                PooledSessionAction::ReloadCredential => self.reload_credential_and_retry(op).await,
+                PooledSessionAction::DropSession => {
+                    let _ = self.pool.invalidate(&self.server).await;
+                    Err(crate::providers::sanitize_api_error(&error.to_string()))
+                }
+                PooledSessionAction::KeepSession => {
+                    Err(crate::providers::sanitize_api_error(&error.to_string()))
+                }
+            },
+            // No typed provider error: a connect that fails is not inserted.
+            // An auth-shaped acquisition failure keeps today's one reload.
+            PooledAttempt::Pool(error) if looks_like_auth_failure(&error) => {
+                self.reload_credential_and_retry(op).await
             }
-            Err(e) => Err(e),
+            PooledAttempt::Pool(error) => Err(error),
         }
+    }
+
+    /// Drop the pooled provider and run `op` once against a vault reload.
+    ///
+    /// F5 #2: the long-running process captured the token at construction.
+    /// Dropping the entry makes the next `get_provider` re-read the vault,
+    /// which the desktop app may already have refreshed. An auth failure
+    /// means the operation did not take effect server-side, so this single
+    /// retry is safe for a write. The caller has already released the
+    /// provider lock. A second failure is returned and not classified again.
+    async fn reload_credential_and_retry<T, F>(&self, op: F) -> Result<T, String>
+    where
+        F: for<'p> FnOnce(
+            &'p mut Box<dyn crate::providers::StorageProvider>,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<T, crate::providers::ProviderError>>
+                    + Send
+                    + 'p,
+            >,
+        >,
+    {
+        let _ = self.pool.invalidate(&self.server).await;
+        let arc = self
+            .pool
+            .get_provider_expecting(&self.server, self.expected_identity.as_deref())
+            .await?;
+        let mut guard = arc.lock().await;
+        op(&mut guard)
+            .await
+            .map_err(|e| crate::providers::sanitize_api_error(&e.to_string()))
     }
 }
 
@@ -506,7 +574,104 @@ impl RemoteBackend for McpRemoteBackend {
 
 #[cfg(test)]
 mod tests {
-    use super::looks_like_auth_failure;
+    use super::{looks_like_auth_failure, pooled_session_action, PooledSessionAction};
+    use crate::providers::ProviderError;
+    use crate::sync_core::scan::transport_failure_text;
+
+    #[test]
+    fn pooled_session_action_classifies_reload_drop_and_keep() {
+        let drop_session = [
+            ProviderError::ConnectionLost("idle".into()),
+            ProviderError::NotConnected,
+            ProviderError::IoError(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "broken pipe",
+            )),
+            ProviderError::Other("broken pipe".into()),
+        ];
+        for error in &drop_session {
+            assert_eq!(
+                pooled_session_action(error),
+                PooledSessionAction::DropSession,
+                "{error}"
+            );
+            assert!(
+                !looks_like_auth_failure(&error.to_string()),
+                "broken pipe and a dead session are not a vault reload: {error}"
+            );
+        }
+
+        let keep_session = [
+            ProviderError::NotFound("/reports/q3".into()),
+            ProviderError::PermissionDenied("/reports/q3".into()),
+            ProviderError::Other("404 Not Found".into()),
+        ];
+        for error in &keep_session {
+            assert_eq!(
+                pooled_session_action(error),
+                PooledSessionAction::KeepSession,
+                "{error}"
+            );
+            assert!(
+                !transport_failure_text(&format!("failed to list /reports/q3: {error}")),
+                "a missing path must not drop the check_tree session: {error}"
+            );
+        }
+
+        // The strings auth_failure_classification already reloads. They stay
+        // a credential reload, and the transport classifier does not claim them.
+        for message in [
+            "HTTP 401 Unauthorized",
+            "Authentication failed: Unauthorized",
+            "OAuth2 provider 'box' requires a valid access token",
+            "invalid_grant",
+            "the access token expired",
+            "Box API: invalid token",
+            "invalid_token",
+            "OAuth token is invalid",
+            "token not valid",
+            "The OAuth token has been revoked",
+            "invalid oauth token",
+        ] {
+            let error = ProviderError::Other(message.into());
+            assert_eq!(
+                pooled_session_action(&error),
+                PooledSessionAction::ReloadCredential,
+                "{message}"
+            );
+            assert!(
+                !crate::sync_core::scan::is_transport_level(&error),
+                "auth text is not a transport drop: {message}"
+            );
+        }
+
+        let lost = ProviderError::ConnectionLost("idle".into());
+        assert!(transport_failure_text(&format!(
+            "failed to list /remote: {lost}"
+        )));
+        assert!(transport_failure_text(&format!(
+            "failed to list /remote: {}",
+            ProviderError::NotConnected
+        )));
+        assert!(transport_failure_text(
+            "failed to list /remote: broken pipe"
+        ));
+        // The scan's own time limit. Not `operation timed out`, and not a
+        // reason to drop the pooled session from the rendered sentence.
+        assert!(!transport_failure_text(
+            "timed out listing /remote after 30s"
+        ));
+        // Typed transport still drops in with_provider even when the rendered
+        // sentence has none of the text needles. check_tree only sees the text.
+        assert_eq!(
+            pooled_session_action(&ProviderError::Timeout),
+            PooledSessionAction::DropSession
+        );
+        assert!(!transport_failure_text("failed to list /remote: Timeout"));
+        assert!(!transport_failure_text(
+            "failed to list /remote: Connection failed: dns lookup failed"
+        ));
+    }
 
     #[test]
     fn auth_failure_classification() {
