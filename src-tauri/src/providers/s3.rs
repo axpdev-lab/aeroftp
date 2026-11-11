@@ -7391,7 +7391,7 @@ impl StorageProvider for S3Provider {
     async fn begin_multipart_upload(
         &mut self,
         remote_path: &str,
-        total_size: u64,
+        _total_size: u64,
         content_type: Option<&str>,
         local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
@@ -7408,7 +7408,10 @@ impl StorageProvider for S3Provider {
             ));
         }
         let key = remote_path.trim_start_matches('/');
-        let baseline = self.begin_baseline(key, total_size).await;
+        // A full DAG put does not hash the delta grid and does not write a
+        // new baseline. That grid only fills the local cache. The part
+        // upload and complete below stay the same requests. The legacy
+        // streaming upload still records its own baseline.
         let upload_id = self
             .create_multipart_upload(
                 key,
@@ -7416,33 +7419,6 @@ impl StorageProvider for S3Provider {
                 local_source_path.and_then(Self::source_mtime_metadata),
             )
             .await?;
-        if let Some((store, _)) = baseline {
-            let mut sessions = self
-                .multipart_baselines
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            sessions.retain(|_, session| {
-                session.touched.elapsed() < std::time::Duration::from_secs(3600)
-            });
-            if sessions.len() >= 128 {
-                if let Some(oldest) = sessions
-                    .iter()
-                    .min_by_key(|(_, session)| session.touched)
-                    .map(|(key, _)| key.clone())
-                {
-                    sessions.remove(&oldest);
-                }
-            }
-            sessions.insert(
-                upload_id.clone(),
-                super::s3_delta_baseline::MultipartBaseline {
-                    size: total_size,
-                    store,
-                    touched: std::time::Instant::now(),
-                    parts: std::collections::BTreeMap::new(),
-                },
-            );
-        }
         Ok(MultipartHandle {
             upload_id,
             remote_path: key.to_string(),
