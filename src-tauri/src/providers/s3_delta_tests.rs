@@ -6,9 +6,9 @@ use tokio::io::AsyncReadExt;
 const SIZE: u64 = 201 * 1024 * 1024;
 const GRID: u64 = 8 * 1024 * 1024;
 
-fn hash_part_call_guard() -> std::sync::MutexGuard<'static, ()> {
-    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    LOCK.lock().unwrap_or_else(|poison| poison.into_inner())
+async fn hash_part_call_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    LOCK.lock().await
 }
 
 #[derive(Clone, Default)]
@@ -513,7 +513,7 @@ async fn s3_adapter_refusal_doors_never_create_multipart() {
 
 #[tokio::test]
 async fn s3_adapter_batch_dag_full_put_does_not_seed_the_delta_baseline() {
-    let _hash_calls = hash_part_call_guard();
+    let _hash_calls = hash_part_call_guard().await;
     use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
     use crate::transfer_dag::{Capability, TransferCapabilities};
     use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
@@ -616,7 +616,7 @@ async fn s3_adapter_batch_dag_full_put_does_not_seed_the_delta_baseline() {
 
 #[tokio::test]
 async fn s3_adapter_batch_dag_full_put_drops_a_stale_same_etag_baseline() {
-    let _hash_calls = hash_part_call_guard();
+    let _hash_calls = hash_part_call_guard().await;
     use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
     use crate::transfer_dag::{Capability, TransferCapabilities};
     use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
@@ -734,7 +734,7 @@ async fn s3_adapter_batch_dag_full_put_drops_a_stale_same_etag_baseline() {
 
 #[tokio::test]
 async fn s3_adapter_batch_dag_full_put_drops_baseline_before_a_lost_complete() {
-    let _hash_calls = hash_part_call_guard();
+    let _hash_calls = hash_part_call_guard().await;
     use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
     use crate::transfer_dag::{Capability, TransferCapabilities};
     use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
