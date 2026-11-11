@@ -285,6 +285,30 @@ fn ok(output: &Output, what: &str) {
     );
 }
 
+fn add_profile(server: &Server) {
+    let mut add = isolated_cli::command(cli(), server.config.path())
+        .args(["profile-add", "--name", "served", "--protocol", "ftp"])
+        .args(["--host", "127.0.0.1", "--port", &server.port.to_string()])
+        .args(["--tls", "none", "--username", USER, "--password-stdin"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("profile-add");
+    std::io::Write::write_all(
+        &mut add.stdin.take().expect("stdin"),
+        format!("{}\n", server.password).as_bytes(),
+    )
+    .expect("password");
+    ok(&add.wait_with_output().expect("profile-add"), "profile-add");
+}
+
+fn profile(server: &Server, args: &[&str]) -> Output {
+    let mut full = vec!["--profile", "served"];
+    full.extend_from_slice(args);
+    server.run(&full)
+}
+
 /// The tree of the fixture without `gone` and what is below it.
 fn all_but(gone: &[&str]) -> Vec<String> {
     let mut all: Vec<String> = [
@@ -479,21 +503,7 @@ fn serve_refuses_a_url_that_names_a_file() {
 #[test]
 fn a_deleting_command_with_a_profile_refuses_an_argument_it_would_drop() {
     let server = Server::start(Proto::Ftp);
-    let mut add = isolated_cli::command(cli(), server.config.path())
-        .args(["profile-add", "--name", "served", "--protocol", "ftp"])
-        .args(["--host", "127.0.0.1", "--port", &server.port.to_string()])
-        .args(["--tls", "none", "--username", USER, "--password-stdin"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("profile-add");
-    std::io::Write::write_all(
-        &mut add.stdin.take().expect("stdin"),
-        format!("{}\n", server.password).as_bytes(),
-    )
-    .expect("password");
-    ok(&add.wait_with_output().expect("profile-add"), "profile-add");
+    add_profile(&server);
 
     for args in [
         &["rm", "/c/d", "full", "-r", "--force"][..],
@@ -501,9 +511,7 @@ fn a_deleting_command_with_a_profile_refuses_an_argument_it_would_drop() {
         &["rmdirs", "/c/d", "full", "--force"],
         &["rmdir", "/c/d", "empty"],
     ] {
-        let mut full = vec!["--profile", "served"];
-        full.extend_from_slice(args);
-        let out = server.run(&full);
+        let out = profile(&server, args);
         assert_eq!(
             out.status.code(),
             Some(2),
@@ -512,12 +520,200 @@ fn a_deleting_command_with_a_profile_refuses_an_argument_it_would_drop() {
         );
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert!(stderr.contains("unexpected argument"), "{args:?}: {stderr}");
+        assert!(stderr.contains("Next:"), "{args:?}: {stderr}");
         assert_eq!(server.tree(), all_but(&[]), "{args:?} touched the folder");
     }
 
     // The profile itself works: the same command with one path removes
     // just what it names.
-    let out = server.run(&["--profile", "served", "rm", "/c/d/full", "-r", "--force"]);
+    let out = profile(&server, &["rm", "/c/d/full", "-r", "--force"]);
     ok(&out, "rm with a profile");
     assert_eq!(server.tree(), all_but(&["c/d/full"]));
+}
+
+#[test]
+fn profile_commands_use_their_normalized_paths_end_to_end() {
+    let server = Server::start(Proto::Ftp);
+    add_profile(&server);
+
+    let out = profile(&server, &["stat", "/c/d/f.txt", "--json"]);
+    ok(&out, "profile stat");
+    let stat: serde_json::Value = serde_json::from_slice(&out.stdout).expect("stat JSON");
+    assert_eq!(stat["entry"]["name"], "f.txt");
+    assert_eq!(stat["entry"]["size"], 1);
+
+    let out = profile(&server, &["hashsum", "-a", "md5", "/c/d/f.txt", "--json"]);
+    ok(&out, "profile hashsum");
+    let hash: serde_json::Value = serde_json::from_slice(&out.stdout).expect("hashsum JSON");
+    assert_eq!(hash["algorithm"], "md5");
+    assert_eq!(hash["path"], "/c/d/f.txt");
+    assert_eq!(hash["hash"].as_str().unwrap().len(), 32);
+
+    let out = profile(&server, &["cat", "/c/d/f.txt"]);
+    ok(&out, "profile cat");
+    assert_eq!(out.stdout, b"f");
+
+    let out = profile(&server, &["find", "/c/d", "f.txt", "--json"]);
+    ok(&out, "profile find");
+    let find: serde_json::Value = serde_json::from_slice(&out.stdout).expect("find JSON");
+    assert_eq!(find["path"], "/c/d");
+    assert_eq!(find["summary"]["total"], 1);
+    assert_eq!(find["entries"][0]["name"], "f.txt");
+
+    let download = tempfile::tempdir().unwrap();
+    let destination = download.path().join("explicit.txt");
+    let out = profile(
+        &server,
+        &[
+            "get",
+            "/c/d/f.txt",
+            destination.to_str().unwrap(),
+            "--quiet",
+        ],
+    );
+    ok(&out, "profile get with an explicit destination");
+    assert_eq!(std::fs::read(destination).unwrap(), b"f");
+
+    let implicit = tempfile::tempdir().unwrap();
+    let out = isolated_cli::command(cli(), server.config.path())
+        .current_dir(implicit.path())
+        .args(["--profile", "served", "get", "/c/d/f.txt", "--quiet"])
+        .env("AEROFTP_PASSWORD", &server.password)
+        .stdin(Stdio::null())
+        .output()
+        .expect("profile get with an implicit destination");
+    ok(&out, "profile get with an implicit destination");
+    assert_eq!(std::fs::read(implicit.path().join("f.txt")).unwrap(), b"f");
+    assert_eq!(std::fs::read_dir(implicit.path()).unwrap().count(), 1);
+
+    let upload = tempfile::tempdir().unwrap();
+    let source = upload.path().join("source.txt");
+    std::fs::write(&source, b"p").unwrap();
+    let out = profile(
+        &server,
+        &[
+            "put",
+            source.to_str().unwrap(),
+            "/c/uploaded.txt",
+            "--quiet",
+        ],
+    );
+    ok(&out, "profile put");
+    assert_eq!(std::fs::read(server.path("c/uploaded.txt")).unwrap(), b"p");
+
+    let out = profile(&server, &["mkdir", "/c/new-folder"]);
+    ok(&out, "profile mkdir");
+    assert!(server.path("c/new-folder").is_dir());
+}
+
+#[test]
+fn profile_serve_http_uses_the_normalized_nested_path() {
+    struct ServeGuard(Child);
+    impl Drop for ServeGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    let server = Server::start(Proto::Ftp);
+    add_profile(&server);
+    let port = free_port();
+    let mut child = ServeGuard(
+        isolated_cli::command(cli(), server.config.path())
+            .args(["--profile", "served", "serve", "http", "/c/d"])
+            .args(["--addr", &format!("127.0.0.1:{port}")])
+            .env("AEROFTP_PASSWORD", &server.password)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("profile serve http"),
+    );
+
+    let deadline = Instant::now() + Duration::from_secs(30);
+    loop {
+        assert!(
+            child.0.try_wait().expect("serve status").is_none(),
+            "profile serve http exited"
+        );
+        if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+            break;
+        }
+        assert!(Instant::now() < deadline, "profile serve http timeout");
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).expect("HTTP connection");
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    std::io::Write::write_all(
+        &mut stream,
+        b"GET /f.txt HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n",
+    )
+    .expect("HTTP request");
+    let mut response = Vec::new();
+    std::io::Read::read_to_end(&mut stream, &mut response).expect("HTTP response");
+    let text = String::from_utf8_lossy(&response);
+    assert!(text.starts_with("HTTP/1.1 200"), "{text}");
+    assert!(response.ends_with(b"f"), "{text}");
+}
+
+#[test]
+fn profile_excess_arguments_fail_before_effects_and_show_a_next_step() {
+    let server = Server::start(Proto::Ftp);
+    add_profile(&server);
+
+    for args in [
+        &["stat", "/c/d/f.txt", "EXTRA"][..],
+        &["stat", "/c/d/f.txt", ""],
+        &["hashsum", "-a", "md5", "/c/d/f.txt", "EXTRA"],
+        &["hashsum", "md5", "/c/d/f.txt"],
+        &["find", "/c/d", "*.txt", "*"],
+        &["mkdir", "/c/new-folder", "EXTRA"],
+        &["get", "/c/d/f.txt", "./out", "EXTRA"],
+        &["put", "./in", "/c/new-file", "EXTRA"],
+        &["about", "EXTRA"],
+    ] {
+        let out = profile(&server, args);
+        assert_eq!(
+            out.status.code(),
+            Some(2),
+            "{args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains("unexpected argument"), "{args:?}: {stderr}");
+        assert!(stderr.contains("Next:"), "{args:?}: {stderr}");
+        if args[0] == "hashsum" && args[1] == "md5" {
+            assert!(stderr.contains("-a md5"), "{args:?}: {stderr}");
+        }
+        assert_eq!(server.tree(), all_but(&[]), "{args:?} touched the folder");
+    }
+
+    for args in [
+        &["serve", "http", "/c", "EXTRA"][..],
+        &["versions", "get", "/c/d/f.txt", "v1", "./out", "EXTRA"],
+        &["crypt", "init", "/c", "EXTRA"],
+        &["rclone-crypt", "put", "./in", "/c", "EXTRA"],
+    ] {
+        let mut full = vec!["--profile", "synthetic-missing-profile"];
+        full.extend_from_slice(args);
+        let out = server.run(&full);
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("Next:"),
+            "{args:?}"
+        );
+        assert_eq!(server.tree(), all_but(&[]), "{args:?} touched the folder");
+    }
+
+    let out = profile(&server, &["stat", "/c/d/f.txt", "EXTRA", "--json"]);
+    assert_eq!(out.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&out.stderr).expect("JSON error");
+    assert_eq!(error["status"], "error");
+    assert_eq!(error["code"], 2);
+    assert!(error["error"].as_str().unwrap().contains("EXTRA"));
+    assert_eq!(server.tree(), all_but(&[]));
 }
