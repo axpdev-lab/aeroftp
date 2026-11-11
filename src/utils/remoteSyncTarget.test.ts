@@ -55,7 +55,7 @@ function harness(trigger: Trigger) {
         operations, attempts, journal: () => journal,
         deps: {
             invoke,
-            remoteTarget: { resumeOwnerVerified: true, epoch: 1, assertCurrent: () => { if (current !== 'A') throw new QueuedTargetChangedError('target changed'); } },
+            remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => { if (current !== 'A') throw new QueuedTargetChangedError('target changed'); } },
             delay: async () => { if (trigger === 'retry') current = 'B'; },
             now: () => 0, makeId: () => 'target-test', writeIndex: true,
         },
@@ -154,22 +154,22 @@ it.each([undefined, 'B'])('refuses a resume journal with owner %s on profile A',
     expect(notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged');
 });
 
-it.each(['missing', 'changed'])('refuses a resume when the original in-memory owner is %s', async (condition) => {
-    const { transformWithOxc } = await import('vite');
-    const { default: app } = await import('../App.tsx?raw');
-    const start = app.indexOf('  const runConnectedRemoteSync =');
-    const end = app.indexOf('  // GAP-10: shared local-local sync launcher', start);
-    const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-owner.ts');
-    const notify = { error: vi.fn(), info: vi.fn() };
-    const context = {
-        useLatestCallback: (fn: unknown) => fn,
-        remoteJournalOwnersRef: { current: new Map(condition === 'missing' ? [] : [['j', { profileId: 'A' }]]) },
-        queuedTargetProblem: () => condition === 'changed' ? 'transfer.queuedForAnotherServer' : null,
-        notify, t: (key: string) => key,
-    };
-    const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
-    launch([file('one')], { remote: [], local: [] }, { resumeJournal: { id: 'j', profile_id: 'A' } });
-    expect(notify.error).toHaveBeenCalledWith('aerosync.title', 'syncPanel.resumeNeedsCompare');
+it('requires backend verification of the persisted owner before any resumed mutation', async () => {
+    const h = harness('first-file');
+    await runRemoteSync([file('one')], { remote: [], local: [] }, config({ profileId: 'A' }), { isCancelled: () => true }, h.deps);
+    const journal = h.journal()!;
+    const before = [...h.operations.A];
+    const verify = vi.fn();
+    await expect(runRemoteSync([file('one')], { remote: [], local: [] }, config({ profileId: 'A' }), {}, {
+        ...h.deps, resumeJournal: journal,
+        invoke: async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+            if (cmd === 'provider_gui_verify_resume_owner') { verify(args); throw new Error('CONNECTION_CHANGED'); }
+            return h.deps.invoke<T>(cmd, args);
+        },
+    })).rejects.toThrow('CONNECTION_CHANGED');
+    expect(verify).toHaveBeenCalledWith(expect.objectContaining({ binding: journal.owner_binding, expectedGuiTarget: 1 }));
+    expect(h.operations.A).toEqual(before);
+    expect(h.operations.B).toEqual([]);
 });
 
 it.each([undefined, false])('refuses a journal without safe resume policy (%s)', async (resumeSafe) => {
@@ -228,6 +228,7 @@ it('does not launch the App delta continuation after a tab switch', async () => 
     const runner = vi.fn();
     const invoke = vi.fn(async (cmd: string) => {
         if (cmd === 'provider_gui_target_epoch') return 7;
+        if (cmd === 'provider_gui_target_binding') return 'test-owner-v1';
         if (cmd === 'sftp_probe_delta_eligibility') return { eligible: false, reason: 'unavailable' };
         throw new Error(`unexpected ${cmd}`);
     });
@@ -294,4 +295,43 @@ it('keeps the preset target and roots captured before the canary approval', asyn
     expect(options.localRoot).toBe('/local-A');
     expect(options.remoteRoot).toBe('/remote-A');
     expect(await options.preparedTarget).toEqual({ epoch: 7 });
+});
+
+
+it('stops on a typed bulk owner change with an unchanged UI and journals confirmed completions', async () => {
+    const calls: string[] = []; let saved: SyncJournal | undefined;
+    const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        calls.push(cmd);
+        if (cmd === 'save_sync_journal_cmd') saved = structuredClone(args!.journal as SyncJournal);
+        if (cmd === 'provider_bulk_support') return { upload: true, download: false } as T;
+        if (cmd === 'provider_sync_transfer_bulk') return [{ status: 'completed' }, { status: 'target_changed' }, { status: 'not_attempted' }] as T;
+        return undefined as T;
+    };
+    const report = await runRemoteSync([file('one'), file('two'), file('three')], { remote: [], local: [] }, config(), {}, {
+        invoke, remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => {} }, makeId: () => 'bulk-owner', delay: async () => {},
+    });
+    expect(report.cancelled).toBe(true);
+    expect(calls.filter(cmd => cmd === 'provider_sync_transfer_bulk')).toHaveLength(1);
+    expect(calls).not.toContain('provider_upload_file');
+    expect(saved!.entries.map(entry => entry.status)).toEqual(['completed', 'failed', 'pending']);
+    expect(saved!.completed).toBe(false);
+});
+
+it('validates the backend auth owner before archiving the next download destination', async () => {
+    let authChanged = false; const archives: unknown[] = []; const downloads: unknown[] = [];
+    const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        if (cmd === 'provider_bulk_support') return null as T;
+        if (cmd === 'sync_backup_run_stamp') return 'stamp' as T;
+        if (cmd === 'provider_gui_validate_target' && authChanged) throw 'CONNECTION_CHANGED';
+        if (cmd === 'sync_backup_archive_local') { archives.push(args?.rel); return '/kept' as T; }
+        if (cmd === 'provider_download_file') { downloads.push(args); authChanged = true; }
+        return undefined as T;
+    };
+    const report = await runRemoteSync([file('one', 'download', { overwritesExisting: true }), file('two', 'download', { overwritesExisting: true })],
+        { remote: [], local: [] }, config({ versionedBackup: { dir: '.v' } }), {}, {
+            invoke, remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => {} }, makeId: () => 'download-owner', delay: async () => {},
+        });
+    expect(report.cancelled).toBe(true);
+    expect(downloads).toHaveLength(1);
+    expect(archives).toEqual(['one']);
 });

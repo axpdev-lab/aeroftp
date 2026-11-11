@@ -1091,6 +1091,47 @@ async fn ensure_parent_dirs(inner: &mut Box<dyn StorageProvider>, enc_path: &str
 
 #[async_trait]
 impl StorageProvider for CryptOverlayProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        let Some(inner) = self.inner.sync_owner_identity()? else {
+            return Ok(None);
+        };
+        let material = match &self.keys {
+            OverlayKeys::AeroCrypt { master_key, config } => {
+                let (salt, id): (&[u8], Option<&[u8]>) = match config {
+                    OverlayConfig::V1 { salt } => (salt.as_slice(), None),
+                    OverlayConfig::V2 { salt } => (salt.as_slice(), None),
+                    OverlayConfig::V3 { salt, vault_id, .. } => {
+                        (salt.as_slice(), vault_id.as_ref().map(|id| id.as_slice()))
+                    }
+                    OverlayConfig::V4 { vault_id, .. } => (&[], Some(vault_id.as_slice())),
+                };
+                serde_json::to_string(&(
+                    "aerocrypt",
+                    inner.as_str(),
+                    &self.scope,
+                    master_key,
+                    config.version(),
+                    salt,
+                    id,
+                ))
+            }
+            OverlayKeys::Rclone(keys) => serde_json::to_string(&(
+                "rclone",
+                inner.as_str(),
+                &self.scope,
+                &keys.name_key,
+                &keys.data_key,
+                &keys.name_tweak,
+                format!("{:?}", keys.filename_encryption),
+                &keys.off_suffix,
+                keys.directory_name_encryption,
+            )),
+        };
+        material
+            .map(|value| Some(zeroize::Zeroizing::new(value)))
+            .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         // Honest downcast target: this IS a CryptOverlayProvider. Callers that
         // need provider-specific operations on the inner transport must reach it

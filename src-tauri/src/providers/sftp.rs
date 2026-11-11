@@ -1110,6 +1110,9 @@ impl Handler for SshHandler {
 /// at dial time, never on IPC or in logs.
 #[derive(Clone)]
 pub struct SftpConnectionSpec {
+    /// Parsed key used by the original login. Pool re-dials never reopen a
+    /// mutable key path and silently authenticate as another principal.
+    pinned_private_key: Option<Arc<keys::PrivateKey>>,
     pub host: String,
     pub port: u16,
     pub username: String,
@@ -2441,10 +2444,11 @@ pub fn scp_fallback_allowed(config: &ProviderConfig) -> bool {
 /// never on a second one (the SCP backend removed in #73 dialled again and
 /// tripped "host key changed"). The accepted key's SHA-256 fingerprint is
 /// left in `host_key_sha256_hex`.
-pub(crate) async fn ssh_login(
+pub(crate) async fn ssh_login_pinned(
     config: &SftpConfig,
     compression: bool,
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
+    private_key: Arc<std::sync::OnceLock<Arc<keys::PrivateKey>>>,
 ) -> Result<Handle<SshHandler>, ProviderError> {
     // Create SSH config with keepalive to prevent server from closing connection
     let preferred = if compression {
@@ -2500,7 +2504,7 @@ pub(crate) async fn ssh_login(
         true
     } else if config.private_key_path.is_some() {
         // Try key-based authentication
-        authenticate_with_key(config, &mut handle).await?
+        authenticate_with_key(config, &mut handle, &private_key).await?
     } else if let Some(password) = &config.password {
         // Try password authentication first, then keyboard-interactive as fallback
         use russh::client::KeyboardInteractiveAuthResponse;
@@ -2560,11 +2564,15 @@ pub(crate) async fn ssh_login(
     Ok(handle)
 }
 
-/// Authenticate using SSH private key
-async fn authenticate_with_key(
+/// Resolve the real key once. A file replacement after the connection was
+/// authorized cannot change any lazy pool worker's authentication.
+fn captured_key(
     config: &SftpConfig,
-    handle: &mut Handle<SshHandler>,
-) -> Result<bool, ProviderError> {
+    captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
+) -> Result<Arc<keys::PrivateKey>, ProviderError> {
+    if let Some(key) = captured.get() {
+        return Ok(key.clone());
+    }
     let key_path = config.private_key_path.as_ref().ok_or_else(|| {
         ProviderError::AuthenticationFailed("No private key path specified".to_string())
     })?;
@@ -2582,6 +2590,19 @@ async fn authenticate_with_key(
     let key_pair = keys::load_secret_key(&expanded_path, passphrase_str.as_deref())
         .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e)))?;
 
+    let key_pair = Arc::new(key_pair);
+    let _ = captured.set(key_pair.clone());
+    Ok(captured.get().cloned().unwrap_or(key_pair))
+}
+
+/// Authenticate using SSH private key
+async fn authenticate_with_key(
+    config: &SftpConfig,
+    handle: &mut Handle<SshHandler>,
+    captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
+) -> Result<bool, ProviderError> {
+    let key_pair = captured_key(config, captured)?;
+
     // A1 finding: RSA keys authenticated with `None` (= ssh-rsa /
     // SHA-1) are rejected by OpenSSH 8.8+ because RSA-SHA1 is
     // disabled by default. We have to negotiate rsa-sha2-512 or
@@ -2593,7 +2614,6 @@ async fn authenticate_with_key(
     // to SHA-256 on auth failure, then fall back to no-hash (ssh-rsa
     // SHA-1) for ancient servers that still accept it. Non-RSA
     // keys take the `None` path directly.
-    let key_pair = Arc::new(key_pair);
     let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
 
     let attempts: Vec<Option<HashAlg>> = if is_rsa {
@@ -2770,10 +2790,19 @@ impl StorageProvider for SftpProvider {
         self.scp = None;
         self.retire_ssh_connection().await;
 
-        let handle = ssh_login(
+        let private_key = Arc::new(std::sync::OnceLock::new());
+        if let Some(key) = self
+            .connection_spec
+            .as_ref()
+            .and_then(|s| s.pinned_private_key.clone())
+        {
+            let _ = private_key.set(key);
+        }
+        let handle = ssh_login_pinned(
             &self.config,
             self.compression_enabled,
             self.host_key_sha256_hex.clone(),
+            private_key.clone(),
         )
         .await?;
 
@@ -2840,6 +2869,7 @@ impl StorageProvider for SftpProvider {
             .as_ref()
             .and_then(|s| s.pinned_host_key_sha256.clone());
         self.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: private_key.get().cloned(),
             host: self.config.host.clone(),
             port: self.config.port,
             username: self.config.username.clone(),
@@ -7187,6 +7217,7 @@ mod tests {
         // independent connections, each an unconnected clone that dials
         // lazily and opts into warm reuse across directories.
         provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: None,
             host: "example.com".to_string(),
             port: 22,
             username: "testuser".to_string(),
@@ -7209,6 +7240,37 @@ mod tests {
         let worker = provider.clone_for_list().expect("clone from spec");
         assert!(!worker.is_connected(), "a scan worker dials on first use");
         assert!(worker.supports_transfer_worker_reuse());
+    }
+
+    #[test]
+    fn sftp_pool_private_key_snapshot_survives_path_replacement() {
+        let key = keys::PrivateKey::new(
+            keys::ssh_key::private::Ed25519Keypair::from_seed(&[7; 32]).into(),
+            "fixture",
+        )
+        .unwrap();
+        let original = key.public_key().clone();
+        let captured = std::sync::OnceLock::new();
+        captured.set(Arc::new(key)).unwrap();
+        let config = SftpConfig {
+            host: "fixture.invalid".into(),
+            port: 22,
+            username: "fixture".into(),
+            password: None,
+            private_key_path: Some("/path/replaced-or-removed".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 1,
+            trust_unknown_hosts: false,
+        };
+        let reused = captured_key(&config, &captured).unwrap();
+        assert_eq!(reused.public_key(), &original);
+        let cloned = std::sync::OnceLock::new();
+        cloned.set(reused).unwrap();
+        assert_eq!(
+            captured_key(&config, &cloned).unwrap().public_key(),
+            &original
+        );
     }
 
     #[test]

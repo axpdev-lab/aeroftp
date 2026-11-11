@@ -479,23 +479,33 @@ enum TokenSource {
 }
 
 impl TokenRecord {
-    fn family(&self) -> String {
-        self.owner_family.clone().unwrap_or_else(|| {
-            // Deterministic compatibility for an already encrypted legacy
-            // record, without a speculative migration write before connect.
-            // Never exported: only a keyed journal tag may cross IPC.
-            use sha2::{Digest, Sha256};
-            let mut hash = Sha256::new();
-            hash.update(b"aeroftp-oauth-legacy-family-v1");
-            for value in [
-                self.tokens.access_token.as_str(),
-                self.tokens.refresh_token.as_deref().unwrap_or(""),
-            ] {
-                hash.update((value.len() as u64).to_be_bytes());
-                hash.update(value.as_bytes());
-            }
-            format!("legacy-v1:{:x}", hash.finalize())
-        })
+    fn family(&self) -> Result<String, ProviderError> {
+        if let Some(family) = &self.owner_family {
+            return Ok(family.clone());
+        }
+        // Compatibility for a record written before families were present.
+        // The identifier is keyed even inside the encrypted record. A memory
+        // token has a process key and can only ever receive an epoch journal.
+        static MEMORY_KEY: std::sync::OnceLock<Zeroizing<[u8; 32]>> = std::sync::OnceLock::new();
+        let key = match crate::credential_store::CredentialStore::from_cache() {
+            Some(store) => Zeroizing::new(store.derive_user_partition_wrapping_key()),
+            None => MEMORY_KEY
+                .get_or_init(|| {
+                    let bytes = crate::crypto::random_bytes(32);
+                    let mut key = [0; 32];
+                    key.copy_from_slice(&bytes);
+                    Zeroizing::new(key)
+                })
+                .clone(),
+        };
+        let key = crate::user_crypto::secret_key_from_bytes(&key);
+        let material = Zeroizing::new(
+            serde_json::to_string(&(&self.tokens.access_token, &self.tokens.refresh_token))
+                .map_err(|_| token_owner_changed())?,
+        );
+        crate::user_crypto::metadata_tag(&key, b"oauth-legacy-owner-family-v2", &material)
+            .map(|tag| format!("legacy-v2:{tag}"))
+            .map_err(|_| token_owner_changed())
     }
 }
 
@@ -505,9 +515,56 @@ struct TokenOwner {
 }
 
 fn token_owner_changed() -> ProviderError {
-    ProviderError::AuthenticationFailed(
-        "CONNECTION_CHANGED: the authorization changed; reconnect and compare again".into(),
-    )
+    ProviderError::TargetChanged
+}
+
+/// Own one legacy pathname before reading it. Failure restores without
+/// overwriting a newly created original. A conflicting recovery copy remains
+/// owner-only rather than deleting an authorization that was not migrated.
+struct ClaimedTokenFile {
+    original: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+impl ClaimedTokenFile {
+    fn claim(original: &std::path::Path) -> Result<Self, ProviderError> {
+        let path = original.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::rename(original, &path)
+            .map_err(|_| ProviderError::AuthenticationFailed("No stored authorization".into()))?;
+        let claimed = Self {
+            original: original.to_owned(),
+            path,
+        };
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&claimed.path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|_| {
+                    ProviderError::Other("Could not protect legacy authorization".into())
+                })?;
+        }
+        Ok(claimed)
+    }
+
+    fn discard(self) -> Result<(), ProviderError> {
+        std::fs::remove_file(&self.path)
+            .map_err(|_| ProviderError::Other("Could not remove migrated authorization".into()))
+    }
+}
+
+impl Drop for ClaimedTokenFile {
+    fn drop(&mut self) {
+        if !self.path.exists() {
+            return;
+        }
+        // hard_link creates only an absent destination, unlike rename on Unix.
+        // Keep the protected recovery file when an original was recreated.
+        if std::fs::hard_link(&self.path, &self.original).is_ok() {
+            let _ = std::fs::remove_file(&self.path);
+        } else {
+            warn!("Legacy authorization retained in a protected migration recovery file");
+        }
+    }
 }
 
 impl StoredTokens {
@@ -1078,9 +1135,29 @@ impl OAuth2Manager {
         Ok(record)
     }
 
+    pub(crate) fn sync_owner_identity(
+        &self,
+        config: &OAuthConfig,
+    ) -> Result<Zeroizing<String>, ProviderError> {
+        let account = Self::token_account_key(config.provider, &config.profile_id);
+        if !self
+            .token_owners
+            .lock()
+            .map_err(|_| token_owner_changed())?
+            .contains_key(&account)
+        {
+            return Err(token_owner_changed());
+        }
+        let record = self.load_token_record(config.provider, &config.profile_id)?;
+        self.verify_token_owner(&account, &record)?;
+        serde_json::to_string(&(record.credential_owner, record.family()?, config))
+            .map(Zeroizing::new)
+            .map_err(|_| token_owner_changed())
+    }
+
     fn verify_token_owner(&self, account: &str, record: &TokenRecord) -> Result<(), ProviderError> {
         use subtle::ConstantTimeEq;
-        let family = record.family();
+        let family = record.family()?;
         let mut owners = self
             .token_owners
             .lock()
@@ -1125,7 +1202,7 @@ impl OAuth2Manager {
         }
         let replacement = TokenRecord {
             tokens: tokens.clone(),
-            owner_family: Some(observed.family()),
+            owner_family: Some(observed.family()?),
             source: TokenSource::Unavailable,
             credential_owner: current_owner,
             raw: Zeroizing::new(String::new()),
@@ -1147,31 +1224,47 @@ impl OAuth2Manager {
                     *user,
                     account,
                     "oauth",
-                    &observed.raw,
-                    &json,
+                    (&observed.raw, &json),
+                    self.credential_user.is_none(),
                 )
                 .map_err(|_| token_owner_changed())?
             }
-            TokenSource::Vault => {
-                let store = crate::credential_store::CredentialStore::from_cache()
-                    .ok_or_else(token_owner_changed)?;
-                store
-                    .replace_secret_if_unchanged(account, &observed.raw, &json)
-                    .map_err(|_| token_owner_changed())?
-            }
-            TokenSource::Memory(key) => {
-                let mut cache = MEMORY_TOKEN_CACHE
-                    .lock()
-                    .map_err(|_| token_owner_changed())?;
-                if let Some(map) = cache.as_mut() {
-                    if map.get(key).is_some_and(|raw| raw == observed.raw.as_str()) {
-                        map.insert(key.clone(), json.to_string());
-                        true
-                    } else {
-                        false
+            TokenSource::Vault | TokenSource::Memory(_) => {
+                let update = || -> Result<bool, String> {
+                    match &observed.source {
+                        TokenSource::Vault => {
+                            let store = crate::credential_store::CredentialStore::from_cache()
+                                .ok_or_else(|| "Authorization store closed".to_owned())?;
+                            store
+                                .replace_secret_if_unchanged(account, &observed.raw, &json)
+                                .map_err(|_| "Authorization changed".to_owned())
+                        }
+                        TokenSource::Memory(key) => {
+                            let mut cache = MEMORY_TOKEN_CACHE
+                                .lock()
+                                .map_err(|_| "Authorization changed".to_owned())?;
+                            let Some(map) = cache.as_mut() else {
+                                return Ok(false);
+                            };
+                            if !map.get(key).is_some_and(|raw| raw == observed.raw.as_str()) {
+                                return Ok(false);
+                            }
+                            map.insert(key.clone(), json.to_string());
+                            Ok(true)
+                        }
+                        _ => Ok(false),
                     }
+                };
+                if self.credential_user.is_some() {
+                    update().map_err(|_| token_owner_changed())?
                 } else {
-                    false
+                    let store = crate::credential_store::CredentialStore::from_cache();
+                    crate::user_partitions::with_unchanged_active_credential_user(
+                        store.as_ref(),
+                        observed.credential_owner,
+                        update,
+                    )
+                    .map_err(|_| token_owner_changed())?
                 }
             }
             TokenSource::Unavailable => false,
@@ -1240,22 +1333,19 @@ impl OAuth2Manager {
             // Lazy migration: per-profile key missing, legacy hit ➜ rebind + remove.
             if !profile_id.is_empty() {
                 if let Ok(json) = store.get(&legacy) {
-                    let mut record =
-                        Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
-                    if store.store(&account, &json).is_ok() {
-                        record.source = TokenSource::Vault;
-                        let _ = store.delete(&legacy);
-                        info!(
-                            "Migrated legacy {:?} token to per-profile vault key",
-                            provider
-                        );
-                    } else {
-                        warn!(
-                            "Per-profile vault write failed for {:?}; legacy token left in place",
-                            provider
-                        );
+                    Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
+                    let moved = store
+                        .move_secret_if_unchanged(&legacy, &account, &json)
+                        .map_err(|_| token_owner_changed())?;
+                    // A concurrent authorization wins. Re-read the actual
+                    // destination, not the stale singleton we inspected.
+                    if moved || store.get_secret(&account).is_ok() {
+                        let current = store
+                            .get_secret(&account)
+                            .map_err(|_| token_owner_changed())?;
+                        return Self::decode_record(&current, TokenSource::Vault, credential_user);
                     }
-                    return Ok(record);
+                    return Err(token_owner_changed());
                 }
             }
         }
@@ -1285,66 +1375,31 @@ impl OAuth2Manager {
         // Legacy: try plaintext file: migrate to vault immediately, then delete the file
         let legacy_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        let json = std::fs::read_to_string(&legacy_path)
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("No stored tokens: {}", e)))?;
-
-        warn!(
-            "Found legacy plaintext OAuth token file for {:?}: migrating to vault",
-            provider
-        );
-
-        let mut record = Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
-
-        // Migrate to vault under the per-profile key (or legacy when profile_id is empty).
-        let mut migrated = false;
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if store.store(&account, &json).is_ok() {
-                migrated = true;
-                info!(
-                    "Legacy tokens for {:?} migrated to credential vault",
-                    provider
-                );
-            }
+        let claimed = ClaimedTokenFile::claim(&legacy_path)?;
+        let json = Zeroizing::new(std::fs::read_to_string(&claimed.path).map_err(|_| {
+            ProviderError::AuthenticationFailed("Could not read legacy authorization".into())
+        })?);
+        let record = Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
+        if crate::credential_store::CredentialStore::from_cache().is_none() {
+            let _ = crate::credential_store::CredentialStore::init();
         }
-        if !migrated {
-            // Try auto-init vault
-            if crate::credential_store::CredentialStore::init().is_ok() {
-                if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                    if store.store(&account, &json).is_ok() {
-                        migrated = true;
-                        info!(
-                            "Legacy tokens for {:?} migrated to auto-initialized vault",
-                            provider
-                        );
-                    }
-                }
-            }
+        let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+            // Drop restores the original name without clobbering a replacement.
+            return Ok(record);
+        };
+        let inserted = store
+            .store_secret_if_absent(&account, &json)
+            .map_err(|_| token_owner_changed())?;
+        let current = store
+            .get_secret(&account)
+            .map_err(|_| token_owner_changed())?;
+        let result = Self::decode_record(&current, TokenSource::Vault, credential_user)?;
+        if inserted {
+            // Only the claimed pathname is ours. Never delete legacy_path:
+            // another process may already have written a new authorization there.
+            claimed.discard()?;
         }
-
-        // Delete legacy plaintext file after successful migration
-        if migrated {
-            if let Err(e) = crate::credential_store::secure_delete(&legacy_path) {
-                warn!(
-                    "Failed to secure-delete legacy token file for {:?}: {}",
-                    provider, e
-                );
-                // Fallback: try normal delete
-                let _ = std::fs::remove_file(&legacy_path);
-            } else {
-                info!("Legacy plaintext token file deleted for {:?}", provider);
-            }
-        } else {
-            warn!(
-                "Could not migrate legacy tokens to vault for {:?}: vault unavailable. \
-                 Plaintext file remains until vault is unlocked.",
-                provider
-            );
-        }
-
-        if migrated {
-            record.source = TokenSource::Vault;
-        }
-        Ok(record)
+        Ok(result)
     }
 
     /// Delete tokens from credential vault, memory cache, and legacy files
@@ -1887,6 +1942,41 @@ fn parse_callback_request(request: &str) -> Result<(String, String), ProviderErr
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn claimed_plaintext_cleanup_never_deletes_a_new_authorization() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "A").unwrap();
+        let claimed = super::ClaimedTokenFile::claim(&original).unwrap();
+        std::fs::write(&original, "B").unwrap();
+        assert_eq!(std::fs::read_to_string(&claimed.path).unwrap(), "A");
+        claimed.discard().unwrap();
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "B");
+    }
+
+    #[test]
+    fn claimed_plaintext_restores_on_failure_without_clobber() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "A").unwrap();
+        drop(super::ClaimedTokenFile::claim(&original).unwrap());
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "A");
+        let claimed = super::ClaimedTokenFile::claim(&original).unwrap();
+        let recovery = claimed.path.clone();
+        std::fs::write(&original, "B").unwrap();
+        drop(claimed);
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "B");
+        assert_eq!(std::fs::read_to_string(&recovery).unwrap(), "A");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&recovery).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
+
     use super::*;
 
     /// A token request (exchange or refresh) to a server that accepts the
@@ -2389,6 +2479,19 @@ mod tests {
         let original = primary.get_valid_token(&config).await.expect("original");
         assert_eq!(original.expose_secret(), "winner-access-token");
 
+        // The backend tag survives a new manager/process with the same real
+        // authorization, without retaining any JavaScript credentials/map.
+        let owner = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+        let proof = primary.sync_owner_identity(&config).unwrap();
+        let original_binding = owner.persistent_tag(&proof).unwrap().unwrap();
+        let after_restart = OAuth2Manager::new();
+        after_restart.get_valid_token(&config).await.unwrap();
+        let restarted_proof = after_restart.sync_owner_identity(&config).unwrap();
+        assert!(crate::sync_owner::bindings_match(
+            &original_binding,
+            &owner.persistent_tag(&restarted_proof).unwrap().unwrap()
+        ));
+
         // A legitimate rotation preserves the encrypted provenance and remains
         // visible to all clones, without resealing them to another login.
         let account = OAuth2Manager::token_account_key(config.provider, &profile);
@@ -2452,6 +2555,12 @@ mod tests {
             "other-access"
         );
 
+        let changed_proof = reconnected.sync_owner_identity(&config).unwrap();
+        let changed_binding = owner.persistent_tag(&changed_proof).unwrap().unwrap();
+        assert!(!crate::sync_owner::bindings_match(
+            &original_binding,
+            &changed_binding
+        ));
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &profile);
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &other_profile);
     }

@@ -247,8 +247,8 @@ export interface RemoteSyncDeps {
     /** Tauri command bridge. Injected so the loop is testable. */
     invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
     /** Immutable connection token and live UI check captured before any prompt. */
-    remoteTarget?: { epoch: number; assertCurrent: () => void; resumeOwnerVerified?: boolean };
-    /** Keep the live owner in memory; never serialize connection credentials. */
+    remoteTarget?: { epoch: number; assertCurrent: () => void; ownerBinding?: string };
+    /** Optional journal telemetry; ownership is verified by the backend. */
     onJournalCreated?: (id: string) => void;
     /** Sleep primitive; defaults to a `setTimeout` promise. */
     delay?: (ms: number) => Promise<void>;
@@ -395,6 +395,7 @@ interface TransferOutcome {
 /** What `provider_sync_transfer_bulk` answers for one file, in the order sent. */
 type SyncBulkResult =
     | { status: 'completed' }
+    | { status: 'target_changed' }
     /** Final for this run: the file may have reached the server. */
     | { status: 'failed'; message: string }
     /** Back to the file's single-file command. */
@@ -429,7 +430,7 @@ const runSync = async (
 ): Promise<SyncRunReport> => {
     const resumeEntries = new Map(deps.resumeJournal?.entries.map(entry => [entry.relative_path, entry] as const));
     if (deps.resumeJournal && (deps.resumeJournal.resume_safe !== true
-        || (!config.isLocalLocal && deps.remoteTarget?.resumeOwnerVerified !== true)
+        || (!config.isLocalLocal && !deps.resumeJournal.owner_binding)
         || (!config.isLocalLocal && (!config.profileId || deps.resumeJournal.profile_id !== config.profileId))
         || (deps.resumeJournal.backup_dir ?? null) !== (config.versionedBackup?.dir ?? null)
         || (deps.resumeJournal.ec_enabled === true) !== (config.errorCorrection?.enabled === true)
@@ -451,13 +452,13 @@ const runSync = async (
         })))) {
         throw new Error('SYNC_RESUME_NEEDS_COMPARE');
     }
-    if (!config.isLocalLocal && (!deps.remoteTarget || !Number.isSafeInteger(deps.remoteTarget.epoch) || deps.remoteTarget.epoch < 0)) {
+    if (!config.isLocalLocal && (!deps.remoteTarget || !Number.isSafeInteger(deps.remoteTarget.epoch) || deps.remoteTarget.epoch < 0 || !deps.remoteTarget.ownerBinding)) {
         throw new Error('A remote sync requires a bound target');
     }
     let targetError: unknown = null;
     let transferTimedOut = false;
     const remoteCommands = new Set([
-        'reset_cancel_flag', 'set_speed_limit', 'provider_set_speed_limit', 'provider_bulk_support',
+        'provider_gui_verify_resume_owner', 'reset_cancel_flag', 'set_speed_limit', 'provider_set_speed_limit', 'provider_bulk_support',
         'provider_sync_transfer_bulk', 'provider_mkdir', 'create_remote_folder',
         'provider_upload_file', 'provider_download_file', 'upload_file', 'download_file',
         'provider_delete_file', 'delete_remote_file', 'sync_backup_archive_remote',
@@ -471,7 +472,15 @@ const runSync = async (
         catch (error) { targetError = error; throw error; }
     };
     const invoke: RemoteSyncDeps['invoke'] = async (cmd, args) => {
-        if (!config.isLocalLocal && localMutations.has(cmd)) assertTarget();
+        if (!config.isLocalLocal && localMutations.has(cmd)) {
+            assertTarget();
+            try {
+                await deps.invoke('provider_gui_validate_target', {
+                    expectedGuiTarget: deps.remoteTarget!.epoch, isProvider: config.isProvider,
+                });
+                assertTarget();
+            } catch (error) { targetError = error; throw error; }
+        }
         if (config.isLocalLocal || !remoteCommands.has(cmd)) return deps.invoke(cmd, args);
         assertTarget();
         const epoch = deps.remoteTarget!.epoch;
@@ -488,6 +497,13 @@ const runSync = async (
             throw error;
         }
     };
+    if (deps.resumeJournal && !config.isLocalLocal) {
+        // The backend compares the signed journal's owner with the installed
+        // provider under the same target pin. A frontend boolean is no proof.
+        await invoke('provider_gui_verify_resume_owner', {
+            binding: deps.resumeJournal.owner_binding, isProvider: config.isProvider,
+        });
+    }
     const delay = deps.delay ?? defaultDelay;
     const now = deps.now ?? Date.now;
     const makeId = deps.makeId ?? defaultMakeId;
@@ -772,6 +788,7 @@ const runSync = async (
         remote_path: remoteBase,
         ...(config.profileId ? { profile_id: config.profileId } : {}),
         resume_safe: true,
+        ...(!config.isLocalLocal ? { owner_binding: deps.remoteTarget!.ownerBinding } : {}),
         backup_dir: config.versionedBackup?.dir ?? null,
         backup_stamp: null,
         ec_enabled: errorCorrectionEnabled,
@@ -996,11 +1013,42 @@ const runSync = async (
             if (action === 'upload' && results?.[k]?.status === 'completed') uploadsEnded.set(f.relativePath, bulkEnded);
             bulkPrepared.set(f.relativePath, results?.[k] ?? { status: 'not_attempted' });
         });
+        if (results?.some(result => result.status === 'target_changed')) {
+            targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
+            // Preserve acknowledged writes even though the run stops before it
+            // consumes per-file outcomes. Unattempted entries stay resumable.
+            send.forEach((file, k) => {
+                const result = results?.[k];
+                const index = journalEntryMap.get(file.relativePath);
+                if (result?.status !== 'completed') {
+                    if (index !== undefined) {
+                        const entry = journal.entries[index];
+                        entry.status = result?.status === 'not_attempted' ? 'pending' : 'failed';
+                        entry.last_error = result?.status === 'target_changed' || result?.status === 'failed'
+                            ? { kind: 'unknown', message: result.status === 'target_changed' ? String(targetError) : result.message,
+                                retryable: false, file_path: file.relativePath } : null;
+                    }
+                    return;
+                }
+                if (index !== undefined) {
+                    const entry = journal.entries[index];
+                    entry.status = 'completed';
+                    entry.attempts = 1;
+                    entry.bytes_transferred = file.size;
+                    entry.verified = null;
+                }
+                if (action === 'upload') uploaded++; else downloaded++;
+                totalBytes += file.size;
+                completed++;
+                setStatus(file.relativePath, 'success');
+            });
+        }
     };
     /** The outcome of a file the bulk sent or failed, as the single-file path reports it. */
     const bulkOutcome = async (result: SyncBulkResult, filePath: string): Promise<TransferOutcome> => {
         if (result.status === 'completed') return { success: true, attempts: 1 };
-        const rawError = result.status === 'failed' ? result.message : 'Not sent';
+        const rawError = result.status === 'target_changed' ? 'CONNECTION_CHANGED'
+            : result.status === 'failed' ? result.message : 'Not sent';
         const error = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath })
             .catch(() => ({
                 kind: 'unknown' as SyncErrorKind,

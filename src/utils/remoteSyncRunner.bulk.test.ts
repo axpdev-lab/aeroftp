@@ -62,7 +62,7 @@ const harness = (handlers: Record<string, Handler> = {}, support = { upload: tru
         }
         return undefined as T;
     };
-    const deps: RemoteSyncDeps = { invoke, remoteTarget: { resumeOwnerVerified: true, epoch: 1, assertCurrent: () => undefined }, delay: async () => undefined, now: () => 0, makeId: () => 'journal' };
+    const deps: RemoteSyncDeps = { invoke, remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => undefined }, delay: async () => undefined, now: () => 0, makeId: () => 'journal' };
     const of = (cmd: string) => calls.filter((c) => c.cmd === cmd);
     const sent = () => of('provider_sync_transfer_bulk').map((c) => (c.args?.items as BulkItem[]).map((i) => i.remotePath));
     const journal = () => [...calls].reverse().find((c) => c.cmd === 'save_sync_journal_cmd')?.args?.journal as SyncJournal;
@@ -240,7 +240,7 @@ describe('remoteSyncRunner on a native bulk', () => {
     it('does not send again what a resumed run already finished', async () => {
         const run = files(4, 'upload');
         const resumeJournal: SyncJournal = {
-            resume_safe: true,
+            resume_safe: true, owner_binding: 'test-owner-v1',
             profile_id: 'A',
             id: 'resume',
             created_at: '2026-10-24T05:00:00Z',
@@ -303,7 +303,7 @@ describe('remoteSyncRunner on a native bulk', () => {
             const h = harness({ sync_backup_run_stamp: () => 'stamp', sync_backup_archive_local: () => null, sync_backup_verify_receipt: () => true }, support);
             const run = files(3, 'download');
             const resumeJournal: SyncJournal = {
-            resume_safe: true,
+            resume_safe: true, owner_binding: 'test-owner-v1',
             profile_id: 'A',
                 id: 'resume',
                 backup_dir: '.v',

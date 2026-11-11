@@ -1518,6 +1518,8 @@ export interface SyncJournal {
   profile_id?: string;
   /** False or absent when the interrupted plan cannot safely be reconstructed. */
   resume_safe?: boolean;
+  /** Opaque backend owner tag. Never a credential or a profile identity guess. */
+  owner_binding?: string;
   backup_dir?: string | null;
   backup_stamp?: string | null;
   ec_enabled?: boolean;

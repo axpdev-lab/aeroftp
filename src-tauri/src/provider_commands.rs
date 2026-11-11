@@ -102,6 +102,9 @@ pub struct ProviderState {
     /// Unlike `connection_generation`, this also covers view-only overlay changes
     /// and the legacy FTP manager without invalidating cached overlay keys.
     gui_target_epoch: AtomicU64,
+    gui_owner_context: std::sync::Mutex<Option<crate::sync_owner::GuiOwnerContext>>,
+    gui_process_nonce: String,
+    legacy_owner_binding: std::sync::Mutex<Option<String>>,
     /// Restored transfers pin a verified connection across multi-phase work.
     /// Swaps, disconnects and overlay mutations take the write side before
     /// touching the provider slot or changing how its paths are interpreted.
@@ -161,6 +164,9 @@ impl ProviderState {
             overlay_activation_id: std::sync::Mutex::new(None),
             connection_generation: Arc::new(AtomicU64::new(0)),
             gui_target_epoch: AtomicU64::new(0),
+            gui_owner_context: std::sync::Mutex::new(None),
+            gui_process_nonce: uuid::Uuid::new_v4().to_string(),
+            legacy_owner_binding: std::sync::Mutex::new(None),
             transfer_owner_gate: RwLock::new(()),
             connected_profile_id: std::sync::Mutex::new(None),
             config: Arc::new(Mutex::new(None)),
@@ -309,12 +315,92 @@ impl ProviderState {
             return Ok(None);
         };
         let pin = self.transfer_owner_gate.read().await;
+        self.validate_gui_owner()?;
         if self.gui_target_epoch.load(Ordering::SeqCst) != expected {
             return Err(format!(
                 "{CONNECTION_CHANGED_MARKER}: the remote target changed; nothing was done"
             ));
         }
         Ok(Some(pin))
+    }
+
+    fn validate_gui_owner(&self) -> Result<(), String> {
+        let owner = self
+            .gui_owner_context
+            .lock()
+            .map_err(|_| ProviderError::TargetChanged.to_string())?
+            .clone();
+        if let Some(owner) = owner {
+            crate::credential_store::off_async_worker(|| owner.validate())?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn set_legacy_gui_owner(
+        &self,
+        owner: crate::sync_owner::GuiOwnerContext,
+        binding: Option<String>,
+    ) {
+        *self
+            .gui_owner_context
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(owner);
+        *self
+            .legacy_owner_binding
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = binding;
+    }
+
+    pub(crate) fn clear_legacy_gui_owner(&self) {
+        *self
+            .legacy_owner_binding
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// Caller keeps the read pin throughout capture/verification. The epoch
+    /// then guards every subsequent command, including a change A -> B -> A.
+    async fn gui_owner_binding(&self, is_provider: bool) -> Result<String, String> {
+        self.validate_gui_owner()?;
+        let epoch = self.gui_target_epoch.load(Ordering::SeqCst);
+        if !is_provider {
+            return Ok(self
+                .legacy_owner_binding
+                .lock()
+                .map_err(|_| ProviderError::TargetChanged.to_string())?
+                .clone()
+                .unwrap_or_else(|| {
+                    crate::sync_owner::epoch_binding(&self.gui_process_nonce, epoch)
+                }));
+        }
+        let owner = self
+            .gui_owner_context
+            .lock()
+            .map_err(|_| ProviderError::TargetChanged.to_string())?
+            .clone();
+        let provider = self.provider.lock().await;
+        let provider = provider
+            .as_ref()
+            .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+        let material = if self.active_crypt_overlay.load(Ordering::SeqCst)
+            && !self.overlay_wrapped.load(Ordering::SeqCst)
+        {
+            None
+        } else {
+            crate::credential_store::off_async_worker(|| provider.sync_owner_identity())
+                .map_err(|e| e.to_string())?
+        };
+        if let (Some(owner), Some(material)) = (owner, material) {
+            if let Some(tag) = crate::credential_store::off_async_worker(|| {
+                owner.persistent_tag(material.as_str())
+            })? {
+                return Ok(tag);
+            }
+        }
+        Ok(crate::sync_owner::epoch_binding(
+            &self.gui_process_nonce,
+            epoch,
+        ))
     }
 
     /// Called only while holding `transfer_owner_write` when the GUI target changes.
@@ -338,11 +424,14 @@ impl ProviderState {
         provider: Box<dyn StorageProvider>,
         config: ProviderConfig,
     ) -> Result<(), String> {
-        install_connected_provider_with_config(
+        let owner =
+            crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
+        install_connected_provider_with_owner(
             self,
             provider,
             None,
             Some(config),
+            Some(owner),
             Duration::from_secs(30),
         )
         .await
@@ -1964,6 +2053,8 @@ async fn provider_connect_inner(
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
     params: ProviderConnectionParams,
 ) -> Result<String, String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     info!(
         "Connecting to {} provider: {}",
         params.protocol, params.server
@@ -2045,11 +2136,12 @@ async fn provider_connect_inner(
     //
     // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
     // an active download/upload cannot see the box yanked from under it.
-    install_connected_provider_with_config(
+    install_connected_provider_with_owner(
         &state,
         provider,
         config.extra.get("profile_id").cloned(),
         Some(config),
+        Some(owner),
         Duration::from_secs(30),
     )
     .await?;
@@ -2061,6 +2153,7 @@ async fn provider_connect_inner(
 /// Put a freshly connected provider in the slot, disconnecting the previous
 /// one. Storage reads of the previous connection are cancelled first (#958),
 /// so a stalled scan or quota read cannot keep the slot from being taken.
+#[cfg(test)]
 async fn install_connected_provider(
     state: &ProviderState,
     provider: Box<dyn StorageProvider>,
@@ -2078,9 +2171,20 @@ async fn install_connected_provider(
 
 async fn install_connected_provider_with_config(
     state: &ProviderState,
+    provider: Box<dyn StorageProvider>,
+    profile_id: Option<String>,
+    config: Option<ProviderConfig>,
+    wait: Duration,
+) -> Result<(), String> {
+    install_connected_provider_with_owner(state, provider, profile_id, config, None, wait).await
+}
+
+async fn install_connected_provider_with_owner(
+    state: &ProviderState,
     mut provider: Box<dyn StorageProvider>,
     profile_id: Option<String>,
     config: Option<ProviderConfig>,
+    owner: Option<crate::sync_owner::GuiOwnerContext>,
     wait: Duration,
 ) -> Result<(), String> {
     state.cancel_storage_reads();
@@ -2091,6 +2195,12 @@ async fn install_connected_provider_with_config(
             return Err(error);
         }
     };
+    if let Some(owner) = owner.as_ref() {
+        if let Err(error) = crate::credential_store::off_async_worker(|| owner.validate()) {
+            let _ = tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await;
+            return Err(error);
+        }
+    }
     drain_in_flight_transfers(state, Duration::from_secs(30)).await;
     let mut prov_lock = state.provider.lock().await;
     if let Some(mut previous) = prov_lock.take() {
@@ -2101,6 +2211,14 @@ async fn install_connected_provider_with_config(
             );
         }
     }
+    *state
+        .gui_owner_context
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = owner;
+    *state
+        .legacy_owner_binding
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
     *prov_lock = Some(provider);
     *state
         .connected_profile_id
@@ -7329,6 +7447,53 @@ pub async fn provider_connection_generation(
     Ok(state.connection_generation.load(Ordering::SeqCst))
 }
 
+/// Return only a keyed owner tag, or a connection-lifetime nonce when the
+/// installed authentication cannot prove a persistent identity.
+#[tauri::command]
+pub async fn provider_gui_target_binding(
+    state: State<'_, ProviderState>,
+    expected_gui_target: u64,
+    is_provider: bool,
+) -> Result<String, String> {
+    let _pin = state.pin_gui_target(Some(expected_gui_target)).await?;
+    state.gui_owner_binding(is_provider).await
+}
+
+#[tauri::command]
+pub async fn provider_gui_verify_resume_owner(
+    state: State<'_, ProviderState>,
+    expected_gui_target: u64,
+    is_provider: bool,
+    binding: String,
+) -> Result<(), String> {
+    let _pin = state.pin_gui_target(Some(expected_gui_target)).await?;
+    let current = state.gui_owner_binding(is_provider).await?;
+    if !crate::sync_owner::bindings_match(&current, &binding) {
+        return Err(ProviderError::TargetChanged.to_string());
+    }
+    Ok(())
+}
+
+/// Check a dynamic credential source before a local side effect (for example
+/// archiving a download destination). The same epoch pins the subsequent I/O.
+#[tauri::command]
+pub async fn provider_gui_validate_target(
+    state: State<'_, ProviderState>,
+    expected_gui_target: u64,
+    is_provider: bool,
+) -> Result<(), String> {
+    let _pin = state.pin_gui_target(Some(expected_gui_target)).await?;
+    if is_provider {
+        let provider = state.provider.lock().await;
+        let provider = provider
+            .as_ref()
+            .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+        crate::credential_store::off_async_worker(|| provider.sync_owner_identity())
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Opaque identity for a GUI action; only compare it through `pin_gui_target`.
 #[tauri::command]
 pub async fn provider_gui_target_epoch(state: State<'_, ProviderState>) -> Result<u64, String> {
@@ -7922,6 +8087,8 @@ pub async fn oauth2_connect(
     cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     use crate::providers::{
         dropbox::DropboxConfig, google_drive::GoogleDriveConfig, google_photos::GooglePhotosConfig,
         onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
@@ -7938,7 +8105,9 @@ pub async fn oauth2_connect(
         let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
             "google_drive" | "googledrive" | "google" => {
                 let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
-                let mut p = GoogleDriveProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = GoogleDriveProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Google Drive connection failed: {}", e))?;
@@ -7946,7 +8115,9 @@ pub async fn oauth2_connect(
             }
             "googlephotos" | "google_photos" => {
                 let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
-                let mut p = GooglePhotosProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = GooglePhotosProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Google Photos connection failed: {}", e))?;
@@ -7954,7 +8125,9 @@ pub async fn oauth2_connect(
             }
             "dropbox" => {
                 let config = DropboxConfig::new(&params.client_id, &params.client_secret);
-                let mut p = DropboxProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = DropboxProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Dropbox connection failed: {}", e))?;
@@ -7962,7 +8135,9 @@ pub async fn oauth2_connect(
             }
             "onedrive" | "microsoft" => {
                 let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
-                let mut p = OneDriveProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = OneDriveProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("OneDrive connection failed: {}", e))?;
@@ -7973,7 +8148,9 @@ pub async fn oauth2_connect(
                     client_id: params.client_id.clone(),
                     client_secret: params.client_secret.clone(),
                 };
-                let mut p = BoxProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = BoxProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Box connection failed: {}", e))?;
@@ -7990,7 +8167,9 @@ pub async fn oauth2_connect(
                     client_secret: params.client_secret.clone(),
                     region,
                 };
-                let mut p = PCloudProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = PCloudProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("pCloud connection failed: {}", e))?;
@@ -8002,7 +8181,9 @@ pub async fn oauth2_connect(
                     &params.client_secret,
                     &params.region,
                 );
-                let mut p = ZohoWorkdriveProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = ZohoWorkdriveProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
@@ -8011,7 +8192,7 @@ pub async fn oauth2_connect(
             "yandexdisk" | "yandex_disk" | "yandex" => {
                 // Yandex Disk OAuth: retrieve token from stored OAuth tokens
                 use crate::providers::{OAuth2Manager, OAuthProvider};
-                let manager = OAuth2Manager::new();
+                let manager = OAuth2Manager::new().with_credential_user(owner.user());
                 let tokens = manager
                     .load_tokens(OAuthProvider::YandexDisk, &params.profile_id)
                     .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
@@ -8038,7 +8219,15 @@ pub async fn oauth2_connect(
     let account_email = provider.account_email();
 
     // Store provider
-    install_connected_provider(&state, provider, Some(params.profile_id.clone())).await?;
+    install_connected_provider_with_owner(
+        &state,
+        provider,
+        Some(params.profile_id.clone()),
+        None,
+        Some(owner),
+        Duration::from_secs(30),
+    )
+    .await?;
 
     info!(
         "Connected to {} ({})",
@@ -9964,6 +10153,8 @@ pub async fn fourshared_connect(
     cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: FourSharedAuthParams,
 ) -> Result<OAuth2ConnectResult, String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     use crate::providers::{types::FourSharedConfig, FourSharedProvider};
 
     info!("Connecting to 4shared...");
@@ -9991,7 +10182,15 @@ pub async fn fourshared_connect(
     let display_name = provider.display_name();
     let account_email = provider.account_email();
 
-    install_connected_provider(&state, Box::new(provider), Some(params.profile_id.clone())).await?;
+    install_connected_provider_with_owner(
+        &state,
+        Box::new(provider),
+        Some(params.profile_id.clone()),
+        None,
+        Some(owner),
+        Duration::from_secs(30),
+    )
+    .await?;
 
     info!(
         "Connected to 4shared ({})",

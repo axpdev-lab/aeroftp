@@ -1246,6 +1246,13 @@ pub const FILEN_DESKTOP_BRIDGE_NOTE: &str = "Filen Desktop preset: these figures
 #[async_trait]
 #[allow(dead_code)]
 pub trait StorageProvider: Send + Sync {
+    /// Backend-only provenance of the credential actually used by connect.
+    /// Dynamic token sources verify their sealed owner on every call. No raw
+    /// token or unkeyed credential hash may cross IPC from this material.
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        Ok(None)
+    }
+
     /// Downcast to concrete provider type for provider-specific operations
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 

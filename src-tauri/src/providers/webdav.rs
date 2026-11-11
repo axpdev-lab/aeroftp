@@ -3913,6 +3913,39 @@ impl NextcloudMultipartHandle {
 
 #[async_trait]
 impl StorageProvider for WebDavProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        use secrecy::ExposeSecret;
+        let bridge = self.config.provider_id.as_deref().is_some_and(|id| {
+            crate::local_bridge::bridge_kind_for_provider_id(id).is_some()
+                || matches!(id, "filen" | "opendrive-desktop")
+        });
+        // A generic loopback URL can be a hand-configured external bridge.
+        let local = url::Url::parse(&self.config.url).ok().is_some_and(|url| {
+            url.host_str().is_some_and(|host| {
+                host.eq_ignore_ascii_case("localhost")
+                    || host
+                        .trim_matches(['[', ']'])
+                        .parse::<std::net::IpAddr>()
+                        .is_ok_and(|ip| ip.is_loopback())
+                    || host.ends_with(".filen.io") && host.starts_with("local.")
+            })
+        });
+        if bridge || local {
+            return Ok(None);
+        }
+        serde_json::to_string(&(
+            "webdav",
+            &self.config.url,
+            &self.config.username,
+            self.config.password.expose_secret(),
+            self.config.anonymous,
+            &self.config.provider_id,
+            &self.server_root,
+        ))
+        .map(|value| Some(zeroize::Zeroizing::new(value)))
+        .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -6420,6 +6453,41 @@ mod tests {
             Box::new(provider)
         })
         .await;
+    }
+
+    #[test]
+    fn sync_owner_excludes_actual_bridge_presets_and_generic_loopback() {
+        for id in [
+            "filen-desktop-webdav",
+            "megacmd-webdav",
+            "megacmd",
+            "opendrive-desktop",
+        ] {
+            let mut config = test_config("https://fixture.invalid/");
+            config.provider_id = Some(id.into());
+            assert!(WebDavProvider::new(config)
+                .unwrap()
+                .sync_owner_identity()
+                .unwrap()
+                .is_none());
+        }
+        for url in [
+            "http://127.0.0.1:7654/",
+            "http://[::1]:7654/",
+            "http://localhost:7654/",
+            "http://local.webdav.filen.io/",
+        ] {
+            assert!(WebDavProvider::new(test_config(url))
+                .unwrap()
+                .sync_owner_identity()
+                .unwrap()
+                .is_none());
+        }
+        assert!(WebDavProvider::new(test_config("https://fixture.invalid/"))
+            .unwrap()
+            .sync_owner_identity()
+            .unwrap()
+            .is_some());
     }
 
     /// #368: the Filen Desktop WebDAV bridge has the same local cache as the

@@ -586,6 +586,40 @@ pub(crate) fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
     }
 }
 
+/// One statement observes account selection and its key revision together.
+/// This is metadata only: no vault read, DEK unwrap or KDF per GUI command.
+pub(crate) fn gui_account_snapshot() -> Result<(Option<i64>, i64, i64, u64), String> {
+    let conn = open_or_init_cli()?;
+    let row = conn
+        .query_row(
+            "SELECT s.value, s.updated_at, COALESCE(u.updated_at, 0) FROM global_state s
+         LEFT JOIN users u ON u.id = CAST(s.value AS INTEGER) WHERE s.key = ?1",
+            params![ACTIVE_USER_KEY],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| format!("Read GUI account revision: {e}"))?;
+    let (user, revision, key_revision) = match row {
+        Some((value, rev, key_rev)) => (
+            Some(
+                value
+                    .parse::<i64>()
+                    .map_err(|_| ACCOUNT_CHANGED.to_string())?,
+            ),
+            rev,
+            key_rev,
+        ),
+        None => (None, 0, 0),
+    };
+    Ok((user, revision, key_revision, session_generation()))
+}
+
 fn upsert_global_state(
     tx: &Transaction<'_>,
     key: &str,
@@ -595,7 +629,7 @@ fn upsert_global_state(
     tx.execute(
         "INSERT INTO global_state(key, value, updated_at)
          VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CASE WHEN excluded.key = 'active_user_id' THEN MAX(global_state.updated_at + 1, excluded.updated_at) ELSE excluded.updated_at END",
         params![key, value, updated_at],
     )
     .map_err(|e| format!("Write global_state[{key}]: {e}"))?;
@@ -1480,7 +1514,7 @@ fn set_active_user_row(conn: &Connection, user_id: i64) -> Result<(), String> {
     conn.execute(
         "INSERT INTO global_state(key, value, updated_at)
          VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = MAX(global_state.updated_at + 1, excluded.updated_at)",
         params![ACTIVE_USER_KEY, user_id.to_string(), now],
     )
     .map_err(|e| format!("Set active user: {e}"))?;
@@ -3280,8 +3314,8 @@ pub(crate) fn replace_user_credential_if_unchanged(
     user_id: i64,
     credential_id: &str,
     credential_type: &str,
-    expected: &str,
-    replacement: &str,
+    update: (&str, &str),
+    require_active_user: bool,
 ) -> Result<bool, String> {
     if credential_id.is_empty() || credential_type.is_empty() {
         return Err("CREDENTIAL_ID_AND_TYPE_REQUIRED".to_owned());
@@ -3291,25 +3325,85 @@ pub(crate) fn replace_user_credential_if_unchanged(
         let tx =
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
                 .map_err(|e| format!("Begin conditional credential refresh: {e}"))?;
+        if require_active_user && active_user_id(&tx)? != Some(user_id) {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
         let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
         use subtle::ConstantTimeEq;
         if !current
             .as_ref()
-            .is_some_and(|secret| bool::from(secret.as_bytes().ct_eq(expected.as_bytes())))
+            .is_some_and(|secret| bool::from(secret.as_bytes().ct_eq(update.0.as_bytes())))
         {
             return Ok(false);
         }
-        set_user_credential_with_dek(
-            &tx,
-            user_id,
-            dek,
-            credential_id,
-            credential_type,
-            replacement,
-        )?;
+        set_user_credential_with_dek(&tx, user_id, dek, credential_id, credential_type, update.1)?;
         tx.commit()
             .map_err(|e| format!("Commit conditional credential refresh: {e}"))?;
         Ok(true)
+    })
+}
+
+/// Guard an implicit GUI account during a global/memory token update. Resolve
+/// the session before SQLite, and never perform network I/O inside `refresh`.
+pub(crate) fn with_unchanged_active_credential_user<R>(
+    store: Option<&CredentialStore>,
+    expected: Option<i64>,
+    refresh: impl FnOnce() -> Result<R, String>,
+) -> Result<R, String> {
+    let conn = open_or_init_cli()?;
+    let apply = || {
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin active authorization refresh: {e}"))?;
+        if active_user_id(&tx)? != expected {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
+        let result = refresh()?;
+        tx.commit()
+            .map_err(|e| format!("Commit active authorization refresh: {e}"))?;
+        Ok(result)
+    };
+    match expected {
+        Some(user) if store.is_some() => {
+            let root = Zeroizing::new(
+                store
+                    .expect("checked store")
+                    .derive_user_partition_wrapping_key(),
+            );
+            let key = user_crypto::secret_key_from_bytes(&root);
+            with_user_dek(&conn, &key, user, |_, _| apply())
+        }
+        _ => {
+            let _session = hold_session()?;
+            if let Some(user) = expected {
+                ensure_credential_user_unlocked(user)?;
+            }
+            apply()
+        }
+    }
+}
+
+/// Compute a domain-separated journal owner tag with the active partition's
+/// real DEK. No derived key or credential fingerprint leaves this boundary.
+pub(crate) fn sync_owner_tag_for_user(
+    store: &CredentialStore,
+    user: i64,
+    material: &str,
+) -> Result<String, String> {
+    let conn = open_or_init_cli()?;
+    let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root = user_crypto::secret_key_from_bytes(&root);
+    with_user_dek(&conn, &root, user, |user, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Deferred)
+                .map_err(|e| format!("Begin journal owner check: {e}"))?;
+        if active_user_id(&tx)? != Some(user) {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
+        let tag = user_crypto::metadata_tag(dek, b"sync-journal-owner-v1", material)?;
+        tx.commit()
+            .map_err(|e| format!("Commit journal owner check: {e}"))?;
+        Ok(tag)
     })
 }
 
@@ -7723,6 +7817,25 @@ mod tests {
         assert_eq!(profiles.len(), 1);
     }
 
+    #[test]
+    fn gui_account_activation_revision_rejects_aba_even_in_one_millisecond() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db_schema(&conn).unwrap();
+        let tx = conn.transaction().unwrap();
+        upsert_global_state(&tx, ACTIVE_USER_KEY, "1", 123).unwrap();
+        upsert_global_state(&tx, ACTIVE_USER_KEY, "2", 123).unwrap();
+        upsert_global_state(&tx, ACTIVE_USER_KEY, "1", 122).unwrap();
+        let (value, revision): (String, i64) = tx
+            .query_row(
+                "SELECT value, updated_at FROM global_state WHERE key = ?1",
+                [ACTIVE_USER_KEY],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(value, "1");
+        assert_eq!(revision, 125);
+    }
+
     fn test_root() -> [u8; 32] {
         [7u8; 32]
     }
@@ -8066,6 +8179,49 @@ mod tests {
     }
 
     #[test]
+    fn conditional_owned_refresh_distinguishes_gui_switch_from_explicit_cli_owner() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let a = get_active_user(&conn).unwrap().unwrap().id;
+        let b = create_user(&mut conn, &root, "Other user", None, None, None)
+            .unwrap()
+            .id;
+        set_user_credential_for(&conn, &root, a, "oauth_fixture", "oauth", "A").unwrap();
+        set_active_user(&conn, b).unwrap();
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            a,
+            "oauth_fixture",
+            "oauth",
+            ("A", "rotated-A"),
+            true
+        )
+        .is_err());
+        assert_eq!(
+            get_user_credential_for(&conn, &root, a, "oauth_fixture")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "A"
+        );
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            a,
+            "oauth_fixture",
+            "oauth",
+            ("A", "rotated-A"),
+            false
+        )
+        .unwrap());
+        assert!(get_user_credential_for(&conn, &root, b, "oauth_fixture")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn conditional_owned_refresh_preserves_new_login_and_signed_out_row() {
         let _guard = test_lock();
         let conn = migrated_conn(0);
@@ -8079,8 +8235,8 @@ mod tests {
             user,
             "oauth_fixture",
             "oauth",
-            "A",
-            "refresh-A"
+            ("A", "refresh-A"),
+            true,
         )
         .unwrap());
         assert_eq!(
@@ -8096,8 +8252,8 @@ mod tests {
             user,
             "oauth_fixture",
             "oauth",
-            "B",
-            "refresh-B"
+            ("B", "refresh-B"),
+            true,
         )
         .unwrap());
         delete_user_credential_for(&conn, user, "oauth_fixture").unwrap();
@@ -8107,8 +8263,8 @@ mod tests {
             user,
             "oauth_fixture",
             "oauth",
-            "refresh-B",
-            "resurrected"
+            ("refresh-B", "resurrected"),
+            true,
         )
         .unwrap());
     }

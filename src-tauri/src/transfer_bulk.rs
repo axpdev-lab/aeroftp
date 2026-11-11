@@ -401,6 +401,7 @@ pub(crate) async fn execute_provider_bulk(
         }
     };
     let mut single_file = Vec::new();
+    let mut owner_changed = false;
     for ((&index, item), result) in submitted.iter().zip(&items).zip(results) {
         let entry = &entries[index];
         match settle_bulk_outcome(result, &item.local_path) {
@@ -413,6 +414,7 @@ pub(crate) async fn execute_provider_bulk(
             }
             BulkSettlement::SingleFile => single_file.push((index, item.clone())),
             BulkSettlement::Failed(failure) => {
+                owner_changed |= failure.kind == TransferFailureKind::TargetChanged;
                 emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
                 settled[index] = Some(TransferOutcome::Failed(failure));
             }
@@ -420,6 +422,15 @@ pub(crate) async fn execute_provider_bulk(
     }
     for (index, item) in single_file {
         let entry = &entries[index];
+        if owner_changed {
+            let failure = TransferFailure::from_transfer_error(
+                &crate::transfer_dag::TransferError::from_provider(
+                    &crate::providers::ProviderError::TargetChanged,
+                ),
+            );
+            settled[index] = Some(TransferOutcome::Failed(failure));
+            continue;
+        }
         let result = tokio::select! {
             biased;
             _ = cancelled(token, cancel) => None,
@@ -446,6 +457,7 @@ pub(crate) async fn execute_provider_bulk(
                     _ => crate::transfer_multipart::cancelled_failure(),
                 };
                 failure.retryable = false;
+                owner_changed |= failure.kind == TransferFailureKind::TargetChanged;
                 emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
                 TransferOutcome::Failed(failure)
             }
@@ -495,6 +507,8 @@ pub struct SyncBulkItem {
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum SyncBulkResult {
     Completed,
+    /// Stop the whole sync, including groups not yet dispatched.
+    TargetChanged,
     /// Final: the file was handed to the native program (and to one
     /// single-file attempt when nothing of it reached the wire), and may have
     /// reached the server, so the run does not send it again.
@@ -558,14 +572,26 @@ pub(crate) async fn run_sync_bulk(
             timeout_seconds,
         )
         .await;
+        let owner_changed = outcomes.iter().any(|outcome| {
+            matches!(outcome,
+            TransferOutcome::Failed(failure) if failure.kind == TransferFailureKind::TargetChanged)
+        });
         for (&index, outcome) in group.iter().zip(outcomes) {
             results[index] = match outcome {
                 TransferOutcome::Success => SyncBulkResult::Completed,
+                TransferOutcome::Failed(failure)
+                    if failure.kind == TransferFailureKind::TargetChanged =>
+                {
+                    SyncBulkResult::TargetChanged
+                }
                 TransferOutcome::Failed(failure) => SyncBulkResult::Failed {
                     message: failure.message,
                 },
                 TransferOutcome::Skipped { reason } => SyncBulkResult::Failed { message: reason },
             };
+        }
+        if owner_changed {
+            break;
         }
     }
     results

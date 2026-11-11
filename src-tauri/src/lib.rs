@@ -323,6 +323,7 @@ pub mod sync_empty_dir;
 pub mod sync_exclude;
 mod sync_ignore;
 mod sync_names;
+mod sync_owner;
 mod sync_scheduler;
 pub mod sync_script;
 pub mod sync_versioning;
@@ -3512,6 +3513,18 @@ async fn connect_ftp_inner(
     cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
     params: ConnectionParams,
 ) -> Result<(), String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
+    let material = zeroize::Zeroizing::new(
+        serde_json::to_string(&(
+            "legacy-ftp",
+            &params.server,
+            &params.username,
+            &params.password,
+        ))
+        .map_err(|_| provider_commands::CONNECTION_CHANGED_MARKER.to_owned())?,
+    );
+    let binding = crate::credential_store::off_async_worker(|| owner.persistent_tag(&material))?;
     info!("Connecting to FTP server: {}", params.server);
 
     // W3.1 (#270.5): register a cancellation token under the frontend-supplied
@@ -3531,6 +3544,7 @@ async fn connect_ftp_inner(
         .transfer_owner_write(std::time::Duration::from_secs(30))
         .await?;
     provider_state.advance_gui_target();
+    provider_state.clear_legacy_gui_owner();
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
@@ -3548,7 +3562,7 @@ async fn connect_ftp_inner(
         Ok::<(), String>(())
     };
 
-    match cancel_token.as_ref() {
+    let outcome = match cancel_token.as_ref() {
         Some(token) => {
             let outcome = tokio::select! {
                 res = do_connect => res,
@@ -3566,7 +3580,17 @@ async fn connect_ftp_inner(
             outcome
         }
         None => do_connect.await,
+    };
+    if let Err(error) = outcome {
+        let _ = ftp_manager.disconnect().await;
+        return Err(error);
     }
+    if let Err(error) = crate::credential_store::off_async_worker(|| owner.validate()) {
+        let _ = ftp_manager.disconnect().await;
+        return Err(error);
+    }
+    provider_state.set_legacy_gui_owner(owner, binding);
+    Ok(())
 }
 
 #[tauri::command]
@@ -3578,6 +3602,7 @@ async fn disconnect_ftp(
         .transfer_owner_write(std::time::Duration::from_secs(30))
         .await?;
     provider_state.advance_gui_target();
+    provider_state.clear_legacy_gui_owner();
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
         .disconnect()
@@ -23150,6 +23175,9 @@ pub fn run() {
             provider_commands::provider_chmod,
             provider_commands::provider_connection_generation,
             provider_commands::provider_gui_target_epoch,
+            provider_commands::provider_gui_target_binding,
+            provider_commands::provider_gui_verify_resume_owner,
+            provider_commands::provider_gui_validate_target,
             provider_commands::provider_server_copy,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,

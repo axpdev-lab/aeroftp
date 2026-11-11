@@ -47,7 +47,7 @@ function harness() {
         }
         return undefined as T;
     };
-    const deps = () => ({ invoke, remoteTarget: { resumeOwnerVerified: true, epoch, assertCurrent: () => {
+    const deps = () => ({ invoke, remoteTarget: { ownerBinding: 'test-owner-v1', epoch, assertCurrent: () => {
         if (current !== 'A') throw new QueuedTargetChangedError('changed');
     } }, delay: async () => {}, now: () => 0, makeId: () => 'j' });
     return { calls, deps, saved: () => structuredClone(saved!),
@@ -146,9 +146,10 @@ describe('versioned backup resume', () => {
     });
     it('rejects a resume without proof of the original remote owner', async () => {
         const h = harness(); await run(h, undefined, true); const j = h.saved();
+        delete j.owner_binding;
         const deps = h.deps();
         await expect(runRemoteSync(filesFromJournal(j), dirs, config, {}, {
-            ...deps, resumeJournal: j, remoteTarget: { ...deps.remoteTarget, resumeOwnerVerified: false },
+            ...deps, resumeJournal: j, remoteTarget: { ...deps.remoteTarget, ownerBinding: undefined },
         })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
         expect(h.calls).toEqual([]);
     });

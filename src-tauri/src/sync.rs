@@ -5101,6 +5101,8 @@ pub struct SyncJournal {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resume_safe: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_binding: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup_stamp: Option<String>,
@@ -5143,6 +5145,7 @@ impl SyncJournal {
             remote_path,
             profile_id: None,
             resume_safe: None,
+            owner_binding: None,
             backup_dir: None,
             backup_stamp: None,
             ec_enabled: None,
@@ -7963,7 +7966,7 @@ mod tests {
                 // Renders the payload with no label; the leading-status check
                 // in `mentions_ftp_status` is what recognises this one.
                 PE::Other(_) | PE::ParallelRefused(_) | PE::PinRefused(_) => true,
-                PE::NotConnected | PE::Cancelled | PE::Timeout => false,
+                PE::NotConnected | PE::TargetChanged | PE::Cancelled | PE::Timeout => false,
                 PE::RestrictedChar { .. } => false,
                 // Our own sentence about the server's key, built before any
                 // file operation: there is never a server reply behind it.

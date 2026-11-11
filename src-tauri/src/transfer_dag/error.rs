@@ -38,6 +38,8 @@ pub enum TransferErrorKind {
     Network,
     /// Authentication / credential failure.
     Auth,
+    /// The session owner changed; stop the job without retry or fallback.
+    TargetChanged,
     /// Path or object not found.
     NotFound,
     /// Permission / ACL denial.
@@ -171,6 +173,8 @@ impl TransferError {
         let retry_after = parse_embedded_retry_after(&message);
 
         let kind = match err {
+            _ if message.contains("CONNECTION_CHANGED") => TransferErrorKind::TargetChanged,
+            ProviderError::TargetChanged => TransferErrorKind::TargetChanged,
             ProviderError::Timeout => TransferErrorKind::Timeout,
             ProviderError::Cancelled => TransferErrorKind::Cancelled,
             ProviderError::NotConnected => TransferErrorKind::NotConnected,
@@ -246,6 +250,7 @@ fn default_retry_for(kind: TransferErrorKind) -> RetryDirective {
     match kind {
         TransferErrorKind::Cancelled
         | TransferErrorKind::Auth
+        | TransferErrorKind::TargetChanged
         | TransferErrorKind::NotFound
         | TransferErrorKind::PermissionDenied
         | TransferErrorKind::QuotaExceeded
@@ -269,6 +274,7 @@ fn default_idempotent_for(kind: TransferErrorKind) -> bool {
     !matches!(
         kind,
         TransferErrorKind::Auth
+            | TransferErrorKind::TargetChanged
             | TransferErrorKind::PermissionDenied
             | TransferErrorKind::QuotaExceeded
             | TransferErrorKind::FileTooLarge
@@ -370,6 +376,9 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
     let raw = crate::providers::types::without_unclassified_items(raw);
     let lower = raw.to_lowercase();
 
+    if lower.contains("connection_changed") {
+        return TransferErrorKind::TargetChanged;
+    }
     if message_names_a_cancellation(&lower) {
         return TransferErrorKind::Cancelled;
     }

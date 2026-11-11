@@ -2480,6 +2480,65 @@ impl CredentialStore {
         Ok(true)
     }
 
+    /// Legacy migration never replaces an authorization created in the meantime.
+    pub(crate) fn store_secret_if_absent(
+        &self,
+        account: &str,
+        secret: &str,
+    ) -> Result<bool, CredentialError> {
+        Self::reject_reserved_account(account)?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        if vault.entries.contains_key(account) {
+            return Ok(false);
+        }
+        let nonce = crate::crypto::random_bytes(12);
+        let data = crate::crypto::encrypt_aes_gcm(&self.vault_key, &nonce, secret.as_bytes())
+            .map_err(CredentialError::Encryption)?;
+        vault
+            .entries
+            .insert(account.to_owned(), VaultEntry { nonce, data });
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        Ok(true)
+    }
+
+    /// Rebind the observed legacy entry and remove that same entry atomically.
+    /// Both a newer source and an occupied destination win over migration.
+    pub(crate) fn move_secret_if_unchanged(
+        &self,
+        source: &str,
+        destination: &str,
+        expected: &str,
+    ) -> Result<bool, CredentialError> {
+        Self::reject_reserved_account(source)?;
+        Self::reject_reserved_account(destination)?;
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path)?)?;
+        let mut vault = Self::read_vault(&self.vault_path)?;
+        Self::ensure_vault_opens_with(&vault, &self.vault_key)?;
+        if vault.entries.contains_key(destination) {
+            return Ok(false);
+        }
+        let Some(entry) = vault.entries.get(source) else {
+            return Ok(false);
+        };
+        let plaintext = Zeroizing::new(
+            crate::crypto::decrypt_aes_gcm(&self.vault_key, &entry.nonce, &entry.data)
+                .map_err(CredentialError::Encryption)?,
+        );
+        use subtle::ConstantTimeEq;
+        if !bool::from(plaintext.as_slice().ct_eq(expected.as_bytes())) {
+            return Ok(false);
+        }
+        let entry = vault
+            .entries
+            .remove(source)
+            .expect("entry inspected under write lock");
+        vault.entries.insert(destination.to_owned(), entry);
+        Self::write_vault(&self.vault_path, &vault, &guard)?;
+        Ok(true)
+    }
+
     /// A2-05: Internal store that bypasses reserved key check.
     /// Used by totp_enable to atomically store the TOTP secret.
     pub(crate) fn store_internal(
@@ -2768,6 +2827,35 @@ pub fn secure_delete(path: &Path) -> Result<(), CredentialError> {
 #[cfg(test)]
 mod tests {
     use super::{keyring_account_for, CredentialStore};
+    #[test]
+    fn legacy_migration_preserves_concurrent_authorization_at_either_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("fixture-vault.json");
+        CredentialStore::write_test_vault(&path, &[24; 32]);
+        let store = CredentialStore::from_verified_key(&path, &[24; 32]);
+        store.store("legacy", "A").unwrap();
+        store.store("profile", "B").unwrap();
+        assert!(!store
+            .move_secret_if_unchanged("legacy", "profile", "A")
+            .unwrap());
+        assert_eq!(store.get("profile").unwrap(), "B");
+        assert_eq!(store.get("legacy").unwrap(), "A");
+        store.delete("profile").unwrap();
+        store.store("legacy", "new-source").unwrap();
+        assert!(!store
+            .move_secret_if_unchanged("legacy", "profile", "A")
+            .unwrap());
+        assert_eq!(store.get("legacy").unwrap(), "new-source");
+        assert!(store
+            .move_secret_if_unchanged("legacy", "profile", "new-source")
+            .unwrap());
+        assert!(store.get("legacy").is_err());
+        assert_eq!(store.get("profile").unwrap(), "new-source");
+        assert!(!store
+            .store_secret_if_absent("profile", "stale-plaintext")
+            .unwrap());
+        assert_eq!(store.get("profile").unwrap(), "new-source");
+    }
 
     #[test]
     fn conditional_secret_refresh_never_overwrites_a_new_login() {

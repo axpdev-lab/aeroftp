@@ -1682,6 +1682,22 @@ impl FtpProvider {
 
 #[async_trait]
 impl StorageProvider for FtpProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        use secrecy::ExposeSecret;
+        serde_json::to_string(&(
+            "ftp",
+            &self.config.host,
+            self.config.port,
+            &self.config.username,
+            self.config.password.expose_secret(),
+            format!("{:?}", self.config.tls_mode),
+            self.tls_downgraded,
+            &self.config.initial_path,
+        ))
+        .map(|value| Some(zeroize::Zeroizing::new(value)))
+        .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }

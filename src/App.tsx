@@ -1229,12 +1229,6 @@ const App: React.FC = () => {
     localLocal: boolean;
   } | null>(null);
   const remoteSyncRunningRef = useRef(false);
-  // Only this process can prove the original account and crypt overlay without
-  // persisting connection parameters or credentials in a sync journal.
-  const remoteJournalOwnersRef = useRef(new Map<string, QueuedTarget>());
-  useEffect(() => {
-    if (isAppLocked || accountLockState !== 'ready') remoteJournalOwnersRef.current.clear();
-  }, [isAppLocked, accountLockState]);
   // FINDING-4: true from pressing Stop during an AeroSync run until the run
   // actually unwinds. Drives the Stop-button spinner: Stop on a run skips the
   // batch two-level cancel (see cancelTransfer), so the queue's force-stop
@@ -12771,12 +12765,7 @@ const App: React.FC = () => {
     }
 
     // Keep the exact target of the Execute gesture through the delta prompt.
-    const resumeOwner = opts.resumeJournal ? remoteJournalOwnersRef.current.get(opts.resumeJournal.id) : undefined;
-    if (opts.resumeJournal && (!resumeOwner || queuedTargetProblem(resumeOwner))) {
-      notify.error(t('aerosync.title'), t('syncPanel.resumeNeedsCompare'));
-      return;
-    }
-    const target = resumeOwner ?? opts.target ?? snapshotQueuedTarget();
+    const target = opts.target ?? snapshotQueuedTarget();
     const checkTarget = queuedTargetGuard(target);
     if ((opts.profileId != null && opts.profileId !== target.profileId)
       || (opts.resumeJournal && (!opts.resumeJournal.profile_id || opts.resumeJournal.profile_id !== target.profileId))) {
@@ -12784,6 +12773,7 @@ const App: React.FC = () => {
       return;
     }
     let targetEpoch: number | undefined;
+    let ownerBinding: string | undefined;
     const protocol = target.params.protocol;
     // AeroSync runner routing must match how the connection was actually
     // dialled. A modern FTP/FTPS session lives in `state.provider` (the
@@ -12834,7 +12824,7 @@ const App: React.FC = () => {
     };
 
     const launchRun = (): void => {
-      if (targetEpoch === undefined) return;
+      if (targetEpoch === undefined || ownerBinding === undefined) return;
       const epoch = targetEpoch;
       try { checkTarget(); } catch (error) {
         notify.error(t('aerosync.title'), String(error));
@@ -12861,7 +12851,6 @@ const App: React.FC = () => {
       };
       window.addEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
       void (async () => {
-        let journalId = opts.resumeJournal?.id;
         try {
           const report = await runRemoteSync(
             runFiles,
@@ -12876,17 +12865,8 @@ const App: React.FC = () => {
               onFileStatus: syncRunQueueBridge(runFiles, transferQueue, opts.resumeJournal),
             },
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true,
-              onJournalCreated: id => {
-                journalId = id;
-                remoteJournalOwnersRef.current.set(id, target);
-                if (remoteJournalOwnersRef.current.size > 128) {
-                  const oldest = remoteJournalOwnersRef.current.keys().next().value;
-                  if (oldest !== undefined) remoteJournalOwnersRef.current.delete(oldest);
-                }
-              },
-              remoteTarget: { epoch, assertCurrent: checkTarget, resumeOwnerVerified: !!resumeOwner } },
+              remoteTarget: { epoch, assertCurrent: checkTarget, ownerBinding } },
           );
-          if (journalId && !report.cancelled && report.errors.length === 0) remoteJournalOwnersRef.current.delete(journalId);
           setRemoteSyncResult({ report, localLocal: false });
           if (!report.cancelled && (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0)) {
             checkTarget();
@@ -12912,6 +12892,8 @@ const App: React.FC = () => {
         targetEpoch = opts.preparedTarget
           ? await resolveGuiTarget(opts.preparedTarget, checkTarget)
           : await captureGuiTarget(checkTarget);
+        ownerBinding = await invoke<string>('provider_gui_target_binding', { expectedGuiTarget: targetEpoch, isProvider });
+        checkTarget();
         const shouldProbe = protocol === 'sftp' && !!opts.profileId;
         if (!shouldProbe) {
           launchRun();
@@ -12946,7 +12928,7 @@ const App: React.FC = () => {
           onContinue: () => { launchRun(); },
         });
       } catch (err) {
-        if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED') || targetEpoch === undefined) {
+        if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED') || targetEpoch === undefined || ownerBinding === undefined) {
           notify.error(t('aerosync.title'), String(err));
           return;
         }

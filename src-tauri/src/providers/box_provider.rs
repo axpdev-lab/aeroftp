@@ -1701,6 +1701,15 @@ impl BoxProvider {
 
 #[async_trait]
 impl StorageProvider for BoxProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        self.oauth_manager
+            .sync_owner_identity(
+                &OAuthConfig::box_cloud(&self.config.client_id, &self.config.client_secret)
+                    .with_profile_id(&self.profile_id),
+            )
+            .map(Some)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
