@@ -7486,21 +7486,24 @@ impl StorageProvider for S3Provider {
             .unwrap_or_else(|e| e.into_inner())
             .remove(&handle.upload_id);
         let pending = session.and_then(|session| session.finish(&numbered));
+        if pending.is_none() {
+            // Drop the previous row before CompleteMultipartUpload. A lost
+            // response must not leave the old cells eligible for a reused
+            // ETag. A cache error does not block the upload.
+            if let Some(store) = self.baseline_store() {
+                if let Err(error) = store
+                    .invalidate(self.delta_baseline_key(&handle.remote_path))
+                    .await
+                {
+                    warn!("S3 baseline cache invalidate failed: {error}");
+                }
+            }
+        }
         let etag = self
             .complete_multipart_upload_internal(&handle.remote_path, &handle.upload_id, &numbered)
             .await?;
         if pending.is_some() {
             self.save_baseline(&handle.remote_path, pending, etag).await;
-        } else if let Some(store) = self.baseline_store() {
-            // A full DAG put has no new grid. Drop the previous row so a
-            // gateway that reuses the ETag cannot serve the old cells.
-            // A cache error leaves the successful upload successful.
-            if let Err(error) = store
-                .invalidate(self.delta_baseline_key(&handle.remote_path))
-                .await
-            {
-                warn!("S3 baseline cache invalidate failed: {error}");
-            }
         }
         Ok(())
     }
