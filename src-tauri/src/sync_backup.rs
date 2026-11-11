@@ -175,6 +175,55 @@ fn with_suffix(rel: &str, n: u32) -> String {
 /// every name cannot loop forever.
 const MAX_SUFFIX: u32 = 10_000;
 
+/// Only a path this archive routine could have produced is a valid receipt.
+pub fn archive_receipt_matches(
+    root: &str,
+    dir: &BackupDir,
+    stamp: &str,
+    rel: &str,
+    receipt: &str,
+    local: bool,
+) -> bool {
+    if stamp.is_empty()
+        || !stamp
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return false;
+    }
+    let base = archive_rel_path(dir, stamp, rel);
+    let expected = if local {
+        Path::new(root).join(&base).to_string_lossy().into_owned()
+    } else {
+        join_remote(root, &base)
+    };
+    if expected == receipt {
+        return true;
+    }
+    let name = base.rsplit('/').next().unwrap_or("");
+    let extension = name
+        .rfind('.')
+        .filter(|&dot| dot > 0)
+        .map(|dot| &name[dot..])
+        .unwrap_or("");
+    let Some(prefix) = expected.strip_suffix(extension) else {
+        return false;
+    };
+    let Some(suffix) = receipt
+        .strip_prefix(prefix)
+        .and_then(|value| value.strip_suffix(extension))
+    else {
+        return false;
+    };
+    let Some(digits) = suffix.strip_prefix('.') else {
+        return false;
+    };
+    match digits.parse::<u32>() {
+        Ok(n) => (1..=MAX_SUFFIX).contains(&n) && digits == n.to_string(),
+        Err(_) => false,
+    }
+}
+
 /// Move `<root>/<rel>` to `<root>/<dir>/<stamp>/<rel>` on the local disk.
 ///
 /// `Ok(None)` when `<root>/<rel>` does not exist. The move is a rename inside
@@ -459,6 +508,38 @@ pub async fn archive_remote_on<R: ArchiveRemote + ?Sized>(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn archive_receipt_rejects_wrong_root_name_and_stamp() {
+        let dir = super::BackupDir::parse(".versions").unwrap();
+        let matches = |receipt: &str, stamp: &str| {
+            super::archive_receipt_matches("/remote", &dir, stamp, "sub/a.txt", receipt, false)
+        };
+        assert!(matches(
+            "/remote/.versions/20261111T140000Z/sub/a.txt",
+            "20261111T140000Z"
+        ));
+        assert!(matches(
+            "/remote/.versions/20261111T140000Z/sub/a.1.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/other/.versions/20261111T140000Z/sub/a.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/remote/.versions/20261111T140000Z/sub/b.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/remote/.versions/20261111T140000Z/sub/a.01.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/remote/.versions/20261111T140000Z/sub/a.10001.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches("/remote/.versions/../sub/a.txt", ".."));
+    }
     use super::*;
     use crate::providers::RemoteEntry;
     use async_trait::async_trait;

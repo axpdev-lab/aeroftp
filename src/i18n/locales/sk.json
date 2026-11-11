@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Nie je čo obnoviť",
             "rollbackRestoreFailed": "Obnovenie zlyhalo: {error}",
             "intervalHoursOne": "{count} hodina",
-            "intervalHoursMany": "{count} h"
+            "intervalHoursMany": "{count} h",
+            "resumeNeedsCompare": "Túto prerušenú synchronizáciu nemožno bezpečne obnoviť. Pred synchronizáciou vykonajte nové porovnanie."
         },
         "ui": {
             "syncing": "Synchronizácia...",

@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Dim byd i'w adfer",
             "rollbackRestoreFailed": "Methodd yr adfer: {error}",
             "intervalHoursOne": "{count} awr",
-            "intervalHoursMany": "{count} awr"
+            "intervalHoursMany": "{count} awr",
+            "resumeNeedsCompare": "Ni ellir ailddechrau’r cysoniad a amharwyd hwn yn ddiogel. Gwnewch gymhariaeth newydd cyn cysoni."
         },
         "ui": {
             "syncing": "Yn cysoni...",

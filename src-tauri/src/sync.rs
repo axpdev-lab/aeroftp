@@ -5048,6 +5048,18 @@ pub struct SyncJournalEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_path: Option<String>,
     pub relative_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overwrites_existing: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_receipt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_mtime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
     pub action: String, // "upload" | "download" | "mkdir"
     pub status: JournalEntryStatus,
     pub attempts: u32,
@@ -5085,6 +5097,23 @@ pub struct SyncJournal {
     /// The saved profile this journal belongs to; see [`history_serves`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_id: Option<String>,
+    /// Whether this journal retains enough policy to resume without a new compare.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_safe: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_stamp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ec_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ec_pct: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ec_max_file_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_dirs: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_dirs: Option<Vec<String>>,
     /// Sync direction
     pub direction: CompareDirection,
     /// Retry policy used
@@ -5113,6 +5142,14 @@ impl SyncJournal {
             local_path,
             remote_path,
             profile_id: None,
+            resume_safe: None,
+            backup_dir: None,
+            backup_stamp: None,
+            ec_enabled: None,
+            ec_pct: None,
+            ec_max_file_size: None,
+            remote_dirs: None,
+            local_dirs: None,
             direction,
             retry_policy,
             verify_policy,
@@ -8573,6 +8610,68 @@ mod tests {
     }
 
     #[test]
+    fn journal_resume_policy_round_trips_and_legacy_is_unknown() {
+        let mut journal = SyncJournal::new(
+            "/local".into(),
+            "/remote".into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        journal.resume_safe = Some(false);
+        journal.backup_dir = Some(".versions".into());
+        journal.backup_stamp = Some("20261111T140000Z".into());
+        journal.ec_enabled = Some(true);
+        journal.ec_pct = Some(12);
+        journal.ec_max_file_size = Some(1024);
+        journal.remote_dirs = Some(vec!["empty".into()]);
+        journal.local_dirs = Some(vec!["local-empty".into()]);
+        journal.entries.push(SyncJournalEntry {
+            baseline_key: None,
+            source_path: None,
+            relative_path: "one".into(),
+            overwrites_existing: Some(true),
+            archive_state: Some("archived".into()),
+            archive_receipt: Some("/remote/.versions/20261111T140000Z/one".into()),
+            source_size: Some(42),
+            source_mtime: Some("2026-11-11T00:00:00Z".into()),
+            source_sha256: Some("abc".into()),
+            action: "upload".into(),
+            status: JournalEntryStatus::InProgress,
+            attempts: 0,
+            last_error: None,
+            verified: None,
+            bytes_transferred: 0,
+            ec_status: None,
+            local_size: None,
+            local_modified: None,
+            uploaded_at: None,
+        });
+        let mut value = serde_json::to_value(&journal).unwrap();
+        assert_eq!(value["resume_safe"], false);
+        let loaded: SyncJournal = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(loaded.resume_safe, Some(false));
+        assert_eq!(loaded.backup_dir.as_deref(), Some(".versions"));
+        assert_eq!(loaded.ec_enabled, Some(true));
+        assert_eq!(loaded.ec_pct, Some(12));
+        assert_eq!(loaded.ec_max_file_size, Some(1024));
+        assert_eq!(loaded.remote_dirs, Some(vec!["empty".into()]));
+        assert_eq!(loaded.local_dirs, Some(vec!["local-empty".into()]));
+        assert_eq!(loaded.entries[0].source_size, Some(42));
+        assert_eq!(
+            loaded.entries[0].source_mtime.as_deref(),
+            Some("2026-11-11T00:00:00Z")
+        );
+        assert_eq!(loaded.entries[0].source_sha256.as_deref(), Some("abc"));
+        assert_eq!(loaded.entries[0].overwrites_existing, Some(true));
+        assert_eq!(loaded.entries[0].archive_state.as_deref(), Some("archived"));
+        assert!(loaded.entries[0].archive_receipt.is_some());
+        value.as_object_mut().unwrap().remove("resume_safe");
+        let legacy: SyncJournal = serde_json::from_value(value).unwrap();
+        assert_eq!(legacy.resume_safe, None);
+    }
+
+    #[test]
     fn test_journal_has_resumable() {
         let mut journal = SyncJournal::new(
             "/local".to_string(),
@@ -8582,6 +8681,12 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            overwrites_existing: None,
+            archive_state: None,
+            archive_receipt: None,
+            source_size: None,
+            source_mtime: None,
+            source_sha256: None,
             baseline_key: None,
             source_path: None,
             relative_path: "file.txt".to_string(),
@@ -8629,6 +8734,12 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            overwrites_existing: None,
+            archive_state: None,
+            archive_receipt: None,
+            source_size: None,
+            source_mtime: None,
+            source_sha256: None,
             baseline_key: None,
             source_path: None,
             relative_path: "a.txt".to_string(),
@@ -8644,6 +8755,12 @@ mod tests {
             uploaded_at: None,
         });
         journal.entries.push(SyncJournalEntry {
+            overwrites_existing: None,
+            archive_state: None,
+            archive_receipt: None,
+            source_size: None,
+            source_mtime: None,
+            source_sha256: None,
             baseline_key: None,
             source_path: None,
             relative_path: "b.txt".to_string(),

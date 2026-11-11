@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Ekkert að endurheimta",
             "rollbackRestoreFailed": "Endurheimt mistókst: {error}",
             "intervalHoursOne": "{count} klukkustund",
-            "intervalHoursMany": "{count} klukkustundir"
+            "intervalHoursMany": "{count} klukkustundir",
+            "resumeNeedsCompare": "Ekki er hægt að halda þessari rofnu samstillingu áfram á öruggan hátt. Berðu saman aftur áður en þú samstillir."
         },
         "ui": {
             "syncing": "Samstillir...",

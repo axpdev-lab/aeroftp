@@ -4723,6 +4723,7 @@
             "journalFound": "Interrupted sync detected",
             "journalDescription": "{completed}/{total} files completed (last updated: {date})",
             "resumeSync": "Resume",
+            "resumeNeedsCompare": "This interrupted sync cannot be resumed safely. Run a new comparison before syncing.",
             "dismissJournal": "Dismiss",
             "reportRetried": "Retried",
             "reportVerifyFailed": "Verify failed",

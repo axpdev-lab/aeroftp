@@ -3206,6 +3206,12 @@ mod tests {
         );
         for (rel, action) in paths {
             journal.entries.push(SyncJournalEntry {
+                overwrites_existing: None,
+                archive_state: None,
+                archive_receipt: None,
+                source_size: None,
+                source_mtime: None,
+                source_sha256: None,
                 baseline_key: None,
                 source_path: None,
                 relative_path: rel.to_string(),

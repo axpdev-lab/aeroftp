@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Nema ničega za vraćanje",
             "rollbackRestoreFailed": "Vraćanje nije uspjelo: {error}",
             "intervalHoursOne": "{count} sat",
-            "intervalHoursMany": "{count} h"
+            "intervalHoursMany": "{count} h",
+            "resumeNeedsCompare": "Ova prekinuta sinkronizacija ne može se sigurno nastaviti. Prije sinkronizacije ponovno usporedite."
         },
         "ui": {
             "syncing": "Sinkronizacija...",

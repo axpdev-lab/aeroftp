@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Nic do przywrócenia",
             "rollbackRestoreFailed": "Przywracanie nie powiodło się: {error}",
             "intervalHoursOne": "{count} godzina",
-            "intervalHoursMany": "{count} godz."
+            "intervalHoursMany": "{count} godz.",
+            "resumeNeedsCompare": "Nie można bezpiecznie wznowić tej przerwanej synchronizacji. Przed synchronizacją wykonaj nowe porównanie."
         },
         "ui": {
             "syncing": "Synchronizacja...",

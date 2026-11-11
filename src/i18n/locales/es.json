@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Nada que restaurar",
             "rollbackRestoreFailed": "Error al restaurar: {error}",
             "intervalHoursOne": "{count} hora",
-            "intervalHoursMany": "{count} horas"
+            "intervalHoursMany": "{count} horas",
+            "resumeNeedsCompare": "No se puede reanudar esta sincronización interrumpida de forma segura. Realiza una nueva comparación antes de sincronizar."
         },
         "ui": {
             "syncing": "Sincronizando...",

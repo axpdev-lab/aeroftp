@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "ไม่มีอะไรให้กู้คืน",
             "rollbackRestoreFailed": "กู้คืนไม่สำเร็จ: {error}",
             "intervalHoursOne": "{count} ชั่วโมง",
-            "intervalHoursMany": "{count} ชั่วโมง"
+            "intervalHoursMany": "{count} ชั่วโมง",
+            "resumeNeedsCompare": "ไม่สามารถดำเนินการซิงค์ที่ถูกขัดจังหวะนี้ต่อได้อย่างปลอดภัย โปรดเปรียบเทียบใหม่ก่อนซิงค์"
         },
         "ui": {
             "syncing": "กำลังซิงค์...",

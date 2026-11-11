@@ -66,6 +66,7 @@ async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<t
     // App's own target checks and file batch, over the fixture's live
     // connection, which a test can switch while the picker is open.
     ...f.targetChecks,
+    captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
     QueuedTargetChangedError: Error,
     uploadFile: f.uploadFile, notify: f.notify, checkOverwrite: f.checkOverwrite,
     humanLog: f.humanLog, isCancelledTransferError,

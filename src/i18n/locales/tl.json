@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Walang maibabalik",
             "rollbackRestoreFailed": "Nabigo ang pagbabalik: {error}",
             "intervalHoursOne": "{count} oras",
-            "intervalHoursMany": "{count} oras"
+            "intervalHoursMany": "{count} oras",
+            "resumeNeedsCompare": "Hindi ligtas na maipagpapatuloy ang naantalang pag-sync na ito. Magsagawa ng bagong paghahambing bago mag-sync."
         },
         "ui": {
             "syncing": "Sinsi-sync...",

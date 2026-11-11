@@ -2933,7 +2933,8 @@
             "rollbackRestoreNothing": "Niente da ripristinare",
             "rollbackRestoreFailed": "Ripristino non riuscito: {error}",
             "intervalHoursOne": "{count} ora",
-            "intervalHoursMany": "{count} ore"
+            "intervalHoursMany": "{count} ore",
+            "resumeNeedsCompare": "Impossibile riprendere in sicurezza questa sincronizzazione interrotta. Esegui un nuovo confronto prima di sincronizzare."
         },
         "ui": {
             "syncing": "Sincronizzazione...",

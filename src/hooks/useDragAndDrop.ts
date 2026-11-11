@@ -13,12 +13,14 @@
 
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { isNonFtpProvider, ProviderType } from '../types';
+import { usesProviderApi, ProviderType } from '../types';
 import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedLog';
 import { dropsIntoItself, localRowName, outermostLocalRows } from '../utils/localSelection';
 import { normalizeLocalPath } from '../utils/localPath';
+import { QueuedTargetChangedError } from '../utils/queuedTarget';
 
 export type PanelKey = 'remote' | 'local' | 'local2';
+export type RemoteDragTarget = { check: () => void; epoch: number };
 
 const isLocalPanel = (key: PanelKey): key is 'local' | 'local2' => key !== 'remote';
 
@@ -27,6 +29,15 @@ interface DragData {
     sourcePaths: string[];
     panelKey: PanelKey;
     sourceDir: string;
+    remoteTarget?: { check: () => void; epoch: Promise<{ value: number } | { error: unknown }> };
+}
+
+async function resolveRemoteDragTarget(data: DragData): Promise<RemoteDragTarget> {
+    if (!data.remoteTarget) throw new Error('CONNECTION_CHANGED: missing remote target');
+    const captured = await data.remoteTarget.epoch;
+    if ('error' in captured) throw captured.error;
+    data.remoteTarget.check();
+    return { check: data.remoteTarget.check, epoch: captured.value };
 }
 
 interface UseDragAndDropParams {
@@ -49,17 +60,18 @@ interface UseDragAndDropParams {
     currentLocalPath: string;
     /** Path of the secondary local panel (AeroFile dual-panel mode). */
     currentLocalPath2?: string;
-    loadRemoteFiles: (overrideProtocol?: string) => Promise<unknown>;
+    loadRemoteFiles: (overrideProtocol?: string, silent?: boolean, overrideScopePath?: string | null, ownership?: { epoch: number; check: () => void }) => Promise<unknown>;
     loadLocalFiles: (path: string) => Promise<boolean | void>;
     /** Loader for the secondary local panel. */
     loadLocalFiles2?: (path: string) => Promise<boolean | void>;
     activeSessionId?: string | null;
     sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;
     connectionParams?: { protocol?: string };
-    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: PanelKey) => Promise<void>;
+    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: PanelKey, target?: RemoteDragTarget) => Promise<void>;
     /** The server check of a remote move, taken when the drop starts and run
      *  right before each move: it throws once another server is live. */
     remoteActionGuard?: () => () => void;
+    captureRemoteTarget?: (check: () => void) => Promise<number>;
 }
 
 export function useDragAndDrop({
@@ -77,6 +89,7 @@ export function useDragAndDrop({
     connectionParams,
     onCrossPanelDrop,
     remoteActionGuard,
+    captureRemoteTarget,
 }: UseDragAndDropParams) {
 
     const [dragData, setDragData] = useState<DragData | null>(null);
@@ -96,7 +109,7 @@ export function useDragAndDrop({
     const isProvider = useCallback(() => {
         const effectiveProtocol = getEffectiveProtocol();
         if (!effectiveProtocol) return false;
-        return isNonFtpProvider(effectiveProtocol as ProviderType);
+        return usesProviderApi(effectiveProtocol as ProviderType);
     }, [getEffectiveProtocol]);
 
     const sourceDirFor = useCallback((key: PanelKey): string => {
@@ -143,6 +156,10 @@ export function useDragAndDrop({
         }
 
         const sourceDir = sourceDirFor(panelKey);
+        const check = panelKey === 'remote' ? remoteActionGuard?.() : undefined;
+        const remoteTarget = check && captureRemoteTarget
+            ? { check, epoch: captureRemoteTarget(check).then(value => ({ value } as const), error => ({ error } as const)) }
+            : undefined;
 
         setDragData({
             // The name each file lands under. A nested row of a local
@@ -152,6 +169,7 @@ export function useDragAndDrop({
             sourcePaths: filesToDrag.map(f => f.path),
             panelKey,
             sourceDir,
+            remoteTarget,
         });
 
         e.dataTransfer.effectAllowed = 'copyMove';
@@ -166,7 +184,7 @@ export function useDragAndDrop({
         } else {
             e.dataTransfer.setData('text/plain', filesToDrag.map(f => f.name).join(', '));
         }
-    }, [sourceDirFor, refuseLocalNameClashes]);
+    }, [sourceDirFor, refuseLocalNameClashes, remoteActionGuard, captureRemoteTarget]);
 
     /**
      * Allow dropping on files/folders within a panel
@@ -319,11 +337,16 @@ export function useDragAndDrop({
 
         const sourceIsRemote = sourceKey === 'remote';
         const targetIsRemote = targetPanelKey === 'remote';
+        let remoteOwner: RemoteDragTarget | undefined;
+        if (sourceIsRemote) {
+            try { remoteOwner = await resolveRemoteDragTarget(dragData); }
+            catch (err) { notify.error('Failed to move', String(err)); return; }
+        }
 
         // local↔remote cross-panel: upload/download via callback
         if (sourceIsRemote !== targetIsRemote) {
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath, sourceKey);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath, sourceKey, remoteOwner);
             return;
         }
 
@@ -337,7 +360,8 @@ export function useDragAndDrop({
         if (dropsIntoItself(targetPath, sourcePaths)) return;
         const useProviderCmd = isProvider();
         // The server the files were dropped on, checked before each move.
-        const onTarget = sourceIsRemote ? remoteActionGuard?.() : undefined;
+        const onTarget = remoteOwner?.check;
+        const expectedGuiTarget = remoteOwner?.epoch;
 
         for (let i = 0; i < files.length; i++) {
             const fileName = files[i];
@@ -355,9 +379,9 @@ export function useDragAndDrop({
                 if (sourceIsRemote) {
                     onTarget?.();
                     if (useProviderCmd) {
-                        await invoke('provider_rename', { from: sourcePath, to: destPath });
+                        await invoke('provider_rename', { from: sourcePath, to: destPath, expectedGuiTarget });
                     } else {
-                        await invoke('rename_remote_file', { from: sourcePath, to: destPath });
+                        await invoke('rename_remote_file', { from: sourcePath, to: destPath, expectedGuiTarget });
                     }
                 } else {
                     // Never over an existing entry: a drop asks nothing first.
@@ -368,15 +392,16 @@ export function useDragAndDrop({
             } catch (err) {
                 humanLog.logError('MOVE', { isRemote: sourceIsRemote, filename: fileName }, logId);
                 notify.error(`Failed to move ${fileName}`, String(err));
+                if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) return;
             }
         }
 
         if (sourceIsRemote) {
-            await loadRemoteFiles();
+            if (onTarget && expectedGuiTarget !== undefined) await loadRemoteFiles(undefined, true, undefined, { epoch: expectedGuiTarget, check: onTarget });
         } else {
             await refreshAfterLocal(sourceKey);
         }
-    }, [dragData, isProvider, humanLog, notify, loadRemoteFiles, refreshAfterLocal, onCrossPanelDrop, performLocalLocalTransfer, remoteActionGuard]);
+    }, [dragData, isProvider, humanLog, notify, loadRemoteFiles, refreshAfterLocal, onCrossPanelDrop, performLocalLocalTransfer, remoteActionGuard, captureRemoteTarget]);
 
     /**
      * Panel-level drag over (for cross-panel drops on empty space)
@@ -436,15 +461,20 @@ export function useDragAndDrop({
                 : currentLocalPath;
 
         if (sourceIsRemote !== targetIsRemote) {
+            let remoteOwner: RemoteDragTarget | undefined;
+            if (sourceIsRemote) {
+                try { remoteOwner = await resolveRemoteDragTarget(dragData); }
+                catch (err) { notify.error('Failed to move', String(err)); return; }
+            }
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir, sourceKey);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir, sourceKey, remoteOwner);
             return;
         }
 
         if (!sourceIsRemote && !targetIsRemote && sourceKey !== targetPanelKey) {
             await performLocalLocalTransfer(sourcePaths, files, targetDir, ctrlKey, sourceKey, targetPanelKey);
         }
-    }, [dragData, currentRemotePath, currentLocalPath, currentLocalPath2, onCrossPanelDrop, performLocalLocalTransfer]);
+    }, [dragData, currentRemotePath, currentLocalPath, currentLocalPath2, onCrossPanelDrop, performLocalLocalTransfer, notify]);
 
     /**
      * Panel-level drag leave

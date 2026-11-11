@@ -14,6 +14,7 @@
 // loop can be exercised under Vitest's `node` environment.
 
 import { withTransferRun } from './transferRun';
+import { QueuedTargetChangedError } from './queuedTarget';
 import type {
     RetryPolicy,
     VerifyPolicy,
@@ -245,6 +246,10 @@ export interface RemoteSyncCallbacks {
 export interface RemoteSyncDeps {
     /** Tauri command bridge. Injected so the loop is testable. */
     invoke: <T = unknown>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+    /** Immutable connection token and live UI check captured before any prompt. */
+    remoteTarget?: { epoch: number; assertCurrent: () => void; resumeOwnerVerified?: boolean };
+    /** Keep the live owner in memory; never serialize connection credentials. */
+    onJournalCreated?: (id: string) => void;
     /** Sleep primitive; defaults to a `setTimeout` promise. */
     delay?: (ms: number) => Promise<void>;
     /** Clock; defaults to `Date.now`. */
@@ -314,9 +319,10 @@ export const filesFromJournal = (journal: SyncJournal): SyncRunFile[] =>
             ...(e.source_path ? { sourcePath: e.source_path } : {}),
             ...(e.baseline_key ? { baselineKey: e.baseline_key } : {}),
             action: (e.action === 'upload' ? 'upload' : 'download') as SyncRunAction,
-            size: e.bytes_transferred || 0,
-            mtime: null,
-            overwritesExisting: e.action === 'download',
+            size: e.source_size ?? e.bytes_transferred ?? 0,
+            mtime: e.source_mtime ?? null,
+            expectedSha256: e.source_sha256 ?? null,
+            overwritesExisting: e.overwrites_existing ?? (e.action === 'download'),
         }));
 
 /**
@@ -421,7 +427,67 @@ const runSync = async (
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => {
-    const { invoke } = deps;
+    const resumeEntries = new Map(deps.resumeJournal?.entries.map(entry => [entry.relative_path, entry] as const));
+    if (deps.resumeJournal && (deps.resumeJournal.resume_safe !== true
+        || (!config.isLocalLocal && deps.remoteTarget?.resumeOwnerVerified !== true)
+        || (!config.isLocalLocal && (!config.profileId || deps.resumeJournal.profile_id !== config.profileId))
+        || (deps.resumeJournal.backup_dir ?? null) !== (config.versionedBackup?.dir ?? null)
+        || (deps.resumeJournal.ec_enabled === true) !== (config.errorCorrection?.enabled === true)
+        || (deps.resumeJournal.ec_enabled === true && (deps.resumeJournal.ec_pct !== config.errorCorrection?.pct
+            || (deps.resumeJournal.ec_max_file_size ?? null) !== (config.errorCorrection?.maxFileSize ?? null)))
+        || deps.resumeJournal.local_path !== stripTrailingSlash(config.localRoot)
+        || deps.resumeJournal.remote_path !== stripTrailingSlash(config.remoteRoot)
+        || JSON.stringify(deps.resumeJournal.remote_dirs ?? []) !== JSON.stringify(dirs.remote)
+        || JSON.stringify(deps.resumeJournal.local_dirs ?? []) !== JSON.stringify(dirs.local)
+        || deps.resumeJournal.entries.some(entry => (entry.archive_state != null && entry.archive_state !== 'started' && entry.archive_state !== 'archived')
+            || entry.archive_state === 'started'
+            || (entry.archive_state === 'archived' && (!entry.archive_receipt || !deps.resumeJournal?.backup_stamp))
+            || (entry.status !== 'completed' && entry.action !== 'upload' && entry.action !== 'download')
+            || (!!deps.resumeJournal?.backup_dir && entry.overwrites_existing == null))
+        || (!!deps.resumeJournal.backup_dir && files.some(file => {
+            const entry = resumeEntries.get(file.relativePath);
+            return !entry || entry.action !== journalAction(file.action)
+                || entry.overwrites_existing !== (file.overwritesExisting ?? false);
+        })))) {
+        throw new Error('SYNC_RESUME_NEEDS_COMPARE');
+    }
+    if (!config.isLocalLocal && (!deps.remoteTarget || !Number.isSafeInteger(deps.remoteTarget.epoch) || deps.remoteTarget.epoch < 0)) {
+        throw new Error('A remote sync requires a bound target');
+    }
+    let targetError: unknown = null;
+    let transferTimedOut = false;
+    const remoteCommands = new Set([
+        'reset_cancel_flag', 'set_speed_limit', 'provider_set_speed_limit', 'provider_bulk_support',
+        'provider_sync_transfer_bulk', 'provider_mkdir', 'create_remote_folder',
+        'provider_upload_file', 'provider_download_file', 'upload_file', 'download_file',
+        'provider_delete_file', 'delete_remote_file', 'sync_backup_archive_remote',
+        'sync_backup_verify_receipt',
+        'sync_remove_empty_dir', 'sync_ec_generate', 'sync_ec_verify_repair', 'ftp_noop',
+    ]);
+    const localMutations = new Set(['create_local_folder', 'delete_local_file', 'sync_backup_archive_local']);
+    const assertTarget = () => {
+        if (targetError) throw targetError;
+        try { deps.remoteTarget?.assertCurrent(); }
+        catch (error) { targetError = error; throw error; }
+    };
+    const invoke: RemoteSyncDeps['invoke'] = async (cmd, args) => {
+        if (!config.isLocalLocal && localMutations.has(cmd)) assertTarget();
+        if (config.isLocalLocal || !remoteCommands.has(cmd)) return deps.invoke(cmd, args);
+        assertTarget();
+        const epoch = deps.remoteTarget!.epoch;
+        const params = cmd === 'upload_file' || cmd === 'download_file';
+        const guardedArgs = params
+            ? { ...args, params: { ...(args?.params as Record<string, unknown>), expected_gui_target: epoch } }
+            : { ...args, expectedGuiTarget: epoch };
+        try {
+            return await deps.invoke(cmd, guardedArgs);
+        } catch (error) {
+            if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) {
+                targetError = error;
+            }
+            throw error;
+        }
+    };
     const delay = deps.delay ?? defaultDelay;
     const now = deps.now ?? Date.now;
     const makeId = deps.makeId ?? defaultMakeId;
@@ -458,7 +524,7 @@ const runSync = async (
                     let timerId: ReturnType<typeof setTimeout>;
                     const timeoutPromise = new Promise<never>((_, reject) => {
                         timerId = setTimeout(
-                            () => reject(new Error('Operation timed out')),
+                            () => { transferTimedOut = true; reject(new Error('Operation timed out')); },
                             config.retryPolicy.timeout_ms,
                         );
                     });
@@ -472,6 +538,12 @@ const runSync = async (
                 }
                 return { success: true, attempts: attempt };
             } catch (err) {
+                if (transferTimedOut) return { success: false, attempts: attempt, error: {
+                    kind: 'unknown', message: String(err), retryable: false, file_path: filePath,
+                } };
+                if (targetError) return { success: false, attempts: attempt, error: {
+                    kind: 'unknown', message: String(targetError), retryable: false, file_path: filePath,
+                } };
                 const rawMsg = (err as { toString?: () => string })?.toString?.()
                     || 'Unknown error';
                 const errorInfo = await invoke<SyncErrorInfo>('classify_transfer_error', {
@@ -516,7 +588,7 @@ const runSync = async (
     // ── Versioned backup: move the destination copy aside first ────────────
     // One stamp for the whole run, asked once, so every copy this run keeps
     // lands in the same `<dir>/<stamp>/` folder.
-    let backupStamp: string | null = null;
+    let backupStamp: string | null = deps.resumeJournal?.backup_stamp ?? null;
     /** Move one path into this run's backup folder; null when it is not there. */
     const archiveOne = async (
         side: 'local' | 'remote',
@@ -543,27 +615,54 @@ const runSync = async (
     const archiveBeforeMutation = async (
         side: 'local' | 'remote',
         relativePath: string,
+        allowMissing = false,
     ): Promise<void> => {
         const backup = config.versionedBackup;
         if (!backup) return;
+        const index = journalEntryMap.get(relativePath);
+        const entry = index === undefined ? undefined : journal.entries[index];
+        if (!entry) throw new Error(`Backup checkpoint missing for ${relativePath}`);
+        const previousReceipt = entry.archive_state === 'archived' ? entry.archive_receipt : null;
+        // Persist intent before the remote move. If the process dies before it
+        // can record the receipt, a later run must not guess whether it moved.
+        backupStamp ??= await invoke<string>('sync_backup_run_stamp');
+        journal.backup_stamp = backupStamp;
+        entry.archive_state = 'started';
+        await saveArchiveCheckpoint();
         let kept: string | null | undefined;
         try {
             kept = await archiveOne(side, backup.dir, relativePath);
         } catch (e) {
             throw new Error(`Backup failed for ${relativePath}: ${String(e)}`);
         }
+        if (kept == null && previousReceipt) {
+            const verified = await invoke<boolean>('sync_backup_verify_receipt', {
+                target: side === 'local' || config.isLocalLocal ? 'local' : config.isProvider ? 'provider' : 'ftp',
+                root: side === 'local' ? localBase : remoteBase,
+                dir: backup.dir, stamp: backupStamp, rel: relativePath, receipt: previousReceipt,
+            });
+            if (!verified) throw new Error(`Backup receipt could not be verified for ${relativePath}`);
+            kept = previousReceipt;
+        }
         if (kept == null) {
             // On the local disk "nothing to keep" is a fact: the file is not
             // there, and the transfer replaces nothing. A resumed download
             // meets it when the stopped run had already moved its copy into
             // the backup folder (a resume archives every download again).
-            if (side === 'local' || config.isLocalLocal) return;
+            if (side === 'local' || config.isLocalLocal || allowMissing) {
+                entry.archive_state = null;
+                await saveArchiveCheckpoint();
+                return;
+            }
             // On a remote it can be a server that answers "not there" for a
             // file it holds: only files the compare saw on the destination
             // reach this point, and writing anyway would lose the one copy
             // the user asked to keep.
             throw new Error(`Backup failed for ${relativePath}: the destination copy was not found, so it was left as it is`);
         }
+        entry.archive_state = 'archived';
+        entry.archive_receipt = kept;
+        await saveArchiveCheckpoint();
         // The `.aerocorrect` parity sidecar belongs to the copy just kept, so
         // it goes into the backup folder with it; most files have none. The
         // compare never lists sidecars, so one left behind would stay beside a
@@ -571,8 +670,10 @@ const runSync = async (
         // deleted, and the kept copy goes without its parity.
         if (side === 'remote') {
             const sidecarRel = `${relativePath}.aerocorrect`;
-            await archiveOne(side, backup.dir, sidecarRel).catch(() =>
-                deleteRemoteSidecar(`${remoteBase}/${relativePath}`),
+            await archiveOne(side, backup.dir, sidecarRel).catch((error) => {
+                if (targetError) throw error;
+                return deleteRemoteSidecar(`${remoteBase}/${relativePath}`);
+            },
             );
         }
     };
@@ -584,7 +685,7 @@ const runSync = async (
             : config.isProvider
                 ? invoke('provider_delete_file', { path: sidecarPath })
                 : invoke('delete_remote_file', { path: sidecarPath, isDir: false });
-        await sidecarInvoke.catch(() => undefined);
+        await sidecarInvoke.catch((error) => { if (targetError) throw error; });
     };
     /** Record a file refused before writing, by the backup step or for its name:
      *  its destination copy is untouched. */
@@ -670,11 +771,23 @@ const runSync = async (
         local_path: localBase,
         remote_path: remoteBase,
         ...(config.profileId ? { profile_id: config.profileId } : {}),
+        resume_safe: true,
+        backup_dir: config.versionedBackup?.dir ?? null,
+        backup_stamp: null,
+        ec_enabled: errorCorrectionEnabled,
+        ec_pct: errorCorrectionEnabled ? config.errorCorrection!.pct : null,
+        ec_max_file_size: errorCorrectionEnabled ? config.errorCorrection!.maxFileSize ?? null : null,
+        remote_dirs: [...dirs.remote],
+        local_dirs: [...dirs.local],
         direction: config.direction,
         retry_policy: config.retryPolicy,
         verify_policy: config.verifyPolicy,
         entries: files.map<SyncJournalEntry>((f) => ({
             relative_path: f.relativePath,
+            overwrites_existing: f.overwritesExisting ?? false,
+            source_size: f.size,
+            source_mtime: f.mtime,
+            source_sha256: f.expectedSha256 ?? null,
             source_path: f.sourcePath ?? null,
             ...(f.baselineKey != null ? { baseline_key: f.baselineKey } : {}),
             action: journalAction(f.action),
@@ -687,6 +800,7 @@ const runSync = async (
         })),
         completed: false,
     };
+    if (!deps.resumeJournal) deps.onJournalCreated?.(journal.id);
     const journalEntryMap = new Map<string, number>();
     // The local file of each transfer as the index records it, for the files
     // this run knows no time of (a remote that lists none, a run resumed from
@@ -728,6 +842,11 @@ const runSync = async (
     const saveJournal = async (): Promise<void> => {
         if (!journalEnabled) return;
         await invoke('save_sync_journal_cmd', { journal }).catch(() => undefined);
+    };
+    // Unlike routine progress, an archive checkpoint must be durable before
+    // another phase can act on the destination.
+    const saveArchiveCheckpoint = async (): Promise<void> => {
+        if (journalEnabled) await invoke('save_sync_journal_cmd', { journal });
     };
     await saveJournal();
 
@@ -829,10 +948,11 @@ const runSync = async (
             const idx = journalEntryMap.get(f.relativePath);
             setStatus(f.relativePath, 'syncing');
             if (idx !== undefined) journal.entries[idx].status = 'in_progress';
-            if (config.versionedBackup && f.overwritesExisting) {
+            if (config.versionedBackup && (f.overwritesExisting || deps.resumeJournal)) {
                 try {
-                    await archiveBeforeMutation(action === 'upload' ? 'remote' : 'local', f.relativePath);
+                    await archiveBeforeMutation(action === 'upload' ? 'remote' : 'local', f.relativePath, !f.overwritesExisting);
                 } catch (error) {
+                    if (targetError) throw error;
                     bulkPrepared.set(f.relativePath, { status: 'backup_failed', error });
                     continue;
                 }
@@ -864,7 +984,8 @@ const runSync = async (
                         ? Math.ceil(config.retryPolicy.timeout_ms / 1000)
                         : null,
                 });
-            } catch {
+            } catch (error) {
+                if (targetError) throw error;
                 // Refused before any file went (connection changed, no bulk
                 // any more): these files and the rest of the run go one by one.
                 bulk = null;
@@ -919,6 +1040,7 @@ const runSync = async (
     // error) is not a new folder, so it is not counted -- the receipt now
     // reconciles with the compare's directory-inclusive difference count.
     for (const dir of [...remoteParentDirs].sort(byDepth)) {
+        if (targetError) break;
         try {
             await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` });
             dirsCreated++;
@@ -927,6 +1049,7 @@ const runSync = async (
         }
     }
     for (const dir of [...localParentDirs].sort(byDepth)) {
+        if (targetError) break;
         try {
             await invoke('create_local_folder', { path: `${localBase}/${dir}` });
             dirsCreated++;
@@ -937,6 +1060,7 @@ const runSync = async (
 
     // ── Create standalone empty directories (counted in dirsCreated) ───────
     for (const dir of [...dirs.remote].sort(byDepth)) {
+        if (targetError) break;
         try {
             await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` });
             dirsCreated++;
@@ -946,6 +1070,7 @@ const runSync = async (
         }
     }
     for (const dir of [...dirs.local].sort(byDepth)) {
+        if (targetError) break;
         const problem = localNameProblems.get(dir);
         if (problem) {
             const errInfo: SyncErrorInfo = {
@@ -988,6 +1113,15 @@ const runSync = async (
     // ── Main per-file loop ─────────────────────────────────────────────────
     let completed = 0;
     for (let i = 0; i < files.length; i++) {
+        if (!config.isLocalLocal && !targetError) {
+            try { assertTarget(); } catch { /* stop and checkpoint below */ }
+        }
+        if (targetError || transferTimedOut) {
+            runCancelled = true;
+            for (let j = i; j < files.length; j++) setStatus(files[j].relativePath, 'skipped');
+            skipped += files.length - i;
+            break;
+        }
         const item = files[i];
         const entryIdx = journalEntryMap.get(item.relativePath);
         const journalEntry = entryIdx !== undefined ? journal.entries[entryIdx] : undefined;
@@ -1023,7 +1157,8 @@ const runSync = async (
         // is, whatever happened since: it went before the budget or a Stop.
         if (bulkEligible(item) && !bulkPrepared.has(item.relativePath)
             && !(config.transferBudget > 0 && totalBytes >= config.transferBudget) && !isCancelled()) {
-            await runBulkGroup(i);
+            try { await runBulkGroup(i); } catch (error) { if (!targetError) throw error; }
+            if (targetError) { i--; continue; }
         }
         const fromBulk = bulkPrepared.get(item.relativePath);
         const sentByBulk = fromBulk !== undefined && fromBulk.status !== 'not_attempted';
@@ -1067,9 +1202,9 @@ const runSync = async (
                 callbacks.onProgress?.(completed, files.length);
                 continue;
             }
-            if (!preparedByBulk && config.versionedBackup && item.overwritesExisting) {
+            if (!preparedByBulk && config.versionedBackup && (item.overwritesExisting || deps.resumeJournal)) {
                 try {
-                    await archiveBeforeMutation('remote', item.relativePath);
+                    await archiveBeforeMutation('remote', item.relativePath, !item.overwritesExisting);
                 } catch (e) {
                     failBackup(item, journalEntry, e);
                     completed++;
@@ -1128,6 +1263,11 @@ const runSync = async (
                         recordEcStatus('generate_failed', journalEntry);
                     }
                 }
+                if (targetError) {
+                    if (journalEntry) journalEntry.status = 'failed';
+                    setStatus(item.relativePath, 'error', String(targetError));
+                    continue;
+                }
                 captureDeltaForPath(item.relativePath);
                 setStatus(item.relativePath, 'success');
             } else {
@@ -1151,9 +1291,9 @@ const runSync = async (
                 callbacks.onProgress?.(completed, files.length);
                 continue;
             }
-            if (!preparedByBulk && config.versionedBackup && item.overwritesExisting) {
+            if (!preparedByBulk && config.versionedBackup && (item.overwritesExisting || deps.resumeJournal)) {
                 try {
-                    await archiveBeforeMutation('local', item.relativePath);
+                    await archiveBeforeMutation('local', item.relativePath, !item.overwritesExisting);
                 } catch (e) {
                     failBackup(item, journalEntry, e);
                     completed++;
@@ -1198,6 +1338,11 @@ const runSync = async (
                     } catch {
                         recordEcStatus('verify_failed', journalEntry);
                     }
+                }
+                if (targetError) {
+                    if (journalEntry) journalEntry.status = 'failed';
+                    setStatus(item.relativePath, 'error', String(targetError));
+                    continue;
                 }
                 const vResult = config.authenticatedRemoteContent
                     ? null
@@ -1380,6 +1525,13 @@ const runSync = async (
     // failed (transfer or verification). App.tsx offers Resume only when
     // `journal && !journal.completed`, so a partially failed run must keep
     // the journal; a fully successful run still deletes it.
+    if (!config.isLocalLocal && !targetError) {
+        try { assertTarget(); } catch { /* record below */ }
+    }
+    if (targetError) {
+        runCancelled = true;
+        errors.push({ kind: 'unknown', message: String(targetError), retryable: false, file_path: '' });
+    }
     journal.completed = !runCancelled && errors.length === 0;
     await saveJournal();
     if (journalEnabled && journal.completed) {
@@ -1427,7 +1579,7 @@ const runSync = async (
     // The index records every entry that landed (size / mtime / is_dir) and
     // drops every entry a successful delete removed. It is a pure
     // optimisation + bisync-state aid: a failure here never fails the run.
-    if (deps.writeIndex) {
+    if (deps.writeIndex && !targetError) {
         try {
             const existing = await invoke<SyncIndex | null>('load_sync_index_cmd', {
                 localPath: localBase,

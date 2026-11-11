@@ -98,6 +98,10 @@ pub struct ProviderState {
     /// Bumped on every connection change (connect swap, disconnect, hard lock)
     /// so a stale cached key can never be re-armed onto a new connection.
     connection_generation: Arc<AtomicU64>,
+    /// Changes whenever either GUI transport or its path interpretation changes.
+    /// Unlike `connection_generation`, this also covers view-only overlay changes
+    /// and the legacy FTP manager without invalidating cached overlay keys.
+    gui_target_epoch: AtomicU64,
     /// Restored transfers pin a verified connection across multi-phase work.
     /// Swaps, disconnects and overlay mutations take the write side before
     /// touching the provider slot or changing how its paths are interpreted.
@@ -156,6 +160,7 @@ impl ProviderState {
             cached_overlay: std::sync::Mutex::new(None),
             overlay_activation_id: std::sync::Mutex::new(None),
             connection_generation: Arc::new(AtomicU64::new(0)),
+            gui_target_epoch: AtomicU64::new(0),
             transfer_owner_gate: RwLock::new(()),
             connected_profile_id: std::sync::Mutex::new(None),
             config: Arc::new(Mutex::new(None)),
@@ -173,6 +178,7 @@ impl ProviderState {
     /// Bind an optional restored-transfer generation before any remote I/O.
     /// Keep the returned guard through the whole command, including DAG lock
     /// releases and folder phases. Dropping/error/cancellation releases the pin.
+    #[cfg(test)]
     async fn pin_transfer_owner(
         &self,
         expected_generation: Option<u64>,
@@ -181,6 +187,27 @@ impl ProviderState {
         expected_crypt_scope: Option<&str>,
         remote_path: &str,
     ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        self.pin_gui_transfer_owner(
+            None,
+            expected_generation,
+            expected_profile_id,
+            require_crypt_overlay,
+            expected_crypt_scope,
+            remote_path,
+        )
+        .await
+    }
+
+    async fn pin_gui_transfer_owner(
+        &self,
+        expected_gui_target: Option<u64>,
+        expected_generation: Option<u64>,
+        expected_profile_id: Option<&str>,
+        require_crypt_overlay: bool,
+        expected_crypt_scope: Option<&str>,
+        remote_path: &str,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let pin = self.pin_gui_target(expected_gui_target).await?;
         let Some(expected) = expected_generation else {
             if require_crypt_overlay
                 || expected_profile_id.is_some()
@@ -190,7 +217,7 @@ impl ProviderState {
                     "{CONNECTION_CHANGED_MARKER}: encrypted resume requires a connection owner"
                 ));
             }
-            return Ok(None);
+            return Ok(pin);
         };
         let expected_profile =
             expected_profile_id
@@ -200,7 +227,12 @@ impl ProviderState {
                     "{CONNECTION_CHANGED_MARKER}: restored transfer requires a saved profile owner"
                 )
                 })?;
-        let pin = self.transfer_owner_gate.read().await;
+        // Do not reacquire a read lock when a writer is queued: Tokio's fair
+        // RwLock would otherwise deadlock with the read guard held above.
+        let pin = match pin {
+            Some(pin) => pin,
+            None => self.transfer_owner_gate.read().await,
+        };
         let mut provider = self.provider.lock().await;
         let profile_matches = self
             .connected_profile_id
@@ -267,10 +299,33 @@ impl ProviderState {
         Ok(pin)
     }
 
+    /// Pin a GUI operation to the transport and overlay observed by its caller.
+    /// Every writer of that target holds the write side while advancing the epoch.
+    pub(crate) async fn pin_gui_target(
+        &self,
+        expected: Option<u64>,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let Some(expected) = expected else {
+            return Ok(None);
+        };
+        let pin = self.transfer_owner_gate.read().await;
+        if self.gui_target_epoch.load(Ordering::SeqCst) != expected {
+            return Err(format!(
+                "{CONNECTION_CHANGED_MARKER}: the remote target changed; nothing was done"
+            ));
+        }
+        Ok(Some(pin))
+    }
+
+    /// Called only while holding `transfer_owner_write` when the GUI target changes.
+    pub(crate) fn advance_gui_target(&self) {
+        self.gui_target_epoch.fetch_add(1, Ordering::SeqCst);
+    }
+
     /// Writers leave the current connection/overlay untouched if a pinned
     /// transfer cannot finish within the bound. In particular, scoped cleanup
     /// must never cancel somebody else's active transfer to obtain this lock.
-    async fn transfer_owner_write(
+    pub(crate) async fn transfer_owner_write(
         &self,
         wait: Duration,
     ) -> Result<tokio::sync::RwLockWriteGuard<'_, ()>, String> {
@@ -513,6 +568,7 @@ impl ProviderState {
 
     fn invalidate_overlay_key_cache(&self) {
         self.connection_generation.fetch_add(1, Ordering::SeqCst);
+        self.advance_gui_target();
         self.clear_overlay_key_cache();
     }
 
@@ -2180,8 +2236,10 @@ async fn provider_arm_crypt_capability_inner(
     state: &ProviderState,
     expected_generation: Option<u64>,
 ) -> Result<(), String> {
+    let _change = state.transfer_owner_write(Duration::from_secs(30)).await?;
     let _guard = state.provider.lock().await;
     ensure_overlay_connection_generation(state, expected_generation)?;
+    state.advance_gui_target();
     state.arm_crypt_capability();
     Ok(())
 }
@@ -2391,6 +2449,7 @@ async fn provider_apply_crypt_overlay_inner(
     let _overlay_change = state.transfer_owner_write(Duration::from_secs(30)).await?;
     let mut guard = state.provider.lock().await;
     ensure_overlay_connection_generation(state, params.expected_generation)?;
+    state.advance_gui_target();
     let result = {
         match crate::crypt_overlay_provider::apply_overlay_in_place(
             &mut guard,
@@ -2630,6 +2689,7 @@ async fn discard_crypt_activation_with_wait(
     if state.connection_generation.load(Ordering::SeqCst) != expected_generation || !owner_matches {
         return Ok(false);
     }
+    state.advance_gui_target();
     let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     state.clear_overlay_key_cache();
@@ -2651,6 +2711,7 @@ async fn clear_crypt_overlay_with_wait(
     state.cancel_storage_reads();
     let _overlay_change = state.transfer_owner_write(wait).await?;
     let mut guard = state.provider.lock().await;
+    state.advance_gui_target();
     let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
     state.set_overlay_activation_id(None);
     if full {
@@ -2672,6 +2733,7 @@ pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Res
     let removed = {
         let _overlay_change = state.transfer_owner_write(Duration::from_secs(30)).await?;
         let mut guard = state.provider.lock().await;
+        state.advance_gui_target();
         let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
         state.set_overlay_activation_id(None);
         state.overlay_wrapped.store(false, Ordering::SeqCst);
@@ -2712,6 +2774,7 @@ pub async fn provider_rearm_cached_crypt_overlay(
     let (keys, scope, kind) = state
         .cached_overlay_for_rearm()
         .ok_or_else(|| "no cached overlay key for this connection".to_string())?;
+    state.advance_gui_target();
     // Revert any existing overlay first so we never stack two decorators, then
     // take the raw inner, wrap it with the cached keys, and put it back.
     crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
@@ -3045,7 +3108,9 @@ pub async fn provider_list_files(
     state: State<'_, ProviderState>,
     listing_cancel: State<'_, ListingCancelState>,
     path: Option<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     crate::panic_safe::catch(
         "provider_list_files",
         run_cancellable_listing(
@@ -3115,7 +3180,9 @@ pub async fn provider_change_dir(
     listing_cancel: State<'_, ListingCancelState>,
     path: String,
     expected_generation: Option<u64>,
+    expected_gui_target: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     run_cancellable_listing(
         &listing_cancel,
         provider_change_dir_inner(&app, &state, path, expected_generation),
@@ -3920,13 +3987,15 @@ pub async fn provider_download_file(
     use_delta: Option<bool>,
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<String, String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -4502,13 +4571,15 @@ pub async fn provider_download_folder(
     timeout_seconds: Option<u64>,
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -4569,13 +4640,15 @@ pub async fn provider_upload_folder(
     retry_count: Option<u32>,
     timeout_seconds: Option<u64>,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -4640,6 +4713,8 @@ pub async fn provider_upload_folder(
 /// folder to walk.
 #[derive(Debug, Deserialize)]
 pub struct ProviderFileBatchParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     #[serde(default)]
     no_clobber: bool,
     entries: Vec<TransferEntry>,
@@ -4761,6 +4836,7 @@ pub async fn provider_download_files_batch(
     state: State<'_, ProviderState>,
     params: ProviderFileBatchParams,
 ) -> Result<ProviderFileBatchOutcome, String> {
+    let _target = state.pin_gui_target(params.expected_gui_target).await?;
     let _transfer_guard = TransferInProgressGuard::acquire();
     let cancel_token = state.reset_cancel_state().await;
     run_provider_file_batch(
@@ -4782,6 +4858,7 @@ pub async fn provider_upload_files_batch(
     state: State<'_, ProviderState>,
     params: ProviderFileBatchParams,
 ) -> Result<ProviderFileBatchOutcome, String> {
+    let _target = state.pin_gui_target(params.expected_gui_target).await?;
     // Same fail-closed guard as `provider_upload_file`, over every target.
     let targets: Vec<&str> = params
         .entries
@@ -6523,13 +6600,15 @@ pub async fn provider_upload_file(
     use_delta: Option<bool>,
     resume: Option<bool>,
     no_clobber: Option<bool>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<String, String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -7027,7 +7106,9 @@ pub async fn provider_mkdir(
     state: State<'_, ProviderState>,
     path: String,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store,
     // unless the target is provably outside the overlay anchor (#390).
     state.guard_no_raw_crypt_write_outside("Create directory", &[&path])?;
@@ -7069,7 +7150,9 @@ pub async fn provider_delete_file(
     state: State<'_, ProviderState>,
     path: String,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     // The raw view exposes raw paths. Deletion removes the selected object and
     // cannot inject plaintext, so it remains available with CRYPT off (#390).
 
@@ -7108,7 +7191,9 @@ pub async fn provider_delete_dir(
     path: String,
     recursive: bool,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     // As for file deletion, use the path selected in the current raw/wrapped
     // view. The plaintext-injection guard applies to writes, not removals.
 
@@ -7196,7 +7281,9 @@ pub async fn provider_rename(
     state: State<'_, ProviderState>,
     from: String,
     to: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     // Fail-closed: renaming through the raw backend while the overlay is
     // unwrapped would create a cleartext name in the encrypted store. Allowed
     // when BOTH endpoints are provably outside the overlay anchor (#390), which
@@ -7237,6 +7324,13 @@ pub async fn provider_connection_generation(
     state: State<'_, ProviderState>,
 ) -> Result<u64, String> {
     Ok(state.connection_generation.load(Ordering::SeqCst))
+}
+
+/// Opaque identity for a GUI action; only compare it through `pin_gui_target`.
+#[tauri::command]
+pub async fn provider_gui_target_epoch(state: State<'_, ProviderState>) -> Result<u64, String> {
+    let _target = state.transfer_owner_gate.read().await;
+    Ok(state.gui_target_epoch.load(Ordering::SeqCst))
 }
 
 /// Change a remote entry's permission bits through the active provider
@@ -7299,7 +7393,9 @@ pub async fn provider_server_copy(
     state: State<'_, ProviderState>,
     from: String,
     to: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     // Fail-closed: a raw server-side copy while the overlay is unwrapped would
     // land a cleartext-named object in the encrypted store (the content stays
     // ciphertext but the name never gets encrypted), orphaning it from the
@@ -8361,7 +8457,9 @@ pub async fn provider_create_share_link(
     expires_in_secs: Option<u64>,
     password: Option<String>,
     permissions: Option<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<ShareLinkResult, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -8584,7 +8682,9 @@ pub async fn provider_set_speed_limit(
     state: State<'_, ProviderState>,
     upload_kb: u64,
     download_kb: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -10536,13 +10636,15 @@ pub async fn opendrive_set_path_privacy(
     path: String,
     is_public: bool,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<(), String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -10590,7 +10692,9 @@ pub async fn opendrive_set_path_access(
     path: String,
     access_level: String,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let level = crate::providers::opendrive::OpenDriveAccessLevel::from_token(&access_level)
         .ok_or_else(|| {
             format!(
@@ -10643,13 +10747,15 @@ pub async fn fourshared_set_path_privacy(
     path: String,
     is_public: bool,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<(), String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -10826,7 +10932,9 @@ pub async fn box_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remot
 pub async fn box_trash_files(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Box {
@@ -11168,7 +11276,9 @@ pub async fn filelu_set_file_password(
     state: State<'_, ProviderState>,
     path: String,
     password: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11189,7 +11299,9 @@ pub async fn filelu_set_file_privacy(
     state: State<'_, ProviderState>,
     path: String,
     only_me: bool,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11209,7 +11321,9 @@ pub async fn filelu_set_file_privacy(
 pub async fn filelu_clone_file(
     state: State<'_, ProviderState>,
     path: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11228,7 +11342,9 @@ pub async fn filelu_set_folder_password(
     state: State<'_, ProviderState>,
     path: String,
     password: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11250,7 +11366,9 @@ pub async fn filelu_set_folder_settings(
     path: String,
     filedrop: bool,
     is_public: bool,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -12171,7 +12289,9 @@ pub async fn gitlab_batch_upload(
     state: State<'_, ProviderState>,
     files: Vec<serde_json::Value>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -12230,7 +12350,9 @@ pub async fn gitlab_batch_delete(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -13290,7 +13412,9 @@ pub async fn github_batch_upload(
     state: State<'_, ProviderState>,
     files: Vec<serde_json::Value>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -13336,7 +13460,9 @@ pub async fn github_batch_delete(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -14933,6 +15059,94 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn gui_target_pin_serializes_writers_and_refuses_the_old_epoch() {
+        let state = ProviderState::new();
+        // No saved profile is needed for a GUI quick-connect target.
+        let pin = state.pin_gui_target(Some(0)).await.unwrap().unwrap();
+        assert!(state.transfer_owner_gate.try_write().is_err());
+        drop(pin);
+        {
+            let _change = state.transfer_owner_gate.try_write().unwrap();
+            state.advance_gui_target();
+        }
+        assert!(state
+            .pin_gui_target(Some(0))
+            .await
+            .unwrap_err()
+            .contains(CONNECTION_CHANGED_MARKER));
+        assert!(state.pin_gui_target(Some(1)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn gui_pin_keeps_the_target_until_the_waiting_switch_can_complete() {
+        let state = Arc::new(ProviderState::new());
+        let pin = state.pin_gui_target(Some(0)).await.unwrap();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let switch = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                let _ = started.send(());
+                let _writer = state
+                    .transfer_owner_write(Duration::from_secs(2))
+                    .await
+                    .unwrap();
+                state.advance_gui_target();
+            })
+        };
+        ready.await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(!switch.is_finished());
+        drop(pin);
+        switch.await.unwrap();
+        assert!(state.pin_gui_target(Some(0)).await.is_err());
+        // Returning to a connection with the same fields does not revive A.
+        {
+            let _writer = state
+                .transfer_owner_write(Duration::from_secs(2))
+                .await
+                .unwrap();
+            state.advance_gui_target();
+        }
+        assert!(state.pin_gui_target(Some(0)).await.is_err());
+        assert!(state.pin_gui_target(Some(2)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn gui_epoch_covers_overlay_arm_and_clear_without_changing_resume_generation() {
+        let state = ProviderState::new();
+        provider_arm_crypt_capability_inner(&state, Some(0))
+            .await
+            .unwrap();
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 0);
+        assert!(state.pin_gui_target(Some(0)).await.is_err());
+        clear_crypt_overlay_with_wait(&state, false, Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 0);
+        assert!(state.pin_gui_target(Some(1)).await.is_err());
+        assert!(state.pin_gui_target(Some(2)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_gui_operation_releases_its_target_pin() {
+        let state = Arc::new(ProviderState::new());
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let task = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                let _pin = state.pin_gui_target(Some(0)).await.unwrap();
+                let _ = started.send(());
+                std::future::pending::<()>().await;
+            })
+        };
+        ready.await.unwrap();
+        assert!(state.transfer_owner_gate.try_write().is_err());
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(state.transfer_owner_gate.try_write().is_ok());
+    }
 
     /// The editor's remote read is bound to the connection it was opened on:
     /// refused once another connection took the slot, and while it holds the
@@ -18278,6 +18492,7 @@ mod tests {
             CancellationToken::new(),
             direction,
             super::ProviderFileBatchParams {
+                expected_gui_target: None,
                 no_clobber: false,
                 entries,
                 max_concurrent: Some(max_concurrent),
@@ -18567,6 +18782,7 @@ mod tests {
             CancellationToken::new(),
             TransferDirection::Upload,
             super::ProviderFileBatchParams {
+                expected_gui_target: None,
                 no_clobber: false,
                 entries,
                 max_concurrent: Some(1),
@@ -18642,6 +18858,7 @@ mod tests {
             CancellationToken::new(),
             TransferDirection::Download,
             super::ProviderFileBatchParams {
+                expected_gui_target: None,
                 no_clobber: false,
                 entries,
                 max_concurrent: Some(3),

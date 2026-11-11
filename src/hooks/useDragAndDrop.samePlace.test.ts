@@ -11,6 +11,7 @@ const tauri = vi.hoisted(() => ({ invoke: vi.fn(async (_cmd: string, _args?: unk
 vi.mock('@tauri-apps/api/core', () => ({ invoke: tauri.invoke }));
 
 import { useDragAndDrop, type PanelKey } from './useDragAndDrop';
+import { QueuedTargetChangedError } from '../utils/queuedTarget';
 
 type Drag = ReturnType<typeof useDragAndDrop>;
 type Row = { name: string; path: string; is_dir: boolean };
@@ -18,11 +19,71 @@ type Row = { name: string; path: string; is_dir: boolean };
 let root: Root | null = null;
 let drag: Drag | null = null;
 
-beforeEach(() => tauri.invoke.mockClear());
+beforeEach(() => { tauri.invoke.mockReset(); tauri.invoke.mockResolvedValue(undefined); });
 afterEach(async () => {
     await act(async () => root?.unmount());
     root = null;
     drag = null;
+});
+
+it('pins an FTP-provider drop and stops after its target changes', async () => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    let server = 'A';
+    const refresh = vi.fn(async () => undefined);
+    tauri.invoke.mockImplementation(async (cmd: string) => {
+        if (cmd === 'provider_rename') server = 'B';
+        return undefined;
+    });
+    const Probe = () => {
+        drag = useDragAndDrop({
+            notify: { success: () => null, error: () => null },
+            humanLog: { logStart: () => 'id', logSuccess: () => 'id', logError: () => 'id' },
+            currentRemotePath: '/remote', currentLocalPath: '/local',
+            connectionParams: { protocol: 'ftp' }, loadRemoteFiles: refresh, loadLocalFiles: async () => true,
+            remoteActionGuard: () => { const original = server; return () => {
+                if (server !== original) throw new QueuedTargetChangedError('target changed');
+            }; },
+            captureRemoteTarget: async check => { check(); return 9; },
+        });
+        return null;
+    };
+    root = createRoot(document.createElement('div'));
+    await act(async () => root!.render(createElement(Probe)));
+    const rows = ['one', 'two'].map(name => ({ name, path: `/remote/${name}`, is_dir: false }));
+    await act(async () => drag!.handleDragStart(event(), rows[0], 'remote', new Set(['one', 'two']), rows));
+    await act(async () => drag!.handleDrop(event(), '/remote/dest', 'remote'));
+    expect(tauri.invoke.mock.calls).toEqual([
+        ['provider_rename', { from: '/remote/one', to: '/remote/dest/one', expectedGuiTarget: 9 }],
+    ]);
+    expect(refresh).not.toHaveBeenCalled();
+});
+
+it('refuses a remote drag if the server changes before the drop', async () => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    let server = 'A';
+    const crossPanel = vi.fn(async () => undefined);
+    const Probe = () => {
+        drag = useDragAndDrop({
+            notify: { success: () => null, error: () => null },
+            humanLog: { logStart: () => 'id', logSuccess: () => 'id', logError: () => 'id' },
+            currentRemotePath: '/remote', currentLocalPath: '/local',
+            connectionParams: { protocol: 'ftp' }, loadRemoteFiles: async () => undefined, loadLocalFiles: async () => true,
+            onCrossPanelDrop: crossPanel,
+            remoteActionGuard: () => { const original = server; return () => {
+                if (server !== original) throw new QueuedTargetChangedError('target changed');
+            }; },
+            captureRemoteTarget: async check => { check(); return 9; },
+        });
+        return null;
+    };
+    root = createRoot(document.createElement('div'));
+    await act(async () => root!.render(createElement(Probe)));
+    const row = { name: 'one', path: '/remote/one', is_dir: false };
+    await act(async () => drag!.handleDragStart(event(), row, 'remote', new Set(['one']), [row]));
+    server = 'B';
+    await act(async () => drag!.handlePanelDrop(event(), 'local'));
+    expect(crossPanel).not.toHaveBeenCalled();
+    expect(tauri.invoke).not.toHaveBeenCalled();
 });
 
 const event = () => ({

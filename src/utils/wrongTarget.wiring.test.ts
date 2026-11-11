@@ -477,6 +477,22 @@ describe('a queued transfer', () => {
         expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/up.txt`]);
         expect(f.row('q0')).toMatchObject({ status: 'completed' });
     });
+
+    it('refuses the actual Retry when its overwrite prompt switches the target', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [remote('up.txt')] },
+            policy: 'ask', fail: (command, call) => command === 'provider_upload_file' && call === 1 ? 'Connection reset' : undefined });
+        f.checkOverwrite.mockResolvedValue({ action: 'overwrite', destinationExists: true });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        expect(f.row('q0')).toMatchObject({ status: 'error' });
+        f.checkOverwrite.mockImplementation(async () => {
+            f.switchServer();
+            return { action: 'overwrite', destinationExists: true };
+        });
+        await f.retryAllFailedItems();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file')).toHaveLength(1);
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'reconnect_ftp')).toHaveLength(0);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedForAnotherServer' });
+    });
 });
 
 /**
@@ -543,9 +559,9 @@ describe('a switch to another server while the overwrite question is open', () =
         ]) {
             // Up to the next closure declared at App's own level.
             const body = between(APP_CODE, head, '\n  const ');
-            expect(body).toContain('const onQueuedTarget = queuedTargetGuard(queuedTarget);');
+            expect(body).toContain('queuedTargetGuard(queuedTarget);');
             const writes = body.split(/await (?:uploadFile|downloadFile)\(/).slice(1).map(call => call.slice(0, call.indexOf(';')));
-            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget\)$/);
+            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget, expectedGuiTarget\)$/);
         }
         const batch = between(APP_CODE, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);
@@ -589,12 +605,16 @@ describe('remote files cut on one server and pasted after a switch to another', 
         expect(f.notify.error).toHaveBeenCalledWith('contextMenu.paste', 'transfer.pasteFromAnotherServer');
     });
 
-    it('moves them once their server is live again', async () => {
+    it('requires a fresh cut after the captured target was interrupted', async () => {
         const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
         cutOnA(f);
         f.switchServer();
         await f.clipboardPaste(false, SUB);
         f.switchServer({ server: 'a.example' });
+        await f.clipboardPaste(false, SUB);
+        expect(f.written()).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', isRemote: true });
+        cutOnA(f);
         await f.clipboardPaste(false, SUB);
         expect(f.written()).toEqual(names.map(n => `${SUB}/${n}`));
         expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_delete_file').map(([, args]) => args!.path))
@@ -795,15 +815,17 @@ describe('a direct remote action', () => {
     });
 
     it('takes the target when the dialog it is answered from opens', () => {
-        expect(APP).toContain('setInlineRename({ path, name, isRemote, target: isRemote ? snapshotQueuedTarget() : undefined });');
-        expect(APP).toContain('setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target: snapshotQueuedTarget() });');
-        expect(APP.match(/setSyncNavDialog\(\{ [^}]*isRemote: true[^}]*target: snapshotQueuedTarget\(\) \}\)/g)).toHaveLength(2);
+        expect(between(APP_CODE, 'const startInlineRename =', 'const commitInlineRename =')).toContain('prepareGuiTarget(remoteActionGuard(target))');
+        expect(APP_CODE).toContain('setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target, preparedTarget: prepareGuiTarget(remoteActionGuard(target)) });');
+        expect(APP.match(/setSyncNavDialog\(\{ [^}]*isRemote: true[^}]*preparedTarget: prepareGuiTarget\(remoteActionGuard\(target\)\) \}\)/g)).toHaveLength(2);
     });
 
     it('moves a dropped remote file only on the server it was dropped on', () => {
-        const move = between(codeOnly(DRAG), '        if (dropsIntoItself(targetPath, sourcePaths)) return;', '            } catch (err) {');
-        expect(move).toContain("const onTarget = sourceIsRemote ? remoteActionGuard?.() : undefined;");
+        const move = between(codeOnly(DRAG), '        if (dropsIntoItself(targetPath, sourcePaths)) return;', "humanLog.logError('MOVE'");
+        expect(move).toContain('const onTarget = remoteOwner?.check;');
         expect(move).toMatch(/onTarget\?\.\(\);\n\s+if \(useProviderCmd\) \{\n\s+await invoke\('provider_rename'/);
+        expect(move).toContain('const expectedGuiTarget = remoteOwner?.epoch;');
+        expect(DRAG).toContain('remoteOwner = await resolveRemoteDragTarget(dragData)');
         expect(APP).toContain('remoteActionGuard: () => remoteActionGuard(),');
     });
 
@@ -867,7 +889,8 @@ describe('the private step after a batch upload', () => {
  */
 describe('a delete that asks for a commit message', () => {
     const run = async () => {
-        const source = between(APP, '  const deleteRemoteFile = (', '\n  const renameFile = (');
+        const source = between(APP, '  const captureGuiTarget =', '\n  const getOverwriteDestination =')
+            + between(APP, '  const deleteRemoteFile = (', '\n  const renameFile = (');
         const { code } = await transformWithOxc(source, 'delete.ts');
         const live = { server: 'a.example' };
         // The guard of a direct action: bound to the server live when it is taken.
@@ -875,7 +898,7 @@ describe('a delete that asks for a commit message', () => {
             const at = live.server;
             return () => { if (live.server !== at) throw new QueuedTargetChangedError('toast.remoteTargetChanged'); };
         };
-        const invoke = vi.fn(async () => undefined);
+        const invoke = vi.fn(async (command: string) => command === 'provider_gui_target_epoch' ? 7 : undefined);
         const dialog: { onCommit?: (message: string) => void } = {};
         const notify = { success: vi.fn(), error: vi.fn() };
         const context: Record<string, unknown> = {
@@ -899,7 +922,7 @@ describe('a delete that asks for a commit message', () => {
         r.live.server = 'b.example';
         r.dialog.onCommit!('sentinel message');
         await flush();
-        expect(r.invoke).not.toHaveBeenCalled();
+        expect(r.invoke.mock.calls.filter(([name]) => name === 'provider_delete_file')).toHaveLength(0);
         expect(r.notify.error).toHaveBeenCalled();
     });
 
@@ -908,6 +931,6 @@ describe('a delete that asks for a commit message', () => {
         r.deleteRemoteFile('/repo/a.txt', false);
         r.dialog.onCommit!('sentinel message');
         await flush();
-        expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message' });
+        expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message', expectedGuiTarget: 7 });
     });
 });

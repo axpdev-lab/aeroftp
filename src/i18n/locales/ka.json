@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "აღსადგენი არაფერია",
             "rollbackRestoreFailed": "აღდგენა ვერ მოხერხდა: {error}",
             "intervalHoursOne": "{count} საათი",
-            "intervalHoursMany": "{count} საათი"
+            "intervalHoursMany": "{count} საათი",
+            "resumeNeedsCompare": "ამ შეწყვეტილი სინქრონიზაციის უსაფრთხოდ გაგრძელება შეუძლებელია. სინქრონიზაციამდე ხელახლა შეადარეთ."
         },
         "ui": {
             "syncing": "სინქრონიზაცია...",

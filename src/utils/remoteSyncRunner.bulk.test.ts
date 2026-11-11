@@ -19,6 +19,7 @@ import type { SyncErrorInfo, SyncJournal } from '../types';
 
 const config = (over: Partial<RemoteSyncConfig> = {}): RemoteSyncConfig => ({
     localRoot: '/home/u/work',
+    profileId: 'A',
     remoteRoot: '/my-files/work',
     isProvider: true,
     isFtp: false,
@@ -61,7 +62,7 @@ const harness = (handlers: Record<string, Handler> = {}, support = { upload: tru
         }
         return undefined as T;
     };
-    const deps: RemoteSyncDeps = { invoke, delay: async () => undefined, now: () => 0, makeId: () => 'journal' };
+    const deps: RemoteSyncDeps = { invoke, remoteTarget: { resumeOwnerVerified: true, epoch: 1, assertCurrent: () => undefined }, delay: async () => undefined, now: () => 0, makeId: () => 'journal' };
     const of = (cmd: string) => calls.filter((c) => c.cmd === cmd);
     const sent = () => of('provider_sync_transfer_bulk').map((c) => (c.args?.items as BulkItem[]).map((i) => i.remotePath));
     const journal = () => [...calls].reverse().find((c) => c.cmd === 'save_sync_journal_cmd')?.args?.journal as SyncJournal;
@@ -239,6 +240,8 @@ describe('remoteSyncRunner on a native bulk', () => {
     it('does not send again what a resumed run already finished', async () => {
         const run = files(4, 'upload');
         const resumeJournal: SyncJournal = {
+            resume_safe: true,
+            profile_id: 'A',
             id: 'resume',
             created_at: '2026-10-24T05:00:00Z',
             updated_at: '2026-10-24T05:00:00Z',
@@ -297,10 +300,14 @@ describe('remoteSyncRunner on a native bulk', () => {
     // there is a fact, and the download goes on (it failed on every resume).
     it('resumes downloads whose copies a stopped run already kept, on the bulk and one by one', async () => {
         for (const support of [{ upload: true, download: true }, { upload: false, download: false }]) {
-            const h = harness({ sync_backup_run_stamp: () => 'stamp', sync_backup_archive_local: () => null }, support);
+            const h = harness({ sync_backup_run_stamp: () => 'stamp', sync_backup_archive_local: () => null, sync_backup_verify_receipt: () => true }, support);
             const run = files(3, 'download');
             const resumeJournal: SyncJournal = {
+            resume_safe: true,
+            profile_id: 'A',
                 id: 'resume',
+                backup_dir: '.v',
+                backup_stamp: 'stamp',
                 created_at: '2026-10-24T05:00:00Z',
                 updated_at: '2026-10-24T05:00:00Z',
                 local_path: '/home/u/work',
@@ -310,6 +317,9 @@ describe('remoteSyncRunner on a native bulk', () => {
                 verify_policy: 'none',
                 entries: run.map((f) => ({
                     relative_path: f.relativePath,
+                    overwrites_existing: true,
+                    archive_state: 'archived',
+                    archive_receipt: `/home/u/work/.v/stamp/${f.relativePath}`,
                     source_path: null,
                     action: 'download',
                     status: 'in_progress',

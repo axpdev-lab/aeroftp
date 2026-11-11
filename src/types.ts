@@ -559,6 +559,7 @@ export interface ConnectionParams {
 }
 
 export interface DownloadParams {
+  expected_gui_target?: number;
   remote_path: string;
   local_path: string;
   modified?: string;
@@ -566,6 +567,7 @@ export interface DownloadParams {
 }
 
 export interface UploadParams {
+  expected_gui_target?: number;
   local_path: string;
   remote_path: string;
   use_delta?: boolean;
@@ -1486,6 +1488,12 @@ export interface SyncJournalEntry {
   baseline_key?: string | null;
   source_path?: string | null;
   relative_path: string;
+  overwrites_existing?: boolean;
+  archive_state?: 'started' | 'archived' | null;
+  archive_receipt?: string | null;
+  source_size?: number | null;
+  source_mtime?: string | null;
+  source_sha256?: string | null;
   action: string;
   status: JournalEntryStatus;
   attempts: number;
@@ -1508,6 +1516,15 @@ export interface SyncJournal {
   remote_path: string;
   /** The saved profile this journal belongs to, as on {@link SyncIndex}. */
   profile_id?: string;
+  /** False or absent when the interrupted plan cannot safely be reconstructed. */
+  resume_safe?: boolean;
+  backup_dir?: string | null;
+  backup_stamp?: string | null;
+  ec_enabled?: boolean;
+  ec_pct?: number | null;
+  ec_max_file_size?: number | null;
+  remote_dirs?: string[];
+  local_dirs?: string[];
   direction: SyncDirection;
   retry_policy: RetryPolicy;
   verify_policy: VerifyPolicy;

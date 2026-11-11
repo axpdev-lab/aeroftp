@@ -21,7 +21,8 @@ function closure(name: string, endMarker: string) {
   return app.slice(start, end);
 }
 const { code } = await transformWithOxc(
-  (app.includes('const getOverwriteDestination =') ? closure('getOverwriteDestination', '\n  // Helper: check folder overwrite') : '')
+  closure('captureGuiTarget', '\n  const getOverwriteDestination =')
+  + (app.includes('const getOverwriteDestination =') ? closure('getOverwriteDestination', '\n  // Helper: check folder overwrite') : '')
   + closure('downloadFile', '\n  const uploadFile =')
   + closure('uploadFile', '\n  // The retry of an item restored from the journal')
   + closure('runFileBatch', '\n  const uploadMultipleFiles ='),
@@ -46,6 +47,7 @@ function fixture(options: { direction: Direction; policy?: Policy; destination?:
   const destination = options.destination ?? [file('a.bin')];
   const panel = options.panel ?? [];
   const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
+    if (command === 'provider_gui_target_epoch') return 7;
     if (['get_local_files', 'provider_list_files'].includes(command)) {
       await options.beforeListing?.();
       if (options.failListing) throw new Error('Destination listing refused');
@@ -153,6 +155,7 @@ describe('a file of panel 2 brings its own size and modified date to the overwri
       // One server for the whole paste (the clipboard's server check is in wrongTarget.wiring.test.ts).
       snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlay: null }),
       queuedTargetProblem: () => null, queuedTargetGuard: () => () => undefined,
+      captureGuiTarget: async () => 7,
     };
     const { clipboardPaste } = new Function(...Object.keys(context), `${pasteCode}; return { clipboardPaste };`)(...Object.values(context));
     await clipboardPaste(true, '/remote');

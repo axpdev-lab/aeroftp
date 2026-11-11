@@ -2668,7 +2668,8 @@
             "rollbackRestoreNothing": "復元するものはありません",
             "rollbackRestoreFailed": "復元に失敗しました: {error}",
             "intervalHoursOne": "{count} 時間",
-            "intervalHoursMany": "{count} 時間"
+            "intervalHoursMany": "{count} 時間",
+            "resumeNeedsCompare": "中断された同期を安全に再開できません。同期する前に、もう一度比較を実行してください。"
         },
         "ui": {
             "syncing": "同期中...",

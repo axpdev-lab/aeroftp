@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Τίποτα για επαναφορά",
             "rollbackRestoreFailed": "Η επαναφορά απέτυχε: {error}",
             "intervalHoursOne": "{count} ώρα",
-            "intervalHoursMany": "{count} ώρες"
+            "intervalHoursMany": "{count} ώρες",
+            "resumeNeedsCompare": "Αυτός ο διακοπείς συγχρονισμός δεν μπορεί να συνεχιστεί με ασφάλεια. Εκτελέστε νέα σύγκριση πριν από τον συγχρονισμό."
         },
         "ui": {
             "syncing": "Συγχρονισμός...",

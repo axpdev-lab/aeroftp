@@ -30,6 +30,7 @@ const RETRY: RetryPolicy = {
 
 const baseConfig = (over: Partial<RemoteSyncConfig> = {}): RemoteSyncConfig => ({
     localRoot: '/home/u/work',
+    profileId: 'A',
     remoteRoot: '/srv/data',
     isProvider: false,
     isFtp: false,
@@ -97,6 +98,7 @@ const noWaitDeps = (
     extra: Partial<RemoteSyncDeps> = {},
 ): RemoteSyncDeps => ({
     invoke,
+    remoteTarget: { resumeOwnerVerified: true, epoch: 1, assertCurrent: () => undefined },
     delay: async () => undefined,
     now: () => 0,
     makeId: () => 'test-journal-id',
@@ -345,6 +347,7 @@ describe('remoteSyncRunner: versioned backup', () => {
         expect(report.uploaded).toBe(1);
         const archive = calls.find((c) => c.cmd === 'sync_backup_archive_remote');
         expect(archive?.args).toEqual({
+            expectedGuiTarget: 1,
             useProvider: false,
             root: '/srv/data',
             dir: '.aeroftp-versions',
@@ -402,7 +405,7 @@ describe('remoteSyncRunner: versioned backup', () => {
         // and only as an empty folder.
         expect(calls.some((c) => c.cmd === 'provider_delete_file' || c.cmd === 'delete_local_file')).toBe(false);
         expect(calls.filter((c) => c.cmd === 'sync_remove_empty_dir').map((c) => c.args))
-            .toEqual([{ target: 'provider', path: '/srv/data/empty-dir' }]);
+            .toEqual([{ target: 'provider', path: '/srv/data/empty-dir', expectedGuiTarget: 1 }]);
     });
 
     it('asks for one stamp per run however many copies it keeps', async () => {
@@ -512,7 +515,7 @@ describe('remoteSyncRunner: versioned backup', () => {
         expect(report.errors).toEqual([]);
         expect(report.deleted).toBe(1);
         expect(calls.find((c) => c.cmd === 'delete_remote_file')?.args)
-            .toEqual({ path: '/srv/data/gone.txt.aerocorrect', isDir: false });
+            .toEqual({ path: '/srv/data/gone.txt.aerocorrect', isDir: false, expectedGuiTarget: 1 });
     });
 
     it('does not archive or delete a sidecar that is not there', async () => {
@@ -636,7 +639,7 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
             noWaitDeps(invoke),
         );
         expect(folderRemovals(calls, '/srv/data/docs')).toEqual([
-            { cmd: 'sync_remove_empty_dir', args: { target: 'ftp', path: '/srv/data/docs' } },
+            { cmd: 'sync_remove_empty_dir', args: { target: 'ftp', path: '/srv/data/docs', expectedGuiTarget: 1 } },
         ]);
         expect(report.deleted).toBe(0);
         expect(report.skipped).toBe(1);
@@ -674,7 +677,7 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
             {},
             noWaitDeps(invoke),
         );
-        expect(folderRemovals(calls, path)).toEqual([{ cmd: 'sync_remove_empty_dir', args: { target, path } }]);
+        expect(folderRemovals(calls, path)).toEqual([{ cmd: 'sync_remove_empty_dir', args: { target, path, ...('isLocalLocal' in over ? {} : { expectedGuiTarget: 1 }) } }]);
         expect(report.deleted).toBe(1);
     });
 
@@ -863,6 +866,8 @@ describe('remoteSyncRunner — cancellation and budget', () => {
 describe('remoteSyncRunner — journal resume', () => {
     it('skips entries the resumed journal already completed', async () => {
         const resumeJournal: SyncJournal = {
+            resume_safe: true,
+            profile_id: 'A',
             id: 'j1',
             created_at: '2026-05-22T09:00:00Z',
             updated_at: '2026-05-22T09:05:00Z',
@@ -896,6 +901,8 @@ describe('remoteSyncRunner — journal resume', () => {
 
     it('retries failed journal entries on resume and skips completed ones', async () => {
         const resumeJournal: SyncJournal = {
+            resume_safe: true,
+            profile_id: 'A',
             id: 'j-fail',
             created_at: '2026-05-22T09:00:00Z',
             updated_at: '2026-05-22T09:05:00Z',
@@ -974,8 +981,10 @@ describe('remoteSyncRunner — journal resume', () => {
             .toEqual(['/home/u/work/b.txt', '/home/u/work/c.txt']);
     });
 
-    it('retries skipped entries saved by an older cancelled journal', async () => {
+    it('retries skipped entries saved by a cancelled journal', async () => {
         const resumeJournal: SyncJournal = {
+            resume_safe: true,
+            profile_id: 'A',
             id: 'j-skipped',
             created_at: '2026-05-22T09:00:00Z',
             updated_at: '2026-05-22T09:05:00Z',
@@ -1160,7 +1169,7 @@ describe('remoteSyncRunner — progress + bandwidth', () => {
             noWaitDeps(invoke),
         );
         const limitCall = calls.find((c) => c.cmd === 'set_speed_limit');
-        expect(limitCall?.args).toEqual({ downloadKb: 512, uploadKb: 256 });
+        expect(limitCall?.args).toEqual({ downloadKb: 512, uploadKb: 256, expectedGuiTarget: 1 });
     });
 });
 
@@ -1228,7 +1237,7 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
                 savedIndex = args?.index as Record<string, unknown>;
             },
         });
-        await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig({ profileId: undefined }), {}, noWaitDeps(invoke, { writeIndex: true }));
         expect(lastSavedJournal(calls)).not.toHaveProperty('profile_id');
         expect(savedIndex).not.toHaveProperty('profile_id');
     });
@@ -1363,6 +1372,8 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
     // runs' entries forward).
     it('keeps the index time of a download the resumed journal finished', async () => {
         const resumeJournal: SyncJournal = {
+            resume_safe: true,
+            profile_id: 'A',
             id: 'j-landed',
             created_at: '2026-09-26T09:00:00Z',
             updated_at: '2026-09-26T09:05:00Z',
@@ -1414,6 +1425,8 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
     });
 
     const resumeOf = (entries: SyncJournal['entries']): SyncJournal => ({
+        resume_safe: true,
+            profile_id: 'A',
         id: 'j-resume',
         created_at: '2026-09-26T09:00:00Z',
         updated_at: '2026-09-26T09:05:00Z',

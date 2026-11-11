@@ -38,7 +38,11 @@ async fn bulk_support(state: &ProviderState) -> BulkSupport {
 /// native call. AeroSync asks once when a run starts; a provider without
 /// the bulk keeps the run on its single-file commands.
 #[tauri::command]
-pub async fn provider_bulk_support(state: State<'_, ProviderState>) -> Result<BulkSupport, String> {
+pub async fn provider_bulk_support(
+    state: State<'_, ProviderState>,
+    expected_gui_target: Option<u64>,
+) -> Result<BulkSupport, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     Ok(bulk_support(&state).await)
 }
 
@@ -53,9 +57,18 @@ pub async fn provider_sync_transfer_bulk(
     upload: bool,
     items: Vec<SyncBulkItem>,
     timeout_seconds: Option<u64>,
+    expected_gui_target: Option<u64>,
 ) -> Result<Vec<SyncBulkResult>, String> {
     let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app));
-    sync_transfer_bulk(&state, &sink, upload, &items, timeout_seconds).await
+    sync_transfer_bulk(
+        &state,
+        &sink,
+        upload,
+        &items,
+        timeout_seconds,
+        expected_gui_target,
+    )
+    .await
 }
 
 async fn sync_transfer_bulk(
@@ -64,7 +77,9 @@ async fn sync_transfer_bulk(
     upload: bool,
     items: &[SyncBulkItem],
     timeout_seconds: Option<u64>,
+    expected_gui_target: Option<u64>,
 ) -> Result<Vec<SyncBulkResult>, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     if items.is_empty() {
         return Ok(Vec::new());
     }
@@ -236,7 +251,25 @@ mod tests {
 
     async fn run(state: &ProviderState, upload: bool) -> Result<Vec<SyncBulkResult>, String> {
         let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
-        sync_transfer_bulk(state, &sink, upload, &items(), None).await
+        sync_transfer_bulk(state, &sink, upload, &items(), None, None).await
+    }
+
+    #[tokio::test]
+    async fn stale_gui_bulk_is_refused_before_the_replacement_provider_is_used() {
+        let (state, calls) = connected(true);
+        {
+            let _change = state
+                .transfer_owner_write(std::time::Duration::from_secs(1))
+                .await
+                .unwrap();
+            state.advance_gui_target();
+        }
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        let error = sync_transfer_bulk(&state, &sink, true, &items(), None, Some(0))
+            .await
+            .unwrap_err();
+        assert!(error.contains("CONNECTION_CHANGED"), "{error}");
+        assert_eq!(*calls.lock().unwrap(), 0);
     }
 
     #[tokio::test]

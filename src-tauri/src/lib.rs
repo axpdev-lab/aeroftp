@@ -1633,6 +1633,8 @@ pub struct ConnectionParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct DownloadParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     remote_path: String,
     local_path: String,
     /// Remote file modification timestamp (ISO 8601) for mtime preservation
@@ -1644,6 +1646,8 @@ pub struct DownloadParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct UploadParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     local_path: String,
     remote_path: String,
     #[serde(default = "default_true")]
@@ -1656,6 +1660,8 @@ const fn default_true() -> bool {
 
 #[derive(Serialize, Deserialize)]
 pub struct DownloadFolderParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     remote_path: String,
     local_path: String,
     #[serde(default)]
@@ -1670,6 +1676,8 @@ pub struct DownloadFolderParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct UploadFolderParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     local_path: String,
     remote_path: String,
     #[serde(default)]
@@ -1684,6 +1692,8 @@ pub struct UploadFolderParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct FileTransferBatchParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     entries: Vec<transfer_domain::TransferEntry>,
     #[serde(default)]
     max_concurrent: Option<u32>,
@@ -3485,18 +3495,20 @@ async fn install_windows_update(
 #[tauri::command]
 async fn connect_ftp(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
     params: ConnectionParams,
 ) -> Result<(), String> {
     panic_safe::catch(
         "connect_ftp",
-        connect_ftp_inner(state, cancel_registry, params),
+        connect_ftp_inner(state, provider_state, cancel_registry, params),
     )
     .await
 }
 
 async fn connect_ftp_inner(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
     params: ConnectionParams,
 ) -> Result<(), String> {
@@ -3515,6 +3527,10 @@ async fn connect_ftp_inner(
         .as_deref()
         .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
+    let _change = provider_state
+        .transfer_owner_write(std::time::Duration::from_secs(30))
+        .await?;
+    provider_state.advance_gui_target();
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
@@ -3554,7 +3570,14 @@ async fn connect_ftp_inner(
 }
 
 #[tauri::command]
-async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
+async fn disconnect_ftp(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    let _change = provider_state
+        .transfer_owner_write(std::time::Duration::from_secs(30))
+        .await?;
+    provider_state.advance_gui_target();
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
         .disconnect()
@@ -3564,7 +3587,12 @@ async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
+async fn ftp_noop(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
         .noop()
@@ -3574,7 +3602,14 @@ async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn reconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
+async fn reconnect_ftp(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    let _change = provider_state
+        .transfer_owner_write(std::time::Duration::from_secs(30))
+        .await?;
+    provider_state.advance_gui_target();
     info!("Attempting FTP reconnection");
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
@@ -3586,7 +3621,12 @@ async fn reconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn list_files(state: State<'_, AppState>) -> Result<FileListResponse, String> {
+async fn list_files(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+) -> Result<FileListResponse, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     let files = ftp_manager
@@ -3605,8 +3645,11 @@ async fn list_files(state: State<'_, AppState>) -> Result<FileListResponse, Stri
 #[tauri::command]
 async fn change_directory(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<FileListResponse, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     ftp_manager
@@ -3632,8 +3675,12 @@ async fn change_directory(
 async fn download_file(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: DownloadParams,
 ) -> Result<String, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     // Check if already cancelled (batch stop): bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
@@ -3777,6 +3824,9 @@ async fn upload_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams,
 ) -> Result<String, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     // Check if already cancelled (batch stop): bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
@@ -4037,8 +4087,12 @@ async fn upload_file(
 async fn download_files_batch(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: FileTransferBatchParams,
 ) -> Result<String, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
     }
@@ -4277,8 +4331,12 @@ async fn download_files_batch(
 async fn upload_files_batch(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: FileTransferBatchParams,
 ) -> Result<String, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
     }
@@ -4932,8 +4990,12 @@ async fn scan_ftp_download_entries(
 async fn download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: DownloadFolderParams,
 ) -> Result<transfer_domain::FolderTransferOutcome, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -5481,8 +5543,12 @@ async fn prepare_ftp_upload_entries(
 async fn upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadFolderParams,
 ) -> Result<transfer_domain::FolderTransferOutcome, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -5768,7 +5834,9 @@ async fn stop_starting_transfers(
 async fn reset_cancel_flag(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     state.reset_cancel_state().await;
     provider_state.reset_cancel_state().await;
     Ok(())
@@ -5779,9 +5847,12 @@ async fn reset_cancel_flag(
 #[tauri::command]
 async fn set_speed_limit(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     download_kb: u64,
     upload_kb: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     state
         .speed_limits
         .download_bps
@@ -6519,9 +6590,12 @@ async fn collect_ftp_delete_tree(
 async fn delete_remote_file(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     let file_name = path.split('/').next_back().unwrap_or(&path).to_string();
@@ -7172,9 +7246,12 @@ async fn delete_local_file_inner(
 #[tauri::command]
 async fn rename_remote_file(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     from: String,
     to: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     ftp_manager
@@ -7186,7 +7263,13 @@ async fn rename_remote_file(
 }
 
 #[tauri::command]
-async fn create_remote_folder(state: State<'_, AppState>, path: String) -> Result<(), String> {
+async fn create_remote_folder(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    path: String,
+    expected_gui_target: Option<u64>,
+) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     ftp_manager
@@ -12994,6 +13077,8 @@ async fn sync_ec_upload_remote_file(
     remote_path: &str,
 ) -> Result<(), String> {
     if sync_ec_use_provider(provider_state, is_provider).await {
+        provider_state
+            .guard_no_raw_crypt_write_outside("Upload AeroSync parity", &[remote_path])?;
         let mut provider_lock = provider_state.provider.lock().await;
         let provider = provider_lock
             .as_mut()
@@ -13068,7 +13153,9 @@ async fn sync_ec_generate(
     pct: Option<u32>,
     max_file_size: Option<u64>,
     is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
 ) -> Result<SyncEcCommandResult, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let options = sync::SyncErrorCorrectionOptions {
         enabled: true,
         pct: pct.unwrap_or(crate::error_correction::ERROR_CORRECTION_DEFAULT_PCT),
@@ -13148,7 +13235,9 @@ async fn sync_ec_verify_repair(
     expected_sha256: Option<String>,
     expected_mtime: Option<String>,
     is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
 ) -> Result<SyncEcCommandResult, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let Some(expected_sha256) = expected_sha256.filter(|s| !s.trim().is_empty()) else {
         return Ok(SyncEcCommandResult {
             status: SyncEcStatus::MissingExpectedHash,
@@ -14555,7 +14644,9 @@ async fn get_transfer_optimization_hints(
 #[tauri::command]
 async fn sftp_probe_delta_eligibility(
     provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
 ) -> Result<DeltaEligibilityProbeResult, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let (active_session_is_sftp, server_identity) = {
         let config_lock = provider_state.config.lock().await;
         let config = config_lock.as_ref();
@@ -16507,7 +16598,9 @@ async fn sync_backup_archive_remote(
     dir: String,
     stamp: String,
     rel: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<Option<String>, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
     sync::validate_relative_path(&rel)?;
     let archived = if use_provider {
@@ -16526,6 +16619,54 @@ async fn sync_backup_archive_remote(
     archived.map_err(|e| format!("Backup of {} failed: {}", rel, e))
 }
 
+/// Verify a persisted archive receipt before a resumed sync relies on it.
+#[tauri::command]
+async fn sync_backup_verify_receipt(
+    app_state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    target: String,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+    receipt: String,
+    expected_gui_target: Option<u64>,
+) -> Result<bool, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
+    let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
+    sync::validate_relative_path(&rel)?;
+    if !sync_backup::archive_receipt_matches(&root, &dir, &stamp, &rel, &receipt, target == "local")
+    {
+        return Ok(false);
+    }
+    match target.as_str() {
+        "local" => {
+            validate_path(&root)?;
+            match tokio::fs::symlink_metadata(&receipt).await {
+                Ok(_) => Ok(true),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+                Err(e) => Err(e.to_string()),
+            }
+        }
+        "provider" => {
+            let mut lock = provider_state.provider.lock().await;
+            lock.as_mut()
+                .ok_or("Not connected to any provider")?
+                .exists(&receipt)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        "ftp" => app_state
+            .ftp_manager
+            .lock()
+            .await
+            .exists(&receipt)
+            .await
+            .map_err(|e| e.to_string()),
+        _ => Err("Invalid backup receipt target".to_string()),
+    }
+}
+
 /// Remove a folder a sync emptied, only if it is empty (`sync_empty_dir`):
 /// `"removed"`, `"kept:entries"` when its listing shows something, or
 /// `"kept:server"` when the server refused it as not empty while its listing
@@ -16539,7 +16680,9 @@ async fn sync_remove_empty_dir(
     provider_state: State<'_, provider_commands::ProviderState>,
     target: String,
     path: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let removal = match target.as_str() {
         "local" => {
             validate_path(&path)?;
@@ -22647,6 +22790,7 @@ pub fn run() {
             sync_backup_remote_move,
             sync_backup_archive_local,
             sync_backup_archive_remote,
+            sync_backup_verify_receipt,
             sync_remove_empty_dir,
             generate_share_link,
             generate_share_link_remote,
@@ -23005,6 +23149,7 @@ pub fn run() {
             provider_commands::provider_rename,
             provider_commands::provider_chmod,
             provider_commands::provider_connection_generation,
+            provider_commands::provider_gui_target_epoch,
             provider_commands::provider_server_copy,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
@@ -27521,6 +27666,26 @@ mod sync_backup_archive_local_tests {
             .await;
             assert!(outcome.is_err(), "{root:?} was accepted: {outcome:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod sync_ec_target_guard_tests {
+    #[tokio::test]
+    async fn refuses_parity_upload_when_raw_crypt_is_armed() {
+        let app = super::AppState::new();
+        let provider = super::provider_commands::ProviderState::new();
+        provider.arm_crypt_capability();
+        let error = super::sync_ec_upload_remote_file(
+            &app,
+            &provider,
+            Some(true),
+            "/tmp/parity",
+            "/vault/file.aerocorrect",
+        )
+        .await
+        .expect_err("raw parity upload must be refused");
+        assert!(error.contains("crypt overlay"), "{error}");
     }
 }
 

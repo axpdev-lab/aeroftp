@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Inget att återställa",
             "rollbackRestoreFailed": "Återställningen misslyckades: {error}",
             "intervalHoursOne": "{count} timme",
-            "intervalHoursMany": "{count} timmar"
+            "intervalHoursMany": "{count} timmar",
+            "resumeNeedsCompare": "Den avbrutna synkroniseringen kan inte återupptas på ett säkert sätt. Gör en ny jämförelse före synkronisering."
         },
         "ui": {
             "syncing": "Synkroniserar...",

@@ -1,0 +1,297 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+
+import { describe, expect, it, vi } from 'vitest';
+import { runRemoteSync, type RemoteSyncConfig, type SyncRunFile } from './remoteSyncRunner';
+import { QueuedTargetChangedError } from './queuedTarget';
+import type { SyncJournal } from '../types';
+
+const file = (relativePath: string, action: SyncRunFile['action'] = 'upload', extra: Partial<SyncRunFile> = {}): SyncRunFile =>
+    ({ relativePath, action, size: 10, mtime: null, ...extra });
+
+const config = (extra: Partial<RemoteSyncConfig> = {}): RemoteSyncConfig => ({
+    localRoot: '/local', remoteRoot: '/remote', isProvider: true, isFtp: false,
+    retryPolicy: { max_retries: 2, base_delay_ms: 1, max_delay_ms: 1, timeout_ms: 0, backoff_multiplier: 1 },
+    verifyPolicy: 'none', deltaSyncEnabled: false, transferBudget: 0, direction: 'bidirectional', ...extra,
+});
+
+const remote = new Set(['provider_bulk_support', 'provider_sync_transfer_bulk', 'provider_mkdir',
+    'provider_upload_file', 'provider_download_file', 'provider_delete_file', 'sync_backup_archive_remote',
+    'sync_remove_empty_dir', 'sync_ec_generate', 'sync_ec_verify_repair']);
+
+type Trigger = 'first-file' | 'mkdir' | 'retry' | 'archive' | 'sidecar' | 'bulk' | 'directory';
+function harness(trigger: Trigger) {
+    let current: 'A' | 'B' = 'A';
+    const operations = { A: [] as string[], B: [] as string[] };
+    const attempts: string[] = [];
+    let journal: SyncJournal | undefined;
+    const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        if (cmd === 'save_sync_journal_cmd') journal = structuredClone(args?.journal) as SyncJournal;
+        if (cmd === 'sync_backup_run_stamp') return 'stamp' as T;
+        if (cmd === 'classify_transfer_error') return { kind: 'unknown', message: 'temporary', retryable: true } as T;
+        if (remote.has(cmd)) {
+            attempts.push(cmd);
+            // The backend acquires the ownership gate and checks the epoch
+            // before selecting its provider; a rejected call never touches B.
+            if (args?.expectedGuiTarget !== 1 || current !== 'A') throw 'CONNECTION_CHANGED';
+            operations[current].push(cmd);
+            if (cmd === 'provider_bulk_support') return { upload: trigger === 'bulk', download: false } as T;
+            if (trigger === 'bulk' && cmd === 'provider_sync_transfer_bulk') {
+                current = 'B';
+                throw 'CONNECTION_CHANGED';
+            }
+            if (trigger === 'retry' && cmd === 'provider_upload_file') throw new Error('temporary');
+            if ((trigger === 'first-file' && cmd === 'provider_upload_file')
+                || (trigger === 'mkdir' && cmd === 'provider_mkdir')
+                || (trigger === 'archive' && cmd === 'sync_backup_archive_remote')
+                || (trigger === 'directory' && cmd === 'sync_remove_empty_dir')
+                || (trigger === 'sidecar' && cmd === 'provider_delete_file' && String(args?.path).endsWith('.aerocorrect'))) current = 'B';
+            if (cmd === 'sync_backup_archive_remote') return '/kept' as T;
+            if (cmd === 'sync_remove_empty_dir') return 'removed' as T;
+        }
+        return undefined as T;
+    };
+    return {
+        operations, attempts, journal: () => journal,
+        deps: {
+            invoke,
+            remoteTarget: { resumeOwnerVerified: true, epoch: 1, assertCurrent: () => { if (current !== 'A') throw new QueuedTargetChangedError('target changed'); } },
+            delay: async () => { if (trigger === 'retry') current = 'B'; },
+            now: () => 0, makeId: () => 'target-test', writeIndex: true,
+        },
+    };
+}
+
+describe('remote sync target ownership', () => {
+    it.each([
+        ['first-file', [file('one'), file('two')], {}],
+        ['mkdir', [file('nested/one'), file('nested/two')], {}],
+        ['retry', [file('one'), file('two')], {}],
+        ['archive', [file('one', 'upload', { overwritesExisting: true }), file('two')], { versionedBackup: { dir: '.versions' } }],
+        ['sidecar', [file('one', 'delete-remote'), file('two')], {}],
+        ['bulk', [file('one'), file('two')], {}],
+        ['directory', [file('one', 'delete-remote', { isDir: true }), file('two', 'delete-remote', { isDir: true })], {}],
+    ] as const)('stops without touching B after a change during %s', async (trigger, files, extra) => {
+        const h = harness(trigger);
+        const report = await runRemoteSync([...files], { remote: [], local: [] }, config(extra), {}, h.deps);
+        expect(h.operations.B).toEqual([]);
+        expect(report.cancelled).toBe(true);
+        expect(report.errors.some(error => !error.retryable)).toBe(true);
+        expect(h.journal()?.completed).toBe(false);
+        if (trigger === 'bulk') expect(h.attempts.filter(cmd => cmd === 'provider_upload_file')).toEqual([]);
+        if (trigger === 'retry') expect(h.attempts.filter(cmd => cmd === 'provider_upload_file')).toHaveLength(1);
+    });
+
+    it('requires remote ownership and leaves local-local runs independent', async () => {
+        const invoke = async <T,>() => undefined as T;
+        await expect(runRemoteSync([], { remote: [], local: [] }, config(), {}, { invoke })).rejects.toThrow('bound target');
+        const report = await runRemoteSync([], { remote: [], local: [] }, config({ isLocalLocal: true }), {}, { invoke });
+        expect(report.cancelled).toBe(false);
+    });
+
+    it.each([
+        [null, true],
+        [{ dir: '.versions' }, true],
+    ])('records whether the run policy can be reconstructed (%s)', async (versionedBackup, safe) => {
+        const h = harness('first-file');
+        await runRemoteSync([file('one')], { remote: [], local: [] },
+            config({ versionedBackup }), {}, h.deps);
+        expect(h.journal()?.resume_safe).toBe(safe);
+    });
+
+    it('does not retry a timed-out command that may still be running', async () => {
+        vi.useFakeTimers();
+        try {
+            const h = harness('first-file');
+            const calls: string[] = [];
+            const invoke: typeof h.deps.invoke = async (cmd, args) => {
+                if (cmd === 'provider_upload_file') {
+                    calls.push(cmd);
+                    return new Promise(() => {});
+                }
+                return h.deps.invoke(cmd, args);
+            };
+            const pending = runRemoteSync([file('one'), file('two')], { remote: [], local: [] },
+                config({ retryPolicy: { ...config().retryPolicy, timeout_ms: 50 } }), {}, { ...h.deps, invoke });
+            await vi.advanceTimersByTimeAsync(100);
+            const report = await pending;
+            expect(calls).toHaveLength(1);
+            expect(report.cancelled).toBe(true);
+            expect(report.errors[0].retryable).toBe(false);
+            expect(h.journal()?.completed).toBe(false);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('leaves the upload resumable when the target changes before EC generation', async () => {
+        const h = harness('first-file');
+        const report = await runRemoteSync([file('one')], { remote: [], local: [] },
+            config({ errorCorrection: { enabled: true, pct: 10 } }), {}, h.deps);
+        expect(report.cancelled).toBe(true);
+        expect(h.operations.B).toEqual([]);
+        expect(h.journal()?.entries[0].status).toBe('failed');
+        expect(h.journal()?.completed).toBe(false);
+    });
+});
+
+it.each([undefined, 'B'])('refuses a resume journal with owner %s on profile A', async (owner) => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const runConnectedRemoteSync =');
+    const end = app.indexOf('  // GAP-10: shared local-local sync launcher', start);
+    const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-resume.ts');
+    const notify = { error: vi.fn(), info: vi.fn() };
+    const context = {
+        useLatestCallback: (fn: unknown) => fn,
+        snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'sftp' } }),
+        remoteJournalOwnersRef: { current: new Map([['j', { profileId: 'A', params: { protocol: 'sftp' } }]]) },
+        queuedTargetProblem: () => null,
+        queuedTargetGuard: () => () => {}, notify, t: (key: string) => key,
+    };
+    const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('one')], { remote: [], local: [] }, { profileId: 'A', resumeJournal: { id: 'j', profile_id: owner } });
+    expect(notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged');
+});
+
+it.each(['missing', 'changed'])('refuses a resume when the original in-memory owner is %s', async (condition) => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const runConnectedRemoteSync =');
+    const end = app.indexOf('  // GAP-10: shared local-local sync launcher', start);
+    const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-owner.ts');
+    const notify = { error: vi.fn(), info: vi.fn() };
+    const context = {
+        useLatestCallback: (fn: unknown) => fn,
+        remoteJournalOwnersRef: { current: new Map(condition === 'missing' ? [] : [['j', { profileId: 'A' }]]) },
+        queuedTargetProblem: () => condition === 'changed' ? 'transfer.queuedForAnotherServer' : null,
+        notify, t: (key: string) => key,
+    };
+    const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('one')], { remote: [], local: [] }, { resumeJournal: { id: 'j', profile_id: 'A' } });
+    expect(notify.error).toHaveBeenCalledWith('aerosync.title', 'syncPanel.resumeNeedsCompare');
+});
+
+it.each([undefined, false])('refuses a journal without safe resume policy (%s)', async (resumeSafe) => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const handleResumeJournal =');
+    const end = app.indexOf('  const { dismissJournal:', start);
+    const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-resume-policy.ts');
+    const notify = { error: vi.fn() };
+    const run = vi.fn();
+    const context = {
+        useCallback: (fn: unknown) => fn,
+        aeroSync: { context: { pairKind: 'local-remote' } }, setAeroSync: vi.fn(),
+        notify, t: (key: string) => key,
+        runConnectedRemoteSync: run, runLocalLocalSync: run,
+    };
+    const resume = new Function(...Object.keys(context), `${code}; return handleResumeJournal;`)(...Object.values(context));
+    resume({ resume_safe: resumeSafe, entries: [] });
+    expect(run).not.toHaveBeenCalled();
+    expect(context.setAeroSync).not.toHaveBeenCalled();
+    expect(notify.error).toHaveBeenCalledWith('aerosync.title', 'syncPanel.resumeNeedsCompare');
+});
+
+it('passes the saved backup and EC policy through the actual resume handler', async () => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const handleResumeJournal =');
+    const end = app.indexOf('  const { dismissJournal:', start);
+    const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-resume-policy.ts');
+    const run = vi.fn();
+    const context = {
+        useCallback: (fn: unknown) => fn,
+        aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'A' } }, setAeroSync: vi.fn(),
+        notify: { error: vi.fn() }, t: (key: string) => key,
+        runConnectedRemoteSync: run, runLocalLocalSync: vi.fn(), filesFromJournal: () => [],
+    };
+    const resume = new Function(...Object.keys(context), `${code}; return handleResumeJournal;`)(...Object.values(context));
+    resume({ resume_safe: true, entries: [], backup_dir: '.v', ec_enabled: true, ec_pct: 12, ec_max_file_size: 1024 });
+    expect(run).toHaveBeenCalledWith([], { remote: [], local: [] }, expect.objectContaining({
+        versionedBackup: { dir: '.v' }, errorCorrection: { enabled: true, pct: 12, maxFileSize: 1024 },
+    }));
+});
+
+// The prompt retains App's actual launch closure, not a substitute helper.
+it('does not launch the App delta continuation after a tab switch', async () => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const runConnectedRemoteSync =');
+    const end = app.indexOf('  // GAP-10: shared local-local sync launcher', start);
+    expect(start).toBeGreaterThan(0);
+    const captureStart = app.indexOf('  const captureGuiTarget =');
+    const captureEnd = app.indexOf('  const getOverwriteDestination =', captureStart);
+    const { code } = await transformWithOxc(app.slice(captureStart, captureEnd) + app.slice(start, end), 'aerosync-launch.ts');
+    let current = 'A';
+    let prompt: { onContinue: () => void } | undefined;
+    const runner = vi.fn();
+    const invoke = vi.fn(async (cmd: string) => {
+        if (cmd === 'provider_gui_target_epoch') return 7;
+        if (cmd === 'sftp_probe_delta_eligibility') return { eligible: false, reason: 'unavailable' };
+        throw new Error(`unexpected ${cmd}`);
+    });
+    const context = {
+        useLatestCallback: (fn: unknown) => fn,
+        snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'sftp' } }),
+        queuedTargetGuard: (target: { profileId: string }) => () => {
+            if (current !== target.profileId) throw new QueuedTargetChangedError('target changed');
+        },
+        QueuedTargetChangedError,
+        activeUnifiedRemoteProfile: { protocol: 'sftp', savedProfileId: 'A', name: 'A' },
+        currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
+        localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
+        invoke, loadSavedServerProfiles: async () => [{ id: 'A' }],
+        setDeltaEligibilityPrompt: (value: typeof prompt) => { prompt = value; },
+        remoteSyncRunningRef: { current: false }, notify: { error: vi.fn(), info: vi.fn() },
+        t: (key: string) => key, debugMode: false, runRemoteSync: runner,
+    };
+    const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('one')], { remote: [], local: [] }, { direction: 'local_to_remote', deltaSyncEnabled: true, verifyPolicy: 'none', profileId: 'A' });
+    await vi.waitFor(() => expect(prompt).toBeDefined());
+    expect(invoke).toHaveBeenCalledWith('sftp_probe_delta_eligibility', { expectedGuiTarget: 7 });
+    current = 'B';
+    prompt!.onContinue();
+    expect(runner).not.toHaveBeenCalled();
+    expect(context.notify.error).toHaveBeenCalled();
+});
+
+it('keeps the preset target and roots captured before the canary approval', async () => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const executeSyncPresetPlan =');
+    const end = app.indexOf('  const clipboardCut =', start);
+    const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-canary.ts');
+    let current = 'A';
+    let prompt: { onApprove: () => void } | undefined;
+    const run = vi.fn();
+    const context = {
+        useCallback: (fn: unknown) => fn,
+        aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'A' } },
+        setAeroSync: vi.fn(), debugMode: false,
+        snapshotQueuedTarget: () => ({ profileId: current, params: { protocol: 'sftp' } }),
+        queuedTargetGuard: (target: { profileId: string }) => () => {
+            if (target.profileId !== current) throw new QueuedTargetChangedError('target changed');
+        },
+        prepareGuiTarget: (check: () => void) => { check(); return Promise.resolve({ epoch: 7 }); },
+        currentLocalPath: '/local-A', currentRemotePath: '/remote-A', isCryptOverlayActive: () => false,
+        buildRemoteSyncInput: () => ({ files: [file('one')], dirs: { remote: [], local: [] } }),
+        SPEED_PRESETS: { balanced: { deltaSyncEnabled: false } }, runConnectedRemoteSync: run,
+        runLocalLocalSync: vi.fn(), canaryRunningRef: { current: false },
+        invoke: async () => ({ sample: [] }),
+        setCanaryResult: (value: typeof prompt) => { prompt = value; },
+        notify: { error: vi.fn(), info: vi.fn() }, t: (key: string) => key,
+    };
+    const launch = new Function(...Object.keys(context), `${code}; return executeSyncPresetPlan;`)(...Object.values(context));
+    launch({ preset: 'mirror', direction: 'left-to-right' }, { speedMode: 'balanced', verifyPolicy: 'none', canary: { percent: 10, selection: 'first' } });
+    await vi.waitFor(() => expect(prompt).toBeDefined());
+    current = 'B';
+    context.currentLocalPath = '/local-B';
+    context.currentRemotePath = '/remote-B';
+    prompt!.onApprove();
+    const options = run.mock.calls[0][2];
+    expect(options.target.profileId).toBe('A');
+    expect(options.localRoot).toBe('/local-A');
+    expect(options.remoteRoot).toBe('/remote-A');
+    expect(await options.preparedTarget).toEqual({ epoch: 7 });
+});

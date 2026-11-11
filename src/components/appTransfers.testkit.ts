@@ -54,7 +54,8 @@ const dropEnd = app.indexOf('\n  });', dropStart);
 if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPanelDropRef');
 
 const { code } = await transformWithOxc(
-  closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
+  closure('captureGuiTarget', '\n  const getOverwriteDestination =')
+  + closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
   + closure('liveOverlay', '\n  const connectSavedProfileForResume')
   + closure('downloadFile', '\n  const uploadFile =')
   + closure('uploadFile', '\n  const retryRestoredEntry =')
@@ -155,7 +156,7 @@ export function fixture(options: Options = {}) {
       return { completed: 1, skipped: 0, failed: 0, cancelled: false, message: 'Done', ...options.folderOutcome?.(command, calls[command]) };
     }
     if (command === 'github_check_local_sync') return { is_local_repo: false };
-    if (command === 'provider_connection_generation') return 7;
+    if (command === 'provider_connection_generation' || command === 'provider_gui_target_epoch') return 7;
     if (command === 'save_remote_file') {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);

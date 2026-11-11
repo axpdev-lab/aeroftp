@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Nincs mit visszaállítani",
             "rollbackRestoreFailed": "A visszaállítás sikertelen: {error}",
             "intervalHoursOne": "{count} óra",
-            "intervalHoursMany": "{count} óra"
+            "intervalHoursMany": "{count} óra",
+            "resumeNeedsCompare": "Ez a megszakított szinkronizálás nem folytatható biztonságosan. Szinkronizálás előtt végezzen új összehasonlítást."
         },
         "ui": {
             "syncing": "Szinkronizálás...",

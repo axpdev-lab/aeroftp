@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "គ្មានអ្វីត្រូវស្ដារទេ",
             "rollbackRestoreFailed": "ការស្ដារបានបរាជ័យ៖ {error}",
             "intervalHoursOne": "{count} ម៉ោង",
-            "intervalHoursMany": "{count} ម៉ោង"
+            "intervalHoursMany": "{count} ម៉ោង",
+            "resumeNeedsCompare": "មិនអាចបន្តការធ្វើសមកាលកម្មដែលបានផ្អាកនេះដោយសុវត្ថិភាពបានទេ។ សូមប្រៀបធៀបម្តងទៀតមុនពេលធ្វើសមកាលកម្ម។"
         },
         "ui": {
             "syncing": "កំពុងធ្វើសមកាលកម្ម...",

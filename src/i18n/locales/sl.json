@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Ni ničesar za obnovitev",
             "rollbackRestoreFailed": "Obnovitev ni uspela: {error}",
             "intervalHoursOne": "{count} ura",
-            "intervalHoursMany": "{count} h"
+            "intervalHoursMany": "{count} h",
+            "resumeNeedsCompare": "Te prekinjene sinhronizacije ni mogoče varno nadaljevati. Pred sinhronizacijo izvedite novo primerjavo."
         },
         "ui": {
             "syncing": "Sinhronizacija...",

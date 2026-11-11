@@ -2704,7 +2704,8 @@
             "rollbackRestoreNothing": "Ingenting å gjenopprette",
             "rollbackRestoreFailed": "Gjenoppretting mislyktes: {error}",
             "intervalHoursOne": "{count} time",
-            "intervalHoursMany": "{count} timer"
+            "intervalHoursMany": "{count} timer",
+            "resumeNeedsCompare": "Denne avbrutte synkroniseringen kan ikke gjenopptas trygt. Utfør en ny sammenligning før synkronisering."
         },
         "ui": {
             "syncing": "Synkroniserer...",
