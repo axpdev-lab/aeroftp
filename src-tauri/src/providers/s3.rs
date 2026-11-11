@@ -7489,13 +7489,15 @@ impl StorageProvider for S3Provider {
         if pending.is_none() {
             // Drop the previous row before CompleteMultipartUpload. A lost
             // response must not leave the old cells eligible for a reused
-            // ETag. A cache error does not block the upload.
+            // ETag. If the delete itself fails, the row is still there, so
+            // the replacement is not committed.
             if let Some(store) = self.baseline_store() {
                 if let Err(error) = store
                     .invalidate(self.delta_baseline_key(&handle.remote_path))
                     .await
                 {
                     warn!("S3 baseline cache invalidate failed: {error}");
+                    return Err(ProviderError::IoError(std::io::Error::other(error)));
                 }
             }
         }

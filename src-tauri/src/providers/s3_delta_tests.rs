@@ -850,6 +850,114 @@ async fn s3_adapter_batch_dag_full_put_drops_baseline_before_a_lost_complete() {
     );
 }
 
+/// A full DAG put must not send CompleteMultipartUpload when the previous
+/// baseline row cannot be deleted. The parts may already be on the server.
+/// Assembling them would publish an object whose old cells stay eligible
+/// for a reused ETag once the cache can be opened again.
+#[tokio::test]
+async fn s3_adapter_batch_dag_full_put_does_not_complete_when_baseline_delete_fails() {
+    let _hash_calls = hash_part_call_guard().await;
+    use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
+    use crate::transfer_dag::{Capability, TransferCapabilities};
+    use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+    let mock = mock().await;
+    let local = mock.dir.path().join("dag.bin");
+    std::fs::File::create(&local)
+        .unwrap()
+        .set_len(SIZE)
+        .unwrap();
+    let mut hash = BaselineHasher::new(SIZE).unwrap();
+    let different = vec![1u8; 1024 * 1024];
+    for _ in 0..(SIZE / different.len() as u64) {
+        hash.update(&different);
+    }
+    mock.provider
+        .baseline_store()
+        .unwrap()
+        .record_completed(
+            mock.provider.delta_baseline_key("object"),
+            hash,
+            "\"v1\"".into(),
+        )
+        .await
+        .unwrap();
+    let db = mock.provider.baseline_test_path.clone().unwrap();
+    let _ = std::fs::remove_file(format!("{}-wal", db.display()));
+    let _ = std::fs::remove_file(format!("{}-shm", db.display()));
+    std::fs::write(&db, b"not a database").unwrap();
+    let shared = Arc::new(tokio::sync::Mutex::new(Some(
+        Box::new(mock.provider.clone()) as Box<dyn StorageProvider>,
+    )));
+    let sink: Arc<dyn crate::transfer_event_sink::TransferEventSink> =
+        Arc::new(crate::transfer_event_sink::NoopTransferSink);
+    let caps = TransferCapabilities {
+        multipart_upload: Capability::Supported,
+        preferred_chunk_size: Some(16 * 1024 * 1024),
+        multipart_threshold: 200 * 1024 * 1024,
+        max_chunk_slots: Some(4),
+        ..TransferCapabilities::default()
+    };
+    let settings = crate::transfer_settings::ResolvedTransferSettings {
+        requested_max_concurrent: 1,
+        max_concurrent: 1,
+        retry_count: 0,
+        timeout_seconds: 300,
+        download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+        sftp_download_preset: None,
+    };
+    let executor = Arc::new(ProviderUploadExecutor::new(
+        sink.clone(),
+        shared,
+        settings,
+        None,
+        tokio_util::sync::CancellationToken::new(),
+        ProviderExecutorSessionModel::HttpClonePool {
+            provider_type: ProviderType::S3,
+            max_leases: 4,
+        },
+        caps,
+    ));
+    let batch = crate::transfer_orchestrator::TransferBatch {
+        id: "s3-baseline-delete-fails".into(),
+        display_name: "S3 baseline delete fails".into(),
+        direction: TransferDirection::Upload,
+        config: TransferBatchConfig {
+            timeout_ms: 300_000,
+            ..TransferBatchConfig::default()
+        },
+        entries: vec![TransferEntry {
+            id: "object".into(),
+            display_name: "object".into(),
+            remote_path: "object".into(),
+            local_path: local.to_string_lossy().into_owned(),
+            size: SIZE,
+            modified: None,
+        }],
+    };
+    super::super::s3_delta_baseline::reset_hash_multipart_part_calls();
+    let result = crate::transfer_dag_batch::execute_batch_dag(
+        sink,
+        batch,
+        executor,
+        Arc::new(AtomicBool::new(false)),
+        None,
+    )
+    .await;
+    assert_eq!(result.completed, 0, "{result:?}");
+    assert_eq!(result.failed, 1, "{result:?}");
+    assert_eq!(mock.seen.creates.load(Ordering::SeqCst), 1);
+    assert_eq!(mock.seen.completes.load(Ordering::SeqCst), 0);
+    assert_eq!(mock.seen.wire.load(Ordering::SeqCst), SIZE);
+    assert!(
+        !mock.dir.path().join("remote.bin").exists(),
+        "CompleteMultipartUpload must not assemble the object when the baseline delete fails"
+    );
+    assert_eq!(
+        super::super::s3_delta_baseline::hash_multipart_part_calls(),
+        0
+    );
+}
+
 /// The stored baseline, as the columns that must not move when an upload is
 /// abandoned. `seed` already planted a row, so the assertion is "unchanged",
 /// not "absent": a test asserting zero rows here would be measuring the wrong
