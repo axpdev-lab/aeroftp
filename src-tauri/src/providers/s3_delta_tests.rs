@@ -502,7 +502,7 @@ async fn s3_adapter_refusal_doors_never_create_multipart() {
 }
 
 #[tokio::test]
-async fn s3_adapter_batch_dag_seeds_completion_etag_through_clone_pool_hooks() {
+async fn s3_adapter_batch_dag_full_put_does_not_seed_the_delta_baseline() {
     use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
     use crate::transfer_dag::{Capability, TransferCapabilities};
     use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
@@ -588,10 +588,9 @@ async fn s3_adapter_batch_dag_seeds_completion_etag_through_clone_pool_hooks() {
         .unwrap();
     assert_eq!(
         outcome,
-        super::super::s3_delta_baseline::MatchOutcome::Matches {
-            grid: GRID,
-            matches: vec![(0, 0, SIZE)]
-        }
+        super::super::s3_delta_baseline::MatchOutcome::Refused(
+            super::super::s3_delta_baseline::MatchRefusal::NoBaseline
+        )
     );
     assert_eq!(
         file_digest(&local).await,
