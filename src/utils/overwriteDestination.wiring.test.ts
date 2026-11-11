@@ -347,6 +347,7 @@ it('requires the backend overlay as well as the frontend profile before an encry
 it.each(['opendrive', 'fourshared'] as const)('keeps cut originals after %s privacy rejects a changed target', async protocol => {
   const f = fixture({ direction: 'upload', protocol, destination: [], policy: 'overwrite', privacyError: 'CONNECTION_CHANGED: target changed' });
   const result = await f.runtime.runFileBatch('upload', items, '/actual');
+  expect(f.invoke).toHaveBeenCalledWith(protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy', expect.objectContaining({ isPublic: false, expectedGuiTarget: expect.any(Number) }));
   expect(result.succeededSources).toEqual([]);
   expect(result.aborted).toBe(true);
   expect(result.failed).toBe(2);

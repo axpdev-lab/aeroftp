@@ -21,6 +21,33 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 /// In-memory token cache for when vault is locked (master mode).
 /// Tokens survive the session but are NOT persisted to disk.
 static MEMORY_TOKEN_CACHE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+static MEMORY_TOKEN_REVISIONS: [std::sync::atomic::AtomicU64; 8] =
+    [const { std::sync::atomic::AtomicU64::new(0) }; 8];
+
+fn legacy_revision(provider: OAuthProvider) -> &'static std::sync::atomic::AtomicU64 {
+    let index = match provider {
+        OAuthProvider::Google => 0,
+        OAuthProvider::GooglePhotos => 1,
+        OAuthProvider::Dropbox => 2,
+        OAuthProvider::OneDrive => 3,
+        OAuthProvider::Box => 4,
+        OAuthProvider::PCloud => 5,
+        OAuthProvider::ZohoWorkdrive => 6,
+        OAuthProvider::YandexDisk => 7,
+    };
+    &MEMORY_TOKEN_REVISIONS[index]
+}
+
+fn invalidate_memory_tokens(
+    cache: &mut Option<HashMap<String, String>>,
+    revision: &std::sync::atomic::AtomicU64,
+    account: &str,
+) {
+    revision.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    if let Some(map) = cache.as_mut() {
+        map.remove(account);
+    }
+}
 
 /// Configured OAuth2 client with auth and token endpoints set (v5 typestates)
 type ConfiguredClient =
@@ -1372,6 +1399,15 @@ impl OAuth2Manager {
             }
         }
 
+        // Capture while the same lock that serializes sign-out's cache/file
+        // cleanup is held. A paused read may not restore an authorization
+        // whose deletion completed before it reached the insertion.
+        let observed_legacy_revision = {
+            let _cache = MEMORY_TOKEN_CACHE
+                .lock()
+                .map_err(|_| token_owner_changed())?;
+            legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst)
+        };
         // Legacy: try plaintext file: migrate to vault immediately, then delete the file
         let legacy_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
@@ -1390,11 +1426,20 @@ impl OAuth2Manager {
             let mut cache = MEMORY_TOKEN_CACHE
                 .lock()
                 .map_err(|_| token_owner_changed())?;
-            let map = cache.get_or_insert_with(HashMap::new);
-            let current = map
-                .entry(account.clone())
-                .or_insert_with(|| json.to_string());
-            return Self::decode_record(current, TokenSource::Memory(account), credential_user);
+            if legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst)
+                != observed_legacy_revision
+            {
+                claimed.discard()?;
+                return Err(token_owner_changed());
+            }
+            return Self::remember_legacy_in_memory(
+                &mut cache,
+                legacy_revision(provider),
+                observed_legacy_revision,
+                account,
+                &json,
+                credential_user,
+            );
         };
         let inserted = store
             .store_secret_if_absent(&account, &json)
@@ -1409,6 +1454,24 @@ impl OAuth2Manager {
             claimed.discard()?;
         }
         Ok(result)
+    }
+
+    fn remember_legacy_in_memory(
+        cache: &mut Option<HashMap<String, String>>,
+        revision: &std::sync::atomic::AtomicU64,
+        observed: u64,
+        account: String,
+        json: &str,
+        user: Option<i64>,
+    ) -> Result<TokenRecord, ProviderError> {
+        if revision.load(std::sync::atomic::Ordering::SeqCst) != observed {
+            return Err(token_owner_changed());
+        }
+        let current = cache
+            .get_or_insert_with(HashMap::new)
+            .entry(account.clone())
+            .or_insert_with(|| json.to_owned());
+        Self::decode_record(current, TokenSource::Memory(account), user)
     }
 
     /// Delete tokens from credential vault, memory cache, and legacy files
@@ -1449,23 +1512,25 @@ impl OAuth2Manager {
         }
 
         // Delete from in-memory cache
-        if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
-            if let Some(map) = cache.as_mut() {
-                map.remove(&account);
+        {
+            let mut cache = MEMORY_TOKEN_CACHE
+                .lock()
+                .map_err(|_| token_owner_changed())?;
+            invalidate_memory_tokens(&mut cache, legacy_revision(provider), &account);
+
+            // Delete legacy .json file if exists
+            let json_path =
+                Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+            if json_path.exists() {
+                let _ = crate::credential_store::secure_delete(&json_path);
             }
-        }
 
-        // Delete legacy .json file if exists
-        let json_path =
-            Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        if json_path.exists() {
-            let _ = crate::credential_store::secure_delete(&json_path);
-        }
-
-        // Delete legacy .enc file if exists
-        let enc_path = Self::token_dir()?.join(format!("oauth2_{:?}.enc", provider).to_lowercase());
-        if enc_path.exists() {
-            let _ = crate::credential_store::secure_delete(&enc_path);
+            // Delete legacy .enc file if exists
+            let enc_path =
+                Self::token_dir()?.join(format!("oauth2_{:?}.enc", provider).to_lowercase());
+            if enc_path.exists() {
+                let _ = crate::credential_store::secure_delete(&enc_path);
+            }
         }
 
         info!("Tokens deleted for {:?}", provider);
@@ -1951,6 +2016,57 @@ fn parse_callback_request(request: &str) -> Result<(String, String), ProviderErr
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_cache_signout_revision_rejects_a_paused_read() {
+        use std::sync::{Arc, Barrier};
+        let revision = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let cache = Arc::new(Mutex::new(None));
+        let observed = revision.load(std::sync::atomic::Ordering::SeqCst);
+        let barrier = Arc::new(Barrier::new(2));
+        let deletion = {
+            let revision = revision.clone();
+            let cache = cache.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                invalidate_memory_tokens(&mut cache.lock().unwrap(), &revision, "account");
+                barrier.wait();
+            })
+        };
+        barrier.wait();
+        let json = serde_json::to_string(&StoredTokens {
+            access_token: "old".into(),
+            refresh_token: None,
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        })
+        .unwrap();
+        let mut cache = cache.lock().unwrap();
+        assert!(matches!(
+            OAuth2Manager::remember_legacy_in_memory(
+                &mut cache,
+                &revision,
+                observed,
+                "account".into(),
+                &json,
+                None
+            ),
+            Err(ProviderError::TargetChanged)
+        ));
+        assert!(cache.is_none());
+        assert!(OAuth2Manager::remember_legacy_in_memory(
+            &mut cache,
+            &revision,
+            revision.load(std::sync::atomic::Ordering::SeqCst),
+            "account".into(),
+            &json,
+            None
+        )
+        .is_ok());
+        drop(cache);
+        deletion.join().unwrap();
+    }
+
     #[test]
     fn claimed_plaintext_cleanup_never_deletes_a_new_authorization() {
         let dir = tempfile::tempdir().unwrap();
