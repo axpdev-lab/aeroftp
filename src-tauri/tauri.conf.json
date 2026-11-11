@@ -217,7 +217,8 @@
         },
         "macOS": {
             "minimumSystemVersion": "10.13",
-            "entitlements": "entitlements.plist"
+            "entitlements": "entitlements.plist",
+            "infoPlist": "Info.plist"
         },
         "windows": {
             "wix": {
