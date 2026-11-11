@@ -594,8 +594,40 @@ impl Drop for ClaimedTokenFile {
     }
 }
 
-// The callback owns the claim, so ALL of its returns and errors finalize it
-// before this guard releases. Sign-out uses the same cache mutex.
+/// Permanent lock inode shared by legacy migration and sign-out in every
+/// desktop/CLI/MCP process. Never unlink it: a replacement inode would allow
+/// two independent owners. The OS releases the advisory lock after a crash.
+struct LegacyTokenGuard(std::fs::File);
+
+impl LegacyTokenGuard {
+    fn acquire(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
+        let path = legacy_path.with_extension("migration.lock");
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).truncate(false).write(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let file = options.open(path).map_err(|_| token_owner_changed())?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            match file.try_lock() {
+                Ok(()) => return Ok(Self(file)),
+                Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(25))
+                }
+                Err(_) => return Err(token_owner_changed()),
+            }
+        }
+    }
+}
+
+impl Drop for LegacyTokenGuard {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+// All callers use file -> cache -> vault order. The callback owns the claim,
+// so its returns/errors finalize it before either guard is released.
 fn with_legacy_token_claim<T>(
     cache: &Mutex<Option<HashMap<String, String>>>,
     path: &std::path::Path,
@@ -604,6 +636,7 @@ fn with_legacy_token_claim<T>(
         ClaimedTokenFile,
     ) -> Result<T, ProviderError>,
 ) -> Result<T, ProviderError> {
+    let _process = LegacyTokenGuard::acquire(path)?;
     let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
     let claimed = ClaimedTokenFile::claim(path)?;
     migrate(&mut cache, claimed)
@@ -1436,29 +1469,42 @@ impl OAuth2Manager {
                     claimed.discard()?;
                     return Err(token_owner_changed());
                 }
-                return Self::remember_legacy_in_memory(
+                let newer_login = cache.as_ref().is_some_and(|map| map.contains_key(&account));
+                let result = Self::remember_legacy_in_memory(
                     cache,
                     legacy_revision(provider),
                     observed_legacy_revision,
                     account,
                     &json,
                     credential_user,
-                );
+                )?;
+                if newer_login {
+                    claimed.discard()?;
+                }
+                return Ok(result);
             };
-            let inserted = store
-                .store_secret_if_absent(&account, &json)
-                .map_err(|_| token_owner_changed())?;
-            let current = store
-                .get_secret(&account)
-                .map_err(|_| token_owner_changed())?;
-            let result = Self::decode_record(&current, TokenSource::Vault, credential_user)?;
-            if inserted {
-                // Only the claimed pathname is ours. Never delete legacy_path:
-                // another process may already have written a new authorization there.
-                claimed.discard()?;
-            }
-            Ok(result)
+            Self::migrate_claimed_to_vault(&store, &account, &json, credential_user, claimed)
         })
+    }
+
+    fn migrate_claimed_to_vault(
+        store: &crate::credential_store::CredentialStore,
+        account: &str,
+        json: &str,
+        credential_user: Option<i64>,
+        claimed: ClaimedTokenFile,
+    ) -> Result<TokenRecord, ProviderError> {
+        store
+            .store_secret_if_absent(account, json)
+            .map_err(|_| token_owner_changed())?;
+        let current = store
+            .get_secret(account)
+            .map_err(|_| token_owner_changed())?;
+        let result = Self::decode_record(&current, TokenSource::Vault, credential_user)?;
+        // A newer login also consumes this obsolete legacy candidate. Restoring
+        // it would let a second profile silently import the old cloud account.
+        claimed.discard()?;
+        Ok(result)
     }
 
     fn remember_legacy_in_memory(
@@ -1512,6 +1558,9 @@ impl OAuth2Manager {
             }
         }
 
+        let json_path =
+            Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        let _process = LegacyTokenGuard::acquire(&json_path)?;
         // Delete from in-memory cache
         {
             let mut cache = MEMORY_TOKEN_CACHE
@@ -1519,7 +1568,7 @@ impl OAuth2Manager {
                 .map_err(|_| token_owner_changed())?;
             // Delete from vault
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                let _ = store.delete(&account);
+                store.delete(&account).map_err(|_| token_owner_changed())?;
             }
             invalidate_memory_tokens(&mut cache, legacy_revision(provider), &account);
 
@@ -2073,6 +2122,100 @@ mod tests {
     }
 
     #[test]
+    fn legacy_claim_and_signout_coordinate_between_processes() {
+        const MODE: &str = "AEROFTP_LEGACY_CLAIM_PROCESS_TEST";
+        const TEST: &str =
+            "providers::oauth2::tests::legacy_claim_and_signout_coordinate_between_processes";
+        fn wait_for(path: &std::path::Path) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+            while !path.exists() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "barrier timed out: {}",
+                    path.display()
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        if let Ok(mode) = std::env::var(MODE) {
+            let dir = std::path::PathBuf::from(
+                std::env::var_os("AEROFTP_LEGACY_CLAIM_TEST_DIR").unwrap(),
+            );
+            let path = dir.join("legacy.json");
+            if mode == "signout" {
+                std::fs::write(dir.join("deleting"), b"").unwrap();
+                let _guard = LegacyTokenGuard::acquire(&path).unwrap();
+                // The production sign-out holds this same guard through vault,
+                // memory and file cleanup. A waiting claimant cannot reappear.
+                let _ = std::fs::remove_file(dir.join("destination"));
+                let _ = std::fs::remove_file(&path);
+                std::fs::write(dir.join("deleted"), b"").unwrap();
+            } else {
+                with_legacy_token_claim(&Mutex::new(None), &path, |_, claimed| {
+                    std::fs::write(dir.join("claimed"), b"").unwrap();
+                    wait_for(&dir.join("release"));
+                    std::fs::write(dir.join("destination"), b"old authorization").unwrap();
+                    if mode == "vault" {
+                        claimed.discard()?;
+                    } else {
+                        drop(claimed);
+                    }
+                    Ok(())
+                })
+                .unwrap();
+            }
+            return;
+        }
+        for mode in ["memory", "vault"] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("legacy.json");
+            std::fs::write(&path, b"old authorization").unwrap();
+            let spawn = |mode: &str| {
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .env(MODE, mode)
+                    .env("AEROFTP_LEGACY_CLAIM_TEST_DIR", dir.path())
+                    .stdout(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap()
+            };
+            let mut migration = spawn(mode);
+            wait_for(&dir.path().join("claimed"));
+            let mut deletion = spawn("signout");
+            wait_for(&dir.path().join("deleting"));
+            let lock = std::fs::OpenOptions::new()
+                .write(true)
+                .open(path.with_extension("migration.lock"))
+                .unwrap();
+            assert!(matches!(
+                lock.try_lock(),
+                Err(std::fs::TryLockError::WouldBlock)
+            ));
+            assert!(!dir.path().join("deleted").exists());
+            std::fs::write(dir.path().join("release"), b"").unwrap();
+            assert!(migration.wait().unwrap().success());
+            assert!(deletion.wait().unwrap().success());
+            assert!(!path.exists());
+            assert!(!dir.path().join("destination").exists());
+            assert_eq!(
+                std::fs::read_dir(dir.path())
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("legacy.migration-"))
+                    .count(),
+                0
+            );
+            // Keep the permanent inode, and prove the crashed/exited owners
+            // leave no stale lock that could block another migration/sign-out.
+            assert!(lock.try_lock().is_ok());
+            lock.unlock().unwrap();
+        }
+    }
+
+    #[test]
     fn legacy_migration_finalizes_before_signout_in_memory_and_vault_paths() {
         use std::sync::{mpsc, Arc, Barrier};
         for vault_available in [false, true] {
@@ -2135,7 +2278,14 @@ mod tests {
             assert!(!original.exists());
             assert!(cache.lock().unwrap().is_none());
             assert!(vault.lock().unwrap().is_empty());
-            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+            let remaining: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(
+                remaining,
+                vec![std::ffi::OsString::from("legacy.migration.lock")]
+            );
         }
     }
 
@@ -2614,6 +2764,44 @@ mod tests {
 
     async fn clones_re_read_shared_profile_token_source_body() {
         use secrecy::ExposeSecret;
+
+        {
+            let manager = OAuth2Manager::new();
+            let provider = OAuthProvider::GooglePhotos;
+            let dir = OAuth2Manager::token_dir().unwrap();
+            let path = dir.join("oauth2_googlephotos.json");
+            let old = serde_json::to_string(&StoredTokens {
+                access_token: "old-legacy".into(),
+                refresh_token: None,
+                expires_at: None,
+                token_type: "Bearer".into(),
+                scopes: vec![],
+            })
+            .unwrap();
+            let fresh = old.replace("old-legacy", "fresh-login");
+            std::fs::write(&path, &old).unwrap();
+            let claimed = ClaimedTokenFile::claim(&path).unwrap();
+            let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+            let account = OAuth2Manager::token_account_key(provider, "migration-winner");
+            // Login B wins after legacy A was claimed but before insertion.
+            store.store(&account, &fresh).unwrap();
+            let winner =
+                OAuth2Manager::migrate_claimed_to_vault(&store, &account, &old, None, claimed)
+                    .unwrap();
+            assert_eq!(winner.tokens.access_token, "fresh-login");
+            assert!(!path.exists());
+            assert!(manager
+                .load_token_record(provider, "second-profile")
+                .is_err());
+            assert_eq!(
+                manager
+                    .load_tokens(provider, "migration-winner")
+                    .unwrap()
+                    .access_token,
+                "fresh-login"
+            );
+            store.delete(&account).unwrap();
+        }
 
         let primary = OAuth2Manager::new();
         let profile = format!("p1-05b-oauth-{}", std::process::id());
