@@ -37,7 +37,7 @@
 //! Exit codes:
 //!   0  Success
 //!   1  Connection/network error
-//!   2  Not found
+//!   2  Not found, or an excess positional that a profile invocation would drop
 //!   3  Permission denied
 //!   4  Transfer failed / partial
 //!   5  Invalid config / usage error
@@ -71,7 +71,7 @@ use axum::{
     Router,
 };
 use base64::Engine as _;
-use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use ftp_client_gui_lib::community_benchmark::{
     self, benchmark_is_loopback_host, benchmark_mkdir_ladder, benchmark_public_ip,
     benchmark_service_label, resolve_benchmark_plan, sanitized_reports_json, BenchmarkEvent,
@@ -17170,33 +17170,6 @@ fn e2e_bits(proto: &str) -> Option<u16> {
         "filen" | "internxt" => Some(256),
         _ => None,
     }
-}
-
-/// Resolve the leading URL and encrypted-directory positionals of a `crypt`
-/// subcommand when it runs against a saved `--profile`.
-///
-/// clap always binds the FIRST positional to `url`, but with `--profile` the
-/// connection comes from the profile, so a path-looking value in the url slot is
-/// really the encrypted directory the user meant: `crypt init --profile X /enc`
-/// instead of the placeholder form `crypt init --profile X _ /enc`. When a
-/// profile is selected and the url slot holds a non-URL, non-placeholder value,
-/// treat it as the directory: shift it into the path slot when that slot is
-/// still at its default, otherwise keep the explicitly-given path and drop the
-/// bogus url. A raw URL (no profile, or a value containing "://") is returned
-/// unchanged, so URL-mode invocations are byte-identical.
-fn resolve_profile_crypt_positionals(
-    has_profile: bool,
-    url: &str,
-    path: &str,
-    path_default: &str,
-) -> (String, String) {
-    if has_profile && url != "_" && !url.contains("://") {
-        if path == path_default {
-            return ("_".to_string(), url.to_string());
-        }
-        return ("_".to_string(), path.to_string());
-    }
-    (url.to_string(), path.to_string())
 }
 
 /// Render the protocol class label exactly as the GUI table shows it for sort
@@ -46895,31 +46868,14 @@ async fn cmd_stat(url: &str, path: &str, cli: &Cli, format: OutputFormat) -> i32
     }
 }
 
-/// Resolve the `(url, path, pattern)` triple `find` should run with.
-///
-/// With `--profile` the positionals shift left: the first one holds the path
-/// and the second one holds the pattern. The profile branch therefore has to
-/// read the pattern out of `path`, and must still honour `--name` and the
-/// documented `*` default. Reading it straight out of `path` instead would
-/// search for `path`'s own default (`/`), which matches no file name and
-/// silently returns zero results.
+/// Apply `find --name` after the shared positional normalization.
 fn resolve_find_target<'a>(
-    has_profile: bool,
     url: &'a str,
     path: &'a str,
     pattern: &'a str,
     name: Option<&'a str>,
 ) -> (&'a str, &'a str, &'a str) {
-    if has_profile && !url.contains("://") && url != "_" {
-        let shifted = name.unwrap_or(if path == FIND_DEFAULT_PATH {
-            FIND_DEFAULT_PATTERN
-        } else {
-            path
-        });
-        ("_", url, shifted)
-    } else {
-        (url, path, name.unwrap_or(pattern))
-    }
+    (url, path, name.unwrap_or(pattern))
 }
 
 /// What the listing fallback of `find` found, and what it did not search.
@@ -55895,39 +55851,1133 @@ fn plan_sync_orphan_deletes<'a>(
     Ok(orphans)
 }
 
-/// With `--profile`, `sync LOCAL REMOTE` puts the paths in the first two
-/// positional slots (the URL slot and the local one). They move one slot
-/// along unless the first is a real URL or the `_` placeholder. The AeroSync
-/// Plan tab builds its command line for this rule; see
-/// `aerosync_plan_cli_line_tests`.
-/// The URL and path of a deleting command (`rm`, `purge`, `rmdir`, `rmdirs`).
-/// With `--profile` the URL slot carries the path, so a value left in the
-/// path slot is one argument too many: `rm --profile P /a/b c -r --force`
-/// removed all of `/a/b` and dropped `c` without a word. It is refused.
-fn delete_positionals<'a>(
-    cli: &Cli,
-    url: &'a str,
-    path: &'a str,
-    format: OutputFormat,
-) -> Result<(&'a str, &'a str), i32> {
-    if !profile_shifts_positionals(cli.profile.is_some(), url) {
-        return Ok((url, path));
-    }
-    if !path.is_empty() {
-        print_error(
-            format,
-            &format!(
-                "unexpected argument '{path}': with --profile, give only the remote path ('{url}' here)"
-            ),
-            2,
-        );
-        return Err(2);
-    }
-    Ok(("_", url))
-}
-
 fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
     has_profile && !url.contains("://") && url != "_"
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ExcessProfilePositional {
+    field: &'static str,
+    next_step: &'static str,
+}
+
+impl ExcessProfilePositional {
+    fn message(&self) -> String {
+        format!(
+            "unexpected argument in final positional '{}': with --profile, the URL slot is the first logical positional and no argument may remain in the final parser slot. Next: {}",
+            self.field, self.next_step
+        )
+    }
+}
+
+enum ProfilePositional<'a> {
+    Required(&'static str, &'a mut String),
+    Optional(&'static str, &'a mut Option<String>),
+}
+
+impl ProfilePositional<'_> {
+    fn id(&self) -> &'static str {
+        match self {
+            Self::Required(id, _) | Self::Optional(id, _) => id,
+        }
+    }
+
+    fn take(&mut self) -> Option<String> {
+        match self {
+            Self::Required(_, value) => Some(std::mem::take(*value)),
+            Self::Optional(_, value) => std::mem::take(*value),
+        }
+    }
+
+    fn assign(&mut self, new_value: Option<String>) {
+        match self {
+            Self::Required(_, value) => **value = new_value.unwrap_or_default(),
+            Self::Optional(_, value) => **value = new_value,
+        }
+    }
+}
+
+fn normalize_profile_strings(
+    matches: &clap::ArgMatches,
+    url: &mut String,
+    next_step: &'static str,
+    fields: &mut [ProfilePositional<'_>],
+) -> Result<(), ExcessProfilePositional> {
+    if !profile_shifts_positionals(true, url) {
+        return Ok(());
+    }
+    let final_id = fields.last().map_or("url", |field| field.id());
+    if matches.value_source(final_id) == Some(clap::parser::ValueSource::CommandLine) {
+        return Err(ExcessProfilePositional {
+            field: final_id,
+            next_step,
+        });
+    }
+    if fields.is_empty() {
+        return Err(ExcessProfilePositional {
+            field: "url",
+            next_step,
+        });
+    }
+    let mut previous = Some(std::mem::replace(url, "_".to_string()));
+    for field in fields.iter_mut() {
+        let supplied =
+            matches.value_source(field.id()) == Some(clap::parser::ValueSource::CommandLine);
+        let current = field.take();
+        field.assign(previous.clone().or_else(|| current.clone()));
+        previous = if supplied { current } else { None };
+    }
+    debug_assert!(previous.is_none());
+    Ok(())
+}
+
+macro_rules! normalize_positionals {
+    ($matches:expr, $url:expr, $next_step:expr $(, $field:expr)* $(,)?) => {
+        normalize_profile_strings($matches, $url, $next_step, &mut [$($field),*])
+    };
+}
+
+use ProfilePositional::{Optional, Required};
+
+fn normalize_serve_positionals(
+    command: &mut ServeCommands,
+    matches: &clap::ArgMatches,
+) -> Result<(), ExcessProfilePositional> {
+    let (_, matches) = matches.subcommand().expect("serve subcommand matches");
+    match command {
+        ServeCommands::Http { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "serve http --profile P [path]",
+            Required("path", path)
+        ),
+        ServeCommands::WebDav { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "serve webdav --profile P [path]",
+            Required("path", path)
+        ),
+        ServeCommands::Ftp { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "serve ftp --profile P [path]",
+            Required("path", path)
+        ),
+        ServeCommands::Sftp { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "serve sftp --profile P [path]",
+            Required("path", path)
+        ),
+    }
+}
+
+fn normalize_version_positionals(
+    command: &mut VersionCommands,
+    matches: &clap::ArgMatches,
+) -> Result<(), ExcessProfilePositional> {
+    let (_, matches) = matches.subcommand().expect("versions subcommand matches");
+    match command {
+        VersionCommands::List { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "versions list --profile P [path]",
+            Required("path", path)
+        ),
+        VersionCommands::Get {
+            url,
+            path,
+            version_id,
+            local,
+        } => normalize_positionals!(
+            matches,
+            url,
+            "versions get --profile P <path> <version-id> [local]",
+            Required("path", path),
+            Required("version_id", version_id),
+            Required("local", local)
+        ),
+        VersionCommands::Restore {
+            url,
+            path,
+            version_id,
+        } => normalize_positionals!(
+            matches,
+            url,
+            "versions restore --profile P <path> <version-id>",
+            Required("path", path),
+            Required("version_id", version_id)
+        ),
+        VersionCommands::Purge {
+            url,
+            path,
+            version_id,
+            ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "versions purge --profile P <path> <version-id>",
+            Required("path", path),
+            Required("version_id", version_id)
+        ),
+        VersionCommands::Trash { url, prefix, .. } => normalize_positionals!(
+            matches,
+            url,
+            "versions trash --profile P [prefix]",
+            Required("prefix", prefix)
+        ),
+        VersionCommands::EmptyTrash { url, prefix, .. } => normalize_positionals!(
+            matches,
+            url,
+            "versions empty-trash --profile P [prefix]",
+            Required("prefix", prefix)
+        ),
+    }
+}
+
+fn normalize_crypt_positionals(
+    command: &mut CryptCommands,
+    matches: &clap::ArgMatches,
+) -> Result<(), ExcessProfilePositional> {
+    let (_, matches) = matches.subcommand().expect("crypt subcommand matches");
+    match command {
+        CryptCommands::Init { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt init --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::ToHeaderless { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt to-headerless --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::ToHeaded { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt to-headed --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::MigrateMarker { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt migrate-marker --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::MigrateV4 { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt migrate-v4 --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::ListSlots { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt list-slots --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::AddSlot { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt add-slot --profile P [path] --type <type>",
+            Required("path", path)
+        ),
+        CryptCommands::RemoveSlot { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt remove-slot --profile P [path] --slot-id <id>",
+            Required("path", path)
+        ),
+        CryptCommands::RotateSlot { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt rotate-slot --profile P [path] --slot-id <id>",
+            Required("path", path)
+        ),
+        CryptCommands::KitVerify { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt kit-verify --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::Ls { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt ls --profile P [path]",
+            Required("path", path)
+        ),
+        CryptCommands::Put { url, remote, .. } => normalize_positionals!(
+            matches,
+            url,
+            "crypt put --profile P <local> [remote]",
+            Required("remote", remote)
+        ),
+        CryptCommands::Get {
+            url, path, local, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "crypt get --profile P <remote> [path] [local]",
+            Required("path", path),
+            Required("local", local)
+        ),
+        CryptCommands::Bind { .. } | CryptCommands::Unbind | CryptCommands::SetForm { .. } => {
+            Ok(())
+        }
+    }
+}
+
+fn normalize_trash_positionals(
+    command: &mut TrashCommands,
+    matches: &clap::ArgMatches,
+) -> Result<(), ExcessProfilePositional> {
+    let (_, matches) = matches.subcommand().expect("trash subcommand matches");
+    match command {
+        TrashCommands::List { url } => {
+            normalize_positionals!(matches, url, "trash list --profile P")
+        }
+        TrashCommands::Empty { url, .. } => {
+            normalize_positionals!(matches, url, "trash empty --profile P")
+        }
+        TrashCommands::Restore { url, .. } => {
+            normalize_positionals!(matches, url, "trash restore --profile P <id>")
+        }
+        TrashCommands::Delete { url, .. } => {
+            normalize_positionals!(matches, url, "trash delete --profile P <id>")
+        }
+    }
+}
+
+fn normalize_profile_positionals(
+    cli: &mut Cli,
+    matches: &clap::ArgMatches,
+) -> Result<(), ExcessProfilePositional> {
+    let has_profile = cli.profile.is_some();
+    if !has_profile {
+        return Ok(());
+    }
+    let (_, matches) = matches.subcommand().expect("parsed subcommand matches");
+    match &mut cli.command {
+        Commands::Connect { url } if has_profile => {
+            normalize_positionals!(matches, url, "connect --profile P")
+        }
+        Commands::Ls { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "ls --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Get {
+            url, remote, local, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "get --profile P <remote> [local]",
+            Required("remote", remote),
+            Optional("local", local)
+        ),
+        Commands::Pget {
+            url, remote, local, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "pget --profile P <remote> [local]",
+            Required("remote", remote),
+            Optional("local", local)
+        ),
+        Commands::Put {
+            url, local, remote, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "put --profile P <local> [remote]",
+            Required("local", local),
+            Optional("remote", remote)
+        ),
+        Commands::Mkdir { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "mkdir --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Access { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "access --profile P [path] --to <level>",
+            Required("path", path)
+        ),
+        Commands::Rm { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "rm --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Mv { url, from, to } => normalize_positionals!(
+            matches,
+            url,
+            "mv --profile P <from> <to>",
+            Required("from", from),
+            Required("to", to)
+        ),
+        Commands::Cp { url, from, to } => normalize_positionals!(
+            matches,
+            url,
+            "cp --profile P <from> <to>",
+            Required("from", from),
+            Required("to", to)
+        ),
+        Commands::Link { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "link --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Edit {
+            url,
+            path,
+            find,
+            replace,
+            ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "edit --profile P <path> <find> <replace>",
+            Required("path", path),
+            Required("find", find),
+            Required("replace", replace)
+        ),
+        Commands::Cat { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "cat --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Head { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "head --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Tail { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "tail --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Peek { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "peek --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Touch { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "touch --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Hashsum { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "hashsum --profile P -a md5 <path>",
+            Required("path", path)
+        ),
+        Commands::Check {
+            url, local, remote, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "check --profile P [local] [remote]",
+            Required("local", local),
+            Required("remote", remote)
+        ),
+        Commands::Cryptcheck {
+            url, local, remote, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "cryptcheck --profile P [local] [remote]",
+            Required("local", local),
+            Required("remote", remote)
+        ),
+        Commands::Reconcile {
+            url, local, remote, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "reconcile --profile P [local] [remote]",
+            Required("local", local),
+            Required("remote", remote)
+        ),
+        Commands::Stat { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "stat --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Find {
+            url, path, pattern, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "find --profile P [path] [pattern]",
+            Required("path", path),
+            Required("pattern", pattern)
+        ),
+        Commands::Df { url, .. } if has_profile => {
+            normalize_positionals!(matches, url, "df --profile P")
+        }
+        Commands::Size { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "size --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Lsd { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "lsd --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Lsl { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "lsl --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Lsf { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "lsf --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Lsjson { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "lsjson --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Purge { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "purge --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Rmdir { url, path } => normalize_positionals!(
+            matches,
+            url,
+            "rmdir --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Rmdirs { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "rmdirs --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Site { url, command, .. } => {
+            if profile_shifts_positionals(has_profile, url) {
+                command.insert(0, std::mem::replace(url, "_".to_string()));
+            }
+            Ok(())
+        }
+        Commands::About { url } if has_profile => {
+            normalize_positionals!(matches, url, "about --profile P")
+        }
+        Commands::Speed { url, .. } if has_profile => {
+            normalize_positionals!(matches, url, "speed --profile P")
+        }
+        Commands::Cleanup { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "cleanup --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Dedupe { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "dedupe --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Sync {
+            local_only: true, ..
+        } => {
+            if matches.value_source("remote") == Some(clap::parser::ValueSource::CommandLine) {
+                Err(ExcessProfilePositional {
+                    field: "remote",
+                    next_step: "sync --local <source> <destination>",
+                })
+            } else {
+                Ok(())
+            }
+        }
+        Commands::Sync {
+            url, local, remote, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "sync --profile P [local] [remote]",
+            Required("local", local),
+            Required("remote", remote)
+        ),
+        Commands::SyncDoctor {
+            url, local, remote, ..
+        } => normalize_positionals!(
+            matches,
+            url,
+            "sync-doctor --profile P [local] [remote]",
+            Required("local", local),
+            Required("remote", remote)
+        ),
+        Commands::Tree { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "tree --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Ncdu { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "ncdu --profile P [path]",
+            Required("path", path)
+        ),
+        Commands::Mount { url, path, .. } => normalize_positionals!(
+            matches,
+            url,
+            "mount --profile P <mountpoint> [path]",
+            Required("path", path)
+        ),
+        Commands::Rcat { url, remote } => normalize_positionals!(
+            matches,
+            url,
+            "rcat --profile P [remote]",
+            Required("remote", remote)
+        ),
+        Commands::Serve { command } => normalize_serve_positionals(command, matches),
+        Commands::Versions { command } => normalize_version_positionals(command, matches),
+        Commands::Crypt { command } => normalize_crypt_positionals(command, matches),
+        Commands::RcloneCrypt { command } => match command {
+            RcloneCryptCommands::Put { url, remote, .. } => {
+                let matches = matches
+                    .subcommand_matches("put")
+                    .expect("rclone-crypt put matches");
+                normalize_positionals!(
+                    matches,
+                    url,
+                    "rclone-crypt put --profile P <local> [remote]",
+                    Required("remote", remote)
+                )
+            }
+        },
+        Commands::Trash { command } => normalize_trash_positionals(command, matches),
+        _ => Ok(()),
+    }
+}
+
+#[cfg(test)]
+mod profile_positional_tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<Cli, ExcessProfilePositional> {
+        let matches = Cli::command()
+            .try_get_matches_from(args)
+            .expect("clap parses");
+        let mut cli = Cli::from_arg_matches(&matches).expect("cli from matches");
+        normalize_profile_positionals(&mut cli, &matches)?;
+        Ok(cli)
+    }
+
+    fn positional_summary(command: &Commands) -> String {
+        macro_rules! fields {
+            ($($value:expr),* $(,)?) => {
+                vec![$($value.to_string()),*].join("|")
+            };
+        }
+        match command {
+            Commands::Connect { url } | Commands::About { url } | Commands::Df { url, .. } => {
+                url.clone()
+            }
+            Commands::Speed { url, .. } => url.clone(),
+            Commands::Ls { url, path, .. }
+            | Commands::Mkdir { url, path, .. }
+            | Commands::Access { url, path, .. }
+            | Commands::Rm { url, path, .. }
+            | Commands::Link { url, path, .. }
+            | Commands::Cat { url, path }
+            | Commands::Head { url, path, .. }
+            | Commands::Tail { url, path, .. }
+            | Commands::Peek { url, path, .. }
+            | Commands::Touch { url, path, .. }
+            | Commands::Hashsum { url, path, .. }
+            | Commands::Stat { url, path }
+            | Commands::Size { url, path }
+            | Commands::Lsd { url, path }
+            | Commands::Lsl { url, path }
+            | Commands::Lsf { url, path }
+            | Commands::Lsjson { url, path, .. }
+            | Commands::Purge { url, path, .. }
+            | Commands::Rmdir { url, path }
+            | Commands::Rmdirs { url, path, .. }
+            | Commands::Cleanup { url, path, .. }
+            | Commands::Dedupe { url, path, .. }
+            | Commands::Tree { url, path, .. }
+            | Commands::Ncdu { url, path, .. } => fields!(url, path),
+            Commands::Get {
+                url, remote, local, ..
+            }
+            | Commands::Pget {
+                url, remote, local, ..
+            } => fields!(url, remote, local.as_deref().unwrap_or("<none>")),
+            Commands::Put {
+                url, local, remote, ..
+            } => fields!(url, local, remote.as_deref().unwrap_or("<none>")),
+            Commands::Mv { url, from, to } | Commands::Cp { url, from, to } => {
+                fields!(url, from, to)
+            }
+            Commands::Edit {
+                url,
+                path,
+                find,
+                replace,
+                ..
+            } => fields!(url, path, find, replace),
+            Commands::Check {
+                url, local, remote, ..
+            }
+            | Commands::Cryptcheck {
+                url, local, remote, ..
+            }
+            | Commands::Reconcile {
+                url, local, remote, ..
+            }
+            | Commands::Sync {
+                url, local, remote, ..
+            }
+            | Commands::SyncDoctor {
+                url, local, remote, ..
+            } => fields!(url, local, remote),
+            Commands::Find {
+                url, path, pattern, ..
+            } => fields!(url, path, pattern),
+            Commands::Site { url, command, .. } => fields!(url, command.join(",")),
+            Commands::Mount {
+                mountpoint,
+                url,
+                path,
+                ..
+            } => fields!(mountpoint, url, path),
+            Commands::Rcat { url, remote } => fields!(url, remote),
+            Commands::Serve { command } => match command {
+                ServeCommands::Http { url, path, .. }
+                | ServeCommands::WebDav { url, path, .. }
+                | ServeCommands::Ftp { url, path, .. }
+                | ServeCommands::Sftp { url, path, .. } => fields!(url, path),
+            },
+            Commands::Versions { command } => match command {
+                VersionCommands::List { url, path } => fields!(url, path),
+                VersionCommands::Get {
+                    url,
+                    path,
+                    version_id,
+                    local,
+                } => fields!(url, path, version_id, local),
+                VersionCommands::Restore {
+                    url,
+                    path,
+                    version_id,
+                }
+                | VersionCommands::Purge {
+                    url,
+                    path,
+                    version_id,
+                    ..
+                } => fields!(url, path, version_id),
+                VersionCommands::Trash { url, prefix, .. }
+                | VersionCommands::EmptyTrash { url, prefix, .. } => fields!(url, prefix),
+            },
+            Commands::Crypt { command } => match command {
+                CryptCommands::Init { url, path, .. }
+                | CryptCommands::ToHeaderless { url, path, .. }
+                | CryptCommands::ToHeaded { url, path, .. }
+                | CryptCommands::MigrateMarker { url, path, .. }
+                | CryptCommands::MigrateV4 { url, path, .. }
+                | CryptCommands::ListSlots { url, path, .. }
+                | CryptCommands::AddSlot { url, path, .. }
+                | CryptCommands::RemoveSlot { url, path, .. }
+                | CryptCommands::RotateSlot { url, path, .. }
+                | CryptCommands::KitVerify { url, path, .. }
+                | CryptCommands::Ls { url, path, .. } => fields!(url, path),
+                CryptCommands::Put {
+                    local, url, remote, ..
+                } => fields!(local, url, remote),
+                CryptCommands::Get {
+                    remote,
+                    url,
+                    path,
+                    local,
+                    ..
+                } => fields!(remote, url, path, local),
+                CryptCommands::Bind { path, .. } => fields!(path),
+                CryptCommands::Unbind | CryptCommands::SetForm { .. } => String::new(),
+            },
+            Commands::RcloneCrypt {
+                command:
+                    RcloneCryptCommands::Put {
+                        local, url, remote, ..
+                    },
+            } => fields!(local, url, remote),
+            Commands::Trash { command } => match command {
+                TrashCommands::List { url } | TrashCommands::Empty { url, .. } => url.clone(),
+                TrashCommands::Restore { id, url } | TrashCommands::Delete { id, url } => {
+                    fields!(id, url)
+                }
+            },
+            _ => panic!("unexpected command in positional inventory"),
+        }
+    }
+
+    fn argv<'a>(command: &'a str, args: &'a [&'a str]) -> Vec<&'a str> {
+        let mut argv = vec!["aeroftp-cli", "--profile", "P"];
+        argv.extend(command.split_whitespace());
+        argv.extend_from_slice(args);
+        argv
+    }
+
+    fn valid(command: &str, args: &[&str], expected: &str) {
+        let cli = parse(&argv(command, args))
+            .unwrap_or_else(|error| panic!("{command} {args:?}: {}", error.message()));
+        assert_eq!(
+            positional_summary(&cli.command),
+            expected,
+            "{command} {args:?}"
+        );
+    }
+
+    fn expected_excess_field(command: &str) -> &'static str {
+        match command {
+            "get" | "pget" | "versions get" | "crypt get" => "local",
+            "put" | "crypt put" | "rclone-crypt put" | "rcat" => "remote",
+            "mv" | "cp" => "to",
+            "edit" => "replace",
+            "check" | "cryptcheck" | "reconcile" | "sync" | "sync-doctor" => "remote",
+            "find" => "pattern",
+            "connect" | "df" | "about" | "speed" | "trash list" | "trash empty"
+            | "trash restore" | "trash delete" => "url",
+            "versions restore" | "versions purge" => "version_id",
+            "versions trash" | "versions empty-trash" => "prefix",
+            _ => "path",
+        }
+    }
+
+    fn excess_value(command: &str, args: &[&str], sentinel: &str) {
+        let error = match parse(&argv(command, args)) {
+            Ok(cli) => panic!(
+                "{command} {args:?} unexpectedly normalized to {}",
+                positional_summary(&cli.command)
+            ),
+            Err(error) => error,
+        };
+        assert_eq!(error.field, expected_excess_field(command));
+        let message = error.message();
+        assert!(message.contains(&format!("final positional '{}'", error.field)));
+        assert!(message.contains("Next:"), "{command} {args:?}");
+        if sentinel.is_empty() {
+            assert!(!message.contains("unexpected argument ''"), "{message}");
+        } else {
+            assert!(!message.contains(sentinel), "{command}: {message}");
+        }
+    }
+
+    fn case(command: &str, args: &[&str], expected: &str, excess: &[&str]) {
+        valid(command, args, expected);
+        excess_value(command, excess, "EXTRA");
+    }
+
+    fn on_big_stack(body: impl FnOnce() + Send + 'static) {
+        std::thread::Builder::new()
+            .stack_size(32 * 1024 * 1024)
+            .spawn(body)
+            .expect("spawn parser matrix")
+            .join()
+            .expect("parser matrix");
+    }
+
+    #[test]
+    fn every_profile_command_normalizes_its_arities_and_rejects_excess() {
+        on_big_stack(|| {
+            case("connect", &[], "_", &["EXTRA"]);
+            valid("link", &[], "_|");
+            valid("access", &["--to", "public"], "_|");
+            valid("hashsum", &[], "_|");
+            valid("rcat", &[], "_|");
+            valid("ls", &[], "_|");
+            case("ls", &["/dir"], "_|/dir", &["/dir", "EXTRA"]);
+            valid("get", &["/remote"], "_|/remote|<none>");
+            case(
+                "get",
+                &["/remote", "./out"],
+                "_|/remote|./out",
+                &["/remote", "./out", "EXTRA"],
+            );
+            valid("pget", &["/remote"], "_|/remote|<none>");
+            case(
+                "pget",
+                &["/remote", "./out"],
+                "_|/remote|./out",
+                &["/remote", "./out", "EXTRA"],
+            );
+            valid("put", &["./in"], "_|./in|<none>");
+            case(
+                "put",
+                &["./in", "/out"],
+                "_|./in|/out",
+                &["./in", "/out", "EXTRA"],
+            );
+            valid("mkdir", &[], "_|");
+            case("mkdir", &["/dir"], "_|/dir", &["/dir", "EXTRA"]);
+            case(
+                "access",
+                &["/path", "--to", "public"],
+                "_|/path",
+                &["/path", "EXTRA", "--to", "public"],
+            );
+            valid("rm", &[], "_|");
+            case("rm", &["/path"], "_|/path", &["/path", "EXTRA"]);
+            case("mv", &["/a", "/b"], "_|/a|/b", &["/a", "/b", "EXTRA"]);
+            case("cp", &["/a", "/b"], "_|/a|/b", &["/a", "/b", "EXTRA"]);
+            case("link", &["/path"], "_|/path", &["/path", "EXTRA"]);
+            case(
+                "edit",
+                &["/path", "old", "new"],
+                "_|/path|old|new",
+                &["/path", "old", "new", "EXTRA"],
+            );
+            for command in [
+                "cat", "head", "tail", "peek", "touch", "stat", "size", "lsd", "lsl", "lsf",
+                "lsjson", "purge", "rmdir", "rmdirs", "cleanup", "dedupe", "tree", "ncdu",
+            ] {
+                valid(command, &[], "_|");
+                case(command, &["/path"], "_|/path", &["/path", "EXTRA"]);
+            }
+            case(
+                "hashsum",
+                &["-a", "md5", "/file"],
+                "_|/file",
+                &["-a", "md5", "/file", "EXTRA"],
+            );
+            for command in ["check", "cryptcheck", "reconcile", "sync-doctor"] {
+                valid(command, &[], "_|.|");
+                valid(command, &["./local"], "_|./local|");
+                case(
+                    command,
+                    &["./local", "/remote"],
+                    "_|./local|/remote",
+                    &["./local", "/remote", "EXTRA"],
+                );
+            }
+            valid("find", &[], "_|/|*");
+            valid("find", &["/base"], "_|/base|*");
+            valid("find", &["/base", "/"], "_|/base|/");
+            case(
+                "find",
+                &["/base", "*.rs"],
+                "_|/base|*.rs",
+                &["/base", "*.rs", "EXTRA"],
+            );
+            case("df", &[], "_", &["EXTRA"]);
+            case("about", &[], "_", &["EXTRA"]);
+            case("speed", &[], "_", &["EXTRA"]);
+            valid("sync", &[], "_|.|");
+            valid("sync", &["./local"], "_|./local|");
+            case(
+                "sync",
+                &["./local", "/remote"],
+                "_|./local|/remote",
+                &["./local", "/remote", "EXTRA"],
+            );
+            valid("mount", &["/mnt"], "/mnt|_|/");
+            case(
+                "mount",
+                &["/mnt", "/remote"],
+                "/mnt|_|/remote",
+                &["/mnt", "/remote", "EXTRA"],
+            );
+            case("rcat", &["/remote"], "_|/remote", &["/remote", "EXTRA"]);
+            for command in ["serve http", "serve webdav", "serve ftp", "serve sftp"] {
+                valid(command, &[], "_|/");
+                case(command, &["/path"], "_|/path", &["/path", "EXTRA"]);
+            }
+            valid("versions list", &[], "_|");
+            case("versions list", &["/path"], "_|/path", &["/path", "EXTRA"]);
+            valid("versions get", &["/path", "v1"], "_|/path|v1|");
+            case(
+                "versions get",
+                &["/path", "v1", "./out"],
+                "_|/path|v1|./out",
+                &["/path", "v1", "./out", "EXTRA"],
+            );
+            for command in ["versions restore", "versions purge"] {
+                case(
+                    command,
+                    &["/path", "v1"],
+                    "_|/path|v1",
+                    &["/path", "v1", "EXTRA"],
+                );
+            }
+            for command in ["versions trash", "versions empty-trash"] {
+                valid(command, &[], "_|");
+                case(command, &["prefix"], "_|prefix", &["prefix", "EXTRA"]);
+            }
+            for command in [
+                "crypt init",
+                "crypt to-headerless",
+                "crypt to-headed",
+                "crypt migrate-marker",
+                "crypt migrate-v4",
+                "crypt list-slots",
+                "crypt kit-verify",
+                "crypt ls",
+            ] {
+                valid(command, &[], "_|/");
+                case(command, &["/dir"], "_|/dir", &["/dir", "EXTRA"]);
+            }
+            valid("crypt add-slot", &["--type", "passphrase"], "_|/");
+            case(
+                "crypt add-slot",
+                &["/dir", "--type", "passphrase"],
+                "_|/dir",
+                &["/dir", "EXTRA", "--type", "passphrase"],
+            );
+            for command in ["crypt remove-slot", "crypt rotate-slot"] {
+                valid(command, &["--slot-id", "1"], "_|/");
+                case(
+                    command,
+                    &["/dir", "--slot-id", "1"],
+                    "_|/dir",
+                    &["/dir", "EXTRA", "--slot-id", "1"],
+                );
+            }
+            valid("crypt put", &["./in"], "./in|_|/");
+            case(
+                "crypt put",
+                &["./in", "/dir"],
+                "./in|_|/dir",
+                &["./in", "/dir", "EXTRA"],
+            );
+            valid("crypt get", &["name"], "name|_|/|.");
+            valid("crypt get", &["name", "/dir"], "name|_|/dir|.");
+            case(
+                "crypt get",
+                &["name", "/dir", "./out"],
+                "name|_|/dir|./out",
+                &["name", "/dir", "./out", "EXTRA"],
+            );
+            valid("rclone-crypt put", &["./in"], "./in|_|/");
+            case(
+                "rclone-crypt put",
+                &["./in", "/dir"],
+                "./in|_|/dir",
+                &["./in", "/dir", "EXTRA"],
+            );
+            case("trash list", &[], "_", &["EXTRA"]);
+            case("trash empty", &[], "_", &["EXTRA"]);
+            for command in ["trash restore", "trash delete"] {
+                valid(command, &["id"], "id|_");
+                excess_value(command, &["id", "EXTRA"], "EXTRA");
+            }
+            valid("sync", &["--local", "./src", "./dst"], "./src|./dst|");
+            excess_value("sync", &["--local", "./src", "./dst", "EXTRA"], "EXTRA");
+        });
+    }
+
+    #[test]
+    fn explicit_values_url_modes_and_special_commands_keep_their_meaning() {
+        on_big_stack(|| {
+            excess_value("stat", &["/file", "EXTRA"], "EXTRA");
+            excess_value("stat", &["/file", ""], "");
+            excess_value("find", &["/base", "*.log", "*"], "*");
+            excess_value(
+                "stat",
+                &["/file", "sftp://user:synthetic-secret@example.invalid"],
+                "sftp://user:synthetic-secret@example.invalid",
+            );
+            let legacy = match parse(&argv("hashsum", &["md5", "/file"])) {
+                Ok(_) => panic!("legacy positional algorithm was accepted"),
+                Err(error) => error,
+            };
+            assert_eq!(legacy.field, "path");
+            assert!(!legacy.message().contains("/file"));
+            assert!(legacy
+                .message()
+                .contains("hashsum --profile P -a md5 <path>"));
+            let canonical = parse(&argv("hashsum", &["-a", "md5", "/file"])).unwrap();
+            assert_eq!(
+                hashsum_request_from_cli(&canonical),
+                Some((HashAlgorithm::Md5, "_", "/file", false))
+            );
+
+            valid("find", &["/base", "--name", "*.md"], "_|/base|*");
+            let cli = parse(&argv("find", &["/base", "--name", "*.md"])).unwrap();
+            let Commands::Find {
+                url,
+                path,
+                pattern,
+                name,
+                ..
+            } = &cli.command
+            else {
+                panic!("find command")
+            };
+            assert_eq!(
+                resolve_find_target(url, path, pattern, name.as_deref()),
+                ("_", "/base", "*.md")
+            );
+
+            valid("site", &["USER", "alice", "-flag"], "_|USER,alice,-flag");
+            valid(
+                "find",
+                &["sftp://host", "/base", "*.log"],
+                "sftp://host|/base|*.log",
+            );
+            valid("find", &["_", "/base", "*.log"], "_|/base|*.log");
+            let cli =
+                parse(&["aeroftp-cli", "find", "sftp://host", "/base", "*.log"]).expect("URL mode");
+            assert_eq!(positional_summary(&cli.command), "sftp://host|/base|*.log");
+        });
+    }
+
+    #[test]
+    fn batch_sync_keeps_explicit_paths_and_url_forms() {
+        on_big_stack(|| {
+            for expected_url in ["_", "sftp://host"] {
+                let command = parse_batch_sync(
+                    expected_url,
+                    &[
+                        "./local".to_string(),
+                        "/remote".to_string(),
+                        "--direction".to_string(),
+                        "upload".to_string(),
+                    ],
+                )
+                .expect("batch sync");
+                let Commands::Sync {
+                    url,
+                    local,
+                    remote,
+                    direction,
+                    ..
+                } = command
+                else {
+                    panic!("batch sync command")
+                };
+                assert_eq!(url, expected_url);
+                assert_eq!(local, "./local");
+                assert_eq!(remote, "/remote");
+                assert_eq!(direction, "upload");
+            }
+        });
+    }
 }
 
 /// The notes `sync` prints for scan roots that do not exist. A missing
@@ -68564,11 +69614,7 @@ fn hashsum_request_from_cli(cli: &Cli) -> Option<(HashAlgorithm, &str, &str, boo
             path,
             download,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             Some((*algorithm, u, p, *download))
         }
         _ => None,
@@ -72802,11 +73848,7 @@ async fn dispatch_sync(
                 5
             }
             Ok(error_correction_pct) => {
-                let (u, l, r) = if profile_shifts_positionals(cli.profile.is_some(), url) {
-                    ("_", url.as_str(), local.as_str())
-                } else {
-                    (url.as_str(), local.as_str(), remote.as_str())
-                };
+                let (u, l, r) = (url.as_str(), local.as_str(), remote.as_str());
 
                 if *watch {
                     cmd_sync_watch(
@@ -74779,11 +75821,16 @@ DISCONNECT\n";
             );
             assert!(!line.contains("--checksum"));
             let argv = ftp_client_gui_lib::sync_script::tokenize_script_line(&line).unwrap();
-            let cli = Cli::try_parse_from(&argv).unwrap_or_else(|e| panic!("{line}: {e}"));
+            let matches = Cli::command()
+                .try_get_matches_from(&argv)
+                .unwrap_or_else(|e| panic!("{line}: {e}"));
+            let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| panic!("{line}: {e}"));
+            normalize_profile_positionals(&mut cli, &matches)
+                .unwrap_or_else(|e| panic!("{line}: {}", e.message()));
             assert_eq!(cli.profile.as_deref(), Some("My Server"));
             let Commands::Sync {
-                url,
                 local,
+                remote,
                 direction,
                 delete,
                 exclude,
@@ -74792,9 +75839,8 @@ DISCONNECT\n";
             else {
                 panic!("not a sync: {line}");
             };
-            // With --profile, the dispatcher reads the first positional as LOCAL.
             assert_eq!(
-                (url.as_str(), local.as_str()),
+                (local.as_str(), remote.as_str()),
                 ("/home/me/a dir", "/remote")
             );
             assert_eq!(direction, "download");
@@ -77755,7 +78801,10 @@ async fn main() {
         }
     };
 
-    let mut cli = Cli::parse_from(args.clone());
+    let matches = Cli::command()
+        .try_get_matches_from(args.clone())
+        .unwrap_or_else(|error| error.exit());
+    let mut cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
     if cli.ignore_checksum {
         ftp_client_gui_lib::providers::content_check::set_enabled(false);
     }
@@ -77775,6 +78824,10 @@ async fn main() {
     }
 
     let format = cli.output_format();
+    if let Err(error) = normalize_profile_positionals(&mut cli, &matches) {
+        print_error(format, &error.message(), 2);
+        std::process::exit(2);
+    }
     // The one answer to "JSON or text" for the handlers that take a bool:
     // `--json` in any position, `--machine`, AEROFTP_MACHINE and `--format
     // json`, all folded into `format`. Their subcommands used to declare a
@@ -77925,9 +78978,6 @@ async fn main() {
     let exit_code = match &cli.command {
         Commands::Connect { url } => cmd_connect(url, &cli, format).await,
         Commands::FlatpakImport { status } => cmd_flatpak_import(*status, format),
-        // Profile-aware positional shift: when --profile is set, the "url" positional
-        // is actually the first real argument (path, remote, etc.). We detect this by
-        // checking if url doesn't look like a URL (no "://") and shift args accordingly.
         Commands::Ls {
             url,
             path,
@@ -77939,11 +78989,7 @@ async fn main() {
             files_only,
             dirs_only,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_ls(
                 u,
                 p,
@@ -77969,11 +79015,7 @@ async fn main() {
             // (segmented parallel download only makes sense per-file) and
             // defaults to 4 segments instead of 1. Routes through the same
             // cmd_get + retry plumbing so behaviour stays in lockstep.
-            let (u, r, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), Some(remote.as_str()))
-            } else {
-                (url.as_str(), remote.as_str(), local.as_deref())
-            };
+            let (u, r, l) = (url.as_str(), remote.as_str(), local.as_deref());
             retry_transfer_command(
                 &cli,
                 effective_max_attempts(&cli, format),
@@ -78004,11 +79046,7 @@ async fn main() {
             segments,
             delta,
         } => {
-            let (u, r, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), Some(remote.as_str()))
-            } else {
-                (url.as_str(), remote.as_str(), local.as_deref())
-            };
+            let (u, r, l) = (url.as_str(), remote.as_str(), local.as_deref());
             retry_transfer_command(
                 &cli,
                 effective_max_attempts(&cli, format),
@@ -78040,11 +79078,7 @@ async fn main() {
             delta,
             access,
         } => {
-            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), Some(local.as_str()))
-            } else {
-                (url.as_str(), local.as_str(), remote.as_deref())
-            };
+            let (u, l, r) = (url.as_str(), local.as_str(), remote.as_deref());
             put_with_retries(
                 u,
                 l,
@@ -78065,19 +79099,11 @@ async fn main() {
             parents,
             access,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_mkdir(u, p, *parents, *access, &cli, format).await
         }
         Commands::Access { url, path, to } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_access(u, p, *to, &cli, format).await
         }
         Commands::Rm {
@@ -78086,24 +79112,13 @@ async fn main() {
             recursive,
             force,
             dry_run,
-        } => match delete_positionals(&cli, url, path, format) {
-            Ok((u, p)) => cmd_rm(u, p, *recursive, *force, *dry_run, &cli, format).await,
-            Err(code) => code,
-        },
+        } => cmd_rm(url, path, *recursive, *force, *dry_run, &cli, format).await,
         Commands::Mv { url, from, to } => {
-            let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), from.as_str())
-            } else {
-                (url.as_str(), from.as_str(), to.as_str())
-            };
+            let (u, f, t) = (url.as_str(), from.as_str(), to.as_str());
             cmd_mv(u, f, t, &cli, format, &cancelled).await
         }
         Commands::Cp { url, from, to } => {
-            let (u, f, t) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), from.as_str())
-            } else {
-                (url.as_str(), from.as_str(), to.as_str())
-            };
+            let (u, f, t) = (url.as_str(), from.as_str(), to.as_str());
             cmd_cp(u, f, t, &cli, format).await
         }
         Commands::Link {
@@ -78114,11 +79129,7 @@ async fn main() {
             permissions,
             verify,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_link(
                 u,
                 p,
@@ -78145,11 +79156,7 @@ async fn main() {
             password_form,
             salt_form,
         } => {
-            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), local.as_str())
-            } else {
-                (url.as_str(), local.as_str(), remote.as_str())
-            };
+            let (u, l, r) = (url.as_str(), local.as_str(), remote.as_str());
             cmd_cryptcheck(
                 u,
                 l,
@@ -78175,11 +79182,7 @@ async fn main() {
             first,
             allow_non_atomic,
         } => {
-            let (u, p, f, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), path.as_str(), find.as_str())
-            } else {
-                (url.as_str(), path.as_str(), find.as_str(), replace.as_str())
-            };
+            let (u, p, f, r) = (url.as_str(), path.as_str(), find.as_str(), replace.as_str());
             cmd_edit(
                 u,
                 p,
@@ -78195,19 +79198,11 @@ async fn main() {
             .await
         }
         Commands::Cat { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_cat(u, p, &cli, format).await
         }
         Commands::Rcat { url, remote } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), remote.as_str())
-            };
+            let (u, p) = (url.as_str(), remote.as_str());
             cmd_rcat(u, p, &cli, format).await
         }
         Commands::Serve { command } => match command {
@@ -78218,11 +79213,7 @@ async fn main() {
                 allow_remote_bind,
                 auth_token,
             } => {
-                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str())
-                } else {
-                    (url.as_str(), path.as_str())
-                };
+                let (u, p) = (url.as_str(), path.as_str());
                 cmd_serve_http(
                     u,
                     p,
@@ -78241,11 +79232,7 @@ async fn main() {
                 allow_remote_bind,
                 auth_token,
             } => {
-                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str())
-                } else {
-                    (url.as_str(), path.as_str())
-                };
+                let (u, p) = (url.as_str(), path.as_str());
                 cmd_serve_webdav(
                     u,
                     p,
@@ -78266,11 +79253,7 @@ async fn main() {
                 auth_password,
                 passive_ports,
             } => {
-                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str())
-                } else {
-                    (url.as_str(), path.as_str())
-                };
+                let (u, p) = (url.as_str(), path.as_str());
                 cmd_serve_ftp(
                     u,
                     p,
@@ -78296,11 +79279,7 @@ async fn main() {
                 auth_user,
                 auth_password,
             } => {
-                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str())
-                } else {
-                    (url.as_str(), path.as_str())
-                };
+                let (u, p) = (url.as_str(), path.as_str());
                 cmd_serve_sftp(
                     u,
                     p,
@@ -78324,19 +79303,11 @@ async fn main() {
             lines,
             bytes,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_head(u, p, *lines, *bytes, &cli, format).await
         }
         Commands::Tail { url, path, lines } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_tail(u, p, *lines, &cli, format).await
         }
         Commands::Peek {
@@ -78346,11 +79317,7 @@ async fn main() {
             bytes,
             tail,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             if *tail && bytes.is_none() {
                 cmd_tail(u, p, *lines, &cli, format).await
             } else {
@@ -78362,11 +79329,7 @@ async fn main() {
             path,
             timestamp,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_touch(u, p, timestamp.as_deref(), &cli, format).await
         }
         Commands::Hashsum { .. } => {
@@ -78380,11 +79343,7 @@ async fn main() {
             checksum,
             one_way,
         } => {
-            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), local.as_str())
-            } else {
-                (url.as_str(), local.as_str(), remote.as_str())
-            };
+            let (u, l, r) = (url.as_str(), local.as_str(), remote.as_str());
             cmd_check(u, l, r, *checksum, *one_way, &cli, format).await
         }
         Commands::Reconcile {
@@ -78396,11 +79355,7 @@ async fn main() {
             exclude,
             reconcile_format,
         } => {
-            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), local.as_str())
-            } else {
-                (url.as_str(), local.as_str(), remote.as_str())
-            };
+            let (u, l, r) = (url.as_str(), local.as_str(), remote.as_str());
             cmd_reconcile(
                 u,
                 l,
@@ -78415,11 +79370,7 @@ async fn main() {
             .await
         }
         Commands::Stat { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_stat(u, p, &cli, format).await
         }
         Commands::Find {
@@ -78436,7 +79387,6 @@ async fn main() {
             // (V2 verification flagged the positional-only as a
             // first-attempt friction).
             let (u, p, pat) = resolve_find_target(
-                cli.profile.is_some(),
                 url.as_str(),
                 path.as_str(),
                 pattern.as_str(),
@@ -78446,19 +79396,11 @@ async fn main() {
         }
         Commands::Df { url, scan, full } => cmd_df(url, *scan, *full, &cli, format).await,
         Commands::Size { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_size(u, p, &cli, format).await
         }
         Commands::Lsd { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             // rclone `lsd`: directories only.
             cmd_ls(
                 u, p, false, "name", false, false, None, false, true, &cli, format,
@@ -78466,11 +79408,7 @@ async fn main() {
             .await
         }
         Commands::Lsl { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             // rclone `lsl`: long listing (perms, size, date, name).
             cmd_ls(
                 u, p, true, "name", false, false, None, false, false, &cli, format,
@@ -78478,11 +79416,7 @@ async fn main() {
             .await
         }
         Commands::Lsf { url, path } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             // rclone `lsf`: bare entries, one per line. The cmd_ls short
             // format already prints one entry per line and routes the
             // human summary to stderr, so stdout stays pipe-clean.
@@ -78504,11 +79438,7 @@ async fn main() {
             hash_type,
             ndjson,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_lsjson(
                 u,
                 p,
@@ -78535,27 +79465,12 @@ async fn main() {
             // rclone `purge`: recursive delete of the path and everything
             // under it. Routes through cmd_rm so the root guard, the
             // confirmation prompt and the error/exit mapping stay shared.
-            match delete_positionals(&cli, url, path, format) {
-                Ok((u, p)) => cmd_rm(u, p, true, *force, *dry_run, &cli, format).await,
-                Err(code) => code,
-            }
+            cmd_rm(url, path, true, *force, *dry_run, &cli, format).await
         }
-        Commands::Rmdir { url, path } => match delete_positionals(&cli, url, path, format) {
-            Ok((u, p)) => cmd_rmdir(u, p, &cli, format).await,
-            Err(code) => code,
-        },
-        Commands::Rmdirs { url, path, force } => {
-            match delete_positionals(&cli, url, path, format) {
-                Ok((u, p)) => cmd_rmdirs(u, p, *force, &cli, format).await,
-                Err(code) => code,
-            }
-        }
+        Commands::Rmdir { url, path } => cmd_rmdir(url, path, &cli, format).await,
+        Commands::Rmdirs { url, path, force } => cmd_rmdirs(url, path, *force, &cli, format).await,
         Commands::Tree { url, path, depth } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_tree(u, p, *depth, &cli, format).await
         }
         Commands::Ncdu {
@@ -78564,11 +79479,7 @@ async fn main() {
             depth,
             export,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_ncdu(u, p, *depth, export.as_deref(), &cli, format).await
         }
         #[allow(unused_variables)]
@@ -78588,11 +79499,7 @@ async fn main() {
             cache_mode,
             fuse_threads,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             // KE-C2: parse the optional duration / size knobs once, up
             // front. A `None` value falls back to the cache_ttl-derived
             // legacy behaviour inside `AeroFuseFs::new`. We bail out of
@@ -78703,11 +79610,7 @@ async fn main() {
             error_correction,
             ec_max_overhead,
         } => {
-            let (u, l, r) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str(), local.as_str())
-            } else {
-                (url.as_str(), local.as_str(), remote.as_str())
-            };
+            let (u, l, r) = (url.as_str(), local.as_str(), remote.as_str());
             match parse_sync_error_correction_level_pct(error_correction.as_deref()) {
                 Err(err) => {
                     print_error(format, &err, 5);
@@ -78744,28 +79647,20 @@ async fn main() {
             template,
             sets,
         } => {
-            // With --profile the first positional is the SITE verb, not a URL.
-            let mut words = command.clone();
-            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                words.insert(0, url.clone());
-                "_"
-            } else {
-                url
-            };
-            if template.is_some() && words.iter().any(|word| !word.is_empty()) {
+            if template.is_some() && command.iter().any(|word| !word.is_empty()) {
                 print_error(
                     format,
                     "give either a SITE command or --template, not both",
                     5,
                 );
                 5
-            } else if file.is_some() && !words.is_empty() {
+            } else if file.is_some() && !command.is_empty() {
                 print_error(format, "give either a SITE command or --file, not both", 5);
                 5
             } else {
                 cmd_site(
-                    u,
-                    &words,
+                    url,
+                    command,
                     SiteCliOptions {
                         timeout_secs: site_reply_timeout(&cli),
                         secrets,
@@ -78782,14 +79677,7 @@ async fn main() {
             }
         }
         Commands::SiteTemplate { action } => cmd_site_templates(action, &cli, format),
-        Commands::About { url } => {
-            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                "_"
-            } else {
-                url
-            };
-            cmd_about(u, &cli, format).await
-        }
+        Commands::About { url } => cmd_about(url, &cli, format).await,
         Commands::Speed {
             url,
             test_size,
@@ -78798,13 +79686,8 @@ async fn main() {
             no_integrity,
             json_out,
         } => {
-            let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                "_"
-            } else {
-                url.as_str()
-            };
             cmd_speed(
-                u,
+                url,
                 test_size,
                 *iterations,
                 remote_path.as_deref(),
@@ -78939,11 +79822,7 @@ async fn main() {
             force,
             min_age,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_cleanup(u, p, *force, min_age, &cli, format).await
         }
         Commands::Dedupe {
@@ -78956,11 +79835,7 @@ async fn main() {
             similarity,
             distance,
         } => {
-            let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                ("_", url.as_str())
-            } else {
-                (url.as_str(), path.as_str())
-            };
+            let (u, p) = (url.as_str(), path.as_str());
             cmd_dedupe(
                 u,
                 p,
@@ -80744,11 +81619,7 @@ async fn main() {
         Commands::AgentConnect { profile } => cmd_agent_connect(&cli, profile).await,
         Commands::Versions { command } => match command {
             VersionCommands::List { url, path } => {
-                let (u, p) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str())
-                } else {
-                    (url.as_str(), path.as_str())
-                };
+                let (u, p) = (url.as_str(), path.as_str());
                 cmd_versions_list(u, p, &cli, format).await
             }
             VersionCommands::Get {
@@ -80757,16 +81628,12 @@ async fn main() {
                 version_id,
                 local,
             } => {
-                let (u, p, v, l) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str(), path.as_str(), version_id.as_str())
-                } else {
-                    (
-                        url.as_str(),
-                        path.as_str(),
-                        version_id.as_str(),
-                        local.as_str(),
-                    )
-                };
+                let (u, p, v, l) = (
+                    url.as_str(),
+                    path.as_str(),
+                    version_id.as_str(),
+                    local.as_str(),
+                );
                 cmd_versions_get(u, p, v, l, &cli, format).await
             }
             VersionCommands::Restore {
@@ -80774,11 +81641,7 @@ async fn main() {
                 path,
                 version_id,
             } => {
-                let (u, p, v) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str(), path.as_str())
-                } else {
-                    (url.as_str(), path.as_str(), version_id.as_str())
-                };
+                let (u, p, v) = (url.as_str(), path.as_str(), version_id.as_str());
                 cmd_versions_restore(u, p, v, &cli, format).await
             }
             VersionCommands::Purge {
@@ -80787,19 +81650,11 @@ async fn main() {
                 version_id,
                 yes,
             } => {
-                let (u, p, v) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str(), path.as_str())
-                } else {
-                    (url.as_str(), path.as_str(), version_id.as_str())
-                };
+                let (u, p, v) = (url.as_str(), path.as_str(), version_id.as_str());
                 cmd_versions_purge(u, p, v, *yes, &cli, format).await
             }
             VersionCommands::Trash { url, prefix, all } => {
-                let (u, pfx) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str())
-                } else {
-                    (url.as_str(), prefix.as_str())
-                };
+                let (u, pfx) = (url.as_str(), prefix.as_str());
                 cmd_versions_trash(u, pfx, *all, &cli, format).await
             }
             VersionCommands::EmptyTrash {
@@ -80809,11 +81664,7 @@ async fn main() {
                 dry_run,
                 yes,
             } => {
-                let (u, pfx) = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                    ("_", url.as_str())
-                } else {
-                    (url.as_str(), prefix.as_str())
-                };
+                let (u, pfx) = (url.as_str(), prefix.as_str());
                 cmd_versions_empty_trash(u, pfx, *all, *dry_run, *yes, &cli, format).await
             }
         },
@@ -80888,15 +81739,10 @@ async fn main() {
                                             code
                                         }
                                         Ok(kit_destination) => {
-                                            let (u, dir) = resolve_profile_crypt_positionals(
-                                                cli.profile.is_some(),
-                                                url,
-                                                path,
-                                                "/",
-                                            );
+                                            let (u, dir) = (url, path);
                                             cmd_crypt_init(
-                                                &u,
-                                                &dir,
+                                                u,
+                                                dir,
                                                 &pw,
                                                 kf.as_ref(),
                                                 generated_keyfile,
@@ -80952,13 +81798,8 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "to-headerless") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
-                            cmd_crypt_to_headerless(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            let (u, dir) = (url, path);
+                            cmd_crypt_to_headerless(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -80981,13 +81822,8 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "to-headed") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
-                            cmd_crypt_to_headed(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            let (u, dir) = (url, path);
+                            cmd_crypt_to_headed(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -81006,13 +81842,8 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "migrate-marker") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
-                            cmd_crypt_migrate_marker(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            let (u, dir) = (url, path);
+                            cmd_crypt_migrate_marker(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -81032,15 +81863,10 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "migrate-v4") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
+                            let (u, dir) = (url, path);
                             cmd_crypt_migrate_v4(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *allow_non_atomic,
@@ -81066,13 +81892,8 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "list-slots") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
-                            cmd_crypt_list_slots(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            let (u, dir) = (url, path);
+                            cmd_crypt_list_slots(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -81099,15 +81920,10 @@ async fn main() {
                             5
                         } else {
                             let new_pw = new_password.clone().unwrap_or_default();
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
+                            let (u, dir) = (url, path);
                             cmd_crypt_add_slot(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 slot_type,
@@ -81138,15 +81954,10 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "remove-slot") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
+                            let (u, dir) = (url, path);
                             cmd_crypt_remove_slot(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *slot_id,
@@ -81181,15 +81992,10 @@ async fn main() {
                             5
                         } else {
                             let new_pw = new_password.clone().unwrap_or_default();
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
+                            let (u, dir) = (url, path);
                             cmd_crypt_rotate_slot(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *slot_id,
@@ -81209,17 +82015,9 @@ async fn main() {
                     kit,
                     kit_text,
                 } => {
-                    let (u, dir) =
-                        resolve_profile_crypt_positionals(cli.profile.is_some(), url, path, "/");
-                    cmd_crypt_kit_verify(
-                        &u,
-                        &dir,
-                        kit.as_deref(),
-                        kit_text.as_deref(),
-                        &cli,
-                        format,
-                    )
-                    .await
+                    let (u, dir) = (url, path);
+                    cmd_crypt_kit_verify(u, dir, kit.as_deref(), kit_text.as_deref(), &cli, format)
+                        .await
                 }
                 CryptCommands::Ls {
                     url,
@@ -81238,15 +82036,10 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "ls") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
+                            let (u, dir) = (url, path);
                             cmd_crypt_ls(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *use_default_salt,
@@ -81276,16 +82069,11 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "put") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                remote,
-                                "/",
-                            );
+                            let (u, dir) = (url, remote);
                             cmd_crypt_put(
-                                &u,
+                                u,
                                 local,
-                                &dir,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *use_default_salt,
@@ -81316,16 +82104,11 @@ async fn main() {
                         if !require_secret(&pw, kf.as_ref(), "get") {
                             5
                         } else {
-                            let (u, dir) = resolve_profile_crypt_positionals(
-                                cli.profile.is_some(),
-                                url,
-                                path,
-                                "/",
-                            );
+                            let (u, dir) = (url, path);
                             cmd_crypt_get(
-                                &u,
+                                u,
                                 remote,
-                                &dir,
+                                dir,
                                 local,
                                 &pw,
                                 kf.as_ref(),
@@ -81373,13 +82156,8 @@ async fn main() {
                         print_error(format, "Password required for rclone-crypt put", 5);
                         5
                     } else {
-                        let u = if cli.profile.is_some() && !url.contains("://") && url != "_" {
-                            "_"
-                        } else {
-                            url.as_str()
-                        };
                         cmd_rclone_crypt_put(
-                            u,
+                            url,
                             local,
                             remote,
                             &pw,
@@ -90260,42 +91038,6 @@ mod tests {
                 }
             }
         });
-    }
-
-    #[test]
-    fn resolve_profile_crypt_positionals_shifts_path_slot_under_profile() {
-        // With --profile, a path in the url slot is the encrypted directory:
-        // shift it into the (default) path slot so `crypt init X /enc` works.
-        assert_eq!(
-            resolve_profile_crypt_positionals(true, "/home/user/enc", "/", "/"),
-            ("_".to_string(), "/home/user/enc".to_string())
-        );
-        // The placeholder stays a placeholder, path untouched.
-        assert_eq!(
-            resolve_profile_crypt_positionals(true, "_", "/", "/"),
-            ("_".to_string(), "/".to_string())
-        );
-        // If BOTH positionals were given, keep the explicit path and drop the
-        // bogus url (the profile provides the connection anyway).
-        assert_eq!(
-            resolve_profile_crypt_positionals(true, "/wrong", "/sub", "/"),
-            ("_".to_string(), "/sub".to_string())
-        );
-        // A real URL in the url slot under --profile is left alone (edge: the
-        // user explicitly passed a connection string; "://" opts out).
-        assert_eq!(
-            resolve_profile_crypt_positionals(true, "sftp://host/enc", "/", "/"),
-            ("sftp://host/enc".to_string(), "/".to_string())
-        );
-        // No profile: URL-mode is byte-identical, nothing is shifted.
-        assert_eq!(
-            resolve_profile_crypt_positionals(false, "sftp://host", "/enc", "/"),
-            ("sftp://host".to_string(), "/enc".to_string())
-        );
-        assert_eq!(
-            resolve_profile_crypt_positionals(false, "_", "/", "/"),
-            ("_".to_string(), "/".to_string())
-        );
     }
 
     #[test]
@@ -106537,90 +107279,6 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(served_file(&rt, &provider, "/new.txt"), None);
     }
 
-    #[test]
-    fn find_with_a_profile_keeps_the_pattern_instead_of_the_path_default() {
-        // Silent wrong answer: with `--profile` the positionals shift left, so
-        // the pattern lives in `path`. The profile branch used to pass `path`
-        // straight through, which meant `--name` was dropped and an omitted
-        // pattern searched for `path`'s default `/`. A glob is matched against
-        // the entry name, so `/` matched nothing and `find` reported zero hits
-        // on a directory full of files instead of erroring.
-        let base = "/Nas_Prog/inbox/";
-
-        // Pattern omitted: falls back to the documented `*`, never to `/`.
-        assert_eq!(
-            resolve_find_target(true, base, FIND_DEFAULT_PATH, FIND_DEFAULT_PATTERN, None),
-            ("_", base, "*")
-        );
-        // `--name` is honoured in the profile branch.
-        assert_eq!(
-            resolve_find_target(
-                true,
-                base,
-                FIND_DEFAULT_PATH,
-                FIND_DEFAULT_PATTERN,
-                Some("*.md")
-            ),
-            ("_", base, "*.md")
-        );
-        // Shifted positional pattern is used as-is.
-        assert_eq!(
-            resolve_find_target(true, base, "*.log", FIND_DEFAULT_PATTERN, None),
-            ("_", base, "*.log")
-        );
-        // `--name` still wins over the shifted positional.
-        assert_eq!(
-            resolve_find_target(true, base, "*.log", FIND_DEFAULT_PATTERN, Some("*.md")),
-            ("_", base, "*.md")
-        );
-
-        // No profile: no shift, and `--name` still wins over the positional.
-        assert_eq!(
-            resolve_find_target(false, "sftp://host", base, "*.log", None),
-            ("sftp://host", base, "*.log")
-        );
-        assert_eq!(
-            resolve_find_target(false, "sftp://host", base, "*.log", Some("*.md")),
-            ("sftp://host", base, "*.md")
-        );
-        // A profile paired with an explicit URL or the `_` placeholder is not
-        // a shifted invocation either.
-        assert_eq!(
-            resolve_find_target(true, "sftp://host", base, "*.log", None),
-            ("sftp://host", base, "*.log")
-        );
-        assert_eq!(
-            resolve_find_target(true, "_", base, "*.log", Some("*.md")),
-            ("_", base, "*.md")
-        );
-    }
-
-    #[test]
-    fn find_positional_defaults_match_the_shift_fallback() {
-        // Guards the assumption the fallback above rests on: an omitted `find`
-        // pattern really does arrive as `path == "/"`, not as an empty string.
-        use clap::Parser;
-        // The command tree is large enough to blow a test thread's default
-        // 2 MiB stack while clap builds it, so give the parse its own.
-        std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(move || {
-                let cli = Cli::try_parse_from(["aeroftp-cli", "--profile", "42", "find", "/base"])
-                    .expect("find should parse");
-                let Commands::Find {
-                    url, path, pattern, ..
-                } = &cli.command
-                else {
-                    panic!("expected the find subcommand");
-                };
-                assert_eq!(url, "/base");
-                assert_eq!(path, FIND_DEFAULT_PATH);
-                assert_eq!(pattern, FIND_DEFAULT_PATTERN);
-            })
-            .expect("spawn parse thread")
-            .join()
-            .expect("parsing should not panic");
-    }
     /// `--immutable` on a destination that exists: skipped with the exit code
     /// `put` has always used, and the existing bytes are not touched. A
     /// missing destination lets the write proceed. `cp` and `mv` route through
@@ -106746,15 +107404,19 @@ mod aerosync_plan_cli_line_tests {
                 .iter()
                 .map(|v| v.as_str().unwrap().to_string())
                 .collect();
-            let cli = Cli::try_parse_from(&argv)
+            let matches = Cli::command()
+                .try_get_matches_from(&argv)
                 .unwrap_or_else(|e| panic!("{name}: clap refused the Plan's command: {e}"));
+            let mut cli = Cli::from_arg_matches(&matches)
+                .unwrap_or_else(|e| panic!("{name}: clap refused the Plan's command: {e}"));
+            normalize_profile_positionals(&mut cli, &matches)
+                .unwrap_or_else(|e| panic!("{name}: invalid Plan positionals: {}", e.message()));
             assert_eq!(
                 cli.profile.as_deref(),
                 input["profileName"].as_str(),
                 "{name}"
             );
             let Commands::Sync {
-                url,
                 local,
                 remote,
                 direction,
@@ -106767,12 +107429,7 @@ mod aerosync_plan_cli_line_tests {
             else {
                 panic!("{name}: not a sync command");
             };
-            // The slots cmd_sync reads, by the rule the dispatch applies.
-            let (l, r) = if profile_shifts_positionals(cli.profile.is_some(), url) {
-                (url.as_str(), local.as_str())
-            } else {
-                (local.as_str(), remote.as_str())
-            };
+            let (l, r) = (local.as_str(), remote.as_str());
             assert_eq!(
                 l,
                 input["localPath"].as_str().unwrap(),
