@@ -52,7 +52,10 @@ impl GuiOwnerContext {
         let Some(store) = CredentialStore::from_cache() else {
             return Ok(None);
         };
-        let tag = crate::user_partitions::sync_owner_tag_for_user(&store, user, material)?;
+        let material = zeroize::Zeroizing::new(
+            serde_json::to_string(&(user, material)).map_err(|_| changed())?,
+        );
+        let tag = crate::user_partitions::sync_owner_tag_for_user(&store, user, &material)?;
         self.validate()?;
         Ok(Some(format!("owner-v1:{tag}")))
     }

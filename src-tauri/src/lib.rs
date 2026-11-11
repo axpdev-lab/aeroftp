@@ -6935,7 +6935,13 @@ async fn delete_local_file(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
 ) -> Result<String, String> {
+    let _target = provider_state
+        .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
+        .await?;
     let result = delete_local_file_inner(app.clone(), state, path.clone()).await;
     // A folder delete can stop half way and still return Ok: follow_delete only
     // forgets the tags of paths that are no longer on disk.
@@ -7841,7 +7847,15 @@ mod rename_local_exdev_tests {
 }
 
 #[tauri::command]
-async fn create_local_folder(path: String) -> Result<(), String> {
+async fn create_local_folder(
+    path: String,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
+) -> Result<(), String> {
+    let _target = provider_state
+        .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
+        .await?;
     validate_path(&path)?;
     tokio::fs::create_dir_all(&path)
         .await
@@ -16594,6 +16608,21 @@ async fn sync_backup_remote_move(
 /// sync overwrites or deletes it. `None` when there was nothing to keep.
 #[tauri::command]
 async fn sync_backup_archive_local(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+) -> Result<Option<String>, String> {
+    let _target = provider_state
+        .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
+        .await?;
+    sync_backup_archive_local_inner(root, dir, stamp, rel).await
+}
+
+async fn sync_backup_archive_local_inner(
     root: String,
     dir: String,
     stamp: String,
@@ -27685,7 +27714,7 @@ mod sync_backup_archive_local_tests {
     #[tokio::test]
     async fn a_root_that_is_not_a_clean_absolute_path_is_refused() {
         for root in ["relative/dir", "/tmp/../etc", "/tmp/a\0b"] {
-            let outcome = super::sync_backup_archive_local(
+            let outcome = super::sync_backup_archive_local_inner(
                 root.to_string(),
                 ".aeroftp-versions".to_string(),
                 "20260925T070000Z".to_string(),

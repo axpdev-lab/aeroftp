@@ -472,22 +472,13 @@ const runSync = async (
         catch (error) { targetError = error; throw error; }
     };
     const invoke: RemoteSyncDeps['invoke'] = async (cmd, args) => {
-        if (!config.isLocalLocal && localMutations.has(cmd)) {
-            assertTarget();
-            try {
-                await deps.invoke('provider_gui_validate_target', {
-                    expectedGuiTarget: deps.remoteTarget!.epoch, isProvider: config.isProvider,
-                });
-                assertTarget();
-            } catch (error) { targetError = error; throw error; }
-        }
-        if (config.isLocalLocal || !remoteCommands.has(cmd)) return deps.invoke(cmd, args);
+        if (config.isLocalLocal || (!remoteCommands.has(cmd) && !localMutations.has(cmd))) return deps.invoke(cmd, args);
         assertTarget();
         const epoch = deps.remoteTarget!.epoch;
         const params = cmd === 'upload_file' || cmd === 'download_file';
         const guardedArgs = params
             ? { ...args, params: { ...(args?.params as Record<string, unknown>), expected_gui_target: epoch } }
-            : { ...args, expectedGuiTarget: epoch };
+            : { ...args, expectedGuiTarget: epoch, ...(localMutations.has(cmd) ? { isProvider: config.isProvider } : {}) };
         try {
             return await deps.invoke(cmd, guardedArgs);
         } catch (error) {

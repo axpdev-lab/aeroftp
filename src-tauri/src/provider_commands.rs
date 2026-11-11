@@ -324,6 +324,26 @@ impl ProviderState {
         Ok(Some(pin))
     }
 
+    /// Local effects of a remote plan use the same command-lifetime pin.
+    /// Validate the sealed provider authorization at dispatch, then keep the
+    /// target fixed until the accepted local operation has finished.
+    pub(crate) async fn pin_gui_local_target(
+        &self,
+        expected: Option<u64>,
+        is_provider: bool,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let pin = self.pin_gui_target(expected).await?;
+        if expected.is_some() && is_provider {
+            let provider = self.provider.lock().await;
+            let provider = provider
+                .as_ref()
+                .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+            crate::credential_store::off_async_worker(|| provider.sync_owner_identity())
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(pin)
+    }
+
     fn validate_gui_owner(&self) -> Result<(), String> {
         let owner = self
             .gui_owner_context

@@ -322,8 +322,12 @@ it('validates the backend auth owner before archiving the next download destinat
     const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
         if (cmd === 'provider_bulk_support') return null as T;
         if (cmd === 'sync_backup_run_stamp') return 'stamp' as T;
-        if (cmd === 'provider_gui_validate_target' && authChanged) throw 'CONNECTION_CHANGED';
-        if (cmd === 'sync_backup_archive_local') { archives.push(args?.rel); return '/kept' as T; }
+        if (cmd === 'sync_backup_archive_local') {
+            expect(args?.expectedGuiTarget).toBe(1);
+            expect(args?.isProvider).toBe(true);
+            if (authChanged) throw 'CONNECTION_CHANGED';
+            archives.push(args?.rel); return '/kept' as T;
+        }
         if (cmd === 'provider_download_file') { downloads.push(args); authChanged = true; }
         return undefined as T;
     };
