@@ -55857,15 +55857,15 @@ fn profile_shifts_positionals(has_profile: bool, url: &str) -> bool {
 
 #[derive(Debug, PartialEq, Eq)]
 struct ExcessProfilePositional {
-    value: String,
+    field: &'static str,
     next_step: &'static str,
 }
 
 impl ExcessProfilePositional {
     fn message(&self) -> String {
         format!(
-            "unexpected argument '{}': with --profile, the URL slot is the first logical positional and no argument may remain in the final parser slot. Next: {}",
-            self.value, self.next_step
+            "unexpected argument in final positional '{}': with --profile, the URL slot is the first logical positional and no argument may remain in the final parser slot. Next: {}",
+            self.field, self.next_step
         )
     }
 }
@@ -55879,13 +55879,6 @@ impl ProfilePositional<'_> {
     fn id(&self) -> &'static str {
         match self {
             Self::Required(id, _) | Self::Optional(id, _) => id,
-        }
-    }
-
-    fn value(&self) -> Option<String> {
-        match self {
-            Self::Required(_, value) => Some((**value).clone()),
-            Self::Optional(_, value) => (**value).clone(),
         }
     }
 
@@ -55913,19 +55906,16 @@ fn normalize_profile_strings(
     if !profile_shifts_positionals(true, url) {
         return Ok(());
     }
-    let (final_id, excess) = fields.last().map_or_else(
-        || ("url", Some(url.clone())),
-        |field| (field.id(), field.value()),
-    );
+    let final_id = fields.last().map_or("url", |field| field.id());
     if matches.value_source(final_id) == Some(clap::parser::ValueSource::CommandLine) {
         return Err(ExcessProfilePositional {
-            value: excess.unwrap_or_default(),
+            field: final_id,
             next_step,
         });
     }
     if fields.is_empty() {
         return Err(ExcessProfilePositional {
-            value: url.clone(),
+            field: "url",
             next_step,
         });
     }
@@ -56411,13 +56401,11 @@ fn normalize_profile_positionals(
             Required("path", path)
         ),
         Commands::Sync {
-            local_only: true,
-            remote,
-            ..
+            local_only: true, ..
         } => {
             if matches.value_source("remote") == Some(clap::parser::ValueSource::CommandLine) {
                 Err(ExcessProfilePositional {
-                    value: remote.clone(),
+                    field: "remote",
                     next_step: "sync --local <source> <destination>",
                 })
             } else {
@@ -56666,7 +56654,23 @@ mod profile_positional_tests {
         );
     }
 
-    fn excess_value(command: &str, args: &[&str], expected: &str) {
+    fn expected_excess_field(command: &str) -> &'static str {
+        match command {
+            "get" | "pget" | "versions get" | "crypt get" => "local",
+            "put" | "crypt put" | "rclone-crypt put" | "rcat" => "remote",
+            "mv" | "cp" => "to",
+            "edit" => "replace",
+            "check" | "cryptcheck" | "reconcile" | "sync" | "sync-doctor" => "remote",
+            "find" => "pattern",
+            "connect" | "df" | "about" | "speed" | "trash list" | "trash empty"
+            | "trash restore" | "trash delete" => "url",
+            "versions restore" | "versions purge" => "version_id",
+            "versions trash" | "versions empty-trash" => "prefix",
+            _ => "path",
+        }
+    }
+
+    fn excess_value(command: &str, args: &[&str], sentinel: &str) {
         let error = match parse(&argv(command, args)) {
             Ok(cli) => panic!(
                 "{command} {args:?} unexpectedly normalized to {}",
@@ -56674,8 +56678,15 @@ mod profile_positional_tests {
             ),
             Err(error) => error,
         };
-        assert_eq!(error.value, expected, "{command} {args:?}");
-        assert!(error.message().contains("Next:"), "{command} {args:?}");
+        assert_eq!(error.field, expected_excess_field(command));
+        let message = error.message();
+        assert!(message.contains(&format!("final positional '{}'", error.field)));
+        assert!(message.contains("Next:"), "{command} {args:?}");
+        if sentinel.is_empty() {
+            assert!(!message.contains("unexpected argument ''"), "{message}");
+        } else {
+            assert!(!message.contains(sentinel), "{command}: {message}");
+        }
     }
 
     fn case(command: &str, args: &[&str], expected: &str, excess: &[&str]) {
@@ -56886,11 +56897,17 @@ mod profile_positional_tests {
             excess_value("stat", &["/file", "EXTRA"], "EXTRA");
             excess_value("stat", &["/file", ""], "");
             excess_value("find", &["/base", "*.log", "*"], "*");
+            excess_value(
+                "stat",
+                &["/file", "sftp://user:synthetic-secret@example.invalid"],
+                "sftp://user:synthetic-secret@example.invalid",
+            );
             let legacy = match parse(&argv("hashsum", &["md5", "/file"])) {
                 Ok(_) => panic!("legacy positional algorithm was accepted"),
                 Err(error) => error,
             };
-            assert_eq!(legacy.value, "/file");
+            assert_eq!(legacy.field, "path");
+            assert!(!legacy.message().contains("/file"));
             assert!(legacy
                 .message()
                 .contains("hashsum --profile P -a md5 <path>"));

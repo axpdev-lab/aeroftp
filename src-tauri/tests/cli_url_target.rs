@@ -709,11 +709,32 @@ fn profile_excess_arguments_fail_before_effects_and_show_a_next_step() {
         assert_eq!(server.tree(), all_but(&[]), "{args:?} touched the folder");
     }
 
-    let out = profile(&server, &["stat", "/c/d/f.txt", "EXTRA", "--json"]);
+    let sentinel = "sftp://user:synthetic-secret@example.invalid";
+    let out = profile(&server, &["stat", "/c/d/f.txt", sentinel]);
+    assert_eq!(out.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!stderr.contains(sentinel), "{stderr}");
+    assert!(!stderr.contains("synthetic-secret"), "{stderr}");
+    assert!(stderr.contains("final positional 'path'"), "{stderr}");
+    assert!(stderr.contains("Next:"), "{stderr}");
+    assert_eq!(server.tree(), all_but(&[]));
+
+    let out = profile(&server, &["stat", "/c/d/f.txt", sentinel, "--json"]);
     assert_eq!(out.status.code(), Some(2));
     let error: serde_json::Value = serde_json::from_slice(&out.stderr).expect("JSON error");
     assert_eq!(error["status"], "error");
     assert_eq!(error["code"], 2);
-    assert!(error["error"].as_str().unwrap().contains("EXTRA"));
+    let message = error["error"].as_str().unwrap();
+    assert!(!message.contains(sentinel), "{message}");
+    assert!(!message.contains("synthetic-secret"), "{message}");
+    assert!(message.contains("final positional 'path'"), "{message}");
+    assert!(message.contains("Next:"), "{message}");
     assert_eq!(server.tree(), all_but(&[]));
+
+    let out = profile(&server, &["stat", "/c/d/f.txt", "EXTRA", "--json"]);
+    assert_eq!(out.status.code(), Some(2));
+    let error: serde_json::Value = serde_json::from_slice(&out.stderr).expect("JSON error");
+    assert_eq!(error["code"], 2);
+    assert!(!error["error"].as_str().unwrap().contains("EXTRA"));
+    assert!(error["error"].as_str().unwrap().contains("path"));
 }
