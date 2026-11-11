@@ -270,3 +270,24 @@ jobs:
         # if this step dies it has to die naming itself.
         timeout-minutes: 45
         run: cargo test --locked --lib --no-default-features --features aerorsync,proton-native --no-fail-fast
+
+      - name: Purge transient whisper-rs-sys build artifacts before cache save
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($profile in @('debug', 'release')) {
+            $base = "src-tauri/target/$profile/build"
+            if (Test-Path $base) {
+              $purged = 0
+              Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like 'whisper-rs-sys-*' } |
+                ForEach-Object {
+                  Remove-Item -Recurse -Force $_.FullName -ErrorAction Stop
+                  if (Test-Path $_.FullName) {
+                    throw "Failed to purge transient whisper build dir: $($_.FullName)"
+                  }
+                  $purged++
+                }
+              Write-Host "[$profile] Purged $purged transient whisper-rs-sys build dir(s) before cache save"
+            }
+          }

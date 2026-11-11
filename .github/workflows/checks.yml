@@ -42,13 +42,6 @@ jobs:
           toolchain: 1.97.1
           components: rustfmt
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          workspaces: './src-tauri -> target'
-          # PRs restore; only main saves (Actions cache quota is 10 GB).
-          save-if: ${{ github.ref == 'refs/heads/main' }}
-
       - name: Install npm dependencies
         run: npm ci
 
@@ -90,6 +83,9 @@ jobs:
 
       - name: Every checkout sets persist-credentials false
         run: python3 -m unittest discover -s .github/scripts -p test_workflow_checkout_credentials.py -v
+
+      - name: Workflow cache policy enforces quota limits
+        run: python3 -m unittest discover -s .github/scripts -p test_workflow_cache_policy.py -v
 
       # The snap gate's two passes, with stub snapcraft and unsquashfs: a gpu:
       # finding fails it, and a linter that never ran is UNVERIFIED, never OK.
@@ -232,13 +228,10 @@ jobs:
       # seconds, on the workflow that runs more often than any other here (42
       # times on main in the last seven days).
       #
-      # The Rust cache above does cache `~/.cargo/bin`, so the intuitive reading
-      # is that it should already have covered this. It does not, because of how
-      # that action saves: on an exact key hit it reports the cache up to date
-      # and skips the save entirely, so a binary installed later in the same job
-      # is never persisted. cargo-audit could only ever enter that cache on the
-      # rarer runs where the dependency key had already changed, which is why it
-      # was rebuilt again and again.
+      # `checks.yml` does not use the Rust target cache because it does not
+      # compile application code (only running syntax check `cargo fmt` and
+      # `cargo audit`). Keeping a target cache here would waste hundreds of MB
+      # of the 10 GB Actions cache quota without speeding up the job.
       #
       # Give the tool its own cache, keyed by month, so its update cycle is
       # separate from the app's dependency cycle and neither can skip the other.
