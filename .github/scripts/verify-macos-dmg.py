@@ -54,6 +54,15 @@ def minimum_version(app):
     return value
 
 
+def verify_local_network_usage_description(app):
+    with (app / 'Contents/Info.plist').open('rb') as source:
+        description = plistlib.load(source).get('NSLocalNetworkUsageDescription')
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(f'{app}: missing or empty NSLocalNetworkUsageDescription in Info.plist')
+    print(f'{app}: NSLocalNetworkUsageDescription={description}', flush=True)
+    return description
+
+
 def version_tuple(value):
     if not re.fullmatch(r'[0-9]+(?:\.[0-9]+){0,2}', value):
         raise ValueError(f'Invalid macOS version: {value}')
@@ -111,6 +120,7 @@ def verify(dmg, reference, manifest, arch, features=()):
         current_minimum = minimum_version(app)
         if current_minimum != baseline_minimum:
             raise ValueError(f'Minimum macOS changed: {baseline_minimum} -> {current_minimum}')
+        verify_local_network_usage_description(app)
         current_bins = verify_payload(app, required, arch)
         for name in sorted(baseline_bins - current_bins):
             print(f'::warning::Baseline-only executable removed: {name}', flush=True)

@@ -29,7 +29,10 @@ class DmgVerificationTests(unittest.TestCase):
         self.bins = self.app / 'Contents/MacOS'
         self.bins.mkdir(parents=True)
         with (self.app / 'Contents/Info.plist').open('wb') as output:
-            plistlib.dump({'LSMinimumSystemVersion': '10.13'}, output)
+            plistlib.dump({
+                'LSMinimumSystemVersion': '10.13',
+                'NSLocalNetworkUsageDescription': 'AeroFTP local network access',
+            }, output)
         self.binary = self.bins / 'aeroftp'
         self.binary.write_bytes(b'binary')
         self.binary.chmod(0o755)
@@ -69,6 +72,59 @@ class DmgVerificationTests(unittest.TestCase):
              patch.object(dmg, 'minimum_version', side_effect=['10.13', '11.0']), \
              patch.object(dmg, 'deployment_target', return_value=('11.0', '15.5')):
             with self.assertRaisesRegex(ValueError, 'Minimum macOS changed'):
+                dmg.verify(self.root / 'new.dmg', self.root / 'old.dmg', self.root / 'Cargo.toml', 'arm64')
+
+    def test_missing_local_network_usage_description_fails(self):
+        with (self.app / 'Contents/Info.plist').open('wb') as output:
+            plistlib.dump({'LSMinimumSystemVersion': '10.13'}, output)
+        with self.assertRaisesRegex(ValueError, 'missing or empty NSLocalNetworkUsageDescription'):
+            dmg.verify_local_network_usage_description(self.app)
+
+    def test_non_string_local_network_usage_description_fails(self):
+        with (self.app / 'Contents/Info.plist').open('wb') as output:
+            plistlib.dump({
+                'LSMinimumSystemVersion': '10.13',
+                'NSLocalNetworkUsageDescription': 42,
+            }, output)
+        with self.assertRaisesRegex(ValueError, 'missing or empty NSLocalNetworkUsageDescription'):
+            dmg.verify_local_network_usage_description(self.app)
+
+    def test_verify_fails_when_current_app_lacks_local_network_usage_description(self):
+        baseline_app = self.root / 'Baseline.app'
+        baseline_app.mkdir()
+        baseline_contents = baseline_app / 'Contents'
+        baseline_contents.mkdir()
+        with (baseline_contents / 'Info.plist').open('wb') as output:
+            plistlib.dump({
+                'LSMinimumSystemVersion': '10.13',
+                'NSLocalNetworkUsageDescription': 'AeroFTP baseline network access',
+            }, output)
+        baseline_macos = baseline_contents / 'MacOS'
+        baseline_macos.mkdir()
+        baseline_bin = baseline_macos / 'aeroftp'
+        baseline_bin.write_bytes(b'binary')
+        baseline_bin.chmod(0o755)
+
+        current_app = self.root / 'Current.app'
+        current_app.mkdir()
+        current_contents = current_app / 'Contents'
+        current_contents.mkdir()
+        with (current_contents / 'Info.plist').open('wb') as output:
+            plistlib.dump({'LSMinimumSystemVersion': '10.13'}, output)
+        current_macos = current_contents / 'MacOS'
+        current_macos.mkdir()
+        current_bin = current_macos / 'aeroftp'
+        current_bin.write_bytes(b'binary')
+        current_bin.chmod(0o755)
+
+        with patch.object(dmg, 'mounted', side_effect=[
+            __import__('contextlib').nullcontext(baseline_app),
+            __import__('contextlib').nullcontext(current_app),
+        ]), \
+             patch.object(dmg, 'cargo_binaries', return_value={'aeroftp'}), \
+             patch.object(dmg, 'verify_payload', return_value={'aeroftp'}), \
+             patch.object(dmg, 'deployment_target', return_value=('11.0', '15.5')):
+            with self.assertRaisesRegex(ValueError, 'missing or empty NSLocalNetworkUsageDescription'):
                 dmg.verify(self.root / 'new.dmg', self.root / 'old.dmg', self.root / 'Cargo.toml', 'arm64')
 
 
