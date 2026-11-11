@@ -81741,8 +81741,8 @@ async fn main() {
                                         Ok(kit_destination) => {
                                             let (u, dir) = (url, path);
                                             cmd_crypt_init(
-                                                &u,
-                                                &dir,
+                                                u,
+                                                dir,
                                                 &pw,
                                                 kf.as_ref(),
                                                 generated_keyfile,
@@ -81799,7 +81799,7 @@ async fn main() {
                             5
                         } else {
                             let (u, dir) = (url, path);
-                            cmd_crypt_to_headerless(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            cmd_crypt_to_headerless(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -81823,7 +81823,7 @@ async fn main() {
                             5
                         } else {
                             let (u, dir) = (url, path);
-                            cmd_crypt_to_headed(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            cmd_crypt_to_headed(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -81843,7 +81843,7 @@ async fn main() {
                             5
                         } else {
                             let (u, dir) = (url, path);
-                            cmd_crypt_migrate_marker(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            cmd_crypt_migrate_marker(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -81865,8 +81865,8 @@ async fn main() {
                         } else {
                             let (u, dir) = (url, path);
                             cmd_crypt_migrate_v4(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *allow_non_atomic,
@@ -81893,7 +81893,7 @@ async fn main() {
                             5
                         } else {
                             let (u, dir) = (url, path);
-                            cmd_crypt_list_slots(&u, &dir, &pw, kf.as_ref(), &cli, format).await
+                            cmd_crypt_list_slots(u, dir, &pw, kf.as_ref(), &cli, format).await
                         }
                     }
                 },
@@ -81922,8 +81922,8 @@ async fn main() {
                             let new_pw = new_password.clone().unwrap_or_default();
                             let (u, dir) = (url, path);
                             cmd_crypt_add_slot(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 slot_type,
@@ -81956,8 +81956,8 @@ async fn main() {
                         } else {
                             let (u, dir) = (url, path);
                             cmd_crypt_remove_slot(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *slot_id,
@@ -81994,8 +81994,8 @@ async fn main() {
                             let new_pw = new_password.clone().unwrap_or_default();
                             let (u, dir) = (url, path);
                             cmd_crypt_rotate_slot(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *slot_id,
@@ -82016,15 +82016,8 @@ async fn main() {
                     kit_text,
                 } => {
                     let (u, dir) = (url, path);
-                    cmd_crypt_kit_verify(
-                        &u,
-                        &dir,
-                        kit.as_deref(),
-                        kit_text.as_deref(),
-                        &cli,
-                        format,
-                    )
-                    .await
+                    cmd_crypt_kit_verify(u, dir, kit.as_deref(), kit_text.as_deref(), &cli, format)
+                        .await
                 }
                 CryptCommands::Ls {
                     url,
@@ -82045,8 +82038,8 @@ async fn main() {
                         } else {
                             let (u, dir) = (url, path);
                             cmd_crypt_ls(
-                                &u,
-                                &dir,
+                                u,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *use_default_salt,
@@ -82078,9 +82071,9 @@ async fn main() {
                         } else {
                             let (u, dir) = (url, remote);
                             cmd_crypt_put(
-                                &u,
+                                u,
                                 local,
-                                &dir,
+                                dir,
                                 &pw,
                                 kf.as_ref(),
                                 *use_default_salt,
@@ -82113,9 +82106,9 @@ async fn main() {
                         } else {
                             let (u, dir) = (url, path);
                             cmd_crypt_get(
-                                &u,
+                                u,
                                 remote,
-                                &dir,
+                                dir,
                                 local,
                                 &pw,
                                 kf.as_ref(),
