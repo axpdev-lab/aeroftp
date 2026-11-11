@@ -339,3 +339,37 @@ it('validates the backend auth owner before archiving the next download destinat
     expect(downloads).toHaveLength(1);
     expect(archives).toEqual(['one']);
 });
+
+it.each([false, true])('runs an unsaved quick-connect sync with an epoch owner (resume=%s)', async resume => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const runConnectedRemoteSync =');
+    const end = app.indexOf('  // GAP-10: shared local-local sync launcher', start);
+    const captureStart = app.indexOf('  const captureGuiTarget =');
+    const captureEnd = app.indexOf('  const getOverwriteDestination =', captureStart);
+    const { code } = await transformWithOxc(app.slice(captureStart, captureEnd) + app.slice(start, end), 'quick-sync.ts');
+    const runner = vi.fn((..._args: unknown[]) => new Promise(() => {}));
+    const notify = { error: vi.fn(), info: vi.fn() };
+    const context = {
+        useLatestCallback: (fn: unknown) => fn,
+        snapshotQueuedTarget: () => ({ profileId: null, params: { protocol: 'sftp' } }),
+        queuedTargetGuard: () => () => {}, QueuedTargetChangedError,
+        activeUnifiedRemoteProfile: { id: 'unsaved server name', protocol: 'sftp', savedProfileId: null },
+        currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
+        localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
+        invoke: vi.fn(async (cmd: string) => cmd === 'provider_gui_target_epoch' ? 7 : 'epoch-v1:test:7'),
+        loadSavedServerProfiles: async () => [], remoteSyncRunningRef: { current: false },
+        batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        window: { addEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'test-transfer',
+        syncRunQueueBridge: () => ({}), transferQueue: {},
+        notify, t: (key: string) => key, debugMode: false, runRemoteSync: runner,
+    };
+    const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('one')], { remote: [], local: [] }, {
+        direction: 'local_to_remote', deltaSyncEnabled: false, verifyPolicy: 'none', profileId: 'unsaved server name',
+        ...(resume ? { resumeJournal: { profile_id: null, owner_binding: 'epoch-v1:test:7' } } : {}),
+    });
+    await vi.waitFor(() => expect(runner).toHaveBeenCalledOnce());
+    expect(runner.mock.calls[0][2]).toMatchObject({ profileId: null });
+    expect(notify.error).not.toHaveBeenCalled();
+});

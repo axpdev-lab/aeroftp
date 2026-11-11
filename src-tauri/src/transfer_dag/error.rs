@@ -173,7 +173,6 @@ impl TransferError {
         let retry_after = parse_embedded_retry_after(&message);
 
         let kind = match err {
-            _ if message.contains("CONNECTION_CHANGED") => TransferErrorKind::TargetChanged,
             ProviderError::TargetChanged => TransferErrorKind::TargetChanged,
             ProviderError::Timeout => TransferErrorKind::Timeout,
             ProviderError::Cancelled => TransferErrorKind::Cancelled,
@@ -376,7 +375,7 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
     let raw = crate::providers::types::without_unclassified_items(raw);
     let lower = raw.to_lowercase();
 
-    if lower.contains("connection_changed") {
+    if raw.trim_start().starts_with("CONNECTION_CHANGED: ") {
         return TransferErrorKind::TargetChanged;
     }
     if message_names_a_cancellation(&lower) {
@@ -422,6 +421,31 @@ fn classify_network_message(raw: &str) -> TransferErrorKind {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn owner_change_marker_in_a_filename_never_overrides_a_typed_error() {
+        use super::*;
+        for error in [
+            ProviderError::NotFound("/remote/CONNECTION_CHANGED.txt".into()),
+            ProviderError::ServerError("remote note CONNECTION_CHANGED.txt".into()),
+        ] {
+            assert_ne!(
+                TransferError::from_provider(&error).kind,
+                TransferErrorKind::TargetChanged
+            );
+        }
+        assert_eq!(
+            TransferError::from_provider(&ProviderError::TargetChanged).kind,
+            TransferErrorKind::TargetChanged
+        );
+        assert_eq!(
+            TransferError::from_message(ProviderError::TargetChanged.to_string()).kind,
+            TransferErrorKind::TargetChanged
+        );
+        assert_ne!(
+            TransferError::from_message("/remote/CONNECTION_CHANGED.txt").kind,
+            TransferErrorKind::TargetChanged
+        );
+    }
 
     /// A negated cancellation is not a cancellation.
     ///

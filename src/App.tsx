@@ -12767,8 +12767,8 @@ const App: React.FC = () => {
     // Keep the exact target of the Execute gesture through the delta prompt.
     const target = opts.target ?? snapshotQueuedTarget();
     const checkTarget = queuedTargetGuard(target);
-    if ((opts.profileId != null && opts.profileId !== target.profileId)
-      || (opts.resumeJournal && (!opts.resumeJournal.profile_id || opts.resumeJournal.profile_id !== target.profileId))) {
+    if ((target.profileId != null && opts.profileId != null && opts.profileId !== target.profileId)
+      || (opts.resumeJournal && (opts.resumeJournal.profile_id ?? null) !== target.profileId)) {
       notify.error(t('aerosync.title'), t('toast.remoteTargetChanged'));
       return;
     }
@@ -13825,7 +13825,8 @@ const App: React.FC = () => {
     // OpenDrive and 4shared make a new upload public unless told otherwise;
     // the single-file path sets it private, and so does the batch.
     const setPrivate = async (landedEntries: Entry[]) => {
-      if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return;
+      if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return new Set(landedEntries);
+      const eligible = new Set<Entry>();
       const command = protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy';
       for (const [index, entry] of landedEntries.entries()) {
         // Privacy is set on the server the batch was queued for, or not at
@@ -13834,22 +13835,27 @@ const App: React.FC = () => {
         if (queuedTargetProblem(queuedTarget)) {
           const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
           const left = landedEntries.slice(index).map(rest => rest.display_name);
+          batchTargetChanged = true;
+          result.aborted = true;
           notify.error(t('activity.set_private_error', { provider }), left.join(', '));
-          return;
+          return eligible;
         }
         try {
           await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false, expectedGuiTarget });
+          eligible.add(entry);
         } catch (error) {
           if (String(error).includes('CONNECTION_CHANGED')) {
             batchTargetChanged = true;
             result.aborted = true;
             const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
             notify.error(t('activity.set_private_error', { provider }), landedEntries.slice(index).map(rest => rest.display_name).join(', '));
-            return;
+            return eligible;
           }
-          /* already private, or removed meanwhile */
+          const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
+          notify.error(t('activity.set_private_error', { provider }), entry.display_name);
         }
       }
+      return eligible;
     };
 
     // Each runner resolves with the queue ids of the files that landed, so a
@@ -13890,12 +13896,24 @@ const App: React.FC = () => {
             if (!landed) continue;
             landedEntries.push(landed);
             landedIds.add(queueIds[index]);
-            result.succeededSources.push(sourceOf(landed));
+
             // The command's answer is the truth for a file that landed; the
             // file event says the same, and a settled row ignores a repeat.
-            transferQueue.completeTransfer(queueIds[index]);
+
           }
-          await setPrivate(landedEntries);
+          const eligible = await setPrivate(landedEntries);
+          for (const index of outcome.succeeded) {
+            const landed = batchEntries[index];
+            if (!landed) continue;
+            if (eligible.has(landed)) {
+              result.succeededSources.push(sourceOf(landed));
+              transferQueue.completeTransfer(queueIds[index]);
+            } else {
+              result.completed = Math.max(0, result.completed - 1);
+              result.failed++;
+              transferQueue.failTransfer(queueIds[index], t('activity.set_private_error', { provider: protocol === 'opendrive' ? 'OpenDrive' : '4shared' }));
+            }
+          }
         } else {
           // Legacy FTP-manager batch (a session with no protocol): it reports
           // no per-file result, so nothing counts as landed for a "cut".
@@ -13951,7 +13969,9 @@ const App: React.FC = () => {
               noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null,
             });
             if (uploadOutcome?.startsWith('Skipped:')) continue;
-            await setPrivate([entry]);
+            if (!(await setPrivate([entry])).has(entry)) {
+              throw new Error(t('activity.set_private_error', { provider: protocol === 'opendrive' ? 'OpenDrive' : '4shared' }));
+            }
           }
           transferQueue.completeTransfer(queueIds[i]);
           result.completed++;

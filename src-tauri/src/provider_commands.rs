@@ -441,11 +441,18 @@ impl ProviderState {
 
     pub(crate) async fn install_mtp_provider(
         &self,
-        provider: Box<dyn StorageProvider>,
+        mut provider: Box<dyn StorageProvider>,
         config: ProviderConfig,
     ) -> Result<(), String> {
-        let owner =
-            crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
+        let owner = match crate::credential_store::off_async_worker(
+            crate::sync_owner::GuiOwnerContext::capture,
+        ) {
+            Ok(owner) => owner,
+            Err(error) => {
+                let _ = tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await;
+                return Err(error);
+            }
+        };
         install_connected_provider_with_owner(
             self,
             provider,
@@ -2189,6 +2196,7 @@ async fn install_connected_provider(
     .await
 }
 
+#[cfg(test)]
 async fn install_connected_provider_with_config(
     state: &ProviderState,
     provider: Box<dyn StorageProvider>,

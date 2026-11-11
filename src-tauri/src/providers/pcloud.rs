@@ -504,7 +504,11 @@ impl PCloudProvider {
             .get_valid_token(&config)
             .await
             .map_err(|e| {
-                ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                if matches!(e, ProviderError::TargetChanged) {
+                    e
+                } else {
+                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                }
             })?;
         Ok(secret.expose_secret().to_string())
     }
@@ -653,7 +657,11 @@ impl PCloudProvider {
                 .get_valid_token(&config)
                 .await
                 .map_err(|e| {
-                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    if matches!(e, ProviderError::TargetChanged) {
+                        e
+                    } else {
+                        ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    }
                 })?
                 .expose_secret()
                 .to_string()
@@ -665,7 +673,11 @@ impl PCloudProvider {
                 .get_valid_token(&config)
                 .await
                 .map_err(|e| {
-                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    if matches!(e, ProviderError::TargetChanged) {
+                        e
+                    } else {
+                        ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    }
                 })?
                 .expose_secret()
                 .to_string()

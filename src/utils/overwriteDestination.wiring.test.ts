@@ -41,12 +41,13 @@ const { code: overwriteCode } = await transformWithOxc(
 type Direction = 'upload' | 'download';
 type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
+function fixture(options: { privacyError?: string; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
   const panel = options.panel ?? [];
   const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
+    if (options.privacyError && (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy')) throw options.privacyError;
     if (command === 'provider_gui_target_epoch') return 7;
     if (['get_local_files', 'provider_list_files'].includes(command)) {
       await options.beforeListing?.();
@@ -341,4 +342,13 @@ it('requires the backend overlay as well as the frontend profile before an encry
   const f = fixture({ direction: 'download', destination: [], ownsProfile: () => true });
   await f.runtime.downloadFile('/remote/a.bin', 'a.bin', '/actual', false, 100, false, 'throw', { profileId: 'profile-A', generation: 7, requireOverlay: true });
   expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7, expectedProfileId: 'profile-A', requireCryptOverlay: true });
+});
+
+it.each(['opendrive', 'fourshared'] as const)('keeps cut originals after %s privacy rejects a changed target', async protocol => {
+  const f = fixture({ direction: 'upload', protocol, destination: [], policy: 'overwrite', privacyError: 'CONNECTION_CHANGED: target changed' });
+  const result = await f.runtime.runFileBatch('upload', items, '/actual');
+  expect(result.succeededSources).toEqual([]);
+  expect(result.aborted).toBe(true);
+  expect(result.failed).toBe(2);
+  expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
 });

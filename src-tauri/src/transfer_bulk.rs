@@ -428,6 +428,7 @@ pub(crate) async fn execute_provider_bulk(
                     &crate::providers::ProviderError::TargetChanged,
                 ),
             );
+            emit_event(sink.as_ref(), entry, upload, "file_error", Some(&failure));
             settled[index] = Some(TransferOutcome::Failed(failure));
             continue;
         }

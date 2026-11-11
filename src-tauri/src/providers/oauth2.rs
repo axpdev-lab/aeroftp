@@ -1379,13 +1379,22 @@ impl OAuth2Manager {
         let json = Zeroizing::new(std::fs::read_to_string(&claimed.path).map_err(|_| {
             ProviderError::AuthenticationFailed("Could not read legacy authorization".into())
         })?);
-        let record = Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
+        Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
         if crate::credential_store::CredentialStore::from_cache().is_none() {
             let _ = crate::credential_store::CredentialStore::init();
         }
         let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
-            // Drop restores the original name without clobbering a replacement.
-            return Ok(record);
+            // Establish an exact CAS-writable source before any refresh can
+            // consume a rotating token. A concurrent fresh memory login wins.
+            // Drop still restores the old file without clobbering a new one.
+            let mut cache = MEMORY_TOKEN_CACHE
+                .lock()
+                .map_err(|_| token_owner_changed())?;
+            let map = cache.get_or_insert_with(HashMap::new);
+            let current = map
+                .entry(account.clone())
+                .or_insert_with(|| json.to_string());
+            return Self::decode_record(current, TokenSource::Memory(account), credential_user);
         };
         let inserted = store
             .store_secret_if_absent(&account, &json)

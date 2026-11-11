@@ -524,7 +524,13 @@ impl BoxProvider {
         self.oauth_manager
             .get_valid_token(&config)
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("Box token error: {}", e)))
+            .map_err(|e| {
+                if matches!(e, ProviderError::TargetChanged) {
+                    e
+                } else {
+                    ProviderError::AuthenticationFailed(format!("Box token error: {}", e))
+                }
+            })
     }
 
     /// Get authorization header value

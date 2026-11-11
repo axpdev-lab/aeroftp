@@ -588,36 +588,51 @@ pub(crate) fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
 
 /// One statement observes account selection and its key revision together.
 /// This is metadata only: no vault read, DEK unwrap or KDF per GUI command.
-pub(crate) fn gui_account_snapshot() -> Result<(Option<i64>, i64, i64, u64), String> {
-    let conn = open_or_init_cli()?;
-    let row = conn
-        .query_row(
-            "SELECT s.value, s.updated_at, COALESCE(u.updated_at, 0) FROM global_state s
-         LEFT JOIN users u ON u.id = CAST(s.value AS INTEGER) WHERE s.key = ?1",
-            params![ACTIVE_USER_KEY],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, i64>(1)?,
-                    row.get::<_, i64>(2)?,
-                ))
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct GuiAccountSnapshot {
+    pub(crate) user: Option<i64>,
+    activation_revision: i64,
+    dek_verifier: Vec<u8>,
+    has_passphrase: bool,
+    session_generation: u64,
+}
+
+pub(crate) fn gui_account_snapshot() -> Result<GuiAccountSnapshot, String> {
+    gui_account_snapshot_from(&open_or_init_cli()?)
+}
+
+fn gui_account_snapshot_from(conn: &Connection) -> Result<GuiAccountSnapshot, String> {
+    let row = conn.query_row(
+        "SELECT s.value, s.updated_at, COALESCE(u.dek_verifier, X''), COALESCE(u.has_passphrase, 0)
+         FROM global_state s LEFT JOIN users u ON u.id = CAST(s.value AS INTEGER) WHERE s.key = ?1",
+        params![ACTIVE_USER_KEY],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Vec<u8>>(2)?, row.get::<_, bool>(3)?)),
+    ).optional().map_err(|e| format!("Read GUI account revision: {e}"))?;
+    let (user, activation_revision, dek_verifier, has_passphrase) = match row {
+        Some((value, rev, verifier, protected)) => (
+            if value.trim().is_empty() {
+                None
+            } else {
+                Some(
+                    value
+                        .trim()
+                        .parse::<i64>()
+                        .map_err(|_| ACCOUNT_CHANGED.to_string())?,
+                )
             },
-        )
-        .optional()
-        .map_err(|e| format!("Read GUI account revision: {e}"))?;
-    let (user, revision, key_revision) = match row {
-        Some((value, rev, key_rev)) => (
-            Some(
-                value
-                    .parse::<i64>()
-                    .map_err(|_| ACCOUNT_CHANGED.to_string())?,
-            ),
             rev,
-            key_rev,
+            verifier,
+            protected,
         ),
-        None => (None, 0, 0),
+        None => (None, 0, Vec::new(), false),
     };
-    Ok((user, revision, key_revision, session_generation()))
+    Ok(GuiAccountSnapshot {
+        user,
+        activation_revision,
+        dek_verifier,
+        has_passphrase,
+        session_generation: session_generation(),
+    })
 }
 
 fn upsert_global_state(
@@ -7815,6 +7830,26 @@ mod tests {
             .expect("the update");
         assert!(written);
         assert_eq!(profiles.len(), 1);
+    }
+
+    #[test]
+    fn gui_account_display_edits_preserve_owner_but_key_changes_do_not() {
+        let _guard = test_lock();
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate_legacy_payloads(&mut conn, None, None, &test_root()).unwrap();
+        let before = gui_account_snapshot_from(&conn).unwrap();
+        let user = before.user.unwrap();
+        rename_user(&conn, user, "Renamed fixture").unwrap();
+        set_user_avatar(&conn, user, Some("X"), Some("#123456")).unwrap();
+        reorder_users(&mut conn, &[user]).unwrap();
+        set_default_user(&mut conn, user, true).unwrap();
+        assert!(before == gui_account_snapshot_from(&conn).unwrap());
+        conn.execute(
+            "UPDATE users SET dek_verifier = ?1 WHERE id = ?2",
+            params![vec![0x55u8; 32], user],
+        )
+        .unwrap();
+        assert!(before != gui_account_snapshot_from(&conn).unwrap());
     }
 
     #[test]

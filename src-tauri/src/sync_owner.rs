@@ -6,7 +6,7 @@ use crate::credential_store::CredentialStore;
 pub(crate) struct GuiOwnerContext {
     user: Option<i64>,
     vault_generation: u64,
-    account_snapshot: (Option<i64>, i64, i64, u64),
+    account_snapshot: crate::user_partitions::GuiAccountSnapshot,
 }
 
 fn changed() -> String {
@@ -17,7 +17,7 @@ impl GuiOwnerContext {
     pub(crate) fn capture() -> Result<Self, String> {
         let generation = CredentialStore::cache_generation();
         let account_snapshot = crate::user_partitions::gui_account_snapshot()?;
-        let user = account_snapshot.0;
+        let user = account_snapshot.user;
         if let Some(user) = user {
             crate::user_partitions::ensure_credential_user_unlocked(user)?;
         }

@@ -16673,6 +16673,42 @@ async fn sync_backup_archive_remote(
     archived.map_err(|e| format!("Backup of {} failed: {}", rel, e))
 }
 
+async fn local_sync_receipt_is_file(receipt: &str) -> Result<bool, String> {
+    match tokio::fs::symlink_metadata(receipt).await {
+        Ok(meta) => Ok(meta.file_type().is_file()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod sync_receipt_file_tests {
+    #[tokio::test]
+    async fn receipt_requires_a_real_archived_file_not_a_directory_or_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("receipt");
+        std::fs::write(&path, b"kept").unwrap();
+        assert!(super::local_sync_receipt_is_file(path.to_str().unwrap())
+            .await
+            .unwrap());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert!(!super::local_sync_receipt_is_file(path.to_str().unwrap())
+            .await
+            .unwrap());
+        std::fs::remove_dir(&path).unwrap();
+        #[cfg(unix)]
+        {
+            let original = dir.path().join("real");
+            std::fs::write(&original, b"kept").unwrap();
+            std::os::unix::fs::symlink(original, &path).unwrap();
+            assert!(!super::local_sync_receipt_is_file(path.to_str().unwrap())
+                .await
+                .unwrap());
+        }
+    }
+}
+
 /// Verify a persisted archive receipt before a resumed sync relies on it.
 #[tauri::command]
 async fn sync_backup_verify_receipt(
@@ -16696,11 +16732,7 @@ async fn sync_backup_verify_receipt(
     match target.as_str() {
         "local" => {
             validate_path(&root)?;
-            match tokio::fs::symlink_metadata(&receipt).await {
-                Ok(_) => Ok(true),
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
-                Err(e) => Err(e.to_string()),
-            }
+            local_sync_receipt_is_file(&receipt).await
         }
         "provider" => {
             let mut lock = provider_state.provider.lock().await;
