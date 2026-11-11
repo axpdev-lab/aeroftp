@@ -13685,7 +13685,6 @@ const App: React.FC = () => {
       notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
       return result;
     }
-    let batchTargetChanged = false;
     const sourceOf = (entry: { remote_path: string; local_path: string }) =>
       (isDownload ? entry.remote_path : entry.local_path);
 
@@ -13824,7 +13823,7 @@ const App: React.FC = () => {
 
     // OpenDrive and 4shared make a new upload public unless told otherwise;
     // the single-file path sets it private, and so does the batch.
-    const setPrivate = async (landedEntries: Entry[]) => {
+    const setPrivate = async (landedEntries: Entry[], attempt: { epoch: number; changed: boolean }) => {
       if (isDownload || (protocol !== 'opendrive' && protocol !== 'fourshared')) return new Set(landedEntries);
       const eligible = new Set<Entry>();
       const command = protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy';
@@ -13835,17 +13834,17 @@ const App: React.FC = () => {
         if (queuedTargetProblem(queuedTarget)) {
           const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
           const left = landedEntries.slice(index).map(rest => rest.display_name);
-          batchTargetChanged = true;
+          attempt.changed = true;
           result.aborted = true;
           notify.error(t('activity.set_private_error', { provider }), left.join(', '));
           return eligible;
         }
         try {
-          await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false, expectedGuiTarget });
+          await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false, expectedGuiTarget: attempt.epoch });
           eligible.add(entry);
         } catch (error) {
           if (String(error).includes('CONNECTION_CHANGED')) {
-            batchTargetChanged = true;
+            attempt.changed = true;
             result.aborted = true;
             const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
             notify.error(t('activity.set_private_error', { provider }), landedEntries.slice(index).map(rest => rest.display_name).join(', '));
@@ -13860,8 +13859,16 @@ const App: React.FC = () => {
 
     // Each runner resolves with the queue ids of the files that landed, so a
     // dispatcher never sends a landed file twice.
-    const launchBatch = async (batchEntries: Entry[], queueIds: string[]): Promise<Set<string>> => {
+    const launchBatch = async (batchEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
       const landedIds = new Set<string>();
+      const attempt = { epoch: expectedGuiTarget, changed: false };
+      if (userAction) {
+        try { attempt.epoch = await captureGuiTarget(onQueuedTarget); }
+        catch (error) {
+          for (const id of queueIds) transferQueue.failTransfer(id, String(error));
+          return landedIds;
+        }
+      }
       if (batchEntries.length === 0) return landedIds;
       result.sent += batchEntries.length;
       // The batch id is ours, so each row is registered against its per-file
@@ -13869,7 +13876,7 @@ const App: React.FC = () => {
       const batchId = `${isDownload ? 'dl' : 'ul'}-files-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       if (isProvider) registerFileBatchRows(batchId, queueIds);
       const params = {
-        expected_gui_target: expectedGuiTarget,
+        expected_gui_target: attempt.epoch,
         entries: batchEntries,
         no_clobber: !isDownload && protocol === 'imagekit' && fileExistsAction === 'skip',
         batch_id: batchId,
@@ -13882,7 +13889,7 @@ const App: React.FC = () => {
         } : {}),
       };
       try {
-        if (batchTargetChanged) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
+        if (attempt.changed) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
         onQueuedTarget();
         if (isProvider) {
           const outcome = await invoke<{
@@ -13901,7 +13908,7 @@ const App: React.FC = () => {
             // file event says the same, and a settled row ignores a repeat.
 
           }
-          const eligible = await setPrivate(landedEntries);
+          const eligible = await setPrivate(landedEntries, attempt);
           for (const index of outcome.succeeded) {
             const landed = batchEntries[index];
             if (!landed) continue;
@@ -13920,7 +13927,7 @@ const App: React.FC = () => {
           await invoke<string>(fileBatchCommand(direction, false), { params });
         }
       } catch (error) {
-        if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { batchTargetChanged = true; result.aborted = true; }
+        if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { attempt.changed = true; result.aborted = true; }
         // Rejected before any file started (not connected, a name the backend
         // forbids, a locked crypt store): no file event will ever settle these
         // queue rows, so settle them here instead of leaving them pending.
@@ -13933,8 +13940,16 @@ const App: React.FC = () => {
       return landedIds;
     };
 
-    const runSingles = async (singleEntries: Entry[], queueIds: string[]): Promise<Set<string>> => {
+    const runSingles = async (singleEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
       const landedIds = new Set<string>();
+      const attempt = { epoch: expectedGuiTarget, changed: false };
+      if (userAction) {
+        try { attempt.epoch = await captureGuiTarget(onQueuedTarget); }
+        catch (error) {
+          for (const id of queueIds) transferQueue.failTransfer(id, String(error));
+          return landedIds;
+        }
+      }
       for (let i = 0; i < singleEntries.length; i++) {
         if (batchCancelledRef.current) {
           transferQueue.cancelTransfer(queueIds[i], t('transfer.cancelledByUser'));
@@ -13944,11 +13959,11 @@ const App: React.FC = () => {
         result.sent++;
         transferQueue.startTransfer(queueIds[i]);
         try {
-          if (batchTargetChanged) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
+          if (attempt.changed) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
           onQueuedTarget();
           if (isDownload) {
             await invoke('provider_download_file', {
-              expectedGuiTarget,
+              expectedGuiTarget: attempt.epoch,
               remotePath: entry.remote_path,
               localPath: entry.local_path,
               modified: entry.modified || undefined,
@@ -13961,7 +13976,7 @@ const App: React.FC = () => {
             });
           } else {
             const uploadOutcome = await invoke<string>('provider_upload_file', {
-              expectedGuiTarget,
+              expectedGuiTarget: attempt.epoch,
               localPath: entry.local_path,
               remotePath: entry.remote_path,
               commitMessage: null,
@@ -13969,7 +13984,7 @@ const App: React.FC = () => {
               noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null,
             });
             if (uploadOutcome?.startsWith('Skipped:')) continue;
-            if (!(await setPrivate([entry])).has(entry)) {
+            if (!(await setPrivate([entry], attempt)).has(entry)) {
               throw new Error(t('activity.set_private_error', { provider: protocol === 'opendrive' ? 'OpenDrive' : '4shared' }));
             }
           }
@@ -13978,7 +13993,7 @@ const App: React.FC = () => {
           result.succeededSources.push(sourceOf(entry));
           landedIds.add(queueIds[i]);
         } catch (error) {
-          if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { batchTargetChanged = true; result.aborted = true; }
+          if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { attempt.changed = true; result.aborted = true; }
           transferQueue.failTransfer(queueIds[i], String(error));
           result.failed++;
         }
@@ -14185,7 +14200,7 @@ const App: React.FC = () => {
           retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget, expectedGuiTarget);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
               transferQueue.completeTransfer(id);
             } catch (error) {
               // Stopped during this Retry: the file reads as cancelled and the
@@ -14537,7 +14552,7 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget, expectedGuiTarget);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -14766,7 +14781,7 @@ const App: React.FC = () => {
         retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedTarget, expectedGuiTarget);
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedTarget);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the

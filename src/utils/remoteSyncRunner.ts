@@ -431,7 +431,7 @@ const runSync = async (
     const resumeEntries = new Map(deps.resumeJournal?.entries.map(entry => [entry.relative_path, entry] as const));
     if (deps.resumeJournal && (deps.resumeJournal.resume_safe !== true
         || (!config.isLocalLocal && !deps.resumeJournal.owner_binding)
-        || (!config.isLocalLocal && (!config.profileId || deps.resumeJournal.profile_id !== config.profileId))
+        || (!config.isLocalLocal && ((deps.resumeJournal.profile_id ?? null) !== (config.profileId ?? null)))
         || (deps.resumeJournal.backup_dir ?? null) !== (config.versionedBackup?.dir ?? null)
         || (deps.resumeJournal.ec_enabled === true) !== (config.errorCorrection?.enabled === true)
         || (deps.resumeJournal.ec_enabled === true && (deps.resumeJournal.ec_pct !== config.errorCorrection?.pct

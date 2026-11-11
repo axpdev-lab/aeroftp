@@ -898,6 +898,41 @@ describe('remoteSyncRunner — journal resume', () => {
         expect((uploadCalls[0].args?.params as { local_path: string }).local_path)
             .toBe('/home/u/work/b.txt');
     });
+    it('resumes a bound Quick Connect through the real runner', async () => {
+        const resumeJournal: SyncJournal = {
+            resume_safe: true, owner_binding: 'test-owner-v1',
+            profile_id: undefined,
+            id: 'j1',
+            created_at: '2026-05-22T09:00:00Z',
+            updated_at: '2026-05-22T09:05:00Z',
+            local_path: '/home/u/work',
+            remote_path: '/srv/data',
+            direction: 'bidirectional',
+            retry_policy: RETRY,
+            verify_policy: 'none',
+            entries: [
+                { relative_path: 'a.txt', action: 'upload', status: 'completed', attempts: 1, last_error: null, verified: true, bytes_transferred: 100 },
+                { relative_path: 'b.txt', action: 'upload', status: 'pending', attempts: 0, last_error: null, verified: null, bytes_transferred: 0 },
+            ],
+            completed: false,
+        };
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync(
+            [file('a.txt', 'upload', { size: 100 }), file('b.txt', 'upload', { size: 200 })],
+            noDirs,
+            baseConfig({ profileId: undefined }),
+            {},
+            noWaitDeps(invoke, { resumeJournal }),
+        );
+        expect(calls.some(c => c.cmd === 'provider_gui_verify_resume_owner')).toBe(true);
+        expect(report.uploaded).toBe(2); // 1 resumed + 1 fresh
+        expect(report.totalBytes).toBe(300);
+        // Only b.txt is re-uploaded; a.txt was already done.
+        const uploadCalls = calls.filter((c) => c.cmd === 'upload_file');
+        expect(uploadCalls).toHaveLength(1);
+        expect((uploadCalls[0].args?.params as { local_path: string }).local_path)
+            .toBe('/home/u/work/b.txt');
+    });
 
     it('retries failed journal entries on resume and skips completed ones', async () => {
         const resumeJournal: SyncJournal = {

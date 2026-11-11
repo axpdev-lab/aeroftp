@@ -41,14 +41,14 @@ const { code: overwriteCode } = await transformWithOxc(
 type Direction = 'upload' | 'download';
 type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { privacyError?: string; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
+function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () => number; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
   const panel = options.panel ?? [];
   const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
     if (options.privacyError && (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy')) throw options.privacyError;
-    if (command === 'provider_gui_target_epoch') return 7;
+    if (command === 'provider_gui_target_epoch') return options.epoch?.() ?? 7;
     if (['get_local_files', 'provider_list_files'].includes(command)) {
       await options.beforeListing?.();
       if (options.failListing) throw new Error('Destination listing refused');
@@ -104,7 +104,7 @@ function fixture(options: { privacyError?: string; direction: Direction; policy?
     failQueuedRestIfRetargeted: () => false,
     QueuedTargetChangedError: Error,
     joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,
-    settings: { autoStartTransfers: true }, fileExistsAction: options.policy || 'skip',
+    settings: { autoStartTransfers: !options.staged }, fileExistsAction: options.policy || 'skip',
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
     downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
     buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
@@ -115,7 +115,7 @@ function fixture(options: { privacyError?: string; direction: Direction; policy?
   const runtime = new Function(...Object.keys(context), `${code}; return { downloadFile, uploadFile, runFileBatch };`)(...Object.values(context));
   const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch|folder)$/.test(name));
   const listings = () => invoke.mock.calls.filter(([name]) => ['get_local_files', 'provider_list_files'].includes(name));
-  return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings };
+  return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings, retryCallbacks: context.retryCallbacksRef.current };
 }
 
 const items = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${name}`, size: 100, modified: null }));
@@ -352,4 +352,20 @@ it.each(['opendrive', 'fourshared'] as const)('keeps cut originals after %s priv
   expect(result.aborted).toBe(true);
   expect(result.failed).toBe(2);
   expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
+});
+
+it.each(['upload', 'download'] as const)('pins a fresh epoch for staged %s Start and subsequent Retry', async direction => {
+  let epoch = 7;
+  const f = fixture({ direction, destination: [], policy: 'overwrite', staged: true, epoch: () => epoch });
+  expect(await f.runtime.runFileBatch(direction, items, '/actual')).toMatchObject({ staged: true });
+  expect(f.writers()).toHaveLength(0);
+  epoch = 9;
+  await f.retryCallbacks.get('q0')!();
+  await vi.waitFor(() => expect(f.writers()).toHaveLength(1));
+  expect(f.writers()[0][1]?.params.expected_gui_target).toBe(9);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  epoch = 11;
+  await f.retryCallbacks.get('q1')!();
+  await vi.waitFor(() => expect(f.writers()).toHaveLength(2));
+  expect(f.writers()[1][1]?.params.expected_gui_target).toBe(11);
 });

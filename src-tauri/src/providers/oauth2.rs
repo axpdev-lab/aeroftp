@@ -594,6 +594,21 @@ impl Drop for ClaimedTokenFile {
     }
 }
 
+// The callback owns the claim, so ALL of its returns and errors finalize it
+// before this guard releases. Sign-out uses the same cache mutex.
+fn with_legacy_token_claim<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    migrate: impl FnOnce(
+        &mut Option<HashMap<String, String>>,
+        ClaimedTokenFile,
+    ) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
+    let claimed = ClaimedTokenFile::claim(path)?;
+    migrate(&mut cache, claimed)
+}
+
 impl StoredTokens {
     /// Check if token is expired (with 5 min buffer)
     pub fn is_expired(&self) -> bool {
@@ -1399,61 +1414,51 @@ impl OAuth2Manager {
             }
         }
 
-        // Capture while the same lock that serializes sign-out's cache/file
-        // cleanup is held. A paused read may not restore an authorization
-        // whose deletion completed before it reached the insertion.
-        let observed_legacy_revision = {
-            let _cache = MEMORY_TOKEN_CACHE
-                .lock()
-                .map_err(|_| token_owner_changed())?;
-            legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst)
-        };
-        // Legacy: try plaintext file: migrate to vault immediately, then delete the file
         let legacy_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        let claimed = ClaimedTokenFile::claim(&legacy_path)?;
-        let json = Zeroizing::new(std::fs::read_to_string(&claimed.path).map_err(|_| {
-            ProviderError::AuthenticationFailed("Could not read legacy authorization".into())
-        })?);
-        Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
-        if crate::credential_store::CredentialStore::from_cache().is_none() {
-            let _ = crate::credential_store::CredentialStore::init();
-        }
-        let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
-            // Establish an exact CAS-writable source before any refresh can
-            // consume a rotating token. A concurrent fresh memory login wins.
-            // Drop still restores the old file without clobbering a new one.
-            let mut cache = MEMORY_TOKEN_CACHE
-                .lock()
-                .map_err(|_| token_owner_changed())?;
-            if legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst)
-                != observed_legacy_revision
-            {
-                claimed.discard()?;
-                return Err(token_owner_changed());
+        with_legacy_token_claim(&MEMORY_TOKEN_CACHE, &legacy_path, |cache, claimed| {
+            let observed_legacy_revision =
+                legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst);
+            let json = Zeroizing::new(std::fs::read_to_string(&claimed.path).map_err(|_| {
+                ProviderError::AuthenticationFailed("Could not read legacy authorization".into())
+            })?);
+            Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
+            if crate::credential_store::CredentialStore::from_cache().is_none() {
+                let _ = crate::credential_store::CredentialStore::init();
             }
-            return Self::remember_legacy_in_memory(
-                &mut cache,
-                legacy_revision(provider),
-                observed_legacy_revision,
-                account,
-                &json,
-                credential_user,
-            );
-        };
-        let inserted = store
-            .store_secret_if_absent(&account, &json)
-            .map_err(|_| token_owner_changed())?;
-        let current = store
-            .get_secret(&account)
-            .map_err(|_| token_owner_changed())?;
-        let result = Self::decode_record(&current, TokenSource::Vault, credential_user)?;
-        if inserted {
-            // Only the claimed pathname is ours. Never delete legacy_path:
-            // another process may already have written a new authorization there.
-            claimed.discard()?;
-        }
-        Ok(result)
+            let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+                // Establish an exact CAS-writable source before any refresh can
+                // consume a rotating token. A concurrent fresh memory login wins.
+                // Drop still restores the old file without clobbering a new one.
+                if legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst)
+                    != observed_legacy_revision
+                {
+                    claimed.discard()?;
+                    return Err(token_owner_changed());
+                }
+                return Self::remember_legacy_in_memory(
+                    cache,
+                    legacy_revision(provider),
+                    observed_legacy_revision,
+                    account,
+                    &json,
+                    credential_user,
+                );
+            };
+            let inserted = store
+                .store_secret_if_absent(&account, &json)
+                .map_err(|_| token_owner_changed())?;
+            let current = store
+                .get_secret(&account)
+                .map_err(|_| token_owner_changed())?;
+            let result = Self::decode_record(&current, TokenSource::Vault, credential_user)?;
+            if inserted {
+                // Only the claimed pathname is ours. Never delete legacy_path:
+                // another process may already have written a new authorization there.
+                claimed.discard()?;
+            }
+            Ok(result)
+        })
     }
 
     fn remember_legacy_in_memory(
@@ -1496,10 +1501,6 @@ impl OAuth2Manager {
             return Ok(());
         }
 
-        // Delete from vault
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            let _ = store.delete(&account);
-        }
         // MUV-4: drop the per-profile token from the active user's partition too.
         if !profile_id.is_empty() {
             if let Some(user) = self.credential_user {
@@ -1516,6 +1517,10 @@ impl OAuth2Manager {
             let mut cache = MEMORY_TOKEN_CACHE
                 .lock()
                 .map_err(|_| token_owner_changed())?;
+            // Delete from vault
+            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                let _ = store.delete(&account);
+            }
             invalidate_memory_tokens(&mut cache, legacy_revision(provider), &account);
 
             // Delete legacy .json file if exists
@@ -2065,6 +2070,73 @@ mod tests {
         .is_ok());
         drop(cache);
         deletion.join().unwrap();
+    }
+
+    #[test]
+    fn legacy_migration_finalizes_before_signout_in_memory_and_vault_paths() {
+        use std::sync::{mpsc, Arc, Barrier};
+        for vault_available in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let original = dir.path().join("legacy.json");
+            std::fs::write(&original, "old authorization").unwrap();
+            let cache = Arc::new(Mutex::new(None));
+            let vault = Arc::new(Mutex::new(HashMap::<String, String>::new()));
+            let claimed_barrier = Arc::new(Barrier::new(2));
+            let release = Arc::new(Barrier::new(2));
+            let migration = {
+                let (cache, vault, original, claimed_barrier, release) = (
+                    cache.clone(),
+                    vault.clone(),
+                    original.clone(),
+                    claimed_barrier.clone(),
+                    release.clone(),
+                );
+                std::thread::spawn(move || {
+                    with_legacy_token_claim(&cache, &original, |cache, claimed| {
+                        claimed_barrier.wait();
+                        release.wait();
+                        if vault_available {
+                            vault
+                                .lock()
+                                .unwrap()
+                                .insert("account".into(), "old authorization".into());
+                            claimed.discard()?;
+                        } else {
+                            cache
+                                .get_or_insert_with(HashMap::new)
+                                .insert("account".into(), "old authorization".into());
+                            // The memory path restores the legacy file for durability.
+                            drop(claimed);
+                        }
+                        Ok(())
+                    })
+                })
+            };
+            claimed_barrier.wait();
+            // A sign-out cannot complete while a claim is hidden, regardless
+            // of which destination the migration will use.
+            assert!(cache.try_lock().is_err());
+            let (done_tx, done_rx) = mpsc::channel();
+            let deletion = {
+                let (cache, vault, original) = (cache.clone(), vault.clone(), original.clone());
+                std::thread::spawn(move || {
+                    let mut cache = cache.lock().unwrap();
+                    vault.lock().unwrap().remove("account");
+                    *cache = None;
+                    let _ = std::fs::remove_file(&original);
+                    done_tx.send(()).unwrap();
+                })
+            };
+            assert!(done_rx.try_recv().is_err());
+            release.wait();
+            migration.join().unwrap().unwrap();
+            deletion.join().unwrap();
+            done_rx.recv().unwrap();
+            assert!(!original.exists());
+            assert!(cache.lock().unwrap().is_none());
+            assert!(vault.lock().unwrap().is_empty());
+            assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+        }
     }
 
     #[test]
