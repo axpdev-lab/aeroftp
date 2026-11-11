@@ -2045,11 +2045,14 @@ async fn provider_connect_inner(
     //
     // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
     // an active download/upload cannot see the box yanked from under it.
-    install_connected_provider(&state, provider, config.extra.get("profile_id").cloned()).await?;
-    {
-        let mut config_lock = state.config.lock().await;
-        *config_lock = Some(config);
-    }
+    install_connected_provider_with_config(
+        &state,
+        provider,
+        config.extra.get("profile_id").cloned(),
+        Some(config),
+        Duration::from_secs(30),
+    )
+    .await?;
 
     info!("Connected successfully: {}", display_name);
     Ok(format!("Connected to {} via {}", display_name, protocol))
@@ -2110,7 +2113,7 @@ async fn install_connected_provider_with_config(
     // still holding the provider lock, so a concurrent re-arm is serialized out.
     state.invalidate_overlay_key_cache();
     // The config always describes the provider in the slot. An install without
-    // one (OAuth, 4shared; `provider_connect` sets its own right after) clears
+    // one (OAuth, 4shared) clears
     // the previous connection's, which the liveness probe would otherwise
     // compare against the new provider.
     *state.config.lock().await = config;

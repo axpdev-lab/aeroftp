@@ -16,7 +16,7 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// In-memory token cache for when vault is locked (master mode).
 /// Tokens survive the session but are NOT persisted to disk.
@@ -452,6 +452,64 @@ pub struct StoredTokens {
     pub scopes: Vec<String>,
 }
 
+/// Provenance stays inside the encrypted record. A new authorization mints a
+/// family; refresh preserves it. Old clients dropping it fail closed in a bound
+/// connection instead of silently substituting a different login.
+#[derive(Serialize, Deserialize)]
+struct TokenRecord {
+    #[serde(flatten)]
+    tokens: StoredTokens,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owner_family: Option<String>,
+    #[serde(skip)]
+    source: TokenSource,
+    #[serde(skip)]
+    credential_owner: Option<i64>,
+    #[serde(skip)]
+    raw: Zeroizing<String>,
+}
+
+#[derive(Default)]
+enum TokenSource {
+    #[default]
+    Unavailable,
+    Partition(i64),
+    Vault,
+    Memory(String),
+}
+
+impl TokenRecord {
+    fn family(&self) -> String {
+        self.owner_family.clone().unwrap_or_else(|| {
+            // Deterministic compatibility for an already encrypted legacy
+            // record, without a speculative migration write before connect.
+            // Never exported: only a keyed journal tag may cross IPC.
+            use sha2::{Digest, Sha256};
+            let mut hash = Sha256::new();
+            hash.update(b"aeroftp-oauth-legacy-family-v1");
+            for value in [
+                self.tokens.access_token.as_str(),
+                self.tokens.refresh_token.as_deref().unwrap_or(""),
+            ] {
+                hash.update((value.len() as u64).to_be_bytes());
+                hash.update(value.as_bytes());
+            }
+            format!("legacy-v1:{:x}", hash.finalize())
+        })
+    }
+}
+
+struct TokenOwner {
+    user: Option<i64>,
+    family: String,
+}
+
+fn token_owner_changed() -> ProviderError {
+    ProviderError::AuthenticationFailed(
+        "CONNECTION_CHANGED: the authorization changed; reconnect and compare again".into(),
+    )
+}
+
 impl StoredTokens {
     /// Check if token is expired (with 5 min buffer)
     pub fn is_expired(&self) -> bool {
@@ -564,6 +622,9 @@ pub struct OAuth2Manager {
     /// Shared across clones of the same manager so Dropbox/Box part workers
     /// serialize refresh against the primary.
     refresh_guard: Arc<tokio::sync::Mutex<()>>,
+    /// Sealed on the first token used by connect, shared with transfer clones.
+    /// Key by profile, not user: changing active user must not create a new seal.
+    token_owners: Arc<Mutex<HashMap<String, TokenOwner>>>,
 }
 
 /// Secret PKCE material for an encrypted, profile-bound headless attempt.
@@ -583,6 +644,7 @@ impl Clone for OAuth2Manager {
             callback_port: self.callback_port,
             credential_user: self.credential_user,
             refresh_guard: Arc::clone(&self.refresh_guard),
+            token_owners: Arc::clone(&self.token_owners),
         }
     }
 }
@@ -665,6 +727,7 @@ impl OAuth2Manager {
             callback_port: 0, // Will be assigned dynamically by OS
             credential_user: None,
             refresh_guard: Arc::new(tokio::sync::Mutex::new(())),
+            token_owners: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -778,6 +841,18 @@ impl OAuth2Manager {
         config: &OAuthConfig,
         refresh_token: &str,
     ) -> Result<StoredTokens, ProviderError> {
+        let account = Self::token_account_key(config.provider, &config.profile_id);
+        let observed = self.load_token_record(config.provider, &config.profile_id)?;
+        self.verify_token_owner(&account, &observed)?;
+        use subtle::ConstantTimeEq;
+        if !observed
+            .tokens
+            .refresh_token
+            .as_ref()
+            .is_some_and(|stored| bool::from(stored.as_bytes().ct_eq(refresh_token.as_bytes())))
+        {
+            return Err(token_owner_changed());
+        }
         let client = self.create_client(config)?;
 
         let token_result = client
@@ -806,7 +881,7 @@ impl OAuth2Manager {
         // Update keyring under the profile-bound key, off the async worker:
         // another process may be writing the vault at the same moment.
         crate::credential_store::off_async_worker(|| {
-            self.store_tokens(config.provider, &config.profile_id, &tokens)
+            self.persist_refreshed_record(&account, &observed, &tokens)
         })?;
 
         info!("OAuth2 tokens refreshed for {:?}", config.provider);
@@ -828,7 +903,10 @@ impl OAuth2Manager {
         config: &OAuthConfig,
     ) -> Result<SecretString, ProviderError> {
         let _guard = self.refresh_guard.lock().await;
-        let mut tokens = self.load_tokens(config.provider, &config.profile_id)?;
+        let account = Self::token_account_key(config.provider, &config.profile_id);
+        let mut record = self.load_token_record(config.provider, &config.profile_id)?;
+        self.verify_token_owner(&account, &record)?;
+        let mut tokens = record.tokens.clone();
 
         if tokens.is_expired() {
             // Per-profile lease: two profiles pointing at distinct accounts of
@@ -840,8 +918,15 @@ impl OAuth2Manager {
             let _lease = RefreshLease::acquire(&slug).await;
             // Double-check: the lease winner (possibly the other process)
             // may have already rotated+persisted a fresh token.
-            tokens = self.load_tokens(config.provider, &config.profile_id)?;
+            record = self.load_token_record(config.provider, &config.profile_id)?;
+            self.verify_token_owner(&account, &record)?;
+            tokens = record.tokens.clone();
             if tokens.is_expired() {
+                if _lease.is_none() {
+                    return Err(ProviderError::Other(
+                        "Authorization refresh is busy; try again".into(),
+                    ));
+                }
                 if let Some(ref refresh_token) = tokens.refresh_token {
                     tokens = self.refresh_tokens(config, refresh_token).await?;
                 } else {
@@ -896,8 +981,17 @@ impl OAuth2Manager {
         profile_id: &str,
         tokens: &StoredTokens,
     ) -> Result<(), ProviderError> {
-        let json = serde_json::to_string_pretty(tokens)
-            .map_err(|e| ProviderError::Other(format!("Failed to serialize tokens: {}", e)))?;
+        let record = TokenRecord {
+            tokens: tokens.clone(),
+            owner_family: Some(format!("v1:{}", uuid::Uuid::new_v4())),
+            source: TokenSource::Unavailable,
+            credential_owner: self.credential_user,
+            raw: Zeroizing::new(String::new()),
+        };
+        let json = Zeroizing::new(
+            serde_json::to_string_pretty(&record)
+                .map_err(|_| ProviderError::Other("Failed to serialize tokens".into()))?,
+        );
 
         let account = Self::token_account_key(provider, profile_id);
 
@@ -950,7 +1044,7 @@ impl OAuth2Manager {
         // Vault requires master password: store in memory only (never on disk unencrypted)
         if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
             let map = cache.get_or_insert_with(HashMap::new);
-            map.insert(account, json);
+            map.insert(account, json.to_string());
         }
 
         info!("Tokens stored in memory for {:?} (vault locked)", provider);
@@ -967,6 +1061,133 @@ impl OAuth2Manager {
         provider: OAuthProvider,
         profile_id: &str,
     ) -> Result<StoredTokens, ProviderError> {
+        self.load_token_record(provider, profile_id)
+            .map(|record| record.tokens)
+    }
+
+    fn decode_record(
+        json: &str,
+        source: TokenSource,
+        credential_owner: Option<i64>,
+    ) -> Result<TokenRecord, ProviderError> {
+        let mut record: TokenRecord = serde_json::from_str(json)
+            .map_err(|_| ProviderError::Other("Failed to parse tokens".into()))?;
+        record.raw = Zeroizing::new(json.to_owned());
+        record.source = source;
+        record.credential_owner = credential_owner;
+        Ok(record)
+    }
+
+    fn verify_token_owner(&self, account: &str, record: &TokenRecord) -> Result<(), ProviderError> {
+        use subtle::ConstantTimeEq;
+        let family = record.family();
+        let mut owners = self
+            .token_owners
+            .lock()
+            .map_err(|_| token_owner_changed())?;
+        if let Some(owner) = owners.get(account) {
+            if owner.user != record.credential_owner
+                || !bool::from(owner.family.as_bytes().ct_eq(family.as_bytes()))
+            {
+                return Err(token_owner_changed());
+            }
+        } else {
+            owners.insert(
+                account.to_owned(),
+                TokenOwner {
+                    user: record.credential_owner,
+                    family,
+                },
+            );
+        }
+        Ok(())
+    }
+
+    /// Save only to the exact source loaded before the network exchange.
+    /// No mirror: the partition is authoritative, and mirroring a stale refresh
+    /// could overwrite a fresh login made concurrently in the other store.
+    fn persist_refreshed_record(
+        &self,
+        account: &str,
+        observed: &TokenRecord,
+        tokens: &StoredTokens,
+    ) -> Result<(), ProviderError> {
+        let current_owner =
+            crate::user_partitions::credential_owner_and_fallback(self.credential_user)
+                .map_err(|_| token_owner_changed())?
+                .0;
+        if current_owner != observed.credential_owner {
+            return Err(token_owner_changed());
+        }
+        if let Some(user) = current_owner {
+            crate::user_partitions::ensure_credential_user_unlocked(user)
+                .map_err(|_| token_owner_changed())?;
+        }
+        let replacement = TokenRecord {
+            tokens: tokens.clone(),
+            owner_family: Some(observed.family()),
+            source: TokenSource::Unavailable,
+            credential_owner: current_owner,
+            raw: Zeroizing::new(String::new()),
+        };
+        let json = Zeroizing::new(
+            serde_json::to_string_pretty(&replacement)
+                .map_err(|_| ProviderError::Other("Failed to serialize tokens".into()))?,
+        );
+        let unchanged = match &observed.source {
+            TokenSource::Partition(user) => {
+                let store = crate::credential_store::CredentialStore::from_cache()
+                    .ok_or_else(token_owner_changed)?;
+                let conn = crate::user_partitions::open_or_init_cli()
+                    .map_err(|_| token_owner_changed())?;
+                let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                crate::user_partitions::replace_user_credential_if_unchanged(
+                    &conn,
+                    &key,
+                    *user,
+                    account,
+                    "oauth",
+                    &observed.raw,
+                    &json,
+                )
+                .map_err(|_| token_owner_changed())?
+            }
+            TokenSource::Vault => {
+                let store = crate::credential_store::CredentialStore::from_cache()
+                    .ok_or_else(token_owner_changed)?;
+                store
+                    .replace_secret_if_unchanged(account, &observed.raw, &json)
+                    .map_err(|_| token_owner_changed())?
+            }
+            TokenSource::Memory(key) => {
+                let mut cache = MEMORY_TOKEN_CACHE
+                    .lock()
+                    .map_err(|_| token_owner_changed())?;
+                if let Some(map) = cache.as_mut() {
+                    if map.get(key).is_some_and(|raw| raw == observed.raw.as_str()) {
+                        map.insert(key.clone(), json.to_string());
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            }
+            TokenSource::Unavailable => false,
+        };
+        if unchanged {
+            Ok(())
+        } else {
+            Err(token_owner_changed())
+        }
+    }
+
+    fn load_token_record(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+    ) -> Result<TokenRecord, ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
         let legacy = Self::legacy_token_account_key(provider);
         let (credential_user, legacy_fallback_allowed) =
@@ -982,13 +1203,18 @@ impl OAuth2Manager {
             crate::credential_store::CredentialStore::from_cache(),
             credential_user,
         ) {
-            let resolved = crate::user_partitions::resolve_credential_for_user_owner_aware(
-                &store, user, &account,
-            )
-            .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {}", e)))?;
+            crate::user_partitions::init_or_migrate_cli(&store)
+                .map_err(|_| ProviderError::Other("Failed to initialize token owner".into()))?;
+            let conn = crate::user_partitions::open_or_init_cli()
+                .map_err(|_| ProviderError::Other("Failed to open token owner".into()))?;
+            let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let resolved =
+                crate::user_partitions::get_user_credential_for(&conn, &key, user, &account)
+                    .map_err(|e| {
+                        ProviderError::Other(format!("Failed to read user tokens: {e}"))
+                    })?;
             if let Some(json) = resolved {
-                return serde_json::from_str(&json)
-                    .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
+                return Self::decode_record(&json, TokenSource::Partition(user), credential_user);
             }
         }
 
@@ -1008,17 +1234,16 @@ impl OAuth2Manager {
         // Try vault first under the per-profile (or legacy when profile_id is empty) key.
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if let Ok(json) = store.get(&account) {
-                return serde_json::from_str(&json)
-                    .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
+                return Self::decode_record(&json, TokenSource::Vault, credential_user);
             }
 
             // Lazy migration: per-profile key missing, legacy hit ➜ rebind + remove.
             if !profile_id.is_empty() {
                 if let Ok(json) = store.get(&legacy) {
-                    let tokens: StoredTokens = serde_json::from_str(&json).map_err(|e| {
-                        ProviderError::Other(format!("Failed to parse legacy tokens: {}", e))
-                    })?;
+                    let mut record =
+                        Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
                     if store.store(&account, &json).is_ok() {
+                        record.source = TokenSource::Vault;
                         let _ = store.delete(&legacy);
                         info!(
                             "Migrated legacy {:?} token to per-profile vault key",
@@ -1030,7 +1255,7 @@ impl OAuth2Manager {
                             provider
                         );
                     }
-                    return Ok(tokens);
+                    return Ok(record);
                 }
             }
         }
@@ -1039,15 +1264,19 @@ impl OAuth2Manager {
         if let Ok(cache) = MEMORY_TOKEN_CACHE.lock() {
             if let Some(map) = cache.as_ref() {
                 if let Some(json) = map.get(&account) {
-                    return serde_json::from_str(json).map_err(|e| {
-                        ProviderError::Other(format!("Failed to parse tokens: {}", e))
-                    });
+                    return Self::decode_record(
+                        json,
+                        TokenSource::Memory(account.clone()),
+                        credential_user,
+                    );
                 }
                 if !profile_id.is_empty() {
                     if let Some(json) = map.get(&legacy) {
-                        return serde_json::from_str(json).map_err(|e| {
-                            ProviderError::Other(format!("Failed to parse tokens: {}", e))
-                        });
+                        return Self::decode_record(
+                            json,
+                            TokenSource::Memory(legacy.clone()),
+                            credential_user,
+                        );
                     }
                 }
             }
@@ -1064,8 +1293,7 @@ impl OAuth2Manager {
             provider
         );
 
-        let tokens: StoredTokens = serde_json::from_str(&json)
-            .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))?;
+        let mut record = Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
 
         // Migrate to vault under the per-profile key (or legacy when profile_id is empty).
         let mut migrated = false;
@@ -1113,7 +1341,10 @@ impl OAuth2Manager {
             );
         }
 
-        Ok(tokens)
+        if migrated {
+            record.source = TokenSource::Vault;
+        }
+        Ok(record)
     }
 
     /// Delete tokens from credential vault, memory cache, and legacy files
@@ -2157,6 +2388,69 @@ mod tests {
         assert_eq!(other.expose_secret(), "other-access");
         let original = primary.get_valid_token(&config).await.expect("original");
         assert_eq!(original.expose_secret(), "winner-access-token");
+
+        // A legitimate rotation preserves the encrypted provenance and remains
+        // visible to all clones, without resealing them to another login.
+        let account = OAuth2Manager::token_account_key(config.provider, &profile);
+        let observed = primary
+            .load_token_record(config.provider, &profile)
+            .unwrap();
+        let mut rotated = tokens.clone();
+        rotated.access_token = "rotated-A".into();
+        rotated.refresh_token = Some("rotated-refresh-A".into());
+        primary
+            .persist_refreshed_record(&account, &observed, &rotated)
+            .unwrap();
+        let cloned = primary.clone();
+        assert_eq!(
+            cloned
+                .get_valid_token(&config)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "rotated-A"
+        );
+
+        // A new login during an in-flight refresh wins storage; neither the
+        // primary nor a clone is allowed to use that login as connection A.
+        let before_login = primary
+            .load_token_record(config.provider, &profile)
+            .unwrap();
+        primary
+            .store_tokens(config.provider, &profile, &other_tokens)
+            .unwrap();
+        assert!(primary
+            .persist_refreshed_record(&account, &before_login, &rotated)
+            .is_err());
+        assert_eq!(
+            primary
+                .load_tokens(config.provider, &profile)
+                .unwrap()
+                .access_token,
+            "other-access"
+        );
+        assert!(primary
+            .get_valid_token(&config)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("CONNECTION_CHANGED"));
+        assert!(cloned
+            .get_valid_token(&config)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("CONNECTION_CHANGED"));
+        // Only a new connection may adopt the newly authorized account.
+        let reconnected = OAuth2Manager::new();
+        assert_eq!(
+            reconnected
+                .get_valid_token(&config)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "other-access"
+        );
 
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &profile);
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &other_profile);

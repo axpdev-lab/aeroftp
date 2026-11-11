@@ -3271,6 +3271,48 @@ pub fn get_user_credential_for(
     })
 }
 
+/// Conditional refresh of an existing owned credential. Resolve the DEK before
+/// SQLite's write reservation, preserving the session -> SQLite lock order.
+/// A missing or replaced row is never recreated with a stale refresh result.
+pub(crate) fn replace_user_credential_if_unchanged(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    expected: &str,
+    replacement: &str,
+) -> Result<bool, String> {
+    if credential_id.is_empty() || credential_type.is_empty() {
+        return Err("CREDENTIAL_ID_AND_TYPE_REQUIRED".to_owned());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential refresh: {e}"))?;
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        use subtle::ConstantTimeEq;
+        if !current
+            .as_ref()
+            .is_some_and(|secret| bool::from(secret.as_bytes().ct_eq(expected.as_bytes())))
+        {
+            return Ok(false);
+        }
+        set_user_credential_with_dek(
+            &tx,
+            user_id,
+            dek,
+            credential_id,
+            credential_type,
+            replacement,
+        )?;
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential refresh: {e}"))?;
+        Ok(true)
+    })
+}
+
 /// Delete one secret from a user's partition. No DEK is required: a row is
 /// removed by its `(user_id, credential_id)` key without decrypting anything.
 pub fn delete_user_credential_for(
@@ -8021,6 +8063,54 @@ mod tests {
         )
         .expect("migrate");
         conn
+    }
+
+    #[test]
+    fn conditional_owned_refresh_preserves_new_login_and_signed_out_row() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let user = get_active_user(&conn).unwrap().unwrap().id;
+        set_user_credential_for(&conn, &root, user, "oauth_fixture", "oauth", "A").unwrap();
+        set_user_credential_for(&conn, &root, user, "oauth_fixture", "oauth", "B").unwrap();
+        assert!(!replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            user,
+            "oauth_fixture",
+            "oauth",
+            "A",
+            "refresh-A"
+        )
+        .unwrap());
+        assert_eq!(
+            get_user_credential_for(&conn, &root, user, "oauth_fixture")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "B"
+        );
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            user,
+            "oauth_fixture",
+            "oauth",
+            "B",
+            "refresh-B"
+        )
+        .unwrap());
+        delete_user_credential_for(&conn, user, "oauth_fixture").unwrap();
+        assert!(!replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            user,
+            "oauth_fixture",
+            "oauth",
+            "refresh-B",
+            "resurrected"
+        )
+        .unwrap());
     }
 
     /// A vault from before the naming rule migrates with two profiles of one
