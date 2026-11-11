@@ -6,6 +6,11 @@ use tokio::io::AsyncReadExt;
 const SIZE: u64 = 201 * 1024 * 1024;
 const GRID: u64 = 8 * 1024 * 1024;
 
+fn hash_part_call_guard() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
 #[derive(Clone, Default)]
 struct Fault {
     head_status: Option<u16>,
@@ -503,6 +508,7 @@ async fn s3_adapter_refusal_doors_never_create_multipart() {
 
 #[tokio::test]
 async fn s3_adapter_batch_dag_full_put_does_not_seed_the_delta_baseline() {
+    let _hash_calls = hash_part_call_guard();
     use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
     use crate::transfer_dag::{Capability, TransferCapabilities};
     use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
@@ -561,6 +567,7 @@ async fn s3_adapter_batch_dag_full_put_does_not_seed_the_delta_baseline() {
             modified: None,
         }],
     };
+    super::super::s3_delta_baseline::reset_hash_multipart_part_calls();
     let result = crate::transfer_dag_batch::execute_batch_dag(
         sink,
         batch,
@@ -574,6 +581,128 @@ async fn s3_adapter_batch_dag_full_put_does_not_seed_the_delta_baseline() {
     assert_eq!(mock.seen.creates.load(Ordering::SeqCst), 1);
     assert_eq!(mock.seen.completes.load(Ordering::SeqCst), 1);
     assert_eq!(mock.seen.wire.load(Ordering::SeqCst), SIZE);
+    let outcome = mock
+        .provider
+        .baseline_store()
+        .unwrap()
+        .match_file(
+            mock.provider.delta_baseline_key("object"),
+            "\"v1\"".into(),
+            SIZE,
+            &local,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        outcome,
+        super::super::s3_delta_baseline::MatchOutcome::Refused(
+            super::super::s3_delta_baseline::MatchRefusal::NoBaseline
+        )
+    );
+    assert_eq!(
+        super::super::s3_delta_baseline::hash_multipart_part_calls(),
+        0
+    );
+    assert_eq!(
+        file_digest(&local).await,
+        file_digest(&mock.dir.path().join("remote.bin")).await
+    );
+}
+
+#[tokio::test]
+async fn s3_adapter_batch_dag_full_put_drops_a_stale_same_etag_baseline() {
+    let _hash_calls = hash_part_call_guard();
+    use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
+    use crate::transfer_dag::{Capability, TransferCapabilities};
+    use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+    let mock = mock().await;
+    let local = mock.dir.path().join("dag.bin");
+    std::fs::File::create(&local)
+        .unwrap()
+        .set_len(SIZE)
+        .unwrap();
+    let mut hash = BaselineHasher::new(SIZE).unwrap();
+    let different = vec![1u8; 1024 * 1024];
+    for _ in 0..(SIZE / different.len() as u64) {
+        hash.update(&different);
+    }
+    mock.provider
+        .baseline_store()
+        .unwrap()
+        .record_completed(
+            mock.provider.delta_baseline_key("object"),
+            hash,
+            "\"v1\"".into(),
+        )
+        .await
+        .unwrap();
+    let shared = Arc::new(tokio::sync::Mutex::new(Some(
+        Box::new(mock.provider.clone()) as Box<dyn StorageProvider>,
+    )));
+    let sink: Arc<dyn crate::transfer_event_sink::TransferEventSink> =
+        Arc::new(crate::transfer_event_sink::NoopTransferSink);
+    let caps = TransferCapabilities {
+        multipart_upload: Capability::Supported,
+        preferred_chunk_size: Some(16 * 1024 * 1024),
+        multipart_threshold: 200 * 1024 * 1024,
+        max_chunk_slots: Some(4),
+        ..TransferCapabilities::default()
+    };
+    let settings = crate::transfer_settings::ResolvedTransferSettings {
+        requested_max_concurrent: 1,
+        max_concurrent: 1,
+        retry_count: 0,
+        timeout_seconds: 300,
+        download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+        sftp_download_preset: None,
+    };
+    let executor = Arc::new(ProviderUploadExecutor::new(
+        sink.clone(),
+        shared,
+        settings,
+        None,
+        tokio_util::sync::CancellationToken::new(),
+        ProviderExecutorSessionModel::HttpClonePool {
+            provider_type: ProviderType::S3,
+            max_leases: 4,
+        },
+        caps,
+    ));
+    let batch = crate::transfer_orchestrator::TransferBatch {
+        id: "s3-baseline-stale".into(),
+        display_name: "S3 stale baseline".into(),
+        direction: TransferDirection::Upload,
+        config: TransferBatchConfig {
+            timeout_ms: 300_000,
+            ..TransferBatchConfig::default()
+        },
+        entries: vec![TransferEntry {
+            id: "object".into(),
+            display_name: "object".into(),
+            remote_path: "object".into(),
+            local_path: local.to_string_lossy().into_owned(),
+            size: SIZE,
+            modified: None,
+        }],
+    };
+    super::super::s3_delta_baseline::reset_hash_multipart_part_calls();
+    let result = crate::transfer_dag_batch::execute_batch_dag(
+        sink,
+        batch,
+        executor,
+        Arc::new(AtomicBool::new(false)),
+        None,
+    )
+    .await;
+    assert_eq!(result.completed, 1, "{result:?}");
+    assert_eq!(result.failed, 0);
+    assert_eq!(mock.seen.creates.load(Ordering::SeqCst), 1);
+    assert_eq!(mock.seen.completes.load(Ordering::SeqCst), 1);
+    assert_eq!(mock.seen.wire.load(Ordering::SeqCst), SIZE);
+    assert_eq!(
+        super::super::s3_delta_baseline::hash_multipart_part_calls(),
+        0
+    );
     let outcome = mock
         .provider
         .baseline_store()

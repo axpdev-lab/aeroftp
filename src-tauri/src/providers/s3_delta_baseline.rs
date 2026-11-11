@@ -432,7 +432,25 @@ pub(crate) struct MultipartPartDigests {
     digests: Vec<[u8; 32]>,
 }
 
+#[cfg(test)]
+static HASH_MULTIPART_PART_CALLS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(test)]
+pub(crate) fn reset_hash_multipart_part_calls() {
+    HASH_MULTIPART_PART_CALLS.store(0, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(test)]
+pub(crate) fn hash_multipart_part_calls() -> u64 {
+    HASH_MULTIPART_PART_CALLS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 pub(crate) fn hash_multipart_part(total_size: u64, bytes: &[u8]) -> Option<MultipartPartDigests> {
+    #[cfg(test)]
+    {
+        HASH_MULTIPART_PART_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
     let grid = delta_grid_size(total_size)?;
     if bytes.len() as u64 > total_size {
         return None;
