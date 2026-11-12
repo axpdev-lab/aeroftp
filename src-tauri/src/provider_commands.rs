@@ -4228,6 +4228,7 @@ pub async fn provider_download_file(
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _transfer_owner = state
         .pin_gui_transfer_owner(
             expected_gui_target,
@@ -6841,6 +6842,7 @@ pub async fn provider_upload_file(
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _transfer_owner = state
         .pin_gui_transfer_owner(
             expected_gui_target,
@@ -7343,6 +7345,7 @@ pub async fn provider_mkdir(
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = state.pin_gui_target(expected_gui_target).await?;
     // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store,
     // unless the target is provably outside the overlay anchor (#390).
@@ -7387,6 +7390,7 @@ pub async fn provider_delete_file(
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = state.pin_gui_target(expected_gui_target).await?;
     // The raw view exposes raw paths. Deletion removes the selected object and
     // cannot inject plaintext, so it remains available with CRYPT off (#390).

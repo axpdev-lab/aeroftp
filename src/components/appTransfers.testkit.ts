@@ -255,7 +255,7 @@ export function fixture(options: Options = {}) {
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
     humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, cancelLevelRef: { current: 0 },
-    batchOpInFlightRef: { current: false }, batchOperationPendingRef: { current: null }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
+    batchOpInFlightRef: { current: false }, batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
     circuitBreaker: options.breaker ?? {
       reset: vi.fn(), recordSuccess: vi.fn(), recordFailure: () => ({ isFatal: false, retryable: false, shouldPause: false }),
       stateRef: { current: 'closed' }, pauseReasonRef: { current: null }, tripErrorKindRef: { current: null },

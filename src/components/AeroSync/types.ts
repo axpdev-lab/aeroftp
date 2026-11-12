@@ -93,6 +93,11 @@ export interface AeroSyncRuntime {
 }
 
 export interface AeroSyncContext {
+    /**
+     * The App's batch counter read before this comparison began. A plan built
+     * from it is refused if a batch started or ended since.
+     */
+    batchGeneration?: number;
     pairKind: AeroSyncPairKind | null;
     leftLabel: string;
     rightLabel: string;

@@ -8,7 +8,35 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
+
+/// Native commands a sync run may leave in flight that are still running.
+/// A target pin covers only a command that was given an expected target;
+/// a local-local run gives none, so this count is what tells a lost page's
+/// cleanup that its copies, deletes and index writes are over.
+static NATIVE_WORK: AtomicUsize = AtomicUsize::new(0);
+
+/// Held for the whole body of such a command. Dropping it ends the work.
+#[must_use = "the work counts only while the guard is alive"]
+pub(crate) struct NativeWork;
+
+impl Drop for NativeWork {
+    fn drop(&mut self) {
+        NATIVE_WORK.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+/// Count one native command of a sync run as in flight until the guard drops.
+pub(crate) fn native_work() -> NativeWork {
+    NATIVE_WORK.fetch_add(1, Ordering::SeqCst);
+    NativeWork
+}
+
+/// No native command of a sync run is in flight.
+pub(crate) fn native_work_settled() -> bool {
+    NATIVE_WORK.load(Ordering::SeqCst) == 0
+}
 
 struct Lease {
     pair: String,
@@ -93,7 +121,8 @@ pub(crate) fn release_orphans(tokens: &[String]) {
 }
 
 /// Unlock orphaned pairs once `settled` says the native work the lost page
-/// had started is over. Until then a new run of the same pair is refused.
+/// had started is over (no target pin and no [`native_work`] guard). Until
+/// then a new run of the same pair is refused.
 pub(crate) async fn release_orphans_once_settled(tokens: Vec<String>, settled: impl Fn() -> bool) {
     while !settled() {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
@@ -240,5 +269,89 @@ mod tests {
         let replacement = acquire_at(dir.path(), pair, "new-window").unwrap();
         release(&replacement).unwrap();
         release(&other_window).unwrap();
+    }
+
+    /// A local-local run gives its commands no expected target, so a copy it
+    /// started holds no pin. The pair of its lost page stays locked while
+    /// the real `copy_local_file` is still in flight, and is released once
+    /// the command returns. The source is a FIFO no one has opened for
+    /// writing, so the copy waits in its `open`; once a writer appears the
+    /// standard library refuses a source that is not a regular file, and the
+    /// command returns that error. Only how long it ran matters here.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_lost_local_run_keeps_its_pair_locked_until_an_unpinned_copy_returns() {
+        /// Opens the FIFO for writing on drop, so a failed assertion does not
+        /// leave the copy blocked in its open for the rest of the process.
+        struct Unblock(std::path::PathBuf);
+        impl Drop for Unblock {
+            fn drop(&mut self) {
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&self.0);
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/local-copy", "/local-copy-right");
+        let lost = acquire_at(dir.path(), pair.clone(), "lost-local-window").unwrap();
+        let source = dir.path().join("source.fifo");
+        let c_source = std::ffi::CString::new(source.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_source.as_ptr(), 0o600) }, 0);
+        let unblock = Unblock(source.clone());
+        let destination = dir.path().join("copied.bin");
+
+        // No target pin anywhere: the same state a local-local run leaves.
+        let state = std::sync::Arc::new(crate::provider_commands::ProviderState::new());
+        assert!(state.gui_work_settled());
+        let copy = tokio::spawn(crate::copy_local_file(
+            source.to_string_lossy().into_owned(),
+            destination.to_string_lossy().into_owned(),
+            None,
+        ));
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        assert!(!copy.is_finished(), "the copy waits for its source");
+
+        let orphans = orphan_window("lost-local-window");
+        assert_eq!(orphans, std::slice::from_ref(&lost));
+        let waiter = {
+            let state = std::sync::Arc::clone(&state);
+            tokio::spawn(release_orphans_once_settled(orphans, move || {
+                state.gui_work_settled() && native_work_settled()
+            }))
+        };
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        assert!(!waiter.is_finished(), "an unpinned copy is still running");
+        assert!(
+            acquire_at(dir.path(), pair.clone(), "new-window").is_err(),
+            "a replacement run must wait for the running copy"
+        );
+
+        // A writer appears: the copy's `open` returns, the command ends (with
+        // the refusal of a non-regular source) and the pair is released.
+        tokio::task::spawn_blocking(move || {
+            let _writer = std::fs::OpenOptions::new().write(true).open(&source);
+        })
+        .await
+        .unwrap();
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), copy)
+            .await
+            .expect("the copy returns once its source is opened")
+            .unwrap();
+        assert!(
+            outcome.is_err(),
+            "a FIFO is not a regular file: {outcome:?}"
+        );
+        drop(unblock);
+        // Other tests of this process may hold their own native work for a
+        // moment; the waiter returns as soon as all of it is over.
+        tokio::time::timeout(std::time::Duration::from_secs(30), waiter)
+            .await
+            .expect("released once the copy returned")
+            .unwrap();
+        let replacement = acquire_at(dir.path(), pair, "new-window").unwrap();
+        release(&replacement).unwrap();
     }
 }

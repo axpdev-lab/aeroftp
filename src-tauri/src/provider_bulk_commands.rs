@@ -59,6 +59,7 @@ pub async fn provider_sync_transfer_bulk(
     timeout_seconds: Option<u64>,
     expected_gui_target: Option<u64>,
 ) -> Result<Vec<SyncBulkResult>, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app));
     sync_transfer_bulk(
         &state,

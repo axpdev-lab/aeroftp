@@ -151,7 +151,7 @@ it.each([undefined, 'B'])('refuses a resume journal with owner %s on profile A',
     const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-resume.ts');
     const notify = { error: vi.fn(), info: vi.fn() };
     const context = {
-        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null },
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'sftp' } }),
         remoteJournalOwnersRef: { current: new Map([['j', { profileId: 'A', params: { protocol: 'sftp' } }]]) },
         queuedTargetProblem: () => null,
@@ -241,7 +241,7 @@ it('does not launch the App delta continuation after a tab switch', async () => 
         throw new Error(`unexpected ${cmd}`);
     });
     const context = {
-        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null },
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'sftp' } }),
         queuedTargetGuard: (target: { profileId: string }) => () => {
             if (current !== target.profileId) throw new QueuedTargetChangedError('target changed');
@@ -275,7 +275,7 @@ it('keeps the preset target and roots captured before the canary approval', asyn
     let prompt: { onApprove: () => void } | undefined;
     const run = vi.fn();
     const context = {
-        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null },
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null },
         aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'A' } },
         setAeroSync: vi.fn(), debugMode: false,
         snapshotQueuedTarget: () => ({ profileId: current, params: { protocol: 'sftp' } }),
@@ -359,7 +359,7 @@ it.each([false, true])('runs an unsaved quick-connect sync with an epoch owner (
     const runner = vi.fn((..._args: unknown[]) => new Promise(() => {}));
     const notify = { error: vi.fn(), info: vi.fn() };
     const context = {
-        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null },
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null },
         snapshotQueuedTarget: () => ({ profileId: null, params: { protocol: 'sftp' } }),
         queuedTargetGuard: () => () => {}, QueuedTargetChangedError,
         activeUnifiedRemoteProfile: { id: 'unsaved server name', protocol: 'sftp', savedProfileId: null },
@@ -442,7 +442,7 @@ it.each(['result', 'error'] as const)('keeps a GVfs phone connected when an abor
         let resolve!: (value: unknown) => void; let reject!: (reason: unknown) => void;
         const pending = new Promise((ok, fail) => { resolve = ok; reject = fail; });
         const context = {
-            useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null }, remoteRefreshStartedAtRef: { current: 0 }, remoteNavCounter: { current: 1 },
+            useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, remoteRefreshStartedAtRef: { current: 0 }, remoteNavCounter: { current: 1 },
             liveConnectionParams: { protocol: 'mtp' }, usesProviderApi: () => true, aeroVaultOverlaySession: null,
             logger: { debug: vi.fn() }, invoke: vi.fn(() => pending), humanLog: { logRaw: vi.fn() },
             activityLog: { log: vi.fn() }, applyRemoteFileList: vi.fn(), QueuedTargetChangedError,
@@ -481,7 +481,7 @@ it.each(['settled', 'stopped', 'retargeted', 'removed', 'cancelled', 'completed'
     let row: { status: string } | undefined = { status: 'pending' };
     const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null as Promise<void> | null },
         syncRunnerPendingRef: { current: pending as Promise<void> | null }, runTrackedSync,
-        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null }, queuedTargetProblem: () => problem, transferQueue: { getItemNow: () => row, failTransfer: vi.fn() }, t: (key: string) => key };
+        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, queuedTargetProblem: () => problem, transferQueue: { getItemNow: () => row, failTransfer: vi.fn() }, t: (key: string) => key };
     const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
     const executor = vi.fn(); const retry = bind({}, 'retry', executor)();
     expect(executor).not.toHaveBeenCalled();
@@ -543,7 +543,7 @@ it('does not rearm Retry after native Stop acknowledgement until the actual sync
         syncRunQueueBridge: () => vi.fn(), setRemoteSyncResult: vi.fn(),
         syncRunnerPendingRef: { current: null as Promise<void> | null }, syncCancelPendingRef: { current: null as Promise<void> | null },
         syncRefreshAbortRef: { current: null }, remoteSyncRunningRef: { current: true }, activeTransferRef: { current: null },
-        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null }, loadLocalWaitersRef: { current: new Set<() => void>() }, batchResumeResolverRef: { current: null },
+        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, loadLocalWaitersRef: { current: new Set<() => void>() }, batchResumeResolverRef: { current: null },
         transferQueue: { getItemNow: () => ({ id: 'retry', status: 'error', restored: false }), items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(), stopAll: vi.fn(), hasActiveTransfersNow: () => true },
         retryCallbacksRef: { current: new Map([['retry', rearmedOnUserAction({ batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef }, retried)]]) },
         resumeRestoredTransfers: vi.fn(), setSyncCancelling: vi.fn(), dispatchTransferToast: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(),
@@ -711,7 +711,7 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
             localPanelShows, isLocalFlattenSearchActive: () => false,
             window: { removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'transfer', onTransferEvent: vi.fn(),
             notify: { error: vi.fn() }, t: (key: string) => key,
-            remoteSyncRunningRef: { current: true }, setSyncCancelling: vi.fn(), stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null },
+            remoteSyncRunningRef: { current: true }, setSyncCancelling: vi.fn(), stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null },
             cancelLevelRef: { current: 0 }, batchResumeResolverRef: { current: null }, isBatchPaused: false, setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(), dispatchTransferToast: vi.fn(),
         };
         const run = new Function(...Object.keys(context), workerCode)(...Object.values(context)) as Promise<void>;
@@ -778,7 +778,7 @@ it.each(['provider_gui_target_epoch', 'provider_gui_target_binding'] as const)('
     const stopAllCountRef = { current: 0 };
     const batchCancelledRef = { current: false };
     const context = {
-        useLatestCallback: (fn: unknown) => fn, stopCountRef, stopAllCountRef, batchCancelledRef, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null },
+        useLatestCallback: (fn: unknown) => fn, stopCountRef, stopAllCountRef, batchCancelledRef, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'webdav' } }),
         queuedTargetGuard: () => () => {}, QueuedTargetChangedError,
         captureGuiTarget: async () => invoke('provider_gui_target_epoch'),
@@ -845,7 +845,7 @@ it.each(['unrelated-scan', 'stop-all', 'stop-restart', 'parked-stop', 'parked-ca
     let probes = 0;
     const invoke = vi.fn(async (cmd: string) => cmd === 'sftp_probe_delta_eligibility' ? (++probes === 1 ? held : secondProbe) : 'owner');
     const runner = vi.fn(async () => ({ cancelled: true }));
-    const context = { useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchOperationPendingRef: { current: null as Promise<void> | null },
+    const context = { useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null },
         batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'sftp' } }),
         queuedTargetGuard: () => () => {}, QueuedTargetChangedError, captureGuiTarget: async () => 7,
@@ -863,7 +863,7 @@ it.each(['unrelated-scan', 'stop-all', 'stop-restart', 'parked-stop', 'parked-ca
     const batchEnd = app.indexOf('  // Issue #591: every GUI entry point', batchStart);
     const batchCode = (await transformWithOxc(app.slice(batchStart, batchEnd), 'actual-batch-latch.ts')).code;
     const withTransferRun = (await import('./transferRun')).withTransferRun;
-    const batchContext = { batchOpInFlightRef: { current: false }, batchOperationPendingRef: context.batchOperationPendingRef, withTransferRun };
+    const batchContext = { batchOpInFlightRef: { current: false }, batchGenerationRef: context.batchGenerationRef, batchOperationPendingRef: context.batchOperationPendingRef, withTransferRun };
     const wrapBatch = new Function(...Object.keys(batchContext), `${batchCode};return withBatchLatch;`)(...Object.values(batchContext));
     const folder = cancellation === 'unrelated-scan' ? wrapBatch(async () => {
         await folderWait;
@@ -981,7 +981,7 @@ it.each([true, false])('does not run a saved Mirror delete after waiting for a b
     const context = {
         useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 },
         syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(),
-        batchOperationPendingRef: { current: null as Promise<void> | null }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'webdav' } }),
         queuedTargetGuard: () => () => {}, QueuedTargetChangedError, captureGuiTarget: async () => 7,
         currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
@@ -994,7 +994,7 @@ it.each([true, false])('does not run a saved Mirror delete after waiting for a b
         setDeltaEligibilityPrompt: vi.fn(), setRemoteSyncResult: vi.fn(), setSyncCancelling: vi.fn(),
         notify: { error: vi.fn(), info: vi.fn() }, t: (key: string) => key, debugMode: false,
     };
-    const batchContext = { batchOpInFlightRef: { current: false }, batchOperationPendingRef: context.batchOperationPendingRef, withTransferRun };
+    const batchContext = { batchOpInFlightRef: { current: false }, batchGenerationRef: context.batchGenerationRef, batchOperationPendingRef: context.batchOperationPendingRef, withTransferRun };
     const wrapBatch = new Function(...Object.keys(batchContext), `${batchCode};return withBatchLatch;`)(...Object.values(batchContext));
     let finishUpload!: () => void;
     const uploading = new Promise<void>(resolve => { finishUpload = resolve; });
@@ -1025,6 +1025,72 @@ it.each([true, false])('does not run a saved Mirror delete after waiting for a b
     expect(context.syncPreflightPendingRef.current).toBeNull();
 });
 
+// A batch that is over by the time the plan is launched leaves no pending
+// latch to wait for. The plan keeps the batch counter its comparison began
+// with, so the batch is seen either way: one that started and ended while the
+// launch waited for the target binding, or one that ran between the
+// comparison and the click on Sync. Control: no batch, and the plan runs.
+it.each(['during-preflight', 'before-launch', 'none'] as const)('refuses a saved Mirror delete after a batch that is already over (%s)', async when => {
+    const launchCode = await appSlice('  const runConnectedRemoteSync =', '  // GAP-10: shared local-local sync launcher', 'stale-mirror-over.ts');
+    const batchCode = await appSlice('  const withBatchLatch =', '  // Issue #591: every GUI entry point', 'stale-mirror-over-batch.ts');
+    const { withTransferRun } = await import('./transferRun');
+    const remoteFiles = new Map([['/remote/orphan.txt', 'old']]);
+    let releaseBinding!: () => void;
+    const binding = new Promise<void>(resolve => { releaseBinding = resolve; });
+    const backend = wrapIntentInvoke(async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        if (cmd === 'provider_gui_target_binding') { await binding; return 'owner' as T; }
+        if (cmd === 'provider_bulk_support') return { upload: false, download: false } as T;
+        if (cmd === 'provider_delete_file') remoteFiles.delete(String(args?.path));
+        return undefined as T;
+    });
+    const invoke = vi.fn(<T,>(cmd: string, args?: Record<string, unknown>) => backend<T>(cmd, args));
+    const context = {
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 },
+        syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(),
+        batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'webdav' } }),
+        queuedTargetGuard: () => () => {}, QueuedTargetChangedError, captureGuiTarget: async () => 7,
+        currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
+        localStorage: { getItem: () => null }, isCryptOverlayActive: () => false, invoke,
+        remoteSyncRunningRef: { current: false }, runRemoteSync, runTrackedSync, syncRunnerPendingRef: { current: null }, syncCancelPendingRef: { current: null },
+        window: { addEventListener: vi.fn(), removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'test',
+        syncRunQueueBridge: () => () => undefined, transferQueue: {}, syncRefreshAbortRef: { current: null },
+        runCompletionRefresh, loadRemoteFiles: vi.fn(async () => true), loadLocalPendingRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
+        currentLocalPathRef: { current: '' }, localPanelShows, isLocalFlattenSearchActive: () => false, loadLocalFiles: vi.fn(),
+        setDeltaEligibilityPrompt: vi.fn(), setRemoteSyncResult: vi.fn(), setSyncCancelling: vi.fn(),
+        notify: { error: vi.fn(), info: vi.fn() }, t: (key: string) => key, debugMode: false,
+    };
+    const batchContext = { batchOpInFlightRef: { current: false }, batchGenerationRef: context.batchGenerationRef, batchOperationPendingRef: context.batchOperationPendingRef, withTransferRun };
+    const wrapBatch = new Function(...Object.keys(batchContext), `${batchCode};return withBatchLatch;`)(...Object.values(batchContext));
+    // An upload batch that replaces the orphan and is over before the launch decides.
+    const replace = () => wrapBatch(async () => { remoteFiles.set('/remote/orphan.txt', 'new'); })();
+    // The value the comparison began with.
+    const planBatchGeneration = context.batchGenerationRef.current;
+    if (when === 'before-launch') await replace();
+    const launch = new Function(...Object.keys(context), `${launchCode};return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('orphan.txt', 'delete-remote')], { remote: [], local: [] }, { direction: 'local_to_remote', deltaSyncEnabled: false, verifyPolicy: 'none', profileId: 'A', planBatchGeneration });
+    const commands = () => invoke.mock.calls.map(([cmd]) => cmd);
+    await vi.waitFor(() => expect(commands()).toContain('provider_gui_target_binding'));
+    if (when === 'during-preflight') {
+        await replace();
+        expect(context.batchOperationPendingRef.current).toBeNull();
+    }
+    releaseBinding();
+    if (when === 'none') {
+        await vi.waitFor(() => expect(context.setRemoteSyncResult).toHaveBeenCalled());
+        expect(remoteFiles.has('/remote/orphan.txt')).toBe(false);
+        expect(context.notify.error).not.toHaveBeenCalled();
+        return;
+    }
+    await vi.waitFor(() => expect(context.notify.error).toHaveBeenCalledWith('aerosync.title', 'syncPanel.planStaleAfterBatch'));
+    await tick();
+    expect(remoteFiles.get('/remote/orphan.txt')).toBe('new');
+    expect(commands()).not.toContain('provider_delete_file');
+    expect(commands()).not.toContain('sync_run_lease_begin_cmd');
+    expect(context.setRemoteSyncResult).not.toHaveBeenCalled();
+    expect(context.remoteSyncRunningRef.current).toBe(false);
+});
+
 it('keeps the local-local latch until a delayed cancel_transfer acknowledgement settles', async () => {
     const launchCode = await appSlice('  const runLocalLocalSync = useLatestCallback((', '  const handleCompareMirrorLeftToRight =', 'local-local-latch.ts');
     const stopCode = await appSlice('  const cancelTransfer = async', '  // Circuit breaker: attempt reconnection', 'local-local-stop.ts');
@@ -1049,7 +1115,7 @@ it('keeps the local-local latch until a delayed cancel_transfer acknowledgement 
         setRemoteSyncResult: vi.fn(), loadLocalFiles: vi.fn(), loadLocalFiles2: vi.fn(), setSyncCancelling: vi.fn(),
         stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null }, setSyncPreflightPending: vi.fn(),
         setDeltaEligibilityPrompt: vi.fn(), syncRefreshAbortRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
-        batchOperationPendingRef: { current: null }, activeTransferRef: { current: null }, batchResumeResolverRef: { current: null },
+        batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null }, activeTransferRef: { current: null }, batchResumeResolverRef: { current: null },
         dispatchTransferToast: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(),
     };
     const launch = new Function(...Object.keys(context), `${launchCode};return runLocalLocalSync;`)(...Object.values(context));
@@ -1098,7 +1164,7 @@ it('stops a multi-file remote delete between entries from the GUI controller', a
     });
     const remoteFiles = ['a', 'b', 'c'].map(name => ({ name, path: `/${name}`, is_dir: false }));
     const context = {
-        batchOpInFlightRef: { current: false }, batchOperationPendingRef: { current: null as Promise<void> | null }, withTransferRun,
+        batchOpInFlightRef: { current: false }, batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, withTransferRun,
         selectedRemoteFiles: new Set<string>(), remoteActionGuard: () => () => undefined,
         prepareGuiTarget: () => Promise.resolve({ epoch: 7 }), resolveGuiTarget: async (prepared: Promise<{ epoch: number }>) => (await prepared).epoch,
         notify: { error: vi.fn(), success: vi.fn() }, t: (key: string) => key,

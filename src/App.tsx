@@ -104,6 +104,12 @@ interface ConnectedRemoteRunOptions {
   maniac?: boolean;
   /** P3 EC: from PlanTabContent onExecute via AeroSyncRuntime. */
   errorCorrection?: { enabled: boolean; pct: number } | null;
+  /**
+   * The batch counter the plan's comparison began with
+   * (`AeroSyncContext.batchGeneration`). Omitted (a journal resume): the
+   * value when the launch is asked for.
+   */
+  planBatchGeneration?: number;
 }
 
 // GAP-10: runtime options for the local-local sync launcher. A dual-local
@@ -124,6 +130,8 @@ interface LocalLocalRunOptions {
   resumeJournal?: SyncJournal;
   /** Maniac mode: drop the journal, run the mandatory post-sync verify sweep. */
   maniac?: boolean;
+  /** As in `ConnectedRemoteRunOptions`. */
+  planBatchGeneration?: number;
 }
 
 
@@ -1062,6 +1070,10 @@ const App: React.FC = () => {
   // Cancel raises batchCancelledRef, the loops break, and the latch auto-clears.
   const batchOpInFlightRef = useRef(false);
   const batchOperationPendingRef = useRef<Promise<void> | null>(null);
+  // Counts every start and every end of a batch. A sync plan keeps the value
+  // its comparison began with: a batch that ran (or ended) since, even one
+  // that is over by the time the plan is launched, is a different number.
+  const batchGenerationRef = useRef(0);
   useEffect(() => {
     batchOpInFlightRef.current = scanningState.active;
   }, [scanningState.active]);
@@ -12555,6 +12567,8 @@ const App: React.FC = () => {
     // previous open is now stale and will discard its own result.
     const mySeq = ++aeroSyncCompareSeqRef.current;
     const scanProgressId = `aerosync-${Date.now()}-${mySeq}`;
+    // Read before the scan starts: a batch running now still ends after it.
+    const batchGeneration = batchGenerationRef.current;
 
     const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
       const mtimeMs = (() => {
@@ -12582,6 +12596,7 @@ const App: React.FC = () => {
       setAeroSync({
         initialTab,
         context: {
+          batchGeneration,
           compareResult: canRecurse
             ? null
             : compareEntries(localFiles.map(toCompareEntry), localFiles2.map(toCompareEntry)),
@@ -12699,6 +12714,7 @@ const App: React.FC = () => {
       setAeroSync({
         initialTab,
         context: {
+          batchGeneration,
           compareResult: null,
           compareLoading: startScan,
           scanProgressId: startScan ? scanProgressId : undefined,
@@ -12817,6 +12833,7 @@ const App: React.FC = () => {
     setAeroSync({
       initialTab,
       context: {
+        batchGeneration,
         compareResult: null,
         leftLabel: currentLocalPath || t('browser.local'),
         rightLabel: '',
@@ -12844,6 +12861,7 @@ const App: React.FC = () => {
     opts: ConnectedRemoteRunOptions,
   ): void => {
     const launchStops = stopAllCountRef.current;
+    const planGeneration = opts.planBatchGeneration ?? batchGenerationRef.current;
     const nothingToRun =
       runFiles.length === 0
       && runDirs.remote.length === 0
@@ -12938,9 +12956,11 @@ const App: React.FC = () => {
         await batchOperationPendingRef.current;
       }
       if (!ownsPreflight()) return;
-      if (waitedForBatch) {
-        // The batch ran after this plan was compared and may have replaced a
-        // path the plan deletes or overwrites: the plan is not run.
+      // After the last wait of the launch: a batch still running, or one that
+      // started or ended since the plan's comparison began (during the
+      // preflight, or before Sync was pressed), may have replaced a path the
+      // plan deletes or overwrites: the plan is not run.
+      if (waitedForBatch || batchGenerationRef.current !== planGeneration) {
         notify.error(t('aerosync.title'), t('syncPanel.planStaleAfterBatch'));
         return;
       }
@@ -13147,6 +13167,13 @@ const App: React.FC = () => {
       notify.info(t('aerosync.title') || 'AeroSync', t('syncPanel.syncing') || 'Syncing');
       return;
     }
+    // This launch does not wait: a batch still running, or one since the
+    // plan's comparison began, refuses the plan, as on the connected path.
+    if (batchOperationPendingRef.current
+      || (opts.planBatchGeneration !== undefined && batchGenerationRef.current !== opts.planBatchGeneration)) {
+      notify.error(t('aerosync.title'), t('syncPanel.planStaleAfterBatch'));
+      return;
+    }
 
     const runConfig: RemoteSyncConfig = {
       localRoot: currentLocalPath,
@@ -13221,6 +13248,7 @@ const App: React.FC = () => {
       runLocalLocalSync(files, dirs, {
         direction: 'local_to_remote',
         verifyPolicy: 'size_only',
+        planBatchGeneration: context.batchGeneration,
       });
       return;
     }
@@ -13237,6 +13265,7 @@ const App: React.FC = () => {
         deltaSyncEnabled: false,
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
+        planBatchGeneration: context.batchGeneration,
       });
     }
   }, [
@@ -13257,6 +13286,7 @@ const App: React.FC = () => {
       runLocalLocalSync(files, dirs, {
         direction: 'remote_to_local',
         verifyPolicy: 'size_only',
+        planBatchGeneration: context.batchGeneration,
       });
       return;
     }
@@ -13272,6 +13302,7 @@ const App: React.FC = () => {
         deltaSyncEnabled: false,
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
+        planBatchGeneration: context.batchGeneration,
       });
     }
   }, [
@@ -13383,6 +13414,7 @@ const App: React.FC = () => {
         transferBudget: runtime.transferBudget,
         versionedBackup: runtime.versionedBackup,
         maniac: runtime.speedMode === 'maniac',
+        planBatchGeneration: context.batchGeneration,
       });
       return;
     }
@@ -13428,6 +13460,7 @@ const App: React.FC = () => {
           maniac: runtime.speedMode === 'maniac',
           // P3: thread EC (only populated for backup preset from Plan tab)
           errorCorrection: runtime.errorCorrection,
+          planBatchGeneration: context.batchGeneration,
         });
       };
 
@@ -13768,12 +13801,14 @@ const App: React.FC = () => {
     async (...args: A): Promise<Awaited<R> | undefined> => {
       if (batchOpInFlightRef.current || batchOperationPendingRef.current) return undefined;
       batchOpInFlightRef.current = true;
+      batchGenerationRef.current += 1;
       const operation = withTransferRun(() => fn(...args));
       const settled = operation.then(() => undefined, () => undefined);
       batchOperationPendingRef.current = settled;
       try {
         return await operation;
       } finally {
+        batchGenerationRef.current += 1;
         if (batchOperationPendingRef.current === settled) batchOperationPendingRef.current = null;
         batchOpInFlightRef.current = false;
       }

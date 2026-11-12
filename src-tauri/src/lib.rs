@@ -3703,6 +3703,7 @@ async fn download_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     params: DownloadParams,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state
         .pin_gui_target(params.expected_gui_target)
         .await?;
@@ -3849,6 +3850,7 @@ async fn upload_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state
         .pin_gui_target(params.expected_gui_target)
         .await?;
@@ -6620,6 +6622,7 @@ async fn delete_remote_file(
     is_dir: bool,
     expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
@@ -6939,6 +6942,7 @@ async fn delete_local_file(
     expected_gui_target: Option<u64>,
     is_provider: Option<bool>,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
@@ -7300,6 +7304,7 @@ async fn create_remote_folder(
     path: String,
     expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
@@ -7446,6 +7451,7 @@ async fn rename_local_file_inner(
 
 #[tauri::command]
 async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     validate_path(&from)?;
     validate_path(&to)?;
     let from_path = std::path::Path::new(&from);
@@ -7853,6 +7859,7 @@ async fn create_local_folder(
     expected_gui_target: Option<u64>,
     is_provider: Option<bool>,
 ) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
@@ -13194,6 +13201,7 @@ async fn sync_ec_generate(
     is_provider: Option<bool>,
     expected_gui_target: Option<u64>,
 ) -> Result<SyncEcCommandResult, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let options = sync::SyncErrorCorrectionOptions {
         enabled: true,
@@ -13276,6 +13284,7 @@ async fn sync_ec_verify_repair(
     is_provider: Option<bool>,
     expected_gui_target: Option<u64>,
 ) -> Result<SyncEcCommandResult, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let Some(expected_sha256) = expected_sha256.filter(|s| !s.trim().is_empty()) else {
         return Ok(SyncEcCommandResult {
@@ -14253,6 +14262,7 @@ async fn save_sync_index_cmd(
     owner_binding: Option<String>,
     is_provider: Option<bool>,
 ) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _pin = provider_state
         .pin_gui_index_owner(
             expected_gui_target,
@@ -14287,6 +14297,7 @@ async fn sync_intent_begin_cmd(
     paths: Vec<String>,
     sync_run_lease: String,
 ) -> Result<Vec<String>, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
@@ -14306,6 +14317,7 @@ async fn sync_intent_snapshot_cmd(
     local_path: String,
     remote_path: String,
 ) -> Result<std::collections::HashMap<String, String>, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
@@ -14367,6 +14379,7 @@ fn load_sync_journal_cmd_blocking(
 
 #[tauri::command]
 async fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     tokio::task::spawn_blocking(move || save_sync_journal_cmd_blocking(journal))
         .await
         .unwrap_or_else(|err| Err(format!("save_sync_journal_cmd task failed: {err}")))
@@ -14381,6 +14394,7 @@ fn save_sync_journal_cmd_blocking(journal: SyncJournal) -> Result<(), String> {
 
 #[tauri::command]
 async fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::native_work();
     tokio::task::spawn_blocking(move || delete_sync_journal_cmd_blocking(local_path, remote_path))
         .await
         .unwrap_or_else(|err| Err(format!("delete_sync_journal_cmd task failed: {err}")))
@@ -16759,6 +16773,7 @@ async fn sync_backup_archive_local(
     stamp: String,
     rel: String,
 ) -> Result<Option<String>, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
@@ -16799,6 +16814,7 @@ async fn sync_backup_archive_remote(
     rel: String,
     expected_gui_target: Option<u64>,
 ) -> Result<Option<String>, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
     sync::validate_relative_path(&rel)?;
@@ -16918,6 +16934,7 @@ async fn sync_remove_empty_dir(
     path: String,
     expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::native_work();
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let removal = match target.as_str() {
         "local" => {
@@ -22803,7 +22820,8 @@ pub fn run() {
             // window's sync runs: a reload, or the new web process that
             // `webview_recovery` asks for after a crash. Nothing is left to
             // end those runs, so their folder pairs are unlocked here, once
-            // no GUI operation holds a target pin any more.
+            // no GUI operation holds a target pin and no native command of
+            // a sync run (a local-local one holds no pin) is still running.
             if payload.event() != tauri::webview::PageLoadEvent::Started {
                 return;
             }
@@ -22816,6 +22834,7 @@ pub fn run() {
                 sync_run_lease::release_orphans_once_settled(orphans, || {
                     app.state::<provider_commands::ProviderState>()
                         .gui_work_settled()
+                        && sync_run_lease::native_work_settled()
                 })
                 .await;
             });
