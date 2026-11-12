@@ -32,4 +32,15 @@ describe('Add Service: the form a pick opens', () => {
         expect(proton?.badge).toBe('API / CLI');
         expect(proton?.description).not.toMatch(/via the Proton Drive CLI/);
     });
+
+    it('surfaces Blomp in the Cloud Storage discover category', () => {
+        const blomp = buildDiscoverCategories()
+            .find((category) => category.id === 'cloud-storage')
+            ?.items.find((item) => item.id === 'blomp');
+        expect(blomp).toBeDefined();
+        expect(blomp?.protocol).toBe('swift');
+        expect(blomp?.providerId).toBe('blomp');
+        expect(blomp?.badge).toBe('Swift');
+        expect(blomp?.searchAliases).toContain('swift');
+    });
 });
