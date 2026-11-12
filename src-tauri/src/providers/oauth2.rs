@@ -652,9 +652,37 @@ impl Drop for ClaimedTokenFile {
 /// two independent owners. The OS releases the advisory lock after a crash.
 struct LegacyTokenGuard(Option<std::fs::File>);
 
+/// Why the caller wants the legacy lock. Only the lock-error policy differs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LegacyLockUse {
+    Migration,
+    Signout,
+}
+
+/// What a failed lock attempt proves about other lock holders.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LegacyLockFailure {
+    /// The filesystem has no file locks, so no process can hold this one.
+    NoLocks,
+    /// ENOLCK: the kernel may only be out of lock records while another
+    /// process still holds the lock.
+    Unproven,
+    Other,
+}
+
+fn legacy_lock_failure(error: &std::io::Error) -> LegacyLockFailure {
+    if error.kind() == std::io::ErrorKind::Unsupported {
+        LegacyLockFailure::NoLocks
+    } else if crate::user_partitions::file_locks_unavailable(error) {
+        LegacyLockFailure::Unproven
+    } else {
+        LegacyLockFailure::Other
+    }
+}
+
 impl LegacyTokenGuard {
     fn acquire(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
-        let guard = Self::acquire_for_signout(legacy_path)?;
+        let guard = Self::lock(legacy_path, LegacyLockUse::Migration)?;
         if guard.0.is_some() {
             ClaimedTokenFile::recover(legacy_path)?;
         }
@@ -662,6 +690,20 @@ impl LegacyTokenGuard {
     }
 
     fn acquire_for_signout(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
+        Self::lock(legacy_path, LegacyLockUse::Signout)
+    }
+
+    fn lock(legacy_path: &std::path::Path, use_: LegacyLockUse) -> Result<Self, ProviderError> {
+        Self::lock_with(legacy_path, use_, |file| file.try_lock())
+    }
+
+    /// `try_lock` is a parameter so a test can play a lock error that the
+    /// operating system cannot be made to return on demand.
+    fn lock_with(
+        legacy_path: &std::path::Path,
+        use_: LegacyLockUse,
+        mut try_lock: impl FnMut(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+    ) -> Result<Self, ProviderError> {
         let path = legacy_path.with_extension("migration.lock");
         let mut options = std::fs::OpenOptions::new();
         options.create(true).truncate(false).write(true);
@@ -675,17 +717,12 @@ impl LegacyTokenGuard {
         })?;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
-            match file.try_lock() {
+            match try_lock(&file) {
                 Ok(()) => {
                     return Ok(Self(Some(file)));
                 }
                 Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(25))
-                }
-                Err(std::fs::TryLockError::Error(error))
-                    if crate::user_partitions::file_locks_unavailable(&error) =>
-                {
-                    return Ok(Self(None))
                 }
                 Err(std::fs::TryLockError::WouldBlock) => {
                     return Err(ProviderError::Other(
@@ -693,10 +730,28 @@ impl LegacyTokenGuard {
                     ))
                 }
                 Err(std::fs::TryLockError::Error(error)) => {
+                    let unlocked = match (legacy_lock_failure(&error), use_) {
+                        (LegacyLockFailure::NoLocks, _) => true,
+                        // An unlocked guard only disables migration.
+                        (LegacyLockFailure::Unproven, LegacyLockUse::Migration) => true,
+                        // A migrator keeps the legacy file or its claim on
+                        // disk until its vault write is done, and cannot
+                        // start without one of them. With neither present
+                        // there is nothing for an unseen lock holder to
+                        // store after this sign-out.
+                        (LegacyLockFailure::Unproven, LegacyLockUse::Signout) => {
+                            !legacy_path.exists()
+                                && ClaimedTokenFile::recovery_paths(legacy_path)?.is_empty()
+                        }
+                        (LegacyLockFailure::Other, _) => false,
+                    };
+                    if unlocked {
+                        return Ok(Self(None));
+                    }
                     return Err(ProviderError::Other(format!(
                         "Legacy authorization lock unavailable: {}",
                         error.kind()
-                    )))
+                    )));
                 }
             }
         }
@@ -752,10 +807,23 @@ fn with_legacy_signout<T>(
     path: &std::path::Path,
     clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
 ) -> Result<T, ProviderError> {
-    let _process = LegacyTokenGuard::acquire_for_signout(path)?;
+    let process = LegacyTokenGuard::acquire_for_signout(path)?;
+    with_legacy_signout_guard(cache, path, process, clear)
+}
+
+fn with_legacy_signout_guard<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    _process: LegacyTokenGuard,
+    clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
     let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
     for claim in ClaimedTokenFile::recovery_paths(path)? {
-        std::fs::remove_file(claim).map_err(|_| {
+        // A claim holds the plaintext legacy authorization, so overwrite it
+        // before the unlink. A crash during recovery can leave the claim and
+        // the legacy file as two names of one inode: the overwrite then
+        // reaches that file too, which this sign-out is removing anyway.
+        crate::credential_store::secure_delete(&claim).map_err(|_| {
             ProviderError::Other("Could not remove legacy authorization recovery file".into())
         })?;
     }
@@ -821,7 +889,20 @@ impl RefreshLease {
     }
 
     async fn acquire_in(dir: &std::path::Path, slug: &str) -> Result<Option<Self>, ProviderError> {
-        let path = dir.join(format!("refresh-{}.lock", slug));
+        // A profile id can carry a path separator (an imported remote name).
+        // Only the lock file name is made safe; token keys are unchanged. Two
+        // ids that share a safe name only serialize their refreshes.
+        let safe_slug: String = slug
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let path = dir.join(format!("refresh-{}.lock", safe_slug));
         let started = std::time::Instant::now();
         loop {
             match std::fs::OpenOptions::new()
@@ -847,8 +928,19 @@ impl RefreshLease {
                             .map(|d| d.as_secs() >= Self::STALE_SECS)
                             .unwrap_or(true)
                         {
-                            let _ = std::fs::remove_file(&path);
-                            continue;
+                            match std::fs::remove_file(&path) {
+                                Ok(()) => continue,
+                                // Another waiter stole it first.
+                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                                // A stale lease that cannot be removed would
+                                // otherwise be retried here without a bound.
+                                Err(e) => {
+                                    return Err(ProviderError::Other(format!(
+                                        "Authorization refresh lease storage unavailable: {}",
+                                        e.kind()
+                                    )))
+                                }
+                            }
                         }
                     }
                     if started.elapsed().as_millis() as u64 >= Self::MAX_WAIT_MS {
@@ -2483,6 +2575,223 @@ mod tests {
             .is_empty());
         let _migration = LegacyTokenGuard::acquire(&original).unwrap();
         assert!(!original.exists(), "sign-out must not restore either login");
+    }
+
+    fn enolck() -> std::fs::TryLockError {
+        #[cfg(unix)]
+        let error = std::io::Error::from_raw_os_error(libc::ENOLCK);
+        #[cfg(not(unix))]
+        let error = std::io::Error::other("no lock records");
+        std::fs::TryLockError::Error(error)
+    }
+
+    fn unsupported_lock() -> std::fs::TryLockError {
+        std::fs::TryLockError::Error(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signout_that_sees_enolck_leaves_an_active_migration_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "authorization").unwrap();
+        // The migrator holds the real lock and its claim, as another process
+        // would while the kernel has no lock record left for this sign-out.
+        let _migrator = LegacyTokenGuard::acquire(&original).unwrap();
+        let claimed = ClaimedTokenFile::claim(&original).unwrap();
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "A".into())])));
+        let cleared = std::cell::Cell::new(false);
+
+        let refused =
+            LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| Err(enolck()))
+                .and_then(|guard| {
+                    with_legacy_signout_guard(&cache, &original, guard, |tokens| {
+                        cleared.set(true);
+                        *tokens = None;
+                        Ok(())
+                    })
+                });
+
+        assert!(matches!(refused, Err(ProviderError::Other(_))));
+        assert!(!cleared.get(), "nothing may be cleared without the lock");
+        assert_eq!(
+            std::fs::read_to_string(&claimed.path).unwrap(),
+            "authorization"
+        );
+        assert_eq!(
+            cache
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .get("login")
+                .unwrap(),
+            "A"
+        );
+        // The legacy file alone, before a migrator claims it, is refused too.
+        drop(claimed);
+        assert!(original.exists());
+        assert!(
+            LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| Err(enolck()))
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "authorization");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signout_that_sees_enolck_proceeds_only_with_nothing_left_to_migrate() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let guard =
+            LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| Err(enolck()))
+                .unwrap();
+        assert!(guard.0.is_none());
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "A".into())])));
+        with_legacy_signout_guard(&cache, &original, guard, |tokens| {
+            *tokens = None;
+            Ok(())
+        })
+        .unwrap();
+        assert!(cache.lock().unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enolck_disables_migration_like_a_filesystem_without_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "authorization").unwrap();
+        for failure in [enolck as fn() -> _, unsupported_lock] {
+            let guard =
+                LegacyTokenGuard::lock_with(
+                    &original,
+                    LegacyLockUse::Migration,
+                    |_| Err(failure()),
+                )
+                .unwrap();
+            assert!(guard.0.is_none());
+            let result: Result<(), _> =
+                with_legacy_claim_guard(&Mutex::new(None), &original, guard, |_, _| {
+                    panic!("an unlocked guard must not migrate")
+                });
+            assert!(matches!(
+                result,
+                Err(ProviderError::AuthenticationFailed(_))
+            ));
+            assert_eq!(std::fs::read_to_string(&original).unwrap(), "authorization");
+        }
+    }
+
+    #[test]
+    fn signout_on_a_filesystem_without_locks_still_purges_claims() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(
+            original.with_extension(format!("migration-{}", uuid::Uuid::new_v4())),
+            "A",
+        )
+        .unwrap();
+        let guard = LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| {
+            Err(unsupported_lock())
+        })
+        .unwrap();
+        assert!(guard.0.is_none());
+        let cache = Mutex::new(Some(HashMap::new()));
+        with_legacy_signout_guard(&cache, &original, guard, |tokens| {
+            *tokens = None;
+            Ok(())
+        })
+        .unwrap();
+        assert!(cache.lock().unwrap().is_none());
+        assert!(ClaimedTokenFile::recovery_paths(&original)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn lock_errors_are_classified_by_what_they_prove() {
+        assert_eq!(
+            legacy_lock_failure(&std::io::Error::from(std::io::ErrorKind::Unsupported)),
+            LegacyLockFailure::NoLocks
+        );
+        #[cfg(unix)]
+        {
+            for code in [libc::ENOSYS, libc::EOPNOTSUPP] {
+                assert_eq!(
+                    legacy_lock_failure(&std::io::Error::from_raw_os_error(code)),
+                    LegacyLockFailure::NoLocks
+                );
+            }
+            assert_eq!(
+                legacy_lock_failure(&std::io::Error::from_raw_os_error(libc::ENOLCK)),
+                LegacyLockFailure::Unproven
+            );
+        }
+        assert_eq!(
+            legacy_lock_failure(&std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            LegacyLockFailure::Other
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signout_overwrites_a_stranded_claim_before_unlinking_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let claim = original.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&claim, "refresh-token-secret").unwrap();
+        // A second name keeps the claim's blocks readable after the unlink.
+        let witness = dir.path().join("witness");
+        std::fs::hard_link(&claim, &witness).unwrap();
+        with_legacy_signout(&Mutex::new(None), &original, |_| Ok(())).unwrap();
+        assert!(!claim.exists());
+        let left = std::fs::read(&witness).unwrap();
+        assert!(
+            !String::from_utf8_lossy(&left).contains("refresh-token-secret"),
+            "the plaintext must be overwritten, not only unlinked"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_lease_file_name_is_safe_for_a_profile_id_with_a_separator() {
+        let dir = tempfile::tempdir().unwrap();
+        let slug = "oauth_box_rclone-team/drive..\\x-1";
+        let lease = RefreshLease::acquire_in(dir.path(), slug)
+            .await
+            .unwrap()
+            .expect("a free lease is granted");
+        assert_eq!(lease.path.parent().unwrap(), dir.path());
+        assert!(lease.path.is_file());
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, ["refresh-oauth_box_rclone-team_drive___x-1.lock"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stale_lease_that_cannot_be_removed_is_an_error_not_a_spin() {
+        let dir = tempfile::tempdir().unwrap();
+        // A directory at the lease path: create_new sees it, unlink cannot
+        // remove it.
+        let lock_path = dir.path().join("refresh-stuck.lock");
+        std::fs::create_dir(&lock_path).unwrap();
+        let stale = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(RefreshLease::STALE_SECS + 60);
+        filetime::set_file_mtime(&lock_path, filetime::FileTime::from_system_time(stale)).unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            RefreshLease::acquire_in(dir.path(), "stuck"),
+        )
+        .await
+        .expect("acquisition must return instead of retrying forever");
+        let message = match result {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("an unremovable stale lease cannot be granted"),
+        };
+        assert!(message.contains("lease storage unavailable"));
     }
 
     #[test]
