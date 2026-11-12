@@ -48,7 +48,7 @@ const answer = (items: BulkItem[]) =>
 const harness = (handlers: Record<string, Handler> = {}, support = { upload: true, download: true }) => {
     const calls: Call[] = [];
     const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
-        calls.push({ cmd, args });
+        calls.push({ cmd, args: cmd === 'save_sync_journal_cmd' ? structuredClone(args) : args });
         if (handlers[cmd]) return handlers[cmd](args) as T;
         if (cmd === 'provider_bulk_support') return support as T;
         if (cmd === 'provider_sync_transfer_bulk') return answer(args?.items as BulkItem[]) as T;
@@ -292,7 +292,7 @@ describe('remoteSyncRunner on a native bulk', () => {
         expect(h.of('provider_upload_file')).toHaveLength(0);
         expect(report.cancelled).toBe(true);
         const status = Object.fromEntries(h.journal().entries.map((e) => [e.relative_path, e.status]));
-        expect(status).toEqual({ 'docs/f0.txt': 'in_progress', 'docs/f1.txt': 'pending', 'docs/f2.txt': 'pending' });
+        expect(status).toEqual({ 'docs/f0.txt': 'pending', 'docs/f1.txt': 'pending', 'docs/f2.txt': 'pending' });
     });
 
     // A resume archives every download again, and a stopped run had already
@@ -322,7 +322,7 @@ describe('remoteSyncRunner on a native bulk', () => {
                     archive_receipt: `/home/u/work/.v/stamp/${f.relativePath}`,
                     source_path: null,
                     action: 'download',
-                    status: 'in_progress',
+                    status: 'pending',
                     attempts: 0,
                     last_error: null,
                     verified: null,
@@ -350,6 +350,8 @@ it.each(['upload', 'download'] as const)('persists every acknowledged bulk %s be
     const plan = files(3, action);
     const report = await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, first.deps);
     expect(report.cancelled).toBe(true);
+    const persisted = first.of('save_sync_journal_cmd').slice(0, -1).map(call => call.args!.journal as SyncJournal);
+    expect(persisted.some(saved => saved.entries.length === 3 && saved.entries.every(entry => entry.status === 'transferred'))).toBe(true);
     const journal = structuredClone(first.journal());
     expect(journal.entries.map(entry => entry.status)).toEqual(['transferred', 'transferred', 'transferred']);
     expect(journal.entries.map(entry => entry.bytes_transferred)).toEqual([1024, 1024, 1024]);
@@ -362,8 +364,8 @@ it.each(['upload', 'download'] as const)('persists every acknowledged bulk %s be
     expect(resumed.journal().entries.every(entry => entry.status === 'completed')).toBe(true);
 });
 
-it('resumes acknowledged mixed-result downloads with EC and verification, without downloading them again', async () => {
-    const settings = config({ verifyPolicy: 'size_only', errorCorrection: { enabled: true, pct: 10 } });
+it('resumes acknowledged mixed-result downloads with verification, without downloading them again', async () => {
+    const settings = config({ verifyPolicy: 'size_only' });
     const first = harness({ provider_sync_transfer_bulk: () => [
         { status: 'completed' }, { status: 'target_changed' }, { status: 'not_attempted' },
     ] });
@@ -380,7 +382,7 @@ it('resumes acknowledged mixed-result downloads with EC and verification, withou
     const result = await runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, settings, {}, { ...resumed.deps, resumeJournal: journal });
     expect(resumed.sent().flat().some(path => path.endsWith('f0.txt'))).toBe(false);
     expect(resumed.of('provider_download_file').some(call => String(call.args?.remotePath).endsWith('f0.txt'))).toBe(false);
-    expect(resumed.of('sync_ec_verify_repair').some(call => String(call.args?.relativePath).endsWith('f0.txt'))).toBe(true);
+    expect(resumed.of('sync_ec_verify_repair')).toHaveLength(0);
     expect(resumed.of('verify_local_transfer')).toHaveLength(3);
     expect(result.verifyFailed).toBe(1);
     expect(resumed.journal().entries[0].status).toBe('verify_failed');
@@ -393,4 +395,70 @@ it('keeps an acknowledged download unfinished when its requested local verificat
     expect(report.verifyFailed).toBe(2);
     expect(h.journal().completed).toBe(false);
     expect(h.journal().entries.every(entry => entry.status === 'verify_failed')).toBe(true);
+});
+
+it('requires a new compare after an acknowledgement checkpoint rejects, including after restart', async () => {
+    let persisted: SyncJournal | undefined;
+    const h = harness({ save_sync_journal_cmd: args => {
+        const snapshot = structuredClone(args!.journal as SyncJournal);
+        if (snapshot.entries.some(entry => entry.status === 'transferred')) throw new Error('disk full at ack');
+        persisted = snapshot;
+    } });
+    const plan = files(3, 'upload');
+    const report = await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, h.deps);
+    expect(report.cancelled).toBe(true);
+    expect(report.errors.some(error => error.message.includes('SYNC_RESUME_NEEDS_COMPARE'))).toBe(true);
+    expect(persisted!.entries.every(entry => entry.status === 'in_progress')).toBe(true);
+    expect(h.of('provider_sync_transfer_bulk')).toHaveLength(1);
+    expect(h.of('provider_upload_file')).toHaveLength(0);
+    const restarted = harness();
+    await expect(runRemoteSync(filesFromJournal(persisted!), { remote: [], local: [] }, config(), {}, { ...restarted.deps, resumeJournal: persisted })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    expect(restarted.calls).toHaveLength(0);
+});
+
+it('never dispatches a bulk before its write-ahead checkpoint is persisted', async () => {
+    const h = harness({ save_sync_journal_cmd: args => {
+        if ((args!.journal as SyncJournal).entries.some(entry => entry.status === 'in_progress')) throw new Error('cannot save intent');
+    } });
+    const report = await runRemoteSync(files(3, 'upload'), { remote: [], local: [] }, config(), {}, h.deps);
+    expect(report.cancelled).toBe(true);
+    expect(report.errors.some(error => error.message.includes('SYNC_RESUME_NEEDS_COMPARE'))).toBe(true);
+    expect(h.of('provider_sync_transfer_bulk')).toHaveLength(0);
+    expect(h.of('provider_upload_file')).toHaveLength(0);
+});
+
+it('preserves the acknowledged upload local timestamp in an index-writing resume', async () => {
+    let current = true;
+    const first = harness({
+        get_file_properties: () => ({ size: 1024, modified: '2026-11-11T01:02:03' }),
+        provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); },
+    });
+    first.deps.writeIndex = true;
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    const plan = files(3, 'upload').map(file => ({ ...file, mtime: null }));
+    await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, first.deps);
+    const journal = structuredClone(first.journal());
+    expect(journal.entries.every(entry => entry.local_modified === '2026-11-11T01:02:03Z')).toBe(true);
+    const resumed = harness();
+    resumed.deps.writeIndex = true;
+    await runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...resumed.deps, resumeJournal: journal });
+    expect(resumed.of('get_file_properties')).toHaveLength(0);
+    expect(resumed.journal().entries.every(entry => entry.local_modified === '2026-11-11T01:02:03Z')).toBe(true);
+    const index = resumed.of('save_sync_index_cmd')[0].args!.index as { files: Record<string, { modified: string }> };
+    expect(Object.values(index.files).every(entry => entry.modified === '2026-11-11T01:02:03Z')).toBe(true);
+});
+
+it.each(['upload', 'download'] as const)('requires a fresh compare before an unproven EC tail can modify an edited %s', async action => {
+    let current = true;
+    const settings = config({ errorCorrection: { enabled: true, pct: 10 } });
+    const first = harness({ provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); } });
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    await runRemoteSync(files(3, action).map(file => ({ ...file, expectedSha256: '1'.repeat(64) })), { remote: [], local: [] }, settings, {}, first.deps);
+    const journal = structuredClone(first.journal());
+    // The local file now contains a same-size user edit; a signed journal's
+    // ownership proof alone is no content proof. Do not generate stale parity
+    // or repair over that edit, even when size/mtime happen to match.
+    const resumed = harness({ get_file_properties: () => ({ size: 1024, modified: '2026-11-12T00:00:00' }) });
+    await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, settings, {}, { ...resumed.deps, resumeJournal: journal })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    expect(resumed.calls).toHaveLength(0);
 });

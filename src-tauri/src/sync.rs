@@ -8733,6 +8733,10 @@ mod tests {
             Some("café.txt")
         );
 
+        // An acknowledged payload may still need verification/sidecar work.
+        journal.entries[0].status = JournalEntryStatus::Transferred;
+        assert!(journal.has_resumable_entries());
+
         // Mark as completed
         journal.entries[0].status = JournalEntryStatus::Completed;
         assert!(!journal.has_resumable_entries());

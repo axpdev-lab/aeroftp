@@ -442,6 +442,12 @@ const runSync = async (
         || JSON.stringify(deps.resumeJournal.local_dirs ?? []) !== JSON.stringify(dirs.local)
         || deps.resumeJournal.entries.some(entry => (entry.archive_state != null && entry.archive_state !== 'started' && entry.archive_state !== 'archived')
             || entry.archive_state === 'started'
+            // An in-flight command may have committed before its checkpoint
+            // failed. EC tails also lack a frozen content proof: a new compare
+            // must protect intervening source/destination edits before repair
+            // or sidecar generation can write anything.
+            || entry.status === 'in_progress'
+            || (entry.status === 'transferred' && deps.resumeJournal?.ec_enabled === true)
             || (entry.archive_state === 'archived' && (!entry.archive_receipt || !deps.resumeJournal?.backup_stamp))
             || (entry.status !== 'completed' && entry.action !== 'upload' && entry.action !== 'download')
             || (!!deps.resumeJournal?.backup_dir && entry.overwrites_existing == null))
@@ -456,6 +462,7 @@ const runSync = async (
         throw new Error('A remote sync requires a bound target');
     }
     let targetError: unknown = null;
+    let checkpointError: Error | null = null;
     let transferTimedOut = false;
     const remoteCommands = new Set([
         'provider_gui_verify_resume_owner', 'reset_cancel_flag', 'set_speed_limit', 'provider_set_speed_limit', 'provider_bulk_support',
@@ -639,7 +646,7 @@ const runSync = async (
         backupStamp ??= await invoke<string>('sync_backup_run_stamp');
         journal.backup_stamp = backupStamp;
         entry.archive_state = 'started';
-        await saveArchiveCheckpoint();
+        await saveRequiredCheckpoint();
         let kept: string | null | undefined;
         try {
             kept = await archiveOne(side, backup.dir, relativePath);
@@ -662,7 +669,7 @@ const runSync = async (
             // the backup folder (a resume archives every download again).
             if (side === 'local' || config.isLocalLocal || allowMissing) {
                 entry.archive_state = null;
-                await saveArchiveCheckpoint();
+                await saveRequiredCheckpoint();
                 return;
             }
             // On a remote it can be a server that answers "not there" for a
@@ -673,7 +680,7 @@ const runSync = async (
         }
         entry.archive_state = 'archived';
         entry.archive_receipt = kept;
-        await saveArchiveCheckpoint();
+        await saveRequiredCheckpoint();
         // The `.aerocorrect` parity sidecar belongs to the copy just kept, so
         // it goes into the backup folder with it; most files have none. The
         // compare never lists sidecars, so one left behind would stay beside a
@@ -855,9 +862,9 @@ const runSync = async (
         if (!journalEnabled) return;
         await invoke('save_sync_journal_cmd', { journal }).catch(() => undefined);
     };
-    // Unlike routine progress, an archive checkpoint must be durable before
+    // Unlike routine progress, archive and acknowledgement checkpoints must persist before
     // another phase can act on the destination.
-    const saveArchiveCheckpoint = async (): Promise<void> => {
+    const saveRequiredCheckpoint = async (): Promise<void> => {
         if (journalEnabled) await invoke('save_sync_journal_cmd', { journal });
     };
     await saveJournal();
@@ -975,7 +982,12 @@ const runSync = async (
             bulkPreparationRan.add(f.relativePath);
             send.push(f);
         }
-        await saveJournal();
+        try { await saveRequiredCheckpoint(); }
+        catch {
+            journal.resume_safe = false;
+            checkpointError = new Error('SYNC_RESUME_NEEDS_COMPARE: transfer intent checkpoint failed');
+            return;
+        }
         let results: SyncBulkResult[] | null = null;
         // Nor does anything go after a Stop. The files prepared stay pending
         // for a resume, their replaced copies in the backup folder.
@@ -1013,25 +1025,38 @@ const runSync = async (
         // BEFORE checking the live target or performing any follow-up work.
         const ownerChanged = results?.some(result => result.status === 'target_changed');
         if (ownerChanged) targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
-        send.forEach((file, k) => {
+        for (const [k, file] of send.entries()) {
             const result = results?.[k];
             const index = journalEntryMap.get(file.relativePath);
-            if (index === undefined) return;
+            if (index === undefined) continue;
             const entry = journal.entries[index];
             if (result?.status === 'completed') {
                 entry.status = 'transferred';
                 entry.attempts = 1;
                 entry.bytes_transferred = file.size;
                 entry.verified = null;
+                if (action === 'download' && deps.writeIndex && file.mtime == null) {
+                    landedStates.set(file.relativePath, await readLocalState(`${localBase}/${file.relativePath}`));
+                }
                 recordLanded(file, entry);
+            } else if (!results || result?.status === 'not_attempted') {
+                entry.status = 'pending';
             } else if (ownerChanged) {
-                entry.status = result?.status === 'not_attempted' ? 'pending' : 'failed';
+                entry.status = 'failed';
                 entry.last_error = result?.status === 'target_changed' || result?.status === 'failed'
                     ? { kind: 'unknown', message: result.status === 'target_changed' ? String(targetError) : result.message,
                         retryable: false, file_path: file.relativePath } : null;
             }
-        });
-        await saveJournal();
+        }
+        try {
+            await saveRequiredCheckpoint();
+        } catch {
+            // The on-disk write-ahead snapshot remains in_progress, which is
+            // rejected on Resume even if this unsafe marker also cannot save.
+            journal.resume_safe = false;
+            await saveJournal();
+            checkpointError = new Error('SYNC_RESUME_NEEDS_COMPARE: acknowledgement checkpoint failed');
+        }
     };
     /** The outcome of a file the bulk sent or failed, as the single-file path reports it. */
     const bulkOutcome = async (result: SyncBulkResult, filePath: string): Promise<TransferOutcome> => {
@@ -1153,7 +1178,7 @@ const runSync = async (
         if (!config.isLocalLocal && !targetError) {
             try { assertTarget(); } catch { /* stop and checkpoint below */ }
         }
-        if (targetError || transferTimedOut) {
+        if (targetError || checkpointError || transferTimedOut) {
             runCancelled = true;
             for (let j = i; j < files.length; j++) setStatus(files[j].relativePath, 'skipped');
             skipped += files.length - i;
@@ -1198,7 +1223,7 @@ const runSync = async (
             && !(config.transferBudget > 0 && totalBytes >= config.transferBudget) && !isCancelled()) {
             try { await runBulkGroup(i); } catch (error) { if (!targetError) throw error; }
             if (!targetError) { try { assertTarget(); } catch { /* acknowledgements are already durable */ } }
-            if (targetError) { i--; continue; }
+            if (targetError || checkpointError) { i--; continue; }
         }
         const fromBulk: BulkPrepared | undefined = transferAcknowledged ? { status: 'completed' } : bulkPrepared.get(item.relativePath);
         const sentByBulk = fromBulk !== undefined && fromBulk.status !== 'not_attempted';
@@ -1287,7 +1312,7 @@ const runSync = async (
                     journalEntry.bytes_transferred = item.size;
                     journalEntry.verified = true;
                 }
-                recordLanded(item, journalEntry);
+                if (!transferAcknowledged) recordLanded(item, journalEntry);
                 if (errorCorrectionEnabled) {
                     try {
                         const ecResult = await invoke<SyncEcCommandResult>('sync_ec_generate', {
@@ -1576,6 +1601,10 @@ const runSync = async (
     if (targetError) {
         runCancelled = true;
         errors.push({ kind: 'unknown', message: String(targetError), retryable: false, file_path: '' });
+    }
+    if (checkpointError) {
+        runCancelled = true;
+        errors.push({ kind: 'disk_error', message: String(checkpointError), retryable: false, file_path: '' });
     }
     journal.completed = !runCancelled && errors.length === 0;
     await saveJournal();
