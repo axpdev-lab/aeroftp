@@ -2080,3 +2080,38 @@ describe('canonical Unicode paths (#1326)', () => {
         expect(savedIndex?.remote_spellings?.[localRel]).toBe(remoteRel);
     });
 });
+
+
+describe('review8 recovery boundaries', () => {
+    it('preserves the stored index when loading it fails', async () => {
+        const { invoke, calls } = makeInvoke({
+            load_sync_index_cmd: () => { throw new Error('index unreadable'); },
+        });
+        await runRemoteSync([file('one', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(calls.filter(c => c.cmd === 'save_sync_index_cmd')).toHaveLength(0);
+    });
+
+    it('refuses Resume even after a timed-out write completes later', async () => {
+        vi.useFakeTimers();
+        try {
+            let finish!: () => void;
+            const pending = new Promise<void>(resolve => { finish = resolve; });
+            let saved: SyncJournal | undefined;
+            const { invoke, calls } = makeInvoke({
+                upload_file: () => pending,
+                save_sync_journal_cmd: args => { saved = structuredClone(args!.journal as SyncJournal); },
+            });
+            const config = baseConfig({ retryPolicy: { ...RETRY, timeout_ms: 10 } });
+            const run = runRemoteSync([file('one', 'upload')], noDirs, config, {}, noWaitDeps(invoke, { writeIndex: true }));
+            await vi.advanceTimersByTimeAsync(11);
+            await run;
+            expect(saved?.resume_safe).toBe(false);
+            expect(calls.filter(c => c.cmd === 'save_sync_index_cmd')).toHaveLength(0);
+            finish();
+            await pending;
+            await expect(runRemoteSync([file('one', 'upload')], noDirs, config, {}, noWaitDeps(invoke, { resumeJournal: saved })))
+                .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+            expect(calls.filter(c => c.cmd === 'upload_file')).toHaveLength(1);
+        } finally { vi.useRealTimers(); }
+    });
+});

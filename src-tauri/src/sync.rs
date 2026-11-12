@@ -3447,13 +3447,36 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
     let mut index: SyncIndex =
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync index: {}", e))?;
     migrate_sync_index(&mut index);
-    let conn = intent_connection()?;
-    let pair = index_filename(local_path, remote_path);
-    if let Some(journal) = load_sync_journal(local_path, remote_path)? {
-        import_archive_intents(&conn, &pair, &journal)?;
-    }
-    fence_index(&mut index, &pending_intents_in(&conn, &pair)?);
+    let pending = (|| {
+        let conn = intent_connection()?;
+        let pair = index_filename(local_path, remote_path);
+        match load_sync_journal(local_path, remote_path) {
+            Ok(Some(journal)) => import_archive_intents(&conn, &pair, &journal)?,
+            Ok(None) => {},
+            // Persist the quarantine before a fresh run replaces a corrupt
+            // journal; otherwise its lost archive evidence could later revive
+            // the old baseline's deletion authority.
+            Err(_) => insert_intent_fences(&conn, &pair, index.files.keys().cloned())?,
+        }
+        pending_intents_in(&conn, &pair)
+    })();
+    apply_intent_fences(&mut index, || pending);
     Ok(Some(index))
+}
+
+// Fence storage is safety metadata, never permission to discard a valid index.
+// If it is unreadable, retain every baseline while withholding its authority.
+fn apply_intent_fences(
+    index: &mut SyncIndex,
+    read: impl FnOnce() -> Result<HashMap<String, String>, String>,
+) {
+    match read() {
+        Ok(pending) => fence_index(index, &pending),
+        Err(error) => {
+            tracing::warn!("Sync recovery state unavailable; baselines quarantined: {error}");
+            index.unverified_keys.extend(index.files.keys().cloned());
+        }
+    }
 }
 
 /// Whether a sync history written for the profile `recorded` may serve the
@@ -3530,26 +3553,36 @@ fn import_archive_intents(
     journal: &SyncJournal,
 ) -> Result<(), String> {
     if !journal.completed {
-        for entry in journal
+        insert_intent_fences(conn, pair, journal
             .entries
             .iter()
             .filter(|e| e.status != JournalEntryStatus::Completed && e.archive_state.is_some())
-        {
-            let key = nfc_path(
+            .map(|entry| nfc_path(
                 entry
                     .baseline_key
                     .as_deref()
                     .unwrap_or(&entry.relative_path),
-            );
-            // Never supersede a newer live attempt while importing legacy safety.
-            conn.execute(
-                "INSERT OR IGNORE INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)",
-                rusqlite::params![pair, key, uuid::Uuid::new_v4().to_string()],
-            )
-            .map_err(|e| e.to_string())?;
-        }
+            )))?;
     }
     Ok(())
+}
+
+fn insert_intent_fences(
+    conn: &rusqlite::Connection,
+    pair: &str,
+    paths: impl IntoIterator<Item = String>,
+) -> Result<(), String> {
+    // One durable transaction for a large recovered journal, not one fsync
+    // per file. Never supersede a newer live or already-retired generation.
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    for path in paths {
+        tx.execute(
+                "INSERT OR IGNORE INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)",
+                rusqlite::params![pair, nfc_path(&path), uuid::Uuid::new_v4().to_string()],
+            )
+            .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
 }
 
 fn begin_intents_in(
@@ -3602,6 +3635,9 @@ fn pending_intents_in(
 }
 
 pub fn snapshot_sync_intents(local: &str, remote: &str) -> Result<HashMap<String, String>, String> {
+    // Import recovery evidence before the frontend is allowed to replace its
+    // journal with a fresh plan. An unreadable index must not become empty.
+    load_sync_index(local, remote)?;
     let conn = intent_connection()?;
     let mut stmt = conn
         .prepare("SELECT path,token FROM intents WHERE pair=?1")
@@ -4185,6 +4221,15 @@ pub fn classify_with_summary(
     let pairs = crate::sync_names::pair_paths(&local_files, &remote_files);
     let excludes = options.excludes_or_everything();
     let index_by_nfc = index.map(index_keys_by_nfc);
+    let mut recovery_paths = std::collections::HashSet::new();
+    if let Some(index) = index {
+        for key in &index.unverified_keys {
+            recovery_paths.insert(nfc_path(key));
+            if let Some(remote) = index.remote_spellings.get(key) {
+                recovery_paths.insert(nfc_path(remote));
+            }
+        }
+    }
     let local_prefixes = inventory_prefixes(&local_files);
     let remote_prefixes = inventory_prefixes(&remote_files);
     // Remote-only rows are owned by their recorded remote identity, not by
@@ -4332,6 +4377,14 @@ pub fn classify_with_summary(
             compare_file_pair(local, remote, options)
         };
 
+        // An interrupted writer may still be alive. Equal scan metadata alone
+        // cannot retire its generation. Expose a conflict requiring an explicit
+        // verified transfer, rather than silently hiding a fence forever.
+        let recovery_required = !is_dir && !pair.blocked && local.is_some() && remote.is_some()
+            && (recovery_paths.contains(&nfc_path(&path))
+                || recovery_paths.contains(&nfc_path(&pair.remote_path)));
+        let status = if recovery_required { SyncStatus::Conflict } else { status };
+
         // Check if this file was in the sync index (previously synced).
         // For bidirectional sync: a local_only/remote_only file that was previously synced
         // means the OTHER side intentionally deleted it.
@@ -4341,7 +4394,11 @@ pub fn classify_with_summary(
         let is_identical = status == SyncStatus::Identical;
 
         if !is_identical || is_dir {
-            let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
+            let sync_reason = if recovery_required {
+                "Interrupted sync: choose a transfer direction to verify this pair before restoring deletion history".to_string()
+            } else {
+                generate_sync_reason(&status, local, remote, is_dir)
+            };
             results.push(FileComparison {
                 local_relative_path: Some(pair.local_path),
                 remote_relative_path: Some(pair.remote_path),
@@ -11520,6 +11577,66 @@ mod sync_intent_tests {
             .unwrap();
         // A delayed legacy reader must not quarantine a newer verified write.
         import_archive_intents(&conn, &pair, &journal).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    #[test]
+    fn unreadable_journal_or_database_preserves_all_baselines_without_delete_authority() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = "/unreadable-local";
+        let remote = "/unreadable-remote";
+        std::fs::write(dir.path().join(journal_filename(local, remote)), b"{truncated").unwrap();
+        let mut index = SyncIndex::new(local.into(), remote.into());
+        for key in ["one", "untouched"] {
+            index.files.insert(key.into(), SyncIndexEntry {
+                size: 4, modified: None, is_dir: false, uploaded_at: None,
+            });
+        }
+        let original = serde_json::to_vec(&index).unwrap();
+        apply_intent_fences(&mut index, || {
+            load_sync_journal_in(dir.path(), local, remote)?;
+            Ok(HashMap::new())
+        });
+        assert_eq!(index.files.len(), 2);
+        assert_eq!(index.unverified_keys.len(), 2);
+        assert_eq!(serde_json::to_vec(&index).unwrap(), original);
+        apply_intent_fences(&mut index, || Err("database busy".into()));
+        assert_eq!(index.files.len(), 2);
+        assert_eq!(index.unverified_keys.len(), 2);
+        let conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let pair = index_filename(local, remote);
+        insert_intent_fences(&conn, &pair, index.files.keys().cloned()).unwrap();
+        // Once the corrupt journal is replaced, its durable quarantine remains.
+        std::fs::remove_file(dir.path().join(journal_filename(local, remote))).unwrap();
+        index.unverified_keys.clear();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        assert_eq!(index.unverified_keys.len(), 2);
+    }
+
+    #[test]
+    fn identical_fenced_pair_requires_explicit_transfer_and_then_retires_its_fence() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert("one".into(), SyncIndexEntry {
+            size: 4, modified: None, is_dir: false, uploaded_at: None,
+        });
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        // An abandoned writer can still complete: equal listing metadata is
+        // not proof that it is safe to retire that writer's generation.
+        begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let info = FileInfo { name:"one".into(), path:"one".into(), size:4,
+            modified:Some(Utc::now()), is_dir:false, checksum:None, checksum_alg:None };
+        let rows = build_comparison_results_with_index(
+            HashMap::from([("one".into(), info.clone())]),
+            HashMap::from([("one".into(), info)]),
+            &CompareOptions::default(), Some(&index));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, SyncStatus::Conflict);
+        assert!(rows[0].sync_reason.contains("choose a transfer direction"));
+        let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &tokens).unwrap();
         assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
     }
 

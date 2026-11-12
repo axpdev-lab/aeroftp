@@ -560,9 +560,14 @@ const runSync = async (
                 }
                 return { success: true, attempts: attempt };
             } catch (err) {
-                if (transferTimedOut) return { success: false, attempts: attempt, error: {
-                    kind: 'unknown', message: String(err), retryable: false, file_path: filePath,
-                } };
+                // Promise.race does not cancel IPC. Its write may still commit
+                // after this run ends, so no saved status can authorize replay.
+                if (transferTimedOut) {
+                    journal.resume_safe = false;
+                    return { success: false, attempts: attempt, error: {
+                        kind: 'unknown', message: String(err), retryable: false, file_path: filePath,
+                    } };
+                }
                 if (targetError) return { success: false, attempts: attempt, error: {
                     kind: 'unknown', message: String(targetError), retryable: false, file_path: filePath,
                 } };
@@ -1694,13 +1699,13 @@ const runSync = async (
     // The index records every entry that landed (size / mtime / is_dir) and
     // drops every entry a successful delete removed. It is a pure
     // optimisation + bisync-state aid: a failure here never fails the run.
-    if (deps.writeIndex && !targetError) {
+    if (deps.writeIndex && !targetError && !transferTimedOut) {
         try {
             const existing = await invoke<SyncIndex | null>('load_sync_index_cmd', {
                 localPath: localBase,
                 remotePath: remoteBase,
                 profileId: config.profileId ?? null,
-            }).catch(() => null);
+            });
             const mergedFiles: Record<string, SyncIndexEntry> = {
                 ...(existing?.files ?? {}),
             };

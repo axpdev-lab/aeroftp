@@ -554,6 +554,39 @@ struct ClaimedTokenFile {
 }
 
 impl ClaimedTokenFile {
+    // Called only while LegacyTokenGuard excludes every cooperating migrator
+    // and sign-out. A crash releases that lock but does not run Drop.
+    fn recover(original: &std::path::Path) -> Result<(), ProviderError> {
+        let parent = original.parent().ok_or_else(token_owner_changed)?;
+        let stem = original.file_stem().and_then(|s| s.to_str()).ok_or_else(token_owner_changed)?;
+        let prefix = format!("{stem}.migration-");
+        let mut claims = Vec::new();
+        for entry in std::fs::read_dir(parent).map_err(|_| token_owner_changed())? {
+            let entry = entry.map_err(|_| token_owner_changed())?;
+            let name = entry.file_name();
+            let Some(suffix) = name.to_str().and_then(|s| s.strip_prefix(&prefix)) else { continue };
+            if uuid::Uuid::parse_str(suffix).is_err() { continue; }
+            if !entry.file_type().map_err(|_| token_owner_changed())?.is_file() {
+                return Err(token_owner_changed());
+            }
+            claims.push(entry.path());
+        }
+        if !original.exists() {
+            // Never select arbitrarily between different stranded logins.
+            if claims.len() > 1 { return Err(token_owner_changed()); }
+            if let Some(path) = claims.first() {
+                std::fs::hard_link(path, original).map_err(|_| token_owner_changed())?;
+            }
+        }
+        // A recreated original is the newer authorization; old claims must
+        // never resurrect after a later migration or sign-out. Unlink only:
+        // a crash during recovery can leave two names for the same inode.
+        for path in claims {
+            std::fs::remove_file(path).map_err(|_| token_owner_changed())?;
+        }
+        Ok(())
+    }
+
     fn claim(original: &std::path::Path) -> Result<Self, ProviderError> {
         let path = original.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
         std::fs::rename(original, &path)
@@ -610,7 +643,11 @@ impl LegacyTokenGuard {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
             match file.try_lock() {
-                Ok(()) => return Ok(Self(file)),
+                Ok(()) => {
+                    let guard = Self(file);
+                    ClaimedTokenFile::recover(legacy_path)?;
+                    return Ok(guard);
+                }
                 Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(25))
                 }
@@ -2287,6 +2324,44 @@ mod tests {
                 vec![std::ffi::OsString::from("legacy.migration.lock")]
             );
         }
+    }
+
+    #[test]
+    fn crashed_legacy_claim_is_recovered_without_resurrecting_a_newer_login() {
+        const MODE: &str = "AEROFTP_LEGACY_CRASH_CLAIM";
+        const TEST: &str = "providers::oauth2::tests::crashed_legacy_claim_is_recovered_without_resurrecting_a_newer_login";
+        if let Some(path) = std::env::var_os(MODE) {
+            let path = std::path::PathBuf::from(path);
+            let _guard = LegacyTokenGuard::acquire(&path).unwrap();
+            let _claimed = ClaimedTokenFile::claim(&path).unwrap();
+            std::process::exit(0); // No destructors, like a killed migrator.
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let crash = || {
+            assert!(std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--test-threads=1"])
+                .env(MODE, &original).status().unwrap().success());
+            assert!(!original.exists());
+        };
+        std::fs::write(&original, "A").unwrap();
+        crash();
+        let recovered = with_legacy_token_claim(&Mutex::new(None), &original, |_, claimed| {
+            let value = std::fs::read_to_string(&claimed.path).unwrap();
+            claimed.discard()?;
+            Ok(value)
+        }).unwrap();
+        assert_eq!(recovered, "A");
+        std::fs::write(&original, "A").unwrap();
+        crash();
+        std::fs::write(&original, "B").unwrap();
+        {
+            let _guard = LegacyTokenGuard::acquire(&original).unwrap();
+            assert_eq!(std::fs::read_to_string(&original).unwrap(), "B");
+            std::fs::remove_file(&original).unwrap(); // Real sign-out lock scope.
+        }
+        let _guard = LegacyTokenGuard::acquire(&original).unwrap();
+        assert!(!original.exists(), "old A must never return after sign-out");
     }
 
     #[test]
