@@ -60,7 +60,7 @@ async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<t
     getActiveLocalState: () => f.panels.local, resetOverwriteSettings: vi.fn(),
     pickFile: vi.fn(async () => { onPick(); return picked; }), t: (key: string) => key,
     splitForFileBatch, usesProviderApi, liveConnectionParams: f.liveConnectionParams, loadRemoteFiles: f.loadRemoteFiles,
-    batchCancelledRef: f.batchCancelledRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
+    batchCancelledRef: f.batchCancelledRef, stopCountRef: f.stopCountRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
     invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
     transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
     // App's own target checks and file batch, over the fixture's live

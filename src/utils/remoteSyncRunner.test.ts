@@ -1557,6 +1557,37 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
             'provider_upload_file', 'copy_local_file'].includes(call.cmd))).toHaveLength(0);
     });
 
+    it('does not add cancelled directory-only creations to the baseline', async () => {
+        let saved: { files: Record<string, unknown> } | undefined;
+        const { invoke } = makeInvoke({ save_sync_index_cmd: args => { saved = args!.index as typeof saved; } });
+        await runRemoteSync([], { local: ['local-empty'], remote: ['remote-empty'] }, baseConfig(),
+            { isCancelled: () => true }, noWaitDeps(invoke, { writeIndex: true }));
+        expect(saved).toBeDefined();
+        expect(saved!.files).not.toHaveProperty('local-empty');
+        expect(saved!.files).not.toHaveProperty('remote-empty');
+    });
+
+    it.each(['stopped', 'rejected', 'failed-status'] as const)('does not verify or index a final download whose EC was %s', async outcome => {
+        let stopped = false;
+        let saved: { files: Record<string, unknown> } | undefined;
+        const { invoke, calls } = makeInvoke({ download_file: () => { if (outcome === 'stopped') stopped = true; },
+            sync_ec_verify_repair: () => { if (outcome === 'rejected') throw new Error('EC failed'); return { status: 'verify_failed' }; },
+            save_sync_index_cmd: args => { saved = args!.index as typeof saved; } });
+        const report = await runRemoteSync([file('last', 'download')], noDirs,
+            baseConfig({ verifyPolicy: 'none', errorCorrection: { enabled: true, pct: 10 } }),
+            { isCancelled: () => stopped }, noWaitDeps(invoke, { writeIndex: true }));
+        const journal = lastSavedJournal(calls)!;
+        expect(journal.entries[0].status).not.toBe('completed');
+        expect(journal.entries[0].verified).toBe(false);
+        expect(journal.completed).toBe(false);
+        expect(saved!.files).not.toHaveProperty('last');
+        expect(report.downloaded).toBe(0);
+        if (outcome === 'stopped') {
+            expect(report.cancelled).toBe(true);
+            expect(calls.filter(call => call.cmd === 'sync_ec_verify_repair')).toHaveLength(0);
+        }
+    });
+
     // m3 (verification of the fourth round of #949): a run that crashed
     // saved no index, and the entry there is from the run before it, of the
     // file before the transfer. It was adopted when the size matched.

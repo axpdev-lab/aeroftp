@@ -1771,6 +1771,8 @@ const App: React.FC = () => {
   // Every Stop, counted. The flag above stays set after a stopped batch; a
   // run that does not reset it tells a Stop of its own by this count.
   const stopCountRef = React.useRef(0);
+  // Scan cancellation belongs to that scan; Stop All also cancels sync preflight.
+  const stopAllCountRef = React.useRef(0);
 
   // TQ-7b: side map of re-executable descriptors (local/remote/profile).
   // TransferItem has a single `path` and cannot reconstruct a journal entry alone.
@@ -11902,6 +11904,7 @@ const App: React.FC = () => {
   // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
     stopCountRef.current += 1;
+    stopAllCountRef.current += 1;
     batchCancelledRef.current = true;
     const completionRefresh = syncRefreshAbortRef.current;
     completionRefresh?.abort();
@@ -12814,7 +12817,7 @@ const App: React.FC = () => {
     runDirs: SyncRunDirs,
     opts: ConnectedRemoteRunOptions,
   ): void => {
-    const launchStops = stopCountRef.current;
+    const launchStops = stopAllCountRef.current;
     const nothingToRun =
       runFiles.length === 0
       && runDirs.remote.length === 0
@@ -12888,7 +12891,7 @@ const App: React.FC = () => {
     };
 
     const launchRun = (): void => {
-      if (stopCountRef.current !== launchStops) return;
+      if (stopAllCountRef.current !== launchStops) return;
       if (targetEpoch === undefined || ownerBinding === undefined) return;
       const epoch = targetEpoch;
       try { checkTarget(); } catch (error) {
@@ -12992,6 +12995,7 @@ const App: React.FC = () => {
           : await captureGuiTarget(checkTarget);
         ownerBinding = await invoke<string>('provider_gui_target_binding', { expectedGuiTarget: targetEpoch, isProvider });
         checkTarget();
+        if (stopAllCountRef.current !== launchStops) return;
         const shouldProbe = protocol === 'sftp' && !!opts.profileId;
         if (!shouldProbe) {
           launchRun();
@@ -12999,6 +13003,7 @@ const App: React.FC = () => {
         }
         const stored = await loadSavedServerProfiles();
         checkTarget();
+        if (stopAllCountRef.current !== launchStops) return;
         const profile = stored.find((p) => p.id === opts.profileId);
         if (profile?.skipDeltaEligibilityPrompt) {
           launchRun();
@@ -13009,6 +13014,7 @@ const App: React.FC = () => {
           { expectedGuiTarget: targetEpoch },
         );
         checkTarget();
+        if (stopAllCountRef.current !== launchStops) return;
         if (verdict.eligible) {
           launchRun();
           return;
@@ -14144,6 +14150,7 @@ const App: React.FC = () => {
 
   // Upload files (Selected or Dialog)
   const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
+    const stops = stopCountRef.current;
     if (!isConnected) return;
     // The target its Start and Retry are bound to, taken before any await.
     const queuedTarget = snapshotQueuedTarget();
@@ -14151,6 +14158,7 @@ const App: React.FC = () => {
     let expectedGuiTarget: number;
     try { expectedGuiTarget = await captureGuiTarget(onQueuedTarget); }
     catch (error) { notify.error(t('toast.uploadFailed'), String(error)); return; }
+    if (stopCountRef.current !== stops) return;
     // A timeout or 5xx can follow a committed upload. Providers own their safe
     // transport retries; the GUI must not start that write again automatically.
     // The queue's explicit Retry remains available to the user.
@@ -14241,6 +14249,7 @@ const App: React.FC = () => {
         // Set once the file batch has run: a listing that fails after it
         // still ends the run as the batch alone would.
         let batchStaged: boolean | undefined;
+        if (stopCountRef.current !== stops) return;
         if (batchUploads.length > 0) {
           const outcome = await runFileBatch(
             'upload',
@@ -14330,6 +14339,7 @@ const App: React.FC = () => {
         }
 
         // Reset cancel flags and circuit breaker before starting batch
+        if (stopCountRef.current !== stops) return;
         batchCancelledRef.current = false;
         cancelLevelRef.current = 0;
         circuitBreaker.reset();
@@ -14624,6 +14634,7 @@ const App: React.FC = () => {
 
       // Reset for dialog-selected files too
       resetOverwriteSettings();
+      if (stopCountRef.current !== stops) return;
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
       circuitBreaker.reset();
@@ -14808,6 +14819,7 @@ const App: React.FC = () => {
 
   // === Bulk Operations ===
   const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localDir: string = currentLocalPath, dragTarget?: RemoteDragTarget) => {
+    const stops = stopCountRef.current;
     if (!isConnected) return;
     // The target its Start and Retry are bound to, taken before any await.
     const queuedTarget = snapshotQueuedTarget();
@@ -14816,6 +14828,7 @@ const App: React.FC = () => {
     let expectedGuiTarget: number;
     try { expectedGuiTarget = dragTarget?.epoch ?? await captureGuiTarget(onQueuedTarget); onQueuedTarget(); }
     catch (error) { notify.error(t('toast.downloadFailed'), String(error)); return; }
+    if (stopCountRef.current !== stops) return;
     const names = filesOverride || Array.from(selectedRemoteFiles);
     if (names.length === 0) return;
 
@@ -14836,6 +14849,7 @@ const App: React.FC = () => {
       // Set once the file batch has run: a listing that fails after it
       // still ends the run as the batch alone would.
       let batchStaged: boolean | undefined;
+      if (stopCountRef.current !== stops) return;
       if (batchFiles.length > 0) {
         const outcome = await runFileBatch(
           'download',
@@ -14911,6 +14925,7 @@ const App: React.FC = () => {
       }
 
       // Reset cancel flags and circuit breaker before starting batch
+      if (stopCountRef.current !== stops) return;
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
       circuitBreaker.reset();

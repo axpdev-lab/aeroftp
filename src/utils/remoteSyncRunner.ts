@@ -1231,12 +1231,14 @@ const runSync = async (
         }
     }
 
+    const createdDirs = new Set<string>();
     // ── Create standalone empty directories (counted in dirsCreated) ───────
     for (const dir of [...dirs.remote].sort(byDepth)) {
         if (targetError) break;
         try {
             await invoke(remoteMkdirCmd, { path: `${remoteBase}/${dir}` });
             dirsCreated++;
+            createdDirs.add(dir);
             setStatus(dir, 'success');
         } catch {
             setStatus(dir, 'skipped');
@@ -1259,6 +1261,7 @@ const runSync = async (
         try {
             await invoke('create_local_folder', { path: `${localBase}/${dir}` });
             dirsCreated++;
+            createdDirs.add(dir);
             setStatus(dir, 'success');
         } catch {
             setStatus(dir, 'skipped');
@@ -1521,6 +1524,7 @@ const runSync = async (
                 }
                 setStatus(item.relativePath, 'verifying');
                 if (errorCorrectionEnabled) {
+                    let ecFailed = false;
                     try {
                         const ecResult = await invoke<SyncEcCommandResult>('sync_ec_verify_repair', {
                             localPath: localFilePath,
@@ -1531,8 +1535,24 @@ const runSync = async (
                             isProvider: config.isProvider,
                         });
                         recordEcStatus(ecResult.status, journalEntry);
+                        ecFailed = ecResult.status === 'verify_failed';
                     } catch {
                         recordEcStatus('verify_failed', journalEntry);
+                        ecFailed = true;
+                    }
+                    if (isCancelled()) {
+                        runCancelled = true;
+                        if (journalEntry) journalEntry.verified = false;
+                        setStatus(item.relativePath, 'skipped');
+                        continue;
+                    }
+                    if (ecFailed) {
+                        const error: SyncErrorInfo = { kind: 'unknown', message: 'Error-correction verification failed', retryable: false, file_path: item.relativePath };
+                        if (journalEntry) { journalEntry.status = 'verify_failed'; journalEntry.verified = false; journalEntry.last_error = error; }
+                        verifyFailed++;
+                        errors.push(error);
+                        setStatus(item.relativePath, 'verify_failed', error.message);
+                        continue;
                     }
                 }
                 if (targetError) {
@@ -1880,7 +1900,7 @@ const runSync = async (
                     }
                 }
             }
-            for (const dir of [...dirs.remote, ...dirs.local]) {
+            for (const dir of createdDirs) {
                 if (localNameProblems.has(dir)) continue;
                 mergedFiles[dir] = { size: 0, modified: null, is_dir: true };
             }
