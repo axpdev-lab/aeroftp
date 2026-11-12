@@ -11887,13 +11887,22 @@ const App: React.FC = () => {
   const cancelTransfer = async () => {
     stopCountRef.current += 1;
     batchCancelledRef.current = true;
-    syncRefreshAbortRef.current?.abort();
+    const completionRefresh = syncRefreshAbortRef.current;
+    completionRefresh?.abort();
     const refreshWaiters = [...loadLocalWaitersRef.current];
     loadLocalWaitersRef.current.clear();
     for (const settle of refreshWaiters) settle();
     // If batch is paused by circuit breaker, resolve the pause promise
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
+    }
+    // The runner has already returned during completion refresh. A native
+    // cancellation could arrive after cleanup releases the latch and cancel
+    // a subsequent run; aborting the optional refresh is sufficient here.
+    if (completionRefresh) {
+      setIsBatchPaused(false);
+      setBatchPauseReason(null);
+      return;
     }
     // FINDING-4: an AeroSync run is driven by runRemoteSync, not by the queue's
     // batch loop (its queue rows only mirror the runner's per-file status,
@@ -12907,8 +12916,7 @@ const App: React.FC = () => {
                 const checkRefreshTarget = () => { signal.throwIfAborted(); checkTarget(); };
                 checkRefreshTarget();
                 if (batchCancelledRef.current) return;
-                const refreshed = await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkRefreshTarget });
-                if (!refreshed) return;
+                await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkRefreshTarget });
                 checkRefreshTarget();
                 // The optional refresh waits for navigation, without taking
                 // priority over it or retaining the run on a stalled mount.

@@ -405,8 +405,26 @@ it('stops the sync refresh continuation when remote refresh discards a switched 
         loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},currentLocalPathRef:{current:'/old'},localPanelShows,loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>false,
     };
     const refresh=new Function(...Object.keys(context),`${code};return refreshAfterSync;`)(...Object.values(context));
-    const result=refresh();current=false;release(null);await result;
+    const result=refresh();current=false;release(null);await expect(result).rejects.toThrow('changed');
     expect(context.loadLocalFiles).not.toHaveBeenCalled();
+});
+
+it('refreshes local changes after a remote listing failure while ownership remains current', async () => {
+    const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('          if (!report.cancelled && (report.uploaded > 0');
+    const end = app.indexOf('\n        } catch (err)', start);
+    const { code } = await transformWithOxc(`async function refreshAfterSync(){${app.slice(start, end)}}`, 'sync-remote-listing-failure.ts');
+    const context = {
+        runCompletionRefresh, syncRefreshAbortRef: { current: null }, batchCancelledRef: { current: false },
+        report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 1 }, epoch: 1, checkTarget: vi.fn(),
+        loadRemoteFiles: vi.fn(async () => null), loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
+        currentLocalPathRef: { current: '/A' }, localPanelShows, loadLocalPendingRef: { current: null },
+        loadLocalWaitersRef: { current: new Set<() => void>() }, isLocalFlattenSearchActive: () => false,
+    };
+    const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
+    await refresh();
+    expect(context.loadLocalFiles).toHaveBeenCalledWith('/A', { check: expect.any(Function) });
+    expect(context.syncRefreshAbortRef.current).toBe(null);
 });
 
 it.each(['before', 'during'] as const)('preserves local navigation %s the remote completion refresh', async when => {
@@ -546,6 +564,13 @@ it.each(['stop-pending', 'timeout-pending', 'timeout-read'] as const)('releases 
             const cancelCode = (await transformWithOxc(app.slice(cancelStart, cancelEnd), 'stop-sync-refresh.ts')).code;
             const cancel = new Function(...Object.keys(context), `${cancelCode};return cancelTransfer;`)(...Object.values(context));
             await cancel();
+            expect(context.invoke).not.toHaveBeenCalled();
+            await run;
+            // A subsequent real transfer still uses native cancellation.
+            context.remoteSyncRunningRef.current = true;
+            await cancel();
+            expect(context.invoke).toHaveBeenCalledExactlyOnceWith('cancel_transfer');
+            context.remoteSyncRunningRef.current = false;
         } else await vi.advanceTimersByTimeAsync(2001);
         await run;
         expect(context.remoteSyncRunningRef.current).toBe(false);
