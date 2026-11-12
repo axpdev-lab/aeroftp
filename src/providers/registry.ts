@@ -1980,8 +1980,8 @@ export const PROVIDERS: ProviderConfig[] = [
             trash: false,
         },
         healthCheckUrl: 'https://authenticate.blomp.com',
-        helpUrl: 'https://www.blomp.com/faq/',
-        signupUrl: 'https://www.blomp.com/sign-up/',
+        helpUrl: 'https://support.blomp.com/viewforum.php?f=8',
+        signupUrl: 'https://dashboard.blomp.com/register',
     },
     {
         id: 'mega',
