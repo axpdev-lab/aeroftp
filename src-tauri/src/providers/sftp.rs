@@ -1108,11 +1108,43 @@ impl Handler for SshHandler {
 /// Holding credentials for the provider's lifetime is the exact security
 /// posture FTP already ships. Secrets are only exposed (`ExposeSecret`)
 /// at dial time, never on IPC or in logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SshAuthMethod {
+    NoCredential,
+    PrivateKey,
+    Password,
+}
+
+fn select_auth_method(
+    config: &SftpConfig,
+    pinned: Option<SshAuthMethod>,
+    none_accepted: bool,
+) -> Result<SshAuthMethod, ProviderError> {
+    if let Some(method) = pinned {
+        if method == SshAuthMethod::NoCredential && !none_accepted {
+            return Err(ProviderError::TargetChanged);
+        }
+        return Ok(method);
+    }
+    if none_accepted {
+        Ok(SshAuthMethod::NoCredential)
+    } else if config.private_key_path.is_some() {
+        Ok(SshAuthMethod::PrivateKey)
+    } else if config.password.is_some() {
+        Ok(SshAuthMethod::Password)
+    } else {
+        Err(ProviderError::AuthenticationFailed(
+            "The server requires an authentication credential".into(),
+        ))
+    }
+}
+
 #[derive(Clone)]
 pub struct SftpConnectionSpec {
     /// Parsed key used by the original login. Pool re-dials never reopen a
     /// mutable key path and silently authenticate as another principal.
     pinned_private_key: Option<Arc<keys::PrivateKey>>,
+    pinned_auth_method: Option<SshAuthMethod>,
     pub host: String,
     pub port: u16,
     pub username: String,
@@ -2449,6 +2481,7 @@ pub(crate) async fn ssh_login_pinned(
     compression: bool,
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
     private_key: Arc<std::sync::OnceLock<Arc<keys::PrivateKey>>>,
+    auth_method: Arc<std::sync::OnceLock<SshAuthMethod>>,
 ) -> Result<Handle<SshHandler>, ProviderError> {
     // Create SSH config with keepalive to prevent server from closing connection
     let preferred = if compression {
@@ -2495,14 +2528,24 @@ pub(crate) async fn ssh_login_pinned(
     // Dropbear is the case that needs it: for a root with no password
     // set it accepts only `none` and refuses the password method
     // outright, so without this the device cannot be reached at all.
-    let none_result = handle
-        .authenticate_none(&config.username)
-        .await
-        .map_err(|e| ProviderError::AuthenticationFailed(format!("SSH auth failed: {}", e)))?;
-    let authenticated = if matches!(none_result, AuthResult::Success) {
-        tracing::info!("SSH: Server accepted the account with no credential");
+    let pinned = auth_method.get().copied();
+    let none_accepted = if pinned.is_none() || pinned == Some(SshAuthMethod::NoCredential) {
+        matches!(
+            handle
+                .authenticate_none(&config.username)
+                .await
+                .map_err(|e| ProviderError::AuthenticationFailed(format!(
+                    "SSH auth failed: {e}"
+                )))?,
+            AuthResult::Success
+        )
+    } else {
+        false
+    };
+    let method = select_auth_method(config, pinned, none_accepted)?;
+    let authenticated = if method == SshAuthMethod::NoCredential {
         true
-    } else if config.private_key_path.is_some() {
+    } else if method == SshAuthMethod::PrivateKey {
         // Try key-based authentication
         authenticate_with_key(config, &mut handle, &private_key).await?
     } else if let Some(password) = &config.password {
@@ -2561,6 +2604,7 @@ pub(crate) async fn ssh_login_pinned(
         ));
     }
 
+    let _ = auth_method.set(method);
     Ok(handle)
 }
 
@@ -2790,6 +2834,14 @@ impl StorageProvider for SftpProvider {
         self.scp = None;
         self.retire_ssh_connection().await;
 
+        let auth_method = Arc::new(std::sync::OnceLock::new());
+        if let Some(method) = self
+            .connection_spec
+            .as_ref()
+            .and_then(|s| s.pinned_auth_method)
+        {
+            let _ = auth_method.set(method);
+        }
         let private_key = Arc::new(std::sync::OnceLock::new());
         if let Some(key) = self
             .connection_spec
@@ -2803,6 +2855,7 @@ impl StorageProvider for SftpProvider {
             self.compression_enabled,
             self.host_key_sha256_hex.clone(),
             private_key.clone(),
+            auth_method.clone(),
         )
         .await?;
 
@@ -2870,6 +2923,7 @@ impl StorageProvider for SftpProvider {
             .and_then(|s| s.pinned_host_key_sha256.clone());
         self.connection_spec = Some(SftpConnectionSpec {
             pinned_private_key: private_key.get().cloned(),
+            pinned_auth_method: auth_method.get().copied(),
             host: self.config.host.clone(),
             port: self.config.port,
             username: self.config.username.clone(),
@@ -6812,6 +6866,35 @@ impl HostHashMemory {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn original_none_auth_never_reloads_a_replaced_key_on_redial() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = dir.path().join("key");
+        std::fs::write(&key, "original").unwrap();
+        let config = SftpConfig {
+            host: "server".into(),
+            port: 22,
+            username: "u".into(),
+            password: None,
+            private_key_path: Some(key.to_string_lossy().into_owned()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 1,
+            trust_unknown_hosts: false,
+        };
+        let selected = select_auth_method(&config, None, true).unwrap();
+        assert_eq!(selected, SshAuthMethod::NoCredential);
+        std::fs::write(&key, "replacement authorization").unwrap();
+        assert!(matches!(
+            select_auth_method(&config, Some(selected), false),
+            Err(ProviderError::TargetChanged)
+        ));
+        assert_eq!(
+            select_auth_method(&config, Some(selected), true).unwrap(),
+            SshAuthMethod::NoCredential
+        );
+    }
+
+    #[test]
     fn a_relative_start_folder_opens_under_the_login_folder() {
         // OpenSSH, WinSCP and rclone read `docs` from the login folder; SFTP
         // read it from `/` while the SCP fallback read it from the login one.
@@ -7218,6 +7301,7 @@ mod tests {
         // lazily and opts into warm reuse across directories.
         provider.connection_spec = Some(SftpConnectionSpec {
             pinned_private_key: None,
+            pinned_auth_method: None,
             host: "example.com".to_string(),
             port: 22,
             username: "testuser".to_string(),

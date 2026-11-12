@@ -6,6 +6,8 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTransferEvents } from './useTransferEvents';
+import { updateTransferStatus } from '../components/transferQueueActions';
+import type { TransferItem } from '../components/TransferQueue';
 
 const listeners = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
 vi.mock('@tauri-apps/api/event', () => ({
@@ -41,12 +43,13 @@ const mount = async (transferQueue: ReturnType<typeof queueWith>) => {
         currentLocalPath: '/home/u/work',
         currentRemotePath: '/srv/data',
     } as unknown as Options;
+    let controls!: ReturnType<typeof useTransferEvents>;
     const Probe = () => {
-        useTransferEvents(options);
+        controls = useTransferEvents(options);
         return null;
     };
     await act(async () => root.render(createElement(Probe)));
-    return options;
+    return { ...options, controls };
 };
 
 const emit = async (payload: Record<string, unknown>) => {
@@ -152,4 +155,32 @@ it('settles the active row and activity when the server skips an occupied upload
     expect(queue.completeTransfer).toHaveBeenCalledExactlyOnceWith('q1');
     expect(queue.addItem).not.toHaveBeenCalled();
     expect(options.activityLog.updateEntry).toHaveBeenCalledWith('log', expect.objectContaining({ status: 'success' }));
+});
+
+
+describe('privacy completion ownership', () => {
+    it('keeps file_complete unsettled so a rejected privacy write can fail the real queue row', async () => {
+        let items = [{id:'q1',filename:'b.txt',path:'/b.txt',size:1,type:'upload',status:'transferring'}] as TransferItem[];
+        const queue = Object.assign(queueWith({id:'q1',filename:'b.txt',status:'transferring'}), {
+            completeTransfer: (id:string) => { items=updateTransferStatus(items,id,'completed'); },
+            failTransfer: (id:string,error:string) => { items=updateTransferStatus(items,id,'error',undefined,error); },
+        });
+        Object.defineProperty(queue,'items',{get:()=>items});
+        const {controls} = await mount(queue);
+        controls.registerFileBatchRows('batch',['q1']);
+        const release=controls.holdFileCompletions(['q1']);
+        let rejectPrivacy!:(e:Error)=>void;
+        const privacy=new Promise<void>((_,reject)=>{rejectPrivacy=reject;});
+        const final=privacy.catch(error=>queue.failTransfer('q1',String(error)));
+        await emit({event_type:'file_start',transfer_id:'batch-0',filename:'b.txt',path:'/b.txt',direction:'upload'});
+        await emit({event_type:'file_complete',transfer_id:'batch-0',filename:'b.txt',path:'/b.txt',direction:'upload'});
+        expect(items[0].status).toBe('transferring');
+        rejectPrivacy(new Error('privacy refused'));
+        await final;
+        release();
+        expect(items[0].status).toBe('error');
+        expect(items[0].error).toContain('privacy refused');
+        await emit({event_type:'file_complete',transfer_id:'batch-0',filename:'b.txt',path:'/b.txt',direction:'upload'});
+        expect(items[0].status).toBe('error');
+    });
 });

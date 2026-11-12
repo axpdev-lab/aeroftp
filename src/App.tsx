@@ -1459,7 +1459,9 @@ const App: React.FC = () => {
   // a Calculate button that only fails once clicked (#347).
   const [propertiesChecksumCapability, setPropertiesChecksumCapability] =
     useState<ChecksumCapability | null>(null);
-  const propertiesOwnerRef = useRef<{ target: QueuedTarget; prepared: ReturnType<typeof prepareGuiTarget> } | null>(null);
+  type PropertiesOwner = { target: QueuedTarget; prepared: ReturnType<typeof prepareGuiTarget> };
+  const propertiesOwnerRef = useRef<PropertiesOwner | null>(null);
+  const multiPropertiesOwnerRef = useRef<PropertiesOwner | null>(null);
   useEffect(() => {
     const target = propertiesDialog;
     if (!target?.isRemote || target.is_dir) {
@@ -1482,6 +1484,7 @@ const App: React.FC = () => {
   const applyOpenDrivePrivacyToPaths = async (
     level: 'public' | 'private' | 'hidden',
     targets: { path: string; isDir: boolean }[],
+    owner: PropertiesOwner | null,
   ) => {
     if (targets.length === 0) return;
     const label = targets.length === 1
@@ -1489,7 +1492,6 @@ const App: React.FC = () => {
       : `${targets.length} items`;
     const logId = humanLog.logRaw('activity.opendrive_set_access', 'INFO', { provider: 'OpenDrive', filename: label }, 'running');
     try {
-      const owner = propertiesOwnerRef.current;
       if (!owner) throw new Error('CONNECTION_CHANGED: missing properties target');
       const checkTarget = queuedTargetGuard(owner.target);
       const expectedGuiTarget = await resolveGuiTarget(owner.prepared, checkTarget);
@@ -1497,7 +1499,7 @@ const App: React.FC = () => {
         targets.map(tg => invoke('opendrive_set_path_access', { path: tg.path, accessLevel: level, isDir: tg.isDir, expectedGuiTarget }))
       );
       checkTarget();
-      if (propertiesOwnerRef.current !== owner || results.some(result => result.status === 'rejected' && String(result.reason).includes('CONNECTION_CHANGED'))) {
+      if ((propertiesOwnerRef.current !== owner && multiPropertiesOwnerRef.current !== owner) || results.some(result => result.status === 'rejected' && String(result.reason).includes('CONNECTION_CHANGED'))) {
         throw new Error('CONNECTION_CHANGED: the properties target changed');
       }
       const ok = results.filter(r => r.status === 'fulfilled').length;
@@ -1508,8 +1510,8 @@ const App: React.FC = () => {
         humanLog.updateEntry(logId, { status: 'success', message: t('activity.opendrive_access_set', { provider: 'OpenDrive', level: levelLabel, count: ok }) });
         // Reflect the new level in any open Properties dialog without closing it.
         const targetPaths = new Set(targets.map(tg => tg.path));
-        setPropertiesDialog(prev => prev && targetPaths.has(prev.path) ? { ...prev, permissions: level } : prev);
-        setMultiPropertiesDialog(prev => prev ? { ...prev, files: prev.files.map(f => targetPaths.has(f.path) ? { ...f, permissions: level } : f) } : prev);
+        if (propertiesOwnerRef.current === owner) setPropertiesDialog(prev => prev && targetPaths.has(prev.path) ? { ...prev, permissions: level } : prev);
+        if (multiPropertiesOwnerRef.current === owner) setMultiPropertiesDialog(prev => prev ? { ...prev, files: prev.files.map(f => targetPaths.has(f.path) ? { ...f, permissions: level } : f) } : prev);
       } else {
         notify.warning(`${t('opendrive.privacyUpdated') || 'OpenDrive privacy updated'}: ${ok}/${results.length}`);
         humanLog.updateEntry(logId, { status: 'error', message: t('activity.opendrive_access_partial', { provider: 'OpenDrive', level: levelLabel, ok, total: results.length }) });
@@ -5730,7 +5732,7 @@ const App: React.FC = () => {
 
 
   // File loading (race-condition safe: stale responses are discarded)
-  const loadLocalFiles = useCallback(async (path: string): Promise<boolean> => {
+  const loadLocalFiles = useCallback(async (path: string, ownership?: { check: () => void }): Promise<boolean> => {
     if (!path) {
       // Defence in depth: never call get_local_files with an empty path
       // from any caller (boot, sidebar, sync nav, session restore with a
@@ -5740,17 +5742,23 @@ const App: React.FC = () => {
       // just means there is nothing to list yet.
       return false;
     }
+    ownership?.check();
+    const initialFolder = currentLocalPathRef.current;
+    const stillOwned = () => {
+      ownership?.check();
+      return !ownership || currentLocalPathRef.current === initialFolder;
+    };
     const callId = ++loadLocalCallIdRef.current;
     try {
       const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
       // Discard stale response if a newer call was issued while awaiting
-      if (callId !== loadLocalCallIdRef.current) return false;
+      if (callId !== loadLocalCallIdRef.current || !stillOwned()) return false;
       setLocalFiles(files);
       setCurrentLocalPath(path);
       setSelectedLocalFiles(new Set());
       return true;
     } catch (error) {
-      if (callId !== loadLocalCallIdRef.current) return false;
+      if (callId !== loadLocalCallIdRef.current || !stillOwned()) return false;
       // gvfs MTP mount vanishes on unplug; the raw "Path does not exist"
       // is useless. Tell the user what happened and step the panel Home.
       if (isGvfsMtpPath(path)) {
@@ -5763,7 +5771,7 @@ const App: React.FC = () => {
             path: home,
             showHidden: showHiddenFiles,
           });
-          if (homeCallId !== loadLocalCallIdRef.current) return false;
+          if (homeCallId !== loadLocalCallIdRef.current || !stillOwned()) return false;
           setLocalFiles(homeFiles);
           setCurrentLocalPath(home);
           setSelectedLocalFiles(new Set());
@@ -7045,7 +7053,7 @@ const App: React.FC = () => {
   // Transfer Queue footer bar climbs on real bytes (folder queue items enqueue
   // lazily on file_start, so an item-count wave pegs the bar near 100%). #364.
   const [activeBatchSnapshot, setActiveBatchSnapshot] = useState<BatchProgressSnapshot | null>(null);
-  const { pendingFileLogIds, registerFileBatchRows } = useTransferEvents({
+  const { pendingFileLogIds, registerFileBatchRows, holdFileCompletions } = useTransferEvents({
     t, activityLog, humanLog, transferQueue, notify,
     setActiveTransfer, loadRemoteFiles, loadLocalFiles, currentLocalPath,
     remoteRefreshStartedAt: () => remoteRefreshStartedAtRef.current,
@@ -12870,8 +12878,10 @@ const App: React.FC = () => {
           setRemoteSyncResult({ report, localLocal: false });
           if (!report.cancelled && (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0)) {
             checkTarget();
-            await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkTarget });
-            await loadLocalFiles(runConfig.localRoot);
+            const refreshed = await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkTarget });
+            if (!refreshed) return;
+            checkTarget();
+            await loadLocalFiles(runConfig.localRoot, { check: checkTarget });
           }
         } catch (err) {
           notify.error(t('aerosync.title') || 'AeroSync', String(err).includes('SYNC_RESUME_NEEDS_COMPARE')
@@ -13879,6 +13889,8 @@ const App: React.FC = () => {
           sftp_download_preset: buildSftpDownloadPresetPayload(protocol, sftpDownloadPreset).sftpDownloadPreset ?? null,
         } : {}),
       };
+      const releaseCompletion = !isDownload && (protocol === 'opendrive' || protocol === 'fourshared')
+        ? holdFileCompletions(queueIds) : () => undefined;
       try {
         if (attempt.changed) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
         onQueuedTarget();
@@ -13927,7 +13939,7 @@ const App: React.FC = () => {
         if (!batchCancelledRef.current) {
           notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
         }
-      }
+      } finally { releaseCompletion(); }
       return landedIds;
     };
 
@@ -13949,6 +13961,8 @@ const App: React.FC = () => {
         const entry = singleEntries[i];
         result.sent++;
         transferQueue.startTransfer(queueIds[i]);
+        const releaseCompletion = !isDownload && (protocol === 'opendrive' || protocol === 'fourshared')
+          ? holdFileCompletions([queueIds[i]]) : () => undefined;
         try {
           if (attempt.changed) throw new QueuedTargetChangedError(t('toast.remoteTargetChanged'));
           onQueuedTarget();
@@ -13987,7 +14001,7 @@ const App: React.FC = () => {
           if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { attempt.changed = true; result.aborted = true; }
           transferQueue.failTransfer(queueIds[i], String(error));
           result.failed++;
-        }
+        } finally { releaseCompletion(); }
       }
       return landedIds;
     };
@@ -15771,15 +15785,17 @@ const App: React.FC = () => {
     // #252: open Properties (single or multi) on a specific tab. Shared by the
     // Properties entry (General) and the OpenDrive Permissions entry.
     const openRemoteProperties = (tab: 'general' | 'permissions' | 'checksum') => {
-      propertiesOwnerRef.current = { target: menuTarget, prepared: preparedMenuTarget };
+      const owner = { target: menuTarget, prepared: preparedMenuTarget };
       setPropertiesInitialTab(tab);
       if (count > 1) {
+        multiPropertiesOwnerRef.current = owner;
         const selectedRemote = remoteFiles.filter(f => selection.has(f.name)).map(f => ({
           name: f.name, path: f.path, size: f.size, is_dir: f.is_dir, modified: f.modified,
           permissions: f.permissions, isRemote: true, protocol: shownProtocol,
         } as FileProperties));
         setMultiPropertiesDialog({ files: selectedRemote, isRemote: true, protocol: shownProtocol });
       } else {
+        propertiesOwnerRef.current = owner;
         setPropertiesDialog({
           name: file.name, path: file.path, size: file.size, is_dir: file.is_dir,
           modified: file.modified, permissions: file.permissions, isRemote: true, protocol: shownProtocol,
@@ -19019,7 +19035,7 @@ const App: React.FC = () => {
             folderSizeCalculating={propertiesDialog.is_dir ? folderSizeCalculating.has(propertiesSizeKey) : false}
             initialTab={propertiesInitialTab}
             onPrivacyChange={propertiesDialog.isRemote && propertiesDialog.protocol === 'opendrive'
-              ? (level) => applyOpenDrivePrivacyToPaths(level, [{ path: propertiesDialog.path, isDir: !!propertiesDialog.is_dir }])
+              ? (level) => applyOpenDrivePrivacyToPaths(level, [{ path: propertiesDialog.path, isDir: !!propertiesDialog.is_dir }], propertiesOwnerRef.current)
               : undefined}
             // Editable only for local files (Ehud #347): the read-only and
             // hidden bits belong to this filesystem. A remote entry's flags
@@ -19063,7 +19079,7 @@ const App: React.FC = () => {
             // dialog, which this one's count skipped.
             folderSizeCalculating={multiSizeRunning || multiLocalFolders.some(p => folderSizeCalculating.has(localSizeKey(p)))}
             onPrivacyChange={multiPropertiesDialog.protocol === 'opendrive'
-              ? (level) => applyOpenDrivePrivacyToPaths(level, multiPropertiesDialog.files.map(f => ({ path: f.path, isDir: !!f.is_dir })))
+              ? (level) => applyOpenDrivePrivacyToPaths(level, multiPropertiesDialog.files.map(f => ({ path: f.path, isDir: !!f.is_dir })), multiPropertiesOwnerRef.current)
               : undefined}
           />
         )}

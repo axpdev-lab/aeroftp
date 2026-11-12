@@ -3440,36 +3440,69 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
     load_sync_index_with_recovery(local_path, remote_path, false)
 }
 
+fn read_sync_index_file(path: &Path) -> Result<Option<SyncIndex>, String> {
+    let data = match std::fs::read_to_string(path) {
+        Ok(data) => data,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Failed to read sync index: {error}")),
+    };
+    let mut index: SyncIndex = serde_json::from_str(&data)
+        .map_err(|error| format!("Failed to parse sync index: {error}"))?;
+    migrate_sync_index(&mut index);
+    Ok(Some(index))
+}
+
+fn load_index_with_intents_in(
+    conn: &mut rusqlite::Connection,
+    path: &Path,
+    local: &str,
+    remote: &str,
+    journal: impl FnOnce() -> Result<Option<SyncJournal>, String>,
+) -> Result<Option<SyncIndex>, String> {
+    // The publisher holds the same SQLite writer reservation around JSON
+    // publication and fence retirement, including across separate processes.
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let saved = read_sync_index_file(path)?;
+    let existed = saved.is_some();
+    let mut index = saved.unwrap_or_else(|| SyncIndex::new(local.into(), remote.into()));
+    let pair = index_filename(local, remote);
+    match journal() {
+        Ok(Some(journal)) => import_archive_intents(&tx, &pair, &journal)?,
+        Ok(None) => {}
+        Err(_) => insert_intent_fences(&tx, &pair, index.files.keys().cloned())?,
+    }
+    let pending = pending_intents_in(&tx, &pair)?;
+    // Pending new files have no baseline yet, but still need visible recovery.
+    let has_pending = !pending.is_empty();
+    fence_index(&mut index, &pending);
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok((existed || has_pending).then_some(index))
+}
+
 fn load_sync_index_with_recovery(
     local_path: &str,
     remote_path: &str,
     require_durable_fences: bool,
 ) -> Result<Option<SyncIndex>, String> {
-    let dir = sync_index_dir()?;
-    let path = dir.join(index_filename(local_path, remote_path));
-    if !path.exists() {
-        return Ok(None);
-    }
-    let data =
-        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read sync index: {}", e))?;
-    let mut index: SyncIndex =
-        serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync index: {}", e))?;
-    migrate_sync_index(&mut index);
-    let pending = (|| {
-        let conn = intent_connection()?;
-        let pair = index_filename(local_path, remote_path);
-        match load_sync_journal(local_path, remote_path) {
-            Ok(Some(journal)) => import_archive_intents(&conn, &pair, &journal)?,
-            Ok(None) => {}
-            // Persist the quarantine before a fresh run replaces a corrupt
-            // journal; otherwise its lost archive evidence could later revive
-            // the old baseline's deletion authority.
-            Err(_) => insert_intent_fences(&conn, &pair, index.files.keys().cloned())?,
+    let path = sync_index_dir()?.join(index_filename(local_path, remote_path));
+    let result = intent_connection().and_then(|mut conn| {
+        load_index_with_intents_in(&mut conn, &path, local_path, remote_path, || {
+            load_sync_journal(local_path, remote_path)
+        })
+    });
+    match result {
+        Ok(index) => Ok(index),
+        Err(error) if require_durable_fences => Err(error),
+        Err(error) => {
+            let Some(mut index) = read_sync_index_file(&path)? else {
+                return Ok(None);
+            };
+            apply_intent_fences(&mut index, false, || Err(error))?;
+            Ok(Some(index))
         }
-        pending_intents_in(&conn, &pair)
-    })();
-    apply_intent_fences(&mut index, require_durable_fences, || pending)?;
-    Ok(Some(index))
+    }
 }
 
 // Fence storage is safety metadata, never permission to discard a valid index.
@@ -3596,15 +3629,23 @@ fn insert_intent_fences(
 ) -> Result<(), String> {
     // One durable transaction for a large recovered journal, not one fsync
     // per file. Never supersede a newer live or already-retired generation.
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let tx = if conn.is_autocommit() {
+        Some(conn.unchecked_transaction().map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
+    let db = tx.as_ref().map_or(conn, |tx| &**tx);
     for path in paths {
-        tx.execute(
+        db.execute(
             "INSERT OR IGNORE INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)",
             rusqlite::params![pair, nfc_path(&path), uuid::Uuid::new_v4().to_string()],
         )
         .map_err(|e| e.to_string())?;
     }
-    tx.commit().map_err(|e| e.to_string())
+    if let Some(tx) = tx {
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 fn begin_intents_in(
@@ -3674,6 +3715,7 @@ pub fn snapshot_sync_intents(local: &str, remote: &str) -> Result<HashMap<String
 }
 
 fn fence_index(index: &mut SyncIndex, pending: &HashMap<String, String>) {
+    index.unverified_keys.extend(pending.keys().cloned());
     index.unverified_keys.extend(
         index
             .files
@@ -11328,11 +11370,12 @@ mod tests {
             assert_eq!(report.summary.identical_count, 0);
         }
 
-        // Migration cannot turn an unverified baseline into an upload marker.
+        // Quarantined equal pairs remain visible until explicit recovery.
         index.unverified_keys.insert("a".into());
         let report = classify(&index, &CompareOptions::default());
-        assert!(report.differences.is_empty());
-        assert_eq!(report.summary.identical_count, 1);
+        assert_eq!(report.differences.len(), 1);
+        assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+        assert_eq!(report.summary.identical_count, 0);
 
         // A successful resend replaces the marker and can converge normally.
         index.unverified_keys.clear();
@@ -11767,6 +11810,81 @@ mod sync_intent_tests {
         save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &tokens)
             .unwrap();
         assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    #[test]
+    fn index_read_and_fence_read_exclude_an_interleaved_publisher() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("intents.db");
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&db).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename("/local", "/remote");
+        save_index_with_intents_in(&mut conn, &path, &index, &[]).unwrap();
+        let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        let mut newer = index.clone();
+        newer.files.get_mut("one").unwrap().size = 7;
+        let mut publisher = intent_connection_in(&db).unwrap();
+        publisher.busy_timeout(std::time::Duration::ZERO).unwrap();
+        let loaded = load_index_with_intents_in(&mut conn, &path, "/local", "/remote", || {
+            // This callback runs after reading JSON, before reading fences.
+            assert!(save_index_with_intents_in(&mut publisher, &path, &newer, &tokens).is_err());
+            Ok(None)
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(loaded.files["one"].size, 4);
+        assert!(loaded.unverified_keys.contains("one"));
+        save_index_with_intents_in(&mut publisher, &path, &newer, &tokens).unwrap();
+        let loaded = load_index_with_intents_in(&mut conn, &path, "/local", "/remote", || Ok(None))
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.files["one"].size, 7);
+        assert!(loaded.unverified_keys.is_empty());
+    }
+
+    #[test]
+    fn pending_new_file_remains_visible_without_any_index_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let pair = index_filename("/local", "/remote");
+        begin_intents_in(&mut conn, &pair, &["new".into()]).unwrap();
+        let index = load_index_with_intents_in(
+            &mut conn,
+            &dir.path().join("missing.json"),
+            "/local",
+            "/remote",
+            || Ok(None),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(index.files.is_empty());
+        let file = FileInfo {
+            name: "new".into(),
+            path: "new".into(),
+            size: 7,
+            modified: Some(Utc::now()),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        };
+        let rows = build_comparison_results_with_index(
+            HashMap::from([("new".into(), file.clone())]),
+            HashMap::from([("new".into(), file)]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, SyncStatus::Conflict);
     }
 
     #[test]

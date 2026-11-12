@@ -520,6 +520,26 @@ impl FtpManager {
     }
 
     /// Get file size
+    /// Verify a backup receipt by its listing type, not CWD/SIZE existence.
+    /// Always restore the session folder, including on a refused listing.
+    pub(crate) async fn receipt_is_file(&mut self, path: &str) -> Result<bool> {
+        let (parent, name) = path.rsplit_once('/').ok_or_else(|| {
+            FtpManagerError::OperationFailed("Receipt needs a parent folder".into())
+        })?;
+        if name.is_empty() {
+            return Ok(false);
+        }
+        let original = self.current_path.clone();
+        self.change_dir(if parent.is_empty() { "/" } else { parent })
+            .await?;
+        let listed = self.list_files_for_probe(true).await;
+        let restored = self.change_dir(&original).await;
+        restored?;
+        Ok(listed?
+            .iter()
+            .any(|entry| entry.name == name && !entry.is_dir && !entry.is_symlink))
+    }
+
     pub async fn get_file_size(&mut self, path: &str) -> Result<u64> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
         tokio::time::timeout(
@@ -1313,6 +1333,19 @@ pub(crate) mod exists_tests {
     }
 
     #[tokio::test]
+    async fn ftp_receipt_rejects_a_directory_and_restores_the_listing_folder() {
+        let addr = vsftpd_like().await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.change_dir("/d").await.unwrap();
+        assert!(!ftp.receipt_is_file("/denied").await.unwrap());
+        assert_eq!(ftp.current_path, "/d");
+        assert!(ftp.receipt_is_file("/.hidden").await.unwrap());
+        assert_eq!(ftp.current_path, "/d");
+    }
+
+    #[tokio::test]
     async fn probe_contract_ftp_manager_refuses_an_unverified_missing_answer() {
         let addr = vsftpd_like().await;
         let mut ftp = FtpManager::new();
@@ -1400,7 +1433,7 @@ pub(crate) mod exists_tests {
                         let listing = if cmd == "NLST" {
                             "a.txt\r\nd\r\n"
                         } else if arg == "-a" {
-                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .hidden\r\n"
+                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .hidden\r\ndrwxr-xr-x 1 user group 0 Jan 20 10:00 denied\r\n"
                         } else if unknown_size {
                             "-rw-r--r-- 1 user group ???? Jan 20 10:00 a.txt\r\n"
                         } else {

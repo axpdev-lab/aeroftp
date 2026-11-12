@@ -556,7 +556,9 @@ struct ClaimedTokenFile {
 impl ClaimedTokenFile {
     // Called only while LegacyTokenGuard excludes every cooperating migrator
     // and sign-out. A crash releases that lock but does not run Drop.
-    fn recover(original: &std::path::Path) -> Result<(), ProviderError> {
+    fn recovery_paths(
+        original: &std::path::Path,
+    ) -> Result<Vec<std::path::PathBuf>, ProviderError> {
         let parent = original.parent().ok_or_else(token_owner_changed)?;
         let stem = original
             .file_stem()
@@ -582,6 +584,11 @@ impl ClaimedTokenFile {
             }
             claims.push(entry.path());
         }
+        Ok(claims)
+    }
+
+    fn recover(original: &std::path::Path) -> Result<(), ProviderError> {
+        let claims = Self::recovery_paths(original)?;
         if !original.exists() {
             // Never select arbitrarily between different stranded logins.
             if claims.len() > 1 {
@@ -643,7 +650,7 @@ impl Drop for ClaimedTokenFile {
 /// Permanent lock inode shared by legacy migration and sign-out in every
 /// desktop/CLI/MCP process. Never unlink it: a replacement inode would allow
 /// two independent owners. The OS releases the advisory lock after a crash.
-struct LegacyTokenGuard(std::fs::File);
+struct LegacyTokenGuard(Option<std::fs::File>);
 
 impl LegacyTokenGuard {
     fn acquire(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
@@ -652,19 +659,39 @@ impl LegacyTokenGuard {
         options.create(true).truncate(false).write(true);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let file = options.open(path).map_err(|_| token_owner_changed())?;
+        let file = options.open(path).map_err(|e| {
+            ProviderError::Other(format!(
+                "Legacy authorization lock unavailable: {}",
+                e.kind()
+            ))
+        })?;
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
         loop {
             match file.try_lock() {
                 Ok(()) => {
-                    let guard = Self(file);
+                    let guard = Self(Some(file));
                     ClaimedTokenFile::recover(legacy_path)?;
                     return Ok(guard);
                 }
                 Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(25))
                 }
-                Err(_) => return Err(token_owner_changed()),
+                Err(std::fs::TryLockError::Error(error))
+                    if crate::user_partitions::file_locks_unavailable(&error) =>
+                {
+                    return Ok(Self(None))
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    return Err(ProviderError::Other(
+                        "Legacy authorization is busy; try again".into(),
+                    ))
+                }
+                Err(std::fs::TryLockError::Error(error)) => {
+                    return Err(ProviderError::Other(format!(
+                        "Legacy authorization lock unavailable: {}",
+                        error.kind()
+                    )))
+                }
             }
         }
     }
@@ -672,7 +699,9 @@ impl LegacyTokenGuard {
 
 impl Drop for LegacyTokenGuard {
     fn drop(&mut self) {
-        let _ = self.0.unlock();
+        if let Some(file) = &self.0 {
+            let _ = file.unlock();
+        }
     }
 }
 
@@ -686,7 +715,25 @@ fn with_legacy_token_claim<T>(
         ClaimedTokenFile,
     ) -> Result<T, ProviderError>,
 ) -> Result<T, ProviderError> {
-    let _process = LegacyTokenGuard::acquire(path)?;
+    let process = LegacyTokenGuard::acquire(path)?;
+    with_legacy_claim_guard(cache, path, process, migrate)
+}
+
+fn with_legacy_claim_guard<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    process: LegacyTokenGuard,
+    migrate: impl FnOnce(
+        &mut Option<HashMap<String, String>>,
+        ClaimedTokenFile,
+    ) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    if process.0.is_none() {
+        return Err(ProviderError::AuthenticationFailed(
+            "Legacy authorization cannot be migrated on a filesystem without locks; sign in again"
+                .into(),
+        ));
+    }
     let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
     let claimed = ClaimedTokenFile::claim(path)?;
     migrate(&mut cache, claimed)
@@ -739,7 +786,17 @@ impl RefreshLease {
     /// gave up waiting or no lock dir; caller must re-load tokens (the other
     /// owner is refreshing) rather than refresh in parallel.
     pub(crate) async fn acquire(slug: &str) -> Option<Self> {
-        let dir = OAuth2Manager::token_dir().ok()?;
+        Self::acquire_checked(slug).await.ok().flatten()
+    }
+
+    async fn acquire_checked(slug: &str) -> Result<Option<Self>, ProviderError> {
+        let dir = OAuth2Manager::token_dir().map_err(|_| {
+            ProviderError::Other("Authorization refresh lease directory is unavailable".into())
+        })?;
+        Self::acquire_in(&dir, slug).await
+    }
+
+    async fn acquire_in(dir: &std::path::Path, slug: &str) -> Result<Option<Self>, ProviderError> {
         let path = dir.join(format!("refresh-{}.lock", slug));
         let started = std::time::Instant::now();
         loop {
@@ -756,7 +813,7 @@ impl RefreshLease {
                         std::process::id(),
                         chrono::Utc::now().timestamp()
                     );
-                    return Some(Self { path });
+                    return Ok(Some(Self { path }));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     // Steal a stale lease (previous holder crashed).
@@ -771,11 +828,16 @@ impl RefreshLease {
                         }
                     }
                     if started.elapsed().as_millis() as u64 >= Self::MAX_WAIT_MS {
-                        return None;
+                        return Ok(None);
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(Self::POLL_MS)).await;
                 }
-                Err(_) => return None, // unexpected fs error: degrade gracefully
+                Err(error) => {
+                    return Err(ProviderError::Other(format!(
+                        "Authorization refresh lease storage unavailable: {}",
+                        error.kind()
+                    )))
+                }
             }
         }
     }
@@ -1095,9 +1157,9 @@ impl OAuth2Manager {
             // the same provider must not block each other's refresh.
             let slug = Self::token_account_key(config.provider, &config.profile_id);
             // Bounded, self-healing cross-process lease. `None` => another
-            // process is the refresh owner (or no lock dir): fall through to
+            // process is the refresh owner: fall through to
             // the re-load below and use whatever it persisted.
-            let _lease = RefreshLease::acquire(&slug).await;
+            let _lease = RefreshLease::acquire_checked(&slug).await?;
             // Double-check: the lease winner (possibly the other process)
             // may have already rotated+persisted a fresh token.
             record = self.load_token_record(config.provider, &config.profile_id)?;
@@ -1499,6 +1561,11 @@ impl OAuth2Manager {
 
         let legacy_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        if !legacy_path.exists() && ClaimedTokenFile::recovery_paths(&legacy_path)?.is_empty() {
+            return Err(ProviderError::AuthenticationFailed(
+                "No stored authorization".into(),
+            ));
+        }
         with_legacy_token_claim(&MEMORY_TOKEN_CACHE, &legacy_path, |cache, claimed| {
             let observed_legacy_revision =
                 legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst);
@@ -1622,6 +1689,16 @@ impl OAuth2Manager {
             }
             invalidate_memory_tokens(&mut cache, legacy_revision(provider), &account);
 
+            // On a filesystem without locks no cooperating migration can
+            // start. Remove stranded claims too, so restoring lock support
+            // cannot resurrect an authorization after sign-out.
+            for claim in ClaimedTokenFile::recovery_paths(&json_path)? {
+                std::fs::remove_file(claim).map_err(|_| {
+                    ProviderError::Other(
+                        "Could not remove legacy authorization recovery file".into(),
+                    )
+                })?;
+            }
             // Delete legacy .json file if exists
             let json_path =
                 Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
@@ -2337,6 +2414,40 @@ mod tests {
                 vec![std::ffi::OsString::from("legacy.migration.lock")]
             );
         }
+    }
+
+    #[test]
+    fn unsupported_file_locks_disable_legacy_migration_without_claiming_a_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.json");
+        std::fs::write(&path, "authorization").unwrap();
+        let migrated = std::cell::Cell::new(false);
+        let result =
+            with_legacy_claim_guard(&Mutex::new(None), &path, LegacyTokenGuard(None), |_, _| {
+                migrated.set(true);
+                Ok(())
+            });
+        assert!(matches!(
+            result,
+            Err(ProviderError::AuthenticationFailed(_))
+        ));
+        assert!(!migrated.get());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "authorization");
+        assert!(crate::user_partitions::file_locks_unavailable(
+            &std::io::Error::from(std::io::ErrorKind::Unsupported)
+        ));
+    }
+
+    #[tokio::test]
+    async fn refresh_lease_storage_failure_is_not_reported_as_contention() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let error = match RefreshLease::acquire_in(file.path(), "test").await {
+            Err(error) => error,
+            Ok(_) => panic!("a non-directory cannot hold a lease"),
+        };
+        let message = error.to_string();
+        assert!(message.contains("lease storage unavailable"));
+        assert!(!message.contains("busy"));
     }
 
     #[test]

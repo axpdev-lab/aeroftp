@@ -356,6 +356,18 @@ pub trait ArchiveRemote: Send {
     async fn move_path(&mut self, from: &str, to: &str) -> Result<(), ProviderError>;
 }
 
+/// A receipt must still name the archived file, never a directory or link.
+pub async fn provider_receipt_is_file(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<bool, ProviderError> {
+    match provider.stat(path).await {
+        Ok(entry) => Ok(!entry.is_dir && !entry.is_symlink),
+        Err(ProviderError::NotFound(_)) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// A [`StorageProvider`] seen as an archive target.
 pub struct ProviderRemote<'a>(pub &'a mut dyn StorageProvider);
 
@@ -869,8 +881,17 @@ mod tests {
             self.unpublished.remove(path);
             Ok(())
         }
-        async fn stat(&mut self, _p: &str) -> Result<RemoteEntry, ProviderError> {
-            Err(ProviderError::NotSupported("stat".into()))
+        async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+            if self.unpublished.contains(p) {
+                return Err(ProviderError::NotSupported("unknown type".into()));
+            }
+            if self.dirs.contains(p) {
+                return Ok(RemoteEntry::directory("entry".into(), p.into()));
+            }
+            if self.files.contains(p) {
+                return Ok(RemoteEntry::file("entry".into(), p.into(), 1));
+            }
+            Err(ProviderError::NotFound(p.into()))
         }
         async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> {
             Ok(0)
@@ -892,6 +913,21 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("mem".into())
         }
+    }
+
+    #[tokio::test]
+    async fn provider_receipt_rejects_a_directory_and_unknown_type() {
+        let mut remote = MemTree::new(ProviderType::WebDAV, &["/root/kept"]);
+        assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+            .await
+            .unwrap());
+        assert!(!provider_receipt_is_file(&mut remote, "/root")
+            .await
+            .unwrap());
+        remote.unpublished.insert("/root/kept".into());
+        assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+            .await
+            .is_err());
     }
 
     #[tokio::test]

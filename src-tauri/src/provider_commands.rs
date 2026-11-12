@@ -344,6 +344,29 @@ impl ProviderState {
         Ok(pin)
     }
 
+    /// A persisted baseline is published only by the connection and login
+    /// that captured its plan. The caller keeps the pin through blocking I/O.
+    pub(crate) async fn pin_gui_index_owner(
+        &self,
+        expected: Option<u64>,
+        binding: Option<&str>,
+        is_provider: bool,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let pin = self.pin_gui_local_target(expected, is_provider).await?;
+        if expected.is_some() || binding.is_some() {
+            let binding = binding.ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+            if expected.is_none()
+                || !crate::sync_owner::bindings_match(
+                    &self.gui_owner_binding(is_provider).await?,
+                    binding,
+                )
+            {
+                return Err(ProviderError::TargetChanged.to_string());
+            }
+        }
+        Ok(pin)
+    }
+
     fn validate_gui_owner(&self) -> Result<(), String> {
         let owner = self
             .gui_owner_context
@@ -360,15 +383,21 @@ impl ProviderState {
         &self,
         owner: crate::sync_owner::GuiOwnerContext,
         binding: Option<String>,
-    ) {
-        *self
-            .gui_owner_context
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = Some(owner);
-        *self
-            .legacy_owner_binding
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = binding;
+    ) -> Result<(), String> {
+        let validated = owner.clone();
+        crate::credential_store::off_async_worker(|| {
+            validated.with_current(|| {
+                *self
+                    .gui_owner_context
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(owner);
+                *self
+                    .legacy_owner_binding
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = binding;
+                Ok(())
+            })
+        })
     }
 
     pub(crate) fn clear_legacy_gui_owner(&self) {
@@ -2239,30 +2268,50 @@ async fn install_connected_provider_with_owner(
             );
         }
     }
-    *state
-        .gui_owner_context
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = owner;
-    *state
-        .legacy_owner_binding
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = None;
-    *prov_lock = Some(provider);
-    *state
-        .connected_profile_id
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = profile_id;
-    state.active_crypt_overlay.store(false, Ordering::SeqCst);
-    state.overlay_wrapped.store(false, Ordering::SeqCst);
-    // A new connection occupies the slot: the previous connection's cached
-    // overlay keys must never re-arm onto it. Bump generation + zeroize while
-    // still holding the provider lock, so a concurrent re-arm is serialized out.
-    state.invalidate_overlay_key_cache();
-    // The config always describes the provider in the slot. An install without
-    // one (OAuth, 4shared) clears
-    // the previous connection's, which the liveness probe would otherwise
-    // compare against the new provider.
-    *state.config.lock().await = config;
+    let mut config_lock = state.config.lock().await;
+    let validated_owner = owner.clone();
+    let mut candidate = Some(provider);
+    let publish = || {
+        *state
+            .gui_owner_context
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = owner;
+        *state
+            .legacy_owner_binding
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        *prov_lock = candidate.take();
+        *state
+            .connected_profile_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = profile_id;
+        state.active_crypt_overlay.store(false, Ordering::SeqCst);
+        state.overlay_wrapped.store(false, Ordering::SeqCst);
+        // A new connection occupies the slot: the previous connection's cached
+        // overlay keys must never re-arm onto it. Bump generation + zeroize while
+        // still holding the provider lock, so a concurrent re-arm is serialized out.
+        state.invalidate_overlay_key_cache();
+        // The config always describes the provider in the slot. An install without
+        // one (OAuth, 4shared) clears
+        // the previous connection's, which the liveness probe would otherwise
+        // compare against the new provider.
+        *config_lock = config;
+        Ok(())
+    };
+    let result = if let Some(owner) = validated_owner {
+        crate::credential_store::off_async_worker(|| owner.with_current(publish))
+    } else {
+        publish()
+    };
+    if let Err(error) = result {
+        drop(config_lock);
+        drop(prov_lock);
+        if let Some(mut candidate) = candidate {
+            let _ = tokio::time::timeout(Duration::from_secs(2), candidate.disconnect()).await;
+        }
+        return Err(error);
+    }
+
     Ok(())
 }
 
@@ -22290,6 +22339,30 @@ mod overlay_activation_discard_tests {
 #[cfg(test)]
 mod restored_transfer_owner_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn index_owner_pin_refuses_another_binding_on_the_same_epoch() {
+        let state = state_with_profile();
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+        let binding = state.gui_owner_binding(false).await.unwrap();
+        drop(
+            state
+                .pin_gui_index_owner(Some(epoch), Some(&binding), false)
+                .await
+                .unwrap(),
+        );
+        *state.legacy_owner_binding.lock().unwrap() =
+            Some(crate::sync_owner::epoch_binding("replacement-owner", epoch));
+        assert!(state
+            .pin_gui_index_owner(Some(epoch), Some(&binding), false)
+            .await
+            .is_err());
+        assert!(state
+            .pin_gui_index_owner(Some(epoch), None, false)
+            .await
+            .is_err());
+    }
+
     use crate::providers::edit_replace_tests::EditFake;
 
     fn state_with_profile() -> ProviderState {

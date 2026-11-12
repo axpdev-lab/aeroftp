@@ -261,7 +261,7 @@ export function fixture(options: Options = {}) {
       config: { maxRetriesPerFile: 0 }, getRetryDelay: () => 0,
     },
     RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
-    retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
+    retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), holdFileCompletions: () => () => undefined, withTransferRun,
     QueuedTargetChangedError,
     remoteConnectPhaseRef: { current: false as false | 'connect' | 'switch' },
     backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },

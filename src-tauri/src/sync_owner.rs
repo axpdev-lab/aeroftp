@@ -40,6 +40,18 @@ impl GuiOwnerContext {
         Ok(())
     }
 
+    pub(crate) fn with_current<T>(
+        &self,
+        publish: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        crate::user_partitions::with_gui_account_snapshot(&self.account_snapshot, || {
+            if self.vault_generation != CredentialStore::cache_generation() {
+                return Err(changed());
+            }
+            publish()
+        })
+    }
+
     pub(crate) fn user(&self) -> Option<i64> {
         self.user
     }

@@ -197,10 +197,17 @@ impl TransferError {
             ProviderError::ConnectionLost(_) => TransferErrorKind::ConnectionReset,
             ProviderError::ConnectionFailed(s) => classify_raw_message(s),
             ProviderError::NetworkError(s) => classify_network_message(s),
+            ProviderError::ServerError(s) => {
+                let classified = classify_raw_message(s);
+                if classified == TransferErrorKind::TargetChanged {
+                    TransferErrorKind::RemoteIo
+                } else {
+                    classified
+                }
+            }
             ProviderError::TransferFailed(s)
             | ProviderError::ParallelRefused(s)
             | ProviderError::PinRefused(s)
-            | ProviderError::ServerError(s)
             | ProviderError::Other(s)
             | ProviderError::Unknown(s) => classify_raw_message(s),
         };
@@ -427,6 +434,7 @@ mod tests {
         for error in [
             ProviderError::NotFound("/remote/CONNECTION_CHANGED.txt".into()),
             ProviderError::ServerError("remote note CONNECTION_CHANGED.txt".into()),
+            ProviderError::ServerError("CONNECTION_CHANGED: server supplied text".into()),
         ] {
             assert_ne!(
                 TransferError::from_provider(&error).kind,

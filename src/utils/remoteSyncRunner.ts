@@ -473,7 +473,7 @@ const runSync = async (
     let checkpointError: Error | null = null;
     let transferTimedOut = false;
     const remoteCommands = new Set([
-        'provider_gui_verify_resume_owner', 'reset_cancel_flag', 'set_speed_limit', 'provider_set_speed_limit', 'provider_bulk_support',
+        'load_sync_index_cmd', 'save_sync_index_cmd', 'provider_gui_verify_resume_owner', 'reset_cancel_flag', 'set_speed_limit', 'provider_set_speed_limit', 'provider_bulk_support',
         'provider_sync_transfer_bulk', 'provider_mkdir', 'create_remote_folder',
         'provider_upload_file', 'provider_download_file', 'upload_file', 'download_file',
         'provider_delete_file', 'delete_remote_file', 'sync_backup_archive_remote',
@@ -484,7 +484,7 @@ const runSync = async (
     const assertTarget = () => {
         if (targetError) throw targetError;
         try { deps.remoteTarget?.assertCurrent(); }
-        catch (error) { targetError = error; throw error; }
+        catch { targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again'); throw targetError; }
     };
     const invoke: RemoteSyncDeps['invoke'] = async (cmd, args) => {
         if (config.isLocalLocal || (!remoteCommands.has(cmd) && !localMutations.has(cmd))) return deps.invoke(cmd, args);
@@ -494,11 +494,14 @@ const runSync = async (
         const guardedArgs = params
             ? { ...args, params: { ...(args?.params as Record<string, unknown>), expected_gui_target: epoch } }
             : { ...args, expectedGuiTarget: epoch, ...(localMutations.has(cmd) ? { isProvider: config.isProvider } : {}) };
+        if (cmd === 'load_sync_index_cmd' || cmd === 'save_sync_index_cmd') {
+            Object.assign(guardedArgs, { ownerBinding: deps.remoteTarget!.ownerBinding, isProvider: config.isProvider });
+        }
         try {
             return await deps.invoke(cmd, guardedArgs);
         } catch (error) {
-            if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) {
-                targetError = error;
+            if (error instanceof QueuedTargetChangedError) {
+                targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
             }
             throw error;
         }
@@ -578,8 +581,8 @@ const runSync = async (
                     filePath,
                 }).catch(() => ({
                     kind: 'unknown' as SyncErrorKind,
-                    message: rawMsg,
-                    retryable: true,
+                    message: 'Transfer failed; compare again before retrying',
+                    retryable: false,
                     file_path: filePath,
                 }));
 
@@ -1709,6 +1712,7 @@ const runSync = async (
                 remotePath: remoteBase,
                 profileId: config.profileId ?? null,
             });
+            assertTarget();
             const mergedFiles: Record<string, SyncIndexEntry> = {
                 ...(existing?.files ?? {}),
             };

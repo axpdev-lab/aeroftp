@@ -3589,7 +3589,10 @@ async fn connect_ftp_inner(
         let _ = ftp_manager.disconnect().await;
         return Err(error);
     }
-    provider_state.set_legacy_gui_owner(owner, binding);
+    if let Err(error) = provider_state.set_legacy_gui_owner(owner, binding) {
+        let _ = ftp_manager.disconnect().await;
+        return Err(error);
+    }
     Ok(())
 }
 
@@ -14157,10 +14160,21 @@ async fn get_remote_files_recursive_with_progress(
 
 #[tauri::command]
 async fn load_sync_index_cmd(
+    provider_state: State<'_, provider_commands::ProviderState>,
     local_path: String,
     remote_path: String,
     profile_id: Option<String>,
+    expected_gui_target: Option<u64>,
+    owner_binding: Option<String>,
+    is_provider: Option<bool>,
 ) -> Result<Option<SyncIndex>, String> {
+    let _pin = provider_state
+        .pin_gui_index_owner(
+            expected_gui_target,
+            owner_binding.as_deref(),
+            is_provider.unwrap_or(false),
+        )
+        .await?;
     tokio::task::spawn_blocking(move || {
         load_sync_index_cmd_blocking(local_path, remote_path, profile_id)
     })
@@ -14183,9 +14197,20 @@ fn load_sync_index_cmd_blocking(
 
 #[tauri::command]
 async fn save_sync_index_cmd(
+    provider_state: State<'_, provider_commands::ProviderState>,
     index: SyncIndex,
     intent_tokens: Option<Vec<String>>,
+    expected_gui_target: Option<u64>,
+    owner_binding: Option<String>,
+    is_provider: Option<bool>,
 ) -> Result<(), String> {
+    let _pin = provider_state
+        .pin_gui_index_owner(
+            expected_gui_target,
+            owner_binding.as_deref(),
+            is_provider.unwrap_or(false),
+        )
+        .await?;
     tokio::task::spawn_blocking(move || {
         if let Some(tokens) = intent_tokens {
             validate_path(&index.local_path)?;
@@ -16787,17 +16812,20 @@ async fn sync_backup_verify_receipt(
         }
         "provider" => {
             let mut lock = provider_state.provider.lock().await;
-            lock.as_mut()
-                .ok_or("Not connected to any provider")?
-                .exists(&receipt)
-                .await
-                .map_err(|e| e.to_string())
+            sync_backup::provider_receipt_is_file(
+                lock.as_mut()
+                    .ok_or("Not connected to any provider")?
+                    .as_mut(),
+                &receipt,
+            )
+            .await
+            .map_err(|e| e.to_string())
         }
         "ftp" => app_state
             .ftp_manager
             .lock()
             .await
-            .exists(&receipt)
+            .receipt_is_file(&receipt)
             .await
             .map_err(|e| e.to_string()),
         _ => Err("Invalid backup receipt target".to_string()),

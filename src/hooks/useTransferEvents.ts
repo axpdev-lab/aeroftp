@@ -106,6 +106,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
   // Correlation maps between backend transfer IDs and frontend UI elements
   const transferIdToQueueId = useRef<Map<string, string>>(new Map());
+  const completionHolds = useRef(new Set<string>());
   const transferIdToLogId = useRef<Map<string, string>>(new Map());
   const pendingFileLogIds = useRef<Map<string, string>>(new Map());
   const pendingDeleteLogIds = useRef<Map<string, string>>(new Map());
@@ -175,6 +176,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       }
 
       return null;
+    };
+
+    const completeQueueRow = (id: string) => {
+      if (!completionHolds.current.has(id)) optRef.current.transferQueue.completeTransfer(id);
     };
 
     const cleanupTrackedTransferEntries = (
@@ -616,7 +621,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
         if (trackedQueue) {
-          transferQueue.completeTransfer(trackedQueue.value);
+          if (!completionHolds.current.has(trackedQueue.value)) completeQueueRow(trackedQueue.value);
           transferIdToQueueId.current.delete(trackedQueue.key);
         }
         transferIdToQueueId.current.delete(data.transfer_id);
@@ -686,12 +691,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // and leaving the original transfer running.
         const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
         if (trackedQueue) {
-          transferQueue.completeTransfer(trackedQueue.value);
+          completeQueueRow(trackedQueue.value);
           transferIdToQueueId.current.delete(trackedQueue.key);
         } else {
           const skipDirection = data.direction === 'upload' ? 'upload' : 'download';
           const skipQueueId = transferQueue.addItem(data.filename, data.path || '', 0, skipDirection);
-          transferQueue.completeTransfer(skipQueueId);
+          completeQueueRow(skipQueueId);
         }
         transferIdToQueueId.current.delete(data.transfer_id);
         const existingLane = toastLanesRef.current.get(data.transfer_id);
@@ -838,12 +843,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         const queueId = transferIdToQueueId.current.get(data.transfer_id);
         if (queueId) {
-          transferQueue.completeTransfer(queueId);
+          completeQueueRow(queueId);
           transferIdToQueueId.current.delete(data.transfer_id);
         }
         cleanupTrackedTransferEntries(
           data.transfer_id,
-          (orphanQueueId) => transferQueue.completeTransfer(orphanQueueId),
+          (orphanQueueId) => completeQueueRow(orphanQueueId),
           (orphanLogId) => activityLog.updateEntry(orphanLogId, { status: 'success', message: formattedMessage })
         );
 
@@ -1076,5 +1081,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
     });
   }, []);
 
-  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows };
+  // Payload completion is not final when a caller still owes a privacy
+  // update. Its command result owns final success/failure for these rows.
+  const holdFileCompletions = useCallback((ids: readonly string[]) => {
+    ids.forEach(id => completionHolds.current.add(id));
+    return () => { ids.forEach(id => completionHolds.current.delete(id)); };
+  }, []);
+
+  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows, holdFileCompletions };
 }

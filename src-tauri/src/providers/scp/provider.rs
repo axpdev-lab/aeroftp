@@ -64,6 +64,7 @@ pub struct ScpProvider {
     /// SCP mode: that provider dials, reconnects and disconnects it.
     owns_connection: bool,
     private_key: Arc<std::sync::OnceLock<Arc<russh::keys::PrivateKey>>>,
+    auth_method: Arc<std::sync::OnceLock<super::super::sftp::SshAuthMethod>>,
     home_dir: String,
     current_dir: String,
     /// The accepted host key's SHA-256, filled during the handshake.
@@ -89,6 +90,7 @@ impl ScpProvider {
             session: None,
             owns_connection: true,
             private_key: Arc::default(),
+            auth_method: Arc::default(),
             home_dir: "/".to_string(),
             current_dir: "/".to_string(),
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
@@ -417,6 +419,7 @@ impl StorageProvider for ScpProvider {
             false,
             self.host_key_sha256_hex.clone(),
             self.private_key.clone(),
+            self.auth_method.clone(),
         )
         .await?;
         self.start(Arc::new(TokioMutex::new(handle))).await
@@ -923,6 +926,7 @@ impl StorageProvider for ScpProvider {
             session: Some(session.worker()),
             owns_connection: false,
             private_key: self.private_key.clone(),
+            auth_method: self.auth_method.clone(),
             home_dir: self.home_dir.clone(),
             current_dir: self.current_dir.clone(),
             host_key_sha256_hex: self.host_key_sha256_hex.clone(),

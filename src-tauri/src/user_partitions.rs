@@ -601,6 +601,35 @@ pub(crate) fn gui_account_snapshot() -> Result<GuiAccountSnapshot, String> {
     gui_account_snapshot_from(&open_or_init_cli()?)
 }
 
+pub(crate) fn with_gui_account_snapshot<T>(
+    expected: &GuiAccountSnapshot,
+    publish: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let mut conn = open_or_init_cli()?;
+    let lock = ProfileListLock::acquire(&conn)?;
+    if lock.as_ref().is_some_and(|lock| !lock.is_exclusive()) {
+        return Err(NO_FILE_LOCKS.into());
+    }
+    let _session = hold_session()?;
+    with_gui_account_snapshot_in(&mut conn, expected, publish)
+}
+
+fn with_gui_account_snapshot_in<T>(
+    conn: &mut Connection,
+    expected: &GuiAccountSnapshot,
+    publish: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    if &gui_account_snapshot_from(&tx)? != expected {
+        return Err(ACCOUNT_CHANGED.into());
+    }
+    // No await inside publish: session, active-account row and publication
+    // are one critical section, including other desktop/CLI processes.
+    publish()
+}
+
 fn gui_account_snapshot_from(conn: &Connection) -> Result<GuiAccountSnapshot, String> {
     let row = conn.query_row(
         "SELECT s.value, s.updated_at, COALESCE(u.dek_verifier, X''), COALESCE(u.has_passphrase, 0)
@@ -1790,7 +1819,7 @@ thread_local! {
 }
 
 /// Whether a failed lock says the filesystem has no file locks at all.
-fn file_locks_unavailable(error: &std::io::Error) -> bool {
+pub(crate) fn file_locks_unavailable(error: &std::io::Error) -> bool {
     #[cfg(unix)]
     if error.raw_os_error() == Some(libc::ENOLCK) {
         return true;
@@ -7850,6 +7879,38 @@ mod tests {
         )
         .unwrap();
         assert!(before != gui_account_snapshot_from(&conn).unwrap());
+    }
+
+    #[test]
+    fn gui_owner_changed_during_drain_cannot_publish_a_connection() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO global_state(key,value,updated_at) VALUES(?1,'1',1)",
+            [ACTIVE_USER_KEY],
+        )
+        .unwrap();
+        let before = gui_account_snapshot_from(&conn).unwrap();
+        // Account selection changed while the asynchronous drain was away.
+        conn.execute(
+            "UPDATE global_state SET value='2',updated_at=2 WHERE key=?1",
+            [ACTIVE_USER_KEY],
+        )
+        .unwrap();
+        let published = std::cell::Cell::new(false);
+        assert!(with_gui_account_snapshot_in(&mut conn, &before, || {
+            published.set(true);
+            Ok(())
+        })
+        .is_err());
+        assert!(!published.get());
+        let current = gui_account_snapshot_from(&conn).unwrap();
+        with_gui_account_snapshot_in(&mut conn, &current, || {
+            published.set(true);
+            Ok(())
+        })
+        .unwrap();
+        assert!(published.get());
     }
 
     #[test]
