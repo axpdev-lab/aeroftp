@@ -3206,6 +3206,7 @@ mod tests {
         );
         for (rel, action) in paths {
             journal.entries.push(SyncJournalEntry {
+                intent_token: None,
                 overwrites_existing: None,
                 archive_state: None,
                 archive_receipt: None,

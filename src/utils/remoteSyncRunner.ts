@@ -429,7 +429,14 @@ const runSync = async (
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => {
     const resumeEntries = new Map(deps.resumeJournal?.entries.map(entry => [entry.relative_path, entry] as const));
+    const intentKey = (entry: { baseline_key?: string | null; relative_path: string }) =>
+        (entry.baseline_key ?? entry.relative_path).normalize('NFC');
+    const observedIntents = await deps.invoke<Record<string,string> | undefined>('sync_intent_snapshot_cmd', {
+        localPath: stripTrailingSlash(config.localRoot), remotePath: stripTrailingSlash(config.remoteRoot),
+    }) ?? {};
+
     if (deps.resumeJournal && (deps.resumeJournal.resume_safe !== true
+        || deps.resumeJournal.intent_protocol !== 1
         || (!config.isLocalLocal && !deps.resumeJournal.owner_binding)
         || (!config.isLocalLocal && ((deps.resumeJournal.profile_id ?? null) !== (config.profileId ?? null)))
         || (deps.resumeJournal.backup_dir ?? null) !== (config.versionedBackup?.dir ?? null)
@@ -447,7 +454,8 @@ const runSync = async (
             // must protect intervening source/destination edits before repair
             // or sidecar generation can write anything.
             || entry.status === 'in_progress'
-            || (entry.status === 'transferred' && deps.resumeJournal?.ec_enabled === true)
+            || (entry.status === 'transferred' && (deps.resumeJournal?.ec_enabled === true || entry.action === 'download'))
+            || (entry.status !== 'completed' && (entry.intent_token ?? null) !== (observedIntents[intentKey(entry)] ?? null))
             || (entry.archive_state === 'archived' && (!entry.archive_receipt || !deps.resumeJournal?.backup_stamp))
             || (entry.status !== 'completed' && entry.action !== 'upload' && entry.action !== 'download')
             || (!!deps.resumeJournal?.backup_dir && entry.overwrites_existing == null))
@@ -790,6 +798,7 @@ const runSync = async (
         remote_path: remoteBase,
         ...(config.profileId ? { profile_id: config.profileId } : {}),
         resume_safe: true,
+        intent_protocol: 1,
         ...(!config.isLocalLocal ? { owner_binding: deps.remoteTarget!.ownerBinding } : {}),
         backup_dir: config.versionedBackup?.dir ?? null,
         backup_stamp: null,
@@ -803,6 +812,7 @@ const runSync = async (
         verify_policy: config.verifyPolicy,
         entries: files.map<SyncJournalEntry>((f) => ({
             relative_path: f.relativePath,
+            intent_token: observedIntents[(f.baselineKey ?? f.relativePath).normalize('NFC')] ?? null,
             overwrites_existing: f.overwritesExisting ?? false,
             source_size: f.size,
             source_mtime: f.mtime,
@@ -854,6 +864,22 @@ const runSync = async (
     };
     journal.entries.forEach((entry, idx) => journalEntryMap.set(entry.relative_path, idx));
 
+    const beginIntents = async (entries: SyncJournalEntry[]): Promise<void> => {
+        try {
+            const tokens = await invoke<string[]>('sync_intent_begin_cmd', {
+                localPath: localBase, remotePath: remoteBase, paths: entries.map(intentKey),
+            });
+            if (!Array.isArray(tokens) || tokens.length !== entries.length || tokens.some(token => typeof token !== 'string' || !token)) {
+                throw new Error('Invalid durable sync intent response');
+            }
+            entries.forEach((entry,index) => { entry.intent_token=tokens[index]; });
+        } catch (error) {
+            checkpointError = new Error(`SYNC_RESUME_NEEDS_COMPARE: intent failed: ${String(error)}`);
+            journal.resume_safe = false;
+            throw checkpointError;
+        }
+    };
+
     // GAP-9a — Maniac mode disables journal persistence. The in-memory
     // `journal` object is still maintained (it backs the sync-index merge);
     // only the `save_sync_journal_cmd` round-trips are skipped.
@@ -865,7 +891,13 @@ const runSync = async (
     // Unlike routine progress, archive and acknowledgement checkpoints must persist before
     // another phase can act on the destination.
     const saveRequiredCheckpoint = async (): Promise<void> => {
-        if (journalEnabled) await invoke('save_sync_journal_cmd', { journal });
+        if (!journalEnabled) return;
+        try { await invoke('save_sync_journal_cmd', { journal }); }
+        catch (error) {
+            checkpointError = new Error(`SYNC_RESUME_NEEDS_COMPARE: checkpoint failed: ${String(error)}`);
+            journal.resume_safe = false;
+            throw checkpointError;
+        }
     };
     await saveJournal();
 
@@ -959,6 +991,7 @@ const runSync = async (
             return;
         }
         const send: SyncRunFile[] = [];
+        await beginIntents(group.map(file => journal.entries[journalEntryMap.get(file.relativePath)!]));
         for (const f of group) {
             // A Stop during the preparation leaves the files not prepared yet
             // as they are: nothing moved into the backup folder, nothing
@@ -971,7 +1004,7 @@ const runSync = async (
                 try {
                     await archiveBeforeMutation(action === 'upload' ? 'remote' : 'local', f.relativePath, !f.overwritesExisting);
                 } catch (error) {
-                    if (targetError) throw error;
+                    if (targetError || checkpointError) throw error;
                     bulkPrepared.set(f.relativePath, { status: 'backup_failed', error });
                     continue;
                 }
@@ -1221,7 +1254,7 @@ const runSync = async (
         if (transferAcknowledged && journalEntry?.uploaded_at) uploadsEnded.set(item.relativePath, journalEntry.uploaded_at);
         if (!transferAcknowledged && bulkEligible(item) && !bulkPrepared.has(item.relativePath)
             && !(config.transferBudget > 0 && totalBytes >= config.transferBudget) && !isCancelled()) {
-            try { await runBulkGroup(i); } catch (error) { if (!targetError) throw error; }
+            try { await runBulkGroup(i); } catch (error) { if (!targetError && !checkpointError) throw error; }
             if (!targetError) { try { assertTarget(); } catch { /* acknowledgements are already durable */ } }
             if (targetError || checkpointError) { i--; continue; }
         }
@@ -1247,6 +1280,11 @@ const runSync = async (
 
         setStatus(item.relativePath, 'syncing');
         if (journalEntry && !transferAcknowledged) journalEntry.status = 'in_progress';
+        if (!sentByBulk && !transferAcknowledged && journalEntry && (item.action === 'upload' || item.action === 'download')) {
+            try { await beginIntents([journalEntry]); }
+            catch { i--; continue; }
+        }
+
 
         // GAP-7: for a keep-both rename the source side differs from the
         // destination. `relativePath` is always the destination; `sourcePath`
@@ -1271,6 +1309,7 @@ const runSync = async (
                 try {
                     await archiveBeforeMutation('remote', item.relativePath, !item.overwritesExisting);
                 } catch (e) {
+                    if (checkpointError) { i--; continue; }
                     failBackup(item, journalEntry, e);
                     completed++;
                     callbacks.onProgress?.(completed, files.length);
@@ -1361,6 +1400,7 @@ const runSync = async (
                 try {
                     await archiveBeforeMutation('local', item.relativePath, !item.overwritesExisting);
                 } catch (e) {
+                    if (checkpointError) { i--; continue; }
                     failBackup(item, journalEntry, e);
                     completed++;
                     callbacks.onProgress?.(completed, files.length);
@@ -1519,6 +1559,7 @@ const runSync = async (
                 try {
                     await archiveBeforeMutation(item.action === 'delete-remote' ? 'remote' : 'local', item.relativePath);
                 } catch (e) {
+                    if (checkpointError) { i--; continue; }
                     failBackup(item, journalEntry, e);
                     completed++;
                     callbacks.onProgress?.(completed, files.length);
@@ -1762,7 +1803,7 @@ const runSync = async (
                 files: mergedFiles,
                 ...(Object.keys(spellings).length > 0 ? { remote_spellings: spellings } : {}),
             };
-            await invoke('save_sync_index_cmd', { index });
+            await invoke('save_sync_index_cmd', { index, intentTokens: journal.entries.filter(entry => entry.status === 'completed' && entry.intent_token).map(entry => entry.intent_token!) });
         } catch {
             // Index is an optimisation; never let it break the run.
         }

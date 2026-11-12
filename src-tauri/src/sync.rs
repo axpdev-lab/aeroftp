@@ -3447,6 +3447,12 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
     let mut index: SyncIndex =
         serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync index: {}", e))?;
     migrate_sync_index(&mut index);
+    let conn = intent_connection()?;
+    let pair = index_filename(local_path, remote_path);
+    if let Some(journal) = load_sync_journal(local_path, remote_path)? {
+        import_archive_intents(&conn, &pair, &journal)?;
+    }
+    fence_index(&mut index, &pending_intents_in(&conn, &pair)?);
     Ok(Some(index))
 }
 
@@ -3494,12 +3500,168 @@ pub(crate) fn remove_sync_index(local_path: &str, remote_path: &str) {
 
 /// Save a sync index for a given path pair
 pub fn save_sync_index(index: &SyncIndex) -> Result<(), String> {
-    let dir = sync_index_dir()?;
-    let path = dir.join(index_filename(&index.local_path, &index.remote_path));
-    let data = serde_json::to_string(index)
-        .map_err(|e| format!("Failed to serialize sync index: {}", e))?;
-    atomic_write(&path, data.as_bytes())?;
+    save_sync_index_with_intents(index, &[])
+}
+
+// Compact durable intent fences. Unlike rewriting a whole N-entry journal
+// before each file, one SQLite row costs O(1). A fence outlives a crash and
+// suppresses deletion authority until that exact attempt commits its index.
+fn intent_connection() -> Result<rusqlite::Connection, String> {
+    intent_connection_in(&sync_index_dir()?.join("transfer-intents.sqlite3"))
+}
+
+fn intent_connection_in(path: &Path) -> Result<rusqlite::Connection, String> {
+    let conn = rusqlite::Connection::open(path).map_err(|e| e.to_string())?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+        CREATE TABLE IF NOT EXISTS intents(pair TEXT NOT NULL, path TEXT NOT NULL,
+        token TEXT NOT NULL, active INTEGER NOT NULL, PRIMARY KEY(pair,path));
+        CREATE INDEX IF NOT EXISTS intent_token_lookup ON intents(pair,token);",
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(conn)
+}
+
+fn import_archive_intents(
+    conn: &rusqlite::Connection,
+    pair: &str,
+    journal: &SyncJournal,
+) -> Result<(), String> {
+    if !journal.completed {
+        for entry in journal
+            .entries
+            .iter()
+            .filter(|e| e.status != JournalEntryStatus::Completed && e.archive_state.is_some())
+        {
+            let key = nfc_path(
+                entry
+                    .baseline_key
+                    .as_deref()
+                    .unwrap_or(&entry.relative_path),
+            );
+            // Never supersede a newer live attempt while importing legacy safety.
+            conn.execute(
+                "INSERT OR IGNORE INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)",
+                rusqlite::params![pair, key, uuid::Uuid::new_v4().to_string()],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
+}
+
+fn begin_intents_in(
+    conn: &mut rusqlite::Connection,
+    pair: &str,
+    paths: &[String],
+) -> Result<Vec<String>, String> {
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    let mut tokens = Vec::with_capacity(paths.len());
+    for path in paths {
+        let token = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)
+            ON CONFLICT(pair,path) DO UPDATE SET token=excluded.token,active=1",
+            rusqlite::params![pair, nfc_path(path), token],
+        )
+        .map_err(|e| e.to_string())?;
+        tokens.push(token);
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(tokens)
+}
+
+pub fn begin_sync_intents(
+    local: &str,
+    remote: &str,
+    paths: &[String],
+) -> Result<Vec<String>, String> {
+    begin_intents_in(
+        &mut intent_connection()?,
+        &index_filename(local, remote),
+        paths,
+    )
+}
+
+fn pending_intents_in(
+    conn: &rusqlite::Connection,
+    pair: &str,
+) -> Result<HashMap<String, String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT path,token FROM intents WHERE pair=?1 AND active=1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([pair], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn snapshot_sync_intents(local: &str, remote: &str) -> Result<HashMap<String, String>, String> {
+    let conn = intent_connection()?;
+    let mut stmt = conn
+        .prepare("SELECT path,token FROM intents WHERE pair=?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([index_filename(local, remote)], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+fn fence_index(index: &mut SyncIndex, pending: &HashMap<String, String>) {
+    index.unverified_keys.extend(
+        index
+            .files
+            .keys()
+            .filter(|key| pending.contains_key(&nfc_path(key)))
+            .cloned(),
+    );
+}
+
+fn save_index_with_intents_in(
+    conn: &mut rusqlite::Connection,
+    path: &Path,
+    index: &SyncIndex,
+    tokens: &[String],
+) -> Result<(), String> {
+    let pair = index_filename(&index.local_path, &index.remote_path);
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    for token in tokens {
+        let found: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM intents WHERE pair=?1 AND token=?2)",
+                rusqlite::params![pair, token],
+                |row| row.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !found {
+            return Err("Sync intent was superseded; compare again".into());
+        }
+    }
+    let data = serde_json::to_vec(index).map_err(|e| e.to_string())?;
+    atomic_write(path, &data)?;
+    for token in tokens {
+        tx.execute(
+            "UPDATE intents SET active=0 WHERE pair=?1 AND token=?2",
+            rusqlite::params![pair, token],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+pub fn save_sync_index_with_intents(index: &SyncIndex, tokens: &[String]) -> Result<(), String> {
+    let path = sync_index_dir()?.join(index_filename(&index.local_path, &index.remote_path));
+    save_index_with_intents_in(&mut intent_connection()?, &path, index, tokens)
 }
 
 /// Bytes at stake for one classified path: the larger side, directories zero.
@@ -5046,6 +5208,9 @@ pub enum JournalEntryStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncJournalEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent_token: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_path: Option<String>,
@@ -5086,6 +5251,9 @@ pub struct SyncJournalEntry {
 /// Persistent transfer journal for checkpoint/resume
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncJournal {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent_protocol: Option<u8>,
+
     /// Unique journal ID
     pub id: String,
     /// When the journal was created
@@ -5140,6 +5308,7 @@ impl SyncJournal {
         verify_policy: VerifyPolicy,
     ) -> Self {
         Self {
+            intent_protocol: None,
             id: uuid::Uuid::new_v4().to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -8641,6 +8810,7 @@ mod tests {
         journal.remote_dirs = Some(vec!["empty".into()]);
         journal.local_dirs = Some(vec!["local-empty".into()]);
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
             baseline_key: None,
             source_path: None,
             relative_path: "one".into(),
@@ -8695,6 +8865,7 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
             overwrites_existing: None,
             archive_state: None,
             archive_receipt: None,
@@ -8752,6 +8923,7 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
             overwrites_existing: None,
             archive_state: None,
             archive_receipt: None,
@@ -8773,6 +8945,7 @@ mod tests {
             uploaded_at: None,
         });
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
             overwrites_existing: None,
             archive_state: None,
             archive_receipt: None,
@@ -11237,5 +11410,144 @@ mod profile_history_tests {
         // What the other profile's index would do, and what this one does.
         assert_eq!(decide(theirs.as_ref()), SyncAction::DeleteLocal);
         assert_eq!(decide(ours.as_ref()), SyncAction::Upload);
+    }
+}
+
+#[cfg(test)]
+mod sync_intent_tests {
+    use super::*;
+
+    #[test]
+    fn archived_destination_loses_delete_authority_across_restart_and_stale_index_saves() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("local");
+        let remote = dir.path().join("remote");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::create_dir_all(&remote).unwrap();
+        std::fs::write(local.join("one"), b"live source").unwrap();
+        std::fs::write(remote.join("one"), b"old destination").unwrap();
+        let mut index = SyncIndex::new(
+            local.to_string_lossy().into_owned(),
+            remote.to_string_lossy().into_owned(),
+        );
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 11,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let nfc = HashMap::from([("one".to_string(), vec!["one"])]);
+        assert!(trusted_baseline_key(&index, &nfc, "one", "one").is_some());
+        let db = dir.path().join("intents.db");
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        let mut conn = intent_connection_in(&db).unwrap();
+        let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        // The fence commits BEFORE archive moves the live destination.
+        let receipt = crate::sync_backup::archive_local(
+            &remote,
+            &crate::sync_backup::BackupDir::parse(".v").unwrap(),
+            "stamp",
+            "one",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!remote.join("one").exists());
+        assert!(receipt.exists());
+        drop(conn);
+        let mut conn = intent_connection_in(&db).unwrap();
+        let index_path = dir.path().join("index.json");
+        // Even an old writer with no intent tokens cannot remove the fence.
+        save_index_with_intents_in(&mut conn, &index_path, &index, &[]).unwrap();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let previously_synced = trusted_baseline_key(&index, &nfc, "one", "one").is_some();
+        assert!(!previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &SyncStatus::LocalOnly,
+                &CompareDirection::Bidirectional,
+                previously_synced,
+                false
+            ),
+            SyncAction::Upload
+        );
+        assert_eq!(
+            decide_sync_action(
+                &SyncStatus::RemoteOnly,
+                &CompareDirection::Bidirectional,
+                previously_synced,
+                false
+            ),
+            SyncAction::Download
+        );
+        assert_eq!(std::fs::read(local.join("one")).unwrap(), b"live source");
+        // A verified fresh transfer and its index retire this exact fence.
+        std::fs::copy(local.join("one"), remote.join("one")).unwrap();
+        save_index_with_intents_in(&mut conn, &index_path, &index, &tokens).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    #[test]
+    fn legacy_archive_intent_is_imported_before_a_fresh_compare() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intent.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 1,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        let journal:SyncJournal=serde_json::from_value(serde_json::json!({
+            "id":"legacy","created_at":"2026-11-11T00:00:00Z","updated_at":"2026-11-11T00:00:00Z",
+            "local_path":"/local","remote_path":"/remote","direction":"bidirectional",
+            "retry_policy":RetryPolicy::default(),"verify_policy":"none","completed":false,
+            "entries":[{"relative_path":"one","action":"upload","status":"in_progress",
+                "archive_state":"started","attempts":0,"last_error":null,"verified":null,"bytes_transferred":0}]
+        })).unwrap();
+        import_archive_intents(&conn, &pair, &journal).unwrap();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let nfc = HashMap::from([("one".to_string(), vec!["one"])]);
+        assert!(trusted_baseline_key(&index, &nfc, "one", "one").is_none());
+        let fresh = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &fresh)
+            .unwrap();
+        // A delayed legacy reader must not quarantine a newer verified write.
+        import_archive_intents(&conn, &pair, &journal).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    #[test]
+    fn superseded_attempt_cannot_publish_its_old_index_or_retire_a_newer_fence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let a = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        let b = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        assert!(save_index_with_intents_in(&mut conn, &path, &index, &a).is_err());
+        assert_eq!(pending_intents_in(&conn, &pair).unwrap()["one"], b[0]);
+        index.last_sync = Utc::now();
+        save_index_with_intents_in(&mut conn, &path, &index, &b).unwrap();
+        let committed = std::fs::read(&path).unwrap();
+        // Keep the inactive generation too: an older saved pending journal
+        // cannot mistake B's completed operation for an unattempted file.
+        assert!(save_index_with_intents_in(&mut conn, &path, &index, &a).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), committed);
+        let token: String = conn
+            .query_row(
+                "SELECT token FROM intents WHERE pair=?1 AND path='one'",
+                [pair],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(token, b[0]);
     }
 }

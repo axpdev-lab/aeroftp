@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
 import { runRemoteSync, type RemoteSyncConfig, type SyncRunFile } from './remoteSyncRunner';
 import { QueuedTargetChangedError } from './queuedTarget';
@@ -54,7 +55,7 @@ function harness(trigger: Trigger) {
     return {
         operations, attempts, journal: () => journal,
         deps: {
-            invoke,
+            invoke: wrapIntentInvoke(invoke),
             remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => { if (current !== 'A') throw new QueuedTargetChangedError('target changed'); } },
             delay: async () => { if (trigger === 'retry') current = 'B'; },
             now: () => 0, makeId: () => 'target-test', writeIndex: true,
@@ -207,7 +208,7 @@ it('passes the saved backup and EC policy through the actual resume handler', as
         runConnectedRemoteSync: run, runLocalLocalSync: vi.fn(), filesFromJournal: () => [],
     };
     const resume = new Function(...Object.keys(context), `${code}; return handleResumeJournal;`)(...Object.values(context));
-    resume({ resume_safe: true, entries: [], backup_dir: '.v', ec_enabled: true, ec_pct: 12, ec_max_file_size: 1024 });
+    resume({ resume_safe: true, intent_protocol: 1, entries: [], backup_dir: '.v', ec_enabled: true, ec_pct: 12, ec_max_file_size: 1024 });
     expect(run).toHaveBeenCalledWith([], { remote: [], local: [] }, expect.objectContaining({
         versionedBackup: { dir: '.v' }, errorCorrection: { enabled: true, pct: 12, maxFileSize: 1024 },
     }));
@@ -308,7 +309,7 @@ it('stops on a typed bulk owner change with an unchanged UI and journals confirm
         return undefined as T;
     };
     const report = await runRemoteSync([file('one'), file('two'), file('three')], { remote: [], local: [] }, config(), {}, {
-        invoke, remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => {} }, makeId: () => 'bulk-owner', delay: async () => {},
+        invoke: wrapIntentInvoke(invoke), remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => {} }, makeId: () => 'bulk-owner', delay: async () => {},
     });
     expect(report.cancelled).toBe(true);
     expect(calls.filter(cmd => cmd === 'provider_sync_transfer_bulk')).toHaveLength(1);
@@ -333,7 +334,7 @@ it('validates the backend auth owner before archiving the next download destinat
     };
     const report = await runRemoteSync([file('one', 'download', { overwritesExisting: true }), file('two', 'download', { overwritesExisting: true })],
         { remote: [], local: [] }, config({ versionedBackup: { dir: '.v' } }), {}, {
-            invoke, remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => {} }, makeId: () => 'download-owner', delay: async () => {},
+            invoke: wrapIntentInvoke(invoke), remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => {} }, makeId: () => 'download-owner', delay: async () => {},
         });
     expect(report.cancelled).toBe(true);
     expect(downloads).toHaveLength(1);

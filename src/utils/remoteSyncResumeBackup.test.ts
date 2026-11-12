@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
+import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it } from 'vitest';
 import { filesFromJournal, runRemoteSync, type RemoteSyncConfig, type SyncRunFile } from './remoteSyncRunner';
 import { QueuedTargetChangedError } from './queuedTarget';
@@ -47,7 +48,7 @@ function harness() {
         }
         return undefined as T;
     };
-    const deps = () => ({ invoke, remoteTarget: { ownerBinding: 'test-owner-v1', epoch, assertCurrent: () => {
+    const deps = () => ({ invoke: wrapIntentInvoke(invoke), remoteTarget: { ownerBinding: 'test-owner-v1', epoch, assertCurrent: () => {
         if (current !== 'A') throw new QueuedTargetChangedError('changed');
     } }, delay: async () => {}, now: () => 0, makeId: () => 'j' });
     return { calls, deps, saved: () => structuredClone(saved!),

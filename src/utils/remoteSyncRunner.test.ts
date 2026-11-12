@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
+import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
 import {
     readEmptyDirAnswer,
@@ -97,7 +98,7 @@ const noWaitDeps = (
     invoke: RemoteSyncDeps['invoke'],
     extra: Partial<RemoteSyncDeps> = {},
 ): RemoteSyncDeps => ({
-    invoke,
+    invoke: wrapIntentInvoke(invoke),
     remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => undefined },
     delay: async () => undefined,
     now: () => 0,
@@ -866,7 +867,7 @@ describe('remoteSyncRunner — cancellation and budget', () => {
 describe('remoteSyncRunner — journal resume', () => {
     it('skips entries the resumed journal already completed', async () => {
         const resumeJournal: SyncJournal = {
-            resume_safe: true, owner_binding: 'test-owner-v1',
+            resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
             profile_id: 'A',
             id: 'j1',
             created_at: '2026-05-22T09:00:00Z',
@@ -900,7 +901,7 @@ describe('remoteSyncRunner — journal resume', () => {
     });
     it('resumes a bound Quick Connect through the real runner', async () => {
         const resumeJournal: SyncJournal = {
-            resume_safe: true, owner_binding: 'test-owner-v1',
+            resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
             profile_id: undefined,
             id: 'j1',
             created_at: '2026-05-22T09:00:00Z',
@@ -936,7 +937,7 @@ describe('remoteSyncRunner — journal resume', () => {
 
     it('retries failed journal entries on resume and skips completed ones', async () => {
         const resumeJournal: SyncJournal = {
-            resume_safe: true, owner_binding: 'test-owner-v1',
+            resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
             profile_id: 'A',
             id: 'j-fail',
             created_at: '2026-05-22T09:00:00Z',
@@ -1018,7 +1019,7 @@ describe('remoteSyncRunner — journal resume', () => {
 
     it('retries skipped entries saved by a cancelled journal', async () => {
         const resumeJournal: SyncJournal = {
-            resume_safe: true, owner_binding: 'test-owner-v1',
+            resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
             profile_id: 'A',
             id: 'j-skipped',
             created_at: '2026-05-22T09:00:00Z',
@@ -1407,7 +1408,7 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
     // runs' entries forward).
     it('keeps the index time of a download the resumed journal finished', async () => {
         const resumeJournal: SyncJournal = {
-            resume_safe: true, owner_binding: 'test-owner-v1',
+            resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
             profile_id: 'A',
             id: 'j-landed',
             created_at: '2026-09-26T09:00:00Z',
@@ -1460,7 +1461,7 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
     });
 
     const resumeOf = (entries: SyncJournal['entries']): SyncJournal => ({
-        resume_safe: true, owner_binding: 'test-owner-v1',
+        resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
             profile_id: 'A',
         id: 'j-resume',
         created_at: '2026-09-26T09:00:00Z',

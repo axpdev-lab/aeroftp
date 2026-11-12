@@ -1486,6 +1486,7 @@ export type SyncEcStatus =
   | "verify_failed";
 
 export interface SyncJournalEntry {
+  intent_token?: string | null;
   baseline_key?: string | null;
   source_path?: string | null;
   relative_path: string;
@@ -1510,6 +1511,7 @@ export interface SyncJournalEntry {
 }
 
 export interface SyncJournal {
+  intent_protocol?: number;
   id: string;
   created_at: string;
   updated_at: string;

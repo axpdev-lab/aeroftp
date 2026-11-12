@@ -379,6 +379,7 @@ mod tests {
             VerifyPolicy::SizeOnly,
         );
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
             overwrites_existing: None,
             archive_state: None,
             archive_receipt: None,
@@ -400,6 +401,7 @@ mod tests {
             uploaded_at: None,
         });
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
             overwrites_existing: None,
             archive_state: None,
             archive_receipt: None,

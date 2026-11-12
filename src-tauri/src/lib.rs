@@ -14182,10 +14182,21 @@ fn load_sync_index_cmd_blocking(
 }
 
 #[tauri::command]
-async fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || save_sync_index_cmd_blocking(index))
-        .await
-        .unwrap_or_else(|err| Err(format!("save_sync_index_cmd task failed: {err}")))
+async fn save_sync_index_cmd(
+    index: SyncIndex,
+    intent_tokens: Option<Vec<String>>,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        if let Some(tokens) = intent_tokens {
+            validate_path(&index.local_path)?;
+            validate_path(&index.remote_path)?;
+            sync::save_sync_index_with_intents(&index, &tokens)
+        } else {
+            save_sync_index_cmd_blocking(index)
+        }
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("save_sync_index_cmd task failed: {err}")))
 }
 
 /// The body of `save_sync_index_cmd`, kept synchronous and run on the blocking pool.
@@ -14193,6 +14204,38 @@ fn save_sync_index_cmd_blocking(index: SyncIndex) -> Result<(), String> {
     validate_path(&index.local_path)?;
     validate_path(&index.remote_path)?;
     save_sync_index(&index)
+}
+
+#[tauri::command]
+async fn sync_intent_begin_cmd(
+    local_path: String,
+    remote_path: String,
+    paths: Vec<String>,
+) -> Result<Vec<String>, String> {
+    tokio::task::spawn_blocking(move || {
+        validate_path(&local_path)?;
+        validate_path(&remote_path)?;
+        if paths.len() > 100_000 {
+            return Err("Too many sync intents".into());
+        }
+        sync::begin_sync_intents(&local_path, &remote_path, &paths)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sync_intent_snapshot_cmd(
+    local_path: String,
+    remote_path: String,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    tokio::task::spawn_blocking(move || {
+        validate_path(&local_path)?;
+        validate_path(&remote_path)?;
+        sync::snapshot_sync_intents(&local_path, &remote_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // ============ Sync Journal Commands (Phase 2: Reliability) =====
@@ -22810,6 +22853,8 @@ pub fn run() {
             proton_mode_switch::proton_translate_path,
             load_sync_index_cmd,
             save_sync_index_cmd,
+            sync_intent_begin_cmd,
+            sync_intent_snapshot_cmd,
             load_sync_journal_cmd,
             save_sync_journal_cmd,
             delete_sync_journal_cmd,
