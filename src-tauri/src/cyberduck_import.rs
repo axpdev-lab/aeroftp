@@ -1024,7 +1024,10 @@ mod tests {
             .expect("S3 options")
             .as_object()
             .unwrap();
-        assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("s3-backups"));
+        assert_eq!(
+            opts.get("bucket").and_then(|v| v.as_str()),
+            Some("s3-backups")
+        );
     }
 
     #[test]
