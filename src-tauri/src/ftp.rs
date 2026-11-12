@@ -309,27 +309,45 @@ impl FtpManager {
         include_hidden: bool,
         require_complete: bool,
     ) -> Result<Vec<RemoteFile>> {
-        let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+        let mut stream = self.stream.take().ok_or(FtpManagerError::NotConnected)?;
+        self.abandoned_command = true;
 
         debug!("Listing files in: {}", self.current_path);
 
         // Send NOOP before LIST to drain any pending control-connection responses
         // from a previous large transfer/listing. This prevents stale data from
         // leaking into the next LIST response (phantom files bug).
-        if let Err(e) = stream.noop().await {
-            debug!("Pre-LIST NOOP failed (non-fatal): {}", e);
+        match tokio::time::timeout(self.timeouts.command_timeout, stream.noop()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) if Self::definitive_refusal(&error) => {}
+            Ok(Err(error)) => {
+                return Err(FtpManagerError::OperationFailed(error.to_string()).into())
+            }
+            Err(error) => return Err(anyhow::Error::new(error).context("Pre-LIST NOOP timeout")),
         }
 
         // Use LIST without explicit path argument: relies on CWD already being set.
         // Passing the path explicitly (LIST /path/with spaces/#chars) causes FTP servers
         // to misinterpret paths containing #, spaces, or other special characters.
-        let files = tokio::time::timeout(
+        let listing_reply = tokio::time::timeout(
             self.timeouts.list_timeout,
             stream.list(if include_hidden { Some("-a") } else { None }),
         )
-        .await
-        .context("List operation timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        .await;
+        let files = match listing_reply {
+            Ok(Ok(files)) => files,
+            Ok(Err(error)) if Self::definitive_refusal(&error) => {
+                self.abandoned_command = false;
+                self.stream = Some(stream);
+                return Err(FtpManagerError::OperationFailed(error.to_string()).into());
+            }
+            Ok(Err(error)) => {
+                return Err(FtpManagerError::OperationFailed(error.to_string()).into())
+            }
+            Err(error) => return Err(anyhow::Error::new(error).context("List operation timeout")),
+        };
+        self.abandoned_command = false;
+        self.stream = Some(stream);
 
         // The three filters that used to stand here (blank and `total ` lines,
         // `path:` headers, and `.` / `..` by name) are gone: the shared module
@@ -398,6 +416,12 @@ impl FtpManager {
         Ok(remote_files)
     }
 
+    fn definitive_refusal(error: &FtpError) -> bool {
+        matches!(error, FtpError::UnexpectedResponse(reply)
+            if matches!(reply.status.code() / 100, 4 | 5)
+                && !matches!(reply.status.code(), 421 | 426))
+    }
+
     /// Change working directory
     pub async fn change_dir(&mut self, path: &str) -> Result<()> {
         // A canceled navigation must drop its uncertain socket, rather than
@@ -409,11 +433,20 @@ impl FtpManager {
         // If path is absolute, use it directly
         // If path is relative (like ".."), let the server handle it
         self.abandoned_command = true;
+        let cwd = tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path)).await;
+        match cwd {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) if Self::definitive_refusal(&error) => {
+                self.abandoned_command = false;
+                self.stream = Some(stream);
+                return Err(FtpManagerError::OperationFailed(error.to_string()).into());
+            }
+            Ok(Err(error)) => {
+                return Err(FtpManagerError::OperationFailed(error.to_string()).into())
+            }
+            Err(error) => return Err(anyhow::Error::new(error).context("Change directory timeout")),
+        }
         let changed: Result<String> = async {
-            tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
-                .await
-                .context("Change directory timeout")?
-                .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
             tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
                 .await
                 .context("PWD timeout")?
@@ -480,17 +513,25 @@ impl FtpManager {
         // refusal followed by CWD's 550 on a file read as "nothing there".
         // Every transfer here sets binary itself, so this changes nothing
         // else; a server that refuses binary is an error, not a "no".
-        tokio::time::timeout(
+        self.abandoned_command = true;
+        let binary = tokio::time::timeout(
             self.timeouts.command_timeout,
             stream.transfer_type(FileType::Binary),
         )
         .await
-        .context("TYPE timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        match tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
+        .context("TYPE timeout")?;
+        if binary.is_ok() || binary.as_ref().is_err_and(Self::definitive_refusal) {
+            self.abandoned_command = false;
+        }
+        binary.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        self.abandoned_command = true;
+        let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
-            .context("SIZE timeout")?
-        {
+            .context("SIZE timeout")?;
+        if size.is_ok() || size.as_ref().is_err_and(Self::definitive_refusal) {
+            self.abandoned_command = false;
+        }
+        match size {
             Ok(_) => return Ok(true),
             Err(FtpError::UnexpectedResponse(r))
                 if matches!(
@@ -504,21 +545,29 @@ impl FtpManager {
             }
             Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
         }
+        self.abandoned_command = true;
         match tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
             .await
             .context("CWD timeout")?
         {
             Ok(()) => {}
             Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {
-                return self.exists_in_parent_listing(path).await
+                self.abandoned_command = false;
+                return self.exists_in_parent_listing(path).await;
             }
-            Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+            Err(e) => {
+                if Self::definitive_refusal(&e) {
+                    self.abandoned_command = false;
+                }
+                return Err(FtpManagerError::OperationFailed(e.to_string()).into());
+            }
         }
         let previous = self.current_path.clone();
         tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(&previous))
             .await
             .context("CWD timeout")?
             .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        self.abandoned_command = false;
         Ok(true)
     }
 
@@ -539,10 +588,14 @@ impl FtpManager {
             return listed.map(|items| items.iter().any(|entry| entry.name == name));
         }
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
-        match tokio::time::timeout(self.timeouts.list_timeout, stream.nlst(Some(parent)))
+        self.abandoned_command = true;
+        let names = tokio::time::timeout(self.timeouts.list_timeout, stream.nlst(Some(parent)))
             .await
-            .context("NLST timeout")?
-        {
+            .context("NLST timeout")?;
+        if names.is_ok() || names.as_ref().is_err_and(Self::definitive_refusal) {
+            self.abandoned_command = false;
+        }
+        match names {
             Ok(names) => Ok(names
                 .iter()
                 .any(|n| n.trim_end_matches('/').rsplit('/').next() == Some(name))),
@@ -574,7 +627,7 @@ impl FtpManager {
 
     fn finish_directory_probe<T>(&mut self, mut probe: Self, result: Result<T>) -> Result<T> {
         self.abandoned_command = false;
-        if result.is_ok() && !probe.abandoned_command && probe.current_path == self.current_path {
+        if !probe.abandoned_command && probe.current_path == self.current_path {
             self.stream = probe.stream.take();
         }
         result
@@ -1489,6 +1542,53 @@ pub(crate) mod exists_tests {
             ftp.disconnect().await.unwrap();
             assert!(ftp.connection_spec().is_err());
         }
+    }
+
+    #[tokio::test]
+    async fn refused_navigation_keeps_the_original_folder_usable() {
+        let addr = vsftpd_like().await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.change_dir("/missing").await.is_err());
+        assert_eq!(ftp.current_path(), "/");
+        assert!(ftp.connection_spec().is_ok());
+        assert!(ftp
+            .list_files()
+            .await
+            .unwrap()
+            .iter()
+            .any(|entry| entry.name == "a.txt"));
+    }
+
+    #[tokio::test]
+    async fn refused_receipt_listing_restores_a_usable_original_folder() {
+        let addr = vsftpd_like_script(false, false, true).await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.receipt_is_file("/d/item").await.is_err());
+        assert_eq!(ftp.current_path(), "/");
+        assert!(ftp.connection_spec().is_ok());
+        assert!(ftp
+            .list_files()
+            .await
+            .unwrap()
+            .iter()
+            .any(|entry| entry.name == "a.txt"));
+    }
+
+    #[tokio::test]
+    async fn timed_out_receipt_listing_cannot_restore_an_uncertain_channel() {
+        let (addr, _) = cwd_then_unavailable_pwd("LIST").await;
+        let mut ftp = FtpManager::new();
+        ftp.timeouts.list_timeout = std::time::Duration::from_millis(30);
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.receipt_is_file("/backup/item").await.is_err());
+        assert!(!ftp.is_connected());
+        assert!(ftp.connection_spec().is_err());
+        assert!(ftp.remove("relative-name").await.is_err());
     }
 
     #[tokio::test]

@@ -1852,6 +1852,7 @@ const App: React.FC = () => {
   // Race condition guard for loadLocalFiles: increments on each call,
   // stale responses are discarded when callId !== current counter value.
   const loadLocalCallIdRef = React.useRef(0);
+  const loadLocalPendingRef = React.useRef<number | null>(null);
   const latestLocalListing2 = useRef(new LatestListing());
 
   // File clipboard for Cut/Copy/Paste
@@ -2739,6 +2740,9 @@ const App: React.FC = () => {
     if (!match) return { active: false, residualFilter: '' };
     return { active: true, residualFilter: (match[2] || '').toLowerCase() };
   }, [localSearchFilter]);
+
+  const flattenSearchActiveRef = useRef(flattenSearchParse.active);
+  flattenSearchActiveRef.current = flattenSearchParse.active;
 
   // The scan in flight and the folder the rows on screen come from: a rescan
   // waits for the scan before it, so a folder that keeps changing (the
@@ -5743,12 +5747,14 @@ const App: React.FC = () => {
       return false;
     }
     ownership?.check();
+    if (ownership && loadLocalPendingRef.current !== null) return false;
     const initialFolder = currentLocalPathRef.current;
     const stillOwned = () => {
       ownership?.check();
       return !ownership || currentLocalPathRef.current === initialFolder;
     };
-    const callId = ++loadLocalCallIdRef.current;
+    let callId = ++loadLocalCallIdRef.current;
+    loadLocalPendingRef.current = callId;
     try {
       const files: LocalFile[] = await invoke('get_local_files', { path, showHidden: showHiddenFiles });
       // Discard stale response if a newer call was issued while awaiting
@@ -5765,13 +5771,14 @@ const App: React.FC = () => {
         notify.error(t('common.error'), t('sidebar.portable_unplugged'));
         try {
           const home = await homeDir().catch(() => '/');
-          if (home === path) return false;
-          const homeCallId = ++loadLocalCallIdRef.current;
+          if (home === path || callId !== loadLocalCallIdRef.current || !stillOwned()) return false;
+          callId = ++loadLocalCallIdRef.current;
+          loadLocalPendingRef.current = callId;
           const homeFiles: LocalFile[] = await invoke('get_local_files', {
             path: home,
             showHidden: showHiddenFiles,
           });
-          if (homeCallId !== loadLocalCallIdRef.current || !stillOwned()) return false;
+          if (callId !== loadLocalCallIdRef.current || !stillOwned()) return false;
           setLocalFiles(homeFiles);
           setCurrentLocalPath(home);
           setSelectedLocalFiles(new Set());
@@ -5791,6 +5798,8 @@ const App: React.FC = () => {
         notify.error(t('common.error'), `Failed to list local files: ${error}`);
       }
       return false;
+    } finally {
+      if (loadLocalPendingRef.current === callId) loadLocalPendingRef.current = null;
     }
   }, [showHiddenFiles, notify, t, activityLog]);
 
@@ -12885,7 +12894,7 @@ const App: React.FC = () => {
             // Include a descendant changed by the run and an ancestor whose
             // flattened search covers it, even without a filesystem watcher.
             if (visibleLocalFolder && (localPanelShows(visibleLocalFolder, runConfig.localRoot, true)
-                || localPanelShows(runConfig.localRoot, visibleLocalFolder, true))) {
+                || localPanelShows(runConfig.localRoot, visibleLocalFolder, flattenSearchActiveRef.current))) {
               await loadLocalFiles(visibleLocalFolder, { check: checkTarget });
             }
           }
