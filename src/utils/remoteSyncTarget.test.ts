@@ -460,7 +460,10 @@ it('keeps an in-flight user navigation when a sync requests a passive local refr
     expect(context.invoke).toHaveBeenCalledOnce();
     release([]); expect(await navigation).toBe(true);
     expect(context.setCurrentLocalPath).toHaveBeenCalledWith('/B');
+    expect(context.currentLocalPathRef.current).toBe('/B');
     expect(context.loadLocalPendingRef.current).toBe(null);
+    expect(await load('/A/sub', { check: vi.fn() })).toBe(false);
+    expect(context.invoke).toHaveBeenCalledOnce();
 });
 
 it.each([false, true])('refreshes an ancestor listing only with flattened search=%s', async flattened => {

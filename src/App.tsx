@@ -5747,7 +5747,7 @@ const App: React.FC = () => {
       return false;
     }
     ownership?.check();
-    if (ownership && loadLocalPendingRef.current !== null) return false;
+    if (ownership && (loadLocalPendingRef.current !== null || currentLocalPathRef.current !== path)) return false;
     const initialFolder = currentLocalPathRef.current;
     const stillOwned = () => {
       ownership?.check();
@@ -5760,6 +5760,7 @@ const App: React.FC = () => {
       // Discard stale response if a newer call was issued while awaiting
       if (callId !== loadLocalCallIdRef.current || !stillOwned()) return false;
       setLocalFiles(files);
+      currentLocalPathRef.current = path;
       setCurrentLocalPath(path);
       setSelectedLocalFiles(new Set());
       return true;
@@ -5780,6 +5781,7 @@ const App: React.FC = () => {
           });
           if (callId !== loadLocalCallIdRef.current || !stillOwned()) return false;
           setLocalFiles(homeFiles);
+          currentLocalPathRef.current = home;
           setCurrentLocalPath(home);
           setSelectedLocalFiles(new Set());
           return true;
