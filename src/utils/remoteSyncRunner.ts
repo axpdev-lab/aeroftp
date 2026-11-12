@@ -515,12 +515,26 @@ const runSync = async (
         'sync_remove_empty_dir', 'sync_ec_generate', 'sync_ec_verify_repair', 'ftp_noop',
     ]);
     const localMutations = new Set(['create_local_folder', 'delete_local_file', 'sync_backup_archive_local']);
+    const writes = new Set([
+        'reset_cancel_flag', 'provider_sync_transfer_bulk', 'provider_mkdir', 'create_remote_folder',
+        'provider_upload_file', 'provider_download_file', 'upload_file', 'download_file', 'copy_local_file',
+        'provider_delete_file', 'delete_remote_file', 'create_local_folder', 'delete_local_file',
+        'sync_backup_archive_remote', 'sync_backup_archive_local', 'sync_remove_empty_dir',
+        'sync_ec_generate', 'sync_ec_verify_repair',
+    ]);
+    let runCancelled = false;
     const assertTarget = () => {
         if (targetError) throw targetError;
         try { deps.remoteTarget?.assertCurrent(); }
         catch { targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again'); throw targetError; }
     };
     const invoke: RemoteSyncDeps['invoke'] = async (cmd, args) => {
+        // Every awaited preparation path shares this last synchronous gate.
+        // Checkpoints and read-only probes may still finish after Stop.
+        if (writes.has(cmd) && callbacks.isCancelled?.() === true) {
+            runCancelled = true;
+            throw new Error('Transfer cancelled');
+        }
         if (config.isLocalLocal || (!remoteCommands.has(cmd) && !localMutations.has(cmd))) return deps.invoke(cmd, args);
         assertTarget();
         const epoch = deps.remoteTarget!.epoch;
@@ -811,7 +825,6 @@ const runSync = async (
     let ecRepaired = 0;
     let ecSkippedTooLarge = 0;
     let ecGenerateFailed = 0;
-    let runCancelled = false;
     const errors: SyncErrorInfo[] = [];
 
     const recordEcStatus = (

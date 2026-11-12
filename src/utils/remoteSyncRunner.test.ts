@@ -1548,6 +1548,15 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(calls.filter(call => ['provider_upload_file', 'upload_file', 'copy_local_file', 'provider_sync_transfer_bulk'].includes(call.cmd))).toHaveLength(0);
     });
 
+    it.each([false, true])('does not rearm cancellation or create directories after Stop (local=%s)', async isLocalLocal => {
+        const { invoke, calls } = makeInvoke();
+        const report = await runRemoteSync([file('nested/one', 'upload')], { local: ['empty-local'], remote: ['empty-remote'] },
+            baseConfig({ isProvider: true, isLocalLocal }), { isCancelled: () => true }, noWaitDeps(invoke));
+        expect(report.cancelled).toBe(true);
+        expect(calls.filter(call => ['reset_cancel_flag', 'provider_mkdir', 'create_local_folder', 'create_remote_folder',
+            'provider_upload_file', 'copy_local_file'].includes(call.cmd))).toHaveLength(0);
+    });
+
     // m3 (verification of the fourth round of #949): a run that crashed
     // saved no index, and the entry there is from the run before it, of the
     // file before the transfer. It was adopted when the size matched.

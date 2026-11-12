@@ -85,6 +85,7 @@ describe('versioned backup resume', () => {
     it('persists standalone directories and refuses a caller that omits them', async () => {
         const h = harness(); const planned = { remote: ['empty'], local: [] };
         await runRemoteSync([item], planned, config, { isCancelled: () => true }, h.deps());
+        expect(h.calls.filter(call => call.startsWith('A:provider_mkdir:'))).toHaveLength(0);
         const j = h.saved(); expect(j.remote_dirs).toEqual(['empty']);
         await expect(runRemoteSync(filesFromJournal(j), dirs, config, {},
             { ...h.deps(), resumeJournal: j })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
