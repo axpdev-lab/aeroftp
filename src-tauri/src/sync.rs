@@ -3460,7 +3460,7 @@ fn load_sync_index_with_recovery(
         let pair = index_filename(local_path, remote_path);
         match load_sync_journal(local_path, remote_path) {
             Ok(Some(journal)) => import_archive_intents(&conn, &pair, &journal)?,
-            Ok(None) => {},
+            Ok(None) => {}
             // Persist the quarantine before a fresh run replaces a corrupt
             // journal; otherwise its lost archive evidence could later revive
             // the old baseline's deletion authority.
@@ -3569,16 +3569,22 @@ fn import_archive_intents(
     journal: &SyncJournal,
 ) -> Result<(), String> {
     if !journal.completed {
-        insert_intent_fences(conn, pair, journal
-            .entries
-            .iter()
-            .filter(|e| e.status != JournalEntryStatus::Completed && e.archive_state.is_some())
-            .map(|entry| nfc_path(
-                entry
-                    .baseline_key
-                    .as_deref()
-                    .unwrap_or(&entry.relative_path),
-            )))?;
+        insert_intent_fences(
+            conn,
+            pair,
+            journal
+                .entries
+                .iter()
+                .filter(|e| e.status != JournalEntryStatus::Completed && e.archive_state.is_some())
+                .map(|entry| {
+                    nfc_path(
+                        entry
+                            .baseline_key
+                            .as_deref()
+                            .unwrap_or(&entry.relative_path),
+                    )
+                }),
+        )?;
     }
     Ok(())
 }
@@ -3593,10 +3599,10 @@ fn insert_intent_fences(
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     for path in paths {
         tx.execute(
-                "INSERT OR IGNORE INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)",
-                rusqlite::params![pair, nfc_path(&path), uuid::Uuid::new_v4().to_string()],
-            )
-            .map_err(|e| e.to_string())?;
+            "INSERT OR IGNORE INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)",
+            rusqlite::params![pair, nfc_path(&path), uuid::Uuid::new_v4().to_string()],
+        )
+        .map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())
 }
@@ -4396,10 +4402,17 @@ pub fn classify_with_summary(
         // An interrupted writer may still be alive. Equal scan metadata alone
         // cannot retire its generation. Expose a conflict requiring an explicit
         // verified transfer, rather than silently hiding a fence forever.
-        let recovery_required = !is_dir && !pair.blocked && local.is_some() && remote.is_some()
+        let recovery_required = !is_dir
+            && !pair.blocked
+            && local.is_some()
+            && remote.is_some()
             && (recovery_paths.contains(&nfc_path(&path))
                 || recovery_paths.contains(&nfc_path(&pair.remote_path)));
-        let status = if recovery_required { SyncStatus::Conflict } else { status };
+        let status = if recovery_required {
+            SyncStatus::Conflict
+        } else {
+            status
+        };
 
         // Check if this file was in the sync index (previously synced).
         // For bidirectional sync: a local_only/remote_only file that was previously synced
@@ -11601,18 +11614,29 @@ mod sync_intent_tests {
         let dir = tempfile::tempdir().unwrap();
         let local = "/unreadable-local";
         let remote = "/unreadable-remote";
-        std::fs::write(dir.path().join(journal_filename(local, remote)), b"{truncated").unwrap();
+        std::fs::write(
+            dir.path().join(journal_filename(local, remote)),
+            b"{truncated",
+        )
+        .unwrap();
         let mut index = SyncIndex::new(local.into(), remote.into());
         for key in ["one", "untouched"] {
-            index.files.insert(key.into(), SyncIndexEntry {
-                size: 4, modified: None, is_dir: false, uploaded_at: None,
-            });
+            index.files.insert(
+                key.into(),
+                SyncIndexEntry {
+                    size: 4,
+                    modified: None,
+                    is_dir: false,
+                    uploaded_at: None,
+                },
+            );
         }
         let original = serde_json::to_vec(&index).unwrap();
         apply_intent_fences(&mut index, false, || {
             load_sync_journal_in(dir.path(), local, remote)?;
             Ok(HashMap::new())
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(index.files.len(), 2);
         assert_eq!(index.unverified_keys.len(), 2);
         assert_eq!(serde_json::to_vec(&index).unwrap(), original);
@@ -11634,9 +11658,15 @@ mod sync_intent_tests {
         let dir = tempfile::tempdir().unwrap();
         let conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
         let mut index = SyncIndex::new("/local".into(), "/remote".into());
-        index.files.insert("one".into(), SyncIndexEntry {
-            size: 4, modified: None, is_dir: false, uploaded_at: None,
-        });
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
         let pair = index_filename(&index.local_path, &index.remote_path);
         conn.execute_batch("PRAGMA query_only=ON;").unwrap();
         let write = insert_intent_fences(&conn, &pair, index.files.keys().cloned());
@@ -11653,21 +11683,47 @@ mod sync_intent_tests {
         let dir = tempfile::tempdir().unwrap();
         let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
         let mut index = SyncIndex::new("/local".into(), "/remote".into());
-        index.files.insert("one".into(), SyncIndexEntry {
-            size: 4, modified: None, is_dir: false, uploaded_at: None,
-        });
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
         let pair = index_filename(&index.local_path, &index.remote_path);
         begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
         // The delete completed, but a later timeout/load error skipped index
         // publication. A new object must download, never inherit the delete.
         fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
-        let rows = build_comparison_results_with_index(HashMap::new(), HashMap::from([(
-            "one".into(), FileInfo { name:"one".into(), path:"one".into(), size:7,
-                modified:None, is_dir:false, checksum:None, checksum_alg:None }
-        )]), &CompareOptions::default(), Some(&index));
+        let rows = build_comparison_results_with_index(
+            HashMap::new(),
+            HashMap::from([(
+                "one".into(),
+                FileInfo {
+                    name: "one".into(),
+                    path: "one".into(),
+                    size: 7,
+                    modified: None,
+                    is_dir: false,
+                    checksum: None,
+                    checksum_alg: None,
+                },
+            )]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
         assert_eq!(rows.len(), 1);
-        assert_eq!(decide_sync_action(&rows[0].status, &CompareDirection::Bidirectional,
-            rows[0].previously_synced, false), SyncAction::Download);
+        assert_eq!(
+            decide_sync_action(
+                &rows[0].status,
+                &CompareDirection::Bidirectional,
+                rows[0].previously_synced,
+                false
+            ),
+            SyncAction::Download
+        );
     }
 
     #[test]
@@ -11675,25 +11731,41 @@ mod sync_intent_tests {
         let dir = tempfile::tempdir().unwrap();
         let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
         let mut index = SyncIndex::new("/local".into(), "/remote".into());
-        index.files.insert("one".into(), SyncIndexEntry {
-            size: 4, modified: None, is_dir: false, uploaded_at: None,
-        });
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
         let pair = index_filename(&index.local_path, &index.remote_path);
         // An abandoned writer can still complete: equal listing metadata is
         // not proof that it is safe to retire that writer's generation.
         begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
         fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
-        let info = FileInfo { name:"one".into(), path:"one".into(), size:4,
-            modified:Some(Utc::now()), is_dir:false, checksum:None, checksum_alg:None };
+        let info = FileInfo {
+            name: "one".into(),
+            path: "one".into(),
+            size: 4,
+            modified: Some(Utc::now()),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        };
         let rows = build_comparison_results_with_index(
             HashMap::from([("one".into(), info.clone())]),
             HashMap::from([("one".into(), info)]),
-            &CompareOptions::default(), Some(&index));
+            &CompareOptions::default(),
+            Some(&index),
+        );
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].status, SyncStatus::Conflict);
         assert!(rows[0].sync_reason.contains("choose a transfer direction"));
         let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
-        save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &tokens).unwrap();
+        save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &tokens)
+            .unwrap();
         assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
     }
 

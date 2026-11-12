@@ -558,22 +558,35 @@ impl ClaimedTokenFile {
     // and sign-out. A crash releases that lock but does not run Drop.
     fn recover(original: &std::path::Path) -> Result<(), ProviderError> {
         let parent = original.parent().ok_or_else(token_owner_changed)?;
-        let stem = original.file_stem().and_then(|s| s.to_str()).ok_or_else(token_owner_changed)?;
+        let stem = original
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(token_owner_changed)?;
         let prefix = format!("{stem}.migration-");
         let mut claims = Vec::new();
         for entry in std::fs::read_dir(parent).map_err(|_| token_owner_changed())? {
             let entry = entry.map_err(|_| token_owner_changed())?;
             let name = entry.file_name();
-            let Some(suffix) = name.to_str().and_then(|s| s.strip_prefix(&prefix)) else { continue };
-            if uuid::Uuid::parse_str(suffix).is_err() { continue; }
-            if !entry.file_type().map_err(|_| token_owner_changed())?.is_file() {
+            let Some(suffix) = name.to_str().and_then(|s| s.strip_prefix(&prefix)) else {
+                continue;
+            };
+            if uuid::Uuid::parse_str(suffix).is_err() {
+                continue;
+            }
+            if !entry
+                .file_type()
+                .map_err(|_| token_owner_changed())?
+                .is_file()
+            {
                 return Err(token_owner_changed());
             }
             claims.push(entry.path());
         }
         if !original.exists() {
             // Never select arbitrarily between different stranded logins.
-            if claims.len() > 1 { return Err(token_owner_changed()); }
+            if claims.len() > 1 {
+                return Err(token_owner_changed());
+            }
             if let Some(path) = claims.first() {
                 std::fs::hard_link(path, original).map_err(|_| token_owner_changed())?;
             }
@@ -2341,7 +2354,10 @@ mod tests {
         let crash = || {
             assert!(std::process::Command::new(std::env::current_exe().unwrap())
                 .args(["--exact", TEST, "--test-threads=1"])
-                .env(MODE, &original).status().unwrap().success());
+                .env(MODE, &original)
+                .status()
+                .unwrap()
+                .success());
             assert!(!original.exists());
         };
         std::fs::write(&original, "A").unwrap();
@@ -2350,7 +2366,8 @@ mod tests {
             let value = std::fs::read_to_string(&claimed.path).unwrap();
             claimed.discard()?;
             Ok(value)
-        }).unwrap();
+        })
+        .unwrap();
         assert_eq!(recovered, "A");
         std::fs::write(&original, "A").unwrap();
         crash();

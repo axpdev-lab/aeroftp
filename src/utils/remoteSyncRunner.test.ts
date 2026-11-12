@@ -2134,7 +2134,7 @@ describe('durable delete authority', () => {
             const deleted = saved?.entries.find(entry => entry.relative_path === 'one');
             expect(deleted?.status).toBe('completed');
             expect(deleted?.intent_token).toBeTruthy();
-            expect(calls.filter(c => c.cmd === 'delete_remote_file')).toHaveLength(1);
+            expect(calls.filter(c => c.cmd === 'delete_remote_file' && c.args?.path === '/srv/data/one')).toHaveLength(1);
             expect(calls.filter(c => c.cmd === 'save_sync_index_cmd')).toHaveLength(0);
         } finally { vi.useRealTimers(); }
     });
