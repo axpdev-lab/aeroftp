@@ -1099,6 +1099,13 @@ async fn s3_adapter_full_dag_complete_drops_a_row_saved_during_its_complete() {
     let uploaded =
         uploaded.expect("the streaming upload did not finish while the DAG Complete was held");
     uploaded.expect("the streaming upload failed");
+    let rows_during_complete = baseline_rows(&mock);
+    assert!(
+        rows_during_complete
+            .iter()
+            .any(|row| row.0 == "\"same\""),
+        "the streaming row must exist before the DAG Complete is released, rows={rows_during_complete:?}"
+    );
     mock.seen.complete_release.notify_one();
     let result = tokio::time::timeout(std::time::Duration::from_secs(60), dag)
         .await
@@ -1130,6 +1137,246 @@ async fn s3_adapter_full_dag_complete_drops_a_row_saved_during_its_complete() {
         "rows={:?}",
         baseline_rows(&mock)
     );
+}
+
+fn full_upload_executor(
+    provider: S3Provider,
+    token: tokio_util::sync::CancellationToken,
+) -> (
+    Arc<dyn crate::transfer_event_sink::TransferEventSink>,
+    Arc<crate::provider_transfer_executor::ProviderUploadExecutor>,
+) {
+    use crate::provider_transfer_executor::{ProviderExecutorSessionModel, ProviderUploadExecutor};
+    use crate::transfer_dag::{Capability, TransferCapabilities};
+    let shared = Arc::new(tokio::sync::Mutex::new(Some(
+        Box::new(provider) as Box<dyn StorageProvider>
+    )));
+    let sink: Arc<dyn crate::transfer_event_sink::TransferEventSink> =
+        Arc::new(crate::transfer_event_sink::NoopTransferSink);
+    let caps = TransferCapabilities {
+        multipart_upload: Capability::Supported,
+        preferred_chunk_size: Some(16 * 1024 * 1024),
+        multipart_threshold: 200 * 1024 * 1024,
+        max_chunk_slots: Some(4),
+        ..TransferCapabilities::default()
+    };
+    let settings = crate::transfer_settings::ResolvedTransferSettings {
+        requested_max_concurrent: 1,
+        max_concurrent: 1,
+        retry_count: 0,
+        timeout_seconds: 300,
+        download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+        sftp_download_preset: None,
+    };
+    let executor = Arc::new(ProviderUploadExecutor::new(
+        sink.clone(),
+        shared,
+        settings,
+        None,
+        token,
+        ProviderExecutorSessionModel::HttpClonePool {
+            provider_type: ProviderType::S3,
+            max_leases: 4,
+        },
+        caps,
+    ));
+    (sink, executor)
+}
+
+fn dag_object_batch(
+    local: &std::path::Path,
+    id: &str,
+) -> crate::transfer_orchestrator::TransferBatch {
+    use crate::transfer_domain::{TransferBatchConfig, TransferDirection, TransferEntry};
+    crate::transfer_orchestrator::TransferBatch {
+        id: id.into(),
+        display_name: id.into(),
+        direction: TransferDirection::Upload,
+        config: TransferBatchConfig {
+            timeout_ms: 300_000,
+            ..TransferBatchConfig::default()
+        },
+        entries: vec![TransferEntry {
+            id: "object".into(),
+            display_name: "object".into(),
+            remote_path: "object".into(),
+            local_path: local.to_string_lossy().into_owned(),
+            size: SIZE,
+            modified: None,
+        }],
+    }
+}
+
+async fn write_pattern(path: &std::path::Path, byte: u8) {
+    let mut file = tokio::fs::File::create(path).await.unwrap();
+    let chunk = vec![byte; 1024 * 1024];
+    for _ in 0..(SIZE / chunk.len() as u64) {
+        file.write_all(&chunk).await.unwrap();
+    }
+    file.sync_all().await.unwrap();
+}
+
+async fn assert_delta_refuses_the_saved_row(mock: &mut Mock, local: &std::path::Path) {
+    let outcome = mock
+        .provider
+        .baseline_store()
+        .unwrap()
+        .match_file(
+            mock.provider.delta_baseline_key("object"),
+            "\"same\"".into(),
+            SIZE,
+            local,
+        )
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            &outcome,
+            super::super::s3_delta_baseline::MatchOutcome::Matches { .. }
+        ),
+        "the saved row is still a match, outcome={outcome:?}"
+    );
+    let copies_before = mock.seen.copy_headers.lock().unwrap().len();
+    let creates_before = mock.seen.creates.load(Ordering::SeqCst);
+    let delta = try_delta_transfer(&mut mock.provider, SyncDirection::Upload, local, "object")
+        .await
+        .expect("the S3 delta door did not run");
+    assert!(!delta.used_delta);
+    assert_eq!(delta.fallback_reason.as_deref(), Some("no_baseline"));
+    assert!(delta.hard_error.is_none());
+    assert_eq!(mock.seen.copy_headers.lock().unwrap().len(), copies_before);
+    assert_eq!(mock.seen.creates.load(Ordering::SeqCst), creates_before);
+}
+
+/// The second delete can fail after a streaming upload has saved its row.
+/// The DAG upload still succeeds. This process then refuses a delta of that
+/// key, and does not copy, until a later invalidate or save clears the mark.
+/// The mark does not cross a process boundary.
+#[tokio::test]
+async fn s3_adapter_second_delete_failure_blocks_a_later_delta() {
+    let _hash_calls = hash_part_call_guard().await;
+    let mock = mock().await;
+    super::super::s3_delta_baseline::fail_next_invalidates(
+        mock.provider.baseline_test_path.as_ref().unwrap(),
+        0,
+    );
+    {
+        let mut fault = mock.seen.fault.lock().unwrap();
+        fault.hold_first_complete = true;
+        fault.fixed_complete_etag = Some("\"same\"");
+    }
+    let dag_local = mock.dir.path().join("dag.bin");
+    std::fs::File::create(&dag_local)
+        .unwrap()
+        .set_len(SIZE)
+        .unwrap();
+    let stream_local = mock.dir.path().join("stream.bin");
+    write_pattern(&stream_local, 1).await;
+    let (sink, executor) = full_upload_executor(
+        mock.provider.clone(),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    super::super::s3_delta_baseline::reset_hash_multipart_part_calls();
+    let dag = tokio::spawn(crate::transfer_dag_batch::execute_batch_dag(
+        sink,
+        dag_object_batch(&dag_local, "s3-second-delete-fails"),
+        executor,
+        Arc::new(AtomicBool::new(false)),
+        None,
+    ));
+    let started = tokio::time::timeout(
+        std::time::Duration::from_secs(180),
+        mock.seen.complete_started.notified(),
+    )
+    .await;
+    assert!(
+        started.is_ok(),
+        "the full DAG Complete did not reach the server"
+    );
+    let uploaded = tokio::time::timeout(std::time::Duration::from_secs(180), async {
+        mock.provider
+            .clone()
+            .upload(stream_local.to_str().unwrap(), "object", None)
+            .await
+    })
+    .await
+    .expect("the streaming upload did not finish while the DAG Complete was held")
+    .expect("the streaming upload failed");
+    let _ = uploaded;
+    super::super::s3_delta_baseline::fail_next_invalidates(
+        mock.provider.baseline_test_path.as_ref().unwrap(),
+        2,
+    );
+    mock.seen.complete_release.notify_one();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), dag)
+        .await
+        .expect("the DAG upload did not finish after the Complete was released")
+        .expect("the DAG task panicked");
+    assert_eq!(result.completed, 1, "{result:?}");
+    assert_eq!(
+        file_digest(&dag_local).await,
+        file_digest(&mock.dir.path().join("remote.bin")).await,
+        "the object left by the DAG Complete must be the DAG bytes"
+    );
+    let mut mock = mock;
+    assert_delta_refuses_the_saved_row(&mut mock, &stream_local).await;
+}
+
+/// Cancelling the executor while Complete is in flight drops the provider
+/// future before the second delete. The key stays ineligible in this process.
+#[tokio::test]
+async fn s3_adapter_cancel_during_complete_blocks_a_later_delta() {
+    let _hash_calls = hash_part_call_guard().await;
+    let mock = mock().await;
+    {
+        let mut fault = mock.seen.fault.lock().unwrap();
+        fault.hold_first_complete = true;
+        fault.fixed_complete_etag = Some("\"same\"");
+    }
+    let dag_local = mock.dir.path().join("dag.bin");
+    std::fs::File::create(&dag_local)
+        .unwrap()
+        .set_len(SIZE)
+        .unwrap();
+    let stream_local = mock.dir.path().join("stream.bin");
+    write_pattern(&stream_local, 2).await;
+    let token = tokio_util::sync::CancellationToken::new();
+    let (sink, executor) = full_upload_executor(mock.provider.clone(), token.clone());
+    super::super::s3_delta_baseline::reset_hash_multipart_part_calls();
+    let dag = tokio::spawn(crate::transfer_dag_batch::execute_batch_dag(
+        sink,
+        dag_object_batch(&dag_local, "s3-cancel-during-complete"),
+        executor,
+        Arc::new(AtomicBool::new(false)),
+        None,
+    ));
+    let started = tokio::time::timeout(
+        std::time::Duration::from_secs(180),
+        mock.seen.complete_started.notified(),
+    )
+    .await;
+    assert!(
+        started.is_ok(),
+        "the full DAG Complete did not reach the server"
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(180), async {
+        mock.provider
+            .clone()
+            .upload(stream_local.to_str().unwrap(), "object", None)
+            .await
+    })
+    .await
+    .expect("the streaming upload did not finish while the DAG Complete was held")
+    .expect("the streaming upload failed");
+    token.cancel();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), dag)
+        .await
+        .expect("the DAG upload did not finish after cancel")
+        .expect("the DAG task panicked");
+    assert_eq!(result.completed, 0, "{result:?}");
+    assert!(result.cancelled, "{result:?}");
+    let mut mock = mock;
+    assert_delta_refuses_the_saved_row(&mut mock, &stream_local).await;
 }
 
 /// The stored baseline, as the columns that must not move when an upload is

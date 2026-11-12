@@ -14,7 +14,7 @@ const DIGEST_LIMIT: usize = S3_MAX_PARTS as usize;
 const ALGORITHM: &str = "sha256";
 const VERSION: u32 = 1;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BaselineKey {
     identity: String,
     bucket: String,
@@ -168,6 +168,10 @@ impl BaselineStore {
     /// Forget the previous row before attempting a replacement. A failed or
     /// cancelled attempt cannot leave a row claiming to describe that attempt.
     pub async fn invalidate(&self, key: BaselineKey) -> Result<(), String> {
+        #[cfg(test)]
+        if take_forced_invalidate_failure(&self.path) {
+            return Err("baseline invalidate forced to fail".into());
+        }
         let store = self.clone();
         tokio::task::spawn_blocking(move || {
             let conn = store.open()?;
@@ -558,6 +562,37 @@ impl PreparedDigests {
         }
         true
     }
+}
+
+/// Test hook. The next `times` calls to `invalidate` for this database fail
+/// before deleting the row. Scoped to the path so other tests stay alone.
+#[cfg(test)]
+pub(crate) fn fail_next_invalidates(path: &std::path::Path, times: u64) {
+    FAIL_NEXT_INVALIDATES
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .insert(path.to_path_buf(), times);
+}
+
+#[cfg(test)]
+static FAIL_NEXT_INVALIDATES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::HashMap<std::path::PathBuf, u64>>,
+> = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+#[cfg(test)]
+fn take_forced_invalidate_failure(path: &std::path::Path) -> bool {
+    let mut pending = FAIL_NEXT_INVALIDATES
+        .lock()
+        .unwrap_or_else(|error| error.into_inner());
+    let Some(left) = pending.get(path).copied() else {
+        return false;
+    };
+    if left <= 1 {
+        pending.remove(path);
+    } else {
+        pending.insert(path.to_path_buf(), left - 1);
+    }
+    left > 0
 }
 
 #[cfg(test)]
