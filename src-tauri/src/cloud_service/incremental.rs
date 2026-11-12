@@ -1064,6 +1064,7 @@ impl CloudService {
             cloud_remote_metadata: self
                 .retain_remote_observations(index.cloud_remote_metadata.clone(), &comparisons),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
 
         result.duration_secs = start.elapsed().as_secs();

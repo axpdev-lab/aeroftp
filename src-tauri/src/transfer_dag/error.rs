@@ -166,8 +166,9 @@ impl TransferError {
     ///
     /// Known [`ProviderError`] variants map by discriminant. String-bearing
     /// variants (e.g. `TransferFailed`, `ServerError`) are classified once
-    /// here — including extraction of an embedded `Retry-After` marker —
-    /// so the executor/AIMD path never re-parses text.
+    /// here, including extraction of an embedded `Retry-After` marker, so the
+    /// executor/AIMD path never re-parses text. Their text never classifies
+    /// as `TargetChanged`: only the typed variant does.
     pub fn from_provider(err: &ProviderError) -> Self {
         let message = err.to_string();
         let retry_after = parse_embedded_retry_after(&message);
@@ -195,21 +196,17 @@ impl TransferError {
             ProviderError::ParseError(_) => TransferErrorKind::RemoteIo,
             ProviderError::IoError(_) => TransferErrorKind::LocalIo,
             ProviderError::ConnectionLost(_) => TransferErrorKind::ConnectionReset,
-            ProviderError::ConnectionFailed(s) => classify_raw_message(s),
             ProviderError::NetworkError(s) => classify_network_message(s),
-            ProviderError::ServerError(s) => {
-                let classified = classify_raw_message(s);
-                if classified == TransferErrorKind::TargetChanged {
-                    TransferErrorKind::RemoteIo
-                } else {
-                    classified
-                }
-            }
-            ProviderError::TransferFailed(s)
+            // The text of these variants can be a server's answer. Only the
+            // typed `ProviderError::TargetChanged` above names an owner
+            // change: the marker inside a string never does.
+            ProviderError::ConnectionFailed(s)
+            | ProviderError::ServerError(s)
+            | ProviderError::TransferFailed(s)
             | ProviderError::ParallelRefused(s)
             | ProviderError::PinRefused(s)
             | ProviderError::Other(s)
-            | ProviderError::Unknown(s) => classify_raw_message(s),
+            | ProviderError::Unknown(s) => classify_provider_text(s),
         };
 
         let mut te = Self::new(kind, message);
@@ -380,11 +377,25 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
     // that function, so a name parked after the marker must already be gone
     // here: `503` or `cancelled` in a file name is not that failure.
     let raw = crate::providers::types::without_unclassified_items(raw);
-    let lower = raw.to_lowercase();
 
     if raw.trim_start().starts_with("CONNECTION_CHANGED: ") {
         return TransferErrorKind::TargetChanged;
     }
+    classify_text_without_owner_marker(raw)
+}
+
+/// Classify the text carried by a string-bearing [`ProviderError`]. Unlike
+/// [`classify_raw_message`] it never answers `TargetChanged`: the text may
+/// repeat what a server sent, and the owner-change marker in it proves nothing.
+fn classify_provider_text(raw: &str) -> TransferErrorKind {
+    classify_text_without_owner_marker(crate::providers::types::without_unclassified_items(raw))
+}
+
+/// The taxonomy shared by both entry points, on text already cut at the
+/// unclassified-item marker.
+fn classify_text_without_owner_marker(raw: &str) -> TransferErrorKind {
+    let lower = raw.to_lowercase();
+
     if message_names_a_cancellation(&lower) {
         return TransferErrorKind::Cancelled;
     }
@@ -435,6 +446,13 @@ mod tests {
             ProviderError::NotFound("/remote/CONNECTION_CHANGED.txt".into()),
             ProviderError::ServerError("remote note CONNECTION_CHANGED.txt".into()),
             ProviderError::ServerError("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::Other("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::Unknown("  CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::TransferFailed("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::ConnectionFailed("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::ParallelRefused("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::PinRefused("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::NetworkError("CONNECTION_CHANGED: server supplied text".into()),
         ] {
             assert_ne!(
                 TransferError::from_provider(&error).kind,

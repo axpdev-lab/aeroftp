@@ -98,4 +98,83 @@ mod tests {
         ));
         assert!(!bindings_match(&a, ""));
     }
+
+    /// `with_current` compares the vault generation before `publish` runs, so
+    /// a `clear_cache` during `publish` still publishes. What it publishes is
+    /// an owner of the retired generation, and every reader of a published
+    /// owner validates it first: the validation, the persistent tag, a second
+    /// publication and the pin of the state that holds it all refuse.
+    #[test]
+    #[ignore = "process-global vault/session/env; run alone with --ignored --test-threads=1"]
+    fn an_owner_published_across_a_vault_generation_change_fails_closed() {
+        use crate::provider_commands::ProviderState;
+        use crate::user_partitions as partitions;
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        let open_vault = || {
+            CredentialStore::unlock_with_master("sync-owner-test-pass", None)
+                .expect("unlock vault");
+        };
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("sync-owner-test-pass")
+            .expect("bootstrap vault");
+        open_vault();
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+
+        // The generation moves while the publication closure runs.
+        let owner = GuiOwnerContext::capture().expect("capture owner");
+        assert!(owner.validate().is_ok());
+        assert!(owner.persistent_tag("material").unwrap().is_some());
+        let slot = std::sync::Mutex::new(None);
+        owner
+            .with_current(|| {
+                CredentialStore::clear_cache();
+                *slot.lock().unwrap() = Some(owner.clone());
+                Ok(())
+            })
+            .expect("the comparison ran before the generation moved");
+        let published = slot.lock().unwrap().clone().expect("published owner");
+        assert_eq!(published.validate(), Err(changed()));
+        assert_eq!(published.persistent_tag("material"), Err(changed()));
+        assert_eq!(published.with_current(|| Ok(())), Err(changed()));
+        // Reopening the vault does not bring the retired generation back.
+        open_vault();
+        assert_eq!(published.validate(), Err(changed()));
+        assert_eq!(published.persistent_tag("material"), Err(changed()));
+
+        // The same through the state that holds a published owner.
+        let owner = GuiOwnerContext::capture().expect("capture owner again");
+        let state = ProviderState::new();
+        state
+            .set_legacy_gui_owner(owner, None)
+            .expect("publish the owner");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("runtime");
+        assert!(runtime.block_on(state.pin_gui_target(Some(0))).is_ok());
+        CredentialStore::clear_cache();
+        open_vault();
+        let refused = runtime
+            .block_on(state.pin_gui_target(Some(0)))
+            .map(|_| ())
+            .expect_err("a stale owner must not pin a target");
+        assert_eq!(refused, changed());
+
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+    }
 }

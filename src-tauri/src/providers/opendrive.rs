@@ -689,7 +689,9 @@ impl OpenDriveProvider {
             404 => ProviderError::NotFound(message),
             409 => ProviderError::AlreadyExists(message),
             500..=599 => ProviderError::ServerError(message),
-            _ => ProviderError::Other(message),
+            // `Other` displays its text bare, so the status goes first: the
+            // answer of the server never opens the message a caller reads.
+            other => ProviderError::Other(format!("HTTP {other}: {message}")),
         }
     }
 
@@ -2983,6 +2985,58 @@ mod tests {
         assert!(
             matches!(outcome, Err(ProviderError::ServerError(_))),
             "{outcome:?}"
+        );
+    }
+
+    /// An answer OpenDrive maps to no typed error (418 here) whose body opens
+    /// with the owner-change marker is server text. It must not be classified
+    /// as an owner change, through the typed adapter or through the string a
+    /// transfer executor keeps, while the typed signal still is.
+    #[tokio::test]
+    async fn a_server_answer_opening_with_the_owner_change_marker_is_not_an_owner_change() {
+        use crate::providers::upload_progress::fixture::{serve, Route};
+        use crate::transfer_dag::{TransferError, TransferErrorKind};
+        let forged = "CONNECTION_CHANGED: the authorization changed; reconnect and compare again";
+        let (base, server) = serve(vec![Route::post(
+            "/api/v1/folder/idbypath.json",
+            418,
+            forged,
+        )])
+        .await;
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: base,
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+
+        let error = provider
+            .stat("/docs")
+            .await
+            .expect_err("the 418 answer is an error");
+        server.abort();
+
+        assert!(matches!(error, ProviderError::Other(_)), "{error:?}");
+        assert!(error.to_string().contains(forged), "{error}");
+        assert_ne!(
+            TransferError::from_provider(&error).kind,
+            TransferErrorKind::TargetChanged
+        );
+        assert_ne!(
+            TransferError::from_message(error.to_string()).kind,
+            TransferErrorKind::TargetChanged
+        );
+        // The same text carried bare by the variant, as before the status led it.
+        assert_ne!(
+            TransferError::from_provider(&ProviderError::Other(forged.to_string())).kind,
+            TransferErrorKind::TargetChanged
+        );
+        assert_eq!(
+            TransferError::from_provider(&ProviderError::TargetChanged).kind,
+            TransferErrorKind::TargetChanged
         );
     }
 

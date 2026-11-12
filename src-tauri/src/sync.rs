@@ -3345,6 +3345,14 @@ pub struct SyncIndex {
     /// [`migrate_sync_index`].
     #[serde(skip)]
     pub unverified_keys: std::collections::HashSet<String>,
+    /// Paths an interrupted sync intent still fences, or every baseline when
+    /// the fence storage could not be read. These are in `unverified_keys`
+    /// too; kept apart because only they, while still unverified, hold an
+    /// equal pair as a visible conflict, which a key the migration rewrote
+    /// must not. Never persisted: the intent store is read on every load.
+    /// See [`fence_index`].
+    #[serde(skip)]
+    pub pending_recovery_keys: std::collections::HashSet<String>,
 }
 
 impl SyncIndex {
@@ -3361,6 +3369,7 @@ impl SyncIndex {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         }
     }
 }
@@ -3527,6 +3536,11 @@ fn apply_intent_fences(
         Err(error) => {
             tracing::warn!("Sync recovery state unavailable; baselines quarantined: {error}");
             index.unverified_keys.extend(index.files.keys().cloned());
+            // Which paths an interrupted writer holds is unknown here, so
+            // every baseline is read as one it may hold.
+            index
+                .pending_recovery_keys
+                .extend(index.files.keys().cloned());
             // A compare can safely display an untrusted baseline. A new
             // writer cannot discard its recovery journal until the quarantine
             // is durable, even if a later database read succeeds.
@@ -3725,14 +3739,19 @@ pub fn snapshot_sync_intents(local: &str, remote: &str) -> Result<HashMap<String
 }
 
 fn fence_index(index: &mut SyncIndex, pending: &HashMap<String, String>) {
-    index.unverified_keys.extend(pending.keys().cloned());
-    index.unverified_keys.extend(
-        index
-            .files
-            .keys()
-            .filter(|key| pending.contains_key(&nfc_path(key)))
-            .cloned(),
-    );
+    let fenced: Vec<String> = pending
+        .keys()
+        .cloned()
+        .chain(
+            index
+                .files
+                .keys()
+                .filter(|key| pending.contains_key(&nfc_path(key)))
+                .cloned(),
+        )
+        .collect();
+    index.unverified_keys.extend(fenced.iter().cloned());
+    index.pending_recovery_keys.extend(fenced);
 }
 
 fn save_index_with_intents_in(
@@ -4297,7 +4316,15 @@ pub fn classify_with_summary(
     let index_by_nfc = index.map(index_keys_by_nfc);
     let mut recovery_paths = std::collections::HashSet::new();
     if let Some(index) = index {
-        for key in &index.unverified_keys {
+        // Not every unverified key: one the separator migration rewrote has
+        // no interrupted writer behind it, and its equal pair may converge.
+        // A key a caller has since taken out of `unverified_keys` is no
+        // longer held either.
+        for key in index
+            .pending_recovery_keys
+            .iter()
+            .filter(|key| index.unverified_keys.contains(*key))
+        {
             recovery_paths.insert(nfc_path(key));
             if let Some(remote) = index.remote_spellings.get(key) {
                 recovery_paths.insert(nfc_path(remote));
@@ -5125,7 +5152,10 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
 
     SyncErrorInfo {
         kind,
-        message: raw.to_string(),
+        // `kind` and `retryable` were read from the raw text above. The
+        // message goes to logs and over IPC (`classify_transfer_error`), so
+        // credentials a provider echoed into its error are masked first.
+        message: crate::debug_tests::redact(raw),
         retryable,
         file_path: file_path.map(|s| s.to_string()),
     }
@@ -9174,6 +9204,7 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         index.files.insert(
             format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
@@ -9213,6 +9244,7 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         // Sizes differ so "which one survived" is observable.
         index.files.insert(
@@ -9326,6 +9358,7 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         index.files.insert(
             "sub\\b.txt".to_string(),
@@ -9405,6 +9438,7 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         index.files.insert(
             "sub\\b.txt".to_string(),
@@ -9429,6 +9463,140 @@ mod tests {
         assert!(reloaded.files.contains_key("sub/b.txt"));
     }
 
+    /// A key the version 2 migration rewrote is not trusted as a baseline, but
+    /// it has no interrupted writer behind it: when both sides hold the same
+    /// file at `sub/b.txt` the pair converges on its own metadata. Only a
+    /// pending intent, or fence storage that could not be read, holds the same
+    /// equal pair as a conflict.
+    #[test]
+    fn a_migrated_key_converges_on_an_equal_pair_and_a_pending_intent_still_conflicts() {
+        let mut index = SyncIndex {
+            profile_id: None,
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+            remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
+            unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+        };
+        index.files.insert(
+            format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
+            SyncIndexEntry {
+                size: 3,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        migrate_sync_index(&mut index);
+        assert!(index.files.contains_key("sub/b.txt"));
+        // The rewrite only happens where `\` is the separator. Elsewhere the
+        // v1 key is already `sub/b.txt`, so the mark the Windows migration
+        // leaves is set by hand to compare the same state on every platform.
+        #[cfg(windows)]
+        assert!(index.unverified_keys.contains("sub/b.txt"));
+        #[cfg(not(windows))]
+        index.unverified_keys.insert("sub/b.txt".to_string());
+        assert!(index.pending_recovery_keys.is_empty());
+
+        let file = mk_file_info(
+            "b.txt",
+            7,
+            Some(DateTime::<Utc>::from_timestamp(1_750_000_003, 0).unwrap()),
+        );
+        let classify = |index: &SyncIndex| {
+            classify_with_summary(
+                HashMap::from([("sub/b.txt".to_string(), file.clone())]),
+                HashMap::from([("sub/b.txt".to_string(), file.clone())]),
+                &CompareOptions::default(),
+                Some(index),
+            )
+        };
+        let report = classify(&index);
+        assert!(report.differences.is_empty(), "{:?}", report.differences);
+        assert_eq!(report.summary.identical_count, 1);
+
+        // The same equal pair under an interrupted intent stays visible.
+        let mut fenced = index.clone();
+        fence_index(
+            &mut fenced,
+            &HashMap::from([("sub/b.txt".to_string(), "token".to_string())]),
+        );
+        assert!(fenced.pending_recovery_keys.contains("sub/b.txt"));
+        let report = classify(&fenced);
+        assert_eq!(report.differences.len(), 1);
+        assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+        assert!(report.differences[0]
+            .sync_reason
+            .starts_with("Interrupted sync"));
+        assert_eq!(report.summary.identical_count, 0);
+
+        // Unreadable fence storage cannot say which paths are pending: every
+        // baseline is held the same way.
+        let mut unreadable = index.clone();
+        apply_intent_fences(&mut unreadable, false, || Err("database busy".into())).unwrap();
+        assert!(unreadable.pending_recovery_keys.contains("sub/b.txt"));
+        let report = classify(&unreadable);
+        assert_eq!(report.differences.len(), 1);
+        assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+
+        // A caller that vouches for the key again releases the pair.
+        fenced.unverified_keys.remove("sub/b.txt");
+        assert!(classify(&fenced).differences.is_empty());
+    }
+
+    /// The classifier behind `classify_transfer_error` and the executors'
+    /// retry logs returns its message over IPC. A credential a provider put in
+    /// its error is masked there; the kind and the retry answer are the ones
+    /// of the raw text.
+    #[test]
+    fn a_classified_error_message_carries_no_provider_credential() {
+        for (raw, secrets, kind, retryable) in [
+            (
+                "Authentication failed: Authorization: Bearer ya29.A0AfH6SMBx-owner-token-0123456789",
+                &["ya29.A0AfH6SMBx-owner-token-0123456789"][..],
+                SyncErrorKind::Auth,
+                false,
+            ),
+            (
+                "552 Insufficient storage space (sent Bearer abcdefgh12345678XYZ)",
+                &["abcdefgh12345678XYZ"][..],
+                SyncErrorKind::QuotaExceeded,
+                false,
+            ),
+            (
+                "Operation timed out: GET https://api.example.test/v1/files?access_token=AT-live-123456&refresh_token=RT-live-654321",
+                &["AT-live-123456", "RT-live-654321"][..],
+                SyncErrorKind::Timeout,
+                true,
+            ),
+            (
+                "Connection refused: https://alice:hunter2-pw@dav.example.test/remote.php/webdav",
+                &["hunter2-pw"][..],
+                SyncErrorKind::Network,
+                true,
+            ),
+        ] {
+            let info = classify_sync_error(raw, Some("/srv/data/report.csv"));
+            assert_eq!(info.kind, kind, "{raw}");
+            assert_eq!(info.retryable, retryable, "{raw}");
+            for secret in secrets {
+                assert!(!info.message.contains(secret), "{}", info.message);
+            }
+            let over_ipc = serde_json::to_string(&info).unwrap();
+            for secret in secrets {
+                assert!(!over_ipc.contains(secret), "{over_ipc}");
+            }
+        }
+        // An error with nothing to mask reads as it did.
+        let plain = classify_sync_error("553 Could not create file", None);
+        assert_eq!(plain.message, "553 Could not create file");
+    }
+
     /// The migration is a one-way step, not something that runs on every read:
     /// an index already at the current version comes back untouched.
     #[test]
@@ -9444,6 +9612,7 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         // A key that a rewrite would change, so "untouched" is observable.
         index.files.insert(
@@ -9477,6 +9646,7 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         index.files.insert(
             "file.txt".to_string(),
@@ -11381,7 +11551,10 @@ mod tests {
         }
 
         // Quarantined equal pairs remain visible until explicit recovery.
-        index.unverified_keys.insert("a".into());
+        fence_index(
+            &mut index,
+            &HashMap::from([("a".to_string(), "token".to_string())]),
+        );
         let report = classify(&index, &CompareOptions::default());
         assert_eq!(report.differences.len(), 1);
         assert_eq!(report.differences[0].status, SyncStatus::Conflict);
@@ -11389,6 +11562,7 @@ mod tests {
 
         // A successful resend replaces the marker and can converge normally.
         index.unverified_keys.clear();
+        index.pending_recovery_keys.clear();
         index.files.get_mut("a").unwrap().modified = file.modified;
         let report = classify(&index, &CompareOptions::default());
         assert!(report.differences.is_empty());

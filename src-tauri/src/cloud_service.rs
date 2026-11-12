@@ -1504,6 +1504,7 @@ impl CloudService {
             cloud_remote_metadata: self
                 .retain_remote_observations(plan.remote_observations.clone(), &rows),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);
@@ -1550,6 +1551,7 @@ impl CloudService {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         });
         // The prior index was migrated when it was loaded, and the keys the
         // migration could not vouch for are not saved with it: written back
@@ -4185,6 +4187,7 @@ mod baseline_tests {
                 cloud_receipts: [("f.txt".into(), receipt)].into(),
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: Default::default(),
+                pending_recovery_keys: Default::default(),
             };
             let row = cmp(
                 SyncStatus::Identical,
@@ -5519,6 +5522,7 @@ mod baseline_tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         let next = build_comparison_results_with_index(
             HashMap::from([("f.txt".to_string(), now_local)]),
@@ -5895,6 +5899,7 @@ mod baseline_tests {
                 cloud_receipts: Default::default(),
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: std::collections::HashSet::from(["sub/b.txt".to_string()]),
+                pending_recovery_keys: Default::default(),
             };
             let svc = CloudService::new();
             svc.unsettled.lock().unwrap().push("f.txt".to_string());
@@ -8812,6 +8817,7 @@ mod baseline_tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
         };
         let gone = CloudService::gone_on_both(
             &config,
@@ -9255,6 +9261,7 @@ mod secval_b_tests {
                             cloud_receipts: Default::default(),
                             cloud_remote_metadata: Default::default(),
                             unverified_keys: Default::default(),
+                            pending_recovery_keys: Default::default(),
                         })
                         .unwrap();
                         let remote_time = DateTime::<Utc>::from_timestamp(1_760_000_000, 0)

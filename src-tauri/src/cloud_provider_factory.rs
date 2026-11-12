@@ -233,6 +233,33 @@ pub(crate) fn current_overlay_binding(
 pub(crate) async fn create_cloud_connection(
     config: &CloudConfig,
 ) -> Result<OpenedCloudProvider, String> {
+    // The profile, its credentials and its tokens are separate reads, and
+    // most of them resolve the active account on their own. The account is
+    // captured before the first read and compared once the provider is
+    // connected: a switch, lock or unlock in between refuses the connection.
+    let account =
+        crate::credential_store::off_async_worker(crate::user_partitions::gui_account_snapshot)?;
+    let mut opened = open_cloud_connection(config, account.user).await?;
+    if let Err(error) = crate::credential_store::off_async_worker(|| account_unchanged(&account)) {
+        let _ = opened.provider.disconnect().await;
+        return Err(error);
+    }
+    Ok(opened)
+}
+
+/// Whether the active account is still the one `captured` describes: the same
+/// user, activation, key revision and session.
+fn account_unchanged(captured: &crate::user_partitions::GuiAccountSnapshot) -> Result<(), String> {
+    if crate::user_partitions::gui_account_snapshot()? != *captured {
+        return Err("The active account changed while connecting; retry the cycle".to_string());
+    }
+    Ok(())
+}
+
+async fn open_cloud_connection(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     match config.protocol_type.as_str() {
         // --- Direct auth providers: use ProviderFactory ---
         "ftp" => create_via_factory(config, ProviderType::Ftp).await,
@@ -252,7 +279,7 @@ pub(crate) async fn create_cloud_connection(
         "koofr" => create_via_factory(config, ProviderType::Koofr).await,
         "twake" => create_via_factory(config, ProviderType::Twake).await,
         "opendrive" => create_via_factory(config, ProviderType::OpenDrive).await,
-        "yandexdisk" => create_yandex(config).await,
+        "yandexdisk" => create_yandex(config, account).await,
         "imagekit" => create_via_factory(config, ProviderType::ImageKit).await,
         "uploadcare" => create_via_factory(config, ProviderType::Uploadcare).await,
         "cloudinary" => create_via_factory(config, ProviderType::Cloudinary).await,
@@ -261,12 +288,12 @@ pub(crate) async fn create_cloud_connection(
         }
 
         // --- OAuth2 providers: direct instantiation ---
-        "googledrive" => create_google_drive(config).await,
-        "dropbox" => create_dropbox(config).await,
-        "onedrive" => create_onedrive(config).await,
-        "box" => create_box(config).await,
-        "pcloud" => create_pcloud(config).await,
-        "zohoworkdrive" => create_zoho(config).await,
+        "googledrive" => create_google_drive(config, account).await,
+        "dropbox" => create_dropbox(config, account).await,
+        "onedrive" => create_onedrive(config, account).await,
+        "box" => create_box(config, account).await,
+        "pcloud" => create_pcloud(config, account).await,
+        "zohoworkdrive" => create_zoho(config, account).await,
 
         // --- OAuth1 provider ---
         "fourshared" => create_fourshared(config).await,
@@ -579,20 +606,20 @@ async fn create_via_factory(
 /// profile's slot where the connect path and the CLI read them, or carry a
 /// token typed into the password field. The OAuth tokens win when the profile
 /// has them; otherwise the typed token connects through the factory.
-async fn create_yandex(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+/// `account` is the one captured when the connection began.
+async fn create_yandex(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     if let Some(store) = credential_store::CredentialStore::from_cache() {
         let profile = saved_profile(&store, config)?;
         let profile_id = profile
             .as_ref()
             .and_then(|p| p.get("id").and_then(|v| v.as_str()).map(str::to_string))
             .unwrap_or_default();
-        let manager = OAuth2Manager::new();
-        if !profile_id.is_empty() && manager.has_tokens(OAuthProvider::YandexDisk, &profile_id) {
-            let tokens = manager
-                .load_tokens(OAuthProvider::YandexDisk, &profile_id)
-                .map_err(|e| format!("No Yandex Disk tokens: {}", e))?;
+        if let Some(access_token) = yandex_oauth_access_token(account, &profile_id) {
             return open_yandex_oauth(
-                YandexDiskProvider::new(tokens.access_token.clone(), None),
+                YandexDiskProvider::new(access_token, None),
                 &profile_id,
                 profile.as_ref(),
             )
@@ -600,6 +627,22 @@ async fn create_yandex(config: &CloudConfig) -> Result<OpenedCloudProvider, Stri
         }
     }
     create_via_factory(config, ProviderType::YandexDisk).await
+}
+
+/// The Yandex Disk OAuth access token of `profile_id`, read once on a manager
+/// bound to `account`, so the answer is that account's even when another one
+/// has been activated since. With no account to bind (`None`) the one read
+/// resolves the active account itself. `None` when the profile has no id or
+/// no token that read can return.
+fn yandex_oauth_access_token(account: Option<i64>, profile_id: &str) -> Option<String> {
+    if profile_id.is_empty() {
+        return None;
+    }
+    OAuth2Manager::new()
+        .with_credential_user(account)
+        .load_tokens(OAuthProvider::YandexDisk, profile_id)
+        .ok()
+        .map(|tokens| tokens.access_token.clone())
 }
 
 /// Finish both production OAuth-token connections and isolated provider probes.
@@ -635,6 +678,10 @@ async fn open_yandex_oauth(
 }
 
 // ── OAuth providers ────────────────────────────────────────────────
+//
+// Each provider is bound to the account captured when the connection began,
+// as the GUI connect binds it: its token reads then answer for that account,
+// not for whichever one is active at the moment of each read.
 
 fn get_param<'a>(config: &'a CloudConfig, key: &str) -> Result<&'a str, String> {
     config
@@ -729,10 +776,15 @@ fn opened_oauth(provider: Box<dyn StorageProvider>, app: &OAuthApp) -> OpenedClo
     }
 }
 
-async fn create_google_drive(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+async fn create_google_drive(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let gc = GoogleDriveConfig::new(&app.client_id, &app.client_secret);
-    let mut p = GoogleDriveProvider::new(gc).with_profile_id(&app.profile_id);
+    let mut p = GoogleDriveProvider::new(gc)
+        .with_profile_id(&app.profile_id)
+        .with_credential_user(account);
     p.connect()
         .await
         .map_err(|e| format!("Google Drive: {}", e))?;
@@ -741,37 +793,55 @@ async fn create_google_drive(config: &CloudConfig) -> Result<OpenedCloudProvider
     Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_dropbox(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+async fn create_dropbox(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let dc = DropboxConfig::new(&app.client_id, &app.client_secret);
-    let mut p = DropboxProvider::new(dc).with_profile_id(&app.profile_id);
+    let mut p = DropboxProvider::new(dc)
+        .with_profile_id(&app.profile_id)
+        .with_credential_user(account);
     p.connect().await.map_err(|e| format!("Dropbox: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to Dropbox");
     Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_onedrive(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+async fn create_onedrive(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let oc = OneDriveConfig::new(&app.client_id, &app.client_secret);
-    let mut p = OneDriveProvider::new(oc).with_profile_id(&app.profile_id);
+    let mut p = OneDriveProvider::new(oc)
+        .with_profile_id(&app.profile_id)
+        .with_credential_user(account);
     p.connect().await.map_err(|e| format!("OneDrive: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to OneDrive");
     Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_box(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+async fn create_box(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     let app = oauth_app(config, "client_id", "client_secret")?;
     let bc = BoxConfig::new(&app.client_id, &app.client_secret);
-    let mut p = BoxProvider::new(bc).with_profile_id(&app.profile_id);
+    let mut p = BoxProvider::new(bc)
+        .with_profile_id(&app.profile_id)
+        .with_credential_user(account);
     p.connect().await.map_err(|e| format!("Box: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to Box");
     Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_pcloud(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+async fn create_pcloud(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     let mut app = oauth_app(config, "client_id", "client_secret")?;
     // pCloud tokens are region-locked: the region detected during the token
     // exchange (vault) wins, as in the normal connect path.
@@ -781,14 +851,19 @@ async fn create_pcloud(config: &CloudConfig) -> Result<OpenedCloudProvider, Stri
         .unwrap_or_else(|| "us".to_string());
     app.region = Some(region.clone());
     let pc = PCloudConfig::new(&app.client_id, &app.client_secret, &region);
-    let mut p = PCloudProvider::new(pc).with_profile_id(&app.profile_id);
+    let mut p = PCloudProvider::new(pc)
+        .with_profile_id(&app.profile_id)
+        .with_credential_user(account);
     p.connect().await.map_err(|e| format!("pCloud: {}", e))?;
     enter_profile_root(&mut p, app.root.as_deref()).await?;
     info!("AeroCloud: connected to pCloud ({})", region);
     Ok(opened_oauth(Box::new(p), &app))
 }
 
-async fn create_zoho(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
+async fn create_zoho(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
     let mut app = oauth_app(config, "client_id", "client_secret")?;
     // The profile's region, then the one stored at authorization, as the normal
     // connect path resolves it.
@@ -802,7 +877,9 @@ async fn create_zoho(config: &CloudConfig) -> Result<OpenedCloudProvider, String
         .unwrap_or_else(|| "us".to_string());
     app.region = Some(region.clone());
     let zc = ZohoWorkdriveConfig::new(&app.client_id, &app.client_secret, &region);
-    let mut p = ZohoWorkdriveProvider::new(zc).with_profile_id(&app.profile_id);
+    let mut p = ZohoWorkdriveProvider::new(zc)
+        .with_profile_id(&app.profile_id)
+        .with_credential_user(account);
     p.connect()
         .await
         .map_err(|e| format!("Zoho WorkDrive: {}", e))?;
@@ -971,6 +1048,104 @@ mod tests {
             resolved_target_identity(&config, &explicit, None).unwrap(),
             before
         );
+    }
+
+    /// Two accounts hold a Yandex profile under one id. The connection captures
+    /// its account, then the other account is activated before the token is
+    /// read: the token is still the capturing account's (an unbound read would
+    /// answer with the other one's), and the connection is refused, also after
+    /// switching back.
+    #[test]
+    #[ignore = "process-global vault/session/env; run alone with --ignored --test-threads=1"]
+    fn yandex_token_and_connection_stay_with_the_account_that_began_connecting() {
+        use crate::credential_store::CredentialStore;
+        use crate::providers::oauth2::StoredTokens;
+        use crate::user_partitions as partitions;
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("factory-owner-test-pass")
+            .expect("bootstrap vault");
+        CredentialStore::unlock_with_master("factory-owner-test-pass", None).expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account");
+
+        let tokens = |access: &str| StoredTokens {
+            access_token: access.into(),
+            refresh_token: None,
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        };
+        // Each account signs the shared profile id in while it is active.
+        let login = OAuth2Manager::new();
+        login
+            .store_tokens(
+                OAuthProvider::YandexDisk,
+                "shared-profile",
+                &tokens("first-account-token"),
+            )
+            .expect("first account login");
+        partitions::set_active_user(&conn, second.id).expect("activate second");
+        login
+            .store_tokens(
+                OAuthProvider::YandexDisk,
+                "shared-profile",
+                &tokens("second-account-token"),
+            )
+            .expect("second account login");
+        partitions::set_active_user(&conn, first.id).expect("reactivate first");
+
+        // What `create_cloud_connection` captures before its first read.
+        let account = partitions::gui_account_snapshot().expect("capture account");
+        assert_eq!(account.user, Some(first.id));
+        assert!(account_unchanged(&account).is_ok());
+        assert_eq!(
+            yandex_oauth_access_token(account.user, "shared-profile").as_deref(),
+            Some("first-account-token")
+        );
+
+        // The switch lands after the capture and before the token read.
+        partitions::set_active_user(&conn, second.id).expect("switch to second");
+        assert_eq!(
+            OAuth2Manager::new()
+                .load_tokens(OAuthProvider::YandexDisk, "shared-profile")
+                .expect("an unbound read answers for the active account")
+                .access_token,
+            "second-account-token"
+        );
+        assert_eq!(
+            yandex_oauth_access_token(account.user, "shared-profile").as_deref(),
+            Some("first-account-token")
+        );
+        assert!(account_unchanged(&account).is_err());
+        // Back on the first account, the capture is still a stale one.
+        partitions::set_active_user(&conn, first.id).expect("switch back");
+        assert!(account_unchanged(&account).is_err());
+        assert!(yandex_oauth_access_token(account.user, "").is_none());
+
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
     }
 
     #[tokio::test]
