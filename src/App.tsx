@@ -513,7 +513,7 @@ import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useLatestCallback } from './hooks/useLatestCallback';
-import { runCompletionRefresh } from './utils/completionRefresh';
+import { runCompletionRefresh, runTrackedSync } from './utils/completionRefresh';
 import { useResumeProfileGuard } from './hooks/useResumeProfileGuard';
 import { useSettings } from './hooks/useSettings';
 import { useFontSizeShortcuts, FontSizeIndicator } from './hooks/useFontSizeShortcuts';
@@ -1857,6 +1857,7 @@ const App: React.FC = () => {
   const loadLocalWaitersRef = useRef(new Set<() => void>());
   const syncRefreshAbortRef = useRef<AbortController | null>(null);
   const syncCancelPendingRef = useRef<Promise<void> | null>(null);
+  const syncRunnerPendingRef = useRef<Promise<void> | null>(null);
   const latestLocalListing2 = useRef(new LatestListing());
 
   // File clipboard for Cut/Copy/Paste
@@ -11272,7 +11273,7 @@ const App: React.FC = () => {
   // after the restore: it runs with the queue and the transfers of now.
   const retryRestoredEntry = useLatestCallback(async (id: string, entry: TransferQueueJournalEntryDto) => {
     const stops = stopCountRef.current;
-    while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+    while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
     if (stopCountRef.current !== stops) return;
     const direction = entry.direction === 'upload' ? 'upload' : 'download';
     transferQueue.startTransfer(id);
@@ -11451,7 +11452,7 @@ const App: React.FC = () => {
    *  the reason instead, and runs again once that target is live. */
   const boundToQueuedServer = useLatestCallback((queuedFor: QueuedTarget, id: string, run: () => unknown): (() => Promise<void>) => async () => {
     const stops = stopCountRef.current;
-    while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+    while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
     if (stopCountRef.current !== stops) return;
     const problem = queuedTargetProblem(queuedFor);
     if (problem) {
@@ -12042,7 +12043,7 @@ const App: React.FC = () => {
   // Retry all failed items in queue
   const retryAllFailedItems = async () => {
     const stops = stopCountRef.current;
-    while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+    while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
     if (stopCountRef.current !== stops) return;
     const failedIds = transferQueue.retryAllFailed();
     // A Stop during these retries ends them. The flag of a batch stopped
@@ -12912,7 +12913,7 @@ const App: React.FC = () => {
       window.addEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
       void (async () => {
         try {
-          const report = await runRemoteSync(
+          const report = await runTrackedSync(syncRunnerPendingRef, () => runRemoteSync(
             runFiles,
             runDirs,
             runConfig,
@@ -12926,7 +12927,7 @@ const App: React.FC = () => {
             },
             { invoke, deltaStats, resumeJournal: opts.resumeJournal, writeIndex: true,
               remoteTarget: { epoch, assertCurrent: checkTarget, ownerBinding } },
-          );
+          ));
           setRemoteSyncResult({ report, localLocal: false });
           if (!report.cancelled && (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0)) {
             const refreshController = new AbortController();
@@ -13105,7 +13106,7 @@ const App: React.FC = () => {
     cancelLevelRef.current = 0;
     void (async () => {
       try {
-        const report = await runRemoteSync(
+        const report = await runTrackedSync(syncRunnerPendingRef, () => runRemoteSync(
           runFiles,
           runDirs,
           runConfig,
@@ -13115,7 +13116,7 @@ const App: React.FC = () => {
             onFileStatus: syncRunQueueBridge(runFiles, transferQueue, opts.resumeJournal),
           },
           { invoke, resumeJournal: opts.resumeJournal, writeIndex: true },
-        );
+        ));
         setRemoteSyncResult({ report, localLocal: true });
         if (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0) {
           await loadLocalFiles(currentLocalPath);
@@ -18773,7 +18774,7 @@ const App: React.FC = () => {
           onRemoveItem={transferQueue.removeItem}
           onRetryItem={async (id: string) => {
             const stops = stopCountRef.current;
-            while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+            while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
             if (stopCountRef.current !== stops) return;
             const item = transferQueue.items.find((i) => i.id === id);
             // TQ-7c: restored items go through smart resume (auto-connect).

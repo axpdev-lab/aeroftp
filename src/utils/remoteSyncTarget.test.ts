@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { runCompletionRefresh } from './completionRefresh';
+import { runCompletionRefresh, runTrackedSync } from './completionRefresh';
+import { rearmedOnUserAction } from '../components/transferQueueActions';
 import { localPanelShows } from './localSelection';
 import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
@@ -247,7 +248,7 @@ it('does not launch the App delta continuation after a tab switch', async () => 
         localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
         invoke, loadSavedServerProfiles: async () => [{ id: 'A' }],
         setDeltaEligibilityPrompt: (value: typeof prompt) => { prompt = value; },
-        remoteSyncRunningRef: { current: false }, syncCancelPendingRef: { current: null }, notify: { error: vi.fn(), info: vi.fn() },
+        remoteSyncRunningRef: { current: false }, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, runTrackedSync, notify: { error: vi.fn(), info: vi.fn() },
         t: (key: string) => key, debugMode: false, runRemoteSync: runner,
     };
     const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
@@ -361,7 +362,7 @@ it.each([false, true])('runs an unsaved quick-connect sync with an epoch owner (
         currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
         localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
         invoke: vi.fn(async (cmd: string) => cmd === 'provider_gui_target_epoch' ? 7 : 'epoch-v1:test:7'),
-        loadSavedServerProfiles: async () => [], remoteSyncRunningRef: { current: false }, syncCancelPendingRef: { current: null },
+        loadSavedServerProfiles: async () => [], remoteSyncRunningRef: { current: false }, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, runTrackedSync,
         batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
         window: { addEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'test-transfer',
         syncRunQueueBridge: () => ({}), transferQueue: {},
@@ -473,7 +474,7 @@ it.each(['settled', 'stopped', 'retargeted'] as const)('gates a queued executor 
     const end = app.indexOf('\n  /** Whether two connections', start);
     const { code } = await transformWithOxc(app.slice(start, end), 'queue-after-cancellation.ts');
     let settle!: () => void; const pending = new Promise<void>(resolve => { settle = resolve; }); let problem: string | null = null;
-    const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: pending as Promise<void> | null },
+    const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: pending as Promise<void> | null }, syncRunnerPendingRef: { current: null }, runTrackedSync,
         stopCountRef: { current: 0 }, queuedTargetProblem: () => problem, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key };
     const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
     const executor = vi.fn(); const retry = bind({}, 'retry', executor)();
@@ -483,6 +484,67 @@ it.each(['settled', 'stopped', 'retargeted'] as const)('gates a queued executor 
     context.syncCancelPendingRef.current = null; settle(); await retry;
     expect(executor).toHaveBeenCalledTimes(outcome === 'settled' ? 1 : 0);
     if (outcome === 'retargeted') expect(context.transferQueue.failTransfer).toHaveBeenCalledWith('retry', 'target changed');
+});
+
+it('does not rearm Retry after native Stop acknowledgement until the actual sync runner exits', async () => {
+    const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+    const runStart = app.indexOf('  const runConnectedRemoteSync =');
+    const workerStart = app.indexOf('      void (async () => {', runStart);
+    const workerEnd = app.indexOf('      })();', workerStart) + '      })();'.length;
+    const workerCode = (await transformWithOxc(app.slice(workerStart, workerEnd).replace('void (async', 'return (async'), 'stopped-runner-exit.ts')).code;
+    let transferDone!: () => void; const transfer = new Promise<void>(resolve => { transferDone = resolve; });
+    let transferEntered!: () => void; const entered = new Promise<void>(resolve => { transferEntered = resolve; });
+    let nativeDone!: () => void; const native = new Promise<void>(resolve => { nativeDone = resolve; });
+    const batchCancelledRef = { current: false }; const cancelLevelRef = { current: 0 }; const commands: string[] = [];
+    const invoke = wrapIntentInvoke(async <T,>(command: string): Promise<T> => {
+        commands.push(command);
+        if (command === 'provider_bulk_support') return { upload: false, download: false } as T;
+        if (command === 'provider_upload_file') {
+            transferEntered(); await transfer;
+            expect(batchCancelledRef.current).toBe(true);
+        }
+        if (command === 'cancel_transfer') await native;
+        return undefined as T;
+    });
+    const retried = vi.fn();
+    const context = {
+        runTrackedSync, runCompletionRefresh, runRemoteSync, runFiles: [file('first'), file('later', 'delete-remote')],
+        runDirs: { local: [], remote: [] }, runConfig: config(), opts: {}, invoke, deltaStats: new Map(),
+        batchCancelledRef, cancelLevelRef, epoch: 1, ownerBinding: 'test-owner', checkTarget: vi.fn(),
+        syncRunQueueBridge: () => ({}), setRemoteSyncResult: vi.fn(),
+        syncRunnerPendingRef: { current: null as Promise<void> | null }, syncCancelPendingRef: { current: null as Promise<void> | null },
+        syncRefreshAbortRef: { current: null }, remoteSyncRunningRef: { current: true }, activeTransferRef: { current: null },
+        stopCountRef: { current: 0 }, loadLocalWaitersRef: { current: new Set<() => void>() }, batchResumeResolverRef: { current: null },
+        transferQueue: { items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(), stopAll: vi.fn(), hasActiveTransfersNow: () => true },
+        retryCallbacksRef: { current: new Map([['retry', rearmedOnUserAction({ batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef }, retried)]]) },
+        resumeRestoredTransfers: vi.fn(), setSyncCancelling: vi.fn(), dispatchTransferToast: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(),
+        window: { removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'transfer', onTransferEvent: vi.fn(),
+        notify: { error: vi.fn() }, t: (key: string) => key,
+    };
+    const run = new Function(...Object.keys(context), workerCode)(...Object.values(context)) as Promise<void>;
+    await entered;
+    const cancelStart = app.indexOf('  const cancelTransfer = async');
+    const cancelEnd = app.indexOf('  // Circuit breaker: attempt reconnection', cancelStart);
+    const cancelCode = (await transformWithOxc(app.slice(cancelStart, cancelEnd), 'stop-before-runner-exit.ts')).code;
+    const cancel = new Function(...Object.keys(context), `${cancelCode};return cancelTransfer;`)(...Object.values(context));
+    const stopping = cancel(); nativeDone(); await stopping;
+    expect(context.syncCancelPendingRef.current).toBe(null);
+    expect(context.syncRunnerPendingRef.current).not.toBe(null);
+    const retryStart = app.indexOf('onRetryItem={async (id: string) => {');
+    const retryEnd = app.indexOf('\n          onStartItem=', retryStart);
+    const retrySource = app.slice(retryStart, retryEnd).trim().slice('onRetryItem={'.length, -1);
+    const retryCode = (await transformWithOxc(`const retry = ${retrySource};`, 'retry-before-runner-exit.ts')).code;
+    const retry = new Function(...Object.keys(context), `${retryCode};return retry;`)(...Object.values(context));
+    const retrying = retry('retry');
+    expect(retried).not.toHaveBeenCalled();
+    expect(batchCancelledRef.current).toBe(true);
+    transferDone(); await run; await retrying;
+    expect(context.syncRunnerPendingRef.current).toBe(null);
+    expect(commands.filter(command => command === 'provider_upload_file')).toHaveLength(1);
+    expect(commands).not.toContain('provider_delete_file');
+    expect(context.setRemoteSyncResult.mock.calls[0][0].report.cancelled).toBe(true);
+    expect(retried).toHaveBeenCalledOnce();
+    expect(batchCancelledRef.current).toBe(false);
 });
 
 it.each(['before', 'during'] as const)('preserves local navigation %s the remote completion refresh', async when => {
@@ -614,7 +676,7 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
             loadLocalFiles: vi.fn(() => stalled), loadLocalPendingRef: { current: scenario === 'timeout-read' ? null : 1 as number | null },
             loadLocalWaitersRef: { current: new Set<() => void>() }, currentLocalPathRef: { current: '/A' },
             syncRefreshAbortRef: { current: null as AbortController | null }, runCompletionRefresh,
-            syncCancelPendingRef: { current: null as Promise<void> | null }, activeTransferRef: { current: null },
+            syncCancelPendingRef: { current: null as Promise<void> | null }, syncRunnerPendingRef: { current: null }, runTrackedSync, activeTransferRef: { current: null },
             localPanelShows, isLocalFlattenSearchActive: () => false,
             window: { removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'transfer', onTransferEvent: vi.fn(),
             notify: { error: vi.fn() }, t: (key: string) => key,
