@@ -808,6 +808,7 @@ impl RefreshLease {
     /// `slug`. `Some(lease)` => WE own it, perform the refresh. `None` =>
     /// gave up waiting or no lock dir; caller must re-load tokens (the other
     /// owner is refreshing) rather than refresh in parallel.
+    #[cfg(any(test, feature = "proton-native"))]
     pub(crate) async fn acquire(slug: &str) -> Option<Self> {
         Self::acquire_checked(slug).await.ok().flatten()
     }
