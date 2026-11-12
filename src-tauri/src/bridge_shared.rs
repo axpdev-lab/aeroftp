@@ -83,6 +83,7 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "alibaba" | "alicloud" | "oss" => "alibaba-oss",
         "gcs" => "google-cloud-storage",
         "ibmcos" | "ibm-cos" | "ibm" => "ibm-cos",
+        "neon" => "neon-s3",
         "ionos" => "ionos-s3",
         "petabox" => "custom-s3",
         "seaweedfs" => "custom-s3",
@@ -126,6 +127,15 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
             && host.ends_with(".object.fastlystorage.app")
         {
             return "fastly";
+        }
+    }
+    // Neon Object Storage endpoints are per-branch
+    // (`<branch>.storage.c-<n>.<region>.aws.neon.tech`); the domain boundary
+    // keeps a lookalike host from claiming the preset.
+    {
+        let host = h.split(':').next().unwrap_or("");
+        if host == "aws.neon.tech" || host.ends_with(".aws.neon.tech") {
+            return "neon-s3";
         }
     }
     if h.is_empty() || h.contains("amazonaws.com") {
@@ -1374,6 +1384,36 @@ mod tests {
             map_s3_provider_from_endpoint("https://s3.us-east-1.amazonaws.com"),
             "amazon-s3"
         );
+    }
+
+    #[test]
+    fn s3_provider_from_endpoint_neon_uses_a_domain_boundary() {
+        for endpoint in [
+            "https://br-misty-pine-bagvej1p.storage.c-8.eu-central-1.aws.neon.tech",
+            "br-x.storage.c-1.us-east-1.aws.neon.tech",
+            "https://br-x.storage.c-1.us-east-1.aws.neon.tech:443/bucket",
+            "https://aws.neon.tech",
+        ] {
+            assert_eq!(
+                map_s3_provider_from_endpoint(endpoint),
+                "neon-s3",
+                "{endpoint}"
+            );
+        }
+        for endpoint in [
+            "https://aws.neon.tech.example.com",
+            "https://notaws.neon.tech",
+            "https://neon.tech",
+            "https://aws.neon.tech.evil.com/bucket",
+        ] {
+            assert_ne!(
+                map_s3_provider_from_endpoint(endpoint),
+                "neon-s3",
+                "{endpoint}"
+            );
+        }
+        assert_eq!(map_s3_provider("Neon"), "neon-s3");
+        assert_eq!(map_s3_provider("neon"), "neon-s3");
     }
 
     #[test]

@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris: globálisan elosztott, S3-kompatibilis tárhely, kimenő forgalmi díj nélkül (5 GB ingyenes)",
             "trustPasvAddress": "A szerver által megadott passzív cím használata",
             "trustPasvAddressHelp": "Ki: az adatkapcsolatok arra a gazdagépre mennek, amelyhez csatlakozott, ahogy a curl is teszi. Csak olyan szervernél kapcsolja be, amely más címről küldi az adatokat.",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibilis tárhely 12 régióban (5 GB ingyenes, kártya szükséges)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibilis tárhely 12 régióban (5 GB ingyenes, kártya szükséges)",
+            "discoverNeon": "Neon Object Storage: S3-kompatibilis tárhely projekti áganként (5 GB ingyen projektenként)",
+            "discoverPuter": "Puter felhőalapú tároló WebDAV-on keresztül (25 MB ingyenes, kártya nélkül)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

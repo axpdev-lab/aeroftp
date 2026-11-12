@@ -3764,7 +3764,9 @@
             "imagekitDesc": "Media CDN + storage (20 GB free)",
             "uploadcareDesc": "EU media CDN (3 GB free)",
             "cloudinaryDesc": "Media CDN (25 credits/month free)",
-            "backblazeDesc": "Backblaze B2 native API v4"
+            "backblazeDesc": "Backblaze B2 native API v4",
+            "discoverNeon": "Neon Object Storage: S3-compatible storage per project branch (5 GB free per project)",
+            "discoverPuter": "Puter cloud storage via WebDAV (25 MB free, no card)"
         },
         "quickLook": {
             "noPreview": "No preview available",

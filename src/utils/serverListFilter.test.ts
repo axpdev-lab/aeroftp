@@ -134,6 +134,30 @@ describe('deriveProviderId Tigris host boundary', () => {
     });
 });
 
+describe('deriveProviderId Neon and Puter host boundaries', () => {
+    const s3 = (host: string) => ({ name: 's', host, username: '', protocol: 's3' as const });
+    const webdav = (host: string) => ({ name: 's', host, username: '', protocol: 'webdav' as const });
+
+    it('classifies Neon per-branch endpoints', () => {
+        expect(deriveProviderId(s3('br-misty-pine-bagvej1p.storage.c-8.eu-central-1.aws.neon.tech'))).toBe('neon-s3');
+        expect(deriveProviderId(s3('https://br-x.storage.c-1.us-east-1.aws.neon.tech:443/bucket'))).toBe('neon-s3');
+    });
+
+    it('rejects Neon lookalikes', () => {
+        expect(deriveProviderId(s3('aws.neon.tech.example.com'))).toBeUndefined();
+        expect(deriveProviderId(s3('notaws.neon.tech'))).toBeUndefined();
+        expect(deriveProviderId(s3('neon.tech'))).toBeUndefined();
+    });
+
+    it('classifies the Puter WebDAV host and rejects lookalikes', () => {
+        expect(deriveProviderId(webdav('dav.puter.com'))).toBe('puter-webdav');
+        expect(deriveProviderId(webdav('https://dav.puter.com/user'))).toBe('puter-webdav');
+        expect(deriveProviderId(webdav('dav.puter.com.evil.com'))).not.toBe('puter-webdav');
+        expect(deriveProviderId(webdav('notdav.puter.com'))).not.toBe('puter-webdav');
+        expect(deriveProviderId(webdav('puter.com'))).not.toBe('puter-webdav');
+    });
+});
+
 describe('select all on a filtered checklist', () => {
     const all = ids(LAB);
 

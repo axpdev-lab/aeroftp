@@ -881,6 +881,16 @@
       "firstRegion": null
     },
     {
+      "id": "neon-s3",
+      "protocol": "s3",
+      "generic": false,
+      "defaults": {
+        "pathStyle": true,
+        "region": "eu-central-1"
+      },
+      "firstRegion": "eu-central-1"
+    },
+    {
       "id": "4shared",
       "protocol": "fourshared",
       "generic": false,
@@ -904,6 +914,16 @@
       "generic": false,
       "defaults": {
         "server": "https://webdav.cloudme.com/{username}",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
+      "id": "puter-webdav",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://dav.puter.com/{username}",
         "port": 443
       },
       "firstRegion": null

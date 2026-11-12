@@ -64,6 +64,8 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
         // like gmail.ru are rejected.
         const davHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
         if (davHost === 'mail.ru' || davHost.endsWith('.mail.ru')) return 'mailru-cloud';
+        // Puter WebDAV: exact dav.puter.com or a subdomain of it.
+        if (davHost === 'dav.puter.com' || davHost.endsWith('.dav.puter.com')) return 'puter-webdav';
         if (host.includes('nextcloud') || host.includes('cloud.')) return 'nextcloud';
         if (host.includes('seafile')) return 'seafile';
         if (host.includes('jianguoyun')) return 'jianguoyun';

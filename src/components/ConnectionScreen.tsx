@@ -411,6 +411,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         || (activeProviderId ? getProviderById(activeProviderId) : null)
         || (protocol === 'swift' ? getProviderById('blomp') : null);
 
+    const usernameField = formProvider?.fields?.find(f => f.key === 'username');
+    const passwordField = formProvider?.fields?.find(f => f.key === 'password');
+
     // Track which preset fields have been unlocked for editing
     const [presetUnlocked, setPresetUnlocked] = useState<Record<string, boolean>>({});
 
@@ -6305,6 +6308,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     />
                                                 )}
                                             </div>
+                                            {!isFilenDesktopBridge && usernameField?.helpText && (
+                                                <p className="text-xs text-gray-500 mt-1">{usernameField.helpText}</p>
+                                            )}
                                         </div>
                                         {/* Password: not applicable to an AeroShare friend (peer carries
                                             no password; the binding rides in options.peer*). */}
@@ -6332,6 +6338,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
+                                            {!isFilenDesktopBridge && passwordField?.helpText && (
+                                                <p className="text-xs text-gray-500 mt-1">{passwordField.helpText}</p>
+                                            )}
                                             {isFilenDesktopBridge && (
                                                 <p className={`mt-1.5 text-xs ${filenBridgeCredentialIssue ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>
                                                     {filenBridgeCredentialIssue

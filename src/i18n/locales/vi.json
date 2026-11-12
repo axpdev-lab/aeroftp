@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris: lưu trữ phân tán toàn cầu tương thích S3, không tính phí băng thông ra (5 GB miễn phí)",
             "trustPasvAddress": "Dùng địa chỉ passive do máy chủ cung cấp",
             "trustPasvAddressHelp": "Tắt: kết nối dữ liệu đi tới máy chủ bạn đã kết nối, như curl. Chỉ bật cho máy chủ gửi dữ liệu từ một địa chỉ khác.",
-            "discoverFastly": "Fastly Object Storage: lưu trữ tương thích S3 tại 12 khu vực (miễn phí 5 GB, cần thẻ)"
+            "discoverFastly": "Fastly Object Storage: lưu trữ tương thích S3 tại 12 khu vực (miễn phí 5 GB, cần thẻ)",
+            "discoverNeon": "Neon Object Storage: bộ lưu trữ tương thích S3 theo từng nhánh dự án (5 GB miễn phí cho mỗi dự án)",
+            "discoverPuter": "Lưu trữ đám mây Puter qua WebDAV (25 MB miễn phí, không cần thẻ)"
         },
         "shortcuts": {
             "title": "Phím tắt",

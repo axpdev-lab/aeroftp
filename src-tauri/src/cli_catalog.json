@@ -697,6 +697,29 @@
     ]
   },
   {
+    "company": "Neon Object Storage",
+    "logoId": "neon",
+    "country": "US",
+    "freeGb": 5,
+    "freeNote": "per project",
+    "freeRequiresCard": false,
+    "regions": [
+      "US",
+      "DE",
+      "SG"
+    ],
+    "protocols": [
+      {
+        "label": "S3",
+        "protocol": "s3",
+        "providerId": "neon-s3",
+        "paid": false,
+        "category": "object-storage",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "IBM Cloud Object Storage",
     "logoId": "ibm-cos",
     "country": "US",
@@ -732,6 +755,27 @@
         "label": "WebDAV",
         "protocol": "webdav",
         "providerId": "cloudme",
+        "paid": false,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
+    "company": "Puter",
+    "logoId": "puter",
+    "country": "US",
+    "freeGb": null,
+    "freeNote": "25 MB free",
+    "freeRequiresCard": false,
+    "regions": [
+      "US"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "puter-webdav",
         "paid": false,
         "category": "webdav",
         "note": null

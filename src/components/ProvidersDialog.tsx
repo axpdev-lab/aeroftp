@@ -214,6 +214,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Fastly Object Storage', logoId: 'fastly',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
+  { name: 'Neon', logoId: 'neon',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
   { name: 'Storj', logoId: 'storj',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
@@ -241,6 +244,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
 
   // ── WebDAV ──
   { name: 'CloudMe', logoId: 'cloudme', section: 'webdav',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
+  { name: 'Puter', logoId: 'puter',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
   { name: 'DriveHQ', logoId: 'drivehq',

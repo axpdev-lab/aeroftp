@@ -439,3 +439,58 @@ describe('IntroHub form drafts across tab switches', () => {
         expect(draft.isConnected).toBe(false);
     });
 });
+
+describe('Puter WebDAV credential guidance and Advanced Server override', () => {
+    async function renderPuterNewConnection() {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                providerId: 'puter-webdav',
+                server: '',
+                username: '',
+                password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+    }
+
+    it('renders username and password helpText for puter-webdav', async () => {
+        await renderPuterNewConnection();
+        const text = container.textContent || '';
+        expect(text).toContain('Token auth: use -token as the username (literal)');
+        expect(text).toMatch(/appended verification codes expire and may stop authenticating/i);
+        expect(text).toContain('-token');
+    });
+
+    it('allows unlocking and overriding Server under Advanced Options for token auth', async () => {
+        await renderPuterNewConnection();
+        const toggle = button('protocol.advanced');
+        await act(async () => toggle.click());
+
+        const serverInput = container.querySelector<HTMLInputElement>('input[placeholder="https://dav.puter.com/{username}"]')!;
+        expect(serverInput).toBeDefined();
+        expect(serverInput.disabled).toBe(true);
+
+        const editBtn = button('common.edit');
+        await act(async () => editBtn.click());
+
+        const unlockBtn = button('protocol.advancedUnlock');
+        await act(async () => unlockBtn.click());
+
+        expect(serverInput.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(serverInput, 'https://dav.puter.com/myuser');
+            serverInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(serverInput.value).toBe('https://dav.puter.com/myuser');
+    });
+});

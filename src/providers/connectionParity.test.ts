@@ -36,4 +36,15 @@ describe('connection metadata used by saved profiles', () => {
         expect(getDefaultPort('scp')).toBe(22);
         expect(connectionProfileDefaults('scp')).toMatchObject({ port: 22, server: '', options: {} });
     });
+
+    it('puter-webdav documents 2FA expiration and token auth guidance in credential helpText', () => {
+        const puter = PROVIDERS.find(p => p.id === 'puter-webdav');
+        expect(puter).toBeDefined();
+        const userField = puter?.fields?.find(f => f.key === 'username');
+        const passField = puter?.fields?.find(f => f.key === 'password');
+        expect(userField?.helpText).toContain('-token');
+        expect(passField?.helpText).toMatch(/appended verification codes expire and may stop authenticating/i);
+        expect(passField?.helpText).toMatch(/-token/);
+        expect(passField?.helpText).toMatch(/persistent connections/i);
+    });
 });

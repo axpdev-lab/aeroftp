@@ -173,6 +173,7 @@ pub fn is_webdav_preset(provider_id: Option<&str>) -> bool {
                 | "jianguoyun"
                 | "filelu-webdav"
                 | "felicloud-webdav"
+                | "puter-webdav"
         )
     )
 }
@@ -199,6 +200,7 @@ pub fn is_s3_preset(provider_id: Option<&str>) -> bool {
                 | "ibm-cos"
                 | "tigris"
                 | "fastly"
+                | "neon-s3"
         )
     )
 }
@@ -545,6 +547,7 @@ mod tests {
             "jianguoyun",
             "filelu-webdav",
             "felicloud-webdav",
+            "puter-webdav",
         ] {
             assert!(
                 is_webdav_preset(Some(preset)),
@@ -575,6 +578,7 @@ mod tests {
             "ibm-cos",
             "tigris",
             "fastly",
+            "neon-s3",
         ] {
             assert!(is_s3_preset(Some(preset)), "{preset} must be an S3 preset");
         }

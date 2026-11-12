@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)",
             "trustPasvAddress": "Folosește adresa pasivă indicată de server",
             "trustPasvAddressHelp": "Dezactivat: conexiunile de date merg la gazda la care te-ai conectat, ca la curl. Activează doar pentru un server care trimite datele de la altă adresă.",
-            "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)"
+            "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)",
+            "discoverNeon": "Neon Object Storage: stocare compatibilă cu S3 pentru fiecare ramură de proiect (5 GB gratuite pe proiect)",
+            "discoverPuter": "Stocare cloud Puter prin WebDAV (25 MB gratuit, fără card)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

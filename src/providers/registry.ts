@@ -1354,6 +1354,48 @@ export const PROVIDERS: ProviderConfig[] = [
             'Endpoint and Region come from the same rclone snippet: open "Advanced" below if your values differ from the defaults (storage.kapsa.io / us-east-1)',
         ],
     },
+    {
+        id: 'neon-s3',
+        name: 'Neon Object Storage',
+        description: 'S3-compatible object storage in a Neon project (5 GB free per project)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#84CC16',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'Neon Console → Storage → Connect → S3 credentials (or `neon credentials create --scope storage:read --scope storage:write`)' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown once when the S3 credentials are created' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-neon-bucket', helpText: 'Bucket created in the Neon Console Storage tab' },
+            {
+                ...COMMON_FIELDS.endpoint,
+                placeholder: 'https://<branch-id>.storage.<cell>.<region>.aws.neon.tech',
+                helpText: 'Neon Console → Connect → Storage tab → S3 endpoint (each branch has its own)',
+            },
+            {
+                key: 'region',
+                label: 'Region',
+                type: 'select',
+                required: true,
+                // The four regions rclone's Neon provider publishes
+                // (backend/s3/provider/Neon.yaml, rclone v1.76.0).
+                options: [
+                    { value: 'eu-central-1', label: 'EU Central 1 (Frankfurt)' },
+                    { value: 'us-east-1', label: 'US East 1 (N. Virginia)' },
+                    { value: 'us-east-2', label: 'US East 2 (Ohio)' },
+                    { value: 'ap-southeast-1', label: 'AP Southeast 1 (Singapore)' },
+                ],
+                group: 'server',
+            },
+        ],
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        healthCheckUrl: 'https://neon.com',
+        helpUrl: 'https://neon.com/docs/storage/overview',
+        signupUrl: 'https://console.neon.tech',
+    },
 
     // =========================================================================
     // WEBDAV PROVIDERS
@@ -1415,6 +1457,27 @@ export const PROVIDERS: ProviderConfig[] = [
         healthCheckUrl: 'https://webdav.cloudme.com',
         helpUrl: 'https://www.cloudme.com/en/webdav',
         signupUrl: 'https://www.cloudme.com/signup',
+    },
+    {
+        id: 'puter-webdav',
+        name: 'Puter',
+        description: 'Puter cloud storage via WebDAV (25 MB free, no card)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#8B5CF6',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.username, placeholder: 'Your Puter username', helpText: 'Token auth: use -token as the username (literal)' },
+            { ...COMMON_FIELDS.password, helpText: 'Your Puter password; with 2FA enabled, append the code (appended verification codes expire and may stop authenticating later requests; use -token authentication for persistent connections). Token auth: the auth token as password with -token as username, and set Server to https://dav.puter.com/<username> (the {username} path resolves to -token otherwise)' },
+        ],
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://api.puter.com',
+        helpUrl: 'https://docs.puter.com',
+        signupUrl: 'https://puter.com',
     },
     {
         id: 'drivehq',

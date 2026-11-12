@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris: globalt distribuert S3-kompatibel lagring, ingen gebyrer for utgående data (5 GB gratis)",
             "trustPasvAddress": "Bruk den passive adressen serveren oppgir",
             "trustPasvAddressHelp": "Av: dataforbindelser går til verten du koblet til, slik curl gjør. Slå på bare for en server som sender data fra en annen adresse.",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort kreves)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort kreves)",
+            "discoverNeon": "Neon Object Storage: S3-kompatibel lagring per prosjektgren (5 GB gratis per prosjekt)",
+            "discoverPuter": "Puter-skylagring via WebDAV (25 MB gratis, ingen kort)"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

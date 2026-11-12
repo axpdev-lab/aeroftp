@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris: pasauliniu mastu paskirstyta su S3 suderinama saugykla, be išeinančio srauto mokesčių (5 GB nemokamai)",
             "trustPasvAddress": "Naudoti serverio nurodytą pasyvųjį adresą",
             "trustPasvAddressHelp": "Išjungta: duomenų ryšiai eina į pagrindinį kompiuterį, prie kurio prisijungėte, kaip daro curl. Įjunkite tik serveriui, kuris siunčia duomenis iš kito adreso.",
-            "discoverFastly": "Fastly Object Storage: su S3 suderinama saugykla 12 regionų (5 GB nemokamai, reikalinga kortelė)"
+            "discoverFastly": "Fastly Object Storage: su S3 suderinama saugykla 12 regionų (5 GB nemokamai, reikalinga kortelė)",
+            "discoverNeon": "Neon Object Storage: S3 suderinama saugykla, skirta kiekvienai projekto šakai (5 GB nemokamai projektui)",
+            "discoverPuter": "„Puter“ debesų saugykla per WebDAV (25 MB nemokamai, be kortelės)"
         },
         "shortcuts": {
             "title": "Klaviatūros trumpiniai",

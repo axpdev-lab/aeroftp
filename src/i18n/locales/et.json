@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)",
             "trustPasvAddress": "Kasuta serveri antud passiivset aadressi",
             "trustPasvAddressHelp": "Väljas: andmeühendused lähevad hostile, millega ühendusid, nagu curl teeb. Lülita sisse ainult serveri jaoks, mis saadab andmeid mujalt aadressilt.",
-            "discoverFastly": "Fastly Object Storage: S3-ühilduv salvestusruum 12 piirkonnas (5 GB tasuta, vajalik on kaart)"
+            "discoverFastly": "Fastly Object Storage: S3-ühilduv salvestusruum 12 piirkonnas (5 GB tasuta, vajalik on kaart)",
+            "discoverNeon": "Neon Object Storage: S3-ga ühilduv salvestusruum iga projekti haru jaoks (5 GB tasuta projekti kohta)",
+            "discoverPuter": "Puter pilvesalvestus WebDAV-i kaudu (25 MB tasuta, kaarti pole vaja)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",

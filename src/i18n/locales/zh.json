@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris：全球分布式 S3 兼容存储，无出站流量费用（5 GB 免费）",
             "trustPasvAddress": "使用服务器提供的被动模式地址",
             "trustPasvAddressHelp": "关闭：数据连接会发往你所连接的主机，与 curl 一致。仅对从其他地址发送数据的服务器开启。",
-            "discoverFastly": "Fastly Object Storage：覆盖 12 个区域的 S3 兼容存储（免费 5 GB，需要银行卡）"
+            "discoverFastly": "Fastly Object Storage：覆盖 12 个区域的 S3 兼容存储（免费 5 GB，需要银行卡）",
+            "discoverNeon": "Neon Object Storage：按项目分支提供的 S3 兼容存储（每个项目免费 5 GB）",
+            "discoverPuter": "通过WebDAV使用Puter云存储（25 MB免费，无需银行卡）"
         },
         "shortcuts": {
             "title": "键盘快捷键",

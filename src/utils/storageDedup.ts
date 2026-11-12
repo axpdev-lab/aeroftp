@@ -66,6 +66,7 @@ const WEBDAV_PRESET_IDS = new Set<string>([
     'jianguoyun',
     'filelu-webdav',
     'felicloud-webdav',
+    'puter-webdav',
 ]);
 
 const S3_PRESET_IDS = new Set<string>([
@@ -85,6 +86,7 @@ const S3_PRESET_IDS = new Set<string>([
     'ibm-cos',
     'tigris',
     'fastly',
+    'neon-s3',
 ]);
 
 /** Lowercase, trim, strip scheme + www. + trailing path. */

@@ -4,14 +4,14 @@
   "counts": {
     "transport_protocols": 8,
     "native_integrations": 26,
-    "presets": 49,
-    "presets_over_transport": 45,
-    "connection_forms": 54,
+    "presets": 51,
+    "presets_over_transport": 47,
+    "connection_forms": 56,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 58,
-    "connection_methods": 72,
-    "catalog_services": 81
+    "providers": 60,
+    "connection_methods": 74,
+    "catalog_services": 83
   },
   "transport_protocols": [
     "ftp",
@@ -81,6 +81,7 @@
       "idrive-e2",
       "mega-s4",
       "minio",
+      "neon-s3",
       "oracle-cloud",
       "quotaless-s3",
       "s3drive",
@@ -108,6 +109,7 @@
       "nextcloud",
       "opendrive-webdav",
       "pcloud-webdav",
+      "puter-webdav",
       "quotaless-webdav",
       "seafile",
       "tabdigital",
@@ -125,8 +127,8 @@
   ],
   "catalog_categories": {
     "protocols": 8,
-    "object-storage": 24,
-    "webdav": 19,
+    "object-storage": 25,
+    "webdav": 20,
     "cloud-storage": 21,
     "media-services": 5,
     "developer": 3
@@ -365,6 +367,12 @@
       ]
     },
     {
+      "id": "neon",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
       "id": "nextcloud",
       "protocols": [
         "webdav"
@@ -406,6 +414,12 @@
       "id": "proton",
       "protocols": [
         "proton"
+      ]
+    },
+    {
+      "id": "puter",
+      "protocols": [
+        "webdav"
       ]
     },
     {

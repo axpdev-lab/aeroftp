@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris : stockage compatible S3 distribué à l'échelle mondiale, sans frais de sortie de données (5 GB gratuits)",
             "trustPasvAddress": "Utiliser l'adresse passive fournie par le serveur",
             "trustPasvAddressHelp": "Désactivé : les connexions de données vont vers l'hôte auquel vous vous êtes connecté, comme le fait curl. N'activez que pour un serveur qui envoie les données depuis une autre adresse.",
-            "discoverFastly": "Fastly Object Storage : stockage compatible S3 dans 12 régions (5 GB gratuits, carte requise)"
+            "discoverFastly": "Fastly Object Storage : stockage compatible S3 dans 12 régions (5 GB gratuits, carte requise)",
+            "discoverNeon": "Neon Object Storage : stockage compatible avec S3 par branche de projet (5 GB gratuits par projet)",
+            "discoverPuter": "Stockage cloud Puter via WebDAV (25 Mo gratuits, sans carte)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

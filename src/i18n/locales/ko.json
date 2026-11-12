@@ -2379,7 +2379,9 @@
             "discoverTigris": "Tigris: 전 세계에 분산된 S3 호환 스토리지, 송신 데이터 요금 없음 (5 GB 무료)",
             "trustPasvAddress": "서버가 알려 주는 패시브 주소 사용",
             "trustPasvAddressHelp": "끔: 데이터 연결은 curl처럼 연결한 호스트로 향합니다. 다른 주소에서 데이터를 보내는 서버에만 켜세요.",
-            "discoverFastly": "Fastly Object Storage: 12개 리전의 S3 호환 스토리지 (5 GB 무료, 카드 필요)"
+            "discoverFastly": "Fastly Object Storage: 12개 리전의 S3 호환 스토리지 (5 GB 무료, 카드 필요)",
+            "discoverNeon": "Neon Object Storage: 프로젝트 브랜치별 S3 호환 스토리지 (프로젝트당 5 GB 무료)",
+            "discoverPuter": "WebDAV를 통한 Puter 클라우드 스토리지 (25 MB 무료, 카드 불필요)"
         },
         "shortcuts": {
             "title": "단축키",

@@ -166,6 +166,28 @@ export const FastlyLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     />
 );
 
+// Neon: 48x48 PNG brand mark, rendered as img like Tigris
+export const NeonLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/neon.png"
+        alt="Neon"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
+// Puter: 48x48 PNG brand mark, rendered as img like Tigris
+export const PuterLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img
+        src="/icons/providers/puter.png"
+        alt="Puter"
+        width={size}
+        height={size}
+        style={{ objectFit: 'contain' }}
+    />
+);
+
 // Yandex Cloud: blue arrows logo (for S3 Object Storage preset)
 export const YandexCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
@@ -620,6 +642,8 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'filebase': FilebaseLogo,
     'tigris': TigrisLogo,
     'fastly': FastlyLogo,
+    'neon': NeonLogo,
+    'neon-s3': NeonLogo,
     'nextcloud': NextcloudLogo,
     'koofr': KoofrLogo,
     'opendrive': OpenDriveLogo,
@@ -648,6 +672,8 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     '4shared-webdav': FourSharedLogo,
     'seafile': SeafileLogo,
     'cloudme': CloudMeLogo,
+    'puter': PuterLogo,
+    'puter-webdav': PuterLogo,
     'zohoworkdrive': ZohoWorkDriveLogo,
     'zoho-workdrive': ZohoWorkDriveLogo,
     'internxt': InternxtLogo,
