@@ -111,6 +111,27 @@ pub struct FtpManager {
 
 #[allow(dead_code)]
 impl FtpManager {
+    /// Server reply bodies (including errors) can echo login secrets. Preserve
+    /// only a numeric status or a local error category at this boundary.
+    fn safe_ftp_error(error: &FtpError) -> String {
+        match error {
+            FtpError::UnexpectedResponse(reply) => {
+                format!("FTP status {}: command rejected", reply.status.code())
+            }
+            FtpError::ConnectionError(error) => match error.kind() {
+                std::io::ErrorKind::TimedOut => "FTP connection timed out",
+                std::io::ErrorKind::ConnectionReset => "FTP connection reset",
+                std::io::ErrorKind::ConnectionRefused => "FTP connection refused",
+                std::io::ErrorKind::BrokenPipe => "FTP broken pipe",
+                std::io::ErrorKind::NotConnected => "FTP not connected",
+                std::io::ErrorKind::UnexpectedEof => "FTP unexpected EOF",
+                _ => "FTP connection error",
+            }
+            .into(),
+            _ => "FTP protocol error".into(),
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             stream: None,
@@ -197,7 +218,7 @@ impl FtpManager {
         )
         .await
         .context("Connection timeout")?
-        .map_err(|e| FtpManagerError::ConnectionError(e.to_string()))?;
+        .map_err(|e| FtpManagerError::ConnectionError(Self::safe_ftp_error(&e)))?;
         let mut stream = stream;
         // Data connections go to the control peer unless the profile trusts
         // the PASV address (#1506 Requested 188).
@@ -224,7 +245,11 @@ impl FtpManager {
         if let Err(e) = stream.login(username, password).await {
             // A refusal is a reply: the channel is in step.
             self.abandoned_command = false;
-            return Err(FtpManagerError::OperationFailed(format!("Login failed: {}", e)).into());
+            return Err(FtpManagerError::OperationFailed(format!(
+                "Login failed: {}",
+                Self::safe_ftp_error(&e)
+            ))
+            .into());
         }
 
         self.username = Some(username.to_string());
@@ -280,7 +305,7 @@ impl FtpManager {
 
                 match result {
                     Ok(Ok(_)) => info!("Successfully disconnected"),
-                    Ok(Err(e)) => warn!("Error during disconnect: {:?}", e),
+                    Ok(Err(e)) => warn!("Error during disconnect: {}", Self::safe_ftp_error(&e)),
                     Err(_) => warn!("Disconnect timeout"),
                 }
             }
@@ -343,10 +368,10 @@ impl FtpManager {
             Ok(Err(error)) if Self::definitive_refusal(&error) => {
                 self.abandoned_command = false;
                 self.stream = Some(stream);
-                return Err(FtpManagerError::OperationFailed(error.to_string()).into());
+                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into());
             }
             Ok(Err(error)) => {
-                return Err(FtpManagerError::OperationFailed(error.to_string()).into())
+                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into())
             }
             Err(error) => return Err(anyhow::Error::new(error).context("List operation timeout")),
         };
@@ -443,10 +468,10 @@ impl FtpManager {
             Ok(Err(error)) if Self::definitive_refusal(&error) => {
                 self.abandoned_command = false;
                 self.stream = Some(stream);
-                return Err(FtpManagerError::OperationFailed(error.to_string()).into());
+                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into());
             }
             Ok(Err(error)) => {
-                return Err(FtpManagerError::OperationFailed(error.to_string()).into())
+                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into())
             }
             Err(error) => return Err(anyhow::Error::new(error).context("Change directory timeout")),
         }
@@ -454,7 +479,7 @@ impl FtpManager {
             tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
                 .await
                 .context("PWD timeout")?
-                .map_err(|e| FtpManagerError::OperationFailed(e.to_string()).into())
+                .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into())
         }
         .await;
         self.abandoned_command = false;
@@ -490,7 +515,7 @@ impl FtpManager {
         let path = tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
             .await
             .context("PWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         Ok(path)
     }
@@ -527,7 +552,7 @@ impl FtpManager {
         if binary.is_ok() || binary.as_ref().is_err_and(Self::definitive_refusal) {
             self.abandoned_command = false;
         }
-        binary.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        binary.map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
         self.abandoned_command = true;
         let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
@@ -547,7 +572,7 @@ impl FtpManager {
             {
                 return self.exists_in_parent_listing(path).await;
             }
-            Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+            Err(e) => return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into()),
         }
         self.abandoned_command = true;
         match tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
@@ -563,14 +588,14 @@ impl FtpManager {
                 if Self::definitive_refusal(&e) {
                     self.abandoned_command = false;
                 }
-                return Err(FtpManagerError::OperationFailed(e.to_string()).into());
+                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into());
             }
         }
         let previous = self.current_path.clone();
         tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(&previous))
             .await
             .context("CWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
         self.abandoned_command = false;
         Ok(true)
     }
@@ -608,7 +633,7 @@ impl FtpManager {
             Ok(names) => Ok(names
                 .iter()
                 .any(|n| n.trim_end_matches('/').rsplit('/').next() == Some(name))),
-            Err(e) => Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+            Err(e) => Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into()),
         }
     }
 
@@ -673,11 +698,11 @@ impl FtpManager {
         )
         .await
         .context("TYPE timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
         let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
             .context("SIZE timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
         Ok(size as u64)
     }
 
@@ -691,7 +716,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Create local directory if needed
         if let Some(parent) = PathBuf::from(local_path).parent() {
@@ -713,7 +738,7 @@ impl FtpManager {
                 stream
                     .transfer_type(FileType::Binary)
                     .await
-                    .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+                    .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
                 None
             }
         };
@@ -723,7 +748,7 @@ impl FtpManager {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Read all data
         let mut buf = Vec::new();
@@ -733,7 +758,7 @@ impl FtpManager {
         data_stream
             .finish()
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         if let Some(expected) = expected_size {
             if buf.len() as u64 != expected as u64 {
@@ -783,13 +808,13 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Download using retr_as_stream
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // H2: Read with size cap to prevent OOM
         let mut buf = Vec::new();
@@ -815,7 +840,7 @@ impl FtpManager {
         data_stream
             .finish()
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         if bytes_read as u64 > LIMIT {
             return Err(FtpManagerError::OperationFailed(format!(
@@ -851,7 +876,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Create local directory if needed
         if let Some(parent) = PathBuf::from(local_path).parent() {
@@ -862,7 +887,7 @@ impl FtpManager {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Stream to disk in 8KB chunks (no full-file RAM buffering), through
         // a temporary renamed over the name at the end: a link standing at
@@ -901,7 +926,7 @@ impl FtpManager {
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
-        finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        finalize_result.map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
         local_file.commit().await?;
 
         info!("Download completed: {} ({} bytes)", remote_path, total_read);
@@ -918,7 +943,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Read local file
         let data = tokio::fs::read(local_path).await?;
@@ -931,7 +956,7 @@ impl FtpManager {
         )
         .await
         .context("Upload timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         info!("Upload completed: {}", remote_path);
         Ok(())
@@ -957,7 +982,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Open local file for streaming read
         let mut file = tokio::fs::File::open(local_path).await?;
@@ -970,7 +995,7 @@ impl FtpManager {
         let mut data_stream = stream
             .put_with_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         // Write in 8KB chunks with progress tracking
         let mut chunk = [0u8; 8192];
@@ -1014,7 +1039,7 @@ impl FtpManager {
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
-        finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        finalize_result.map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         info!(
             "Upload completed: {} ({} bytes)",
@@ -1032,7 +1057,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.mkdir(path))
             .await
             .context("MKDIR timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         Ok(())
     }
@@ -1046,7 +1071,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rm(path))
             .await
             .context("Remove timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         Ok(())
     }
@@ -1060,7 +1085,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rmdir(path))
             .await
             .context("Remove directory timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         Ok(())
     }
@@ -1074,7 +1099,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rename(from, to))
             .await
             .context("Rename timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         Ok(())
     }
@@ -1115,7 +1140,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.site(&args))
             .await
             .context("CHMOD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
 
         Ok(())
     }
@@ -1134,10 +1159,9 @@ impl FtpManager {
     pub async fn noop(&mut self) -> Result<()> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
 
-        stream
-            .noop()
-            .await
-            .map_err(|e| FtpManagerError::OperationFailed(format!("NOOP failed: {}", e)))?;
+        stream.noop().await.map_err(|e| {
+            FtpManagerError::OperationFailed(format!("NOOP failed: {}", Self::safe_ftp_error(&e)))
+        })?;
 
         Ok(())
     }
@@ -1474,10 +1498,19 @@ pub(crate) mod exists_tests {
                 let command = line.split(' ').next().unwrap();
                 let response = match command {
                     "USER" => "331 password\r\n".to_string(),
+                    "PASS" if stage == "SECRET_LOGIN" => {
+                        "530 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
+                    }
                     "PASS" => "230 in\r\n".to_string(),
+                    "CWD" if stage == "SECRET_CWD" => {
+                        "550 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
+                    }
                     "CWD" => {
                         moved = true;
                         "250 moved\r\n".to_string()
+                    }
+                    "PWD" if moved && stage == "SECRET_PWD" => {
+                        "550 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
                     }
                     "PWD" if moved && stage != "LIST" => {
                         reached.notify_one();
@@ -1501,6 +1534,9 @@ pub(crate) mod exists_tests {
                             port / 256,
                             port % 256
                         )
+                    }
+                    "LIST" | "MLSD" if stage == "SECRET_LIST" => {
+                        "550 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
                     }
                     "LIST" | "MLSD" => {
                         reached.notify_one();
@@ -1611,6 +1647,56 @@ pub(crate) mod exists_tests {
         assert!(!error.contains("private-noop"));
         assert!(!ftp.is_connected());
         assert!(ftp.connection_spec().is_err());
+    }
+
+    #[tokio::test]
+    async fn ftp_refusals_never_expose_server_echoed_secrets() {
+        for stage in ["SECRET_CWD", "SECRET_PWD", "SECRET_LIST", "SECRET_LOGIN"] {
+            let (addr, _) = cwd_then_unavailable_pwd(stage).await;
+            let mut ftp = FtpManager::new();
+            ftp.connect(&addr).await.unwrap();
+            let error = if stage == "SECRET_LOGIN" {
+                ftp.login("u", "private-ftp-secret").await.unwrap_err()
+            } else {
+                ftp.login("u", "private-ftp-secret").await.unwrap();
+                if stage == "SECRET_LIST" {
+                    ftp.list_files().await.unwrap_err()
+                } else {
+                    ftp.change_dir("/backup").await.unwrap_err()
+                }
+            };
+            let display = format!("{error:#}");
+            assert!(!display.contains("private-ftp"), "{stage}: {display}");
+            assert!(!format!("{error:?}").contains("private-ftp"));
+            let status = if stage == "SECRET_LOGIN" { 530 } else { 550 };
+            assert!(
+                display.contains(&format!("FTP status {status}:")),
+                "{display}"
+            );
+            let classified = crate::sync::classify_sync_error(&display, None);
+            assert!(!classified.retryable, "{classified:?}");
+            assert!(matches!(
+                classified.kind,
+                crate::sync::SyncErrorKind::Auth | crate::sync::SyncErrorKind::PermissionDenied
+            ));
+            if stage == "SECRET_CWD" || stage == "SECRET_LIST" {
+                assert!(
+                    ftp.is_connected(),
+                    "a definitive refusal preserves the channel"
+                );
+            } else if stage == "SECRET_PWD" {
+                assert!(
+                    !ftp.is_connected(),
+                    "unproven CWD result retires the channel"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ftp_connection_errors_do_not_echo_embedded_transport_text() {
+        let error = FtpError::ConnectionError(std::io::Error::other("password=private-ftp-secret"));
+        assert_eq!(FtpManager::safe_ftp_error(&error), "FTP connection error");
     }
 
     #[tokio::test]

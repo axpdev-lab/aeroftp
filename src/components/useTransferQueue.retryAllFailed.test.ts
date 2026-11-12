@@ -4,7 +4,7 @@
 
 import { act, createElement, useEffect, useLayoutEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTransferQueue } from './TransferQueue';
 
 let root: Root | null = null;
@@ -25,6 +25,32 @@ afterEach(async () => {
 });
 
 describe('useTransferQueue retryAllFailed (#139)', () => {
+    it.each(['single', 'all'] as const)('runs the actual queued executor on %s Retry before React commits', async mode => {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const start = app.indexOf('  const boundToQueuedServer =');
+        const end = app.indexOf('\n  /** Whether two connections', start);
+        const { code } = await transformWithOxc(app.slice(start, end), 'synchronous-retry-executor.ts');
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'upload'); queue.failTransfer(id, 'Timeout'); });
+        const beforeRetry = queue;
+        const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null },
+            syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, queuedTargetProblem: () => null,
+            transferQueue: beforeRetry, t: (key: string) => key };
+        const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
+        const executor = vi.fn();
+        await act(async () => {
+            if (mode === 'single') beforeRetry.retryItem(id); else expect(beforeRetry.retryAllFailed()).toEqual([id]);
+            expect(beforeRetry.items.find(item => item.id === id)?.status).toBe('error');
+            expect(beforeRetry.getItemNow(id)?.status).toBe('pending');
+            const executing = bind({}, id, executor)();
+            expect(executor).toHaveBeenCalledOnce();
+            await executing;
+        });
+    });
+
     it('forgets a removed staged Start synchronously even through an older hook result', async () => {
         let queue!: ReturnType<typeof useTransferQueue>;
         const Probe = () => { queue = useTransferQueue(); return null; };
