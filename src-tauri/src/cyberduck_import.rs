@@ -105,9 +105,11 @@ enum DuckOutcome {
 ///
 /// Guards against false positives:
 /// - Never strips for path-style bookmarks where the hostname is the explicit server endpoint.
-/// - Never strips if the remainder is an apex domain (fewer than 2 dots, e.g. `wasabisys.com`).
-/// - Never strips if the host starts with `s3.`/`s3-` and the stripped result does not (preventing
-///   accidental removal of the `s3` service label when a bucket happens to be named `s3`).
+/// - Never strips if the remainder has fewer than 2 dots (an apex domain like `wasabisys.com`).
+/// - Never strips if the bucket is literally "s3" and the stripped host does not start with "s3."
+///   (preventing accidental removal of the `s3` service label on endpoints like `s3.wasabisys.com`).
+/// - Never strips if the provider endpoint is known to require an `s3.` prefix (AWS, Wasabi,
+///   Filebase, Backblaze, Scaleway) and the stripped host lacks that prefix.
 /// - Boundary-safe on UTF-8 hostnames.
 fn strip_duplicate_bucket_prefix(endpoint_host: &str, bucket: &str, path_style: bool) -> String {
     if path_style || bucket.is_empty() {
@@ -126,9 +128,16 @@ fn strip_duplicate_bucket_prefix(endpoint_host: &str, bucket: &str, path_style: 
     if stripped.split('.').count() < 3 {
         return endpoint_host.to_string();
     }
-    let lower_host = endpoint_host.to_ascii_lowercase();
     let lower_stripped = stripped.to_ascii_lowercase();
-    if (lower_host.starts_with("s3.") || lower_host.starts_with("s3-"))
+    if bucket.eq_ignore_ascii_case("s3") && !lower_stripped.starts_with("s3.") {
+        return endpoint_host.to_string();
+    }
+    let is_s3_prefix_provider = lower_stripped.ends_with(".amazonaws.com")
+        || lower_stripped.ends_with(".wasabisys.com")
+        || lower_stripped.ends_with(".filebase.io")
+        || lower_stripped.ends_with(".backblazeb2.com")
+        || lower_stripped.ends_with(".scw.cloud");
+    if is_s3_prefix_provider
         && !(lower_stripped.starts_with("s3.") || lower_stripped.starts_with("s3-"))
     {
         return endpoint_host.to_string();
@@ -993,6 +1002,29 @@ mod tests {
             .as_object()
             .unwrap();
         assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("s3"));
+    }
+
+    #[test]
+    fn test_s3_bookmark_strips_bucket_starting_with_s3_prefix_on_third_party_provider() {
+        // A virtual-host bookmark with a bucket named `s3-backups` on Tigris (`t3.storage.dev`)
+        // must strip the `s3-backups.` prefix down to `t3.storage.dev`, recognizing Tigris
+        // rather than failing to strip because of the `s3-` prefix.
+        let xml = S3_DUCK
+            .replace("s3.wasabisys.com", "s3-backups.t3.storage.dev")
+            .replace("/my-bucket/backups", "/s3-backups/files");
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(&xml, &mut servers, &mut skipped);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].host, "t3.storage.dev");
+        assert_eq!(servers[0].provider_id.as_deref(), Some("tigris"));
+        let opts = servers[0]
+            .options
+            .as_ref()
+            .expect("S3 options")
+            .as_object()
+            .unwrap();
+        assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("s3-backups"));
     }
 
     #[test]
