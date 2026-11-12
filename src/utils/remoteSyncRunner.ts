@@ -428,10 +428,6 @@ export const runRemoteSync = (
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => withTransferRun(async () => {
-    if (!config.isLocalLocal && (!deps.remoteTarget || !Number.isSafeInteger(deps.remoteTarget.epoch)
-        || deps.remoteTarget.epoch < 0 || !deps.remoteTarget.ownerBinding)) {
-        throw new Error('A remote sync requires a bound target');
-    }
     const token = await deps.invoke<string>('sync_run_lease_begin_cmd', {
         localPath: normalizedSyncRoot(config.localRoot), remotePath: normalizedSyncRoot(config.remoteRoot),
     });

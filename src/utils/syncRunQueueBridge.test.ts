@@ -137,7 +137,7 @@ describe('AeroSync run wiring (#364)', () => {
     it('feeds the Transfer Queue from both sync launchers', () => {
         // runConnectedRemoteSync and runLocalLocalSync make one runner call
         // each; a call without onFileStatus runs with an empty queue panel.
-        const calls = APP.split('await runRemoteSync(')
+        const calls = APP.split('() => runRemoteSync(')
             .slice(1)
             .map((rest) => rest.slice(0, rest.indexOf(');')));
         expect(calls).toHaveLength(2);
