@@ -500,7 +500,20 @@ const runSync = async (
         try {
             return await deps.invoke(cmd, guardedArgs);
         } catch (error) {
-            if (error instanceof QueuedTargetChangedError) {
+            let ownerChanged = error instanceof QueuedTargetChangedError;
+            if (!ownerChanged && String(error).includes('CONNECTION_CHANGED')) {
+                // A server may quote the marker in arbitrary error text.
+                // Confirm it through the backend's local ownership endpoint;
+                // this endpoint computes a sealed tag without remote I/O.
+                try {
+                    assertTarget();
+                    const binding = await deps.invoke<string>('provider_gui_target_binding', {
+                        expectedGuiTarget: epoch, isProvider: config.isProvider,
+                    });
+                    ownerChanged = binding !== deps.remoteTarget!.ownerBinding;
+                } catch { ownerChanged = true; }
+            }
+            if (ownerChanged) {
                 targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
             }
             throw error;

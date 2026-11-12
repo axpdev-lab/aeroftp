@@ -94,7 +94,7 @@ function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () 
     humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
     pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
     circuitBreaker: { reset: vi.fn() }, retryCallbacksRef: { current: new Map() }, queueItemsRef, transferQueue,
-    recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), fileBatchCommand, keepsSingleFilePath,
+    recordQueueDescriptor: vi.fn(), holdFileCompletions: () => () => undefined, registerFileBatchRows: vi.fn(), fileBatchCommand, keepsSingleFilePath,
     folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
     // One server for the whole run (the server check is pinned in wrongTarget.wiring.test.ts).
     boundToQueuedServer: (_target: unknown, _id: string, run: () => unknown) => async () => { await run(); },

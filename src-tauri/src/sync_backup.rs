@@ -917,7 +917,7 @@ mod tests {
 
     #[tokio::test]
     async fn provider_receipt_rejects_a_directory_and_unknown_type() {
-        let mut remote = MemTree::new(ProviderType::WebDAV, &["/root/kept"]);
+        let mut remote = MemTree::new(ProviderType::WebDav, &["/root/kept"]);
         assert!(provider_receipt_is_file(&mut remote, "/root/kept")
             .await
             .unwrap());

@@ -606,10 +606,7 @@ pub(crate) fn with_gui_account_snapshot<T>(
     publish: impl FnOnce() -> Result<T, String>,
 ) -> Result<T, String> {
     let mut conn = open_or_init_cli()?;
-    let lock = ProfileListLock::acquire(&conn)?;
-    if lock.as_ref().is_some_and(|lock| !lock.is_exclusive()) {
-        return Err(NO_FILE_LOCKS.into());
-    }
+    let _lock = ProfileListLock::acquire(&conn)?;
     let _session = hold_session()?;
     with_gui_account_snapshot_in(&mut conn, expected, publish)
 }

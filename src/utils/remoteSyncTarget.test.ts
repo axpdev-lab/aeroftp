@@ -374,3 +374,35 @@ it.each([false, true])('runs an unsaved quick-connect sync with an epoch owner (
     expect(runner.mock.calls[0][2]).toMatchObject({ profileId: null });
     expect(notify.error).not.toHaveBeenCalled();
 });
+
+
+it.each(['owner','folder'] as const)('discards a local sync refresh after a deferred %s change', async change => {
+    const { transformWithOxc }=await import('vite');const {default:app}=await import('../App.tsx?raw');
+    const start=app.indexOf('  const loadLocalFiles =');const end=app.indexOf('  const loadLocalFiles2 =',start);
+    const {code}=await transformWithOxc(app.slice(start,end),'owned-local-refresh.ts');
+    let current=true;let release!:(value:unknown[])=>void;const pending=new Promise<unknown[]>(resolve=>{release=resolve;});
+    const context={useCallback:(fn:unknown)=>fn,invoke:()=>pending,showHiddenFiles:false,
+        loadLocalCallIdRef:{current:0},currentLocalPathRef:{current:'/A'},setLocalFiles:vi.fn(),setCurrentLocalPath:vi.fn(),setSelectedLocalFiles:vi.fn(),
+        notify:{error:vi.fn()},t:(key:string)=>key,activityLog:{log:vi.fn()},isGvfsMtpPath:()=>false,needsRemovableMediaPlug:()=>false,
+    };
+    const load=new Function(...Object.keys(context),`${code};return loadLocalFiles;`)(...Object.values(context));
+    const result=load('/A',{check:()=>{if(!current)throw new QueuedTargetChangedError('changed');}});
+    if(change==='owner')current=false;else context.currentLocalPathRef.current='/B';
+    release([]);
+    if(change==='owner')await expect(result).rejects.toThrow('changed');else expect(await result).toBe(false);
+    expect(context.setLocalFiles).not.toHaveBeenCalled();expect(context.setCurrentLocalPath).not.toHaveBeenCalled();
+});
+
+it('stops the sync refresh continuation when remote refresh discards a switched target', async () => {
+    const { transformWithOxc }=await import('vite');const {default:app}=await import('../App.tsx?raw');
+    const start=app.indexOf('          if (!report.cancelled && (report.uploaded > 0');
+    const end=app.indexOf('\n        } catch (err)',start);
+    const {code}=await transformWithOxc(`async function refreshAfterSync(){${app.slice(start,end)}}`,'sync-refresh-continuation.ts');
+    let current=true;let release!:(value:null)=>void;const pending=new Promise<null>(resolve=>{release=resolve;});
+    const context={report:{cancelled:false,uploaded:1,downloaded:0,deleted:0},epoch:1,checkTarget:()=>{if(!current)throw new Error('changed');},
+        loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},
+    };
+    const refresh=new Function(...Object.keys(context),`${code};return refreshAfterSync;`)(...Object.values(context));
+    const result=refresh();current=false;release(null);await result;
+    expect(context.loadLocalFiles).not.toHaveBeenCalled();
+});

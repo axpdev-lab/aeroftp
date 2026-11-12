@@ -2139,3 +2139,32 @@ describe('durable delete authority', () => {
         } finally { vi.useRealTimers(); }
     });
 });
+
+
+describe('full-review owner and report boundaries', () => {
+    it('redacts a server error containing both the target marker and a token', async () => {
+        const secret='private-token-123';
+        const status=vi.fn();
+        const {invoke,calls}=makeInvoke({
+            upload_file:()=>{throw `server response CONNECTION_CHANGED access_token=${secret}`;},
+            provider_gui_target_binding:()=> 'test-owner-v1',
+            classify_transfer_error:()=>({kind:'unknown',message:'Transfer refused [redacted]',retryable:false,file_path:'one'}),
+        });
+        const report=await runRemoteSync([file('one','upload')],noDirs,baseConfig(),{onFileStatus:status},noWaitDeps(invoke));
+        expect(calls.some(call=>call.cmd==='classify_transfer_error')).toBe(true);
+        expect(JSON.stringify(report)).not.toContain(secret);
+        expect(JSON.stringify(status.mock.calls)).not.toContain(secret);
+    });
+
+    it('cannot publish after an owner switch during the index load', async () => {
+        let current=true;let entered!:()=>void;const loading=new Promise<void>(resolve=>{entered=resolve;});
+        let resolveIndex!:(value:null)=>void;const pending=new Promise<null>(resolve=>{resolveIndex=resolve;});
+        const {invoke,calls}=makeInvoke({load_sync_index_cmd:()=>{entered();return pending;}});
+        const run=runRemoteSync([file('one','upload')],noDirs,baseConfig(),{},noWaitDeps(invoke,{
+            writeIndex:true,remoteTarget:{epoch:1,ownerBinding:'test-owner-v1',assertCurrent:()=>{if(!current)throw new Error('changed');}},
+        }));
+        await loading;current=false;resolveIndex(null);await run;
+        expect(calls.some(call=>call.cmd==='save_sync_index_cmd')).toBe(false);
+        expect(calls.find(call=>call.cmd==='load_sync_index_cmd')?.args).toMatchObject({expectedGuiTarget:1,ownerBinding:'test-owner-v1'});
+    });
+});
