@@ -43,10 +43,12 @@ def parse_steps(workflow_text):
     """Parse step definitions from workflow YAML text using line-by-line scanning.
 
     Features:
+    - Step boundary detection: recognizes any list item starting with '- <key>:'
+      regardless of key order (supports id, name, uses, run, if, env, etc.).
     - Block scalar handling: lines indented inside |, |-, >, >- are consumed as text
       and never parsed as step keys or mappings.
     - Duplicate key rejection: duplicate keys at step level or inside 'with:' raise ValueError.
-    - Preserves step attributes (name, uses, if, with, run, raw_lines).
+    - Preserves step attributes (name, id, uses, if, with, run, raw_lines).
     """
     lines = workflow_text.split("\n")
     steps = []
@@ -57,9 +59,7 @@ def parse_steps(workflow_text):
     multiline_indent = None
     seen_step_keys = set()
 
-    step_name_start = re.compile(r"^(\s*)-\s+name:\s*(.+)$")
-    step_uses_start = re.compile(r"^(\s*)-\s+uses:\s*(.+)$")
-    step_run_start = re.compile(r"^(\s*)-\s+run:\s*(.*)$")
+    step_start = re.compile(r"^(\s*)-\s+([\w-]+):\s*(.*)$")
 
     for idx, line in enumerate(lines):
         line_num = idx + 1
@@ -79,47 +79,50 @@ def parse_steps(workflow_text):
                 multiline_key = None
                 multiline_indent = None
 
-        # 2. Check for start of a new step (- name:, - uses:, - run:)
-        m_name = step_name_start.match(line)
-        m_uses = step_uses_start.match(line)
-        m_run = step_run_start.match(line)
+        # 2. Check for start of a new step: any line starting with '- <key>:'
+        m_step = step_start.match(line)
+        if m_step:
+            step_indent = len(m_step.group(1))
+            if current_step is not None:
+                if step_indent == current_step["indent"]:
+                    steps.append(current_step)
+                    current_step = None
 
-        if m_name or m_uses or m_run:
-            if current_step:
-                steps.append(current_step)
-            step_indent = len(line) - len(line.lstrip())
-            initial_name = unquote(m_name.group(2)) if m_name else ""
-            initial_uses = unquote(m_uses.group(2)) if m_uses else ""
-            initial_run = unquote(m_run.group(2)) if m_run else ""
+            if current_step is None:
+                first_key = m_step.group(2)
+                raw_val = m_step.group(3).strip()
+                val = unquote(raw_val)
 
-            current_step = {
-                "line": line_num,
-                "name": initial_name,
-                "indent": step_indent,
-                "uses": initial_uses,
-                "if": "",
-                "run": initial_run,
-                "with": {},
-                "raw_lines": [line],
-            }
-            seen_step_keys = set()
-            if m_name:
-                seen_step_keys.add("name")
-            if m_uses:
-                seen_step_keys.add("uses")
-            if m_run:
-                seen_step_keys.add("run")
-            in_with = False
-            with_indent = None
-            multiline_key = None
-            multiline_indent = None
-            continue
+                current_step = {
+                    "line": line_num,
+                    "name": "",
+                    "id": "",
+                    "uses": "",
+                    "if": "",
+                    "run": "",
+                    "indent": step_indent,
+                    "with": {},
+                    "raw_lines": [line],
+                }
+                seen_step_keys = {first_key}
+                in_with = False
+                with_indent = None
+                multiline_key = None
+                multiline_indent = None
 
-        if current_step:
+                if first_key in ("name", "id", "uses", "if", "run"):
+                    current_step[first_key] = val
+                    if raw_val in (">-", ">", "|", "|-"):
+                        multiline_key = first_key
+                        multiline_indent = indent
+                elif first_key == "with":
+                    in_with = True
+                    with_indent = indent
+                continue
+
+        if current_step is not None:
             # Check if current step has ended
-            if stripped and indent <= current_step["indent"] and (
-                stripped.startswith("- ") or not line.startswith(" " * (current_step["indent"] + 1))
-            ):
+            if stripped and indent <= current_step["indent"]:
                 steps.append(current_step)
                 current_step = None
                 in_with = False
@@ -134,7 +137,7 @@ def parse_steps(workflow_text):
             # Check if entering or exiting 'with:' mapping
             if re.match(r"^\s*with:\s*$", line):
                 if "with" in seen_step_keys:
-                    raise ValueError(f"Duplicate 'with' key in step {current_step['name']!r} at line {line_num}")
+                    raise ValueError(f"Duplicate 'with' key in step at line {line_num}")
                 seen_step_keys.add("with")
                 in_with = True
                 with_indent = indent
@@ -149,48 +152,28 @@ def parse_steps(workflow_text):
                         k = m_kw.group(1)
                         if k in current_step["with"]:
                             raise ValueError(f"Duplicate key {k!r} in 'with:' at line {line_num}")
-                        v = unquote(m_kw.group(2))
+                        raw_v = m_kw.group(2).strip()
+                        v = unquote(raw_v)
                         current_step["with"][k] = v
-                        if v in (">-", ">", "|", "|-"):
+                        if raw_v in (">-", ">", "|", "|-"):
                             multiline_key = k
                             multiline_indent = indent
                     continue
 
-            # Step-level attributes (not in with)
-            m_uses = re.match(r"^\s*uses:\s*(.+)$", line)
-            if m_uses:
-                if "uses" in seen_step_keys:
-                    raise ValueError(f"Duplicate 'uses' key at line {line_num}")
-                seen_step_keys.add("uses")
-                current_step["uses"] = unquote(m_uses.group(1))
-                continue
-
-            m_if = re.match(r"^\s*if:\s*(.+)$", line)
-            if m_if:
-                if "if" in seen_step_keys:
-                    raise ValueError(f"Duplicate 'if' key at line {line_num}")
-                seen_step_keys.add("if")
-                current_step["if"] = unquote(m_if.group(1))
-                continue
-
-            m_name = re.match(r"^\s*name:\s*(.+)$", line)
-            if m_name:
-                if "name" in seen_step_keys:
-                    raise ValueError(f"Duplicate 'name' key at line {line_num}")
-                seen_step_keys.add("name")
-                current_step["name"] = unquote(m_name.group(1))
-                continue
-
-            m_run = re.match(r"^\s*run:\s*(.*)$", line)
-            if m_run:
-                if "run" in seen_step_keys:
-                    raise ValueError(f"Duplicate 'run' key at line {line_num}")
-                seen_step_keys.add("run")
-                v = unquote(m_run.group(1))
-                current_step["run"] = v
-                if v in (">-", ">", "|", "|-"):
-                    multiline_key = "run"
-                    multiline_indent = indent
+            # Step-level attributes
+            m_attr = re.match(r"^\s*([\w-]+):\s*(.*)$", line)
+            if m_attr:
+                k = m_attr.group(1)
+                if k in seen_step_keys:
+                    raise ValueError(f"Duplicate {k!r} key at line {line_num}")
+                seen_step_keys.add(k)
+                raw_v = m_attr.group(2).strip()
+                v = unquote(raw_v)
+                if k in ("name", "id", "uses", "if", "run"):
+                    current_step[k] = v
+                    if raw_v in (">-", ">", "|", "|-"):
+                        multiline_key = k
+                        multiline_indent = indent
                 continue
 
     if current_step:
@@ -497,6 +480,22 @@ jobs:
         # The failed directory was not counted as purged
         self.assertFalse(dirs_fail[0].exists)
         self.assertTrue(dirs_fail[1].exists)
+
+    def test_parse_steps_recognizes_id_first_step_and_enforces_policy(self):
+        """Verify steps starting with 'id:' or other attributes are recognized and validated."""
+        id_first_yaml = """
+- id: rust-cache-step
+  uses: Swatinem/rust-cache@v2
+  with:
+    save-if: true
+"""
+        steps = parse_steps(id_first_yaml)
+        self.assertEqual(len(steps), 1)
+        self.assertEqual(steps[0]["id"], "rust-cache-step")
+        self.assertEqual(steps[0]["uses"], "Swatinem/rust-cache@v2")
+        self.assertEqual(steps[0]["with"]["save-if"], "true")
+        valid_save_if = {"${{ github.ref == 'refs/heads/main' }}", "false"}
+        self.assertNotIn(steps[0]["with"]["save-if"], valid_save_if)
 
 
 if __name__ == "__main__":
