@@ -362,7 +362,9 @@ pub async fn provider_receipt_is_file(
     path: &str,
 ) -> Result<bool, ProviderError> {
     match provider.stat(path).await {
-        Ok(entry) => Ok(!entry.is_dir && !entry.is_symlink),
+        Ok(entry) => Ok(!entry.is_dir
+            && !entry.is_symlink
+            && !crate::providers::ftp_listing::type_is_unconfirmed(&entry)),
         Err(ProviderError::NotFound(_)) => Ok(false),
         Err(error) => Err(error),
     }
@@ -741,6 +743,8 @@ mod tests {
         dirs: BTreeSet<String>,
         leaf_only_rename: bool,
         unpublished: BTreeSet<String>,
+        /// Entries `stat` returns exactly as given, before the tree is asked.
+        stat_rows: std::collections::BTreeMap<String, RemoteEntry>,
         readiness_fails: bool,
         calls: Vec<String>,
     }
@@ -765,6 +769,7 @@ mod tests {
                 dirs,
                 leaf_only_rename: false,
                 unpublished: BTreeSet::new(),
+                stat_rows: Default::default(),
                 readiness_fails: false,
                 calls: Vec::new(),
             }
@@ -885,6 +890,9 @@ mod tests {
             if self.unpublished.contains(p) {
                 return Err(ProviderError::NotSupported("unknown type".into()));
             }
+            if let Some(row) = self.stat_rows.get(p) {
+                return Ok(row.clone());
+            }
             if self.dirs.contains(p) {
                 return Ok(RemoteEntry::directory("entry".into(), p.into()));
             }
@@ -928,6 +936,40 @@ mod tests {
         assert!(provider_receipt_is_file(&mut remote, "/root/kept")
             .await
             .is_err());
+    }
+
+    /// The rows are read by the production FTP parsers, as the FTP provider's
+    /// `stat` reads an MLST answer or a LIST row.
+    #[tokio::test]
+    async fn provider_receipt_rejects_a_row_without_a_confirmed_file_type() {
+        use crate::providers::ftp_listing::{parse_listing, parse_mlsd_entry};
+        let mut remote = MemTree::new(ProviderType::Ftp, &[]);
+        let unconfirmed = [
+            parse_mlsd_entry("size=5;modify=20260101000000; kept", "/root"),
+            parse_mlsd_entry("type=OS.unix=fifo;size=0; kept", "/root"),
+            parse_mlsd_entry("type=;size=5; kept", "/root"),
+            parse_listing("prw-r--r-- 1 user group 0 Jan 20 10:00 kept", "/root"),
+        ];
+        for row in unconfirmed {
+            let row = row.expect("the row parses");
+            assert!(!row.is_dir && !row.is_symlink, "{row:?}");
+            remote.stat_rows.insert("/root/kept".into(), row);
+            assert!(!provider_receipt_is_file(&mut remote, "/root/kept")
+                .await
+                .unwrap());
+        }
+        let confirmed = [
+            parse_mlsd_entry("type=file;size=5; kept", "/root"),
+            parse_listing("-rw-r--r-- 1 user group 5 Jan 20 10:00 kept", "/root"),
+        ];
+        for row in confirmed {
+            remote
+                .stat_rows
+                .insert("/root/kept".into(), row.expect("the row parses"));
+            assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+                .await
+                .unwrap());
+        }
     }
 
     #[tokio::test]

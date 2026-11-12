@@ -334,6 +334,44 @@ impl FtpManager {
         include_hidden: bool,
         require_complete: bool,
     ) -> Result<Vec<RemoteFile>> {
+        let entries = self
+            .list_entries_opts(include_hidden, require_complete)
+            .await?;
+        let mut remote_files: Vec<RemoteFile> = entries
+            .into_iter()
+            .map(|entry| {
+                let size = (!crate::providers::ftp_listing::size_is_unreadable(&entry))
+                    .then_some(entry.size);
+                RemoteFile {
+                    name: entry.name,
+                    path: entry.path,
+                    size,
+                    is_dir: entry.is_dir,
+                    is_symlink: entry.is_symlink,
+                    modified: entry.modified,
+                    permissions: entry.permissions,
+                    link_target: entry.link_target,
+                }
+            })
+            .collect();
+
+        // Sort: directories first, then files, both alphabetically
+        remote_files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        });
+
+        Ok(remote_files)
+    }
+
+    /// The parsed rows of the current folder, with the markers the shared
+    /// parser puts on them, which [`RemoteFile`] does not carry.
+    async fn list_entries_opts(
+        &mut self,
+        include_hidden: bool,
+        require_complete: bool,
+    ) -> Result<Vec<crate::providers::RemoteEntry>> {
         let mut stream = self.stream.take().ok_or(FtpManagerError::NotConnected)?;
         self.abandoned_command = true;
 
@@ -416,33 +454,7 @@ impl FtpManager {
             .into());
         }
 
-        let mut remote_files: Vec<RemoteFile> = listing
-            .entries
-            .into_iter()
-            .map(|entry| {
-                let size = (!crate::providers::ftp_listing::size_is_unreadable(&entry))
-                    .then_some(entry.size);
-                RemoteFile {
-                    name: entry.name,
-                    path: entry.path,
-                    size,
-                    is_dir: entry.is_dir,
-                    is_symlink: entry.is_symlink,
-                    modified: entry.modified,
-                    permissions: entry.permissions,
-                    link_target: entry.link_target,
-                }
-            })
-            .collect();
-
-        // Sort: directories first, then files, both alphabetically
-        remote_files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        });
-
-        Ok(remote_files)
+        Ok(listing.entries)
     }
 
     fn definitive_refusal(error: &FtpError) -> bool {
@@ -668,6 +680,14 @@ impl FtpManager {
     }
 
     async fn receipt_with_owned_stream(&mut self, path: &str) -> Result<bool> {
+        // A relative path would resolve against the session folder of the
+        // moment, not the folder the backup was written to.
+        if !path.starts_with('/') {
+            return Err(FtpManagerError::OperationFailed(
+                "Backup receipt path must be absolute".into(),
+            )
+            .into());
+        }
         let (parent, name) = path.rsplit_once('/').ok_or_else(|| {
             FtpManagerError::OperationFailed("Receipt needs a parent folder".into())
         })?;
@@ -677,7 +697,9 @@ impl FtpManager {
         let original = self.current_path.clone();
         self.change_dir(if parent.is_empty() { "/" } else { parent })
             .await?;
-        let listed = self.list_files_for_probe(true).await;
+        // `-a` is an ls option, not LIST syntax: a server that reads it as a
+        // pathname lists a folder named `-a`. Only a dot name needs it.
+        let listed = self.list_entries_opts(name.starts_with('.'), true).await;
         if self.stream.is_none() {
             return Err(listed
                 .err()
@@ -685,9 +707,12 @@ impl FtpManager {
         }
         let restored = self.change_dir(&original).await;
         restored?;
-        Ok(listed?
-            .iter()
-            .any(|entry| entry.name == name && !entry.is_dir && !entry.is_symlink))
+        Ok(listed?.iter().any(|entry| {
+            entry.name == name
+                && !entry.is_dir
+                && !entry.is_symlink
+                && !crate::providers::ftp_listing::type_is_unconfirmed(entry)
+        }))
     }
 
     pub async fn get_file_size(&mut self, path: &str) -> Result<u64> {
@@ -1744,6 +1769,142 @@ pub(crate) mod exists_tests {
         assert_eq!(ftp.current_path, "/d");
         assert!(ftp.receipt_is_file("/.hidden").await.unwrap());
         assert_eq!(ftp.current_path, "/d");
+    }
+
+    /// A server for receipt probes. A plain `LIST` serves `plain`; `LIST -a`
+    /// is read as a pathname and serves the folder named `-a`. Every command
+    /// line is recorded.
+    async fn receipt_server(
+        plain: &'static str,
+        dash_a_folder: &'static str,
+    ) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut cwd = "/".to_string();
+            let mut data_listener = None;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                log.lock().unwrap().push(line.clone());
+                let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match cmd {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
+                    "TYPE" | "NOOP" => "200 ok\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" => {
+                        write.write_all(b"150 listing\r\n").await.unwrap();
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        let listing = if arg == "-a" { dash_a_folder } else { plain };
+                        data.write_all(listing.as_bytes()).await.unwrap();
+                        data.shutdown().await.unwrap();
+                        "226 done\r\n".to_string()
+                    }
+                    "CWD" if arg.starts_with('/') => {
+                        cwd = arg.to_string();
+                        "250 ok\r\n".to_string()
+                    }
+                    "CWD" => {
+                        cwd = format!("{}/{arg}", cwd.trim_end_matches('/'));
+                        "250 ok\r\n".to_string()
+                    }
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "502 not implemented\r\n".to_string(),
+                };
+                write.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        (addr, seen)
+    }
+
+    const KEPT_ROW: &str = "-rw-r--r-- 1 user group 5 Jan 20 10:00 kept.bak\r\n";
+
+    #[tokio::test]
+    async fn ftp_receipt_refuses_a_relative_path_before_any_folder_change() {
+        // The session folder holds a same-named file: a relative receipt
+        // resolved against it would be accepted.
+        let (addr, seen) = receipt_server(KEPT_ROW, KEPT_ROW).await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.change_dir("/elsewhere").await.unwrap();
+        let before = seen.lock().unwrap().len();
+        for relative in ["backups/kept.bak", "./kept.bak", "kept.bak"] {
+            assert!(
+                ftp.receipt_is_file(relative).await.is_err(),
+                "{relative} must not be verified"
+            );
+        }
+        assert_eq!(
+            seen.lock().unwrap().len(),
+            before,
+            "a refused receipt sends no command"
+        );
+        assert_eq!(ftp.current_path, "/elsewhere");
+        assert!(ftp.receipt_is_file("/backups/kept.bak").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn ftp_receipt_for_an_ordinary_name_sends_a_plain_list() {
+        // The receipt's folder lacks the file; a folder literally named `-a`
+        // holds one with the same name.
+        let (addr, seen) = receipt_server(
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 other.bak\r\n",
+            KEPT_ROW,
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(!ftp.receipt_is_file("/backups/kept.bak").await.unwrap());
+        let lists: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("LIST"))
+            .cloned()
+            .collect();
+        assert_eq!(lists, ["LIST"]);
+    }
+
+    #[tokio::test]
+    async fn ftp_receipt_refuses_a_row_that_is_not_a_regular_file() {
+        let (addr, _) = receipt_server(
+            "prw-r--r-- 1 user group 0 Jan 20 10:00 pipe.bak\r\n\
+             srwxr-xr-x 1 user group 0 Jan 20 10:00 sock.bak\r\n\
+             crw-r--r-- 1 user group 0 Jan 20 10:00 dev.bak\r\n\
+             -rw-r--r-- 1 user group 5 Jan 20 10:00 kept.bak\r\n",
+            "",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        for special in ["/b/pipe.bak", "/b/sock.bak", "/b/dev.bak"] {
+            assert!(
+                !ftp.receipt_is_file(special).await.unwrap(),
+                "{special} is not a confirmed file"
+            );
+        }
+        assert!(ftp.receipt_is_file("/b/kept.bak").await.unwrap());
     }
 
     #[tokio::test]

@@ -110,6 +110,25 @@ fn read_size(token: &str) -> (u64, bool) {
 /// itself; until it can, this is where the fact lives instead of nowhere.
 pub(crate) const SIZE_UNREADABLE: &str = "ftp.size_unreadable";
 
+/// Marker put on an entry whose row does not confirm a regular file, a
+/// directory or a symlink: a FIFO, socket or device row of `ls -l`, or an MLSx
+/// row without a recognised `type` fact. `is_dir` and `is_symlink` are both
+/// false for such a row, which is not the same as "this is a file".
+pub(crate) const TYPE_UNCONFIRMED: &str = "ftp.type_unconfirmed";
+
+/// Whether `entry` carries [`TYPE_UNCONFIRMED`].
+pub fn type_is_unconfirmed(entry: &RemoteEntry) -> bool {
+    entry.metadata.contains_key(TYPE_UNCONFIRMED)
+}
+
+fn mark_type_unconfirmed(entry: &mut RemoteEntry, confirmed: bool) {
+    if !confirmed {
+        entry
+            .metadata
+            .insert(TYPE_UNCONFIRMED.to_string(), "1".to_string());
+    }
+}
+
 /// Whether `entry` carries [`SIZE_UNREADABLE`]: its size is a 0 that stands
 /// for "unknown", not the size of the file. For the consumers outside this
 /// crate (the CLI), which cannot name the marker itself.
@@ -377,6 +396,10 @@ pub(crate) fn parse_unix_listing(
         metadata: Default::default(),
     };
     mark_size_unreadable(&mut entry, size_read);
+    mark_type_unconfirmed(
+        &mut entry,
+        matches!(permissions.chars().next(), Some('-' | 'd' | 'l')),
+    );
     Some(entry)
 }
 
@@ -604,6 +627,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
 
     let mut is_dir = false;
     let mut is_symlink = false;
+    let mut type_confirmed = false;
     let mut size: u64 = 0;
     // A file whose facts carry no size says nothing about it (RFC 3659 makes
     // every fact optional): the 0 is unknown, not empty.
@@ -628,6 +652,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
                 let v_lower = value.to_lowercase();
                 is_dir = v_lower == "dir" || v_lower == "cdir" || v_lower == "pdir";
                 is_symlink = v_lower == "os.unix=symlink" || v_lower == "os.unix=slink";
+                type_confirmed = is_dir || is_symlink || v_lower == "file";
             }
             "size" | "sizd" => {
                 let (parsed, read) = read_size(value);
@@ -680,6 +705,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
         metadata: Default::default(),
     };
     mark_size_unreadable(&mut entry, size_read || is_dir);
+    mark_type_unconfirmed(&mut entry, type_confirmed);
     Some(entry)
 }
 
