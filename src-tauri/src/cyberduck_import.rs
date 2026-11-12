@@ -100,6 +100,43 @@ enum DuckOutcome {
 ///
 /// Cyberduck `Protocol` values seen in the wild: `sftp`, `ftp`, `ftps`,
 /// `s3`, `davs`, `dav`, `b2`, `azure`, `googledrive`, `onedrive`, `dropbox`.
+/// Strip a redundant leading `<bucket>.` from an S3 endpoint hostname if it is a
+/// virtual-host bookmark (e.g. `photos.s3.eu-central-1.amazonaws.com` with Path `/photos`).
+///
+/// Guards against false positives:
+/// - Never strips for path-style bookmarks where the hostname is the explicit server endpoint.
+/// - Never strips if the remainder is an apex domain (fewer than 2 dots, e.g. `wasabisys.com`).
+/// - Never strips if the host starts with `s3.`/`s3-` and the stripped result does not (preventing
+///   accidental removal of the `s3` service label when a bucket happens to be named `s3`).
+/// - Boundary-safe on UTF-8 hostnames.
+fn strip_duplicate_bucket_prefix(endpoint_host: &str, bucket: &str, path_style: bool) -> String {
+    if path_style || bucket.is_empty() {
+        return endpoint_host.to_string();
+    }
+    let prefix = format!("{bucket}.");
+    let Some(candidate) = endpoint_host.get(..prefix.len()) else {
+        return endpoint_host.to_string();
+    };
+    if !candidate.eq_ignore_ascii_case(&prefix) {
+        return endpoint_host.to_string();
+    }
+    let Some(stripped) = endpoint_host.get(prefix.len()..) else {
+        return endpoint_host.to_string();
+    };
+    if stripped.split('.').count() < 3 {
+        return endpoint_host.to_string();
+    }
+    let lower_host = endpoint_host.to_ascii_lowercase();
+    let lower_stripped = stripped.to_ascii_lowercase();
+    if (lower_host.starts_with("s3.") || lower_host.starts_with("s3-"))
+        && !(lower_stripped.starts_with("s3.") || lower_stripped.starts_with("s3-"))
+    {
+        return endpoint_host.to_string();
+    }
+
+    stripped.to_string()
+}
+
 fn map_duck(xml: &str) -> DuckOutcome {
     let field = |k: &str| crate::bridge_shared::plist_field(xml, k);
 
@@ -173,18 +210,8 @@ fn map_duck(xml: &str) -> DuckOutcome {
                 let bucket = p.trim_start_matches('/').split('/').next().unwrap_or("");
                 if !bucket.is_empty() {
                     opts.push(("bucket", Some(bucket.to_string())));
-                    if !path_style {
-                        let prefix = format!("{bucket}.");
-                        if let Some(candidate) = endpoint_host.get(..prefix.len()) {
-                            if candidate.eq_ignore_ascii_case(&prefix) {
-                                if let Some(stripped) = endpoint_host.get(prefix.len()..) {
-                                    if !stripped.is_empty() {
-                                        endpoint_host = stripped.to_string();
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    endpoint_host =
+                        strip_duplicate_bucket_prefix(&endpoint_host, bucket, path_style);
                 }
             }
             let provider_id = {
@@ -946,6 +973,26 @@ mod tests {
         ingest_duck(&xml, &mut servers, &mut skipped);
         assert_eq!(servers.len(), 1);
         assert_eq!(servers[0].host, "aé.example.com");
+    }
+
+    #[test]
+    fn test_s3_bookmark_service_label_matching_bucket_is_not_stripped() {
+        // A bookmark pointing directly to the service endpoint (e.g. Hostname=s3.wasabisys.com)
+        // with a bucket that matches the service label (e.g. Path=/s3/files) must NOT have
+        // the service label stripped, which would otherwise corrupt the host into `wasabisys.com`.
+        let xml = S3_DUCK.replace("/my-bucket/backups", "/s3/files");
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(&xml, &mut servers, &mut skipped);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].host, "s3.wasabisys.com");
+        let opts = servers[0]
+            .options
+            .as_ref()
+            .expect("S3 options")
+            .as_object()
+            .unwrap();
+        assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("s3"));
     }
 
     #[test]
