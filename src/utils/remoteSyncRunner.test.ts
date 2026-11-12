@@ -2115,3 +2115,27 @@ describe('review8 recovery boundaries', () => {
         } finally { vi.useRealTimers(); }
     });
 });
+
+
+describe('durable delete authority', () => {
+    it.each(['timeout', 'index-load-error'] as const)('fences completed deletes before a later %s', async failure => {
+        vi.useFakeTimers();
+        try {
+            let saved: SyncJournal | undefined;
+            const { invoke, calls } = makeInvoke({
+                upload_file: () => failure === 'timeout' ? new Promise<void>(() => undefined) : undefined,
+                load_sync_index_cmd: () => { throw new Error('index temporarily unreadable'); },
+                save_sync_journal_cmd: args => { saved = structuredClone(args!.journal as SyncJournal); },
+            });
+            const run = runRemoteSync([file('one', 'delete-remote'), file('later', 'upload')], noDirs,
+                baseConfig({ retryPolicy: { ...RETRY, timeout_ms: 10 } }), {}, noWaitDeps(invoke, { writeIndex: true }));
+            await vi.advanceTimersByTimeAsync(11);
+            await run;
+            const deleted = saved?.entries.find(entry => entry.relative_path === 'one');
+            expect(deleted?.status).toBe('completed');
+            expect(deleted?.intent_token).toBeTruthy();
+            expect(calls.filter(c => c.cmd === 'delete_remote_file')).toHaveLength(1);
+            expect(calls.filter(c => c.cmd === 'save_sync_index_cmd')).toHaveLength(0);
+        } finally { vi.useRealTimers(); }
+    });
+});

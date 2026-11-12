@@ -3437,6 +3437,14 @@ pub(crate) fn index_filename(local_path: &str, remote_path: &str) -> String {
 
 /// Load a sync index for a given path pair (returns None if not found)
 pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<SyncIndex>, String> {
+    load_sync_index_with_recovery(local_path, remote_path, false)
+}
+
+fn load_sync_index_with_recovery(
+    local_path: &str,
+    remote_path: &str,
+    require_durable_fences: bool,
+) -> Result<Option<SyncIndex>, String> {
     let dir = sync_index_dir()?;
     let path = dir.join(index_filename(local_path, remote_path));
     if !path.exists() {
@@ -3460,7 +3468,7 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
         }
         pending_intents_in(&conn, &pair)
     })();
-    apply_intent_fences(&mut index, || pending);
+    apply_intent_fences(&mut index, require_durable_fences, || pending)?;
     Ok(Some(index))
 }
 
@@ -3468,15 +3476,23 @@ pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<Syn
 // If it is unreadable, retain every baseline while withholding its authority.
 fn apply_intent_fences(
     index: &mut SyncIndex,
+    require_durable: bool,
     read: impl FnOnce() -> Result<HashMap<String, String>, String>,
-) {
+) -> Result<(), String> {
     match read() {
         Ok(pending) => fence_index(index, &pending),
         Err(error) => {
             tracing::warn!("Sync recovery state unavailable; baselines quarantined: {error}");
             index.unverified_keys.extend(index.files.keys().cloned());
+            // A compare can safely display an untrusted baseline. A new
+            // writer cannot discard its recovery journal until the quarantine
+            // is durable, even if a later database read succeeds.
+            if require_durable {
+                return Err(error);
+            }
         }
     }
+    Ok(())
 }
 
 /// Whether a sync history written for the profile `recorded` may serve the
@@ -3637,7 +3653,7 @@ fn pending_intents_in(
 pub fn snapshot_sync_intents(local: &str, remote: &str) -> Result<HashMap<String, String>, String> {
     // Import recovery evidence before the frontend is allowed to replace its
     // journal with a fresh plan. An unreadable index must not become empty.
-    load_sync_index(local, remote)?;
+    load_sync_index_with_recovery(local, remote, true)?;
     let conn = intent_connection()?;
     let mut stmt = conn
         .prepare("SELECT path,token FROM intents WHERE pair=?1")
@@ -11593,14 +11609,14 @@ mod sync_intent_tests {
             });
         }
         let original = serde_json::to_vec(&index).unwrap();
-        apply_intent_fences(&mut index, || {
+        apply_intent_fences(&mut index, false, || {
             load_sync_journal_in(dir.path(), local, remote)?;
             Ok(HashMap::new())
-        });
+        }).unwrap();
         assert_eq!(index.files.len(), 2);
         assert_eq!(index.unverified_keys.len(), 2);
         assert_eq!(serde_json::to_vec(&index).unwrap(), original);
-        apply_intent_fences(&mut index, || Err("database busy".into()));
+        apply_intent_fences(&mut index, false, || Err("database busy".into())).unwrap();
         assert_eq!(index.files.len(), 2);
         assert_eq!(index.unverified_keys.len(), 2);
         let conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
@@ -11611,6 +11627,47 @@ mod sync_intent_tests {
         index.unverified_keys.clear();
         fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
         assert_eq!(index.unverified_keys.len(), 2);
+    }
+
+    #[test]
+    fn failed_quarantine_write_blocks_snapshot_even_when_database_reads_succeed() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert("one".into(), SyncIndexEntry {
+            size: 4, modified: None, is_dir: false, uploaded_at: None,
+        });
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        conn.execute_batch("PRAGMA query_only=ON;").unwrap();
+        let write = insert_intent_fences(&conn, &pair, index.files.keys().cloned());
+        assert!(write.is_err());
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+        // This is the same strict loader boundary used before a new snapshot.
+        assert!(apply_intent_fences(&mut index, true, || write.map(|_| HashMap::new())).is_err());
+        assert!(index.files.contains_key("one"));
+        assert!(index.unverified_keys.contains("one"));
+    }
+
+    #[test]
+    fn completed_delete_fence_protects_a_new_remote_file_when_index_publish_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert("one".into(), SyncIndexEntry {
+            size: 4, modified: None, is_dir: false, uploaded_at: None,
+        });
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        // The delete completed, but a later timeout/load error skipped index
+        // publication. A new object must download, never inherit the delete.
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let rows = build_comparison_results_with_index(HashMap::new(), HashMap::from([(
+            "one".into(), FileInfo { name:"one".into(), path:"one".into(), size:7,
+                modified:None, is_dir:false, checksum:None, checksum_alg:None }
+        )]), &CompareOptions::default(), Some(&index));
+        assert_eq!(rows.len(), 1);
+        assert_eq!(decide_sync_action(&rows[0].status, &CompareDirection::Bidirectional,
+            rows[0].previously_synced, false), SyncAction::Download);
     }
 
     #[test]

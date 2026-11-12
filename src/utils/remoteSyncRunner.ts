@@ -1285,7 +1285,10 @@ const runSync = async (
 
         setStatus(item.relativePath, 'syncing');
         if (journalEntry && !transferAcknowledged) journalEntry.status = 'in_progress';
-        if (!sentByBulk && !transferAcknowledged && journalEntry && (item.action === 'upload' || item.action === 'download')) {
+        // Deletes also invalidate the old baseline before their first effect.
+        // A later timeout/index failure must not revive deletion authority for
+        // a new file that appears at the deleted path.
+        if (!sentByBulk && !transferAcknowledged && journalEntry) {
             try { await beginIntents([journalEntry]); }
             catch { i--; continue; }
         }
