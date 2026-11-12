@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTransferEvents } from './useTransferEvents';
 import { updateTransferStatus } from '../components/transferQueueActions';
 import type { TransferItem } from '../components/TransferQueue';
+import { fixture } from '../utils/testFixtures/appTransferWiring';
 
 const listeners = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
 vi.mock('@tauri-apps/api/event', () => ({
@@ -182,5 +183,54 @@ describe('privacy completion ownership', () => {
         expect(items[0].error).toContain('privacy refused');
         await emit({event_type:'file_complete',transfer_id:'batch-0',filename:'b.txt',path:'/b.txt',direction:'upload'});
         expect(items[0].status).toBe('error');
+    });
+
+    it.each(['opendrive', 'fourshared'] as const)('lets the App %s upload batch settle its own rows through the mounted hook', async protocol => {
+        // The real App batch closure, the real hook and the real row guard:
+        // the backend reports both files complete before privacy is known.
+        let items: TransferItem[] = [];
+        const queue = Object.assign(queueWith({ id: 'unused', filename: 'unused', status: 'completed' }), {
+            startTransfer: (id: string) => { items = updateTransferStatus(items, id, 'transferring'); },
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            failTransfer: (id: string, error: string) => { items = updateTransferStatus(items, id, 'error', undefined, error); },
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        const { controls } = await mount(queue);
+        const f = fixture({ direction: 'upload', protocol, destination: [], policy: 'overwrite', hold: controls,
+            queue: { startTransfer: queue.startTransfer, completeTransfer: queue.completeTransfer, failTransfer: queue.failTransfer } });
+        const addRow = f.transferQueue.addItem.getMockImplementation()! as (...args: unknown[]) => string;
+        f.transferQueue.addItem.mockImplementation(((...args: unknown[]) => {
+            const id = addRow(...args);
+            items = [...items, { id, filename: args[0], path: args[1], size: args[2], type: 'upload', status: 'pending' } as TransferItem];
+            return id;
+        }) as never);
+        const backend = f.invoke.getMockImplementation()!;
+        const beforePrivacy: string[][] = [];
+        f.invoke.mockImplementation(async (command, args) => {
+            if (command === 'provider_upload_files_batch') {
+                const { batch_id, entries } = args!.params as { batch_id: string; entries: { display_name: string; remote_path: string }[] };
+                for (const [index, entry] of entries.entries()) {
+                    const event = { transfer_id: `${batch_id}-${index}`, filename: entry.display_name, path: entry.remote_path, direction: 'upload' };
+                    await emit({ ...event, event_type: 'file_start' });
+                    await emit({ ...event, event_type: 'file_complete' });
+                }
+                return backend(command, args);
+            }
+            if (!command.endsWith('_set_path_privacy')) return backend(command, args);
+            beforePrivacy.push(items.map(item => item.status));
+            if (String(args?.path).endsWith('/b.bin')) throw new Error('privacy refused');
+            return undefined;
+        });
+        const sources = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${name}`, size: 100, modified: null }));
+        await f.runtime.runFileBatch('upload', sources, '/actual');
+        // file_complete arrived for both rows, and neither was settled by it.
+        expect(beforePrivacy).toEqual([['transferring', 'transferring'], ['transferring', 'transferring']]);
+        expect(items.map(item => [item.filename, item.status, item.error])).toEqual([
+            ['a.bin', 'completed', undefined],
+            ['b.bin', 'error', 'activity.set_private_error'],
+        ]);
+        // The hold is released: a repeated completion cannot turn the failure into a success.
+        await emit({ event_type: 'file_complete', transfer_id: 'late', filename: 'b.bin', path: '/actual/b.bin', direction: 'upload' });
+        expect(items[1].status).toBe('error');
     });
 });

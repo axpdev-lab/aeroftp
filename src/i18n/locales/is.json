@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Endurheimt mistókst: {error}",
             "intervalHoursOne": "{count} klukkustund",
             "intervalHoursMany": "{count} klukkustundir",
-            "resumeNeedsCompare": "Ekki er hægt að halda þessari rofnu samstillingu áfram á öruggan hátt. Berðu saman aftur áður en þú samstillir."
+            "resumeNeedsCompare": "Ekki er hægt að halda þessari rofnu samstillingu áfram á öruggan hátt. Berðu saman aftur áður en þú samstillir.",
+            "planStaleAfterBatch": "Önnur skráaaðgerð lauk eftir að þessi áætlun var reiknuð. Berðu saman aftur áður en þú samstillir."
         },
         "ui": {
             "syncing": "Samstillir...",

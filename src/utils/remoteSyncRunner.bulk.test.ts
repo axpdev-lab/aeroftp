@@ -131,6 +131,40 @@ describe('remoteSyncRunner on a native bulk', () => {
         expect(status).toEqual({ 'docs/ok.txt': 'completed', 'docs/fail.txt': 'failed', 'docs/skip.txt': 'completed' });
     });
 
+    it('reports a fixed message, not the provider text, when a failed bulk file cannot be classified', async () => {
+        const secret = 'access_token=bulk-secret-never-visible';
+        const statuses: unknown[] = [];
+        const h = harness({
+            provider_sync_transfer_bulk: (args) => (args?.items as BulkItem[]).map(() => ({ status: 'failed', message: `refused ${secret}` })),
+            classify_transfer_error: () => { throw new Error('classifier unavailable'); },
+        });
+        const report = await runRemoteSync(files(2, 'upload'), { remote: [], local: [] }, config(),
+            { onFileStatus: (...status) => { statuses.push(status); } }, h.deps);
+        expect(h.of('classify_transfer_error')).toHaveLength(2);
+        expect(report.errors.map((e) => e.message)).toEqual(Array(2).fill('Transfer failed; compare again before retrying'));
+        expect(JSON.stringify(report)).not.toContain(secret);
+        expect(JSON.stringify(statuses)).not.toContain(secret);
+        expect(JSON.stringify(h.journal())).not.toContain(secret);
+    });
+
+    it('keeps the provider text of a failed bulk file out of the journal when the owner changed', async () => {
+        const secret = 'access_token=owner-change-secret-never-visible';
+        const statuses: unknown[] = [];
+        const h = harness({
+            provider_sync_transfer_bulk: () => [{ status: 'target_changed' }, { status: 'failed', message: `refused ${secret}` }],
+            classify_transfer_error: () => { throw new Error('classifier unavailable'); },
+        });
+        const report = await runRemoteSync(files(2, 'upload'), { remote: [], local: [] }, config(),
+            { onFileStatus: (...status) => { statuses.push(status); } }, h.deps).catch((error: unknown) => error);
+        const failed = h.journal().entries.find((e) => e.relative_path === 'docs/f1.txt');
+        expect(failed?.status).toBe('failed');
+        expect(failed?.last_error?.message).toBe('Transfer failed; compare again before retrying');
+        expect(JSON.stringify(h.of('save_sync_journal_cmd').map((c) => c.args))).not.toContain(secret);
+        expect(JSON.stringify(report, Object.getOwnPropertyNames(report ?? {}))).not.toContain(secret);
+        expect(String(report)).not.toContain(secret);
+        expect(JSON.stringify(statuses)).not.toContain(secret);
+    });
+
     it('stops a group at the file that reaches the budget, the last one the single-file path sends too', async () => {
         const h = harness();
         const report = await runRemoteSync(files(5, 'upload'), { remote: [], local: [] }, config({ transferBudget: 2500 }), {}, h.deps);
@@ -507,4 +541,19 @@ it('never adopts a same-size edited acknowledged download as the synced index ba
     expect(resumed.of('save_sync_index_cmd')).toHaveLength(0);
     expect(resumed.of('sync_ec_verify_repair')).toHaveLength(0);
     expect(journal.entries[0].local_modified).toBe('2026-11-11T00:00:00Z');
+});
+
+describe('sync intent fixture', () => {
+    it('refuses to begin intents for a pair that holds no run lease, even with no token', async () => {
+        const fixture = createIntentFixture();
+        const invoke = fixture.wrap(async <T,>() => undefined as T);
+        await expect(invoke('sync_intent_begin_cmd', { localPath: '/l', remotePath: '/r', paths: ['a.txt'] }))
+            .rejects.toThrow('SYNC_RUN_BUSY');
+        expect(fixture.generations.size).toBe(0);
+        // With the pair's lease the same request is served.
+        const lease = await invoke<string>('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r' });
+        await expect(invoke('sync_intent_begin_cmd', { localPath: '/l', remotePath: '/r', paths: ['a.txt'], syncRunLease: lease }))
+            .resolves.toHaveLength(1);
+        expect([...fixture.generations.keys()]).toEqual(['a.txt']);
+    });
 });

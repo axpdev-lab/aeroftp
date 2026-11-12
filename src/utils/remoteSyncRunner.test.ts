@@ -557,6 +557,45 @@ describe('remoteSyncRunner: versioned backup', () => {
  * folder had failed, and a file the compare excluded (`docs/.env`), which has
  * no row of its own.
  */
+describe('remoteSyncRunner: credentials in a native error', () => {
+    const native = () => new Error('550 denied https://alice:hunter2@files.example.com/srv/data/x?access_token=tok-SECRET-123');
+    const leaks = ['hunter2', 'tok-SECRET-123', 'alice:'];
+    const run = async (plan: SyncRunFile[], handlers: Record<string, Handler>, over: Partial<RemoteSyncConfig> = {}) => {
+        const { invoke, calls } = makeInvoke(handlers);
+        const statuses: unknown[] = [];
+        const report = await runRemoteSync(plan, noDirs, baseConfig(over),
+            { onFileStatus: (...status) => { statuses.push(status); } }, noWaitDeps(invoke));
+        const journal = lastSavedJournal(calls);
+        for (const channel of [report, statuses, journal]) {
+            for (const secret of leaks) expect(JSON.stringify(channel)).not.toContain(secret);
+        }
+        expect(report.errors).toHaveLength(1);
+        const message = report.errors[0].message;
+        expect(message).toContain('550 denied https://');
+        expect(message).toContain('files.example.com/srv/data/x?access_token=***REDACTED***');
+        expect(journal?.entries[0].last_error?.message).toBe(message);
+        expect(statuses).toContainEqual([plan[0].relativePath, 'error', message]);
+        return message;
+    };
+
+    it('masks them in a failed backup and keeps the error text', async () => {
+        await run([file('a.txt', 'upload', { overwritesExisting: true })], {
+            sync_backup_run_stamp: () => '20260925T070000Z',
+            sync_backup_archive_remote: () => { throw native(); },
+        }, { versionedBackup: { dir: '.aeroftp-versions' } });
+    });
+
+    it('masks them in a failed file delete and keeps the path', async () => {
+        const message = await run([file('docs/x.txt', 'delete-remote')], { delete_remote_file: () => { throw native(); } });
+        expect(message.startsWith('Delete failed: docs/x.txt - ')).toBe(true);
+    });
+
+    it('masks them in a failed empty-folder delete and keeps the path', async () => {
+        const message = await run([file('docs', 'delete-remote', { isDir: true })], { sync_remove_empty_dir: () => { throw native(); } });
+        expect(message.startsWith('Delete failed: docs - ')).toBe(true);
+    });
+});
+
 describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
     const backup = { versionedBackup: { dir: '.aeroftp-versions' } };
     /** Every call that could remove the folder at `path`, whatever the command. */
@@ -2319,8 +2358,12 @@ describe('full-review owner and report boundaries', () => {
         const run=runRemoteSync([file('one','upload')],noDirs,baseConfig(),{},noWaitDeps(invoke,{
             writeIndex:true,remoteTarget:{epoch:1,ownerBinding:'test-owner-v1',assertCurrent:()=>{if(!current)throw new Error('changed');}},
         }));
-        await loading;current=false;resolveIndex(null);await run;
+        await loading;current=false;resolveIndex(null);const report=await run;
         expect(calls.some(call=>call.cmd==='save_sync_index_cmd')).toBe(false);
+        // The transfer landed, but the report must not read as a clean success.
+        expect(report.uploaded).toBe(1);
+        expect(report.cancelled).toBe(true);
+        expect(report.errors).toEqual([{kind:'unknown',message:expect.stringContaining('CONNECTION_CHANGED'),retryable:false,file_path:''}]);
         expect(calls.find(call=>call.cmd==='load_sync_index_cmd')?.args).toMatchObject({expectedGuiTarget:1,ownerBinding:'test-owner-v1'});
     });
 });

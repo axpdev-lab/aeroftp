@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Falha ao restaurar: {error}",
             "intervalHoursOne": "{count} hora",
             "intervalHoursMany": "{count} horas",
-            "resumeNeedsCompare": "Esta sincronização interrompida não pode ser retomada em segurança. Faça uma nova comparação antes de sincronizar."
+            "resumeNeedsCompare": "Esta sincronização interrompida não pode ser retomada em segurança. Faça uma nova comparação antes de sincronizar.",
+            "planStaleAfterBatch": "Outra operação de ficheiros terminou depois de este plano ser calculado. Faça uma nova comparação antes de sincronizar."
         },
         "ui": {
             "syncing": "Sincronizando...",

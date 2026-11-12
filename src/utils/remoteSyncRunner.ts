@@ -15,6 +15,7 @@
 
 import { withTransferRun } from './transferRun';
 import { QueuedTargetChangedError } from './queuedTarget';
+import { redactCredentials } from './redactSensitive';
 import type {
     RetryPolicy,
     VerifyPolicy,
@@ -292,7 +293,8 @@ const defaultMakeId = (): string => {
 const stripTrailingSlash = (p: string): string => p.replace(/\/+$/, '');
 // Pair identities must remain absolute roots; join prefixes below deliberately
 // omit the final slash so that appending /relative never produces //relative.
-const normalizedSyncRoot = (path: string): string => /^\/+$/.test(path) ? '/'
+// Exported so Compare, the journal lookups and the canary name the same pair.
+export const normalizedSyncRoot = (path: string): string => /^\/+$/.test(path) ? '/'
     : /^[A-Za-z]:[\\/]$/.test(path) ? path.replace(/\\/g, '/') : stripTrailingSlash(path);
 
 const basename = (p: string): string => p.split('/').pop() || p;
@@ -787,7 +789,7 @@ const runSync = async (
     const failBackup = (item: SyncRunFile, journalEntry: SyncJournalEntry | undefined, e: unknown): void => {
         const errInfo: SyncErrorInfo = {
             kind: 'disk_error',
-            message: (e as Error)?.message || String(e),
+            message: redactCredentials((e as Error)?.message || String(e)),
             retryable: false,
             file_path: item.relativePath,
         };
@@ -1155,8 +1157,9 @@ const runSync = async (
                 entry.status = 'pending';
             } else if (ownerChanged) {
                 entry.status = 'failed';
+                // Fixed text, as in `bulkOutcome`: never the raw provider message.
                 entry.last_error = result?.status === 'target_changed' || result?.status === 'failed'
-                    ? { kind: 'unknown', message: result.status === 'target_changed' ? String(targetError) : result.message,
+                    ? { kind: 'unknown', message: result.status === 'target_changed' ? String(targetError) : 'Transfer failed; compare again before retrying',
                         retryable: false, file_path: file.relativePath } : null;
             }
         }
@@ -1178,7 +1181,8 @@ const runSync = async (
         const error = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath })
             .catch(() => ({
                 kind: 'unknown' as SyncErrorKind,
-                message: rawError,
+                // Fixed text, as on the single-file path: never the raw provider message.
+                message: 'Transfer failed; compare again before retrying',
                 retryable: false,
                 file_path: filePath,
             }));
@@ -1641,7 +1645,7 @@ const runSync = async (
                     outcome = 'failed';
                     const errInfo: SyncErrorInfo = {
                         kind: 'unknown',
-                        message: `Delete failed: ${item.relativePath} - ${(e as { toString?: () => string })?.toString?.() || 'unknown'}`,
+                        message: `Delete failed: ${item.relativePath} - ${redactCredentials((e as { toString?: () => string })?.toString?.() || 'unknown')}`,
                         retryable: false,
                         file_path: item.relativePath,
                     };
@@ -1707,7 +1711,7 @@ const runSync = async (
             } catch (e) {
                 const errInfo: SyncErrorInfo = {
                     kind: 'permission_denied',
-                    message: `Delete failed: ${item.relativePath} - ${(e as { toString?: () => string })?.toString?.() || 'unknown'}`,
+                    message: `Delete failed: ${item.relativePath} - ${redactCredentials((e as { toString?: () => string })?.toString?.() || 'unknown')}`,
                     retryable: false,
                     file_path: item.relativePath,
                 };
@@ -1928,7 +1932,12 @@ const runSync = async (
             };
             await invoke('save_sync_index_cmd', { index, intentTokens: journal.entries.filter(entry => entry.status === 'completed' && entry.intent_token).map(entry => entry.intent_token!) });
         } catch {
-            // Index is an optimisation; never let it break the run.
+            // Index is an optimisation; never let it break the run. A target
+            // change here left the baseline unpublished, so the report says so.
+            if (targetError) {
+                runCancelled = true;
+                errors.push({ kind: 'unknown', message: String(targetError), retryable: false, file_path: '' });
+            }
         }
     }
 

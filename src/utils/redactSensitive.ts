@@ -54,7 +54,9 @@ const SECRET_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,24}[_-]){0,8}(?:password|pass
 // bare word up to the next delimiter.
 const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|\\"${ESCAPED_BODY}(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
 
-export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
+// The rules for credentials only. `REDACTION_PATTERNS` starts with them, in
+// this order, and `redactCredentials` applies them without the identity rules.
+const CREDENTIAL_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
     // password. First of all, ahead of the key and Bearer rules, so
@@ -98,6 +100,10 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
         pattern: new RegExp(String.raw`(\b${SECRET_NAME}\s*[:=]\s*)${SECRET_VALUE}`, 'gi'),
         replacement: '$1***REDACTED***',
     },
+];
+
+export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
+    ...CREDENTIAL_PATTERNS,
     // Email addresses. The local part is at most 64 characters (RFC 5321), which
     // also keeps a long run of such characters without an `@` (a hex or base64url
     // dump) from costing a quadratic scan on every start position.
@@ -119,6 +125,29 @@ export function redactSensitive(msg: string): string {
     if (!msg) return msg;
     let result = msg;
     for (const { pattern, replacement } of REDACTION_PATTERNS) {
+        result = result.replace(pattern, replacement);
+    }
+    return result;
+}
+
+// Signed URL parameters and the userinfo of any URL. They are not part of
+// `REDACTION_PATTERNS`, whose rules the Rust twin mirrors. `key` and `sig` go
+// only as a query parameter, so an object key named in the error text stays.
+const SIGNED_URL_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
+    { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    { pattern: /([?&](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    { pattern: /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, replacement: '$1***REDACTED***@' },
+];
+
+/**
+ * Masks credentials in an error text a user will read (a sync journal, report
+ * or status line) and keeps the rest of it: paths, hosts, codes and the error
+ * wording. Unlike `redactSensitive`, emails, addresses, home folders and hashes stay.
+ */
+export function redactCredentials(msg: string): string {
+    if (!msg) return msg;
+    let result = msg;
+    for (const { pattern, replacement } of [...CREDENTIAL_PATTERNS, ...SIGNED_URL_PATTERNS]) {
         result = result.replace(pattern, replacement);
     }
     return result;

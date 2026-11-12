@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Pemulihan gagal: {error}",
             "intervalHoursOne": "{count} jam",
             "intervalHoursMany": "{count} jam",
-            "resumeNeedsCompare": "Sinkronisasi yang terputus ini tidak dapat dilanjutkan dengan aman. Lakukan perbandingan baru sebelum menyinkronkan."
+            "resumeNeedsCompare": "Sinkronisasi yang terputus ini tidak dapat dilanjutkan dengan aman. Lakukan perbandingan baru sebelum menyinkronkan.",
+            "planStaleAfterBatch": "Operasi file lain selesai setelah rencana ini dihitung. Lakukan perbandingan baru sebelum menyinkronkan."
         },
         "ui": {
             "syncing": "Menyinkronkan...",

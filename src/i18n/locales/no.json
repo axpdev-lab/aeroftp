@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Gjenoppretting mislyktes: {error}",
             "intervalHoursOne": "{count} time",
             "intervalHoursMany": "{count} timer",
-            "resumeNeedsCompare": "Denne avbrutte synkroniseringen kan ikke gjenopptas trygt. Utfør en ny sammenligning før synkronisering."
+            "resumeNeedsCompare": "Denne avbrutte synkroniseringen kan ikke gjenopptas trygt. Utfør en ny sammenligning før synkronisering.",
+            "planStaleAfterBatch": "En annen filoperasjon ble fullført etter at denne planen ble beregnet. Utfør en ny sammenligning før synkronisering."
         },
         "ui": {
             "syncing": "Synkroniserer...",

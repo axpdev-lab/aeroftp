@@ -160,7 +160,7 @@
       }
     ]
   },
-  "app_version": "4.2.6",
+  "app_version": "4.2.7",
   "cli": {
     "count": 99,
     "subcommands": [
@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 801
+    "tauri_commands": 809
   },
   "mcp": {
     "count": 78,
@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 468,
+    "name_matched_count": 473,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1161,6 +1161,9 @@
       "provider_bulk_support",
       "provider_chmod",
       "provider_connection_generation",
+      "provider_gui_target_epoch",
+      "provider_gui_target_binding",
+      "provider_gui_verify_resume_owner",
       "provider_checksum",
       "provider_checksum_capability",
       "provider_keep_alive",
@@ -1308,7 +1311,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 333,
+    "name_unmatched_count": 336,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1402,6 +1405,10 @@
       "proton_translate_path",
       "load_sync_index_cmd",
       "save_sync_index_cmd",
+      "sync_intent_begin_cmd",
+      "sync_run_lease_begin_cmd",
+      "sync_run_lease_end_cmd",
+      "sync_intent_snapshot_cmd",
       "load_sync_journal_cmd",
       "save_sync_journal_cmd",
       "delete_sync_journal_cmd",
@@ -1465,6 +1472,7 @@
       "sync_backup_remote_move",
       "sync_backup_archive_local",
       "sync_backup_archive_remote",
+      "sync_backup_verify_receipt",
       "sync_remove_empty_dir",
       "generate_share_link",
       "generate_share_link_remote",
@@ -1789,6 +1797,9 @@
       "provider_rename",
       "provider_chmod",
       "provider_connection_generation",
+      "provider_gui_target_epoch",
+      "provider_gui_target_binding",
+      "provider_gui_verify_resume_owner",
       "provider_server_copy",
       "provider_checksum",
       "provider_checksum_capability",
@@ -2116,6 +2127,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 801
+    "count": 809
   }
 }

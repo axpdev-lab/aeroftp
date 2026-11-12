@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Obnovenie zlyhalo: {error}",
             "intervalHoursOne": "{count} hodina",
             "intervalHoursMany": "{count} h",
-            "resumeNeedsCompare": "Túto prerušenú synchronizáciu nemožno bezpečne obnoviť. Pred synchronizáciou vykonajte nové porovnanie."
+            "resumeNeedsCompare": "Túto prerušenú synchronizáciu nemožno bezpečne obnoviť. Pred synchronizáciou vykonajte nové porovnanie.",
+            "planStaleAfterBatch": "Po výpočte tohto plánu sa skončila iná operácia so súbormi. Pred synchronizáciou vykonajte nové porovnanie."
         },
         "ui": {
             "syncing": "Synchronizácia...",

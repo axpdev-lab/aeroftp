@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Herstellen mislukt: {error}",
             "intervalHoursOne": "{count} uur",
             "intervalHoursMany": "{count} uur",
-            "resumeNeedsCompare": "Deze onderbroken synchronisatie kan niet veilig worden hervat. Voer vóór het synchroniseren een nieuwe vergelijking uit."
+            "resumeNeedsCompare": "Deze onderbroken synchronisatie kan niet veilig worden hervat. Voer vóór het synchroniseren een nieuwe vergelijking uit.",
+            "planStaleAfterBatch": "Er is een andere bestandsbewerking voltooid nadat dit plan was berekend. Voer vóór het synchroniseren een nieuwe vergelijking uit."
         },
         "ui": {
             "syncing": "Synchroniseren...",

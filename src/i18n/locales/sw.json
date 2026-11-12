@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Kurejesha kumeshindwa: {error}",
             "intervalHoursOne": "Saa {count}",
             "intervalHoursMany": "Saa {count}",
-            "resumeNeedsCompare": "Usawazishaji huu uliokatizwa hauwezi kuendelea kwa usalama. Linganisha upya kabla ya kusawazisha."
+            "resumeNeedsCompare": "Usawazishaji huu uliokatizwa hauwezi kuendelea kwa usalama. Linganisha upya kabla ya kusawazisha.",
+            "planStaleAfterBatch": "Operesheni nyingine ya faili imekamilika baada ya mpango huu kukokotolewa. Linganisha upya kabla ya kusawazisha."
         },
         "ui": {
             "syncing": "Inasawazisha...",

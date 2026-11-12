@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Obnovitev ni uspela: {error}",
             "intervalHoursOne": "{count} ura",
             "intervalHoursMany": "{count} h",
-            "resumeNeedsCompare": "Te prekinjene sinhronizacije ni mogoče varno nadaljevati. Pred sinhronizacijo izvedite novo primerjavo."
+            "resumeNeedsCompare": "Te prekinjene sinhronizacije ni mogoče varno nadaljevati. Pred sinhronizacijo izvedite novo primerjavo.",
+            "planStaleAfterBatch": "Po izračunu tega načrta se je končala druga datotečna operacija. Pred sinhronizacijo izvedite novo primerjavo."
         },
         "ui": {
             "syncing": "Sinhronizacija...",

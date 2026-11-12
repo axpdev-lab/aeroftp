@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import type { AeroSyncContext, AeroSyncTab } from './types';
 import { aeroSyncCompareOptions } from '../../utils/aeroSyncExcludes';
 import { withoutEntries } from '../../utils/compareEndpoints';
+import { normalizedSyncRoot } from '../../utils/remoteSyncRunner';
 
 export interface AeroSyncState {
     initialTab: AeroSyncTab;
@@ -22,8 +23,8 @@ export function useAeroSyncContextActions(
     const dismissJournal = useCallback(async () => {
         if (!context) return;
         await invoke('delete_sync_journal_cmd', {
-            localPath: context.initialSource || '',
-            remotePath: context.initialDestination || '',
+            localPath: normalizedSyncRoot(context.initialSource || ''),
+            remotePath: normalizedSyncRoot(context.initialDestination || ''),
         }).catch(() => undefined);
         setState(previous => previous?.context === context
             ? { ...previous, context: { ...previous.context, pendingJournal: null } }

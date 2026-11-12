@@ -1,122 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { transformWithOxc } from 'vite';
-import app from '../App.tsx?raw';
-import overwriteHook from '../hooks/useOverwriteCheck.ts?raw';
 import { describe, expect, it, vi } from 'vitest';
-import { usesProviderApi, type RemoteFile } from '../types';
-import { loadOverwriteDestination } from './overwriteDestination';
-import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './fileBatchRouting';
-import { createFileBatchDispatcher, rearmedOnUserAction } from '../components/transferQueueActions';
-import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from './localPath';
-
-// Run the actual App transfer closures with a mocked IPC boundary. This catches
-// a caller that forgets to pass the snapshot, lists inside the loop, or writes
-// after a failed preflight, without mounting the entire Tauri/Monaco UI.
-function closure(name: string, endMarker: string) {
-  const start = app.indexOf(`\n  const ${name} =`);
-  const end = app.indexOf(endMarker, start + 1);
-  if (start < 0 || end < 0) throw new Error(`Missing App closure: ${name}`);
-  return app.slice(start, end);
-}
-const { code } = await transformWithOxc(
-  closure('captureGuiTarget', '\n  const getOverwriteDestination =')
-  + (app.includes('const getOverwriteDestination =') ? closure('getOverwriteDestination', '\n  // Helper: check folder overwrite') : '')
-  + closure('downloadFile', '\n  const uploadFile =')
-  + closure('uploadFile', '\n  // The retry of an item restored from the journal')
-  + closure('runFileBatch', '\n  const uploadMultipleFiles ='),
-  'overwrite-wiring.ts',
-);
-// The paste: what it hands the batch of a copy to the other side.
-const { code: pasteCode } = await transformWithOxc(
-  closure('clipboardPaste', '\n  // openDevToolsPreview, openUniversalPreview'),
-  'paste-wiring.ts',
-);
-const { code: overwriteCode } = await transformWithOxc(
-  overwriteHook.slice(overwriteHook.indexOf('  const checkOverwrite ='), overwriteHook.indexOf('  const resetOverwriteSettings =')),
-  'overwrite-check.ts',
-);
-
-type Direction = 'upload' | 'download';
-type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
-const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () => number | Promise<number>; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
-  const direction = options.direction;
-  const protocol = options.protocol || 'webdav';
-  const destination = options.destination ?? [file('a.bin')];
-  const panel = options.panel ?? [];
-  const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
-    if (options.privacyError && (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy')) throw options.privacyError;
-    if (command === 'provider_gui_target_epoch') return options.epoch?.() ?? 7;
-    if (['get_local_files', 'provider_list_files'].includes(command)) {
-      await options.beforeListing?.();
-      if (options.failListing) throw new Error('Destination listing refused');
-      return command === 'get_local_files' ? destination : { files: destination, current_path: '/panel' };
-    }
-    if (command === 'provider_download_files_batch' || command === 'provider_upload_files_batch') {
-      const entries = args!.params.entries;
-      return { completed: entries.length, failed: 0, cancelled: false, succeeded: entries.map((_: unknown, i: number) => i) };
-    }
-    if (['reset_cancel_flag', 'provider_download_file', 'provider_upload_file'].includes(command)) return undefined;
-    if (command === 'provider_download_folder') return { cancelled: false, failed: 0, skipped: 0 };
-    throw new Error(`Unexpected IPC: ${command}`);
-  });
-  // Execute the real hook policy as well as the real App batch planner. This
-  // makes duplicate-name regressions exercise suffix selection, not a stub.
-  const checkOverwrite = vi.fn(new Function('isWindowsLocalPath', 'useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
-    `${overwriteCode}; return checkOverwrite;`)(isWindowsLocalPath, (fn: unknown) => fn, panel, panel, options.policy || 'skip',
-      { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
-  const resolveDestination = vi.fn(loadOverwriteDestination);
-  const queueItemsRef = { current: [] as { id: string; status: string }[] };
-  const transferQueue = {
-    addItem: vi.fn(() => {
-      const id = `q${queueItemsRef.current.length}`;
-      queueItemsRef.current.push({ id, status: 'pending' });
-      return id;
-    }),
-    startTransfer: vi.fn(), completeTransfer: vi.fn(), failTransfer: vi.fn(), cancelTransfer: vi.fn(),
-  };
-  const notify = { info: vi.fn(), error: vi.fn() };
-  const resetOverwriteSettings = vi.fn();
-  const context = {
-    invoke, checkOverwrite, loadOverwriteDestination: resolveDestination, resetOverwriteSettings,
-    isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget,
-    isLiveOnProfile: options.ownsProfile ?? (() => true),
-    sessions: [{ id: 'A', connectionParams: { protocol } }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams: { protocol },
-    usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
-    localFiles: direction === 'upload' ? [file('a.bin', 100)] : panel,
-    // The rows shown, which a nested row of a flattened search is found in.
-    sortedLocalFiles: options.nested ?? [],
-    localFiles2: options.panel2 ?? [], sortedLocalFiles2: options.panel2 ?? [],
-    remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
-    humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
-    stopCountRef: { current: 0 }, pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
-    circuitBreaker: { reset: vi.fn() }, retryCallbacksRef: { current: new Map() }, queueItemsRef, transferQueue,
-    recordQueueDescriptor: vi.fn(), holdFileCompletions: () => () => undefined, registerFileBatchRows: vi.fn(), fileBatchCommand, keepsSingleFilePath,
-    folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
-    // One server for the whole run (the server check is pinned in wrongTarget.wiring.test.ts).
-    boundToQueuedServer: (_target: unknown, _id: string, run: () => unknown) => async () => { await run(); },
-    snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlay: null }),
-    queuedTargetProblem: () => null,
-    queuedTargetGuard: () => () => undefined,
-    failQueuedRestIfRetargeted: () => false,
-    QueuedTargetChangedError: Error,
-    joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,
-    settings: { autoStartTransfers: !options.staged }, fileExistsAction: options.policy || 'skip',
-    effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
-    downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
-    buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
-    formatBytes: (size: number) => String(size), t: (key: string) => key, notify,
-    // Outside React, a function from useLatestCallback is the function itself.
-    useLatestCallback: <F,>(fn: F) => fn,
-  };
-  const runtime = new Function(...Object.keys(context), `${code}; return { downloadFile, uploadFile, runFileBatch };`)(...Object.values(context));
-  const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch|folder)$/.test(name));
-  const listings = () => invoke.mock.calls.filter(([name]) => ['get_local_files', 'provider_list_files'].includes(name));
-  return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings, retryCallbacks: context.retryCallbacksRef.current, stop: () => { context.stopCountRef.current++; context.batchCancelledRef.current = true; } };
-}
+import type { RemoteFile } from '../types';
+import { splitForFileBatch } from './fileBatchRouting';
+import { file, fixture, pasteCode, type Direction } from './testFixtures/appTransferWiring';
 
 const items = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${name}`, size: 100, modified: null }));
 const single = (f: ReturnType<typeof fixture>, direction: Direction) => direction === 'download'
@@ -352,6 +240,27 @@ it.each(['opendrive', 'fourshared'] as const)('keeps cut originals after %s priv
   expect(result.aborted).toBe(true);
   expect(result.failed).toBe(2);
   expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
+  // App itself settles both rows as failed: neither file was made private.
+  const rows = f.transferQueue.addItem.mock.results.map(added => added.value);
+  expect(rows).toHaveLength(2);
+  expect(f.transferQueue.failTransfer.mock.calls).toEqual(rows.map(id => [id, 'activity.set_private_error']));
+});
+
+it.each(['opendrive', 'fourshared'] as const)('fails only the row whose %s privacy write was rejected', async protocol => {
+  const f = fixture({ direction: 'upload', protocol, destination: [], policy: 'overwrite' });
+  const backend = f.invoke.getMockImplementation()!;
+  f.invoke.mockImplementation(async (command, args) => {
+    if (!command.endsWith('_set_path_privacy')) return backend(command, args);
+    if (String(args?.path).endsWith('/b.bin')) throw new Error('privacy refused');
+    return undefined;
+  });
+  const result = await f.runtime.runFileBatch('upload', items, '/actual');
+  const [rowA, rowB] = f.transferQueue.addItem.mock.results.map(added => added.value);
+  expect(f.invoke.mock.calls.filter(([command]) => command.endsWith('_set_path_privacy')).map(([, args]) => args!.path)).toEqual(['/actual/a.bin', '/actual/b.bin']);
+  expect(f.transferQueue.failTransfer.mock.calls).toEqual([[rowB, 'activity.set_private_error']]);
+  expect(f.transferQueue.completeTransfer.mock.calls).toEqual([[rowA]]);
+  expect(result.failed).toBe(1);
+  expect(result.succeededSources).toEqual(['/source/a.bin']);
 });
 
 it.each(['upload', 'download'] as const)('pins a fresh epoch for staged %s Start and subsequent Retry', async direction => {

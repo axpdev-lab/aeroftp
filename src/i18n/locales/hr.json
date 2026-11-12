@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Vraćanje nije uspjelo: {error}",
             "intervalHoursOne": "{count} sat",
             "intervalHoursMany": "{count} h",
-            "resumeNeedsCompare": "Ova prekinuta sinkronizacija ne može se sigurno nastaviti. Prije sinkronizacije ponovno usporedite."
+            "resumeNeedsCompare": "Ova prekinuta sinkronizacija ne može se sigurno nastaviti. Prije sinkronizacije ponovno usporedite.",
+            "planStaleAfterBatch": "Druga operacija s datotekama završila je nakon izračuna ovog plana. Prije sinkronizacije ponovno usporedite."
         },
         "ui": {
             "syncing": "Sinkronizacija...",

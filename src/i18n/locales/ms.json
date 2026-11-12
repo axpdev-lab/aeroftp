@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Pemulihan gagal: {error}",
             "intervalHoursOne": "{count} jam",
             "intervalHoursMany": "{count} jam",
-            "resumeNeedsCompare": "Penyegerakan yang terganggu ini tidak dapat disambung semula dengan selamat. Buat perbandingan baharu sebelum menyegerakkan."
+            "resumeNeedsCompare": "Penyegerakan yang terganggu ini tidak dapat disambung semula dengan selamat. Buat perbandingan baharu sebelum menyegerakkan.",
+            "planStaleAfterBatch": "Operasi fail lain selesai selepas pelan ini dikira. Buat perbandingan baharu sebelum menyegerakkan."
         },
         "ui": {
             "syncing": "Menyegerak...",

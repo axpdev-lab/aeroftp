@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Methodd yr adfer: {error}",
             "intervalHoursOne": "{count} awr",
             "intervalHoursMany": "{count} awr",
-            "resumeNeedsCompare": "Ni ellir ailddechrau’r cysoniad a amharwyd hwn yn ddiogel. Gwnewch gymhariaeth newydd cyn cysoni."
+            "resumeNeedsCompare": "Ni ellir ailddechrau’r cysoniad a amharwyd hwn yn ddiogel. Gwnewch gymhariaeth newydd cyn cysoni.",
+            "planStaleAfterBatch": "Gorffennodd gweithrediad ffeil arall ar ôl cyfrifo'r cynllun hwn. Gwnewch gymhariaeth newydd cyn cysoni."
         },
         "ui": {
             "syncing": "Yn cysoni...",

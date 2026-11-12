@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Przywracanie nie powiodło się: {error}",
             "intervalHoursOne": "{count} godzina",
             "intervalHoursMany": "{count} godz.",
-            "resumeNeedsCompare": "Nie można bezpiecznie wznowić tej przerwanej synchronizacji. Przed synchronizacją wykonaj nowe porównanie."
+            "resumeNeedsCompare": "Nie można bezpiecznie wznowić tej przerwanej synchronizacji. Przed synchronizacją wykonaj nowe porównanie.",
+            "planStaleAfterBatch": "Po obliczeniu tego planu zakończyła się inna operacja na plikach. Przed synchronizacją wykonaj nowe porównanie."
         },
         "ui": {
             "syncing": "Synchronizacja...",

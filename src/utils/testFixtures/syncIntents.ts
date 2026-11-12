@@ -22,7 +22,7 @@ export function createIntentFixture() {
             if (cmd === 'sync_intent_snapshot_cmd') return Object.fromEntries(generations) as T;
             if (cmd === 'sync_intent_begin_cmd') {
                 const pair = JSON.stringify([args!.localPath, args!.remotePath]);
-                if (leases.get(pair) !== args!.syncRunLease) throw new Error('SYNC_RUN_BUSY');
+                if (!leases.has(pair) || leases.get(pair) !== args!.syncRunLease) throw new Error('SYNC_RUN_BUSY');
                 return (args!.paths as string[]).map(path => {
                 const token = `intent-${++sequence}-${path}`;
                 generations.set(path,token);

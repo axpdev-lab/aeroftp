@@ -467,7 +467,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, normalizedSyncRoot, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -1505,7 +1505,7 @@ const App: React.FC = () => {
         targets.map(tg => invoke('opendrive_set_path_access', { path: tg.path, accessLevel: level, isDir: tg.isDir, expectedGuiTarget }))
       );
       checkTarget();
-      if ((propertiesOwnerRef.current !== owner && multiPropertiesOwnerRef.current !== owner) || results.some(result => result.status === 'rejected' && String(result.reason).includes('CONNECTION_CHANGED'))) {
+      if (results.some(result => result.status === 'rejected' && String(result.reason).includes('CONNECTION_CHANGED'))) {
         throw new Error('CONNECTION_CHANGED: the properties target changed');
       }
       const ok = results.filter(r => r.status === 'fulfilled').length;
@@ -1514,10 +1514,12 @@ const App: React.FC = () => {
       if (failed === 0) {
         notify.success(t('opendrive.privacyUpdated') || 'OpenDrive privacy updated');
         humanLog.updateEntry(logId, { status: 'success', message: t('activity.opendrive_access_set', { provider: 'OpenDrive', level: levelLabel, count: ok }) });
-        // Reflect the new level in any open Properties dialog without closing it.
+        // Reflect the new level in the dialog this request came from, without
+        // closing it. A dialog closed or replaced since has dropped this owner,
+        // and a local dialog on the same path never shows a remote level.
         const targetPaths = new Set(targets.map(tg => tg.path));
-        if (propertiesOwnerRef.current === owner) setPropertiesDialog(prev => prev && targetPaths.has(prev.path) ? { ...prev, permissions: level } : prev);
-        if (multiPropertiesOwnerRef.current === owner) setMultiPropertiesDialog(prev => prev ? { ...prev, files: prev.files.map(f => targetPaths.has(f.path) ? { ...f, permissions: level } : f) } : prev);
+        if (propertiesOwnerRef.current === owner) setPropertiesDialog(prev => prev && prev.isRemote && targetPaths.has(prev.path) ? { ...prev, permissions: level } : prev);
+        if (multiPropertiesOwnerRef.current === owner) setMultiPropertiesDialog(prev => prev && prev.isRemote ? { ...prev, files: prev.files.map(f => targetPaths.has(f.path) ? { ...f, permissions: level } : f) } : prev);
       } else {
         notify.warning(`${t('opendrive.privacyUpdated') || 'OpenDrive privacy updated'}: ${ok}/${results.length}`);
         humanLog.updateEntry(logId, { status: 'error', message: t('activity.opendrive_access_partial', { provider: 'OpenDrive', level: levelLabel, ok, total: results.length }) });
@@ -1668,7 +1670,10 @@ const App: React.FC = () => {
       ...localFoldersShownBy(replacing === 'multi' ? 'single' : 'multi'),
     ]);
     cancelLocalFolderSizes(localFoldersShownBy(replacing).filter(path => !stillShown.has(path)));
+    // A local dialog has no remote owner: a privacy result still pending for
+    // the remote dialog it replaces is not for it.
     if (entries.length > 1) {
+      multiPropertiesOwnerRef.current = null;
       setMultiPropertiesDialog({ files: entries, isRemote: false });
       // Lazy-load extended attributes per file (read-only / hidden) so the
       // mixed-state indicators surface without blocking first paint.
@@ -1691,6 +1696,7 @@ const App: React.FC = () => {
       // Only into the dialog these attributes were read for: one reopened on
       // another selection of the same size keeps its own.
       setMultiPropertiesDialog(prev => prev
+        && !prev.isRemote
         && prev.files.length === enriched.length
         && prev.files.every((f, i) => f.path === enriched[i].path)
         ? { ...prev, files: enriched }
@@ -1699,11 +1705,12 @@ const App: React.FC = () => {
     }
     const [entry] = entries;
     if (!entry) return;
+    propertiesOwnerRef.current = null;
     setPropertiesDialog(entry);
     // Load extended properties asynchronously
     try {
       const detailed = await invoke<any>('get_file_properties', { path: entry.path });
-      setPropertiesDialog(prev => prev && prev.path === entry.path ? {
+      setPropertiesDialog(prev => prev && !prev.isRemote && prev.path === entry.path ? {
         ...prev,
         // A folder opened from the breadcrumb or the panel background has no
         // listing entry to take its date from.
@@ -12601,9 +12608,10 @@ const App: React.FC = () => {
           let refused: string | undefined;
           let compareFailed = false;
           try {
+            // The runner keys this pair's index by its normalized roots.
             const report = await invoke<CompareReport>('compare_local_directories', {
-              leftPath,
-              rightPath,
+              leftPath: normalizedSyncRoot(leftPath),
+              rightPath: normalizedSyncRoot(rightPath),
               options: aeroSyncCompareOptions(userExcludes, backupDir),
               progressId: scanProgressId,
             });
@@ -12645,8 +12653,8 @@ const App: React.FC = () => {
         void (async () => {
           try {
             const journal = await invoke<SyncJournal | null>('load_sync_journal_cmd', {
-              localPath: leftPath,
-              remotePath: rightPath,
+              localPath: normalizedSyncRoot(leftPath),
+              remotePath: normalizedSyncRoot(rightPath),
             });
             if (aeroSyncCompareSeqRef.current !== mySeq) return;
             if (journal && !journal.completed) {
@@ -12719,9 +12727,11 @@ const App: React.FC = () => {
         let refused: string | undefined;
         let compareFailed = false;
         try {
+          // The runner keys this pair's index and intents by its normalized
+          // roots: Compare reads the same pair, not a raw-spelling twin.
           const compareArgs: Record<string, unknown> = {
-            localPath: currentLocalPath,
-            remotePath: currentRemotePath,
+            localPath: normalizedSyncRoot(currentLocalPath),
+            remotePath: normalizedSyncRoot(currentRemotePath),
             // Another profile's sync index is no baseline here (Requested 79).
             profileId: activeUnifiedRemoteProfile?.savedProfileId ?? null,
             ...(isProviderConn && cryptCompareActive && compareCryptVaultId
@@ -12787,8 +12797,8 @@ const App: React.FC = () => {
       void (async () => {
         try {
           const journal = await invoke<SyncJournal | null>('load_sync_journal_cmd', {
-            localPath: currentLocalPath,
-            remotePath: currentRemotePath,
+            localPath: normalizedSyncRoot(currentLocalPath),
+            remotePath: normalizedSyncRoot(currentRemotePath),
             profileId: activeUnifiedRemoteProfile?.savedProfileId ?? null,
           });
           if (aeroSyncCompareSeqRef.current !== mySeq) return;
@@ -12922,8 +12932,18 @@ const App: React.FC = () => {
       if (!ownsPreflight()) return;
       // A cancelled folder operation observes its flag before this sync re-arms it.
       await syncCancelPendingRef.current;
-      while (batchOperationPendingRef.current && ownsPreflight()) await batchOperationPendingRef.current;
+      let waitedForBatch = false;
+      while (batchOperationPendingRef.current && ownsPreflight()) {
+        waitedForBatch = true;
+        await batchOperationPendingRef.current;
+      }
       if (!ownsPreflight()) return;
+      if (waitedForBatch) {
+        // The batch ran after this plan was compared and may have replaced a
+        // path the plan deletes or overwrites: the plan is not run.
+        notify.error(t('aerosync.title'), t('syncPanel.planStaleAfterBatch'));
+        return;
+      }
       if (targetEpoch === undefined || ownerBinding === undefined) return;
       const epoch = targetEpoch;
       try { checkTarget(); } catch (error) {
@@ -13178,6 +13198,8 @@ const App: React.FC = () => {
         notify.error(t('aerosync.title') || 'AeroSync', String(err).includes('SYNC_RESUME_NEEDS_COMPARE')
           ? t('syncPanel.resumeNeedsCompare') : String(err));
       } finally {
+        // Keep the latch until a pending native cancel has settled.
+        await syncCancelPendingRef.current;
         remoteSyncRunningRef.current = false;
         setSyncCancelling(false);
       }
@@ -13418,8 +13440,8 @@ const App: React.FC = () => {
         void (async () => {
           try {
             const result = await invoke<CanaryResult>('sync_canary_run', {
-              localPath: currentLocalPath,
-              remotePath: currentRemotePath,
+              localPath: normalizedSyncRoot(currentLocalPath),
+              remotePath: normalizedSyncRoot(currentRemotePath),
               percent,
               selection,
             });
@@ -18403,7 +18425,7 @@ const App: React.FC = () => {
       return profileConnector.current(id, scope);
     },
     disconnect: async () => { if (isConnected) await disconnectFromFtp('button'); },
-    stop: async () => { await cancelActiveConnect(); if (syncPreflightPendingRef.current || remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
+    stop: async () => { await cancelActiveConnect(); if (syncPreflightPendingRef.current || remoteSyncRunningRef.current || batchOperationPendingRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
     // Settings surface: typed open/close/read/update over the SAME public
     // persistence the UI uses. The general update merges allowlisted keys
     // through the approved broker and shared queue (never SettingsPanel.handleSave, which also
@@ -19140,6 +19162,7 @@ const App: React.FC = () => {
                 const shown = new Set(localFoldersShownBy('multi'));
                 cancelLocalFolderSizes([propertiesDialog.path].filter(path => !shown.has(path)));
               }
+              propertiesOwnerRef.current = null;
               setPropertiesDialog(null);
             }}
             onCalculateChecksum={async (algorithm: ChecksumAlgorithm) => {
@@ -19244,6 +19267,7 @@ const App: React.FC = () => {
                 const shown = new Set(localFoldersShownBy('single'));
                 cancelLocalFolderSizes(localFoldersShownBy('multi').filter(path => !shown.has(path)));
               }
+              multiPropertiesOwnerRef.current = null;
               setMultiPropertiesDialog(null);
             }}
             folderSizes={multiPropertiesDialog.isRemote ? undefined : new Map(multiPropertiesDialog.files.flatMap(f => {

@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Återställningen misslyckades: {error}",
             "intervalHoursOne": "{count} timme",
             "intervalHoursMany": "{count} timmar",
-            "resumeNeedsCompare": "Den avbrutna synkroniseringen kan inte återupptas på ett säkert sätt. Gör en ny jämförelse före synkronisering."
+            "resumeNeedsCompare": "Den avbrutna synkroniseringen kan inte återupptas på ett säkert sätt. Gör en ny jämförelse före synkronisering.",
+            "planStaleAfterBatch": "En annan filåtgärd slutfördes efter att denna plan beräknades. Gör en ny jämförelse före synkronisering."
         },
         "ui": {
             "syncing": "Synkroniserar...",

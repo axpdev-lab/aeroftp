@@ -2705,7 +2705,8 @@
             "rollbackRestoreFailed": "Atjaunošana neizdevās: {error}",
             "intervalHoursOne": "{count} stunda",
             "intervalHoursMany": "{count} stundas",
-            "resumeNeedsCompare": "Šo pārtraukto sinhronizāciju nevar droši atsākt. Pirms sinhronizēšanas veiciet jaunu salīdzināšanu."
+            "resumeNeedsCompare": "Šo pārtraukto sinhronizāciju nevar droši atsākt. Pirms sinhronizēšanas veiciet jaunu salīdzināšanu.",
+            "planStaleAfterBatch": "Pēc šī plāna aprēķināšanas pabeigta cita failu darbība. Pirms sinhronizēšanas veiciet jaunu salīdzināšanu."
         },
         "ui": {
             "syncing": "Sinhronizē...",

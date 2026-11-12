@@ -6,7 +6,7 @@ import { rearmedOnUserAction } from '../components/transferQueueActions';
 import { localPanelShows } from './localSelection';
 import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
-import { runRemoteSync, type RemoteSyncConfig, type SyncRunFile } from './remoteSyncRunner';
+import { normalizedSyncRoot, runRemoteSync, type RemoteSyncConfig, type SyncRunFile } from './remoteSyncRunner';
 import { QueuedTargetChangedError } from './queuedTarget';
 import type { SyncJournal } from '../types';
 
@@ -286,7 +286,7 @@ it('keeps the preset target and roots captured before the canary approval', asyn
         currentLocalPath: '/local-A', currentRemotePath: '/remote-A', isCryptOverlayActive: () => false,
         buildRemoteSyncInput: () => ({ files: [file('one')], dirs: { remote: [], local: [] } }),
         SPEED_PRESETS: { balanced: { deltaSyncEnabled: false } }, runConnectedRemoteSync: run,
-        runLocalLocalSync: vi.fn(), canaryRunningRef: { current: false },
+        runLocalLocalSync: vi.fn(), canaryRunningRef: { current: false }, normalizedSyncRoot,
         invoke: async () => ({ sample: [] }),
         setCanaryResult: (value: typeof prompt) => { prompt = value; },
         notify: { error: vi.fn(), info: vi.fn() }, t: (key: string) => key,
@@ -932,7 +932,12 @@ it.each(['unrelated-scan', 'stop-all', 'stop-restart', 'parked-stop', 'parked-ca
         finishFolder();
         await folder;
         expect(laterFolderWrites).toBe(0);
-        await vi.waitFor(() => expect(runner).toHaveBeenCalledTimes(1));
+        // The plan predates the folder operation it waited for: it is refused.
+        await vi.waitFor(() => expect(context.notify.error).toHaveBeenCalledWith('aerosync.title', 'syncPanel.planStaleAfterBatch'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(runner).not.toHaveBeenCalled();
+        expect(context.batchCancelledRef.current).toBe(true);
+        expect(context.syncPreflightPendingRef.current).toBeNull();
     } else {
         await new Promise(resolve => setTimeout(resolve, 0));
         expect(prompt).toBeFalsy();
@@ -947,5 +952,180 @@ it('enables toolbar Stop and GUI-controller Stop during sync preflight with an e
     const disabled = new Function('syncPreflightPending', 'syncCancelling', 'isForceStopMode', 'hasActiveTransfer', 'hasQueueActivity', `const remoteSyncRunningRef = { current: false };return ${expression};`);
     expect(disabled(true, false, false, false, false)).toBe(false);
     expect(disabled(false, false, false, false, false)).toBe(true);
-    expect(app).toContain('if (syncPreflightPendingRef.current || remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer();');
+    expect(app).toContain('if (syncPreflightPendingRef.current || remoteSyncRunningRef.current || batchOperationPendingRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer();');
+});
+
+async function appSlice(start: string, end: string, name: string) {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const from = app.indexOf(start);
+    const to = app.indexOf(end, from);
+    if (from < 0 || to < 0) throw new Error(`Missing App closure: ${start}`);
+    return (await transformWithOxc(app.slice(from, to), name)).code;
+}
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+it.each([true, false])('does not run a saved Mirror delete after waiting for a batch that replaced the file (batch: %s)', async withBatch => {
+    const launchCode = await appSlice('  const runConnectedRemoteSync =', '  // GAP-10: shared local-local sync launcher', 'stale-mirror-plan.ts');
+    const batchCode = await appSlice('  const withBatchLatch =', '  // Issue #591: every GUI entry point', 'stale-mirror-batch.ts');
+    const { withTransferRun } = await import('./transferRun');
+    // The remote folder: the compared plan saw `old` and marked it an orphan.
+    const remoteFiles = new Map([['/remote/orphan.txt', 'old']]);
+    const backend = wrapIntentInvoke(async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        if (cmd === 'provider_gui_target_binding') return 'owner' as T;
+        if (cmd === 'provider_bulk_support') return { upload: false, download: false } as T;
+        if (cmd === 'provider_delete_file') remoteFiles.delete(String(args?.path));
+        return undefined as T;
+    });
+    const invoke = vi.fn(<T,>(cmd: string, args?: Record<string, unknown>) => backend<T>(cmd, args));
+    const context = {
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 },
+        syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(),
+        batchOperationPendingRef: { current: null as Promise<void> | null }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'webdav' } }),
+        queuedTargetGuard: () => () => {}, QueuedTargetChangedError, captureGuiTarget: async () => 7,
+        currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
+        localStorage: { getItem: () => null }, isCryptOverlayActive: () => false, invoke,
+        remoteSyncRunningRef: { current: false }, runRemoteSync, runTrackedSync, syncRunnerPendingRef: { current: null }, syncCancelPendingRef: { current: null },
+        window: { addEventListener: vi.fn(), removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'test',
+        syncRunQueueBridge: () => () => undefined, transferQueue: {}, syncRefreshAbortRef: { current: null },
+        runCompletionRefresh, loadRemoteFiles: vi.fn(async () => true), loadLocalPendingRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
+        currentLocalPathRef: { current: '' }, localPanelShows, isLocalFlattenSearchActive: () => false, loadLocalFiles: vi.fn(),
+        setDeltaEligibilityPrompt: vi.fn(), setRemoteSyncResult: vi.fn(), setSyncCancelling: vi.fn(),
+        notify: { error: vi.fn(), info: vi.fn() }, t: (key: string) => key, debugMode: false,
+    };
+    const batchContext = { batchOpInFlightRef: { current: false }, batchOperationPendingRef: context.batchOperationPendingRef, withTransferRun };
+    const wrapBatch = new Function(...Object.keys(batchContext), `${batchCode};return withBatchLatch;`)(...Object.values(batchContext));
+    let finishUpload!: () => void;
+    const uploading = new Promise<void>(resolve => { finishUpload = resolve; });
+    // An upload batch that replaces the orphan while the sync waits for it.
+    const batch = withBatch ? wrapBatch(async () => { await uploading; remoteFiles.set('/remote/orphan.txt', 'new'); })() : Promise.resolve();
+    const launch = new Function(...Object.keys(context), `${launchCode};return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('orphan.txt', 'delete-remote')], { remote: [], local: [] }, { direction: 'local_to_remote', deltaSyncEnabled: false, verifyPolicy: 'none', profileId: 'A' });
+    const commands = () => invoke.mock.calls.map(([cmd]) => cmd);
+    if (!withBatch) {
+        // Control: with no batch in the way, this very plan does delete the file.
+        await vi.waitFor(() => expect(context.setRemoteSyncResult).toHaveBeenCalled());
+        expect(remoteFiles.has('/remote/orphan.txt')).toBe(false);
+        expect(context.notify.error).not.toHaveBeenCalled();
+        return;
+    }
+    await vi.waitFor(() => expect(commands()).toContain('provider_gui_target_binding'));
+    await tick();
+    expect(commands()).not.toContain('sync_run_lease_begin_cmd');
+    finishUpload();
+    await batch;
+    await vi.waitFor(() => expect(context.notify.error).toHaveBeenCalledWith('aerosync.title', 'syncPanel.planStaleAfterBatch'));
+    await tick();
+    expect(remoteFiles.get('/remote/orphan.txt')).toBe('new');
+    expect(commands()).not.toContain('provider_delete_file');
+    expect(commands()).not.toContain('sync_run_lease_begin_cmd');
+    expect(context.setRemoteSyncResult).not.toHaveBeenCalled();
+    expect(context.remoteSyncRunningRef.current).toBe(false);
+    expect(context.syncPreflightPendingRef.current).toBeNull();
+});
+
+it('keeps the local-local latch until a delayed cancel_transfer acknowledgement settles', async () => {
+    const launchCode = await appSlice('  const runLocalLocalSync = useLatestCallback((', '  const handleCompareMirrorLeftToRight =', 'local-local-latch.ts');
+    const stopCode = await appSlice('  const cancelTransfer = async', '  // Circuit breaker: attempt reconnection', 'local-local-stop.ts');
+    let finishCopy!: () => void;
+    const copying = new Promise<void>(resolve => { finishCopy = resolve; });
+    let acknowledgeCancel!: () => void;
+    const cancelling = new Promise<void>(resolve => { acknowledgeCancel = resolve; });
+    let copies = 0;
+    const backend = wrapIntentInvoke(async <T,>(cmd: string): Promise<T> => {
+        if (cmd === 'copy_local_file' && ++copies === 1) await copying;
+        if (cmd === 'cancel_transfer') await cancelling;
+        return undefined as T;
+    });
+    const invoke = vi.fn(<T,>(cmd: string, args?: Record<string, unknown>) => backend<T>(cmd, args));
+    const resets = () => invoke.mock.calls.filter(([cmd]) => cmd === 'reset_cancel_flag').length;
+    const context = {
+        useLatestCallback: (fn: unknown) => fn, currentLocalPath: '/left', currentLocalPath2: '/right',
+        notify: { error: vi.fn(), info: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        remoteSyncRunningRef: { current: false }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        runRemoteSync, runTrackedSync, syncRunnerPendingRef: { current: null as Promise<void> | null }, syncCancelPendingRef: { current: null as Promise<void> | null },
+        syncRunQueueBridge: () => () => undefined, transferQueue: { hasActiveTransfersNow: () => false, stopAll: vi.fn() }, invoke,
+        setRemoteSyncResult: vi.fn(), loadLocalFiles: vi.fn(), loadLocalFiles2: vi.fn(), setSyncCancelling: vi.fn(),
+        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null }, setSyncPreflightPending: vi.fn(),
+        setDeltaEligibilityPrompt: vi.fn(), syncRefreshAbortRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
+        batchOperationPendingRef: { current: null }, activeTransferRef: { current: null }, batchResumeResolverRef: { current: null },
+        dispatchTransferToast: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(),
+    };
+    const launch = new Function(...Object.keys(context), `${launchCode};return runLocalLocalSync;`)(...Object.values(context));
+    const stop = new Function(...Object.keys(context), `${stopCode};return cancelTransfer;`)(...Object.values(context));
+    const options = { direction: 'local_to_remote', verifyPolicy: 'none' };
+    launch([file('one')], { remote: [], local: [] }, options);
+    await vi.waitFor(() => expect(copies).toBe(1));
+    expect(resets()).toBe(1);
+    const stopped = stop();
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([cmd]) => cmd === 'cancel_transfer')).toBe(true));
+    // The JS runner exits while the native cancel is still unacknowledged.
+    finishCopy();
+    await vi.waitFor(() => expect(context.setRemoteSyncResult).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(context.syncRunnerPendingRef.current).toBeNull());
+    await tick();
+    expect(context.syncCancelPendingRef.current).not.toBeNull();
+    launch([file('two')], { remote: [], local: [] }, options);
+    await tick();
+    expect(resets()).toBe(1);
+    expect(copies).toBe(1);
+    expect(context.notify.info).toHaveBeenCalledWith('aerosync.title', 'syncPanel.syncing');
+    acknowledgeCancel();
+    await stopped;
+    await vi.waitFor(() => expect(context.remoteSyncRunningRef.current).toBe(false));
+    // Once the stale cancel has settled, a run starts and re-arms the flag.
+    launch([file('two')], { remote: [], local: [] }, options);
+    await vi.waitFor(() => expect(context.setRemoteSyncResult).toHaveBeenCalledTimes(2));
+    expect(resets()).toBe(2);
+    expect(copies).toBe(2);
+});
+
+it('stops a multi-file remote delete between entries from the GUI controller', async () => {
+    const { default: app } = await import('../App.tsx?raw');
+    const batchCode = await appSlice('  const withBatchLatch =', '  // Issue #591: every GUI entry point', 'controller-stop-batch.ts');
+    const deleteCode = await appSlice('  const deleteMultipleRemoteFiles = withBatchLatch(', '  // Moving local items to the trash', 'controller-stop-delete.ts');
+    const stopCode = await appSlice('  const cancelTransfer = async', '  // Circuit breaker: attempt reconnection', 'controller-stop.ts');
+    const { withTransferRun } = await import('./transferRun');
+    let finishFirst!: () => void;
+    const firstDelete = new Promise<void>(resolve => { finishFirst = resolve; });
+    const deleted: string[] = [];
+    const invoke = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd !== 'provider_delete_file') return undefined;
+        deleted.push(String(args?.path));
+        if (deleted.length === 1) await firstDelete;
+        return undefined;
+    });
+    const remoteFiles = ['a', 'b', 'c'].map(name => ({ name, path: `/${name}`, is_dir: false }));
+    const context = {
+        batchOpInFlightRef: { current: false }, batchOperationPendingRef: { current: null as Promise<void> | null }, withTransferRun,
+        selectedRemoteFiles: new Set<string>(), remoteActionGuard: () => () => undefined,
+        prepareGuiTarget: () => Promise.resolve({ epoch: 7 }), resolveGuiTarget: async (prepared: Promise<{ epoch: number }>) => (await prepared).epoch,
+        notify: { error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+        liveConnectionParams: { protocol: 'webdav' }, usesProviderApi: () => true, aeroVaultOverlaySession: null, currentRemotePath: '/',
+        remoteFiles, humanLog: { logStart: () => 'log', updateEntry: vi.fn() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        invoke, setScanningState: vi.fn(), INITIAL_SCANNING_STATE: {}, loadRemoteFiles: vi.fn(), setSelectedRemoteFiles: vi.fn(),
+        confirmBeforeDelete: false, QueuedTargetChangedError, setConfirmDialog: vi.fn(),
+        // Stop, as the GUI controller reaches it with an idle queue.
+        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null }, setSyncPreflightPending: vi.fn(),
+        setDeltaEligibilityPrompt: vi.fn(), syncRefreshAbortRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
+        remoteSyncRunningRef: { current: false }, activeTransferRef: { current: null }, batchResumeResolverRef: { current: null },
+        transferQueue: { hasActiveTransfersNow: () => false, stopPending: vi.fn(), stopAll: vi.fn() }, dispatchTransferToast: vi.fn(),
+        setActiveTransfer: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(), setSyncCancelling: vi.fn(),
+        syncCancelPendingRef: { current: null }, cancelActiveConnect: async () => undefined, hasActiveTransfer: false, hasQueueActivity: false,
+    };
+    const deleteMany = new Function(...Object.keys(context), `${batchCode};${deleteCode};return deleteMultipleRemoteFiles;`)(...Object.values(context));
+    const cancelTransfer = new Function(...Object.keys(context), `${stopCode};return cancelTransfer;`)(...Object.values(context));
+    const line = app.split('\n').find(line => line.includes('stop: async () => { await cancelActiveConnect();'))!;
+    const controllerContext = { ...context, cancelTransfer };
+    const controllerStop = new Function(...Object.keys(controllerContext), `return ({${line.trim()}}).stop;`)(...Object.values(controllerContext));
+    const batch = deleteMany(['a', 'b', 'c']);
+    await vi.waitFor(() => expect(deleted).toEqual(['/a']));
+    expect(context.batchOperationPendingRef.current).not.toBeNull();
+    await controllerStop();
+    expect(context.batchCancelledRef.current).toBe(true);
+    finishFirst();
+    await batch;
+    expect(deleted).toEqual(['/a']);
+    expect(invoke.mock.calls.filter(([cmd]) => cmd === 'provider_delete_file')).toHaveLength(1);
 });
