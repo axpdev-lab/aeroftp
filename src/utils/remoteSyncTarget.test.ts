@@ -511,7 +511,7 @@ it('does not rearm Retry after native Stop acknowledgement until the actual sync
         runTrackedSync, runCompletionRefresh, runRemoteSync, runFiles: [file('first'), file('later', 'delete-remote')],
         runDirs: { local: [], remote: [] }, runConfig: config(), opts: {}, invoke, deltaStats: new Map(),
         batchCancelledRef, cancelLevelRef, epoch: 1, ownerBinding: 'test-owner', checkTarget: vi.fn(),
-        syncRunQueueBridge: () => ({}), setRemoteSyncResult: vi.fn(),
+        syncRunQueueBridge: () => vi.fn(), setRemoteSyncResult: vi.fn(),
         syncRunnerPendingRef: { current: null as Promise<void> | null }, syncCancelPendingRef: { current: null as Promise<void> | null },
         syncRefreshAbortRef: { current: null }, remoteSyncRunningRef: { current: true }, activeTransferRef: { current: null },
         stopCountRef: { current: 0 }, loadLocalWaitersRef: { current: new Set<() => void>() }, batchResumeResolverRef: { current: null },
@@ -522,7 +522,9 @@ it('does not rearm Retry after native Stop acknowledgement until the actual sync
         notify: { error: vi.fn() }, t: (key: string) => key,
     };
     const run = new Function(...Object.keys(context), workerCode)(...Object.values(context)) as Promise<void>;
-    await entered;
+    await Promise.race([entered, run.then(() => {
+        throw new Error(`Runner exited before upload: ${JSON.stringify({ commands, errors: context.notify.error.mock.calls, reports: context.setRemoteSyncResult.mock.calls })}`);
+    })]);
     const cancelStart = app.indexOf('  const cancelTransfer = async');
     const cancelEnd = app.indexOf('  // Circuit breaker: attempt reconnection', cancelStart);
     const cancelCode = (await transformWithOxc(app.slice(cancelStart, cancelEnd), 'stop-before-runner-exit.ts')).code;
