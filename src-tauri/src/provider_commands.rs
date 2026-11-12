@@ -2260,7 +2260,25 @@ async fn install_connected_provider_with_owner(
     }
     drain_in_flight_transfers(state, Duration::from_secs(30)).await;
     let mut prov_lock = state.provider.lock().await;
-    if let Some(mut previous) = prov_lock.take() {
+    let mut config_lock = state.config.lock().await;
+    let previous = prov_lock.take();
+    *config_lock = None;
+    *state
+        .connected_profile_id
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+    *state
+        .gui_owner_context
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+    *state
+        .legacy_owner_binding
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    state.invalidate_overlay_key_cache();
+    if let Some(mut previous) = previous {
         if let Err(err) = previous.disconnect().await {
             warn!(
                 "provider_connect: previous provider disconnect failed: {}",
@@ -2268,7 +2286,6 @@ async fn install_connected_provider_with_owner(
             );
         }
     }
-    let mut config_lock = state.config.lock().await;
     let validated_owner = owner.clone();
     let mut candidate = Some(provider);
     let publish = || {
@@ -2287,10 +2304,8 @@ async fn install_connected_provider_with_owner(
             .unwrap_or_else(|e| e.into_inner()) = profile_id;
         state.active_crypt_overlay.store(false, Ordering::SeqCst);
         state.overlay_wrapped.store(false, Ordering::SeqCst);
-        // A new connection occupies the slot: the previous connection's cached
-        // overlay keys must never re-arm onto it. Bump generation + zeroize while
-        // still holding the provider lock, so a concurrent re-arm is serialized out.
-        state.invalidate_overlay_key_cache();
+        // The retired slot's keys and generation were invalidated before
+        // awaiting disconnect, including when this publication is refused.
         // The config always describes the provider in the slot. An install without
         // one (OAuth, 4shared) clears
         // the previous connection's, which the liveness probe would otherwise
@@ -22383,6 +22398,131 @@ mod restored_transfer_owner_tests {
             scope,
         )));
         state.overlay_wrapped.store(true, Ordering::SeqCst);
+    }
+
+    struct PausedDisconnect {
+        started: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for PausedDisconnect {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "paused".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _: &str, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, _: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn interrupted_disconnect_cannot_leave_installed_connection_metadata() {
+        let state = Arc::new(state_with_profile());
+        let started = Arc::new(tokio::sync::Notify::new());
+        *state.config.lock().await = Some(mtp_config());
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        *state.legacy_owner_binding.lock().unwrap() = Some("old-binding".into());
+        *state.provider.lock().await = Some(Box::new(PausedDisconnect {
+            started: started.clone(),
+            release: Arc::new(tokio::sync::Notify::new()),
+        }));
+        let other = state.clone();
+        let replacement = tokio::spawn(async move {
+            install_connected_provider(
+                &other,
+                Box::new(EditFake::new(true, false)),
+                Some("B".into()),
+            )
+            .await
+        });
+        started.notified().await;
+        // Cancellation is stronger than a refused final owner check: no
+        // cleanup after disconnect can run, so retirement must already hold.
+        replacement.abort();
+        assert!(replacement.await.unwrap_err().is_cancelled());
+        assert!(state.provider.lock().await.is_none());
+        assert!(state.config.lock().await.is_none());
+        assert!(state.connected_profile_id.lock().unwrap().is_none());
+        assert!(state.legacy_owner_binding.lock().unwrap().is_none());
+        assert!(!state.overlay_wrapped.load(Ordering::SeqCst));
+        assert!(!state.active_crypt_overlay.load(Ordering::SeqCst));
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 1);
+        assert!(state.transfer_owner_gate.try_write().is_ok());
     }
 
     #[tokio::test]

@@ -12881,7 +12881,9 @@ const App: React.FC = () => {
             const refreshed = await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkTarget });
             if (!refreshed) return;
             checkTarget();
-            await loadLocalFiles(runConfig.localRoot, { check: checkTarget });
+            if (currentLocalPathRef.current === runConfig.localRoot) {
+              await loadLocalFiles(runConfig.localRoot, { check: checkTarget });
+            }
           }
         } catch (err) {
           notify.error(t('aerosync.title') || 'AeroSync', String(err).includes('SYNC_RESUME_NEEDS_COMPARE')

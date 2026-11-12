@@ -396,18 +396,28 @@ impl FtpManager {
 
         // If path is absolute, use it directly
         // If path is relative (like ".."), let the server handle it
-        tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
-            .await
-            .context("Change directory timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-
-        // Get the actual current directory from the server using PWD
-        let pwd = tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
-            .await
-            .context("PWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-
-        self.current_path = pwd;
+        self.abandoned_command = true;
+        let changed: Result<String> = async {
+            tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
+                .await
+                .context("Change directory timeout")?
+                .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
+                .await
+                .context("PWD timeout")?
+                .map_err(|e| FtpManagerError::OperationFailed(e.to_string()).into())
+        }
+        .await;
+        self.abandoned_command = false;
+        match changed {
+            Ok(pwd) => self.current_path = pwd,
+            Err(error) => {
+                // CWD may already have taken effect or its late reply may
+                // still be on the wire. No subsequent command may use it.
+                self.stream = None;
+                return Err(error);
+            }
+        }
         info!("Changed directory to: {}", self.current_path);
 
         Ok(())
@@ -1330,6 +1340,43 @@ pub(crate) mod exists_tests {
             assert_eq!(outcome.is_ok(), kept, "{outcome:?}");
             assert_eq!(out.exists(), kept);
         }
+    }
+
+    #[tokio::test]
+    async fn receipt_cwd_without_pwd_retires_the_uncertain_session() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut moved = false;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let command = line.split(' ').next().unwrap();
+                let response = match command {
+                    "USER" => "331 password\r\n",
+                    "PASS" => "230 in\r\n",
+                    "CWD" => {
+                        moved = true;
+                        "250 moved\r\n"
+                    }
+                    "PWD" if moved => "550 cannot report folder\r\n",
+                    "PWD" => "257 \"/\"\r\n",
+                    _ => "200 ok\r\n",
+                };
+                if write.write_all(response.as_bytes()).await.is_err() {
+                    break;
+                }
+            }
+        });
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.receipt_is_file("/backup/item").await.is_err());
+        assert!(ftp.stream.is_none());
+        assert!(ftp.pwd().await.is_err());
+        assert!(ftp.change_dir("/elsewhere").await.is_err());
     }
 
     #[tokio::test]

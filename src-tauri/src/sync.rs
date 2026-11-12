@@ -3492,12 +3492,22 @@ fn load_sync_index_with_recovery(
             load_sync_journal(local_path, remote_path)
         })
     });
+    finish_index_recovery_load(&path, require_durable_fences, result)
+}
+
+fn finish_index_recovery_load(
+    path: &Path,
+    require_durable_fences: bool,
+    result: Result<Option<SyncIndex>, String>,
+) -> Result<Option<SyncIndex>, String> {
     match result {
         Ok(index) => Ok(index),
         Err(error) if require_durable_fences => Err(error),
         Err(error) => {
-            let Some(mut index) = read_sync_index_file(&path)? else {
-                return Ok(None);
+            let Some(mut index) = read_sync_index_file(path)? else {
+                return Err(format!(
+                    "Sync recovery state unavailable; compare cannot verify this pair: {error}"
+                ));
             };
             apply_intent_fences(&mut index, false, || Err(error))?;
             Ok(Some(index))
@@ -11850,6 +11860,27 @@ mod sync_intent_tests {
             .unwrap();
         assert_eq!(loaded.files["one"].size, 7);
         assert!(loaded.unverified_keys.is_empty());
+    }
+
+    #[test]
+    fn missing_index_never_hides_unavailable_new_file_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("intents.db");
+        let mut conn = intent_connection_in(&db).unwrap();
+        let pair = index_filename("/local", "/remote");
+        begin_intents_in(&mut conn, &pair, &["new".into()]).unwrap();
+        let path = dir.path().join("missing.json");
+        let mut reader = intent_connection_in(&db).unwrap();
+        reader.busy_timeout(std::time::Duration::ZERO).unwrap();
+        let _writer = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        let result =
+            load_index_with_intents_in(&mut reader, &path, "/local", "/remote", || Ok(None));
+        assert!(result.is_err());
+        let error = finish_index_recovery_load(&path, false, result).unwrap_err();
+        assert!(error.contains("compare cannot verify"));
+        assert!(!path.exists());
     }
 
     #[test]

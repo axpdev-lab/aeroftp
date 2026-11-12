@@ -654,6 +654,14 @@ struct LegacyTokenGuard(Option<std::fs::File>);
 
 impl LegacyTokenGuard {
     fn acquire(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
+        let guard = Self::acquire_for_signout(legacy_path)?;
+        if guard.0.is_some() {
+            ClaimedTokenFile::recover(legacy_path)?;
+        }
+        Ok(guard)
+    }
+
+    fn acquire_for_signout(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
         let path = legacy_path.with_extension("migration.lock");
         let mut options = std::fs::OpenOptions::new();
         options.create(true).truncate(false).write(true);
@@ -669,9 +677,7 @@ impl LegacyTokenGuard {
         loop {
             match file.try_lock() {
                 Ok(()) => {
-                    let guard = Self(Some(file));
-                    ClaimedTokenFile::recover(legacy_path)?;
-                    return Ok(guard);
+                    return Ok(Self(Some(file)));
                 }
                 Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
                     std::thread::sleep(std::time::Duration::from_millis(25))
@@ -737,6 +743,23 @@ fn with_legacy_claim_guard<T>(
     let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
     let claimed = ClaimedTokenFile::claim(path)?;
     migrate(&mut cache, claimed)
+}
+
+// Sign-out purges every valid stranded claim without selecting a login to
+// restore. Keep the same file -> cache -> vault order as migration.
+fn with_legacy_signout<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    let _process = LegacyTokenGuard::acquire_for_signout(path)?;
+    let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
+    for claim in ClaimedTokenFile::recovery_paths(path)? {
+        std::fs::remove_file(claim).map_err(|_| {
+            ProviderError::Other("Could not remove legacy authorization recovery file".into())
+        })?;
+    }
+    clear(&mut cache)
 }
 
 impl StoredTokens {
@@ -1677,28 +1700,12 @@ impl OAuth2Manager {
 
         let json_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        let _process = LegacyTokenGuard::acquire(&json_path)?;
-        // Delete from in-memory cache
-        {
-            let mut cache = MEMORY_TOKEN_CACHE
-                .lock()
-                .map_err(|_| token_owner_changed())?;
+        with_legacy_signout(&MEMORY_TOKEN_CACHE, &json_path, |cache| {
             // Delete from vault
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 store.delete(&account).map_err(|_| token_owner_changed())?;
             }
-            invalidate_memory_tokens(&mut cache, legacy_revision(provider), &account);
-
-            // On a filesystem without locks no cooperating migration can
-            // start. Remove stranded claims too, so restoring lock support
-            // cannot resurrect an authorization after sign-out.
-            for claim in ClaimedTokenFile::recovery_paths(&json_path)? {
-                std::fs::remove_file(claim).map_err(|_| {
-                    ProviderError::Other(
-                        "Could not remove legacy authorization recovery file".into(),
-                    )
-                })?;
-            }
+            invalidate_memory_tokens(cache, legacy_revision(provider), &account);
             // Delete legacy .json file if exists
             let json_path =
                 Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
@@ -1712,7 +1719,8 @@ impl OAuth2Manager {
             if enc_path.exists() {
                 let _ = crate::credential_store::secure_delete(&enc_path);
             }
-        }
+            Ok(())
+        })?;
 
         info!("Tokens deleted for {:?}", provider);
         Ok(())
@@ -2448,6 +2456,32 @@ mod tests {
         let message = error.to_string();
         assert!(message.contains("lease storage unavailable"));
         assert!(!message.contains("busy"));
+    }
+
+    #[test]
+    fn signout_purges_multiple_stranded_claims_without_restoring_a_login() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        for value in ["A", "B"] {
+            std::fs::write(
+                original.with_extension(format!("migration-{}", uuid::Uuid::new_v4())),
+                value,
+            )
+            .unwrap();
+        }
+        assert!(LegacyTokenGuard::acquire(&original).is_err());
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "B".into())])));
+        with_legacy_signout(&cache, &original, |tokens| {
+            *tokens = None;
+            Ok(())
+        })
+        .unwrap();
+        assert!(cache.lock().unwrap().is_none());
+        assert!(ClaimedTokenFile::recovery_paths(&original)
+            .unwrap()
+            .is_empty());
+        let _migration = LegacyTokenGuard::acquire(&original).unwrap();
+        assert!(!original.exists(), "sign-out must not restore either login");
     }
 
     #[test]

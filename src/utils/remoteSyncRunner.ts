@@ -515,6 +515,7 @@ const runSync = async (
             }
             if (ownerChanged) {
                 targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
+                throw targetError;
             }
             throw error;
         }

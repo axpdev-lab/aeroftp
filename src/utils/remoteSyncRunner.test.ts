@@ -2156,6 +2156,22 @@ describe('full-review owner and report boundaries', () => {
         expect(JSON.stringify(status.mock.calls)).not.toContain(secret);
     });
 
+    it.each(['delete', 'backup'] as const)('redacts a token-bearing %s refusal when ownership confirmation fails', async action => {
+        const secret = 'delete-token-never-visible';
+        const status = vi.fn();
+        const fail = () => { throw `CONNECTION_CHANGED access_token=${secret}`; };
+        const { invoke } = makeInvoke({
+            delete_remote_file: fail, sync_backup_archive_remote: fail,
+            provider_gui_target_binding: () => { throw new Error('old owner'); },
+        });
+        const report = await runRemoteSync([file('one', 'delete-remote')], noDirs,
+            baseConfig(action === 'backup' ? { versionedBackup: { dir: '.versions' } } : {}),
+            { onFileStatus: status }, noWaitDeps(invoke));
+        expect(report.cancelled).toBe(true);
+        expect(JSON.stringify(report)).not.toContain(secret);
+        expect(JSON.stringify(status.mock.calls)).not.toContain(secret);
+    });
+
     it('cannot publish after an owner switch during the index load', async () => {
         let current=true;let entered!:()=>void;const loading=new Promise<void>(resolve=>{entered=resolve;});
         let resolveIndex!:(value:null)=>void;const pending=new Promise<null>(resolve=>{resolveIndex=resolve;});

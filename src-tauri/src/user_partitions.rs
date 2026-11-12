@@ -7880,6 +7880,7 @@ mod tests {
 
     #[test]
     fn gui_owner_changed_during_drain_cannot_publish_a_connection() {
+        let _guard = test_lock();
         let mut conn = Connection::open_in_memory().unwrap();
         init_db_schema(&conn).unwrap();
         conn.execute(

@@ -400,9 +400,27 @@ it('stops the sync refresh continuation when remote refresh discards a switched 
     const {code}=await transformWithOxc(`async function refreshAfterSync(){${app.slice(start,end)}}`,'sync-refresh-continuation.ts');
     let current=true;let release!:(value:null)=>void;const pending=new Promise<null>(resolve=>{release=resolve;});
     const context={report:{cancelled:false,uploaded:1,downloaded:0,deleted:0},epoch:1,checkTarget:()=>{if(!current)throw new Error('changed');},
-        loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},
+        loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},currentLocalPathRef:{current:'/old'},
     };
     const refresh=new Function(...Object.keys(context),`${code};return refreshAfterSync;`)(...Object.values(context));
     const result=refresh();current=false;release(null);await result;
     expect(context.loadLocalFiles).not.toHaveBeenCalled();
+});
+
+it.each(['before', 'during'] as const)('preserves local navigation %s the remote completion refresh', async when => {
+    const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('          if (!report.cancelled && (report.uploaded > 0');
+    const end = app.indexOf('\n        } catch (err)', start);
+    const { code } = await transformWithOxc(`async function refreshAfterSync(){${app.slice(start, end)}}`, 'sync-local-navigation.ts');
+    let release!: (value: boolean) => void;
+    const pending = new Promise<boolean>(resolve => { release = resolve; });
+    const context = {
+        report: { cancelled: false, uploaded: 1, downloaded: 0, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
+        loadRemoteFiles: () => pending, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
+        currentLocalPathRef: { current: when === 'before' ? '/B' : '/A' },
+    };
+    const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
+    const run = refresh(); context.currentLocalPathRef.current = '/B'; release(true); await run;
+    expect(context.loadLocalFiles).not.toHaveBeenCalled();
+    expect(context.currentLocalPathRef.current).toBe('/B');
 });

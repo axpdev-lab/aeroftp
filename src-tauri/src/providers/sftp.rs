@@ -2074,23 +2074,41 @@ impl SftpProvider {
         use crate::rsync_over_ssh::AuthMethod;
         use secrecy::ExposeSecret;
 
-        let (ssh_key_path, ssh_password, auth_method) =
-            if let Some(key_path_str) = self.config.private_key_path.as_ref() {
-                (
-                    Some(std::path::PathBuf::from(Self::expand_home_path(
-                        key_path_str,
-                    ))),
-                    None,
-                    AuthMethod::SshKey,
-                )
-            } else {
-                let password = self
-                    .config
-                    .password
-                    .as_ref()
-                    .filter(|secret| !secret.expose_secret().is_empty())?;
-                (None, Some(password.clone()), AuthMethod::Password)
-            };
+        let pinned = self
+            .connection_spec
+            .as_ref()
+            .and_then(|spec| spec.pinned_auth_method);
+        if matches!(
+            pinned,
+            Some(SshAuthMethod::NoCredential | SshAuthMethod::PrivateKey)
+        ) {
+            // Both delta adapters open a separate SSH login. Neither can use
+            // the captured none authentication or parsed key, and reopening a
+            // mutable key path could select another principal. Use the pinned
+            // SFTP transfer path for these sessions instead.
+            return None;
+        }
+        let (ssh_key_path, ssh_password, auth_method) = if let Some(key_path_str) = self
+            .config
+            .private_key_path
+            .as_ref()
+            .filter(|_| pinned != Some(SshAuthMethod::Password))
+        {
+            (
+                Some(std::path::PathBuf::from(Self::expand_home_path(
+                    key_path_str,
+                ))),
+                None,
+                AuthMethod::SshKey,
+            )
+        } else {
+            let password = self
+                .config
+                .password
+                .as_ref()
+                .filter(|secret| !secret.expose_secret().is_empty())?;
+            (None, Some(password.clone()), AuthMethod::Password)
+        };
 
         Some(crate::rsync_over_ssh::RsyncConfig {
             compress: true,
@@ -7495,6 +7513,53 @@ mod tests {
         let provider = SftpProvider::new(config);
         assert_eq!(provider.provider_type(), ProviderType::Sftp);
         assert!(!provider.is_connected());
+    }
+
+    #[test]
+    fn delta_cannot_replace_none_auth_with_a_configured_key() {
+        let mut provider = SftpProvider::new(SftpConfig {
+            host: "example.com".into(),
+            port: 22,
+            username: "testuser".into(),
+            password: Some(secrecy::SecretString::from("password".to_string())),
+            private_key_path: Some("/changed/key".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: None,
+            pinned_auth_method: Some(SshAuthMethod::NoCredential),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            pinned_host_key_sha256: None,
+            scp_fallback: true,
+        });
+        assert!(provider.rsync_config_for_delta(None).is_none());
+        provider
+            .connection_spec
+            .as_mut()
+            .unwrap()
+            .pinned_auth_method = Some(SshAuthMethod::PrivateKey);
+        assert!(provider.rsync_config_for_delta(None).is_none());
+        provider
+            .connection_spec
+            .as_mut()
+            .unwrap()
+            .pinned_auth_method = Some(SshAuthMethod::Password);
+        let delta = provider.rsync_config_for_delta(None).unwrap();
+        assert!(delta.ssh_key_path.is_none());
+        assert_eq!(
+            delta.auth_method,
+            crate::rsync_over_ssh::AuthMethod::Password
+        );
     }
 
     #[test]
