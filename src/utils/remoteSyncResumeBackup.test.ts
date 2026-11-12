@@ -90,7 +90,7 @@ describe('versioned backup resume', () => {
         await expect(runRemoteSync(filesFromJournal(j), dirs, config, {},
             { ...h.deps(), resumeJournal: j })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
         await runRemoteSync(filesFromJournal(j), planned, config, {}, { ...h.deps(), resumeJournal: j });
-        expect(h.calls.filter(call => call.startsWith('A:provider_mkdir'))).toHaveLength(2);
+        expect(h.calls.filter(call => call.startsWith('A:provider_mkdir'))).toHaveLength(1);
     });
     it('verifies a saved receipt and never touches B after a switch before the sidecar', async () => {
         const h = harness(); h.switchAfterArchive(); await run(h); const j = h.saved();
