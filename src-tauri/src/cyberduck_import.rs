@@ -166,17 +166,24 @@ fn map_duck(xml: &str) -> DuckOutcome {
                 .unwrap_or(false);
             // A Cyberduck S3 Path is bucket[/prefix]; expose the bucket too.
             // If the bookmark host already starts with `<bucket>.`, strip it
-            // so virtual-host requests do not duplicate the bucket (e.g. photos.photos.<host>).
+            // for virtual-host endpoints so requests do not duplicate the bucket (e.g. photos.photos.<host>).
+            // Do not strip for path-style endpoints where the hostname is the full server endpoint.
             let mut endpoint_host = hostname.clone();
             if let Some(p) = path.as_deref() {
                 let bucket = p.trim_start_matches('/').split('/').next().unwrap_or("");
                 if !bucket.is_empty() {
                     opts.push(("bucket", Some(bucket.to_string())));
-                    let prefix = format!("{bucket}.");
-                    if endpoint_host.len() > prefix.len()
-                        && endpoint_host[..prefix.len()].eq_ignore_ascii_case(&prefix)
-                    {
-                        endpoint_host = endpoint_host[prefix.len()..].to_string();
+                    if !path_style {
+                        let prefix = format!("{bucket}.");
+                        if let Some(candidate) = endpoint_host.get(..prefix.len()) {
+                            if candidate.eq_ignore_ascii_case(&prefix) {
+                                if let Some(stripped) = endpoint_host.get(prefix.len()..) {
+                                    if !stripped.is_empty() {
+                                        endpoint_host = stripped.to_string();
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -885,6 +892,60 @@ mod tests {
         ingest_duck(&xml_case, &mut servers_case, &mut skipped_case);
         assert_eq!(servers_case.len(), 1);
         assert_eq!(servers_case[0].host, "s3.wasabisys.com");
+    }
+
+    #[test]
+    fn test_s3_bookmark_path_style_preserves_hostname_matching_bucket() {
+        // When path-style is forced (s3.bucket.virtualhost.disable = true),
+        // the hostname is the exact endpoint (e.g. backup.example.com with Path /backup/files).
+        // Virtual-host addressing is disabled, so the leading label must NOT be stripped.
+        const PATH_STYLE_DUCK: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+	<key>Protocol</key>
+	<string>s3</string>
+	<key>Nickname</key>
+	<string>Custom S3 Path Style</string>
+	<key>Hostname</key>
+	<string>backup.example.com</string>
+	<key>Port</key>
+	<string>443</string>
+	<key>Username</key>
+	<string>AKIAEXAMPLE</string>
+	<key>Path</key>
+	<string>/backup/files</string>
+	<key>Custom</key>
+	<dict>
+		<key>s3.bucket.virtualhost.disable</key>
+		<string>true</string>
+	</dict>
+</dict>
+</plist>"#;
+
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(PATH_STYLE_DUCK, &mut servers, &mut skipped);
+        assert_eq!(servers.len(), 1);
+        let s = &servers[0];
+        assert_eq!(s.host, "backup.example.com");
+        let opts = s.options.as_ref().expect("S3 options").as_object().unwrap();
+        assert_eq!(opts.get("bucket").and_then(|v| v.as_str()), Some("backup"));
+        assert_eq!(opts.get("pathStyle").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(s.initial_path.as_deref(), Some("/backup/files"));
+    }
+
+    #[test]
+    fn test_s3_bookmark_non_ascii_hostname_does_not_panic() {
+        // Non-ASCII hostnames (e.g. IDN or raw Unicode) must not cause string-slicing panics
+        // when checked against a bucket prefix whose byte length falls mid-character.
+        let xml = S3_DUCK
+            .replace("s3.wasabisys.com", "aé.example.com")
+            .replace("/my-bucket/backups", "/a");
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(&xml, &mut servers, &mut skipped);
+        assert_eq!(servers.len(), 1);
+        assert_eq!(servers[0].host, "aé.example.com");
     }
 
     #[test]
