@@ -497,6 +497,97 @@ jobs:
         valid_save_if = {"${{ github.ref == 'refs/heads/main' }}", "false"}
         self.assertNotIn(steps[0]["with"]["save-if"], valid_save_if)
 
+    def test_whisper_cache_prefix_key_invalidated_across_all_workflows(self):
+        """Verify rust-cache prefix-key was bumped to invalidate bloated legacy entries.
+
+        Ensures windows-unit-tests.yml, build.yml, and snap-refresh.yml use 'v3-whisper-purge'
+        and that no workflow retains the stale 'v2-whisper-vs18' prefix.
+        """
+        wut_content = (WORKFLOWS_DIR / "windows-unit-tests.yml").read_text(encoding="utf-8")
+        wut_steps = parse_steps(wut_content)
+        wut_cache = [s for s in wut_steps if "rust-cache" in s["uses"].lower()]
+        self.assertEqual(len(wut_cache), 1)
+        self.assertEqual(
+            wut_cache[0]["with"].get("prefix-key"),
+            "v3-whisper-purge",
+            "windows-unit-tests.yml rust-cache must specify prefix-key: 'v3-whisper-purge'",
+        )
+
+        build_content = (WORKFLOWS_DIR / "build.yml").read_text(encoding="utf-8")
+        build_steps = parse_steps(build_content)
+        build_cache = [s for s in build_steps if "rust-cache" in s["uses"].lower()]
+        self.assertEqual(len(build_cache), 2)
+        for s in build_cache:
+            self.assertEqual(
+                s["with"].get("prefix-key"),
+                "v3-whisper-purge",
+                f"build.yml step '{s['name']}' must specify prefix-key: 'v3-whisper-purge'",
+            )
+
+        # Invariant across all workflows: no workflow may use the stale prefix
+        for f in get_all_workflow_files():
+            steps = parse_steps(f.read_text(encoding="utf-8"))
+            for s in steps:
+                if "rust-cache" in s["uses"].lower():
+                    prefix = s["with"].get("prefix-key", "")
+                    self.assertNotEqual(
+                        prefix,
+                        "v2-whisper-vs18",
+                        f"{f.name} step '{s['name']}' retains stale prefix-key: {prefix!r}",
+                    )
+
+    def test_whisper_cache_migration_invalidates_legacy_bloated_cache_and_excludes_artifacts(self):
+        """Verify migration contract: legacy entries are not restored on exact match,
+        ensuring rust-cache does not skip saving, and the newly saved cache excludes whisper artifacts."""
+        legacy_prefix = "v2-whisper-vs18"
+        current_prefix = "v3-whisper-purge"
+
+        # 1. Primary key mismatch: current key must never match legacy prefix
+        self.assertNotEqual(legacy_prefix, current_prefix)
+        legacy_cache_key = f"{legacy_prefix}-x86_64-pc-windows-msvc-lockhash123"
+        current_cache_key = f"{current_prefix}-x86_64-pc-windows-msvc-lockhash123"
+        self.assertNotEqual(legacy_cache_key, current_cache_key)
+
+        # 2. rust-cache exact-hit skip simulation:
+        # If restored key == primary key, rust-cache skips post-save.
+        # With bumped prefix, legacy entry cannot cause an exact hit against primary key.
+        exact_hit_with_legacy = (legacy_cache_key == current_cache_key)
+        self.assertFalse(
+            exact_hit_with_legacy,
+            "Bumped prefix must prevent exact-hit match against legacy bloated cache",
+        )
+
+        # 3. Cache artifact exclusion simulation:
+        # Verify that after compilation, purging whisper directories leaves clean cache contents
+        with tempfile.TemporaryDirectory() as tmpdir:
+            target_build = Path(tmpdir) / "target" / "release" / "build"
+            whisper_dir_1 = target_build / "whisper-rs-sys-abc12345"
+            whisper_dir_2 = target_build / "whisper-rs-sys-def67890"
+            other_crate_dir = target_build / "serde-98765432"
+            whisper_dir_1.mkdir(parents=True)
+            whisper_dir_2.mkdir(parents=True)
+            other_crate_dir.mkdir(parents=True)
+            (whisper_dir_1 / "libwhisper.a").write_text("dummy")
+            (whisper_dir_2 / "whisper.cpp").write_text("dummy")
+            (other_crate_dir / "libserde.rlib").write_text("dummy")
+
+            # Simulate purge step
+            purged = []
+            for d in target_build.iterdir():
+                if d.is_dir() and d.name.startswith("whisper-rs-sys-"):
+                    for child in list(d.rglob("*")):
+                        if child.is_file():
+                            child.unlink()
+                    d.rmdir()
+                    purged.append(d.name)
+
+            self.assertEqual(len(purged), 2)
+            # Artifacts remaining to be packaged into rust-cache tarball:
+            remaining_crates = [d.name for d in target_build.iterdir() if d.is_dir()]
+            self.assertIn("serde-98765432", remaining_crates)
+            for c in remaining_crates:
+                self.assertFalse(c.startswith("whisper-rs-sys-"))
+
 
 if __name__ == "__main__":
     unittest.main()

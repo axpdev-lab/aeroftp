@@ -93,13 +93,11 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           shared-key: delta-sync-windows
-          # Mirror the prefix bumped in build.yml / cli-smoke.yml on
-          # 2026-05-06 to invalidate any cached whisper-rs-sys
-          # CMakeCache.txt referencing Visual Studio 17 2022 after the
-          # windows-latest image rolled to VS 18 2026. windows-2022 is
-          # also pinned above as belt-and-suspenders, but if the pin is
-          # ever lifted we still want the cache invalidation in place.
-          prefix-key: 'v2-whisper-vs18'
+          # Mirror the prefix bumped in build.yml / cli-smoke.yml to invalidate
+          # legacy oversized cache entries containing transient whisper artifacts
+          # (v2-whisper-vs18 -> v3-whisper-purge). Forces fresh save on main
+          # and prevents rust-cache exact-hit save bypass.
+          prefix-key: 'v3-whisper-purge'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 

@@ -85,7 +85,7 @@ jobs:
           # Same prefix as packaging so a warm main cache is a valid restore
           # key shape, but no shared-key: this job id gets its own cache
           # after main is warm. That is intended (C1 + C2).
-          prefix-key: 'v2-whisper-vs18'
+          prefix-key: 'v3-whisper-purge'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -227,12 +227,13 @@ jobs:
         uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './src-tauri -> target'
-          # Cache prefix bumped 2026-05-06 to invalidate any cached
-          # whisper-rs-sys CMakeCache.txt referencing Visual Studio 17 2022
-          # after the windows-latest runner image rolled to VS 18 2026.
-          # See "Drop stale whisper-rs-sys CMake artifacts" below for the
-          # belt-and-suspenders runtime cleanup.
-          prefix-key: 'v2-whisper-vs18'
+          # Cache prefix bumped to invalidate legacy oversized entries containing
+          # transient whisper-rs-sys build artifacts (v2-whisper-vs18 -> v3-whisper-purge).
+          # Also invalidates any cached whisper-rs-sys CMakeCache.txt referencing
+          # Visual Studio 17 2022 after the windows-latest runner image rolled to VS 18.
+          # Forces fresh cache save on main and prevents rust-cache exact-hit save bypass.
+          # See "Drop stale whisper-rs-sys CMake artifacts" below for runtime cleanup.
+          prefix-key: 'v3-whisper-purge'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
