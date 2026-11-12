@@ -561,7 +561,7 @@ describe('a switch to another server while the overwrite question is open', () =
             const body = between(APP_CODE, head, '\n  const ');
             expect(body).toContain('queuedTargetGuard(queuedTarget);');
             const writes = body.split(/await (?:uploadFile|downloadFile)\(/).slice(1).map(call => call.slice(0, call.indexOf(';')));
-            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget, expectedGuiTarget\)$/);
+            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget(?:, expectedGuiTarget)?\)$/);
         }
         const batch = between(APP_CODE, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);

@@ -16687,6 +16687,10 @@ async fn sync_backup_archive_local_inner(
 /// overwrites or deletes it. `None` when there was nothing to keep. Refuses
 /// before touching anything on a remote that cannot move across folders.
 #[tauri::command]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Tauri injects two State arguments; the six wire arguments preserve the pinned backup IPC contract"
+)]
 async fn sync_backup_archive_remote(
     app_state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -16754,6 +16758,10 @@ mod sync_receipt_file_tests {
 
 /// Verify a persisted archive receipt before a resumed sync relies on it.
 #[tauri::command]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Tauri injects two State arguments; the seven wire arguments preserve the pinned receipt IPC contract"
+)]
 async fn sync_backup_verify_receipt(
     app_state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -23283,7 +23291,6 @@ pub fn run() {
             provider_commands::provider_gui_target_epoch,
             provider_commands::provider_gui_target_binding,
             provider_commands::provider_gui_verify_resume_owner,
-            provider_commands::provider_gui_validate_target,
             provider_commands::provider_server_copy,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,

@@ -268,7 +268,7 @@ it('keeps the preset target and roots captured before the canary approval', asyn
     let prompt: { onApprove: () => void } | undefined;
     const run = vi.fn();
     const context = {
-        useCallback: (fn: unknown) => fn,
+        useLatestCallback: (fn: unknown) => fn,
         aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'A' } },
         setAeroSync: vi.fn(), debugMode: false,
         snapshotQueuedTarget: () => ({ profileId: current, params: { protocol: 'sftp' } }),

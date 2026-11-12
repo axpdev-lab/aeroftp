@@ -7502,26 +7502,6 @@ pub async fn provider_gui_verify_resume_owner(
     Ok(())
 }
 
-/// Check a dynamic credential source before a local side effect (for example
-/// archiving a download destination). The same epoch pins the subsequent I/O.
-#[tauri::command]
-pub async fn provider_gui_validate_target(
-    state: State<'_, ProviderState>,
-    expected_gui_target: u64,
-    is_provider: bool,
-) -> Result<(), String> {
-    let _pin = state.pin_gui_target(Some(expected_gui_target)).await?;
-    if is_provider {
-        let provider = state.provider.lock().await;
-        let provider = provider
-            .as_ref()
-            .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
-        crate::credential_store::off_async_worker(|| provider.sync_owner_identity())
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
-}
-
 /// Opaque identity for a GUI action; only compare it through `pin_gui_target`.
 #[tauri::command]
 pub async fn provider_gui_target_epoch(state: State<'_, ProviderState>) -> Result<u64, String> {

@@ -210,7 +210,7 @@ describe('local actions on the rows of a flattened search', () => {
         // the entry of the panel's folder with that name, or to nothing.
         expect(appRaw).not.toMatch(/uploadMultipleFiles\(files\.map\(f => f\.name\)\)/);
         expect(appRaw).toMatch(/const keys = getActiveLocalState\(panelId\)\.sortedFiles\.filter\(r => dragged\.has\(r\.path\)\)\.map\(r => r\.name\);\s*if \(keys\.length > 0\) await uploadMultipleFiles\(keys, panelId, targetDir \|\| undefined\);/);
-        expect(count(dragRaw, /onCrossPanelDrop\?\.\(fileData, sourceIsRemote, target(Path|Dir), sourceKey\)/g)).toBe(2);
+        expect(count(dragRaw, /onCrossPanelDrop\?\.\(fileData, sourceIsRemote, target(Path|Dir), sourceKey, remoteOwner\)/g)).toBe(2);
     });
 
     it('never drops a folder into itself or below itself', () => {

@@ -13167,7 +13167,7 @@ const App: React.FC = () => {
    * `runConnectedRemoteSync`. GAP-10 retired the copy-only name-staging
    * dance that left local-local deletes and renames unexecuted.
    */
-  const executeSyncPresetPlan = useCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
+  const executeSyncPresetPlan = useLatestCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
     const context = aeroSync?.context;
     // Ehud #347 (18352684): closing AeroSync here tore down `context`, and with
     // it the Compare scan, BEFORE we knew whether this Execute was a real run or
@@ -13296,16 +13296,7 @@ const App: React.FC = () => {
       t('syncPresets.title') || 'Sync presets',
       'Execution for this pair kind is not supported.',
     );
-  }, [
-    aeroSync,
-    notify,
-    t,
-    debugMode,
-    currentLocalPath,
-    currentRemotePath,
-    runConnectedRemoteSync,
-    runLocalLocalSync,
-  ]);
+  });
 
   const clipboardCut = (files: { name: string; path: string; is_dir: boolean }[], isRemote: boolean, sourceDir: string) => {
     const target = isRemote ? snapshotQueuedTarget() : null;
