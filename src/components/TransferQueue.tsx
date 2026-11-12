@@ -1052,6 +1052,9 @@ export const useTransferQueue = () => {
     // Check if there's any active transfer. STAGED entries are intentionally
     // excluded: they do not consume executor slots (UX spec section 1).
     const hasActiveTransfers = items.some(i => i.status === 'transferring' || i.status === 'pending');
+    const hasActiveTransfersNow = useCallback(() => itemsRef.current.some(
+        item => item.status === 'transferring' || item.status === 'pending',
+    ), []);
 
     // TQ-3: number of staged entries waiting on an explicit Start. Surfaced
     // separately so the panel header can show "{N} staged" without
@@ -1065,6 +1068,7 @@ export const useTransferQueue = () => {
         items,
         isVisible,
         hasActiveTransfers,
+        hasActiveTransfersNow,
         stagedTransferCount,
         addItem,
         addItems,

@@ -247,7 +247,7 @@ it('does not launch the App delta continuation after a tab switch', async () => 
         localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
         invoke, loadSavedServerProfiles: async () => [{ id: 'A' }],
         setDeltaEligibilityPrompt: (value: typeof prompt) => { prompt = value; },
-        remoteSyncRunningRef: { current: false }, notify: { error: vi.fn(), info: vi.fn() },
+        remoteSyncRunningRef: { current: false }, syncCancelPendingRef: { current: null }, notify: { error: vi.fn(), info: vi.fn() },
         t: (key: string) => key, debugMode: false, runRemoteSync: runner,
     };
     const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
@@ -361,7 +361,7 @@ it.each([false, true])('runs an unsaved quick-connect sync with an epoch owner (
         currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
         localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
         invoke: vi.fn(async (cmd: string) => cmd === 'provider_gui_target_epoch' ? 7 : 'epoch-v1:test:7'),
-        loadSavedServerProfiles: async () => [], remoteSyncRunningRef: { current: false },
+        loadSavedServerProfiles: async () => [], remoteSyncRunningRef: { current: false }, syncCancelPendingRef: { current: null },
         batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
         window: { addEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'test-transfer',
         syncRunQueueBridge: () => ({}), transferQueue: {},
@@ -531,7 +531,7 @@ it.each(['/A/sub', '/B'])('defers sync completion behind a pending listing for %
     if (destination !== '/B') expect(context.setLocalFiles).toHaveBeenLastCalledWith(fresh);
 });
 
-it.each(['stop-pending', 'timeout-pending', 'timeout-read'] as const)('releases sync cleanup for %s even while local IPC remains unresolved', async scenario => {
+it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as const)('releases sync cleanup for %s even while local IPC remains unresolved', async scenario => {
     vi.useFakeTimers();
     try {
         const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
@@ -540,15 +540,22 @@ it.each(['stop-pending', 'timeout-pending', 'timeout-read'] as const)('releases 
         const end = app.indexOf('      })();', start) + '      })();'.length;
         const workerCode = (await transformWithOxc(app.slice(start, end).replace('void (async', 'return (async'), 'sync-refresh-latch.ts')).code;
         let release!: (files: unknown[]) => void; const stalled = new Promise<unknown[]>(resolve => { release = resolve; });
+        let finishCancel!: () => void; const nativeCancellation = new Promise<void>(resolve => { finishCancel = resolve; });
+        let queueActive = false;
         const context = {
             runFiles: [], runDirs: { local: [], remote: [] }, runConfig: { localRoot: '/A' }, opts: {},
-            batchCancelledRef: { current: false }, deltaStats: new Map(), invoke: vi.fn(async () => undefined),
-            syncRunQueueBridge: () => ({}), transferQueue: { stopPending: vi.fn(), stopAll: vi.fn() }, epoch: 1, ownerBinding: 'owner',
+            batchCancelledRef: { current: false }, deltaStats: new Map(), invoke: vi.fn(() => scenario === 'stop-retry' ? nativeCancellation : Promise.resolve()),
+            syncRunQueueBridge: () => ({}), transferQueue: {
+                items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(),
+                stopPending: vi.fn(), stopAll: vi.fn(() => { queueActive = false; }), hasActiveTransfersNow: () => queueActive,
+            }, epoch: 1, ownerBinding: 'owner',
+            retryCallbacksRef: { current: new Map([['retry', () => { queueActive = true; }]]) }, resumeRestoredTransfers: vi.fn(),
             runRemoteSync: vi.fn(async () => ({ cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 })),
             setRemoteSyncResult: vi.fn(), checkTarget: vi.fn(), loadRemoteFiles: vi.fn(async () => true),
             loadLocalFiles: vi.fn(() => stalled), loadLocalPendingRef: { current: scenario === 'timeout-read' ? null : 1 as number | null },
             loadLocalWaitersRef: { current: new Set<() => void>() }, currentLocalPathRef: { current: '/A' },
             syncRefreshAbortRef: { current: null as AbortController | null }, runCompletionRefresh,
+            syncCancelPendingRef: { current: null as Promise<void> | null }, activeTransferRef: { current: null },
             localPanelShows, isLocalFlattenSearchActive: () => false,
             window: { removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'transfer', onTransferEvent: vi.fn(),
             notify: { error: vi.fn() }, t: (key: string) => key,
@@ -558,19 +565,36 @@ it.each(['stop-pending', 'timeout-pending', 'timeout-read'] as const)('releases 
         const run = new Function(...Object.keys(context), workerCode)(...Object.values(context)) as Promise<void>;
         await vi.advanceTimersByTimeAsync(0);
         expect(context.remoteSyncRunningRef.current).toBe(true);
-        if (scenario === 'stop-pending') {
+        if (scenario === 'stop-pending' || scenario === 'stop-retry') {
             const cancelStart = app.indexOf('  const cancelTransfer = async');
             const cancelEnd = app.indexOf('  // Circuit breaker: attempt reconnection', cancelStart);
             const cancelCode = (await transformWithOxc(app.slice(cancelStart, cancelEnd), 'stop-sync-refresh.ts')).code;
             const cancel = new Function(...Object.keys(context), `${cancelCode};return cancelTransfer;`)(...Object.values(context));
-            await cancel();
-            expect(context.invoke).not.toHaveBeenCalled();
-            await run;
-            // A subsequent real transfer still uses native cancellation.
-            context.remoteSyncRunningRef.current = true;
-            await cancel();
-            expect(context.invoke).toHaveBeenCalledExactlyOnceWith('cancel_transfer');
-            context.remoteSyncRunningRef.current = false;
+            if (scenario === 'stop-retry') {
+                const retryStart = app.indexOf('onRetryItem={(id: string) => {');
+                const retryEnd = app.indexOf('\n          onStartItem=', retryStart);
+                const retrySource = app.slice(retryStart, retryEnd).trim().slice('onRetryItem={'.length, -1);
+                const retryCode = (await transformWithOxc(`const retry = ${retrySource};`, 'retry-during-sync-refresh.ts')).code;
+                const retry = new Function(...Object.keys(context), `${retryCode};return retry;`)(...Object.values(context));
+                retry('retry');
+                expect(queueActive).toBe(true);
+                const stopping = cancel();
+                await vi.advanceTimersByTimeAsync(0);
+                expect(context.transferQueue.stopAll).toHaveBeenCalledOnce();
+                expect(context.invoke).toHaveBeenCalledExactlyOnceWith('cancel_transfer');
+                expect(context.remoteSyncRunningRef.current).toBe(true);
+                finishCancel();
+                await stopping;
+            } else {
+                await cancel();
+                expect(context.invoke).not.toHaveBeenCalled();
+                await run;
+                // A subsequent real transfer still uses native cancellation.
+                context.remoteSyncRunningRef.current = true;
+                await cancel();
+                expect(context.invoke).toHaveBeenCalledExactlyOnceWith('cancel_transfer');
+                context.remoteSyncRunningRef.current = false;
+            }
         } else await vi.advanceTimersByTimeAsync(2001);
         await run;
         expect(context.remoteSyncRunningRef.current).toBe(false);

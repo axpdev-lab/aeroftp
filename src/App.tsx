@@ -1856,6 +1856,7 @@ const App: React.FC = () => {
   const loadLocalPendingRef = React.useRef<number | null>(null);
   const loadLocalWaitersRef = useRef(new Set<() => void>());
   const syncRefreshAbortRef = useRef<AbortController | null>(null);
+  const syncCancelPendingRef = useRef<Promise<void> | null>(null);
   const latestLocalListing2 = useRef(new LatestListing());
 
   // File clipboard for Cut/Copy/Paste
@@ -11899,7 +11900,7 @@ const App: React.FC = () => {
     // The runner has already returned during completion refresh. A native
     // cancellation could arrive after cleanup releases the latch and cancel
     // a subsequent run; aborting the optional refresh is sufficient here.
-    if (completionRefresh) {
+    if (completionRefresh && !activeTransferRef.current && !transferQueue.hasActiveTransfersNow()) {
       setIsBatchPaused(false);
       setBatchPauseReason(null);
       return;
@@ -11917,7 +11918,12 @@ const App: React.FC = () => {
       batchCancelledRef.current = true;
       cancelLevelRef.current = 2;
       dispatchTransferToast(null);
-      try { await invoke('cancel_transfer'); } catch { }
+      if (completionRefresh) transferQueue.stopAll();
+      const cancellation = invoke<void>('cancel_transfer').catch(() => undefined);
+      syncCancelPendingRef.current = cancellation;
+      try { await cancellation; } finally {
+        if (syncCancelPendingRef.current === cancellation) syncCancelPendingRef.current = null;
+      }
       setIsBatchPaused(false);
       setBatchPauseReason(null);
       return;
@@ -12948,6 +12954,9 @@ const App: React.FC = () => {
             ? t('syncPanel.resumeNeedsCompare') : String(err));
         } finally {
           window.removeEventListener(TRANSFER_EVENT_BRIDGE, onTransferEvent);
+          // Stop may also own a queued Retry that overlapped optional refresh.
+          // Keep the sync latch until its native cancellation has settled.
+          await syncCancelPendingRef.current;
           remoteSyncRunningRef.current = false;
           setSyncCancelling(false);
         }

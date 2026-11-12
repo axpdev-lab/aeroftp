@@ -25,6 +25,23 @@ afterEach(async () => {
 });
 
 describe('useTransferQueue retryAllFailed (#139)', () => {
+    it('exposes Retry activity synchronously before React publishes the next render', async () => {
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'upload'); queue.failTransfer(id, 'Timeout'); });
+        const beforeRetry = queue;
+        expect(beforeRetry.hasActiveTransfers).toBe(false);
+        await act(async () => {
+            beforeRetry.retryItem(id);
+            expect(beforeRetry.hasActiveTransfers).toBe(false);
+            expect(beforeRetry.hasActiveTransfersNow()).toBe(true);
+            beforeRetry.stopAll();
+            expect(beforeRetry.hasActiveTransfersNow()).toBe(false);
+        });
+    });
+
     it('returns failed IDs synchronously and transitions rows to pending', async () => {
         let queue!: ReturnType<typeof useTransferQueue>;
         const Probe = () => {
