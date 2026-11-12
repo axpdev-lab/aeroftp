@@ -12814,6 +12814,7 @@ const App: React.FC = () => {
     runDirs: SyncRunDirs,
     opts: ConnectedRemoteRunOptions,
   ): void => {
+    const launchStops = stopCountRef.current;
     const nothingToRun =
       runFiles.length === 0
       && runDirs.remote.length === 0
@@ -12887,6 +12888,7 @@ const App: React.FC = () => {
     };
 
     const launchRun = (): void => {
+      if (stopCountRef.current !== launchStops) return;
       if (targetEpoch === undefined || ownerBinding === undefined) return;
       const epoch = targetEpoch;
       try { checkTarget(); } catch (error) {

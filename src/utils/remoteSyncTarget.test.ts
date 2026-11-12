@@ -151,7 +151,7 @@ it.each([undefined, 'B'])('refuses a resume journal with owner %s on profile A',
     const { code } = await transformWithOxc(app.slice(start, end), 'aerosync-resume.ts');
     const notify = { error: vi.fn(), info: vi.fn() };
     const context = {
-        useLatestCallback: (fn: unknown) => fn,
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'sftp' } }),
         remoteJournalOwnersRef: { current: new Map([['j', { profileId: 'A', params: { protocol: 'sftp' } }]]) },
         queuedTargetProblem: () => null,
@@ -241,7 +241,7 @@ it('does not launch the App delta continuation after a tab switch', async () => 
         throw new Error(`unexpected ${cmd}`);
     });
     const context = {
-        useLatestCallback: (fn: unknown) => fn,
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'sftp' } }),
         queuedTargetGuard: (target: { profileId: string }) => () => {
             if (current !== target.profileId) throw new QueuedTargetChangedError('target changed');
@@ -275,7 +275,7 @@ it('keeps the preset target and roots captured before the canary approval', asyn
     let prompt: { onApprove: () => void } | undefined;
     const run = vi.fn();
     const context = {
-        useLatestCallback: (fn: unknown) => fn,
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 },
         aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'A' } },
         setAeroSync: vi.fn(), debugMode: false,
         snapshotQueuedTarget: () => ({ profileId: current, params: { protocol: 'sftp' } }),
@@ -359,7 +359,7 @@ it.each([false, true])('runs an unsaved quick-connect sync with an epoch owner (
     const runner = vi.fn((..._args: unknown[]) => new Promise(() => {}));
     const notify = { error: vi.fn(), info: vi.fn() };
     const context = {
-        useLatestCallback: (fn: unknown) => fn,
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 },
         snapshotQueuedTarget: () => ({ profileId: null, params: { protocol: 'sftp' } }),
         queuedTargetGuard: () => () => {}, QueuedTargetChangedError,
         activeUnifiedRemoteProfile: { id: 'unsaved server name', protocol: 'sftp', savedProfileId: null },
@@ -442,7 +442,7 @@ it.each(['result', 'error'] as const)('keeps a GVfs phone connected when an abor
         let resolve!: (value: unknown) => void; let reject!: (reason: unknown) => void;
         const pending = new Promise((ok, fail) => { resolve = ok; reject = fail; });
         const context = {
-            useLatestCallback: (fn: unknown) => fn, remoteRefreshStartedAtRef: { current: 0 }, remoteNavCounter: { current: 1 },
+            useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, remoteRefreshStartedAtRef: { current: 0 }, remoteNavCounter: { current: 1 },
             liveConnectionParams: { protocol: 'mtp' }, usesProviderApi: () => true, aeroVaultOverlaySession: null,
             logger: { debug: vi.fn() }, invoke: vi.fn(() => pending), humanLog: { logRaw: vi.fn() },
             activityLog: { log: vi.fn() }, applyRemoteFileList: vi.fn(), QueuedTargetChangedError,
@@ -762,4 +762,42 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
         if (scenario !== 'timeout-read') expect(context.loadLocalFiles).not.toHaveBeenCalled();
         release([]);
     } finally { vi.useRealTimers(); }
+});
+
+it.each(['provider_gui_target_epoch', 'provider_gui_target_binding'] as const)('keeps Stop All while the App sync launcher waits for %s', async heldCommand => {
+    const { transformWithOxc } = await import('vite');
+    const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const runConnectedRemoteSync =');
+    const end = app.indexOf('  // GAP-10: shared local-local sync launcher', start);
+    const { code } = await transformWithOxc(app.slice(start, end), 'sync-launch-stop.ts');
+    let finish!: (value: string | number) => void;
+    const held = new Promise<string | number>(resolve => { finish = resolve; });
+    const invoke = vi.fn(async (cmd: string) => cmd === heldCommand ? held : cmd === 'provider_gui_target_epoch' ? 7 : 'owner');
+    const runner = vi.fn(async () => ({ cancelled: true }));
+    const stopCountRef = { current: 0 };
+    const batchCancelledRef = { current: false };
+    const context = {
+        useLatestCallback: (fn: unknown) => fn, stopCountRef, batchCancelledRef,
+        snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'webdav' } }),
+        queuedTargetGuard: () => () => {}, QueuedTargetChangedError,
+        captureGuiTarget: async () => invoke('provider_gui_target_epoch'),
+        currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
+        localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
+        invoke, remoteSyncRunningRef: { current: false }, cancelLevelRef: { current: 0 },
+        runRemoteSync: runner, runTrackedSync, syncRunnerPendingRef: { current: null }, syncCancelPendingRef: { current: null },
+        window: { addEventListener: vi.fn(), removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'test',
+        syncRunQueueBridge: () => ({}), transferQueue: {}, setRemoteSyncResult: vi.fn(), setSyncCancelling: vi.fn(),
+        notify: { error: vi.fn(), info: vi.fn() }, t: (key: string) => key, debugMode: false,
+    };
+    const launch = new Function(...Object.keys(context), `${code};return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('one')], { remote: [], local: [] }, { direction: 'local_to_remote', deltaSyncEnabled: false, verifyPolicy: 'none', profileId: 'A' });
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith(heldCommand, ...(heldCommand === 'provider_gui_target_binding' ? [expect.anything()] : [])));
+    stopCountRef.current++;
+    batchCancelledRef.current = true;
+    finish(heldCommand === 'provider_gui_target_epoch' ? 7 : 'owner');
+    await vi.waitFor(() => expect(invoke.mock.calls.some(([cmd]) => cmd === 'provider_gui_target_binding')).toBe(true));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(runner).not.toHaveBeenCalled();
+    expect(context.remoteSyncRunningRef.current).toBe(false);
+    expect(batchCancelledRef.current).toBe(true);
 });

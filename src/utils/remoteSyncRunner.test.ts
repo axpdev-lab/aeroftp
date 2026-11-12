@@ -829,13 +829,12 @@ describe('remoteSyncRunner — verify policy', () => {
 
 describe('remoteSyncRunner — cancellation and budget', () => {
     it('stops on cancel and leaves the journal undeleted', async () => {
-        let seen = 0;
         const { invoke, calls } = makeInvoke();
         const report = await runRemoteSync(
             [file('a.txt', 'upload'), file('b.txt', 'upload'), file('c.txt', 'upload')],
             noDirs,
             baseConfig(),
-            { isCancelled: () => { seen += 1; return seen > 1; } },
+            { isCancelled: () => calls.some(call => call.cmd === 'upload_file') },
             noWaitDeps(invoke),
         );
         expect(report.uploaded).toBe(1);
@@ -991,13 +990,12 @@ describe('remoteSyncRunner — journal resume', () => {
     });
 
     it('transfers remaining files when resuming a cancelled run', async () => {
-        let seen = 0;
         const first = makeInvoke();
         await runRemoteSync(
             [file('a.txt', 'upload'), file('b.txt', 'upload'), file('c.txt', 'upload')],
             noDirs,
             baseConfig(),
-            { isCancelled: () => { seen += 1; return seen > 1; } },
+            { isCancelled: () => first.calls.some(call => call.cmd === 'upload_file') },
             noWaitDeps(first.invoke),
         );
         const journal = JSON.parse(JSON.stringify(lastSavedJournal(first.calls))) as SyncJournal;
@@ -1528,6 +1526,26 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(calls.filter(call => call.cmd === 'provider_upload_file')).toHaveLength(1);
         expect(calls.filter(call => call.cmd === 'get_file_properties')).toHaveLength(1);
         expect(lastSavedJournal(calls)?.entries.find(entry => entry.relative_path === 'two')?.status).toBe('pending');
+    });
+
+    it.each(['provider', 'legacy', 'local'] as const)('does not dispatch a resumed %s upload after Stop during metadata', async path => {
+        let release!: () => void;
+        let stopped = false;
+        const metadata = new Promise<void>(resolve => { release = resolve; });
+        const resume = resumeOf([{ relative_path: 'one', action: 'upload', status: 'pending', attempts: 0,
+            last_error: null, verified: null, bytes_transferred: 0, source_size: 1, source_mtime: '2026-09-26T09:00:00Z' }]);
+        const { invoke, calls } = makeInvoke({ get_file_properties: async () => {
+            await metadata; return { size: 100, modified: '2026-09-26T10:00:00' };
+        }});
+        const pending = runRemoteSync(filesFromJournal(resume), noDirs,
+            baseConfig({ isProvider: path === 'provider', isFtp: path === 'legacy', isLocalLocal: path === 'local' }),
+            { isCancelled: () => stopped }, noWaitDeps(invoke, { resumeJournal: resume, writeIndex: false }));
+        await vi.waitFor(() => expect(calls.some(call => call.cmd === 'get_file_properties')).toBe(true));
+        stopped = true;
+        release();
+        const report = await pending;
+        expect(report.cancelled).toBe(true);
+        expect(calls.filter(call => ['provider_upload_file', 'upload_file', 'copy_local_file', 'provider_sync_transfer_bulk'].includes(call.cmd))).toHaveLength(0);
     });
 
     // m3 (verification of the fourth round of #949): a run that crashed

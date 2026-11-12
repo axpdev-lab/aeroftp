@@ -584,12 +584,10 @@ const runSync = async (
     ): Promise<TransferOutcome> => {
         const maxAttempts = Math.max(1, config.retryPolicy.max_retries);
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-            // Issue #332: a user Cancel must not trigger further RETRIES of a
-            // file. The first attempt is already admitted by the caller's cancel
-            // gate (the main loop checks isCancelled before calling), so guard
-            // only re-attempts (attempt > 1). The short-circuit also avoids
-            // polling isCancelled an extra time on the first attempt.
-            if (attempt > 1 && isCancelled()) {
+            // Metadata/backup preparation can await after the main-loop gate.
+            // Recheck immediately before every native attempt, including the first.
+            if (isCancelled()) {
+                runCancelled = true;
                 return { success: false, attempts: attempt - 1 };
             }
             try {
