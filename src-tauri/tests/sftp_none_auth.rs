@@ -13,6 +13,10 @@
 //! The server below is russh plus the smallest SFTP v3 loop `connect()`
 //! needs (INIT and REALPATH), the shape of `tests/sftp_rename.rs`, with
 //! every `none`, password and public key attempt recorded in order.
+//!
+//! The same server pins what a later dial of the same session may send: a
+//! pool worker or a reconnect after a `none` login, and the delta transport
+//! of a session that logged in with a key, once the key file was replaced.
 
 // Unix only, for the reason `tests/sftp_size_hint.rs` gives: the guard
 // against writing into a real `known_hosts` is a redirected `HOME`, which
@@ -24,6 +28,7 @@ mod scoped_env;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -73,6 +78,12 @@ struct Policy {
     /// Every attempt in arrival order: `"none"`, `"password"` or
     /// `"publickey"` (a key whose signature checked out).
     attempts: Mutex<Vec<&'static str>>,
+    /// Set while the server runs to refuse `none` from then on, whatever
+    /// `accept_none` says.
+    refuse_none: AtomicBool,
+    /// SHA-256 fingerprint of every public key named in a `publickey`
+    /// request, with or without a signature, in arrival order.
+    offered_keys: Mutex<Vec<String>>,
 }
 
 impl Policy {
@@ -82,6 +93,10 @@ impl Policy {
 
     fn attempts(&self) -> Vec<&'static str> {
         self.attempts.lock().unwrap().clone()
+    }
+
+    fn offered_keys(&self) -> Vec<String> {
+        self.offered_keys.lock().unwrap().clone()
     }
 }
 
@@ -139,11 +154,8 @@ impl Handler for AuthHandler {
 
     async fn auth_none(&mut self, _user: &str) -> Result<Auth, Self::Error> {
         self.policy.record("none");
-        Ok(if self.policy.accept_none {
-            Auth::Accept
-        } else {
-            Auth::reject()
-        })
+        let accept = self.policy.accept_none && !self.policy.refuse_none.load(Ordering::SeqCst);
+        Ok(if accept { Auth::Accept } else { Auth::reject() })
     }
 
     async fn auth_password(&mut self, _user: &str, password: &str) -> Result<Auth, Self::Error> {
@@ -153,6 +165,20 @@ impl Handler for AuthHandler {
         } else {
             Auth::reject()
         })
+    }
+
+    /// Every key a client names, before any signature is checked.
+    async fn auth_publickey_offered(
+        &mut self,
+        _user: &str,
+        offer: russh::server::PublicKeyOffer<'_>,
+    ) -> Result<Auth, Self::Error> {
+        self.policy
+            .offered_keys
+            .lock()
+            .unwrap()
+            .push(fingerprint(offer.public_key));
+        Ok(Auth::Accept)
     }
 
     /// Reached only once the client has proved it holds the key.
@@ -179,6 +205,19 @@ impl Handler for AuthHandler {
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
         reply.accept().await;
+        Ok(())
+    }
+
+    /// No command runs here: say so at once, so a client that asks for one
+    /// (the SCP probe, `rsync --version`) gets an answer instead of waiting.
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        _data: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let _ = session.channel_failure(channel);
+        let _ = session.close(channel);
         Ok(())
     }
 
@@ -290,9 +329,35 @@ async fn connect(port: u16, credential: Credential<'_>) -> Result<SftpProvider, 
     Ok(p)
 }
 
+fn fingerprint(key: &PublicKey) -> String {
+    key.fingerprint(russh::keys::HashAlg::Sha256).to_string()
+}
+
+fn random_key() -> PrivateKey {
+    PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519).expect("ed25519 key")
+}
+
+/// Write `key` unencrypted at `path`, mode 0600, replacing what is there.
+fn write_key(path: &std::path::Path, key: &PrivateKey) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(
+        path,
+        key.to_openssh(LineEnding::LF)
+            .expect("openssh key")
+            .as_bytes(),
+    )
+    .unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+}
+
+/// HOME (and the settings root under it) is process-wide: the tests of this
+/// file hold this while they redirect it.
+static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 /// One test, sequential phases: HOME is process-wide.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn connect_sends_none_before_any_credential() {
+    let _env = ENV_LOCK.lock().await;
     let home = std::env::temp_dir().join(format!("sftp-none-auth-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
     // Guards the real known_hosts from the trust_unknown_hosts accept-and-save
@@ -401,4 +466,252 @@ async fn connect_sends_none_before_any_credential() {
     provider.disconnect().await.unwrap();
 
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// A session that got in through `none` while a private key was configured,
+/// then the key file is replaced and the server stops accepting `none`.
+/// Every later dial of that session (a pool worker's first use, a pool
+/// worker connected outright, the primary's reconnect) ends in
+/// `TargetChanged`, and the server is never shown a public key: not the
+/// replacement, which it would accept, and not the original.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn redial_after_a_none_login_never_offers_the_replaced_key() {
+    let _env = ENV_LOCK.lock().await;
+    let home = tempfile::tempdir().unwrap();
+    let _home_env = ScopedEnv::set("HOME", home.path());
+
+    let original = random_key();
+    let replacement = random_key();
+    let key_path = home.path().join("id_ed25519");
+    write_key(&key_path, &original);
+
+    // The server would let the replacement key in: only the client's pin
+    // stands between the replaced file and a login as that key's owner.
+    let (port, policy) = start_server(Policy {
+        accept_none: true,
+        key: Some(replacement.public_key().clone()),
+        ..Policy::default()
+    })
+    .await;
+    let mut provider = connect(port, Credential::Key(&key_path))
+        .await
+        .expect("in through none");
+    assert_eq!(policy.attempts(), ["none"]);
+    assert!(policy.offered_keys().is_empty());
+
+    write_key(&key_path, &replacement);
+    policy.refuse_none.store(true, Ordering::SeqCst);
+
+    // A pool worker dials lazily, on its first operation.
+    let mut lazy_worker = provider.clone_for_transfer().expect("pool worker");
+    match tokio::time::timeout(Duration::from_secs(15), lazy_worker.list("/"))
+        .await
+        .expect("worker dial timed out")
+    {
+        Err(ProviderError::TargetChanged) => {}
+        Err(other) => panic!("expected TargetChanged from the lazy worker, got {other:?}"),
+        Ok(_) => panic!("a pool worker got in after the server stopped accepting none"),
+    }
+
+    // A pool worker connected outright.
+    let mut worker = provider.clone_for_transfer().expect("pool worker");
+    match tokio::time::timeout(Duration::from_secs(15), worker.connect())
+        .await
+        .expect("worker connect timed out")
+    {
+        Err(ProviderError::TargetChanged) => {}
+        Err(other) => panic!("expected TargetChanged from the worker, got {other:?}"),
+        Ok(()) => panic!("a pool worker got in after the server stopped accepting none"),
+    }
+
+    // The primary's own reconnect.
+    match tokio::time::timeout(Duration::from_secs(15), provider.connect())
+        .await
+        .expect("reconnect timed out")
+    {
+        Err(ProviderError::TargetChanged) => {}
+        Err(other) => panic!("expected TargetChanged from the reconnect, got {other:?}"),
+        Ok(()) => panic!("the reconnect got in after the server stopped accepting none"),
+    }
+
+    // Each of the three dials asked for `none` and nothing else: zero
+    // publickey attempts after the switch.
+    assert_eq!(policy.attempts(), ["none", "none", "none", "none"]);
+    assert_eq!(
+        policy
+            .attempts()
+            .iter()
+            .filter(|method| **method == "publickey")
+            .count(),
+        0
+    );
+    assert!(
+        policy.offered_keys().is_empty(),
+        "a public key was offered after a none login: {:?}",
+        policy.offered_keys()
+    );
+}
+
+/// The SCP provider dials through the same login. This server runs no
+/// command, so the SCP session itself never starts; the login before it is
+/// accepted through `none`, and that is what a second dial is held to.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scp_redial_after_a_none_login_never_offers_the_replaced_key() {
+    use ftp_client_gui_lib::providers::scp::provider::ScpProvider;
+
+    let _env = ENV_LOCK.lock().await;
+    let home = tempfile::tempdir().unwrap();
+    let _home_env = ScopedEnv::set("HOME", home.path());
+
+    let original = random_key();
+    let replacement = random_key();
+    let key_path = home.path().join("id_ed25519");
+    write_key(&key_path, &original);
+
+    let (port, policy) = start_server(Policy {
+        accept_none: true,
+        key: Some(replacement.public_key().clone()),
+        ..Policy::default()
+    })
+    .await;
+    let mut provider = ScpProvider::new(SftpConfig {
+        host: "127.0.0.1".to_string(),
+        port,
+        username: "root".to_string(),
+        password: None,
+        private_key_path: Some(key_path.to_string_lossy().into_owned()),
+        key_passphrase: None,
+        initial_path: Some("/".to_string()),
+        timeout_secs: 5,
+        trust_unknown_hosts: true,
+    });
+    let first = tokio::time::timeout(Duration::from_secs(15), provider.connect())
+        .await
+        .expect("first connect timed out");
+    assert!(
+        !matches!(
+            first,
+            Ok(()) | Err(ProviderError::TargetChanged | ProviderError::AuthenticationFailed(_))
+        ),
+        "the first login is accepted and only the SCP probe fails, got {first:?}"
+    );
+    assert_eq!(policy.attempts(), ["none"]);
+
+    write_key(&key_path, &replacement);
+    policy.refuse_none.store(true, Ordering::SeqCst);
+
+    match tokio::time::timeout(Duration::from_secs(15), provider.connect())
+        .await
+        .expect("second connect timed out")
+    {
+        Err(ProviderError::TargetChanged) => {}
+        Err(other) => panic!("expected TargetChanged from the SCP re-dial, got {other:?}"),
+        Ok(()) => panic!("the SCP re-dial got in after the server stopped accepting none"),
+    }
+    assert_eq!(policy.attempts(), ["none", "none"]);
+    assert!(
+        policy.offered_keys().is_empty(),
+        "a public key was offered after a none login: {:?}",
+        policy.offered_keys()
+    );
+}
+
+/// A session that logged in with a key, whose key file is then replaced by
+/// another valid key. The delta transport it hands out signs with the login
+/// key: the server sees `publickey` requests for that key only, never the
+/// replacement and never `none`. With the classic setting, where only the
+/// `rsync` binary could serve (it runs `ssh -i <path>`), there is no delta
+/// transport at all. A session that logged in through `none` has none
+/// either.
+#[cfg(feature = "aerorsync")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delta_transport_of_a_key_session_never_offers_the_replaced_key() {
+    use ftp_client_gui_lib::settings::{set_native_rsync_mode, NativeRsyncMode};
+
+    let _env = ENV_LOCK.lock().await;
+    let home = tempfile::tempdir().unwrap();
+    let _home_env = ScopedEnv::set("HOME", home.path());
+    // The native rsync setting is read from the config root: keep the real
+    // one out of reach on Linux (elsewhere it already follows HOME).
+    let _config_env = ScopedEnv::set("XDG_CONFIG_HOME", home.path().join("config"));
+
+    let login_key = random_key();
+    let replacement = random_key();
+    let key_path = home.path().join("id_ed25519");
+    write_key(&key_path, &login_key);
+
+    // `none` is refused for the login, so the key is what gets in; the
+    // server accepts no other key.
+    let (port, policy) = start_server(Policy {
+        accept_none: true,
+        key: Some(login_key.public_key().clone()),
+        ..Policy::default()
+    })
+    .await;
+    policy.refuse_none.store(true, Ordering::SeqCst);
+    let mut provider = connect(port, Credential::Key(&key_path))
+        .await
+        .expect("in through the key");
+    assert_eq!(policy.attempts(), ["none", "publickey"]);
+
+    write_key(&key_path, &replacement);
+    // From here on the server would let anyone in through `none`: a delta
+    // login that sent it would succeed and be recorded.
+    policy.refuse_none.store(false, Ordering::SeqCst);
+
+    // Classic: the binary is the only candidate and it is not handed out.
+    set_native_rsync_mode(NativeRsyncMode::Classic).unwrap();
+    assert!(provider.delta_transport().is_none());
+
+    for mode in [NativeRsyncMode::Auto, NativeRsyncMode::Native] {
+        set_native_rsync_mode(mode).unwrap();
+        let transport = provider
+            .delta_transport()
+            .expect("a key session keeps native delta");
+        assert_ne!(transport.name(), "rsync-binary-over-ssh");
+        // The probe is the transport's own SSH login followed by
+        // `rsync --version`, which this server refuses to run.
+        let probe = tokio::time::timeout(Duration::from_secs(30), transport.probe_remote())
+            .await
+            .expect("probe timed out");
+        assert!(probe.is_err(), "this server runs no rsync");
+    }
+
+    let login_fingerprint = fingerprint(login_key.public_key());
+    let offered = policy.offered_keys();
+    assert!(
+        offered.iter().all(|f| *f == login_fingerprint),
+        "only the login key may be offered, got {offered:?}"
+    );
+    assert!(!offered.contains(&fingerprint(replacement.public_key())));
+    // One signed login for the session and one per probe, and no `none`
+    // after the session's own.
+    assert_eq!(
+        policy.attempts(),
+        ["none", "publickey", "publickey", "publickey"]
+    );
+    provider.disconnect().await.unwrap();
+
+    // A session that logged in through `none` gets no delta transport,
+    // whatever the setting.
+    let (port, policy) = start_server(Policy {
+        accept_none: true,
+        key: Some(replacement.public_key().clone()),
+        ..Policy::default()
+    })
+    .await;
+    let mut provider = connect(port, Credential::Key(&key_path))
+        .await
+        .expect("in through none");
+    assert_eq!(policy.attempts(), ["none"]);
+    for mode in [
+        NativeRsyncMode::Classic,
+        NativeRsyncMode::Auto,
+        NativeRsyncMode::Native,
+    ] {
+        set_native_rsync_mode(mode).unwrap();
+        assert!(provider.delta_transport().is_none());
+    }
+    assert!(policy.offered_keys().is_empty());
+    provider.disconnect().await.unwrap();
 }

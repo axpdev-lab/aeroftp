@@ -62,6 +62,17 @@ pub fn transport_from_rsync_config(
         // then routes probe + single-shot through russh (libssh2 is
         // pubkey-file-only).
         auth_agent: matches!(cfg.auth_method, AuthMethod::Agent),
+        // The key the SFTP session logged in with, when it logged in with
+        // one. The russh leg signs with it and does not open
+        // `private_key_path`, which stays the empty placeholder here.
+        // With the fingerprint recorded at login: the russh leg offers the
+        // key only while the two still match.
+        pinned_private_key: cfg.pinned_private_key.clone().map(|key| {
+            crate::aerorsync::ssh_transport::PinnedPrivateKey::new(
+                key,
+                cfg.pinned_key_sha256.clone().unwrap_or_default(),
+            )
+        }),
         // B.1/B.4: probe stock `rsync --version` on the remote. The
         // parser in `parse_probe_protocol` extracts the numeric
         // protocol version from the multi-line banner. A missing
@@ -157,6 +168,43 @@ mod tests {
             .expect("ssh_password must be propagated");
         assert_eq!(propagated.expose_secret(), "rsync-password");
         assert!(transport.ssh_config().usable_password().is_some());
+    }
+
+    /// A session that logged in with a key hands that key over in memory
+    /// and no key path. The transport carries the same key object, has no
+    /// path to open, and is routed to the russh leg, the only one that can
+    /// sign with an in-memory key.
+    #[test]
+    fn from_rsync_config_carries_the_pinned_session_key_and_no_path() {
+        let key = std::sync::Arc::new(
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("ed25519 key"),
+        );
+        let cfg = RsyncConfig {
+            ssh_user: "tester".into(),
+            ssh_host: "example.invalid".into(),
+            ssh_key_path: None,
+            auth_method: AuthMethod::SshKey,
+            pinned_private_key: Some(key.clone()),
+            pinned_key_sha256: Some(
+                crate::aerorsync::ssh_transport::PinnedPrivateKey::fingerprint_of(&key),
+            ),
+            ..Default::default()
+        };
+        let transport = transport_from_rsync_config(&cfg, SshHostKeyPolicy::AcceptAny)
+            .expect("a pinned session key is complete auth material");
+        let carried = transport
+            .ssh_config()
+            .pinned_private_key
+            .as_ref()
+            .expect("pinned key must be propagated");
+        assert!(std::sync::Arc::ptr_eq(carried.key(), &key));
+        assert_eq!(
+            carried.login_fingerprint(),
+            crate::aerorsync::ssh_transport::PinnedPrivateKey::fingerprint_of(&key)
+        );
+        assert_eq!(transport.ssh_config().private_key_path, PathBuf::new());
+        assert!(transport.ssh_config().prefers_russh_leg());
     }
 
     /// SSH agent auth: a `RsyncConfig { auth_method: Agent }` with no key

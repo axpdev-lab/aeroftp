@@ -317,6 +317,8 @@ pub fn build_rsync_config(ctx: &DeltaSyncContext) -> RsyncConfig {
         ssh_host: ctx.ssh_host.clone(),
         strict_host_key_check: ctx.strict_host_key_check.clone(),
         known_hosts_path: ctx.known_hosts_path.clone(),
+        pinned_private_key: None,
+        pinned_key_sha256: None,
     }
 }
 

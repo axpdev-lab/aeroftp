@@ -139,6 +139,10 @@ pub enum AerorsyncErrorKind {
     /// The remote SSH host key did not satisfy the active
     /// `SshHostKeyPolicy`. Never fall back to `AcceptAny` on failure.
     HostKeyRejected,
+    /// The in-memory key handed over for a session that logged in with a
+    /// private key is not the key that login used (its SHA-256 fingerprint
+    /// differs). Nothing was offered to the server. Never fall back.
+    PinnedKeyMismatch,
     Internal,
 }
 
@@ -238,6 +242,10 @@ impl AerorsyncError {
 
     pub fn host_key_rejected(detail: impl Into<String>) -> Self {
         Self::new(AerorsyncErrorKind::HostKeyRejected, detail)
+    }
+
+    pub fn pinned_key_mismatch(detail: impl Into<String>) -> Self {
+        Self::new(AerorsyncErrorKind::PinnedKeyMismatch, detail)
     }
 
     /// Translate a terminal out-of-band `AerorsyncEvent` into the
@@ -427,6 +435,7 @@ impl TransferError {
                 AerorsyncErrorKind::UnexpectedMessage => "Native(UnexpectedMessage)",
                 AerorsyncErrorKind::Cancelled => "Native(Cancelled)",
                 AerorsyncErrorKind::HostKeyRejected => "Native(HostKeyRejected)",
+                AerorsyncErrorKind::PinnedKeyMismatch => "Native(PinnedKeyMismatch)",
                 AerorsyncErrorKind::Internal => "Native(Internal)",
             },
         }
@@ -535,7 +544,7 @@ mod tests {
     use super::*;
     use crate::aerorsync::events::AerorsyncEvent;
 
-    const ALL_KINDS: [AerorsyncErrorKind; 11] = [
+    const ALL_KINDS: [AerorsyncErrorKind; 12] = [
         AerorsyncErrorKind::UnsupportedVersion,
         AerorsyncErrorKind::InvalidFrame,
         AerorsyncErrorKind::TransportFailure,
@@ -546,6 +555,7 @@ mod tests {
         AerorsyncErrorKind::UnexpectedMessage,
         AerorsyncErrorKind::Cancelled,
         AerorsyncErrorKind::HostKeyRejected,
+        AerorsyncErrorKind::PinnedKeyMismatch,
         AerorsyncErrorKind::Internal,
     ];
 
@@ -790,6 +800,7 @@ mod tests {
             AerorsyncErrorKind::RemoteError,
             AerorsyncErrorKind::UnexpectedMessage,
             AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
             AerorsyncErrorKind::Internal,
             AerorsyncErrorKind::Cancelled,
         ] {
@@ -866,7 +877,7 @@ mod tests {
         checked += 2;
 
         assert_eq!(
-            checked, 190,
+            checked, 194,
             "the inherited case table shrank: {checked} cases checked"
         );
     }

@@ -45424,6 +45424,7 @@ async fn cmd_aerorsync_probe(
         },
         auth_password: Some(SecretString::from(password)),
         auth_agent: false,
+        pinned_private_key: None,
     };
 
     let transport = match RusshSessionTransport::connect(cfg).await {

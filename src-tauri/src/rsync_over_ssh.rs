@@ -118,6 +118,17 @@ pub struct RsyncConfig {
     /// Path to known_hosts file (typically `~/.ssh/known_hosts`). Required when
     /// `strict_host_key_check` is not `"no"`.
     pub known_hosts_path: Option<PathBuf>,
+    /// The parsed key the SFTP session authenticated with, and the SHA-256
+    /// fingerprint recorded at that login, when the session logged in with a
+    /// private key. The native russh leg checks the fingerprint, then signs
+    /// with this object and does not open a key file. The `rsync` binary path
+    /// cannot use it (`ssh -i` reads a path itself), so `build_ssh_e_arg`
+    /// refuses a config that carries one.
+    pub pinned_private_key: Option<std::sync::Arc<russh::keys::PrivateKey>>,
+    /// SHA-256 fingerprint (`SHA256:` form) of the public key the session
+    /// logged in with, recorded at that login. Travels with
+    /// `pinned_private_key`; a missing one never matches.
+    pub pinned_key_sha256: Option<String>,
 }
 
 impl fmt::Debug for RsyncConfig {
@@ -138,6 +149,11 @@ impl fmt::Debug for RsyncConfig {
             .field("ssh_host", &self.ssh_host)
             .field("strict_host_key_check", &self.strict_host_key_check)
             .field("known_hosts_path", &self.known_hosts_path)
+            .field(
+                "pinned_private_key",
+                &self.pinned_private_key.as_ref().map(|_| "<redacted>"),
+            )
+            .field("pinned_key_sha256", &self.pinned_key_sha256)
             .finish()
     }
 }
@@ -157,6 +173,8 @@ impl Default for RsyncConfig {
             ssh_host: String::new(),
             strict_host_key_check: "accept-new".to_string(),
             known_hosts_path: None,
+            pinned_private_key: None,
+            pinned_key_sha256: None,
         }
     }
 }
@@ -175,6 +193,12 @@ impl RsyncConfig {
         // "neither key nor password" hard guard below. SSH_AUTH_SOCK
         // reachability is checked at connect time by the russh leg.
         if matches!(self.auth_method, AuthMethod::Agent) {
+            return Ok(());
+        }
+
+        // A session key held in memory is the whole credential: there is no
+        // path to check, and the russh leg never opens one for it.
+        if self.pinned_private_key.is_some() && matches!(self.auth_method, AuthMethod::SshKey) {
             return Ok(());
         }
 
@@ -381,6 +405,7 @@ mod native_envelope_tests {
             AerorsyncErrorKind::InvalidFrame,
             AerorsyncErrorKind::PlannerRejected,
             AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
             AerorsyncErrorKind::Internal,
             AerorsyncErrorKind::RemoteError,
             AerorsyncErrorKind::UnexpectedMessage,
@@ -554,6 +579,15 @@ pub async fn probe_local_rsync() -> Result<String, RsyncError> {
 #[cfg(unix)]
 fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
     cfg.validate_auth_material()?;
+
+    if cfg.pinned_private_key.is_some() {
+        // The session authenticated with a key that is held in memory.
+        // `ssh -i` would read whatever file is at the path now, which may be
+        // a different key, and the pinned key is never written to disk.
+        return Err(RsyncError::MissingKey(
+            "the session key is pinned in memory and the rsync binary cannot use it".into(),
+        ));
+    }
 
     if matches!(cfg.auth_method, AuthMethod::Password) {
         // R1 foundation is in place, but the secure password transport must
@@ -950,6 +984,35 @@ mod tests {
         match build_ssh_e_arg(&cfg) {
             Err(RsyncError::MissingKey(_)) => {}
             other => panic!("expected MissingKey, got {:?}", other),
+        }
+    }
+
+    /// A session that logged in with a key keeps that key in memory. The
+    /// `rsync` binary would hand `ssh -i` a path, and the file there can be a
+    /// different key by now, so no `ssh` command is built at all, even when
+    /// a readable key path is also present in the config.
+    #[test]
+    fn ssh_e_arg_refuses_a_session_key_pinned_in_memory() {
+        let key = PathBuf::from("/etc/hostname");
+        if !key.exists() {
+            return; // Skip on non-Linux CI
+        }
+        let pinned =
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("ed25519 key");
+        for ssh_key_path in [None, Some(key)] {
+            let cfg = RsyncConfig {
+                ssh_key_path,
+                pinned_private_key: Some(std::sync::Arc::new(pinned.clone())),
+                ..Default::default()
+            };
+            assert!(cfg.validate_auth_material().is_ok());
+            match build_ssh_e_arg(&cfg) {
+                Err(RsyncError::MissingKey(message)) => {
+                    assert!(message.contains("pinned in memory"), "{message}")
+                }
+                other => panic!("expected MissingKey, got {:?}", other),
+            }
         }
     }
 
