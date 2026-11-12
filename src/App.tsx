@@ -1113,7 +1113,9 @@ const App: React.FC = () => {
     reason: string;
     serverLabel: string;
     profileId: string;
+    owner: symbol;
     onContinue: () => void;
+    onCancel: () => void;
   } | null>(null);
   const [inputDialog, setInputDialog] = useState<{ title: string; defaultValue: string; onConfirm: (v: string) => void; isPassword?: boolean; placeholder?: string; description?: string } | null>(null);
   // Dedicated encrypted-archive unlock mini-modal (zip/7z/rar); AeroVault keeps its own.
@@ -1231,7 +1233,7 @@ const App: React.FC = () => {
     localLocal: boolean;
   } | null>(null);
   const remoteSyncRunningRef = useRef(false);
-  const syncPreflightPendingRef = useRef(false);
+  const syncPreflightPendingRef = useRef<symbol | null>(null);
   const [syncPreflightPending, setSyncPreflightPending] = useState(false);
   // FINDING-4: true from pressing Stop during an AeroSync run until the run
   // actually unwinds. Drives the Stop-button spinner: Stop on a run skips the
@@ -11909,12 +11911,18 @@ const App: React.FC = () => {
     stopCountRef.current += 1;
     stopAllCountRef.current += 1;
     batchCancelledRef.current = true;
+    const cancelledPreflight = syncPreflightPendingRef.current;
+    if (cancelledPreflight) {
+      syncPreflightPendingRef.current = null;
+      setSyncPreflightPending(false);
+      setDeltaEligibilityPrompt(null);
+    }
     const completionRefresh = syncRefreshAbortRef.current;
     completionRefresh?.abort();
     const refreshWaiters = [...loadLocalWaitersRef.current];
     loadLocalWaitersRef.current.clear();
     for (const settle of refreshWaiters) settle();
-    if (syncPreflightPendingRef.current && !remoteSyncRunningRef.current
+    if (cancelledPreflight && !remoteSyncRunningRef.current
       && !batchOperationPendingRef.current && !activeTransferRef.current && !transferQueue.hasActiveTransfersNow()) {
       setDeltaEligibilityPrompt(null);
       return;
@@ -12902,18 +12910,20 @@ const App: React.FC = () => {
       notify.info(t('aerosync.title'), t('syncPanel.syncing'));
       return;
     }
+    const preflightOwner = Symbol('sync preflight');
+    const ownsPreflight = () => syncPreflightPendingRef.current === preflightOwner && stopAllCountRef.current === launchStops;
+    const finishPreflight = () => {
+      if (syncPreflightPendingRef.current !== preflightOwner) return;
+      syncPreflightPendingRef.current = null;
+      setSyncPreflightPending(false);
+    };
+    let parked = false;
     const launchRun = async (): Promise<void> => {
-      syncPreflightPendingRef.current = true;
-      setSyncPreflightPending(true);
-      try {
-        // A cancelled folder operation observes its flag before this sync re-arms it.
-        await syncCancelPendingRef.current;
-        while (batchOperationPendingRef.current) await batchOperationPendingRef.current;
-      } finally {
-        syncPreflightPendingRef.current = false;
-        setSyncPreflightPending(false);
-      }
-      if (stopAllCountRef.current !== launchStops) return;
+      if (!ownsPreflight()) return;
+      // A cancelled folder operation observes its flag before this sync re-arms it.
+      await syncCancelPendingRef.current;
+      while (batchOperationPendingRef.current && ownsPreflight()) await batchOperationPendingRef.current;
+      if (!ownsPreflight()) return;
       if (targetEpoch === undefined || ownerBinding === undefined) return;
       const epoch = targetEpoch;
       try { checkTarget(); } catch (error) {
@@ -12925,6 +12935,7 @@ const App: React.FC = () => {
         return;
       }
       remoteSyncRunningRef.current = true;
+      finishPreflight();
       // Issue #332: arm the cancel path. batchCancelledRef (raised by
       // cancelTransfer level 1) stops the runner loop at the next file boundary;
       // level 2 also raises the backend cancel flag to abort an in-flight file.
@@ -13010,24 +13021,25 @@ const App: React.FC = () => {
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
     // unavailable. A saved per-server opt-out skips the probe entirely.
-    syncPreflightPendingRef.current = true;
+    syncPreflightPendingRef.current = preflightOwner;
     setSyncPreflightPending(true);
     void (async () => {
       try {
         targetEpoch = opts.preparedTarget
           ? await resolveGuiTarget(opts.preparedTarget, checkTarget)
           : await captureGuiTarget(checkTarget);
+        if (!ownsPreflight()) return;
         ownerBinding = await invoke<string>('provider_gui_target_binding', { expectedGuiTarget: targetEpoch, isProvider });
+        if (!ownsPreflight()) return;
         checkTarget();
-        if (stopAllCountRef.current !== launchStops) return;
         const shouldProbe = protocol === 'sftp' && !!opts.profileId;
         if (!shouldProbe) {
           await launchRun();
           return;
         }
         const stored = await loadSavedServerProfiles();
+        if (!ownsPreflight()) return;
         checkTarget();
-        if (stopAllCountRef.current !== launchStops) return;
         const profile = stored.find((p) => p.id === opts.profileId);
         if (profile?.skipDeltaEligibilityPrompt) {
           await launchRun();
@@ -13037,8 +13049,8 @@ const App: React.FC = () => {
           'sftp_probe_delta_eligibility',
           { expectedGuiTarget: targetEpoch },
         );
+        if (!ownsPreflight()) return;
         checkTarget();
-        if (stopAllCountRef.current !== launchStops) return;
         if (verdict.eligible) {
           await launchRun();
           return;
@@ -13049,13 +13061,17 @@ const App: React.FC = () => {
         const serverLabel = activeUnifiedRemoteProfile?.name
           || verdict.server_identity?.host
           || t('browser.remote');
+        parked = true;
         setDeltaEligibilityPrompt({
           reason,
           serverLabel,
           profileId: opts.profileId!,
-          onContinue: () => { void launchRun(); },
+          owner: preflightOwner,
+          onContinue: () => { parked = false; void launchRun().finally(finishPreflight); },
+          onCancel: finishPreflight,
         });
       } catch (err) {
+        if (!ownsPreflight()) return;
         if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED') || targetEpoch === undefined || ownerBinding === undefined) {
           notify.error(t('aerosync.title'), String(err));
           return;
@@ -13067,8 +13083,7 @@ const App: React.FC = () => {
         }
         await launchRun();
       } finally {
-        syncPreflightPendingRef.current = false;
-        setSyncPreflightPending(false);
+        if (!parked) finishPreflight();
       }
     })();
   });
@@ -18942,11 +18957,16 @@ const App: React.FC = () => {
           reason={deltaEligibilityPrompt?.reason || ''}
           serverLabel={deltaEligibilityPrompt?.serverLabel || ''}
           // Cancel drops the queued plan: it runs only on Continue.
-          onCancel={() => setDeltaEligibilityPrompt(null)}
+          onCancel={() => {
+            const prompt = deltaEligibilityPrompt;
+            if (!prompt || syncPreflightPendingRef.current !== prompt.owner) return;
+            setDeltaEligibilityPrompt(null);
+            prompt.onCancel();
+          }}
           onContinue={(skipFuturePrompts) => {
             const prompt = deltaEligibilityPrompt;
+            if (!prompt || syncPreflightPendingRef.current !== prompt.owner) return;
             setDeltaEligibilityPrompt(null);
-            if (!prompt) return;
             if (skipFuturePrompts && prompt.profileId) {
               // Persist `skipDeltaEligibilityPrompt: true` on the saved
               // server so future runs against the same profile skip the
