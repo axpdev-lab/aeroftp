@@ -42,5 +42,7 @@ describe('Add Service: the form a pick opens', () => {
         expect(blomp?.providerId).toBe('blomp');
         expect(blomp?.badge).toBe('Swift');
         expect(blomp?.searchAliases).toContain('swift');
+        expect(blomp?.signupUrl).toBe('https://dashboard.blomp.com/register');
+        expect(blomp?.helpUrl).toBe('https://support.blomp.com/viewforum.php?f=8');
     });
 });
