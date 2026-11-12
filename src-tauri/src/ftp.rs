@@ -320,8 +320,12 @@ impl FtpManager {
         match tokio::time::timeout(self.timeouts.command_timeout, stream.noop()).await {
             Ok(Ok(())) => {}
             Ok(Err(error)) if Self::definitive_refusal(&error) => {}
-            Ok(Err(error)) => {
-                return Err(FtpManagerError::OperationFailed(error.to_string()).into())
+            Ok(Err(_)) => {
+                // The reply body is server-controlled and may echo credentials.
+                return Err(FtpManagerError::OperationFailed(
+                    "FTP connection check failed before listing".into(),
+                )
+                .into());
             }
             Err(error) => return Err(anyhow::Error::new(error).context("Pre-LIST NOOP timeout")),
         }
@@ -583,6 +587,11 @@ impl FtpManager {
             let previous = self.current_path.clone();
             self.change_dir(parent).await?;
             let listed = self.list_files_for_probe(true).await;
+            if self.stream.is_none() {
+                return Err(listed
+                    .err()
+                    .unwrap_or_else(|| FtpManagerError::NotConnected.into()));
+            }
             let restored = self.change_dir(&previous).await;
             restored?;
             return listed.map(|items| items.iter().any(|entry| entry.name == name));
@@ -644,6 +653,11 @@ impl FtpManager {
         self.change_dir(if parent.is_empty() { "/" } else { parent })
             .await?;
         let listed = self.list_files_for_probe(true).await;
+        if self.stream.is_none() {
+            return Err(listed
+                .err()
+                .unwrap_or_else(|| FtpManagerError::NotConnected.into()));
+        }
         let restored = self.change_dir(&original).await;
         restored?;
         Ok(listed?
@@ -1474,6 +1488,10 @@ pub(crate) mod exists_tests {
                     }
                     "PWD" if moved => "257 \"/backup\"\r\n".to_string(),
                     "PWD" => "257 \"/\"\r\n".to_string(),
+                    "NOOP" if stage == "SECRET_NOOP" => {
+                        "421 access_token=private-noop-token password=private-noop-password\r\n"
+                            .to_string()
+                    }
                     "PASV" => {
                         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
                         let port = listener.local_addr().unwrap().port();
@@ -1579,13 +1597,34 @@ pub(crate) mod exists_tests {
     }
 
     #[tokio::test]
+    async fn noop_connection_error_never_exposes_a_server_echoed_secret() {
+        let (addr, _) = cwd_then_unavailable_pwd("SECRET_NOOP").await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let error = ftp.list_files().await.unwrap_err().to_string();
+        assert_eq!(
+            error,
+            FtpManagerError::OperationFailed("FTP connection check failed before listing".into())
+                .to_string()
+        );
+        assert!(!error.contains("private-noop"));
+        assert!(!ftp.is_connected());
+        assert!(ftp.connection_spec().is_err());
+    }
+
+    #[tokio::test]
     async fn timed_out_receipt_listing_cannot_restore_an_uncertain_channel() {
         let (addr, _) = cwd_then_unavailable_pwd("LIST").await;
         let mut ftp = FtpManager::new();
         ftp.timeouts.list_timeout = std::time::Duration::from_millis(30);
         ftp.connect(&addr).await.unwrap();
         ftp.login("u", "p").await.unwrap();
-        assert!(ftp.receipt_is_file("/backup/item").await.is_err());
+        let error = ftp.receipt_is_file("/backup/item").await.unwrap_err();
+        assert!(
+            error.to_string().contains("List operation timeout"),
+            "{error}"
+        );
         assert!(!ftp.is_connected());
         assert!(ftp.connection_spec().is_err());
         assert!(ftp.remove("relative-name").await.is_err());

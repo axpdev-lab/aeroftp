@@ -383,7 +383,7 @@ it.each(['owner','folder'] as const)('discards a local sync refresh after a defe
     const {code}=await transformWithOxc(app.slice(start,end),'owned-local-refresh.ts');
     let current=true;let release!:(value:unknown[])=>void;const pending=new Promise<unknown[]>(resolve=>{release=resolve;});
     const context={useCallback:(fn:unknown)=>fn,invoke:()=>pending,showHiddenFiles:false,
-        loadLocalCallIdRef:{current:0},loadLocalPendingRef:{current:null as number | null},currentLocalPathRef:{current:'/A'},setLocalFiles:vi.fn(),setCurrentLocalPath:vi.fn(),setSelectedLocalFiles:vi.fn(),
+        loadLocalCallIdRef:{current:0},loadLocalPendingRef:{current:null as number | null},loadLocalWaitersRef:{current:new Set<() => void>()},currentLocalPathRef:{current:'/A'},setLocalFiles:vi.fn(),setCurrentLocalPath:vi.fn(),setSelectedLocalFiles:vi.fn(),
         notify:{error:vi.fn()},t:(key:string)=>key,activityLog:{log:vi.fn()},isGvfsMtpPath:()=>false,needsRemovableMediaPlug:()=>false,
     };
     const load=new Function(...Object.keys(context),`${code};return loadLocalFiles;`)(...Object.values(context));
@@ -401,7 +401,7 @@ it('stops the sync refresh continuation when remote refresh discards a switched 
     const {code}=await transformWithOxc(`async function refreshAfterSync(){${app.slice(start,end)}}`,'sync-refresh-continuation.ts');
     let current=true;let release!:(value:null)=>void;const pending=new Promise<null>(resolve=>{release=resolve;});
     const context={report:{cancelled:false,uploaded:1,downloaded:0,deleted:0},epoch:1,checkTarget:()=>{if(!current)throw new Error('changed');},
-        loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},currentLocalPathRef:{current:'/old'},localPanelShows,flattenSearchActiveRef:{current:false},
+        loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},currentLocalPathRef:{current:'/old'},localPanelShows,loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>false,
     };
     const refresh=new Function(...Object.keys(context),`${code};return refreshAfterSync;`)(...Object.values(context));
     const result=refresh();current=false;release(null);await result;
@@ -418,7 +418,7 @@ it.each(['before', 'during'] as const)('preserves local navigation %s the remote
     const context = {
         report: { cancelled: false, uploaded: 1, downloaded: 0, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: () => pending, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
-        currentLocalPathRef: { current: when === 'before' ? '/B' : '/A' }, localPanelShows,flattenSearchActiveRef:{current:false},
+        currentLocalPathRef: { current: when === 'before' ? '/B' : '/A' }, localPanelShows,loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>false,
     };
     const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
     const run = refresh(); context.currentLocalPathRef.current = '/B'; release(true); await run;
@@ -434,7 +434,7 @@ it.each(['/A/sub', '/A', '/'])('refreshes the affected visible folder %s with no
     const context = {
         report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 1 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: async () => true, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
-        currentLocalPathRef: { current: visible }, localPanelShows,flattenSearchActiveRef:{current:visible === '/'},
+        currentLocalPathRef: { current: visible }, localPanelShows,loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>visible === '/',
     };
     const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
     await refresh();
@@ -449,7 +449,7 @@ it('keeps an in-flight user navigation when a sync requests a passive local refr
     let release!: (value: unknown[]) => void; const pending = new Promise<unknown[]>(resolve => { release = resolve; });
     const context = {
         useCallback: (fn: unknown) => fn, invoke: vi.fn(() => pending), showHiddenFiles: false,
-        loadLocalCallIdRef: { current: 0 }, loadLocalPendingRef: { current: null as number | null },
+        loadLocalCallIdRef: { current: 0 }, loadLocalPendingRef: { current: null as number | null }, loadLocalWaitersRef: { current: new Set<() => void>() },
         currentLocalPathRef: { current: '/A/sub' }, setLocalFiles: vi.fn(), setCurrentLocalPath: vi.fn(), setSelectedLocalFiles: vi.fn(),
         notify: { error: vi.fn() }, t: (key: string) => key, activityLog: { log: vi.fn() },
         isGvfsMtpPath: () => false, needsRemovableMediaPlug: () => false,
@@ -474,9 +474,40 @@ it.each([false, true])('refreshes an ancestor listing only with flattened search
     const context = {
         report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: async () => true, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/home/work/sync' },
-        currentLocalPathRef: { current: '/home' }, localPanelShows, flattenSearchActiveRef: { current: flattened },
+        currentLocalPathRef: { current: '/home' }, localPanelShows, loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>flattened,
     };
     const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
     await refresh();
     expect(context.loadLocalFiles).toHaveBeenCalledTimes(flattened ? 1 : 0);
+});
+
+it.each(['/A/sub', '/B'])('defers sync completion behind a pending listing for %s without watcher events', async destination => {
+    const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+    const loadStart = app.indexOf('  const loadLocalFiles ='); const loadEnd = app.indexOf('  const loadLocalFiles2 =', loadStart);
+    const refreshStart = app.indexOf('          if (!report.cancelled && (report.uploaded > 0');
+    const refreshEnd = app.indexOf('\n        } catch (err)', refreshStart);
+    const { code } = await transformWithOxc(`${app.slice(loadStart, loadEnd)};async function refreshAfterSync(){${app.slice(refreshStart, refreshEnd)}}`, 'sync-listing-settlement.ts');
+    let release!: (value: unknown[]) => void; const pending = new Promise<unknown[]>(resolve => { release = resolve; });
+    const fresh = [{ name: 'downloaded-after-old-snapshot' }];
+    const invoke = vi.fn().mockImplementationOnce(() => pending).mockResolvedValue(fresh);
+    const context = {
+        useCallback: (fn: unknown) => fn, invoke, showHiddenFiles: false,
+        loadLocalCallIdRef: { current: 0 }, loadLocalPendingRef: { current: null as number | null },
+        loadLocalWaitersRef: { current: new Set<() => void>() }, currentLocalPathRef: { current: '/A/sub' },
+        setLocalFiles: vi.fn(), setCurrentLocalPath: vi.fn(), setSelectedLocalFiles: vi.fn(),
+        notify: { error: vi.fn() }, t: (key: string) => key, activityLog: { log: vi.fn() },
+        isGvfsMtpPath: () => false, needsRemovableMediaPlug: () => false,
+        report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
+        loadRemoteFiles: async () => true, runConfig: { localRoot: '/A' }, localPanelShows,
+        isLocalFlattenSearchActive: () => false,
+    };
+    const { load, refresh } = new Function(...Object.keys(context), `${code};return {load:loadLocalFiles,refresh:refreshAfterSync};`)(...Object.values(context));
+    const navigation = load(destination); const completion = refresh();
+    await vi.waitFor(() => expect(context.loadLocalWaitersRef.current.size).toBe(1));
+    expect(invoke).toHaveBeenCalledOnce();
+    release([]); await navigation; await completion;
+    expect(context.currentLocalPathRef.current).toBe(destination);
+    expect(context.loadLocalWaitersRef.current.size).toBe(0);
+    expect(invoke).toHaveBeenCalledTimes(destination === '/B' ? 1 : 2);
+    if (destination !== '/B') expect(context.setLocalFiles).toHaveBeenLastCalledWith(fresh);
 });

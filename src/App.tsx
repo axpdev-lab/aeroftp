@@ -1853,6 +1853,7 @@ const App: React.FC = () => {
   // stale responses are discarded when callId !== current counter value.
   const loadLocalCallIdRef = React.useRef(0);
   const loadLocalPendingRef = React.useRef<number | null>(null);
+  const loadLocalWaitersRef = useRef(new Set<() => void>());
   const latestLocalListing2 = useRef(new LatestListing());
 
   // File clipboard for Cut/Copy/Paste
@@ -2741,8 +2742,7 @@ const App: React.FC = () => {
     return { active: true, residualFilter: (match[2] || '').toLowerCase() };
   }, [localSearchFilter]);
 
-  const flattenSearchActiveRef = useRef(flattenSearchParse.active);
-  flattenSearchActiveRef.current = flattenSearchParse.active;
+  const isLocalFlattenSearchActive = useLatestCallback(() => flattenSearchParse.active);
 
   // The scan in flight and the folder the rows on screen come from: a rescan
   // waits for the scan before it, so a folder that keeps changing (the
@@ -5801,7 +5801,12 @@ const App: React.FC = () => {
       }
       return false;
     } finally {
-      if (loadLocalPendingRef.current === callId) loadLocalPendingRef.current = null;
+      if (loadLocalPendingRef.current === callId) {
+        loadLocalPendingRef.current = null;
+        const waiters = [...loadLocalWaitersRef.current];
+        loadLocalWaitersRef.current.clear();
+        for (const settle of waiters) settle();
+      }
     }
   }, [showHiddenFiles, notify, t, activityLog]);
 
@@ -12892,11 +12897,17 @@ const App: React.FC = () => {
             const refreshed = await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkTarget });
             if (!refreshed) return;
             checkTarget();
+            // Wait for the latest navigation/listing before sampling the
+            // visible path. Its snapshot may predate the final sync mutation.
+            while (loadLocalPendingRef.current !== null) {
+              await new Promise<void>(resolve => { loadLocalWaitersRef.current.add(resolve); });
+              checkTarget();
+            }
             const visibleLocalFolder = currentLocalPathRef.current;
             // Include a descendant changed by the run and an ancestor whose
             // flattened search covers it, even without a filesystem watcher.
             if (visibleLocalFolder && (localPanelShows(visibleLocalFolder, runConfig.localRoot, true)
-                || localPanelShows(runConfig.localRoot, visibleLocalFolder, flattenSearchActiveRef.current))) {
+                || localPanelShows(runConfig.localRoot, visibleLocalFolder, isLocalFlattenSearchActive()))) {
               await loadLocalFiles(visibleLocalFolder, { check: checkTarget });
             }
           }
