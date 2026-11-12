@@ -452,6 +452,12 @@ impl ProviderState {
         ))
     }
 
+    /// Whether no GUI operation holds a target pin right now. A waiting
+    /// writer is not queued by this check, so it never delays a new pin.
+    pub(crate) fn gui_work_settled(&self) -> bool {
+        self.transfer_owner_gate.try_write().is_ok()
+    }
+
     /// Called only while holding `transfer_owner_write` when the GUI target changes.
     pub(crate) fn advance_gui_target(&self) {
         self.gui_target_epoch.fetch_add(1, Ordering::SeqCst);
@@ -466,6 +472,20 @@ impl ProviderState {
     ) -> Result<tokio::sync::RwLockWriteGuard<'_, ()>, String> {
         tokio::time::timeout(wait, self.transfer_owner_gate.write()).await
             .map_err(|_| "Transfer still in progress; connection or overlay was not changed. Stop the transfer and try again".to_string())
+    }
+
+    /// First step of a legacy FTP connect or disconnect: take the gate within
+    /// `wait`, then advance the GUI target and drop the legacy owner binding.
+    /// A gate timeout returns before either change. The caller keeps the guard
+    /// while it replaces or closes the FTP session.
+    pub(crate) async fn begin_legacy_ftp_target_change(
+        &self,
+        wait: Duration,
+    ) -> Result<tokio::sync::RwLockWriteGuard<'_, ()>, String> {
+        let change = self.transfer_owner_write(wait).await?;
+        self.advance_gui_target();
+        self.clear_legacy_gui_owner();
+        Ok(change)
     }
 
     pub(crate) async fn install_mtp_provider(
@@ -22884,5 +22904,364 @@ mod restored_transfer_owner_tests {
                 .await
                 .is_ok()
         );
+    }
+}
+
+/// A real `GuiOwnerContext` reads the account database and the process-wide
+/// session. A test that needs one runs again in a child process whose
+/// portable root is a private temporary folder, so it never opens the
+/// database of the user running the suite.
+#[cfg(test)]
+pub(crate) mod isolated_account_fixture {
+    const CHILD: &str = "AEROFTP_GUI_OWNER_FIXTURE_CHILD";
+
+    /// True in the isolated child, where the caller runs the test body. In the
+    /// parent it runs the test named `test` in such a child, asserts that it
+    /// passed and returns false.
+    pub(crate) fn in_isolated_child(test: &str) -> bool {
+        let executable = std::env::current_exe().unwrap();
+        if std::env::var_os(CHILD).is_some() {
+            assert!(executable
+                .parent()
+                .unwrap()
+                .join("portable.marker")
+                .is_file());
+            return true;
+        }
+        let root = tempfile::Builder::new()
+            .prefix("gui-owner-fixture-")
+            .tempdir_in(executable.parent().unwrap())
+            .unwrap();
+        let child = root.path().join(format!(
+            "gui-owner-fixture-test{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        std::fs::hard_link(&executable, &child)
+            .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
+            .unwrap();
+        std::fs::write(root.path().join("portable.marker"), b"").unwrap();
+        let empty_path = root.path().join("no-external-tools");
+        std::fs::create_dir(&empty_path).unwrap();
+        let output = std::process::Command::new(child)
+            .args(["--exact", test, "--nocapture", "--test-threads=1"])
+            .env(CHILD, "1")
+            .env("PATH", &empty_path)
+            .env("XDG_CONFIG_HOME", root.path().join("config"))
+            .env("XDG_DATA_HOME", root.path().join("data"))
+            .env("XDG_CACHE_HOME", root.path().join("cache"))
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=/nonexistent-gui-owner-fixture",
+            )
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        false
+    }
+
+    /// Two accounts without a passphrase in the isolated database, the first
+    /// one active. Call it under `user_partitions::test_lock()`.
+    pub(crate) fn two_accounts() -> (rusqlite::Connection, i64, i64) {
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root = [7u8; 32];
+        let first =
+            crate::user_partitions::create_user(&mut conn, &root, "first", None, None, None)
+                .unwrap()
+                .id;
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root, "second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        (conn, first, second)
+    }
+}
+
+#[cfg(test)]
+mod installer_account_switch_tests {
+    use super::isolated_account_fixture::{in_isolated_child, two_accounts};
+    use super::*;
+
+    /// Records its own `disconnect`.
+    struct Recorded {
+        name: &'static str,
+        disconnected: Arc<AtomicBool>,
+    }
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for Recorded {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            self.name.into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.disconnected.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            !self.disconnected.load(Ordering::SeqCst)
+        }
+        async fn list(&mut self, _: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _: &str, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, _: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+    }
+
+    struct Installed {
+        state: Arc<ProviderState>,
+        previous_disconnected: Arc<AtomicBool>,
+        generation: u64,
+        epoch: u64,
+    }
+
+    /// Profile "A" on the provider "previous", installed by the installer.
+    async fn previous_connection() -> Installed {
+        let state = Arc::new(ProviderState::new());
+        let previous_disconnected = Arc::new(AtomicBool::new(false));
+        install_connected_provider(
+            &state,
+            Box::new(Recorded {
+                name: "previous",
+                disconnected: previous_disconnected.clone(),
+            }),
+            Some("A".into()),
+        )
+        .await
+        .unwrap();
+        Installed {
+            generation: state.connection_generation.load(Ordering::SeqCst),
+            epoch: state.gui_target_epoch.load(Ordering::SeqCst),
+            state,
+            previous_disconnected,
+        }
+    }
+
+    /// The real installer on a candidate for profile "B", owned by `owner`.
+    fn install_candidate(
+        state: &Arc<ProviderState>,
+        owner: crate::sync_owner::GuiOwnerContext,
+    ) -> (tokio::task::JoinHandle<Result<(), String>>, Arc<AtomicBool>) {
+        let disconnected = Arc::new(AtomicBool::new(false));
+        let candidate = Box::new(Recorded {
+            name: "candidate",
+            disconnected: disconnected.clone(),
+        });
+        let state = state.clone();
+        let installer = tokio::spawn(async move {
+            install_connected_provider_with_owner(
+                &state,
+                candidate,
+                Some("B".into()),
+                None,
+                Some(owner),
+                Duration::from_secs(10),
+            )
+            .await
+        });
+        (installer, disconnected)
+    }
+
+    async fn installed_name(state: &ProviderState) -> Option<String> {
+        state
+            .provider
+            .lock()
+            .await
+            .as_ref()
+            .map(|p| p.display_name())
+    }
+
+    fn profile(state: &ProviderState) -> Option<String> {
+        state.connected_profile_id.lock().unwrap().clone()
+    }
+
+    /// One thread runs the test and every task, so the session lock taken by
+    /// the test is held wherever the installer or the account switch runs.
+    fn run(body: impl std::future::Future<Output = ()>) {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(body);
+    }
+
+    #[test]
+    fn account_switched_during_the_installer_drain_does_not_install_the_candidate() {
+        if !in_isolated_child(
+            "provider_commands::installer_account_switch_tests::\
+             account_switched_during_the_installer_drain_does_not_install_the_candidate",
+        ) {
+            return;
+        }
+        let _session = crate::user_partitions::test_lock();
+        run(async {
+            let (conn, first, second) = two_accounts();
+            let before = previous_connection().await;
+            let state = &before.state;
+            let owner = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+            assert_eq!(owner.user(), Some(first));
+
+            // A transfer in flight: the installer takes the gate, finds its
+            // owner current and then waits in the drain.
+            let transfer = TransferOperationGuard::acquire(state);
+            let (installer, candidate_disconnected) = install_candidate(state, owner);
+            while state.transfer_owner_gate.try_read().is_ok() {
+                tokio::task::yield_now().await;
+            }
+            tokio::task::yield_now().await;
+            assert!(
+                !installer.is_finished(),
+                "the installer waits for the drain"
+            );
+            assert_eq!(installed_name(state).await.as_deref(), Some("previous"));
+            assert_eq!(profile(state).as_deref(), Some("A"));
+            assert_eq!(
+                state.connection_generation.load(Ordering::SeqCst),
+                before.generation
+            );
+
+            // The account changes while the drain waits, then the drain ends.
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            drop(transfer);
+            let refused = installer.await.unwrap().unwrap_err();
+            assert_eq!(refused, crate::user_partitions::ACCOUNT_CHANGED);
+
+            // The candidate was closed and never reached the slot.
+            assert!(candidate_disconnected.load(Ordering::SeqCst));
+            assert_eq!(installed_name(state).await, None);
+            assert_eq!(profile(state), None);
+            assert!(state.config.lock().await.is_none());
+            assert!(state.gui_owner_context.lock().unwrap().is_none());
+            assert!(state.legacy_owner_binding.lock().unwrap().is_none());
+            // The drain had ended, so the previous connection was retired
+            // before the final owner check, once.
+            assert!(before.previous_disconnected.load(Ordering::SeqCst));
+            assert_eq!(
+                state.connection_generation.load(Ordering::SeqCst),
+                before.generation + 1
+            );
+            assert_eq!(
+                state.gui_target_epoch.load(Ordering::SeqCst),
+                before.epoch + 1
+            );
+            let stale = state
+                .pin_gui_target(Some(before.epoch))
+                .await
+                .map(|_| ())
+                .unwrap_err();
+            assert!(stale.starts_with(CONNECTION_CHANGED_MARKER), "{stale}");
+            assert!(state.transfer_owner_gate.try_write().is_ok());
+        });
+    }
+
+    #[test]
+    fn account_switched_while_the_installer_waits_for_a_pin_keeps_the_previous_connection() {
+        if !in_isolated_child(
+            "provider_commands::installer_account_switch_tests::\
+             account_switched_while_the_installer_waits_for_a_pin_keeps_the_previous_connection",
+        ) {
+            return;
+        }
+        let _session = crate::user_partitions::test_lock();
+        run(async {
+            let (conn, _, second) = two_accounts();
+            let before = previous_connection().await;
+            let state = &before.state;
+            let owner = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+
+            // A pinned transfer: the installer queues behind it on the gate.
+            let pin = state.pin_gui_target(Some(before.epoch)).await.unwrap();
+            let (installer, candidate_disconnected) = install_candidate(state, owner);
+            while state.transfer_owner_gate.try_read().is_ok() {
+                tokio::task::yield_now().await;
+            }
+            assert!(!installer.is_finished(), "the installer waits for the pin");
+
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            drop(pin);
+            let refused = installer.await.unwrap().unwrap_err();
+            assert_eq!(refused, ProviderError::TargetChanged.to_string());
+
+            // Refused before the drain: nothing of the previous connection
+            // was touched and the candidate was closed.
+            assert!(candidate_disconnected.load(Ordering::SeqCst));
+            assert!(!before.previous_disconnected.load(Ordering::SeqCst));
+            assert_eq!(installed_name(state).await.as_deref(), Some("previous"));
+            assert_eq!(profile(state).as_deref(), Some("A"));
+            assert_eq!(
+                state.connection_generation.load(Ordering::SeqCst),
+                before.generation
+            );
+            assert_eq!(state.gui_target_epoch.load(Ordering::SeqCst), before.epoch);
+            assert!(state.pin_gui_target(Some(before.epoch)).await.is_ok());
+        });
     }
 }

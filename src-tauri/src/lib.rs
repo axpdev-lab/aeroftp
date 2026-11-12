@@ -3542,10 +3542,8 @@ async fn connect_ftp_inner(
         .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
     let _change = provider_state
-        .transfer_owner_write(std::time::Duration::from_secs(30))
+        .begin_legacy_ftp_target_change(std::time::Duration::from_secs(30))
         .await?;
-    provider_state.advance_gui_target();
-    provider_state.clear_legacy_gui_owner();
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
@@ -3603,10 +3601,8 @@ async fn disconnect_ftp(
     provider_state: State<'_, provider_commands::ProviderState>,
 ) -> Result<(), String> {
     let _change = provider_state
-        .transfer_owner_write(std::time::Duration::from_secs(30))
+        .begin_legacy_ftp_target_change(std::time::Duration::from_secs(30))
         .await?;
-    provider_state.advance_gui_target();
-    provider_state.clear_legacy_gui_owner();
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
         .disconnect()
@@ -14183,6 +14179,58 @@ async fn load_sync_index_cmd(
     .unwrap_or_else(|err| Err(format!("load_sync_index_cmd task failed: {err}")))
 }
 
+/// Validate the remote root of a sync pair. It is a provider path such as
+/// `/photos`, or a host path when both sides are local. [`validate_path`]
+/// alone asks for a host-absolute path, which `/photos` is not on Windows.
+/// The root is only hashed into the pair key here, never opened.
+fn validate_sync_remote_root(path: &str) -> Result<(), String> {
+    if validate_path(path).is_ok() {
+        return Ok(());
+    }
+    if !path.starts_with('/') {
+        return Err("Path must be absolute".into());
+    }
+    if path.len() > 4096 {
+        return Err("Path exceeds 4096 character limit".to_string());
+    }
+    if path.contains('\0') {
+        return Err("Path contains null bytes".to_string());
+    }
+    if path.split(['/', '\\']).any(|part| part == "..") {
+        return Err("Path traversal ('..') not allowed".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod sync_remote_root_tests {
+    use super::{validate_path, validate_sync_remote_root};
+
+    #[test]
+    fn a_provider_root_is_accepted_whatever_the_host_calls_absolute() {
+        for root in ["/photos", "/", "/a b/c"] {
+            assert!(validate_sync_remote_root(root).is_ok(), "{root}");
+        }
+        #[cfg(windows)]
+        {
+            // The local validator refuses it on this host: no drive prefix.
+            assert!(validate_path("/photos").is_err());
+            assert!(validate_path(r"C:\sync").is_ok());
+            assert!(validate_sync_remote_root(r"C:\sync").is_ok());
+        }
+        #[cfg(not(windows))]
+        assert!(validate_path("/photos").is_ok());
+    }
+
+    #[test]
+    fn a_relative_or_escaping_remote_root_is_refused() {
+        for root in ["photos", "", "./photos", "/a/../b", "/a/..", "/a\0b"] {
+            assert!(validate_sync_remote_root(root).is_err(), "{root:?}");
+        }
+        assert!(validate_sync_remote_root(&format!("/{}", "a".repeat(4096))).is_err());
+    }
+}
+
 /// The body of `load_sync_index_cmd`, kept synchronous and run on the blocking
 /// pool. With `profile_id`, an index another profile wrote is not returned
 /// (see `sync::history_serves`).
@@ -14192,7 +14240,7 @@ fn load_sync_index_cmd_blocking(
     profile_id: Option<String>,
 ) -> Result<Option<SyncIndex>, String> {
     validate_path(&local_path)?;
-    validate_path(&remote_path)?;
+    validate_sync_remote_root(&remote_path)?;
     sync::load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
 }
 
@@ -14215,7 +14263,7 @@ async fn save_sync_index_cmd(
     tokio::task::spawn_blocking(move || {
         if let Some(tokens) = intent_tokens {
             validate_path(&index.local_path)?;
-            validate_path(&index.remote_path)?;
+            validate_sync_remote_root(&index.remote_path)?;
             sync::save_sync_index_with_intents(&index, &tokens)
         } else {
             save_sync_index_cmd_blocking(index)
@@ -14228,7 +14276,7 @@ async fn save_sync_index_cmd(
 /// The body of `save_sync_index_cmd`, kept synchronous and run on the blocking pool.
 fn save_sync_index_cmd_blocking(index: SyncIndex) -> Result<(), String> {
     validate_path(&index.local_path)?;
-    validate_path(&index.remote_path)?;
+    validate_sync_remote_root(&index.remote_path)?;
     save_sync_index(&index)
 }
 
@@ -14241,7 +14289,7 @@ async fn sync_intent_begin_cmd(
 ) -> Result<Vec<String>, String> {
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
-        validate_path(&remote_path)?;
+        validate_sync_remote_root(&remote_path)?;
         if paths.len() > 100_000 {
             return Err("Too many sync intents".into());
         }
@@ -14260,7 +14308,7 @@ async fn sync_intent_snapshot_cmd(
 ) -> Result<std::collections::HashMap<String, String>, String> {
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
-        validate_path(&remote_path)?;
+        validate_sync_remote_root(&remote_path)?;
         sync::snapshot_sync_intents(&local_path, &remote_path)
     })
     .await
@@ -14269,13 +14317,15 @@ async fn sync_intent_snapshot_cmd(
 
 #[tauri::command]
 async fn sync_run_lease_begin_cmd(
+    window: tauri::Window,
     local_path: String,
     remote_path: String,
 ) -> Result<String, String> {
+    let window = window.label().to_string();
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
-        validate_path(&remote_path)?;
-        sync_run_lease::acquire(&local_path, &remote_path)
+        validate_sync_remote_root(&remote_path)?;
+        sync_run_lease::acquire(&local_path, &remote_path, &window)
     })
     .await
     .map_err(|_| "Sync run lock worker failed")?
@@ -14311,7 +14361,7 @@ fn load_sync_journal_cmd_blocking(
     profile_id: Option<String>,
 ) -> Result<Option<SyncJournal>, String> {
     validate_path(&local_path)?;
-    validate_path(&remote_path)?;
+    validate_sync_remote_root(&remote_path)?;
     sync::load_sync_journal_for_profile(&local_path, &remote_path, profile_id.as_deref())
 }
 
@@ -14325,7 +14375,7 @@ async fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
 /// The body of `save_sync_journal_cmd`, kept synchronous and run on the blocking pool.
 fn save_sync_journal_cmd_blocking(journal: SyncJournal) -> Result<(), String> {
     validate_path(&journal.local_path)?;
-    validate_path(&journal.remote_path)?;
+    validate_sync_remote_root(&journal.remote_path)?;
     save_sync_journal(&journal)
 }
 
@@ -14339,7 +14389,7 @@ async fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Res
 /// The body of `delete_sync_journal_cmd`, kept synchronous and run on the blocking pool.
 fn delete_sync_journal_cmd_blocking(local_path: String, remote_path: String) -> Result<(), String> {
     validate_path(&local_path)?;
-    validate_path(&remote_path)?;
+    validate_sync_remote_root(&remote_path)?;
     delete_sync_journal(&local_path, &remote_path)
 }
 
@@ -16737,10 +16787,8 @@ async fn sync_backup_archive_local_inner(
 /// overwrites or deletes it. `None` when there was nothing to keep. Refuses
 /// before touching anything on a remote that cannot move across folders.
 #[tauri::command]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Tauri injects two State arguments; the six wire arguments preserve the pinned backup IPC contract"
-)]
+// Tauri injects two State arguments; the six wire arguments preserve the pinned backup IPC contract.
+#[allow(clippy::too_many_arguments)]
 async fn sync_backup_archive_remote(
     app_state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -16808,10 +16856,8 @@ mod sync_receipt_file_tests {
 
 /// Verify a persisted archive receipt before a resumed sync relies on it.
 #[tauri::command]
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Tauri injects two State arguments; the seven wire arguments preserve the pinned receipt IPC contract"
-)]
+// Tauri injects two State arguments; the seven wire arguments preserve the pinned receipt IPC contract.
+#[allow(clippy::too_many_arguments)]
 async fn sync_backup_verify_receipt(
     app_state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -22752,6 +22798,28 @@ pub fn run() {
             // Emit event to frontend
             let _ = app.emit("menu-event", id);
         })
+        .on_page_load(|webview, payload| {
+            // A page that starts loading replaces the script that owned the
+            // window's sync runs: a reload, or the new web process that
+            // `webview_recovery` asks for after a crash. Nothing is left to
+            // end those runs, so their folder pairs are unlocked here, once
+            // no GUI operation holds a target pin any more.
+            if payload.event() != tauri::webview::PageLoadEvent::Started {
+                return;
+            }
+            let orphans = sync_run_lease::orphan_window(webview.window().label());
+            if orphans.is_empty() {
+                return;
+            }
+            let app = webview.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                sync_run_lease::release_orphans_once_settled(orphans, || {
+                    app.state::<provider_commands::ProviderState>()
+                        .gui_work_settled()
+                })
+                .await;
+            });
+        })
         .on_window_event(|window, event| {
             // Only handle close events for the main window
             if window.label() != "main" {
@@ -28506,5 +28574,324 @@ mod start_refusal_tests {
             .find("fn open_extract_window_on_main(")
             .expect("queued extract build");
         assert!(production[build..build + 400].contains("if !ui_origin_owned() {"));
+    }
+}
+
+#[cfg(test)]
+mod legacy_ftp_switch_during_batch_tests {
+    use super::*;
+    use crate::provider_commands::isolated_account_fixture::in_isolated_child;
+    use crate::provider_commands::{ProviderState, CONNECTION_CHANGED_MARKER};
+    use std::sync::atomic::AtomicUsize;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    /// The bound the test gives the switch; production gives it 30 s.
+    const SWITCH_WAIT: Duration = Duration::from_millis(300);
+    const BINDING: &str = "owner-v1:hmac-sha256:fixture";
+    /// Every command of one control connection, with the connection's number.
+    type CommandLog = Arc<std::sync::Mutex<Vec<(usize, String)>>>;
+
+    /// An FTP control server that counts its control connections.
+    async fn control_server() -> (String, Arc<AtomicUsize>, CommandLog) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let connections = Arc::new(AtomicUsize::new(0));
+        let log = CommandLog::default();
+        let (accepted, seen) = (connections.clone(), log.clone());
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let number = accepted.fetch_add(1, Ordering::SeqCst);
+                let seen = seen.clone();
+                tokio::spawn(async move {
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    let _ = write.write_all(b"220 ready\r\n").await;
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let verb = line.split_whitespace().next().unwrap_or("").to_string();
+                        let reply = match verb.as_str() {
+                            "USER" => "331 password please\r\n",
+                            "PASS" => "230 logged in\r\n",
+                            "PWD" => "257 \"/\"\r\n",
+                            "QUIT" => "221 bye\r\n",
+                            _ => "200 ok\r\n",
+                        };
+                        seen.lock().unwrap().push((number, verb));
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (addr, connections, log)
+    }
+
+    fn count(log: &CommandLog, connection: usize, verb: &str) -> usize {
+        let log = log.lock().unwrap();
+        log.iter()
+            .filter(|(number, seen)| *number == connection && seen == verb)
+            .count()
+    }
+
+    /// One file of a batch: a NOOP on the app's FTP session, then, when
+    /// `held`, in flight until the batch's cancel token fires.
+    struct OneFile {
+        app: Arc<AppState>,
+        token: CancellationToken,
+        held: bool,
+        in_flight: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl transfer_orchestrator::TransferExecutor for OneFile {
+        async fn execute(
+            &self,
+            _entry: transfer_domain::TransferEntry,
+        ) -> transfer_domain::TransferOutcome {
+            use transfer_domain::{TransferFailure, TransferFailureKind, TransferOutcome};
+            if let Err(error) = self.app.ftp_manager.lock().await.noop().await {
+                return TransferOutcome::Failed(TransferFailure::new(
+                    TransferFailureKind::Unknown,
+                    error.to_string(),
+                    false,
+                ));
+            }
+            self.in_flight.notify_one();
+            if !self.held {
+                return TransferOutcome::Success;
+            }
+            self.token.cancelled().await;
+            TransferOutcome::Failed(TransferFailure::new(
+                TransferFailureKind::Cancelled,
+                "Transfer cancelled by user",
+                false,
+            ))
+        }
+
+        fn is_transfer_cancelled(&self) -> bool {
+            self.token.is_cancelled()
+        }
+    }
+
+    /// What `download_files_batch` and `upload_files_batch` do around their
+    /// files: the pin for the whole command, the flag check, a fresh token
+    /// and `execute_batch` on the app's cancel flag.
+    async fn run_batch(
+        app: Arc<AppState>,
+        provider_state: Arc<ProviderState>,
+        expected_gui_target: u64,
+        held: bool,
+        in_flight: Arc<tokio::sync::Notify>,
+    ) -> Result<transfer_domain::TransferBatchResult, String> {
+        let _target = provider_state
+            .pin_gui_target(Some(expected_gui_target))
+            .await?;
+        if app.cancel_flag.load(Ordering::Relaxed) {
+            return Err("Transfer cancelled by user".to_string());
+        }
+        let token = app.reset_cancel_state().await;
+        let batch = transfer_orchestrator::TransferBatch {
+            id: "dl-files-fixture".to_string(),
+            display_name: "1 file".to_string(),
+            direction: transfer_domain::TransferDirection::Download,
+            config: transfer_domain::TransferBatchConfig::default(),
+            entries: vec![transfer_domain::TransferEntry {
+                id: "dl-files-fixture-0".to_string(),
+                display_name: "a.bin".to_string(),
+                remote_path: "/a.bin".to_string(),
+                local_path: "a.bin".to_string(),
+                size: 1,
+                modified: None,
+            }],
+        };
+        let executor = Arc::new(OneFile {
+            app: app.clone(),
+            token,
+            held,
+            in_flight,
+        });
+        Ok(transfer_orchestrator::execute_batch(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            batch,
+            executor,
+            app.cancel_flag.clone(),
+            None,
+        )
+        .await)
+    }
+
+    /// Whether a transfer holds the gate: a writer cannot take it.
+    async fn pin_is_held(provider_state: &ProviderState) -> bool {
+        provider_state
+            .transfer_owner_write(Duration::from_millis(50))
+            .await
+            .is_err()
+    }
+
+    async fn pin_error(provider_state: &ProviderState, expected: u64) -> Option<String> {
+        provider_state.pin_gui_target(Some(expected)).await.err()
+    }
+
+    /// Whether the legacy owner installed at connect still answers for
+    /// `epoch`.
+    async fn owner_is_installed(provider_state: &ProviderState, epoch: u64) -> bool {
+        provider_state
+            .pin_gui_index_owner(Some(epoch), Some(BINDING), false)
+            .await
+            .is_ok()
+    }
+
+    #[test]
+    fn switch_refused_during_an_ftp_batch_keeps_the_session_and_stop_releases_the_pin() {
+        if !in_isolated_child(
+            "legacy_ftp_switch_during_batch_tests::\
+             switch_refused_during_an_ftp_batch_keeps_the_session_and_stop_releases_the_pin",
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(sequence());
+    }
+
+    async fn sequence() {
+        let (addr, connections, log) = control_server().await;
+        let app = Arc::new(AppState::new());
+        let provider_state = Arc::new(ProviderState::new());
+
+        // Connect in the order of `connect_ftp_inner`.
+        let owner =
+            crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)
+                .unwrap();
+        {
+            let _change = provider_state
+                .begin_legacy_ftp_target_change(SWITCH_WAIT)
+                .await
+                .unwrap();
+            let mut ftp_manager = app.ftp_manager.lock().await;
+            ftp_manager.connect(&addr).await.unwrap();
+            ftp_manager.login("u", "p").await.unwrap();
+            crate::credential_store::off_async_worker(|| owner.validate()).unwrap();
+            provider_state
+                .set_legacy_gui_owner(owner, Some(BINDING.to_string()))
+                .unwrap();
+        }
+        // A new state starts at 0 and the connect advanced it once.
+        let epoch = 1;
+        assert_eq!(pin_error(&provider_state, epoch).await, None);
+        assert!(owner_is_installed(&provider_state, epoch).await);
+
+        // 1. A batch with one file in flight holds the pin.
+        let in_flight = Arc::new(tokio::sync::Notify::new());
+        let batch = tokio::spawn(run_batch(
+            app.clone(),
+            provider_state.clone(),
+            epoch,
+            true,
+            in_flight.clone(),
+        ));
+        in_flight.notified().await;
+        assert!(pin_is_held(&provider_state).await);
+        assert_eq!(count(&log, 0, "NOOP"), 1);
+
+        // 2. The switch is refused when its own bound ends.
+        let asked = Instant::now();
+        let refused = provider_state
+            .begin_legacy_ftp_target_change(SWITCH_WAIT)
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        let waited = asked.elapsed();
+        assert!(
+            refused.starts_with("Transfer still in progress"),
+            "{refused}"
+        );
+        assert!(
+            waited >= SWITCH_WAIT && waited < SWITCH_WAIT + Duration::from_secs(2),
+            "{waited:?}"
+        );
+
+        // 3. Nothing changed: epoch, owner, session, socket, running batch.
+        assert_eq!(pin_error(&provider_state, epoch).await, None);
+        assert!(owner_is_installed(&provider_state, epoch).await);
+        {
+            let mut ftp_manager = app.ftp_manager.lock().await;
+            assert!(ftp_manager.is_connected());
+            ftp_manager.noop().await.unwrap();
+        }
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
+        assert_eq!(count(&log, 0, "NOOP"), 2);
+        assert_eq!(count(&log, 0, "QUIT"), 0);
+        assert!(!batch.is_finished());
+        assert!(pin_is_held(&provider_state).await);
+
+        // 4. Stop, as `cancel_transfer` does it.
+        app.request_cancel().await;
+        provider_state.request_cancel().await;
+        let stopped = batch.await.unwrap().unwrap();
+        assert!(stopped.cancelled);
+        assert_eq!(stopped.completed, 0);
+        assert!(!pin_is_held(&provider_state).await);
+        // Until the flag is cleared a batch starts no file.
+        let unstarted = run_batch(
+            app.clone(),
+            provider_state.clone(),
+            epoch,
+            false,
+            in_flight.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(unstarted, "Transfer cancelled by user");
+        assert_eq!(count(&log, 0, "NOOP"), 2);
+
+        // 5. Retry, as `reset_cancel_flag` clears the flag: same epoch, same
+        // session.
+        {
+            let _target = provider_state.pin_gui_target(Some(epoch)).await.unwrap();
+            app.reset_cancel_state().await;
+            provider_state.reset_cancel_state().await;
+        }
+        let retried = run_batch(
+            app.clone(),
+            provider_state.clone(),
+            epoch,
+            false,
+            in_flight.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(!retried.cancelled);
+        assert_eq!((retried.completed, retried.failed), (1, 0));
+        assert_eq!(count(&log, 0, "NOOP"), 3);
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
+        assert!(owner_is_installed(&provider_state, epoch).await);
+
+        // 6. With nothing in flight the same switch goes through, here as
+        // `disconnect_ftp` continues it.
+        {
+            let _change = provider_state
+                .begin_legacy_ftp_target_change(SWITCH_WAIT)
+                .await
+                .unwrap();
+            let mut ftp_manager = app.ftp_manager.lock().await;
+            ftp_manager.disconnect().await.unwrap();
+            assert!(!ftp_manager.is_connected());
+        }
+        let stale = pin_error(&provider_state, epoch).await.unwrap();
+        assert!(stale.starts_with(CONNECTION_CHANGED_MARKER), "{stale}");
+        assert_eq!(pin_error(&provider_state, epoch + 1).await, None);
+        assert!(!owner_is_installed(&provider_state, epoch + 1).await);
+        // A batch planned on the old target starts no file.
+        let late = run_batch(app.clone(), provider_state.clone(), epoch, false, in_flight)
+            .await
+            .unwrap_err();
+        assert!(late.starts_with(CONNECTION_CHANGED_MARKER), "{late}");
+        assert_eq!(count(&log, 0, "NOOP"), 3);
+        assert_eq!(count(&log, 0, "QUIT"), 1);
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
     }
 }
