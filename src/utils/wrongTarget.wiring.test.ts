@@ -118,7 +118,7 @@ describe('a queued transfer', () => {
         const run = vi.fn();
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: vault as Overlay };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, stopCountRef: { current: 0 },
             isConnected: true,
             remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session],
@@ -157,7 +157,7 @@ describe('a queued transfer', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
         };
@@ -178,7 +178,7 @@ describe('a queued transfer', () => {
                 + between(APP, '  const abortSwitchAfterCancel = async (', '\n  // #401') : '');
         const session = { id: 'A', connectionParams: { ...params }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
@@ -833,7 +833,7 @@ describe('a direct remote action', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const failQueuedRestIfRetargeted =');
         const session = { id: 'A', connectionParams: { server: 'a.example', protocol: 'sftp', username: 'u', password: 'k' }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,

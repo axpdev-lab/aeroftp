@@ -427,6 +427,64 @@ it('refreshes local changes after a remote listing failure while ownership remai
     expect(context.syncRefreshAbortRef.current).toBe(null);
 });
 
+it.each(['result', 'error'] as const)('keeps a GVfs phone connected when an aborted refresh later returns a %s', async outcome => {
+    vi.useFakeTimers();
+    try {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const start = app.indexOf('  const loadRemoteFiles = useLatestCallback(');
+        const end = app.indexOf('\n  // Transfer events (backend progress updates)', start);
+        const { code } = await transformWithOxc(app.slice(start, end), 'late-mtp-refresh.ts');
+        let resolve!: (value: unknown) => void; let reject!: (reason: unknown) => void;
+        const pending = new Promise((ok, fail) => { resolve = ok; reject = fail; });
+        const context = {
+            useLatestCallback: (fn: unknown) => fn, remoteRefreshStartedAtRef: { current: 0 }, remoteNavCounter: { current: 1 },
+            liveConnectionParams: { protocol: 'mtp' }, usesProviderApi: () => true, aeroVaultOverlaySession: null,
+            logger: { debug: vi.fn() }, invoke: vi.fn(() => pending), humanLog: { logRaw: vi.fn() },
+            activityLog: { log: vi.fn() }, applyRemoteFileList: vi.fn(), QueuedTargetChangedError,
+            isListingCancelled: () => false, mtpGvfsMountPathRef: { current: '/run/user/1000/gvfs/mtp:host=phone' }, isGvfsMtpPath: () => true,
+            setActivePortableDeviceId: vi.fn(), setIsConnected: vi.fn(), setRemoteFiles: vi.fn(), setCurrentRemotePath: vi.fn(),
+            setCurrentRemoteDisplayPath: vi.fn(), setSessions: vi.fn(), setActiveSessionId: vi.fn(), setShowRemotePanel: vi.fn(),
+            setShowConnectionScreen: vi.fn(), setActivePanel: vi.fn(), notify: { error: vi.fn() }, t: (key: string) => key,
+            setRemoteListLoading: vi.fn(), setRemoteListReason: vi.fn(),
+        };
+        const load = new Function(...Object.keys(context), `${code};return loadRemoteFiles;`)(...Object.values(context));
+        const controller = new AbortController(); let listing!: Promise<unknown>;
+        const refresh = runCompletionRefresh(signal => {
+            listing = load(undefined, true, null, { epoch: 1, check: () => signal.throwIfAborted() });
+            return listing.then(() => undefined);
+        }, controller);
+        await vi.advanceTimersByTimeAsync(2001);
+        await refresh;
+        expect(controller.signal.aborted).toBe(true);
+        if (outcome === 'result') resolve({ current_path: '/', files: [] }); else reject(new Error('Slow phone IO'));
+        await expect(listing).resolves.toBe(null);
+        expect(context.invoke).toHaveBeenCalledExactlyOnceWith('provider_list_files', { path: null, expectedGuiTarget: 1 });
+        expect(context.mtpGvfsMountPathRef.current).toContain('mtp:host=phone');
+        expect(context.setSessions).not.toHaveBeenCalled();
+        expect(context.setIsConnected).not.toHaveBeenCalled();
+        expect(context.applyRemoteFileList).not.toHaveBeenCalled();
+        expect(context.notify.error).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+});
+
+it.each(['settled', 'stopped', 'retargeted'] as const)('gates a queued executor on native cancellation and rechecks %s', async outcome => {
+    const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('  const boundToQueuedServer =');
+    const end = app.indexOf('\n  /** Whether two connections', start);
+    const { code } = await transformWithOxc(app.slice(start, end), 'queue-after-cancellation.ts');
+    let settle!: () => void; const pending = new Promise<void>(resolve => { settle = resolve; }); let problem: string | null = null;
+    const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: pending as Promise<void> | null },
+        stopCountRef: { current: 0 }, queuedTargetProblem: () => problem, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key };
+    const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
+    const executor = vi.fn(); const retry = bind({}, 'retry', executor)();
+    expect(executor).not.toHaveBeenCalled();
+    if (outcome === 'stopped') context.stopCountRef.current++;
+    if (outcome === 'retargeted') problem = 'target changed';
+    context.syncCancelPendingRef.current = null; settle(); await retry;
+    expect(executor).toHaveBeenCalledTimes(outcome === 'settled' ? 1 : 0);
+    if (outcome === 'retargeted') expect(context.transferQueue.failTransfer).toHaveBeenCalledWith('retry', 'target changed');
+});
+
 it.each(['before', 'during'] as const)('preserves local navigation %s the remote completion refresh', async when => {
     const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
     const start = app.indexOf('          if (!report.cancelled && (report.uploaded > 0');
@@ -542,6 +600,7 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
         let release!: (files: unknown[]) => void; const stalled = new Promise<unknown[]>(resolve => { release = resolve; });
         let finishCancel!: () => void; const nativeCancellation = new Promise<void>(resolve => { finishCancel = resolve; });
         let queueActive = false;
+        const retryExecution = vi.fn(() => { queueActive = true; });
         const context = {
             runFiles: [], runDirs: { local: [], remote: [] }, runConfig: { localRoot: '/A' }, opts: {},
             batchCancelledRef: { current: false }, deltaStats: new Map(), invoke: vi.fn(() => scenario === 'stop-retry' ? nativeCancellation : Promise.resolve()),
@@ -549,7 +608,7 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
                 items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(),
                 stopPending: vi.fn(), stopAll: vi.fn(() => { queueActive = false; }), hasActiveTransfersNow: () => queueActive,
             }, epoch: 1, ownerBinding: 'owner',
-            retryCallbacksRef: { current: new Map([['retry', () => { queueActive = true; }]]) }, resumeRestoredTransfers: vi.fn(),
+            retryCallbacksRef: { current: new Map([['retry', retryExecution]]) }, resumeRestoredTransfers: vi.fn(),
             runRemoteSync: vi.fn(async () => ({ cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 })),
             setRemoteSyncResult: vi.fn(), checkTarget: vi.fn(), loadRemoteFiles: vi.fn(async () => true),
             loadLocalFiles: vi.fn(() => stalled), loadLocalPendingRef: { current: scenario === 'timeout-read' ? null : 1 as number | null },
@@ -571,12 +630,12 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
             const cancelCode = (await transformWithOxc(app.slice(cancelStart, cancelEnd), 'stop-sync-refresh.ts')).code;
             const cancel = new Function(...Object.keys(context), `${cancelCode};return cancelTransfer;`)(...Object.values(context));
             if (scenario === 'stop-retry') {
-                const retryStart = app.indexOf('onRetryItem={(id: string) => {');
+                const retryStart = app.indexOf('onRetryItem={async (id: string) => {');
                 const retryEnd = app.indexOf('\n          onStartItem=', retryStart);
                 const retrySource = app.slice(retryStart, retryEnd).trim().slice('onRetryItem={'.length, -1);
                 const retryCode = (await transformWithOxc(`const retry = ${retrySource};`, 'retry-during-sync-refresh.ts')).code;
                 const retry = new Function(...Object.keys(context), `${retryCode};return retry;`)(...Object.values(context));
-                retry('retry');
+                await retry('retry');
                 expect(queueActive).toBe(true);
                 const stopping = cancel();
                 await vi.advanceTimersByTimeAsync(0);
@@ -585,8 +644,11 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
                 expect(context.remoteSyncRunningRef.current).toBe(true);
                 const secondStopping = cancel();
                 expect(context.invoke).toHaveBeenCalledExactlyOnceWith('cancel_transfer');
+                const secondRetry = retry('retry');
+                expect(retryExecution).toHaveBeenCalledTimes(1);
                 finishCancel();
-                await Promise.all([stopping, secondStopping]);
+                await Promise.all([stopping, secondStopping, secondRetry]);
+                expect(retryExecution).toHaveBeenCalledTimes(2);
             } else {
                 await cancel();
                 expect(context.invoke).not.toHaveBeenCalled();

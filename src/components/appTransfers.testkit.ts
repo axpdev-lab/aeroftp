@@ -241,7 +241,7 @@ export function fixture(options: Options = {}) {
   const requestGitHubBatchCommitMessage = vi.fn(async (..._args: unknown[]) => 'Add files');
   const context = {
     // Outside a render a latest-value callback is the function itself.
-    useLatestCallback: <T,>(fn: T) => fn,
+    useLatestCallback: <T,>(fn: T) => fn, syncCancelPendingRef: { current: null },
     isLiveOnProfile: () => true,
     invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
     resetOverwriteSettings: vi.fn(), checkFolderOverwrite,

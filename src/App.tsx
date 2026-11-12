@@ -6989,6 +6989,12 @@ const App: React.FC = () => {
       applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
       return response;
     } catch (error) {
+      // A timed-out optional refresh can finish later with either a result or
+      // an IO error. Its owner must still be current before error handling is
+      // allowed to tear down a device session or alter the visible panel.
+      if (ownership) {
+        try { ownership.check(); } catch { return null; }
+      }
       if (ownership && (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED'))) return null;
       // A superseded listing must not surface its (now irrelevant) error toast.
       if (navId !== remoteNavCounter.current) return null;
@@ -11265,6 +11271,9 @@ const App: React.FC = () => {
   // The retry of an item restored from the journal, which the user starts long
   // after the restore: it runs with the queue and the transfers of now.
   const retryRestoredEntry = useLatestCallback(async (id: string, entry: TransferQueueJournalEntryDto) => {
+    const stops = stopCountRef.current;
+    while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+    if (stopCountRef.current !== stops) return;
     const direction = entry.direction === 'upload' ? 'upload' : 'download';
     transferQueue.startTransfer(id);
     try {
@@ -11441,6 +11450,9 @@ const App: React.FC = () => {
    *  was locked an encrypted upload went out in plaintext. It now fails with
    *  the reason instead, and runs again once that target is live. */
   const boundToQueuedServer = useLatestCallback((queuedFor: QueuedTarget, id: string, run: () => unknown): (() => Promise<void>) => async () => {
+    const stops = stopCountRef.current;
+    while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+    if (stopCountRef.current !== stops) return;
     const problem = queuedTargetProblem(queuedFor);
     if (problem) {
       transferQueue.failTransfer(id, t(problem));
@@ -12029,10 +12041,12 @@ const App: React.FC = () => {
 
   // Retry all failed items in queue
   const retryAllFailedItems = async () => {
+    const stops = stopCountRef.current;
+    while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+    if (stopCountRef.current !== stops) return;
     const failedIds = transferQueue.retryAllFailed();
     // A Stop during these retries ends them. The flag of a batch stopped
     // before stays set, and would end them before the first.
-    const stops = stopCountRef.current;
     for (const id of failedIds) {
       if (stopCountRef.current !== stops) break;
       const cb = retryCallbacksRef.current.get(id);
@@ -18757,7 +18771,10 @@ const App: React.FC = () => {
           onStopAll={cancelTransfer}
           forceStopMode={isForceStopMode}
           onRemoveItem={transferQueue.removeItem}
-          onRetryItem={(id: string) => {
+          onRetryItem={async (id: string) => {
+            const stops = stopCountRef.current;
+            while (syncCancelPendingRef.current) await syncCancelPendingRef.current;
+            if (stopCountRef.current !== stops) return;
             const item = transferQueue.items.find((i) => i.id === id);
             // TQ-7c: restored items go through smart resume (auto-connect).
             if (item?.restored && item.status === 'pending') {
