@@ -11919,7 +11919,7 @@ const App: React.FC = () => {
       cancelLevelRef.current = 2;
       dispatchTransferToast(null);
       if (completionRefresh) transferQueue.stopAll();
-      const cancellation = invoke<void>('cancel_transfer').catch(() => undefined);
+      const cancellation = syncCancelPendingRef.current ?? invoke<void>('cancel_transfer').catch(() => undefined);
       syncCancelPendingRef.current = cancellation;
       try { await cancellation; } finally {
         if (syncCancelPendingRef.current === cancellation) syncCancelPendingRef.current = null;

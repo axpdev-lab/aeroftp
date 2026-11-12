@@ -583,8 +583,10 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
                 expect(context.transferQueue.stopAll).toHaveBeenCalledOnce();
                 expect(context.invoke).toHaveBeenCalledExactlyOnceWith('cancel_transfer');
                 expect(context.remoteSyncRunningRef.current).toBe(true);
+                const secondStopping = cancel();
+                expect(context.invoke).toHaveBeenCalledExactlyOnceWith('cancel_transfer');
                 finishCancel();
-                await stopping;
+                await Promise.all([stopping, secondStopping]);
             } else {
                 await cancel();
                 expect(context.invoke).not.toHaveBeenCalled();
