@@ -2219,7 +2219,7 @@ describe('root pair identity and resumed delete history', () => {
             files: { 'old-local': { size: 1024, modified: null, is_dir: false } }, remote_spellings: { 'old-local': 'old-remote' } };
         const remoteFiles = new Set(['old-remote']); let savedTokens: unknown;
         const { invoke, calls } = makeInvoke({
-            delete_remote_file: () => { remoteFiles.delete('old-remote'); },
+            delete_remote_file: args => { if (args?.path === '/srv/data/old-remote') remoteFiles.delete('old-remote'); },
             upload_file: (_args, attempt) => { if (attempt === 0) throw new Error('temporary upload failure'); },
             classify_transfer_error: args => ({ kind: 'unknown', message: String(args?.rawError), retryable: false, file_path: 'later' }),
             save_sync_journal_cmd: args => { journal = structuredClone(args!.journal as SyncJournal); },
@@ -2243,6 +2243,6 @@ describe('root pair identity and resumed delete history', () => {
         expect(index.files.later).toBeDefined();
         expect(savedTokens).toContain(deleted.intent_token);
         expect(remoteFiles.has('old-remote')).toBe(true);
-        expect(calls.filter(call => call.cmd === 'delete_remote_file')).toHaveLength(1);
+        expect(calls.filter(call => call.cmd === 'delete_remote_file' && call.args?.path === '/srv/data/old-remote')).toHaveLength(1);
     });
 });

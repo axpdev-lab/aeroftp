@@ -535,7 +535,7 @@ it.each(['stop-pending', 'timeout-pending', 'timeout-read'] as const)('releases 
             window: { removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'transfer', onTransferEvent: vi.fn(),
             notify: { error: vi.fn() }, t: (key: string) => key,
             remoteSyncRunningRef: { current: true }, setSyncCancelling: vi.fn(), stopCountRef: { current: 0 },
-            cancelLevelRef: { current: 0 }, isBatchPaused: false, setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(), dispatchTransferToast: vi.fn(),
+            cancelLevelRef: { current: 0 }, batchResumeResolverRef: { current: null }, isBatchPaused: false, setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(), dispatchTransferToast: vi.fn(),
         };
         const run = new Function(...Object.keys(context), workerCode)(...Object.values(context)) as Promise<void>;
         await vi.advanceTimersByTimeAsync(0);
