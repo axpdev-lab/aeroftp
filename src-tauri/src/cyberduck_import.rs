@@ -158,8 +158,30 @@ fn map_duck(xml: &str) -> DuckOutcome {
 
         // S3: provider inferred from endpoint host, falling back to region.
         "s3" => {
+            let mut opts: Vec<(&str, Option<String>)> = vec![("region", region.clone())];
+            // Written by Cyberduck (and by our exporter) into the bookmark's
+            // `Custom` dictionary when the server answers only path-style.
+            let path_style = field("s3.bucket.virtualhost.disable")
+                .map(|v| v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            // A Cyberduck S3 Path is bucket[/prefix]; expose the bucket too.
+            // If the bookmark host already starts with `<bucket>.`, strip it
+            // so virtual-host requests do not duplicate the bucket (e.g. photos.photos.<host>).
+            let mut endpoint_host = hostname.clone();
+            if let Some(p) = path.as_deref() {
+                let bucket = p.trim_start_matches('/').split('/').next().unwrap_or("");
+                if !bucket.is_empty() {
+                    opts.push(("bucket", Some(bucket.to_string())));
+                    let prefix = format!("{bucket}.");
+                    if endpoint_host.len() > prefix.len()
+                        && endpoint_host[..prefix.len()].eq_ignore_ascii_case(&prefix)
+                    {
+                        endpoint_host = endpoint_host[prefix.len()..].to_string();
+                    }
+                }
+            }
             let provider_id = {
-                let by_host = crate::bridge_shared::map_s3_provider_from_endpoint(&hostname);
+                let by_host = crate::bridge_shared::map_s3_provider_from_endpoint(&endpoint_host);
                 if by_host != "custom-s3" {
                     by_host
                 } else if let Some(r) = region.as_deref().filter(|s| !s.is_empty()) {
@@ -168,19 +190,6 @@ fn map_duck(xml: &str) -> DuckOutcome {
                     by_host
                 }
             };
-            let mut opts: Vec<(&str, Option<String>)> = vec![("region", region.clone())];
-            // Written by Cyberduck (and by our exporter) into the bookmark's
-            // `Custom` dictionary when the server answers only path-style.
-            let path_style = field("s3.bucket.virtualhost.disable")
-                .map(|v| v.eq_ignore_ascii_case("true"))
-                .unwrap_or(false);
-            // A Cyberduck S3 Path is bucket[/prefix]; expose the bucket too.
-            if let Some(p) = path.as_deref() {
-                let bucket = p.trim_start_matches('/').split('/').next().unwrap_or("");
-                if !bucket.is_empty() {
-                    opts.push(("bucket", Some(bucket.to_string())));
-                }
-            }
             let mut options = crate::bridge_shared::json_map(&opts);
             if path_style {
                 options.insert("pathStyle".into(), serde_json::Value::Bool(true));
@@ -188,7 +197,7 @@ fn map_duck(xml: &str) -> DuckOutcome {
             DuckOutcome::Profile(MappedProfile {
                 protocol: "s3".into(),
                 provider_id: Some(provider_id.to_string()),
-                host: hostname,
+                host: endpoint_host,
                 port: port_field.unwrap_or(443),
                 username,
                 options: if options.is_empty() {
@@ -840,6 +849,42 @@ mod tests {
             Some("s3.us-south.cloud-object-storage.appdomain.cloud")
         );
         assert!(!extra.contains_key("endpoint"));
+    }
+
+    #[test]
+    fn test_s3_bookmark_strips_duplicate_bucket_from_virtual_host_endpoint() {
+        // A Cyberduck bookmark whose hostname already carries the bucket
+        // (e.g. `my-bucket.s3.wasabisys.com` with Path `/my-bucket/subfolder`)
+        // must strip the redundant leading bucket prefix so virtual-host
+        // requests target `my-bucket.s3.wasabisys.com` instead of duplicating
+        // the bucket (`my-bucket.my-bucket.s3.wasabisys.com`).
+        let xml = S3_DUCK
+            .replace("s3.wasabisys.com", "my-bucket.s3.wasabisys.com")
+            .replace("/my-bucket/backups", "/my-bucket/subfolder");
+        let mut servers = Vec::new();
+        let mut skipped = Vec::new();
+        ingest_duck(&xml, &mut servers, &mut skipped);
+        assert_eq!(servers.len(), 1);
+        let s = &servers[0];
+        assert_eq!(s.protocol.as_deref(), Some("s3"));
+        assert_eq!(s.host, "s3.wasabisys.com");
+        assert_eq!(s.provider_id.as_deref(), Some("wasabi"));
+        let opts = s.options.as_ref().expect("S3 options").as_object().unwrap();
+        assert_eq!(
+            opts.get("bucket").and_then(|v| v.as_str()),
+            Some("my-bucket")
+        );
+        assert_eq!(s.initial_path.as_deref(), Some("/my-bucket/subfolder"));
+
+        // Case-insensitive hostname matching check.
+        let xml_case = S3_DUCK
+            .replace("s3.wasabisys.com", "MY-BUCKET.s3.wasabisys.com")
+            .replace("/my-bucket/backups", "/my-bucket/subfolder");
+        let mut servers_case = Vec::new();
+        let mut skipped_case = Vec::new();
+        ingest_duck(&xml_case, &mut servers_case, &mut skipped_case);
+        assert_eq!(servers_case.len(), 1);
+        assert_eq!(servers_case[0].host, "s3.wasabisys.com");
     }
 
     #[test]
