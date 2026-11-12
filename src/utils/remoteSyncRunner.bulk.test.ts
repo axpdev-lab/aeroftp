@@ -339,3 +339,58 @@ describe('remoteSyncRunner on a native bulk', () => {
         }
     });
 });
+
+it.each(['upload', 'download'] as const)('persists every acknowledged bulk %s before a tab switch stops follow-up work', async action => {
+    let current = true;
+    const first = harness({ provider_sync_transfer_bulk: args => {
+        current = false;
+        return (args!.items as BulkItem[]).map(() => ({ status: 'completed' }));
+    } });
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED: tab switched'); };
+    const plan = files(3, action);
+    const report = await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, first.deps);
+    expect(report.cancelled).toBe(true);
+    const journal = structuredClone(first.journal());
+    expect(journal.entries.map(entry => entry.status)).toEqual(['transferred', 'transferred', 'transferred']);
+    expect(journal.entries.map(entry => entry.bytes_transferred)).toEqual([1024, 1024, 1024]);
+    const resumed = harness();
+    const result = await runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...resumed.deps, resumeJournal: journal });
+    expect(result.errors).toEqual([]);
+    expect(resumed.of('provider_sync_transfer_bulk')).toHaveLength(0);
+    expect(resumed.of('provider_upload_file')).toHaveLength(0);
+    expect(resumed.of('provider_download_file')).toHaveLength(0);
+    expect(resumed.journal().entries.every(entry => entry.status === 'completed')).toBe(true);
+});
+
+it('resumes acknowledged mixed-result downloads with EC and verification, without downloading them again', async () => {
+    const settings = config({ verifyPolicy: 'size_only', errorCorrection: { enabled: true, pct: 10 } });
+    const first = harness({ provider_sync_transfer_bulk: () => [
+        { status: 'completed' }, { status: 'target_changed' }, { status: 'not_attempted' },
+    ] });
+    const report = await runRemoteSync(files(3, 'download'), { remote: [], local: [] }, settings, {}, first.deps);
+    expect(report.cancelled).toBe(true);
+    const journal = structuredClone(first.journal());
+    expect(journal.entries[0].status).toBe('transferred');
+    expect(first.of('verify_local_transfer')).toHaveLength(0);
+    expect(first.of('sync_ec_verify_repair')).toHaveLength(0);
+    const resumed = harness({
+        sync_ec_verify_repair: () => ({ status: 'verified' }),
+        verify_local_transfer: args => ({ passed: !String(args!.localPath).endsWith('f0.txt'), message: 'bad size' }),
+    });
+    const result = await runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, settings, {}, { ...resumed.deps, resumeJournal: journal });
+    expect(resumed.sent().flat().some(path => path.endsWith('f0.txt'))).toBe(false);
+    expect(resumed.of('provider_download_file').some(call => String(call.args?.remotePath).endsWith('f0.txt'))).toBe(false);
+    expect(resumed.of('sync_ec_verify_repair').some(call => String(call.args?.relativePath).endsWith('f0.txt'))).toBe(true);
+    expect(resumed.of('verify_local_transfer')).toHaveLength(3);
+    expect(result.verifyFailed).toBe(1);
+    expect(resumed.journal().entries[0].status).toBe('verify_failed');
+    expect(resumed.journal().completed).toBe(false);
+});
+
+it('keeps an acknowledged download unfinished when its requested local verification rejects', async () => {
+    const h = harness({ verify_local_transfer: () => { throw new Error('could not inspect destination'); } });
+    const report = await runRemoteSync(files(2, 'download'), { remote: [], local: [] }, config({ verifyPolicy: 'size_only' }), {}, h.deps);
+    expect(report.verifyFailed).toBe(2);
+    expect(h.journal().completed).toBe(false);
+    expect(h.journal().entries.every(entry => entry.status === 'verify_failed')).toBe(true);
+});

@@ -1469,6 +1469,7 @@ export interface VerifyResult {
 export type JournalEntryStatus =
   | "pending"
   | "in_progress"
+  | "transferred"
   | "completed"
   | "failed"
   | "skipped"

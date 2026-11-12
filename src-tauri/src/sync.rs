@@ -5030,6 +5030,8 @@ pub enum JournalEntryStatus {
     Pending,
     /// Currently transferring
     InProgress,
+    /// Payload acknowledged; verification or sidecar work is still pending.
+    Transferred,
     /// Completed successfully
     Completed,
     /// Failed after all retries
@@ -5173,6 +5175,7 @@ impl SyncJournal {
         self.entries.iter().any(|e| {
             e.status == JournalEntryStatus::Pending
                 || e.status == JournalEntryStatus::InProgress
+                || e.status == JournalEntryStatus::Transferred
                 || (e.status == JournalEntryStatus::Failed
                     && e.last_error
                         .as_ref()
@@ -6923,6 +6926,14 @@ mod narrow_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn journal_transferred_phase_round_trips() {
+        use super::JournalEntryStatus;
+        let phase: JournalEntryStatus = serde_json::from_str("\"transferred\"").unwrap();
+        assert_eq!(phase, JournalEntryStatus::Transferred);
+        assert_eq!(serde_json::to_string(&phase).unwrap(), "\"transferred\"");
+    }
+
     /// #1506 row 164: an OS error is classified by its code, in any language.
     /// The text before "(os error N)" is the operating system's, translated
     /// (Windows always, glibc once GTK has set the locale), and the English

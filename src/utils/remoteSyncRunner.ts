@@ -589,7 +589,11 @@ const runSync = async (
             expectedSize,
             expectedMtime,
             policy: config.verifyPolicy,
-        }).catch(() => null);
+        }).catch((error) => ({
+            path: localFilePath, passed: false, policy: config.verifyPolicy,
+            expected_size: expectedSize, actual_size: null, size_match: false,
+            mtime_match: null, hash_match: null, message: String(error),
+        }));
     };
 
     // ── Versioned backup: move the destination copy aside first ────────────
@@ -938,7 +942,7 @@ const runSync = async (
             const f = files[j];
             if (f.action !== action || !bulkEligible(f) || bulkPrepared.has(f.relativePath)) break;
             const idx = journalEntryMap.get(f.relativePath);
-            if (deps.resumeJournal && idx !== undefined && journal.entries[idx].status === 'completed') break;
+            if (deps.resumeJournal && idx !== undefined && ['completed', 'transferred'].includes(journal.entries[idx].status)) break;
             if (config.transferBudget > 0 && bytes >= config.transferBudget) break;
             bytes += f.size;
             group.push(f);
@@ -1004,36 +1008,30 @@ const runSync = async (
             if (action === 'upload' && results?.[k]?.status === 'completed') uploadsEnded.set(f.relativePath, bulkEnded);
             bulkPrepared.set(f.relativePath, results?.[k] ?? { status: 'not_attempted' });
         });
-        if (results?.some(result => result.status === 'target_changed')) {
-            targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
-            // Preserve acknowledged writes even though the run stops before it
-            // consumes per-file outcomes. Unattempted entries stay resumable.
-            send.forEach((file, k) => {
-                const result = results?.[k];
-                const index = journalEntryMap.get(file.relativePath);
-                if (result?.status !== 'completed') {
-                    if (index !== undefined) {
-                        const entry = journal.entries[index];
-                        entry.status = result?.status === 'not_attempted' ? 'pending' : 'failed';
-                        entry.last_error = result?.status === 'target_changed' || result?.status === 'failed'
-                            ? { kind: 'unknown', message: result.status === 'target_changed' ? String(targetError) : result.message,
-                                retryable: false, file_path: file.relativePath } : null;
-                    }
-                    return;
-                }
-                if (index !== undefined) {
-                    const entry = journal.entries[index];
-                    entry.status = 'completed';
-                    entry.attempts = 1;
-                    entry.bytes_transferred = file.size;
-                    entry.verified = null;
-                }
-                if (action === 'upload') uploaded++; else downloaded++;
-                totalBytes += file.size;
-                completed++;
-                setStatus(file.relativePath, 'success');
-            });
-        }
+        // Native acknowledgements are facts even when the UI changed while
+        // this command held its backend pin. Persist every completed transfer
+        // BEFORE checking the live target or performing any follow-up work.
+        const ownerChanged = results?.some(result => result.status === 'target_changed');
+        if (ownerChanged) targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
+        send.forEach((file, k) => {
+            const result = results?.[k];
+            const index = journalEntryMap.get(file.relativePath);
+            if (index === undefined) return;
+            const entry = journal.entries[index];
+            if (result?.status === 'completed') {
+                entry.status = 'transferred';
+                entry.attempts = 1;
+                entry.bytes_transferred = file.size;
+                entry.verified = null;
+                recordLanded(file, entry);
+            } else if (ownerChanged) {
+                entry.status = result?.status === 'not_attempted' ? 'pending' : 'failed';
+                entry.last_error = result?.status === 'target_changed' || result?.status === 'failed'
+                    ? { kind: 'unknown', message: result.status === 'target_changed' ? String(targetError) : result.message,
+                        retryable: false, file_path: file.relativePath } : null;
+            }
+        });
+        await saveJournal();
     };
     /** The outcome of a file the bulk sent or failed, as the single-file path reports it. */
     const bulkOutcome = async (result: SyncBulkResult, filePath: string): Promise<TransferOutcome> => {
@@ -1194,12 +1192,15 @@ const runSync = async (
 
         // A file the bulk already sent (or failed) is finished below as it
         // is, whatever happened since: it went before the budget or a Stop.
-        if (bulkEligible(item) && !bulkPrepared.has(item.relativePath)
+        const transferAcknowledged = journalEntry?.status === 'transferred';
+        if (transferAcknowledged && journalEntry?.uploaded_at) uploadsEnded.set(item.relativePath, journalEntry.uploaded_at);
+        if (!transferAcknowledged && bulkEligible(item) && !bulkPrepared.has(item.relativePath)
             && !(config.transferBudget > 0 && totalBytes >= config.transferBudget) && !isCancelled()) {
             try { await runBulkGroup(i); } catch (error) { if (!targetError) throw error; }
+            if (!targetError) { try { assertTarget(); } catch { /* acknowledgements are already durable */ } }
             if (targetError) { i--; continue; }
         }
-        const fromBulk = bulkPrepared.get(item.relativePath);
+        const fromBulk: BulkPrepared | undefined = transferAcknowledged ? { status: 'completed' } : bulkPrepared.get(item.relativePath);
         const sentByBulk = fromBulk !== undefined && fromBulk.status !== 'not_attempted';
         const preparedByBulk = bulkPreparationRan.has(item.relativePath);
 
@@ -1220,7 +1221,7 @@ const runSync = async (
         }
 
         setStatus(item.relativePath, 'syncing');
-        if (journalEntry) journalEntry.status = 'in_progress';
+        if (journalEntry && !transferAcknowledged) journalEntry.status = 'in_progress';
 
         // GAP-7: for a keep-both rename the source side differs from the
         // destination. `relativePath` is always the destination; `sourcePath`
@@ -1241,7 +1242,7 @@ const runSync = async (
                 callbacks.onProgress?.(completed, files.length);
                 continue;
             }
-            if (!preparedByBulk && config.versionedBackup && (item.overwritesExisting || deps.resumeJournal)) {
+            if (!sentByBulk && !preparedByBulk && config.versionedBackup && (item.overwritesExisting || deps.resumeJournal)) {
                 try {
                     await archiveBeforeMutation('remote', item.relativePath, !item.overwritesExisting);
                 } catch (e) {
@@ -1266,7 +1267,7 @@ const runSync = async (
             }
             // A run resumed from its journal knows no time of the file it
             // uploads: read it before the upload, the copy that goes up.
-            if (!preparedByBulk && deps.writeIndex && item.mtime == null) {
+            if (!sentByBulk && !preparedByBulk && deps.writeIndex && item.mtime == null) {
                 landedStates.set(item.relativePath, await readLocalState(localFilePath));
             }
             const result = sentByBulk
@@ -1282,7 +1283,7 @@ const runSync = async (
                 if (!sentByBulk) uploadsEnded.set(item.relativePath, new Date().toISOString());
                 totalBytes += item.size;
                 if (journalEntry) {
-                    journalEntry.status = 'completed';
+                    journalEntry.status = 'transferred';
                     journalEntry.bytes_transferred = item.size;
                     journalEntry.verified = true;
                 }
@@ -1303,10 +1304,11 @@ const runSync = async (
                     }
                 }
                 if (targetError) {
-                    if (journalEntry) journalEntry.status = 'failed';
+                    if (journalEntry) journalEntry.status = 'transferred';
                     setStatus(item.relativePath, 'error', String(targetError));
                     continue;
                 }
+                if (journalEntry) journalEntry.status = 'completed';
                 captureDeltaForPath(item.relativePath);
                 setStatus(item.relativePath, 'success');
             } else {
@@ -1330,7 +1332,7 @@ const runSync = async (
                 callbacks.onProgress?.(completed, files.length);
                 continue;
             }
-            if (!preparedByBulk && config.versionedBackup && (item.overwritesExisting || deps.resumeJournal)) {
+            if (!sentByBulk && !preparedByBulk && config.versionedBackup && (item.overwritesExisting || deps.resumeJournal)) {
                 try {
                     await archiveBeforeMutation('local', item.relativePath, !item.overwritesExisting);
                 } catch (e) {
@@ -1362,6 +1364,10 @@ const runSync = async (
             }
             if (result.success) {
                 didTransfer = true;
+                if (journalEntry) {
+                    journalEntry.status = 'transferred';
+                    journalEntry.bytes_transferred = item.size;
+                }
                 setStatus(item.relativePath, 'verifying');
                 if (errorCorrectionEnabled) {
                     try {
@@ -1379,7 +1385,7 @@ const runSync = async (
                     }
                 }
                 if (targetError) {
-                    if (journalEntry) journalEntry.status = 'failed';
+                    if (journalEntry) journalEntry.status = 'transferred';
                     setStatus(item.relativePath, 'error', String(targetError));
                     continue;
                 }

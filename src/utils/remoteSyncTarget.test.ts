@@ -130,7 +130,7 @@ describe('remote sync target ownership', () => {
             config({ errorCorrection: { enabled: true, pct: 10 } }), {}, h.deps);
         expect(report.cancelled).toBe(true);
         expect(h.operations.B).toEqual([]);
-        expect(h.journal()?.entries[0].status).toBe('failed');
+        expect(h.journal()?.entries[0].status).toBe('transferred');
         expect(h.journal()?.completed).toBe(false);
     });
 });
@@ -313,7 +313,7 @@ it('stops on a typed bulk owner change with an unchanged UI and journals confirm
     expect(report.cancelled).toBe(true);
     expect(calls.filter(cmd => cmd === 'provider_sync_transfer_bulk')).toHaveLength(1);
     expect(calls).not.toContain('provider_upload_file');
-    expect(saved!.entries.map(entry => entry.status)).toEqual(['completed', 'failed', 'pending']);
+    expect(saved!.entries.map(entry => entry.status)).toEqual(['transferred', 'failed', 'pending']);
     expect(saved!.completed).toBe(false);
 });
 
