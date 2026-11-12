@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { runCompletionRefresh } from './completionRefresh';
 import { localPanelShows } from './localSelection';
 import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
@@ -400,7 +401,7 @@ it('stops the sync refresh continuation when remote refresh discards a switched 
     const end=app.indexOf('\n        } catch (err)',start);
     const {code}=await transformWithOxc(`async function refreshAfterSync(){${app.slice(start,end)}}`,'sync-refresh-continuation.ts');
     let current=true;let release!:(value:null)=>void;const pending=new Promise<null>(resolve=>{release=resolve;});
-    const context={report:{cancelled:false,uploaded:1,downloaded:0,deleted:0},epoch:1,checkTarget:()=>{if(!current)throw new Error('changed');},
+    const context={runCompletionRefresh,syncRefreshAbortRef:{current:null},batchCancelledRef:{current:false},report:{cancelled:false,uploaded:1,downloaded:0,deleted:0},epoch:1,checkTarget:()=>{if(!current)throw new Error('changed');},
         loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},currentLocalPathRef:{current:'/old'},localPanelShows,loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>false,
     };
     const refresh=new Function(...Object.keys(context),`${code};return refreshAfterSync;`)(...Object.values(context));
@@ -416,7 +417,7 @@ it.each(['before', 'during'] as const)('preserves local navigation %s the remote
     let release!: (value: boolean) => void;
     const pending = new Promise<boolean>(resolve => { release = resolve; });
     const context = {
-        report: { cancelled: false, uploaded: 1, downloaded: 0, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
+        runCompletionRefresh, syncRefreshAbortRef: {current:null}, batchCancelledRef:{current:false}, report: { cancelled: false, uploaded: 1, downloaded: 0, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: () => pending, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
         currentLocalPathRef: { current: when === 'before' ? '/B' : '/A' }, localPanelShows,loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>false,
     };
@@ -432,13 +433,13 @@ it.each(['/A/sub', '/A', '/'])('refreshes the affected visible folder %s with no
     const end = app.indexOf('\n        } catch (err)', start);
     const { code } = await transformWithOxc(`async function refreshAfterSync(){${app.slice(start, end)}}`, 'sync-affected-visible-folder.ts');
     const context = {
-        report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 1 }, epoch: 1, checkTarget: vi.fn(),
+        runCompletionRefresh, syncRefreshAbortRef: {current:null}, batchCancelledRef:{current:false}, report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 1 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: async () => true, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
         currentLocalPathRef: { current: visible }, localPanelShows,loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>visible === '/',
     };
     const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
     await refresh();
-    expect(context.loadLocalFiles).toHaveBeenCalledWith(visible, expect.objectContaining({ check: context.checkTarget }));
+    expect(context.loadLocalFiles).toHaveBeenCalledWith(visible, expect.objectContaining({ check: expect.any(Function) }));
     expect(context.currentLocalPathRef.current).toBe(visible);
 });
 
@@ -472,7 +473,7 @@ it.each([false, true])('refreshes an ancestor listing only with flattened search
     const end = app.indexOf('\n        } catch (err)', start);
     const { code } = await transformWithOxc(`async function refreshAfterSync(){${app.slice(start, end)}}`, 'sync-ancestor-selection.ts');
     const context = {
-        report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
+        runCompletionRefresh, syncRefreshAbortRef: {current:null}, batchCancelledRef:{current:false}, report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: async () => true, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/home/work/sync' },
         currentLocalPathRef: { current: '/home' }, localPanelShows, loadLocalPendingRef:{current:null},loadLocalWaitersRef:{current:new Set<() => void>()},isLocalFlattenSearchActive:()=>flattened,
     };
@@ -497,7 +498,7 @@ it.each(['/A/sub', '/B'])('defers sync completion behind a pending listing for %
         setLocalFiles: vi.fn(), setCurrentLocalPath: vi.fn(), setSelectedLocalFiles: vi.fn(),
         notify: { error: vi.fn() }, t: (key: string) => key, activityLog: { log: vi.fn() },
         isGvfsMtpPath: () => false, needsRemovableMediaPlug: () => false,
-        report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
+        runCompletionRefresh, syncRefreshAbortRef: {current:null}, batchCancelledRef:{current:false}, report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: async () => true, runConfig: { localRoot: '/A' }, localPanelShows,
         isLocalFlattenSearchActive: () => false,
     };
@@ -510,4 +511,49 @@ it.each(['/A/sub', '/B'])('defers sync completion behind a pending listing for %
     expect(context.loadLocalWaitersRef.current.size).toBe(0);
     expect(invoke).toHaveBeenCalledTimes(destination === '/B' ? 1 : 2);
     if (destination !== '/B') expect(context.setLocalFiles).toHaveBeenLastCalledWith(fresh);
+});
+
+it.each(['stop-pending', 'timeout-pending', 'timeout-read'] as const)('releases sync cleanup for %s even while local IPC remains unresolved', async scenario => {
+    vi.useFakeTimers();
+    try {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const runStart = app.indexOf('  const runConnectedRemoteSync =');
+        const start = app.indexOf('      void (async () => {', runStart);
+        const end = app.indexOf('      })();', start) + '      })();'.length;
+        const workerCode = (await transformWithOxc(app.slice(start, end).replace('void (async', 'return (async'), 'sync-refresh-latch.ts')).code;
+        let release!: (files: unknown[]) => void; const stalled = new Promise<unknown[]>(resolve => { release = resolve; });
+        const context = {
+            runFiles: [], runDirs: { local: [], remote: [] }, runConfig: { localRoot: '/A' }, opts: {},
+            batchCancelledRef: { current: false }, deltaStats: new Map(), invoke: vi.fn(async () => undefined),
+            syncRunQueueBridge: () => ({}), transferQueue: { stopPending: vi.fn(), stopAll: vi.fn() }, epoch: 1, ownerBinding: 'owner',
+            runRemoteSync: vi.fn(async () => ({ cancelled: false, uploaded: 0, downloaded: 1, deleted: 0 })),
+            setRemoteSyncResult: vi.fn(), checkTarget: vi.fn(), loadRemoteFiles: vi.fn(async () => true),
+            loadLocalFiles: vi.fn(() => stalled), loadLocalPendingRef: { current: scenario === 'timeout-read' ? null : 1 as number | null },
+            loadLocalWaitersRef: { current: new Set<() => void>() }, currentLocalPathRef: { current: '/A' },
+            syncRefreshAbortRef: { current: null as AbortController | null }, runCompletionRefresh,
+            localPanelShows, isLocalFlattenSearchActive: () => false,
+            window: { removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'transfer', onTransferEvent: vi.fn(),
+            notify: { error: vi.fn() }, t: (key: string) => key,
+            remoteSyncRunningRef: { current: true }, setSyncCancelling: vi.fn(), stopCountRef: { current: 0 },
+            cancelLevelRef: { current: 0 }, isBatchPaused: false, setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(), dispatchTransferToast: vi.fn(),
+        };
+        const run = new Function(...Object.keys(context), workerCode)(...Object.values(context)) as Promise<void>;
+        await vi.advanceTimersByTimeAsync(0);
+        expect(context.remoteSyncRunningRef.current).toBe(true);
+        if (scenario === 'stop-pending') {
+            const cancelStart = app.indexOf('  const cancelTransfer = async');
+            const cancelEnd = app.indexOf('  // Circuit breaker: attempt reconnection', cancelStart);
+            const cancelCode = (await transformWithOxc(app.slice(cancelStart, cancelEnd), 'stop-sync-refresh.ts')).code;
+            const cancel = new Function(...Object.keys(context), `${cancelCode};return cancelTransfer;`)(...Object.values(context));
+            await cancel();
+        } else await vi.advanceTimersByTimeAsync(2001);
+        await run;
+        expect(context.remoteSyncRunningRef.current).toBe(false);
+        expect(context.syncRefreshAbortRef.current).toBe(null);
+        expect(context.loadLocalWaitersRef.current.size).toBe(0);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(context.notify.error).not.toHaveBeenCalled();
+        if (scenario !== 'timeout-read') expect(context.loadLocalFiles).not.toHaveBeenCalled();
+        release([]);
+    } finally { vi.useRealTimers(); }
 });

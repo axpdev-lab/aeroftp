@@ -513,6 +513,7 @@ import { StopCancelSpinner } from './components/StopCancelSpinner';
 import { markProfileHealthy } from './hooks/useProviderHealth';
 import { useHumanizedLog } from './hooks/useHumanizedLog';
 import { useLatestCallback } from './hooks/useLatestCallback';
+import { runCompletionRefresh } from './utils/completionRefresh';
 import { useResumeProfileGuard } from './hooks/useResumeProfileGuard';
 import { useSettings } from './hooks/useSettings';
 import { useFontSizeShortcuts, FontSizeIndicator } from './hooks/useFontSizeShortcuts';
@@ -1854,6 +1855,7 @@ const App: React.FC = () => {
   const loadLocalCallIdRef = React.useRef(0);
   const loadLocalPendingRef = React.useRef<number | null>(null);
   const loadLocalWaitersRef = useRef(new Set<() => void>());
+  const syncRefreshAbortRef = useRef<AbortController | null>(null);
   const latestLocalListing2 = useRef(new LatestListing());
 
   // File clipboard for Cut/Copy/Paste
@@ -11884,6 +11886,11 @@ const App: React.FC = () => {
   // Two-level cancel: Stop (finish current file) → Force Stop (interrupt immediately)
   const cancelTransfer = async () => {
     stopCountRef.current += 1;
+    batchCancelledRef.current = true;
+    syncRefreshAbortRef.current?.abort();
+    const refreshWaiters = [...loadLocalWaitersRef.current];
+    loadLocalWaitersRef.current.clear();
+    for (const settle of refreshWaiters) settle();
     // If batch is paused by circuit breaker, resolve the pause promise
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
@@ -12893,22 +12900,39 @@ const App: React.FC = () => {
           );
           setRemoteSyncResult({ report, localLocal: false });
           if (!report.cancelled && (report.uploaded > 0 || report.downloaded > 0 || report.deleted > 0)) {
-            checkTarget();
-            const refreshed = await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkTarget });
-            if (!refreshed) return;
-            checkTarget();
-            // Wait for the latest navigation/listing before sampling the
-            // visible path. Its snapshot may predate the final sync mutation.
-            while (loadLocalPendingRef.current !== null) {
-              await new Promise<void>(resolve => { loadLocalWaitersRef.current.add(resolve); });
-              checkTarget();
-            }
-            const visibleLocalFolder = currentLocalPathRef.current;
-            // Include a descendant changed by the run and an ancestor whose
-            // flattened search covers it, even without a filesystem watcher.
-            if (visibleLocalFolder && (localPanelShows(visibleLocalFolder, runConfig.localRoot, true)
-                || localPanelShows(runConfig.localRoot, visibleLocalFolder, isLocalFlattenSearchActive()))) {
-              await loadLocalFiles(visibleLocalFolder, { check: checkTarget });
+            const refreshController = new AbortController();
+            syncRefreshAbortRef.current = refreshController;
+            try {
+              await runCompletionRefresh(async signal => {
+                const checkRefreshTarget = () => { signal.throwIfAborted(); checkTarget(); };
+                checkRefreshTarget();
+                if (batchCancelledRef.current) return;
+                const refreshed = await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkRefreshTarget });
+                if (!refreshed) return;
+                checkRefreshTarget();
+                // The optional refresh waits for navigation, without taking
+                // priority over it or retaining the run on a stalled mount.
+                while (loadLocalPendingRef.current !== null) {
+                  await new Promise<void>(resolve => {
+                    const settle = () => {
+                      signal.removeEventListener('abort', settle);
+                      loadLocalWaitersRef.current.delete(settle);
+                      resolve();
+                    };
+                    signal.addEventListener('abort', settle, { once: true });
+                    loadLocalWaitersRef.current.add(settle);
+                  });
+                  checkRefreshTarget();
+                }
+                if (batchCancelledRef.current) return;
+                const visibleLocalFolder = currentLocalPathRef.current;
+                if (visibleLocalFolder && (localPanelShows(visibleLocalFolder, runConfig.localRoot, true)
+                    || localPanelShows(runConfig.localRoot, visibleLocalFolder, isLocalFlattenSearchActive()))) {
+                  await loadLocalFiles(visibleLocalFolder, { check: checkRefreshTarget });
+                }
+              }, refreshController);
+            } finally {
+              if (syncRefreshAbortRef.current === refreshController) syncRefreshAbortRef.current = null;
             }
           }
         } catch (err) {

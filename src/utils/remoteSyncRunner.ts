@@ -290,6 +290,10 @@ const defaultMakeId = (): string => {
 };
 
 const stripTrailingSlash = (p: string): string => p.replace(/\/+$/, '');
+// Pair identities must remain absolute roots; join prefixes below deliberately
+// omit the final slash so that appending /relative never produces //relative.
+const normalizedSyncRoot = (path: string): string => /^\/+$/.test(path) ? '/'
+    : /^[A-Za-z]:[\\/]$/.test(path) ? path.replace(/\\/g, '/') : stripTrailingSlash(path);
 
 const basename = (p: string): string => p.split('/').pop() || p;
 
@@ -428,11 +432,13 @@ const runSync = async (
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => {
+    const localRoot = normalizedSyncRoot(config.localRoot);
+    const remoteRoot = normalizedSyncRoot(config.remoteRoot);
     const resumeEntries = new Map(deps.resumeJournal?.entries.map(entry => [entry.relative_path, entry] as const));
     const intentKey = (entry: { baseline_key?: string | null; relative_path: string }) =>
         (entry.baseline_key ?? entry.relative_path).normalize('NFC');
     const observedIntents = await deps.invoke<Record<string,string> | undefined>('sync_intent_snapshot_cmd', {
-        localPath: stripTrailingSlash(config.localRoot), remotePath: stripTrailingSlash(config.remoteRoot),
+        localPath: localRoot, remotePath: remoteRoot,
     }) ?? {};
 
     if (deps.resumeJournal && (deps.resumeJournal.resume_safe !== true
@@ -443,8 +449,8 @@ const runSync = async (
         || (deps.resumeJournal.ec_enabled === true) !== (config.errorCorrection?.enabled === true)
         || (deps.resumeJournal.ec_enabled === true && (deps.resumeJournal.ec_pct !== config.errorCorrection?.pct
             || (deps.resumeJournal.ec_max_file_size ?? null) !== (config.errorCorrection?.maxFileSize ?? null)))
-        || deps.resumeJournal.local_path !== stripTrailingSlash(config.localRoot)
-        || deps.resumeJournal.remote_path !== stripTrailingSlash(config.remoteRoot)
+        || deps.resumeJournal.local_path !== localRoot
+        || deps.resumeJournal.remote_path !== remoteRoot
         || JSON.stringify(deps.resumeJournal.remote_dirs ?? []) !== JSON.stringify(dirs.remote)
         || JSON.stringify(deps.resumeJournal.local_dirs ?? []) !== JSON.stringify(dirs.local)
         || deps.resumeJournal.entries.some(entry => (entry.archive_state != null && entry.archive_state !== 'started' && entry.archive_state !== 'archived')
@@ -646,7 +652,7 @@ const runSync = async (
         backupStamp ??= await invoke<string>('sync_backup_run_stamp');
         if (side === 'local' || config.isLocalLocal) {
             return invoke<string | null>('sync_backup_archive_local', {
-                root: side === 'local' ? localBase : remoteBase,
+                root: side === 'local' ? localRoot : remoteRoot,
                 dir,
                 stamp: backupStamp,
                 rel: relativePath,
@@ -654,7 +660,7 @@ const runSync = async (
         }
         return invoke<string | null>('sync_backup_archive_remote', {
             useProvider: config.isProvider,
-            root: remoteBase,
+            root: remoteRoot,
             dir,
             stamp: backupStamp,
             rel: relativePath,
@@ -686,7 +692,7 @@ const runSync = async (
         if (kept == null && previousReceipt) {
             const verified = await invoke<boolean>('sync_backup_verify_receipt', {
                 target: side === 'local' || config.isLocalLocal ? 'local' : config.isProvider ? 'provider' : 'ftp',
-                root: side === 'local' ? localBase : remoteBase,
+                root: side === 'local' ? localRoot : remoteRoot,
                 dir: backup.dir, stamp: backupStamp, rel: relativePath, receipt: previousReceipt,
             });
             if (!verified) throw new Error(`Backup receipt could not be verified for ${relativePath}`);
@@ -816,8 +822,8 @@ const runSync = async (
         id: makeId(),
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
-        local_path: localBase,
-        remote_path: remoteBase,
+        local_path: localRoot,
+        remote_path: remoteRoot,
         ...(config.profileId ? { profile_id: config.profileId } : {}),
         resume_safe: true,
         intent_protocol: 1,
@@ -889,7 +895,7 @@ const runSync = async (
     const beginIntents = async (entries: SyncJournalEntry[]): Promise<void> => {
         try {
             const tokens = await invoke<string[]>('sync_intent_begin_cmd', {
-                localPath: localBase, remotePath: remoteBase, paths: entries.map(intentKey),
+                localPath: localRoot, remotePath: remoteRoot, paths: entries.map(intentKey),
             });
             if (!Array.isArray(tokens) || tokens.length !== entries.length || tokens.some(token => typeof token !== 'string' || !token)) {
                 throw new Error('Invalid durable sync intent response');
@@ -947,7 +953,7 @@ const runSync = async (
     if (localTargets.length > 0) {
         try {
             const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
-                destination: localBase,
+                destination: localRoot,
                 paths: localTargets,
                 files: downloads,
             });
@@ -966,7 +972,7 @@ const runSync = async (
     if (localPairUploads.length > 0) {
         try {
             const problems = await invoke<{ path: string; reason: string }[]>('local_target_problems', {
-                destination: remoteBase,
+                destination: remoteRoot,
                 paths: localPairUploads,
                 files: localPairUploads,
             });
@@ -1676,8 +1682,8 @@ const runSync = async (
     await saveJournal();
     if (journalEnabled && journal.completed) {
         await invoke('delete_sync_journal_cmd', {
-            localPath: localBase,
-            remotePath: remoteBase,
+            localPath: localRoot,
+            remotePath: remoteRoot,
         }).catch(() => undefined);
     }
 
@@ -1722,8 +1728,8 @@ const runSync = async (
     if (deps.writeIndex && !targetError && !transferTimedOut) {
         try {
             const existing = await invoke<SyncIndex | null>('load_sync_index_cmd', {
-                localPath: localBase,
-                remotePath: remoteBase,
+                localPath: localRoot,
+                remotePath: remoteRoot,
                 profileId: config.profileId ?? null,
             });
             assertTarget();
@@ -1733,6 +1739,15 @@ const runSync = async (
             const spellings: Record<string, string> = {
                 ...(existing?.remote_spellings ?? {}),
             };
+            // Resume omits completed deletes from its transfer list. Apply
+            // their durable tombstones before retiring their intent tokens,
+            // otherwise a recreated file could inherit stale deletion rights.
+            for (const entry of journal.entries) {
+                if (entry.status !== 'completed' || entry.action !== 'delete') continue;
+                const key = entry.baseline_key ?? entry.relative_path;
+                delete mergedFiles[key];
+                delete spellings[key];
+            }
             // Retire prior identities before inserting landed files: a
             // download may reuse the local name of a deleted mapped object.
             for (const f of files) {
@@ -1823,8 +1838,8 @@ const runSync = async (
                 // through the Rust-side migration on each read.
                 version: 2,
                 last_sync: new Date().toISOString(),
-                local_path: localBase,
-                remote_path: remoteBase,
+                local_path: localRoot,
+                remote_path: remoteRoot,
                 ...(config.profileId ? { profile_id: config.profileId } : {}),
                 files: mergedFiles,
                 ...(Object.keys(spellings).length > 0 ? { remote_spellings: spellings } : {}),

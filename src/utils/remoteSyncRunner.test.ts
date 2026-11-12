@@ -18,6 +18,7 @@ import type {
     RetryPolicy,
     SyncErrorInfo,
     SyncJournal,
+    SyncIndex,
     VerifyResult,
 } from '../types';
 
@@ -2182,5 +2183,66 @@ describe('full-review owner and report boundaries', () => {
         await loading;current=false;resolveIndex(null);await run;
         expect(calls.some(call=>call.cmd==='save_sync_index_cmd')).toBe(false);
         expect(calls.find(call=>call.cmd==='load_sync_index_cmd')?.args).toMatchObject({expectedGuiTarget:1,ownerBinding:'test-owner-v1'});
+    });
+});
+
+describe('root pair identity and resumed delete history', () => {
+    it.each([['/', '/'], ['C:/', '/']] as const)('keeps roots %s and %s in durable commands without double-slash file paths', async (localRoot, remoteRoot) => {
+        let journal: SyncJournal | undefined; let index: SyncIndex | undefined;
+        const { invoke, calls } = makeInvoke({
+            save_sync_journal_cmd: args => { journal = structuredClone(args!.journal as SyncJournal); },
+            save_sync_index_cmd: args => { index = structuredClone(args!.index as SyncIndex); },
+        });
+        const deps = noWaitDeps(invoke, { writeIndex: true }); const backend = deps.invoke;
+        const roots: Array<Record<string, unknown>> = [];
+        deps.invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+            if (cmd === 'sync_intent_snapshot_cmd' || cmd === 'sync_intent_begin_cmd') {
+                if (!args?.localPath || !args?.remotePath) throw new Error('absolute pair paths required');
+                roots.push(args!);
+            }
+            return backend<T>(cmd, args);
+        };
+        const report = await runRemoteSync([file('one', 'upload')], noDirs, baseConfig({ localRoot, remoteRoot }), {}, deps);
+        expect(report.uploaded).toBe(1);
+        expect(roots.length).toBeGreaterThanOrEqual(2);
+        for (const root of roots) expect(root).toMatchObject({ localPath: localRoot, remotePath: remoteRoot });
+        expect(journal).toMatchObject({ local_path: localRoot, remote_path: remoteRoot });
+        expect(index).toMatchObject({ local_path: localRoot, remote_path: remoteRoot });
+        expect(calls.find(call => call.cmd === 'upload_file')?.args).toMatchObject({ params: {
+            local_path: localRoot === '/' ? '/one' : 'C:/one', remote_path: '/one',
+        } });
+    });
+
+    it('removes a completed mapped delete baseline on Resume before retiring its intent', async () => {
+        let journal: SyncJournal | undefined;
+        let index: SyncIndex = { version: 2, last_sync: '', local_path: '/home/u/work', remote_path: '/srv/data',
+            files: { 'old-local': { size: 1024, modified: null, is_dir: false } }, remote_spellings: { 'old-local': 'old-remote' } };
+        const remoteFiles = new Set(['old-remote']); let savedTokens: unknown;
+        const { invoke, calls } = makeInvoke({
+            delete_remote_file: () => { remoteFiles.delete('old-remote'); },
+            upload_file: (_args, attempt) => { if (attempt === 0) throw new Error('temporary upload failure'); },
+            classify_transfer_error: args => ({ kind: 'unknown', message: String(args?.rawError), retryable: false, file_path: 'later' }),
+            save_sync_journal_cmd: args => { journal = structuredClone(args!.journal as SyncJournal); },
+            load_sync_index_cmd: (_args, attempt) => { if (attempt === 0) throw new Error('index temporarily unavailable'); return index; },
+            save_sync_index_cmd: args => { index = structuredClone(args!.index as SyncIndex); savedTokens = args!.intentTokens; },
+        });
+        const config = baseConfig({ retryPolicy: { ...RETRY, max_retries: 0 } });
+        await runRemoteSync([file('old-remote', 'delete-remote', { baselineKey: 'old-local' }), file('later', 'upload')],
+            noDirs, config, {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(journal?.completed).toBe(false);
+        const resume = structuredClone(journal!);
+        const deleted = resume.entries.find(entry => entry.action === 'delete')!;
+        expect(deleted.status).toBe('completed'); expect(deleted.intent_token).toBeTruthy();
+        expect(index.files['old-local']).toBeDefined();
+        remoteFiles.add('old-remote'); // Recreated by another writer before Resume.
+        const report = await runRemoteSync(filesFromJournal(resume), noDirs, config, {},
+            noWaitDeps(invoke, { resumeJournal: resume, writeIndex: true }));
+        expect(report.uploaded).toBe(1);
+        expect(index.files['old-local']).toBeUndefined();
+        expect(index.remote_spellings?.['old-local']).toBeUndefined();
+        expect(index.files.later).toBeDefined();
+        expect(savedTokens).toContain(deleted.intent_token);
+        expect(remoteFiles.has('old-remote')).toBe(true);
+        expect(calls.filter(call => call.cmd === 'delete_remote_file')).toHaveLength(1);
     });
 });
