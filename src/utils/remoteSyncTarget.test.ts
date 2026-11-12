@@ -89,7 +89,7 @@ describe('remote sync target ownership', () => {
     it('requires remote ownership and leaves local-local runs independent', async () => {
         const invoke = async <T,>() => undefined as T;
         await expect(runRemoteSync([], { remote: [], local: [] }, config(), {}, { invoke })).rejects.toThrow('bound target');
-        const report = await runRemoteSync([], { remote: [], local: [] }, config({ isLocalLocal: true }), {}, { invoke });
+        const report = await runRemoteSync([], { remote: [], local: [] }, config({ isLocalLocal: true }), {}, { invoke: wrapIntentInvoke(invoke) });
         expect(report.cancelled).toBe(false);
     });
 
@@ -108,16 +108,20 @@ describe('remote sync target ownership', () => {
         try {
             const h = harness('first-file');
             const calls: string[] = [];
-            const invoke: typeof h.deps.invoke = async (cmd, args) => {
+            let finish!: () => void;
+            const native = new Promise<void>(resolve => { finish = resolve; });
+            const invoke: typeof h.deps.invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
                 if (cmd === 'provider_upload_file') {
                     calls.push(cmd);
-                    return new Promise(() => {});
+                    await native;
+                    return undefined as T;
                 }
-                return h.deps.invoke(cmd, args);
+                return h.deps.invoke<T>(cmd, args);
             };
             const pending = runRemoteSync([file('one'), file('two')], { remote: [], local: [] },
                 config({ retryPolicy: { ...config().retryPolicy, timeout_ms: 50 } }), {}, { ...h.deps, invoke });
             await vi.advanceTimersByTimeAsync(100);
+            finish();
             const report = await pending;
             expect(calls).toHaveLength(1);
             expect(report.cancelled).toBe(true);

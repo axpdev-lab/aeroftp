@@ -427,7 +427,32 @@ export const runRemoteSync = (
     config: RemoteSyncConfig,
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
-): Promise<SyncRunReport> => withTransferRun(() => runSync(files, dirs, config, callbacks, deps));
+): Promise<SyncRunReport> => withTransferRun(async () => {
+    if (!config.isLocalLocal && (!deps.remoteTarget || !Number.isSafeInteger(deps.remoteTarget.epoch)
+        || deps.remoteTarget.epoch < 0 || !deps.remoteTarget.ownerBinding)) {
+        throw new Error('A remote sync requires a bound target');
+    }
+    const token = await deps.invoke<string>('sync_run_lease_begin_cmd', {
+        localPath: normalizedSyncRoot(config.localRoot), remotePath: normalizedSyncRoot(config.remoteRoot),
+    });
+    if (typeof token !== 'string' || !token) throw new Error('Cannot acquire sync run ownership');
+    const pending = new Set<Promise<unknown>>();
+    const trackedInvoke: RemoteSyncDeps['invoke'] = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        const call = deps.invoke<T>(cmd, cmd === 'sync_intent_begin_cmd' ? { ...args, syncRunLease: token } : args);
+        pending.add(call);
+        void call.then(() => pending.delete(call), () => pending.delete(call));
+        return call;
+    };
+    try {
+        return await runSync(files, dirs, config, callbacks, { ...deps, invoke: trackedInvoke });
+    } finally {
+        // A JS timeout does not cancel IPC. Keep the cross-process pair lease
+        // until native work actually settles, before allowing another writer
+        // to replace its durable intent or publish a replacement baseline.
+        while (pending.size > 0) await Promise.allSettled([...pending]);
+        await deps.invoke('sync_run_lease_end_cmd', { token });
+    }
+});
 
 const runSync = async (
     requestedFiles: SyncRunFile[],
@@ -1018,6 +1043,12 @@ const runSync = async (
             const idx = journalEntryMap.get(f.relativePath);
             if (deps.resumeJournal && idx !== undefined && ['completed', 'transferred'].includes(journal.entries[idx].status)) break;
             if (config.transferBudget > 0 && bytes >= config.transferBudget) break;
+            if (action === 'upload' && deps.writeIndex && deps.resumeJournal && !landedStates.has(f.relativePath)) {
+                const source = await readLocalState(`${localBase}/${f.relativePath}`);
+                landedStates.set(f.relativePath, source);
+                f.size = source.size ?? f.size;
+                f.mtime = source.modified;
+            }
             bytes += f.size;
             group.push(f);
         }
@@ -1044,7 +1075,7 @@ const runSync = async (
                     continue;
                 }
             }
-            if (action === 'upload' && deps.writeIndex && (f.mtime == null || deps.resumeJournal)) {
+            if (action === 'upload' && deps.writeIndex && !landedStates.has(f.relativePath) && (f.mtime == null || deps.resumeJournal)) {
                 const source = await readLocalState(`${localBase}/${f.relativePath}`);
                 landedStates.set(f.relativePath, source);
                 if (deps.resumeJournal) {
@@ -1374,7 +1405,7 @@ const runSync = async (
             }
             // A run resumed from its journal knows no time of the file it
             // uploads: read it before the upload, the copy that goes up.
-            if (!sentByBulk && !preparedByBulk && deps.writeIndex && (item.mtime == null || deps.resumeJournal)) {
+            if (!sentByBulk && !preparedByBulk && deps.writeIndex && !landedStates.has(item.relativePath) && (item.mtime == null || deps.resumeJournal)) {
                 const source = await readLocalState(localFilePath);
                 landedStates.set(item.relativePath, source);
                 if (deps.resumeJournal) {

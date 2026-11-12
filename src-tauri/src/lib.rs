@@ -324,6 +324,7 @@ pub mod sync_exclude;
 mod sync_ignore;
 mod sync_names;
 mod sync_owner;
+mod sync_run_lease;
 mod sync_scheduler;
 pub mod sync_script;
 pub mod sync_versioning;
@@ -14236,10 +14237,12 @@ async fn sync_intent_begin_cmd(
     local_path: String,
     remote_path: String,
     paths: Vec<String>,
+    sync_run_lease: String,
 ) -> Result<Vec<String>, String> {
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_path(&remote_path)?;
+        let _lease = sync_run_lease::guard(&local_path, &remote_path, &sync_run_lease)?;
         if paths.len() > 100_000 {
             return Err("Too many sync intents".into());
         }
@@ -14261,6 +14264,27 @@ async fn sync_intent_snapshot_cmd(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sync_run_lease_begin_cmd(
+    local_path: String,
+    remote_path: String,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        validate_path(&local_path)?;
+        validate_path(&remote_path)?;
+        sync_run_lease::acquire(&local_path, &remote_path)
+    })
+    .await
+    .map_err(|_| "Sync run lock worker failed")?
+}
+
+#[tauri::command]
+async fn sync_run_lease_end_cmd(token: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || sync_run_lease::release(&token))
+        .await
+        .map_err(|_| "Sync run lock worker failed".to_string())?
 }
 
 // ============ Sync Journal Commands (Phase 2: Reliability) =====
@@ -22890,6 +22914,8 @@ pub fn run() {
             load_sync_index_cmd,
             save_sync_index_cmd,
             sync_intent_begin_cmd,
+            sync_run_lease_begin_cmd,
+            sync_run_lease_end_cmd,
             sync_intent_snapshot_cmd,
             load_sync_journal_cmd,
             save_sync_journal_cmd,

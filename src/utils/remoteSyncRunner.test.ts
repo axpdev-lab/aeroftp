@@ -1515,6 +1515,21 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(calls.filter(call => call.cmd === 'provider_sync_transfer_bulk')).toHaveLength(bulk ? 1 : 0);
     });
 
+    it('uses current resumed upload sizes for bulk budget admission, allowing only the final file to cross the limit', async () => {
+        const resume = resumeOf(['one', 'two'].map(relative_path => ({ relative_path, action: 'upload', status: 'pending',
+            attempts: 0, last_error: null, verified: null, bytes_transferred: 0, source_size: 1, source_mtime: '2026-09-26T09:00:00Z' })));
+        const { invoke, calls } = makeInvoke({ get_file_properties: () => ({ size: 100, modified: '2026-09-26T10:00:00' }),
+            provider_bulk_support: () => ({ upload: true, download: false }) });
+        const report = await runRemoteSync(filesFromJournal(resume), noDirs, baseConfig({ isProvider: true, transferBudget: 50 }), {},
+            noWaitDeps(invoke, { resumeJournal: resume, writeIndex: true }));
+        expect(report.uploaded).toBe(1);
+        expect(report.totalBytes).toBe(100);
+        expect(calls.filter(call => call.cmd === 'provider_sync_transfer_bulk')).toHaveLength(0);
+        expect(calls.filter(call => call.cmd === 'provider_upload_file')).toHaveLength(1);
+        expect(calls.filter(call => call.cmd === 'get_file_properties')).toHaveLength(1);
+        expect(lastSavedJournal(calls)?.entries.find(entry => entry.relative_path === 'two')?.status).toBe('pending');
+    });
+
     // m3 (verification of the fourth round of #949): a run that crashed
     // saved no index, and the entry there is from the run before it, of the
     // file before the transfer. It was adopted when the size matched.
@@ -2130,21 +2145,32 @@ describe('review8 recovery boundaries', () => {
             let finish!: () => void;
             const pending = new Promise<void>(resolve => { finish = resolve; });
             let saved: SyncJournal | undefined;
+            let destination = ''; let indexed = '';
             const { invoke, calls } = makeInvoke({
-                upload_file: () => pending,
+                upload_file: (_args, attempt) => attempt === 0 ? pending.then(() => { destination = 'old'; }) : (destination = 'new'),
                 save_sync_journal_cmd: args => { saved = structuredClone(args!.journal as SyncJournal); },
+                save_sync_index_cmd: () => { indexed = destination; },
             });
             const config = baseConfig({ retryPolicy: { ...RETRY, timeout_ms: 10 } });
             const run = runRemoteSync([file('one', 'upload')], noDirs, config, {}, noWaitDeps(invoke, { writeIndex: true }));
             await vi.advanceTimersByTimeAsync(11);
-            await run;
             expect(saved?.resume_safe).toBe(false);
             expect(calls.filter(c => c.cmd === 'save_sync_index_cmd')).toHaveLength(0);
+            // The old native command is still live. A fresh Compare/run must
+            // not replace its token or publish an index ahead of its write.
+            await expect(runRemoteSync([file('one', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true })))
+                .rejects.toThrow('SYNC_RUN_BUSY');
+            expect(calls.filter(c => c.cmd === 'upload_file')).toHaveLength(1);
             finish();
-            await pending;
+            await run;
+            const unsafe = structuredClone(saved!);
             await expect(runRemoteSync([file('one', 'upload')], noDirs, config, {}, noWaitDeps(invoke, { resumeJournal: saved })))
                 .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
             expect(calls.filter(c => c.cmd === 'upload_file')).toHaveLength(1);
+            await runRemoteSync([file('one', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+            expect(indexed).toBe('new');
+            expect(destination).toBe('new');
+            expect(unsafe.resume_safe).toBe(false);
         } finally { vi.useRealTimers(); }
     });
 });
@@ -2155,14 +2181,16 @@ describe('durable delete authority', () => {
         vi.useFakeTimers();
         try {
             let saved: SyncJournal | undefined;
+            let finish!: () => void; const native = new Promise<void>(resolve => { finish = resolve; });
             const { invoke, calls } = makeInvoke({
-                upload_file: () => failure === 'timeout' ? new Promise<void>(() => undefined) : undefined,
+                upload_file: () => failure === 'timeout' ? native : undefined,
                 load_sync_index_cmd: () => { throw new Error('index temporarily unreadable'); },
                 save_sync_journal_cmd: args => { saved = structuredClone(args!.journal as SyncJournal); },
             });
             const run = runRemoteSync([file('one', 'delete-remote'), file('later', 'upload')], noDirs,
                 baseConfig({ retryPolicy: { ...RETRY, timeout_ms: 10 } }), {}, noWaitDeps(invoke, { writeIndex: true }));
             await vi.advanceTimersByTimeAsync(11);
+            finish();
             await run;
             const deleted = saved?.entries.find(entry => entry.relative_path === 'one');
             expect(deleted?.status).toBe('completed');
