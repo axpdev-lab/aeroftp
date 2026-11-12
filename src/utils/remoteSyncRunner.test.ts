@@ -1515,13 +1515,13 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(calls.filter(call => call.cmd === 'provider_sync_transfer_bulk')).toHaveLength(bulk ? 1 : 0);
     });
 
-    it('uses current resumed upload sizes for bulk budget admission, allowing only the final file to cross the limit', async () => {
+    it.each([true, false])('uses current resumed upload sizes for bulk budget admission (writeIndex=%s), allowing only the final file to cross the limit', async writeIndex => {
         const resume = resumeOf(['one', 'two'].map(relative_path => ({ relative_path, action: 'upload', status: 'pending',
             attempts: 0, last_error: null, verified: null, bytes_transferred: 0, source_size: 1, source_mtime: '2026-09-26T09:00:00Z' })));
         const { invoke, calls } = makeInvoke({ get_file_properties: () => ({ size: 100, modified: '2026-09-26T10:00:00' }),
             provider_bulk_support: () => ({ upload: true, download: false }) });
         const report = await runRemoteSync(filesFromJournal(resume), noDirs, baseConfig({ isProvider: true, transferBudget: 50 }), {},
-            noWaitDeps(invoke, { resumeJournal: resume, writeIndex: true }));
+            noWaitDeps(invoke, { resumeJournal: resume, writeIndex }));
         expect(report.uploaded).toBe(1);
         expect(report.totalBytes).toBe(100);
         expect(calls.filter(call => call.cmd === 'provider_sync_transfer_bulk')).toHaveLength(0);

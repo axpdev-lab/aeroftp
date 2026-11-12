@@ -14242,11 +14242,12 @@ async fn sync_intent_begin_cmd(
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_path(&remote_path)?;
-        let _lease = sync_run_lease::guard(&local_path, &remote_path, &sync_run_lease)?;
         if paths.len() > 100_000 {
             return Err("Too many sync intents".into());
         }
-        sync::begin_sync_intents(&local_path, &remote_path, &paths)
+        sync_run_lease::with_guard(&local_path, &remote_path, &sync_run_lease, || {
+            sync::begin_sync_intents(&local_path, &remote_path, &paths)
+        })
     })
     .await
     .map_err(|e| e.to_string())?

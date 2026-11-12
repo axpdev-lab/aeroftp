@@ -13751,6 +13751,7 @@ const App: React.FC = () => {
     // files cut earlier) passes the target it took then.
     options: { allowStaging?: boolean; queuedTarget?: QueuedTarget; targetEpoch?: number } = {},
   ): Promise<FileBatchResult> => {
+    const initialStops = stopCountRef.current;
     // Taken before any await: the listing and the overwrite questions below
     // give the user time to switch to another server.
     const queuedTarget = options.queuedTarget ?? snapshotQueuedTarget();
@@ -13772,6 +13773,7 @@ const App: React.FC = () => {
       notify.error(t(isDownload ? 'toast.downloadFailed' : 'toast.uploadFailed'), String(error));
       return result;
     }
+    if (stopCountRef.current !== initialStops) { result.aborted = true; return result; }
     const sourceOf = (entry: { remote_path: string; local_path: string }) =>
       (isDownload ? entry.remote_path : entry.local_path);
 
@@ -13947,6 +13949,7 @@ const App: React.FC = () => {
     // Each runner resolves with the queue ids of the files that landed, so a
     // dispatcher never sends a landed file twice.
     const launchBatch = async (batchEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
+      const stops = userAction ? stopCountRef.current : initialStops;
       const landedIds = new Set<string>();
       const attempt = { epoch: expectedGuiTarget, changed: false };
       if (userAction) {
@@ -13955,6 +13958,11 @@ const App: React.FC = () => {
           for (const id of queueIds) transferQueue.failTransfer(id, String(error));
           return landedIds;
         }
+      }
+      if (stopCountRef.current !== stops || batchCancelledRef.current) {
+        result.aborted = true;
+        for (const id of queueIds) transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
+        return landedIds;
       }
       if (batchEntries.length === 0) return landedIds;
       result.sent += batchEntries.length;
@@ -14030,6 +14038,7 @@ const App: React.FC = () => {
     };
 
     const runSingles = async (singleEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
+      const stops = userAction ? stopCountRef.current : initialStops;
       const landedIds = new Set<string>();
       const attempt = { epoch: expectedGuiTarget, changed: false };
       if (userAction) {
@@ -14038,6 +14047,11 @@ const App: React.FC = () => {
           for (const id of queueIds) transferQueue.failTransfer(id, String(error));
           return landedIds;
         }
+      }
+      if (stopCountRef.current !== stops || batchCancelledRef.current) {
+        result.aborted = true;
+        for (const id of queueIds) transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
+        return landedIds;
       }
       for (let i = 0; i < singleEntries.length; i++) {
         if (batchCancelledRef.current) {

@@ -74,9 +74,47 @@ pub(crate) fn release(token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate before calling the native intent writer, keeping the lock through it.
+pub(crate) fn with_guard<T>(
+    local: &str,
+    remote: &str,
+    token: &str,
+    write: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let _lease = guard(local, remote, token)?;
+    write()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn missing_and_foreign_tokens_cannot_enter_the_native_intent_writer() {
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/protected-local", "/protected-remote");
+        let valid = acquire_at(dir.path(), pair).unwrap();
+        let foreign =
+            acquire_at(dir.path(), crate::sync::index_filename("/other", "/other")).unwrap();
+        let intent = dir.path().join("intent");
+        std::fs::write(&intent, b"original durable intent").unwrap();
+        for token in ["", "unknown", foreign.as_str()] {
+            assert!(
+                with_guard("/protected-local", "/protected-remote", token, || {
+                    std::fs::write(&intent, b"overwritten intent").map_err(|e| e.to_string())
+                })
+                .is_err()
+            );
+            assert_eq!(std::fs::read(&intent).unwrap(), b"original durable intent");
+        }
+        with_guard("/protected-local", "/protected-remote", &valid, || {
+            std::fs::write(&intent, b"authorized intent").map_err(|e| e.to_string())
+        })
+        .unwrap();
+        assert_eq!(std::fs::read(&intent).unwrap(), b"authorized intent");
+        release(&valid).unwrap();
+        release(&foreign).unwrap();
+    }
 
     #[test]
     fn replacement_cannot_start_before_the_previous_native_work_finishes() {

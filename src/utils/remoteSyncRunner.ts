@@ -1039,7 +1039,7 @@ const runSync = async (
             const idx = journalEntryMap.get(f.relativePath);
             if (deps.resumeJournal && idx !== undefined && ['completed', 'transferred'].includes(journal.entries[idx].status)) break;
             if (config.transferBudget > 0 && bytes >= config.transferBudget) break;
-            if (action === 'upload' && deps.writeIndex && deps.resumeJournal && !landedStates.has(f.relativePath)) {
+            if (action === 'upload' && deps.resumeJournal && !landedStates.has(f.relativePath)) {
                 const source = await readLocalState(`${localBase}/${f.relativePath}`);
                 landedStates.set(f.relativePath, source);
                 f.size = source.size ?? f.size;
@@ -1401,7 +1401,7 @@ const runSync = async (
             }
             // A run resumed from its journal knows no time of the file it
             // uploads: read it before the upload, the copy that goes up.
-            if (!sentByBulk && !preparedByBulk && deps.writeIndex && !landedStates.has(item.relativePath) && (item.mtime == null || deps.resumeJournal)) {
+            if (!sentByBulk && !preparedByBulk && (deps.writeIndex || deps.resumeJournal) && !landedStates.has(item.relativePath) && (item.mtime == null || deps.resumeJournal)) {
                 const source = await readLocalState(localFilePath);
                 landedStates.set(item.relativePath, source);
                 if (deps.resumeJournal) {

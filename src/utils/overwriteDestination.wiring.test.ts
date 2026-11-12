@@ -41,7 +41,7 @@ const { code: overwriteCode } = await transformWithOxc(
 type Direction = 'upload' | 'download';
 type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
 const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () => number; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
+function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () => number | Promise<number>; direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' | 'opendrive' | 'fourshared' }) {
   const direction = options.direction;
   const protocol = options.protocol || 'webdav';
   const destination = options.destination ?? [file('a.bin')];
@@ -75,7 +75,7 @@ function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () 
       queueItemsRef.current.push({ id, status: 'pending' });
       return id;
     }),
-    startTransfer: vi.fn(), completeTransfer: vi.fn(), failTransfer: vi.fn(),
+    startTransfer: vi.fn(), completeTransfer: vi.fn(), failTransfer: vi.fn(), cancelTransfer: vi.fn(),
   };
   const notify = { info: vi.fn(), error: vi.fn() };
   const resetOverwriteSettings = vi.fn();
@@ -92,7 +92,7 @@ function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () 
     localFiles2: options.panel2 ?? [], sortedLocalFiles2: options.panel2 ?? [],
     remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
     humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
-    pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+    stopCountRef: { current: 0 }, pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
     circuitBreaker: { reset: vi.fn() }, retryCallbacksRef: { current: new Map() }, queueItemsRef, transferQueue,
     recordQueueDescriptor: vi.fn(), holdFileCompletions: () => () => undefined, registerFileBatchRows: vi.fn(), fileBatchCommand, keepsSingleFilePath,
     folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
@@ -115,7 +115,7 @@ function fixture(options: { privacyError?: string; staged?: boolean; epoch?: () 
   const runtime = new Function(...Object.keys(context), `${code}; return { downloadFile, uploadFile, runFileBatch };`)(...Object.values(context));
   const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch|folder)$/.test(name));
   const listings = () => invoke.mock.calls.filter(([name]) => ['get_local_files', 'provider_list_files'].includes(name));
-  return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings, retryCallbacks: context.retryCallbacksRef.current };
+  return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings, retryCallbacks: context.retryCallbacksRef.current, stop: () => { context.stopCountRef.current++; context.batchCancelledRef.current = true; } };
 }
 
 const items = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${name}`, size: 100, modified: null }));
@@ -368,4 +368,41 @@ it.each(['upload', 'download'] as const)('pins a fresh epoch for staged %s Start
   await f.retryCallbacks.get('q1')!();
   await vi.waitFor(() => expect(f.writers()).toHaveLength(2));
   expect(f.writers()[1][1]?.params.expected_gui_target).toBe(11);
+});
+
+// Execute the production App launchers with an epoch response arriving after Stop.
+it.each(['upload', 'download'] as const)('does not start staged %s or Retry after Stop during epoch capture', async direction => {
+  let resolveEpoch!: (value: number) => void;
+  let epoch: number | Promise<number> = 7;
+  const f = fixture({ direction, destination: [], policy: 'overwrite', staged: true, epoch: () => epoch });
+  await f.runtime.runFileBatch(direction, items, '/actual');
+  epoch = new Promise<number>(resolve => { resolveEpoch = resolve; });
+  await f.retryCallbacks.get('q0')!();
+  f.stop();
+  resolveEpoch(9);
+  await vi.waitFor(() => expect(f.transferQueue.cancelTransfer).toHaveBeenCalledTimes(2));
+  expect(f.writers()).toHaveLength(0);
+  epoch = 11;
+  await f.retryCallbacks.get('q0')!();
+  await vi.waitFor(() => expect(f.writers()).toHaveLength(1));
+  // A subsequent retry must also abandon its captured action when Stop wins.
+  epoch = new Promise<number>(resolve => { resolveEpoch = resolve; });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await f.retryCallbacks.get('q1')!();
+  f.stop();
+  resolveEpoch(13);
+  await vi.waitFor(() => expect(f.transferQueue.cancelTransfer).toHaveBeenCalledTimes(3));
+  expect(f.writers()).toHaveLength(1);
+});
+
+it.each(['upload', 'download'] as const)('does not clear Stop during initial %s epoch capture', async direction => {
+  let finish!: (epoch: number) => void;
+  const epoch = new Promise<number>(resolve => { finish = resolve; });
+  const f = fixture({ direction, destination: [], policy: 'overwrite', epoch: () => epoch });
+  const pending = f.runtime.runFileBatch(direction, items, '/actual');
+  f.stop();
+  finish(7);
+  expect(await pending).toMatchObject({ aborted: true, sent: 0 });
+  expect(f.writers()).toHaveLength(0);
+  expect(f.invoke.mock.calls.some(([cmd]) => cmd === 'reset_cancel_flag')).toBe(false);
 });
