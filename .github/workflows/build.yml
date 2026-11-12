@@ -85,26 +85,17 @@ jobs:
           # Same prefix as packaging so a warm main cache is a valid restore
           # key shape, but no shared-key: this job id gets its own cache
           # after main is warm. That is intended (C1 + C2).
-          prefix-key: 'v2-whisper-vs18'
+          prefix-key: 'v3-whisper-purge'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Install Linux dependencies
-        run: |
-          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
-          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
-          # mismatch on Packages.gz), and nothing here installs from any of them.
-          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          # `dbus` is here for `cargo test` / portal_chooser (#510), not for
-          # packaging. `portal_chooser`'s three cases stand up a throwaway
-          # session bus with `dbus-daemon` to prove that a portal-less host
-          # reads as portal-less. Without the daemon those tests skipped, and
-          # a skip is invisible in the log because a passing test's stderr is
-          # captured: the pin would have reported success while proving
-          # nothing. Bundle tools (patchelf, rpm, squashfs-tools, libfuse3-dev)
-          # stay on the packaging Linux leg.
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev dbus libacl1-dev libacl1
+        timeout-minutes: 13
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev dbus libacl1-dev libacl1
+          cache-prefix: apt-tauri-dev
 
       - name: Install npm dependencies
         run: npm ci
@@ -236,12 +227,13 @@ jobs:
         uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './src-tauri -> target'
-          # Cache prefix bumped 2026-05-06 to invalidate any cached
-          # whisper-rs-sys CMakeCache.txt referencing Visual Studio 17 2022
-          # after the windows-latest runner image rolled to VS 18 2026.
-          # See "Drop stale whisper-rs-sys CMake artifacts" below for the
-          # belt-and-suspenders runtime cleanup.
-          prefix-key: 'v2-whisper-vs18'
+          # Cache prefix bumped to invalidate legacy oversized entries containing
+          # transient whisper-rs-sys build artifacts (v2-whisper-vs18 -> v3-whisper-purge).
+          # Also invalidates any cached whisper-rs-sys CMakeCache.txt referencing
+          # Visual Studio 17 2022 after the windows-latest runner image rolled to VS 18.
+          # Forces fresh cache save on main and prevents rust-cache exact-hit save bypass.
+          # See "Drop stale whisper-rs-sys CMake artifacts" below for runtime cleanup.
+          prefix-key: 'v3-whisper-purge'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -282,19 +274,12 @@ jobs:
 
       - name: Install Linux dependencies
         if: matrix.target == 'linux'
-        run: |
-          # Runner-image extras: the preinstalled microsoft*, azure-cli* and google-chrome*
-          # apt repos fail often enough to redden a run (403 on InRelease, Hash Sum
-          # mismatch on Packages.gz), and nothing here installs from any of them.
-          sudo rm -f /etc/apt/sources.list.d/microsoft* /etc/apt/sources.list.d/azure-cli* /etc/apt/sources.list.d/google-chrome*
-          sudo apt-get update
-          # `dbus` lives on `linux-validate` with `cargo test` / portal_chooser
-          # (#510). This leg only needs the Tauri/bundle toolchain.
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev libacl1-dev libacl1 binutils rpm squashfs-tools
-          # No snapcraft here any more: this leg stopped building the snap when
-          # PR #172 moved it to its own job, and snapcore/action-build brings
-          # its own snapcraft. The leftover install (5 retries, 60 s apart on a
-          # store hiccup) was pure cost on every PR run.
+        timeout-minutes: 13
+        uses: ./.github/actions/apt-install
+        with:
+          packages: >-
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse3-dev libacl1-dev libacl1 binutils rpm squashfs-tools
+          cache-prefix: apt-tauri-dev
 
       - name: Install npm dependencies
         run: npm ci
@@ -399,6 +384,25 @@ jobs:
           path: msi-association-evidence/
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Purge transient whisper-rs-sys build artifacts before cache save (Windows)
+        if: matrix.target == 'windows' && always()
+        shell: pwsh
+        run: |
+          $base = "src-tauri/target/release/build"
+          if (Test-Path $base) {
+            $purged = 0
+            Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -like 'whisper-rs-sys-*' } |
+              ForEach-Object {
+                Remove-Item -Recurse -Force $_.FullName -ErrorAction Stop
+                if (Test-Path $_.FullName) {
+                  throw "Failed to purge transient whisper build dir: $($_.FullName)"
+                }
+                $purged++
+              }
+            Write-Host "Purged $purged transient whisper-rs-sys build dir(s) before cache save"
+          }
 
       # macOS Intel: cross-compile to the real x86_64-apple-darwin triple on
       # the arm64 runner. cargo builds AND tauri bundles every bin natively

@@ -173,7 +173,7 @@ jobs:
         uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: './src-tauri -> target'
-          prefix-key: 'v2-whisper-vs18'
+          prefix-key: 'v3-whisper-purge'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
