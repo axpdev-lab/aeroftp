@@ -7501,9 +7501,26 @@ impl StorageProvider for S3Provider {
                 }
             }
         }
-        let etag = self
+        let completed = self
             .complete_multipart_upload_internal(&handle.remote_path, &handle.upload_id, &numbered)
-            .await?;
+            .await;
+        if pending.is_none() {
+            // A legacy streaming upload of this key can complete and save its
+            // own row while the Complete above is in flight. This object may
+            // have replaced that one, so drop the row again. Run it on a
+            // failed Complete too: a lost response can still commit. The
+            // object is already decided here, so a cache error is logged and
+            // never turns the upload into a retry.
+            if let Some(store) = self.baseline_store() {
+                if let Err(error) = store
+                    .invalidate(self.delta_baseline_key(&handle.remote_path))
+                    .await
+                {
+                    warn!("S3 baseline cache invalidate after complete failed: {error}");
+                }
+            }
+        }
+        let etag = completed?;
         if pending.is_some() {
             self.save_baseline(&handle.remote_path, pending, etag).await;
         }
