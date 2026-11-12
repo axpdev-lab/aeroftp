@@ -996,6 +996,7 @@ export const useTransferQueue = () => {
     const removeItem = (id: string) => {
         setItems(prev => prev.filter(item => item.id !== id));
     };
+    const getItemNow = useCallback((id: string) => itemsRef.current.find(item => item.id === id), []);
 
     const retryItem = (id: string) => {
         setItems(prev => prev.map(item =>
@@ -1084,6 +1085,7 @@ export const useTransferQueue = () => {
         stopPending,
         stopAll,
         removeItem,
+        getItemNow,
         retryItem,
         retryAllFailed,
         getRestoredPendingIds,

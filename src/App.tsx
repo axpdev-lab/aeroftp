@@ -11275,6 +11275,7 @@ const App: React.FC = () => {
     const stops = stopCountRef.current;
     while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
     if (stopCountRef.current !== stops) return;
+    if (transferQueue.getItemNow(id)?.status !== 'pending') return;
     const direction = entry.direction === 'upload' ? 'upload' : 'download';
     transferQueue.startTransfer(id);
     try {
@@ -11454,6 +11455,7 @@ const App: React.FC = () => {
     const stops = stopCountRef.current;
     while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
     if (stopCountRef.current !== stops) return;
+    if (transferQueue.getItemNow(id)?.status !== 'pending') return;
     const problem = queuedTargetProblem(queuedFor);
     if (problem) {
       transferQueue.failTransfer(id, t(problem));
@@ -18776,7 +18778,8 @@ const App: React.FC = () => {
             const stops = stopCountRef.current;
             while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
             if (stopCountRef.current !== stops) return;
-            const item = transferQueue.items.find((i) => i.id === id);
+            const item = transferQueue.getItemNow(id);
+            if (!item || (item.status !== 'error' && !(item.restored && item.status === 'pending'))) return;
             // TQ-7c: restored items go through smart resume (auto-connect).
             if (item?.restored && item.status === 'pending') {
               void resumeRestoredTransfers([id]);

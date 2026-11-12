@@ -205,6 +205,7 @@ export function fixture(options: Options = {}) {
       queueItemsRef.current = cancelTransferRow(queueItemsRef.current, id, label);
     }),
     retryItem: vi.fn(reopen),
+    getItemNow: (id: string) => queueItemsRef.current.find(item => item.id === id),
     // The queue's own filter: a failed row, not a stopped one.
     retryAllFailed: vi.fn(() => {
       const { ids } = retryAllFailedRows(queueItemsRef.current);

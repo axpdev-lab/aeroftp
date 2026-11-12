@@ -468,22 +468,47 @@ it.each(['result', 'error'] as const)('keeps a GVfs phone connected when an abor
     } finally { vi.useRealTimers(); }
 });
 
-it.each(['settled', 'stopped', 'retargeted'] as const)('gates a queued executor on native cancellation and rechecks %s', async outcome => {
+it.each(['settled', 'stopped', 'retargeted', 'removed', 'cancelled', 'completed'] as const)('gates a queued executor on cancellation or runner exit and rechecks %s', async outcome => {
     const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
     const start = app.indexOf('  const boundToQueuedServer =');
     const end = app.indexOf('\n  /** Whether two connections', start);
     const { code } = await transformWithOxc(app.slice(start, end), 'queue-after-cancellation.ts');
     let settle!: () => void; const pending = new Promise<void>(resolve => { settle = resolve; }); let problem: string | null = null;
-    const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: pending as Promise<void> | null }, syncRunnerPendingRef: { current: null }, runTrackedSync,
-        stopCountRef: { current: 0 }, queuedTargetProblem: () => problem, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key };
+    let row: { status: string } | undefined = { status: 'pending' };
+    const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null as Promise<void> | null },
+        syncRunnerPendingRef: { current: pending as Promise<void> | null }, runTrackedSync,
+        stopCountRef: { current: 0 }, queuedTargetProblem: () => problem, transferQueue: { getItemNow: () => row, failTransfer: vi.fn() }, t: (key: string) => key };
     const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
     const executor = vi.fn(); const retry = bind({}, 'retry', executor)();
     expect(executor).not.toHaveBeenCalled();
     if (outcome === 'stopped') context.stopCountRef.current++;
     if (outcome === 'retargeted') problem = 'target changed';
-    context.syncCancelPendingRef.current = null; settle(); await retry;
+    if (outcome === 'removed') row = undefined;
+    if (outcome === 'cancelled') row = { status: 'error' };
+    if (outcome === 'completed') row = { status: 'completed' };
+    context.syncRunnerPendingRef.current = null; settle(); await retry;
     expect(executor).toHaveBeenCalledTimes(outcome === 'settled' ? 1 : 0);
     if (outcome === 'retargeted') expect(context.transferQueue.failTransfer).toHaveBeenCalledWith('retry', 'target changed');
+});
+
+it('rejects an overlapping tracked runner without replacing the first runner or losing Stop', async () => {
+    let finish!: () => void; const pending = new Promise<void>(resolve => { finish = resolve; });
+    const pendingRef = { current: null as Promise<void> | null }; let cancelled = false;
+    const nextDelete = vi.fn();
+    const first = runTrackedSync(pendingRef, async () => {
+        await pending;
+        if (!cancelled) nextDelete();
+        return { cancelled };
+    });
+    const firstExit = pendingRef.current;
+    const second = vi.fn(async () => undefined);
+    await expect(runTrackedSync(pendingRef, second)).rejects.toThrow('Sync runner already active');
+    expect(second).not.toHaveBeenCalled();
+    expect(pendingRef.current).toBe(firstExit);
+    cancelled = true; finish();
+    await expect(first).resolves.toEqual({ cancelled: true });
+    expect(nextDelete).not.toHaveBeenCalled();
+    expect(pendingRef.current).toBe(null);
 });
 
 it('does not rearm Retry after native Stop acknowledgement until the actual sync runner exits', async () => {
@@ -515,7 +540,7 @@ it('does not rearm Retry after native Stop acknowledgement until the actual sync
         syncRunnerPendingRef: { current: null as Promise<void> | null }, syncCancelPendingRef: { current: null as Promise<void> | null },
         syncRefreshAbortRef: { current: null }, remoteSyncRunningRef: { current: true }, activeTransferRef: { current: null },
         stopCountRef: { current: 0 }, loadLocalWaitersRef: { current: new Set<() => void>() }, batchResumeResolverRef: { current: null },
-        transferQueue: { items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(), stopAll: vi.fn(), hasActiveTransfersNow: () => true },
+        transferQueue: { getItemNow: () => ({ id: 'retry', status: 'error', restored: false }), items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(), stopAll: vi.fn(), hasActiveTransfersNow: () => true },
         retryCallbacksRef: { current: new Map([['retry', rearmedOnUserAction({ batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef }, retried)]]) },
         resumeRestoredTransfers: vi.fn(), setSyncCancelling: vi.fn(), dispatchTransferToast: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(),
         window: { removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'transfer', onTransferEvent: vi.fn(),
@@ -669,7 +694,7 @@ it.each(['stop-pending', 'stop-retry', 'timeout-pending', 'timeout-read'] as con
             runFiles: [], runDirs: { local: [], remote: [] }, runConfig: { localRoot: '/A' }, opts: {},
             batchCancelledRef: { current: false }, deltaStats: new Map(), invoke: vi.fn(() => scenario === 'stop-retry' ? nativeCancellation : Promise.resolve()),
             syncRunQueueBridge: () => ({}), transferQueue: {
-                items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(),
+                getItemNow: () => ({ id: 'retry', status: 'error', restored: false }), items: [{ id: 'retry', status: 'error', restored: false }], retryItem: vi.fn(),
                 stopPending: vi.fn(), stopAll: vi.fn(() => { queueActive = false; }), hasActiveTransfersNow: () => queueActive,
             }, epoch: 1, ownerBinding: 'owner',
             retryCallbacksRef: { current: new Map([['retry', retryExecution]]) }, resumeRestoredTransfers: vi.fn(),

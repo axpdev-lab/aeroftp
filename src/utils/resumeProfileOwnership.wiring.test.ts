@@ -157,7 +157,7 @@ it('captures a backend generation only while the intended profile stays ready', 
     const failTransfer = vi.fn();
     const completeTransfer = vi.fn();
     let live = true;
-    const ctx = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, transferQueue: { startTransfer: vi.fn(), failTransfer, completeTransfer },
+    const ctx = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, transferQueue: { getItemNow: () => ({ status: 'pending' }), startTransfer: vi.fn(), failTransfer, completeTransfer },
         restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder: async () => null, loadSavedServerProfiles: async () => [{ id: 'profile-A' }], isLiveOnProfile: () => live,
         invoke: vi.fn(async () => { live = false; return 7; }), downloadFile, uploadFile: vi.fn(),
         parentDir: () => '/local', batchCancelledRef: { current: false }, notify: { error: vi.fn() }, t: (s: string) => s,
@@ -203,7 +203,7 @@ it('resumes plaintext siblings immediately while encrypted entries wait for thei
 it('retries an out-of-scope entry with backend profile identity but without requiring crypt', async () => {
     const code = (await transformWithOxc(block('  const retryRestoredEntry =', '  // Queues the restorable entries'), 'retry-plaintext.ts')).code;
     const downloadFile = vi.fn(async () => true);
-    const ctx = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, transferQueue: { startTransfer: vi.fn(), failTransfer: vi.fn(), completeTransfer: vi.fn() },
+    const ctx = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, transferQueue: { getItemNow: () => ({ status: 'pending' }), startTransfer: vi.fn(), failTransfer: vi.fn(), completeTransfer: vi.fn() },
         loadSavedServerProfiles: async () => [{ id: 'A', username: 'u', aeroCryptOverlay: { enabled: true, remoteScope: '/vault' } }],
         restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder: async () => null, isLiveOnProfile: (_id: string, requireOverlay: boolean) => !requireOverlay,
         invoke: vi.fn(async () => 17), downloadFile, uploadFile: vi.fn(), parentDir: () => '/local',
@@ -227,7 +227,7 @@ it('places a scope under the login folder through the live session before a rest
     const profile = { id: 'S', username: 'u', protocol: 'sftp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } };
     const run = async (remotePath: string) => {
         const downloadFile = vi.fn(async (..._args: unknown[]) => true);
-        const ctx = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, transferQueue: { startTransfer: vi.fn(), failTransfer: vi.fn(), completeTransfer: vi.fn() },
+        const ctx = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, transferQueue: { getItemNow: () => ({ status: 'pending' }), startTransfer: vi.fn(), failTransfer: vi.fn(), completeTransfer: vi.fn() },
             loadSavedServerProfiles: async () => [profile],
             restoredTransferCryptScope, restoredTransferRequiresOverlay, restoredTransferLoginFolder, isLiveOnProfile: () => true,
             invoke, downloadFile, uploadFile: vi.fn(), parentDir: () => '/local',

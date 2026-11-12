@@ -131,7 +131,7 @@ describe('a queued transfer', () => {
             connectionNumberOf,
             ACCOUNT_KEY_OPTIONS,
             oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey,
-            transferQueue: { failTransfer: vi.fn() },
+            transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() },
             t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
@@ -159,7 +159,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
@@ -181,7 +181,7 @@ describe('a queued transfer', () => {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
         };
@@ -836,7 +836,7 @@ describe('a direct remote action', () => {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
         const { code } = await transformWithOxc(source, 'action-guard.ts');

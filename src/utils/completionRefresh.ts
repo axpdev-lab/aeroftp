@@ -8,6 +8,7 @@ export async function runTrackedSync<T>(
     pendingRef: { current: Promise<void> | null },
     run: () => Promise<T>,
 ): Promise<T> {
+    if (pendingRef.current) throw new Error('Sync runner already active');
     let settle!: () => void;
     const pending = new Promise<void>(resolve => { settle = resolve; });
     pendingRef.current = pending;
