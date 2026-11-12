@@ -489,6 +489,7 @@ const runSync = async (
             // or sidecar generation can write anything.
             || entry.status === 'in_progress'
             || (entry.status === 'transferred' && (deps.resumeJournal?.ec_enabled === true || entry.action === 'download'))
+            || (entry.status === 'verify_failed' && entry.action === 'download' && deps.resumeJournal?.ec_enabled === true)
             || (entry.status !== 'completed' && (entry.intent_token ?? null) !== (observedIntents[intentKey(entry)] ?? null))
             || (entry.archive_state === 'archived' && (!entry.archive_receipt || !deps.resumeJournal?.backup_stamp))
             || (entry.status !== 'completed' && entry.action !== 'upload' && entry.action !== 'download')
@@ -1542,16 +1543,22 @@ const runSync = async (
                     }
                     if (isCancelled()) {
                         runCancelled = true;
+                        journal.resume_safe = false;
                         if (journalEntry) journalEntry.verified = false;
                         setStatus(item.relativePath, 'skipped');
+                        completed++;
+                        callbacks.onProgress?.(completed, files.length);
                         continue;
                     }
                     if (ecFailed) {
+                        journal.resume_safe = false;
                         const error: SyncErrorInfo = { kind: 'unknown', message: 'Error-correction verification failed', retryable: false, file_path: item.relativePath };
                         if (journalEntry) { journalEntry.status = 'verify_failed'; journalEntry.verified = false; journalEntry.last_error = error; }
                         verifyFailed++;
                         errors.push(error);
                         setStatus(item.relativePath, 'verify_failed', error.message);
+                        completed++;
+                        callbacks.onProgress?.(completed, files.length);
                         continue;
                     }
                 }

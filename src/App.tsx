@@ -1061,6 +1061,7 @@ const App: React.FC = () => {
   // Kept in sync with scanningState.active so it never sticks; the spinner's
   // Cancel raises batchCancelledRef, the loops break, and the latch auto-clears.
   const batchOpInFlightRef = useRef(false);
+  const batchOperationPendingRef = useRef<Promise<void> | null>(null);
   useEffect(() => {
     batchOpInFlightRef.current = scanningState.active;
   }, [scanningState.active]);
@@ -1230,6 +1231,8 @@ const App: React.FC = () => {
     localLocal: boolean;
   } | null>(null);
   const remoteSyncRunningRef = useRef(false);
+  const syncPreflightPendingRef = useRef(false);
+  const [syncPreflightPending, setSyncPreflightPending] = useState(false);
   // FINDING-4: true from pressing Stop during an AeroSync run until the run
   // actually unwinds. Drives the Stop-button spinner: Stop on a run skips the
   // batch two-level cancel (see cancelTransfer), so the queue's force-stop
@@ -11911,6 +11914,11 @@ const App: React.FC = () => {
     const refreshWaiters = [...loadLocalWaitersRef.current];
     loadLocalWaitersRef.current.clear();
     for (const settle of refreshWaiters) settle();
+    if (syncPreflightPendingRef.current && !remoteSyncRunningRef.current
+      && !batchOperationPendingRef.current && !activeTransferRef.current && !transferQueue.hasActiveTransfersNow()) {
+      setDeltaEligibilityPrompt(null);
+      return;
+    }
     // If batch is paused by circuit breaker, resolve the pause promise
     if (batchResumeResolverRef.current) {
       batchResumeResolverRef.current('cancel');
@@ -12890,7 +12898,21 @@ const App: React.FC = () => {
       authenticatedRemoteContent: opts.authenticatedRemoteContent ?? isCryptOverlayActive(),
     };
 
-    const launchRun = (): void => {
+    if (syncPreflightPendingRef.current || remoteSyncRunningRef.current) {
+      notify.info(t('aerosync.title'), t('syncPanel.syncing'));
+      return;
+    }
+    const launchRun = async (): Promise<void> => {
+      syncPreflightPendingRef.current = true;
+      setSyncPreflightPending(true);
+      try {
+        // A cancelled folder operation observes its flag before this sync re-arms it.
+        await syncCancelPendingRef.current;
+        while (batchOperationPendingRef.current) await batchOperationPendingRef.current;
+      } finally {
+        syncPreflightPendingRef.current = false;
+        setSyncPreflightPending(false);
+      }
       if (stopAllCountRef.current !== launchStops) return;
       if (targetEpoch === undefined || ownerBinding === undefined) return;
       const epoch = targetEpoch;
@@ -12988,6 +13010,8 @@ const App: React.FC = () => {
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
     // unavailable. A saved per-server opt-out skips the probe entirely.
+    syncPreflightPendingRef.current = true;
+    setSyncPreflightPending(true);
     void (async () => {
       try {
         targetEpoch = opts.preparedTarget
@@ -12998,7 +13022,7 @@ const App: React.FC = () => {
         if (stopAllCountRef.current !== launchStops) return;
         const shouldProbe = protocol === 'sftp' && !!opts.profileId;
         if (!shouldProbe) {
-          launchRun();
+          await launchRun();
           return;
         }
         const stored = await loadSavedServerProfiles();
@@ -13006,7 +13030,7 @@ const App: React.FC = () => {
         if (stopAllCountRef.current !== launchStops) return;
         const profile = stored.find((p) => p.id === opts.profileId);
         if (profile?.skipDeltaEligibilityPrompt) {
-          launchRun();
+          await launchRun();
           return;
         }
         const verdict = await invoke<DeltaEligibilityProbeResult>(
@@ -13016,7 +13040,7 @@ const App: React.FC = () => {
         checkTarget();
         if (stopAllCountRef.current !== launchStops) return;
         if (verdict.eligible) {
-          launchRun();
+          await launchRun();
           return;
         }
         const reason = verdict.reason
@@ -13029,7 +13053,7 @@ const App: React.FC = () => {
           reason,
           serverLabel,
           profileId: opts.profileId!,
-          onContinue: () => { launchRun(); },
+          onContinue: () => { void launchRun(); },
         });
       } catch (err) {
         if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED') || targetEpoch === undefined || ownerBinding === undefined) {
@@ -13041,7 +13065,10 @@ const App: React.FC = () => {
           // eslint-disable-next-line no-console
           console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
         }
-        launchRun();
+        await launchRun();
+      } finally {
+        syncPreflightPendingRef.current = false;
+        setSyncPreflightPending(false);
       }
     })();
   });
@@ -13702,11 +13729,15 @@ const App: React.FC = () => {
   // mirror stays as belt-and-braces for the mid-scan cancel paths.
   const withBatchLatch = <A extends unknown[], R>(fn: (...args: A) => R | Promise<R>) =>
     async (...args: A): Promise<Awaited<R> | undefined> => {
-      if (batchOpInFlightRef.current) return undefined;
+      if (batchOpInFlightRef.current || batchOperationPendingRef.current) return undefined;
       batchOpInFlightRef.current = true;
+      const operation = withTransferRun(() => fn(...args));
+      const settled = operation.then(() => undefined, () => undefined);
+      batchOperationPendingRef.current = settled;
       try {
-        return await withTransferRun(() => fn(...args));
+        return await operation;
       } finally {
+        if (batchOperationPendingRef.current === settled) batchOperationPendingRef.current = null;
         batchOpInFlightRef.current = false;
       }
     };
@@ -14299,6 +14330,7 @@ const App: React.FC = () => {
         const sequentialUploadProfileId =
           sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
         const frozenUploadRemoteDir = remoteDir;
+        if (stopCountRef.current !== stops) return;
         const queueItems = filesToUpload.map(({ path: filePath, file }) => {
           const fileName = filePath.split(/[/\\]/).pop() || filePath;
           const size = file?.size || 0;
@@ -14610,6 +14642,7 @@ const App: React.FC = () => {
       title: t('dialog.selectFilesToUpload'),
     });
 
+    if (stopCountRef.current !== stops) return;
     if (!selected) return;
     const files = Array.isArray(selected) ? selected : [selected];
 
@@ -14888,6 +14921,7 @@ const App: React.FC = () => {
       const stagedDownloadMode = settings.autoStartTransfers === false;
       const sequentialDownloadProfileId =
         sessions.find(s => s.id === activeSessionId)?.savedServerId ?? null;
+      if (stopCountRef.current !== stops) return;
       const queueItems = filesToDownload.map(file => {
         const id = transferQueue.addItem(file.name, file.path, file.size || 0, 'download', stagedDownloadMode ? { staged: true } : undefined);
         recordQueueDescriptor(id, {
@@ -18354,7 +18388,7 @@ const App: React.FC = () => {
       return profileConnector.current(id, scope);
     },
     disconnect: async () => { if (isConnected) await disconnectFromFtp('button'); },
-    stop: async () => { await cancelActiveConnect(); if (remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
+    stop: async () => { await cancelActiveConnect(); if (syncPreflightPendingRef.current || remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity) await cancelTransfer(); },
     // Settings surface: typed open/close/read/update over the SAME public
     // persistence the UI uses. The general update merges allowlisted keys
     // through the approved broker and shared queue (never SettingsPanel.handleSave, which also
@@ -20738,12 +20772,12 @@ const App: React.FC = () => {
                       <button
                         data-testid={TID.toolbarCancelAll}
                         onClick={cancelTransfer}
-                        disabled={!syncCancelling && !isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
+                        disabled={!syncPreflightPending && !remoteSyncRunningRef.current && !syncCancelling && !isForceStopMode && !hasActiveTransfer && !hasQueueActivity}
                         className={`px-3 py-1.5 rounded-lg text-sm flex items-center gap-1.5 transition-all ${syncCancelling
                           ? 'bg-red-500 text-white shadow-sm cursor-wait'
                           : isForceStopMode
                             ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-sm hover:shadow-md animate-pulse'
-                            : (hasActiveTransfer || hasQueueActivity)
+                            : (syncPreflightPending || remoteSyncRunningRef.current || hasActiveTransfer || hasQueueActivity)
                               ? 'bg-red-500 hover:bg-red-600 text-white shadow-sm hover:shadow-md animate-pulse'
                               : 'bg-gray-200 dark:bg-gray-600 text-gray-400 dark:text-gray-500 cursor-not-allowed'
                           }`}

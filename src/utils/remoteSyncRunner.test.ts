@@ -1569,23 +1569,44 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
 
     it.each(['stopped', 'rejected', 'failed-status'] as const)('does not verify or index a final download whose EC was %s', async outcome => {
         let stopped = false;
+        let destination = 'old';
         let saved: { files: Record<string, unknown> } | undefined;
-        const { invoke, calls } = makeInvoke({ download_file: () => { if (outcome === 'stopped') stopped = true; },
+        const { invoke, calls } = makeInvoke({ download_file: () => { destination = 'downloaded payload'; if (outcome === 'stopped') stopped = true; },
             sync_ec_verify_repair: () => { if (outcome === 'rejected') throw new Error('EC failed'); return { status: 'verify_failed' }; },
             save_sync_index_cmd: args => { saved = args!.index as typeof saved; } });
+        const progress = vi.fn();
         const report = await runRemoteSync([file('last', 'download')], noDirs,
             baseConfig({ verifyPolicy: 'none', errorCorrection: { enabled: true, pct: 10 } }),
-            { isCancelled: () => stopped }, noWaitDeps(invoke, { writeIndex: true }));
+            { isCancelled: () => stopped, onProgress: progress }, noWaitDeps(invoke, { writeIndex: true }));
         const journal = lastSavedJournal(calls)!;
         expect(journal.entries[0].status).not.toBe('completed');
         expect(journal.entries[0].verified).toBe(false);
         expect(journal.completed).toBe(false);
         expect(saved!.files).not.toHaveProperty('last');
         expect(report.downloaded).toBe(0);
+        expect(progress).toHaveBeenLastCalledWith(1, 1);
+        // An edited destination must never be overwritten by replay of this failure.
+        const downloadsBefore = calls.filter(call => call.cmd === 'download_file').length;
+        stopped = false;
+        destination = 'user edit after the failed verification';
+        await expect(runRemoteSync(filesFromJournal(journal), noDirs,
+            baseConfig({ verifyPolicy: 'none', errorCorrection: { enabled: true, pct: 10 } }), {},
+            noWaitDeps(invoke, { resumeJournal: journal, writeIndex: true }))).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+        expect(calls.filter(call => call.cmd === 'download_file')).toHaveLength(downloadsBefore);
+        expect(destination).toBe('user edit after the failed verification');
         if (outcome === 'stopped') {
             expect(report.cancelled).toBe(true);
             expect(calls.filter(call => call.cmd === 'sync_ec_verify_repair')).toHaveLength(0);
         }
+    });
+
+    it('counts an EC failure followed by a successful download as two processed files', async () => {
+        const progress = vi.fn();
+        const { invoke } = makeInvoke({ sync_ec_verify_repair: (_args, index) => ({ status: index === 0 ? 'verify_failed' : 'verified' }) });
+        const report = await runRemoteSync([file('bad', 'download'), file('good', 'download')], noDirs,
+            baseConfig({ errorCorrection: { enabled: true, pct: 10 } }), { onProgress: progress }, noWaitDeps(invoke));
+        expect(report.downloaded).toBe(1);
+        expect(progress).toHaveBeenLastCalledWith(2, 2);
     });
 
     // m3 (verification of the fourth round of #949): a run that crashed

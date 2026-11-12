@@ -551,3 +551,38 @@ describe('a switch to another server while the file picker is open', () => {
     expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/b.txt`]);
   });
 });
+
+it('does not dispatch multiple picker files after Stop while the picker is open', async () => {
+  const f = fixture({ folders: { [LOCAL]: [local('up.txt'), local('b.txt')] } });
+  await uploadPicked(f, breaker(), [`${LOCAL}/up.txt`, `${LOCAL}/b.txt`], () => {
+    f.stopCountRef.current++;
+    f.batchCancelledRef.current = true;
+  });
+  expect(f.written()).toEqual([]);
+  expect(f.transferQueue.addItem).not.toHaveBeenCalled();
+});
+
+it.each(['upload', 'download'] as const)('creates no pending %s rows after Stop during destination listing', async direction => {
+  const entry = direction === 'upload' ? folder(local('dir')) : folder(remote('dir'));
+  const destination = direction === 'upload' ? INBOX : SUB;
+  const f = fixture({ folders: { [LOCAL]: [folder(local('dir'))], [REMOTE]: [folder(remote('dir'))], [destination]: [] } });
+  let finish!: () => void;
+  let listing = false;
+  const held = new Promise<void>(resolve => { finish = resolve; });
+  const original = f.invoke.getMockImplementation()!;
+  f.invoke.mockImplementation(async (cmd: string, args?: Record<string, any>) => {
+    if (cmd === (direction === 'upload' ? 'provider_list_files' : 'get_local_files') && args?.path === destination) {
+      listing = true;
+      await held;
+    }
+    return original(cmd, args);
+  });
+  const pending = f.drop([entry], direction === 'download', destination, 'local');
+  await vi.waitFor(() => expect(listing).toBe(true));
+  f.stopCountRef.current++;
+  f.batchCancelledRef.current = true;
+  finish();
+  await pending;
+  expect(f.transferQueue.addItem).not.toHaveBeenCalled();
+  expect(f.written()).toEqual([]);
+});
