@@ -12881,8 +12881,12 @@ const App: React.FC = () => {
             const refreshed = await loadRemoteFiles(undefined, true, undefined, { epoch, check: checkTarget });
             if (!refreshed) return;
             checkTarget();
-            if (currentLocalPathRef.current === runConfig.localRoot) {
-              await loadLocalFiles(runConfig.localRoot, { check: checkTarget });
+            const visibleLocalFolder = currentLocalPathRef.current;
+            // Include a descendant changed by the run and an ancestor whose
+            // flattened search covers it, even without a filesystem watcher.
+            if (visibleLocalFolder && (localPanelShows(visibleLocalFolder, runConfig.localRoot, true)
+                || localPanelShows(runConfig.localRoot, visibleLocalFolder, true))) {
+              await loadLocalFiles(visibleLocalFolder, { check: checkTarget });
             }
           }
         } catch (err) {

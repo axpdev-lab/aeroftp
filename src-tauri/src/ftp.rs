@@ -153,6 +153,9 @@ impl FtpManager {
     }
 
     pub fn connection_spec(&self) -> Result<FtpConnectionSpec> {
+        if self.stream.is_none() || self.abandoned_command {
+            return Err(FtpManagerError::NotConnected.into());
+        }
         let server = self.server.clone().ok_or(FtpManagerError::NotConnected)?;
         let username = self.username.clone().ok_or(FtpManagerError::NotConnected)?;
         let password = self
@@ -257,6 +260,13 @@ impl FtpManager {
     /// Disconnect from FTP server
     pub async fn disconnect(&mut self) -> Result<()> {
         let abandoned = std::mem::take(&mut self.abandoned_command);
+        // Clear identity even if an uncertain navigation already retired the
+        // stream, and before a canceled QUIT could skip cleanup. reconnect()
+        // snapshots its own credentials before explicitly disconnecting.
+        self.server = None;
+        self.username = None;
+        self.password = None;
+        self.current_path = "/".into();
         if let Some(mut stream) = self.stream.take() {
             info!("Disconnecting from FTP server");
 
@@ -390,7 +400,9 @@ impl FtpManager {
 
     /// Change working directory
     pub async fn change_dir(&mut self, path: &str) -> Result<()> {
-        let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+        // A canceled navigation must drop its uncertain socket, rather than
+        // returning a CWD-mutated stream to a manager with the old path.
+        let mut stream = self.stream.take().ok_or(FtpManagerError::NotConnected)?;
 
         info!("Changing directory to: {}", path);
 
@@ -410,7 +422,10 @@ impl FtpManager {
         .await;
         self.abandoned_command = false;
         match changed {
-            Ok(pwd) => self.current_path = pwd,
+            Ok(pwd) => {
+                self.current_path = pwd;
+                self.stream = Some(stream);
+            }
             Err(error) => {
                 // CWD may already have taken effect or its late reply may
                 // still be on the wire. No subsequent command may use it.
@@ -453,6 +468,12 @@ impl FtpManager {
     /// deciding whether a file must be kept before it is overwritten must not
     /// take a lost connection for "nothing there".
     pub async fn exists(&mut self, path: &str) -> Result<bool> {
+        let mut probe = self.take_directory_probe()?;
+        let result = probe.exists_with_owned_stream(path).await;
+        self.finish_directory_probe(probe, result)
+    }
+
+    async fn exists_with_owned_stream(&mut self, path: &str) -> Result<bool> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
         // SIZE is defined on the binary form of a file: vsftpd refuses it
         // with 550 in ASCII mode even for a file that is there, and that
@@ -533,6 +554,33 @@ impl FtpManager {
     /// Verify a backup receipt by its listing type, not CWD/SIZE existence.
     /// Always restore the session folder, including on a refused listing.
     pub(crate) async fn receipt_is_file(&mut self, path: &str) -> Result<bool> {
+        let mut probe = self.take_directory_probe()?;
+        let result = probe.receipt_with_owned_stream(path).await;
+        self.finish_directory_probe(probe, result)
+    }
+
+    // Keep the browsing manager unavailable throughout temporary CWD/listing/
+    // restoration, including cancellation between those individual commands.
+    fn take_directory_probe(&mut self) -> Result<Self> {
+        let stream = self.stream.take().ok_or(FtpManagerError::NotConnected)?;
+        self.abandoned_command = true;
+        let mut probe = Self::new();
+        probe.stream = Some(stream);
+        probe.current_path = self.current_path.clone();
+        probe.timeouts = self.timeouts;
+        probe.trust_pasv_address = self.trust_pasv_address;
+        Ok(probe)
+    }
+
+    fn finish_directory_probe<T>(&mut self, mut probe: Self, result: Result<T>) -> Result<T> {
+        self.abandoned_command = false;
+        if result.is_ok() && !probe.abandoned_command && probe.current_path == self.current_path {
+            self.stream = probe.stream.take();
+        }
+        result
+    }
+
+    async fn receipt_with_owned_stream(&mut self, path: &str) -> Result<bool> {
         let (parent, name) = path.rsplit_once('/').ok_or_else(|| {
             FtpManagerError::OperationFailed("Receipt needs a parent folder".into())
         })?;
@@ -1342,34 +1390,65 @@ pub(crate) mod exists_tests {
         }
     }
 
-    #[tokio::test]
-    async fn receipt_cwd_without_pwd_retires_the_uncertain_session() {
+    async fn cwd_then_unavailable_pwd(stage: &str) -> (String, Arc<tokio::sync::Notify>) {
+        let stage = stage.to_owned();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let reached = entered.clone();
         tokio::spawn(async move {
             let (socket, _) = listener.accept().await.unwrap();
             let (read, mut write) = socket.into_split();
             let mut lines = BufReader::new(read).lines();
             let mut moved = false;
+            let mut data_listener = None;
             write.write_all(b"220 ready\r\n").await.unwrap();
             while let Ok(Some(line)) = lines.next_line().await {
                 let command = line.split(' ').next().unwrap();
                 let response = match command {
-                    "USER" => "331 password\r\n",
-                    "PASS" => "230 in\r\n",
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
                     "CWD" => {
                         moved = true;
-                        "250 moved\r\n"
+                        "250 moved\r\n".to_string()
                     }
-                    "PWD" if moved => "550 cannot report folder\r\n",
-                    "PWD" => "257 \"/\"\r\n",
-                    _ => "200 ok\r\n",
+                    "PWD" if moved && stage != "LIST" => {
+                        reached.notify_one();
+                        if stage == "PWD" {
+                            continue;
+                        }
+                        "550 cannot report folder\r\n".to_string()
+                    }
+                    "PWD" if moved => "257 \"/backup\"\r\n".to_string(),
+                    "PWD" => "257 \"/\"\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" | "MLSD" => {
+                        reached.notify_one();
+                        continue;
+                    }
+                    _ => "200 ok\r\n".to_string(),
                 };
                 if write.write_all(response.as_bytes()).await.is_err() {
                     break;
                 }
             }
+            drop(data_listener);
         });
+        (addr, entered)
+    }
+
+    #[tokio::test]
+    async fn receipt_cwd_without_pwd_retires_the_uncertain_session() {
+        let (addr, _) = cwd_then_unavailable_pwd("ERROR").await;
         let mut ftp = FtpManager::new();
         ftp.connect(&addr).await.unwrap();
         ftp.login("u", "p").await.unwrap();
@@ -1377,6 +1456,39 @@ pub(crate) mod exists_tests {
         assert!(ftp.stream.is_none());
         assert!(ftp.pwd().await.is_err());
         assert!(ftp.change_dir("/elsewhere").await.is_err());
+        assert!(ftp.connection_spec().is_err());
+        // Retirement keeps explicit reconnect possible, but disconnect must
+        // clear identity even when there is no longer a socket.
+        assert!(ftp.server.is_some() && ftp.username.is_some() && ftp.password.is_some());
+        ftp.disconnect().await.unwrap();
+        assert!(ftp.server.is_none() && ftp.username.is_none() && ftp.password.is_none());
+        assert!(ftp.connection_spec().is_err());
+    }
+
+    #[tokio::test]
+    async fn canceled_receipt_navigation_cannot_delete_in_the_new_server_folder() {
+        for stage in ["PWD", "LIST"] {
+            let (addr, entered) = cwd_then_unavailable_pwd(stage).await;
+            let mut ftp = FtpManager::new();
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+            assert!(ftp.connection_spec().is_ok());
+            {
+                let navigating = ftp.receipt_is_file("/backup/item");
+                tokio::pin!(navigating);
+                tokio::select! {
+                    _ = entered.notified() => {},
+                    result = &mut navigating => panic!("PWD must remain pending: {result:?}"),
+                }
+                // Drop the caller future like a navigation timeout/cancellation.
+            }
+            assert!(!ftp.is_connected());
+            assert!(ftp.connection_spec().is_err());
+            assert!(ftp.remove("relative-name").await.is_err());
+            assert!(ftp.server.is_some() && ftp.username.is_some() && ftp.password.is_some());
+            ftp.disconnect().await.unwrap();
+            assert!(ftp.connection_spec().is_err());
+        }
     }
 
     #[tokio::test]
@@ -1610,13 +1722,13 @@ mod connection_spec_tests {
     /// A pooled transfer session dials with the PASV-address trust of the
     /// session it was derived from, both ways (CodeRabbit on #1506 Requested
     /// 188: the pool used to build its managers with the default).
-    #[test]
-    fn a_pooled_session_keeps_the_pasv_address_trust() {
+    #[tokio::test]
+    async fn a_pooled_session_keeps_the_pasv_address_trust() {
         for trust in [true, false] {
             let mut browsing = FtpManager::new();
-            browsing.server = Some("ftp.example.com:21".to_string());
-            browsing.username = Some("user".to_string());
-            browsing.password = Some(SecretString::from("unused".to_string()));
+            let server = super::exists_tests::vsftpd_like().await;
+            browsing.connect(&server).await.unwrap();
+            browsing.login("user", "unused").await.unwrap();
             browsing.set_trust_pasv_address(trust);
             let spec = browsing.connection_spec().expect("spec");
             assert_eq!(spec.trust_pasv_address, trust);

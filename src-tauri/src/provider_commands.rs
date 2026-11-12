@@ -2278,6 +2278,7 @@ async fn install_connected_provider_with_owner(
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     state.invalidate_overlay_key_cache();
+    drop(config_lock);
     if let Some(mut previous) = previous {
         if let Err(err) = previous.disconnect().await {
             warn!(
@@ -2286,6 +2287,7 @@ async fn install_connected_provider_with_owner(
             );
         }
     }
+    let mut config_lock = state.config.lock().await;
     let validated_owner = owner.clone();
     let mut candidate = Some(provider);
     let publish = || {
@@ -22511,6 +22513,12 @@ mod restored_transfer_owner_tests {
             .await
         });
         started.notified().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), state.config.lock())
+                .await
+                .expect("disconnect must not monopolize the config lock")
+                .is_none()
+        );
         // Cancellation is stronger than a refused final owner check: no
         // cleanup after disconnect can run, so retirement must already hold.
         replacement.abort();

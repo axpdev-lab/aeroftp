@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { localPanelShows } from './localSelection';
 import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
 import { runRemoteSync, type RemoteSyncConfig, type SyncRunFile } from './remoteSyncRunner';
@@ -400,7 +401,7 @@ it('stops the sync refresh continuation when remote refresh discards a switched 
     const {code}=await transformWithOxc(`async function refreshAfterSync(){${app.slice(start,end)}}`,'sync-refresh-continuation.ts');
     let current=true;let release!:(value:null)=>void;const pending=new Promise<null>(resolve=>{release=resolve;});
     const context={report:{cancelled:false,uploaded:1,downloaded:0,deleted:0},epoch:1,checkTarget:()=>{if(!current)throw new Error('changed');},
-        loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},currentLocalPathRef:{current:'/old'},
+        loadRemoteFiles:()=>pending,loadLocalFiles:vi.fn(),runConfig:{localRoot:'/old'},currentLocalPathRef:{current:'/old'},localPanelShows,
     };
     const refresh=new Function(...Object.keys(context),`${code};return refreshAfterSync;`)(...Object.values(context));
     const result=refresh();current=false;release(null);await result;
@@ -417,10 +418,26 @@ it.each(['before', 'during'] as const)('preserves local navigation %s the remote
     const context = {
         report: { cancelled: false, uploaded: 1, downloaded: 0, deleted: 0 }, epoch: 1, checkTarget: vi.fn(),
         loadRemoteFiles: () => pending, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
-        currentLocalPathRef: { current: when === 'before' ? '/B' : '/A' },
+        currentLocalPathRef: { current: when === 'before' ? '/B' : '/A' }, localPanelShows,
     };
     const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
     const run = refresh(); context.currentLocalPathRef.current = '/B'; release(true); await run;
     expect(context.loadLocalFiles).not.toHaveBeenCalled();
     expect(context.currentLocalPathRef.current).toBe('/B');
+});
+
+it.each(['/A/sub', '/A', '/'])('refreshes the affected visible folder %s with no filesystem watcher', async visible => {
+    const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+    const start = app.indexOf('          if (!report.cancelled && (report.uploaded > 0');
+    const end = app.indexOf('\n        } catch (err)', start);
+    const { code } = await transformWithOxc(`async function refreshAfterSync(){${app.slice(start, end)}}`, 'sync-affected-visible-folder.ts');
+    const context = {
+        report: { cancelled: false, uploaded: 0, downloaded: 1, deleted: 1 }, epoch: 1, checkTarget: vi.fn(),
+        loadRemoteFiles: async () => true, loadLocalFiles: vi.fn(), runConfig: { localRoot: '/A' },
+        currentLocalPathRef: { current: visible }, localPanelShows,
+    };
+    const refresh = new Function(...Object.keys(context), `${code};return refreshAfterSync;`)(...Object.values(context));
+    await refresh();
+    expect(context.loadLocalFiles).toHaveBeenCalledWith(visible, expect.objectContaining({ check: context.checkTarget }));
+    expect(context.currentLocalPathRef.current).toBe(visible);
 });
