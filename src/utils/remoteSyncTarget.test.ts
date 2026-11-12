@@ -87,7 +87,7 @@ describe('remote sync target ownership', () => {
     });
 
     it('requires remote ownership and leaves local-local runs independent', async () => {
-        const invoke = async <T,>() => undefined as T;
+        const invoke = wrapIntentInvoke(async <T,>() => undefined as T);
         await expect(runRemoteSync([], { remote: [], local: [] }, config(), {}, { invoke })).rejects.toThrow('bound target');
         const report = await runRemoteSync([], { remote: [], local: [] }, config({ isLocalLocal: true }), {}, { invoke: wrapIntentInvoke(invoke) });
         expect(report.cancelled).toBe(false);
