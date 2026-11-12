@@ -2704,7 +2704,9 @@
             "rollbackRestoreNothing": "Ez dago ezer leheneratzeko",
             "rollbackRestoreFailed": "Leheneratzeak huts egin du: {error}",
             "intervalHoursOne": "{count} ordu",
-            "intervalHoursMany": "{count} ordu"
+            "intervalHoursMany": "{count} ordu",
+            "resumeNeedsCompare": "Ezin da etendako sinkronizazio hau segurtasunez berrabiarazi. Egin konparazio berri bat sinkronizatu aurretik.",
+            "planStaleAfterBatch": "Beste fitxategi-eragiketa bat amaitu da plan hau kalkulatu ondoren. Egin konparazio berri bat sinkronizatu aurretik."
         },
         "ui": {
             "syncing": "Sinkronizatzen...",

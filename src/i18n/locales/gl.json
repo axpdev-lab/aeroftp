@@ -2704,7 +2704,9 @@
             "rollbackRestoreNothing": "Nada que restaurar",
             "rollbackRestoreFailed": "Fallou a restauración: {error}",
             "intervalHoursOne": "{count} hora",
-            "intervalHoursMany": "{count} horas"
+            "intervalHoursMany": "{count} horas",
+            "resumeNeedsCompare": "Non se pode retomar esta sincronización interrompida de forma segura. Realiza unha nova comparación antes de sincronizar.",
+            "planStaleAfterBatch": "Outra operación de ficheiros rematou despois de calcular este plan. Realiza unha nova comparación antes de sincronizar."
         },
         "ui": {
             "syncing": "Sincronizando...",

@@ -2704,7 +2704,9 @@
             "rollbackRestoreNothing": "Không có gì để khôi phục",
             "rollbackRestoreFailed": "Khôi phục thất bại: {error}",
             "intervalHoursOne": "{count} giờ",
-            "intervalHoursMany": "{count} giờ"
+            "intervalHoursMany": "{count} giờ",
+            "resumeNeedsCompare": "Không thể tiếp tục an toàn quá trình đồng bộ đã bị gián đoạn này. Hãy so sánh lại trước khi đồng bộ.",
+            "planStaleAfterBatch": "Một thao tác tệp khác đã hoàn tất sau khi kế hoạch này được tính toán. Hãy so sánh lại trước khi đồng bộ."
         },
         "ui": {
             "syncing": "Đang đồng bộ...",
