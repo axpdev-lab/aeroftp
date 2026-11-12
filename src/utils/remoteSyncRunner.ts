@@ -323,8 +323,12 @@ export const filesFromJournal = (journal: SyncJournal): SyncRunFile[] =>
             ...(e.source_path ? { sourcePath: e.source_path } : {}),
             ...(e.baseline_key ? { baselineKey: e.baseline_key } : {}),
             action: (e.action === 'upload' ? 'upload' : 'download') as SyncRunAction,
-            size: e.source_size ?? e.bytes_transferred ?? 0,
-            mtime: e.source_mtime ?? null,
+            size: e.action === 'upload' && (e.status === 'completed' || e.status === 'transferred')
+                ? (e.local_size ?? e.source_size ?? e.bytes_transferred ?? 0)
+                : (e.source_size ?? e.bytes_transferred ?? 0),
+            mtime: e.action === 'upload' && (e.status === 'completed' || e.status === 'transferred')
+                ? ((e.local_modified !== undefined ? e.local_modified : e.source_mtime) ?? null)
+                : (e.source_mtime ?? null),
             expectedSha256: e.source_sha256 ?? null,
             overwritesExisting: e.overwrites_existing ?? (e.action === 'download'),
         }));
@@ -426,12 +430,15 @@ export const runRemoteSync = (
 ): Promise<SyncRunReport> => withTransferRun(() => runSync(files, dirs, config, callbacks, deps));
 
 const runSync = async (
-    files: SyncRunFile[],
+    requestedFiles: SyncRunFile[],
     dirs: SyncRunDirs,
     config: RemoteSyncConfig,
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => {
+    // Pending resumed uploads refresh their source metadata for this attempt;
+    // retain the caller's original plan and the journal's prior source proof.
+    const files = deps.resumeJournal ? requestedFiles.map(file => ({ ...file })) : requestedFiles;
     const localRoot = normalizedSyncRoot(config.localRoot);
     const remoteRoot = normalizedSyncRoot(config.remoteRoot);
     const resumeEntries = new Map(deps.resumeJournal?.entries.map(entry => [entry.relative_path, entry] as const));
@@ -1037,8 +1044,13 @@ const runSync = async (
                     continue;
                 }
             }
-            if (action === 'upload' && deps.writeIndex && f.mtime == null) {
-                landedStates.set(f.relativePath, await readLocalState(`${localBase}/${f.relativePath}`));
+            if (action === 'upload' && deps.writeIndex && (f.mtime == null || deps.resumeJournal)) {
+                const source = await readLocalState(`${localBase}/${f.relativePath}`);
+                landedStates.set(f.relativePath, source);
+                if (deps.resumeJournal) {
+                    f.size = source.size ?? f.size;
+                    f.mtime = source.modified;
+                }
             }
             bulkPreparationRan.add(f.relativePath);
             send.push(f);
@@ -1362,8 +1374,13 @@ const runSync = async (
             }
             // A run resumed from its journal knows no time of the file it
             // uploads: read it before the upload, the copy that goes up.
-            if (!sentByBulk && !preparedByBulk && deps.writeIndex && item.mtime == null) {
-                landedStates.set(item.relativePath, await readLocalState(localFilePath));
+            if (!sentByBulk && !preparedByBulk && deps.writeIndex && (item.mtime == null || deps.resumeJournal)) {
+                const source = await readLocalState(localFilePath);
+                landedStates.set(item.relativePath, source);
+                if (deps.resumeJournal) {
+                    item.size = source.size ?? item.size;
+                    item.mtime = source.modified;
+                }
             }
             const result = sentByBulk
                 ? await bulkOutcome(fromBulk, item.relativePath)

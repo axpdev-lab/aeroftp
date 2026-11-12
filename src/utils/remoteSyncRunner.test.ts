@@ -1483,6 +1483,38 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         files,
     });
 
+    it.each([false, true])('refreshes edited pending upload metadata on Resume (bulk=%s) and retains acknowledged metadata', async bulk => {
+        const old = '2026-09-26T09:00:00Z'; const edited = '2026-09-26T10:00:00Z';
+        const resume = resumeOf([
+            { relative_path: 'done', action: 'upload', status: 'completed', attempts: 1, last_error: null, verified: true, bytes_transferred: 5,
+                source_size: 2, source_mtime: old, local_size: 5, local_modified: old },
+            ...['one', 'two'].map(relative_path => ({ relative_path, action: 'upload' as const, status: 'pending' as const,
+                attempts: 0, last_error: null, verified: null, bytes_transferred: 0, source_size: 3, source_mtime: old })),
+        ]);
+        let saved: SyncIndex | undefined;
+        const { invoke, calls } = makeInvoke({
+            get_file_properties: () => ({ size: 17, modified: edited.slice(0, -1) }),
+            provider_bulk_support: () => ({ upload: bulk, download: false }),
+            provider_sync_transfer_bulk: args => (args!.items as unknown[]).map(() => ({ status: 'completed' })),
+            load_sync_index_cmd: savedAt(old, {}), save_sync_index_cmd: args => { saved = structuredClone(args!.index as SyncIndex); },
+        });
+        const pending = filesFromJournal(resume); const originalPlan = structuredClone(pending);
+        const report = await runRemoteSync(pending, noDirs, baseConfig({ isProvider: bulk }), {},
+            noWaitDeps(invoke, { resumeJournal: resume, writeIndex: true }));
+        expect(report.uploaded).toBe(3);
+        expect(report.totalBytes).toBe(5 + 17 + 17);
+        expect(calls.filter(call => call.cmd === 'get_file_properties').map(call => call.args?.path)).toEqual(['/home/u/work/one', '/home/u/work/two']);
+        expect(saved?.files.one).toMatchObject({ size: 17, modified: edited });
+        expect(saved?.files.two).toMatchObject({ size: 17, modified: edited });
+        expect(saved?.files.done).toMatchObject({ size: 5, modified: old });
+        const savedJournal = lastSavedJournal(calls)!;
+        const acknowledged = filesFromJournal(savedJournal);
+        expect(acknowledged.find(file => file.relativePath === 'one')).toMatchObject({ size: 17, mtime: edited });
+        expect(pending).toEqual(originalPlan);
+        expect(resume.entries[1].source_mtime).toBe(old);
+        expect(calls.filter(call => call.cmd === 'provider_sync_transfer_bulk')).toHaveLength(bulk ? 1 : 0);
+    });
+
     // m3 (verification of the fourth round of #949): a run that crashed
     // saved no index, and the entry there is from the run before it, of the
     // file before the transfer. It was adopted when the size matched.

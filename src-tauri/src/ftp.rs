@@ -1699,6 +1699,23 @@ pub(crate) mod exists_tests {
         assert_eq!(FtpManager::safe_ftp_error(&error), "FTP connection error");
     }
 
+    #[test]
+    fn sanitized_transient_ftp_refusals_remain_retryable() {
+        for code in [421, 425, 426, 450] {
+            let error = FtpError::UnexpectedResponse(suppaftp::types::Response {
+                status: Status::from(code),
+                body: b"password=private-ftp-secret".to_vec(),
+            });
+            let message =
+                FtpManagerError::OperationFailed(FtpManager::safe_ftp_error(&error)).to_string();
+            assert!(!message.contains("private-ftp"));
+            assert!(
+                crate::sync::classify_sync_error(&message, None).retryable,
+                "{message}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn timed_out_receipt_listing_cannot_restore_an_uncertain_channel() {
         let (addr, _) = cwd_then_unavailable_pwd("LIST").await;
