@@ -599,10 +599,6 @@ pub struct S3Provider {
     /// sessions, retired at completion/abort; no upload payload is retained.
     multipart_baselines:
         Arc<std::sync::Mutex<HashMap<String, super::s3_delta_baseline::MultipartBaseline>>>,
-    /// Keys whose stored cells must not be reused for a delta until a later
-    /// invalidate or save of that same key succeeds. Clones share the map.
-    /// The mark is inside this process. Another process is outside it.
-    delta_unusable: Arc<std::sync::Mutex<HashMap<BaselineKey, DeltaUnusable>>>,
     /// Keys uploaded this session while directory markers are skipped, and when.
     /// A GET of one of them can 404 until `rclone serve s3` finishes its
     /// write-back. Shared across clones of this provider.
@@ -782,26 +778,43 @@ struct DeltaUnusable {
     blocked: bool,
 }
 
+/// One baseline file, one object key. Every `S3Provider::new` in this process
+/// that opens that file shares the entry. Another process does not.
+fn delta_marks(
+) -> &'static std::sync::Mutex<HashMap<(std::path::PathBuf, BaselineKey), DeltaUnusable>> {
+    static MARKS: std::sync::LazyLock<
+        std::sync::Mutex<HashMap<(std::path::PathBuf, BaselineKey), DeltaUnusable>>,
+    > = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+    &MARKS
+}
+
 /// Keeps one key out of delta matching while a full Complete is in flight.
 /// Dropping the future, or a second delete that still fails after one retry,
 /// leaves the key blocked. A later successful invalidate or save clears it
 /// only when no Complete is still holding the key.
 struct DeltaHold {
+    path: std::path::PathBuf,
     key: BaselineKey,
-    map: Arc<std::sync::Mutex<HashMap<BaselineKey, DeltaUnusable>>>,
     released: bool,
 }
 
 impl DeltaHold {
+    fn mark_key(&self) -> (std::path::PathBuf, BaselineKey) {
+        (self.path.clone(), self.key.clone())
+    }
+
     fn release(&mut self) {
         if self.released {
             return;
         }
-        let mut map = self.map.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(state) = map.get_mut(&self.key) {
+        let mut map = delta_marks()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mark_key = self.mark_key();
+        if let Some(state) = map.get_mut(&mark_key) {
             state.holds = state.holds.saturating_sub(1);
             if state.holds == 0 && !state.blocked {
-                map.remove(&self.key);
+                map.remove(&mark_key);
             }
         }
         self.released = true;
@@ -813,8 +826,11 @@ impl Drop for DeltaHold {
         if self.released {
             return;
         }
-        let mut map = self.map.lock().unwrap_or_else(|error| error.into_inner());
-        if let Some(state) = map.get_mut(&self.key) {
+        let mut map = delta_marks()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mark_key = self.mark_key();
+        if let Some(state) = map.get_mut(&mark_key) {
             state.holds = state.holds.saturating_sub(1);
             state.blocked = true;
         }
@@ -822,42 +838,65 @@ impl Drop for DeltaHold {
 }
 
 impl S3Provider {
+    fn baseline_path(&self) -> Option<std::path::PathBuf> {
+        #[cfg(test)]
+        let path = self.baseline_test_path.clone();
+        #[cfg(not(test))]
+        let path = BaselineStore::default_path();
+        path
+    }
+
     fn hold_delta_for_complete(&self, remote_path: &str) -> DeltaHold {
         let key = self.delta_baseline_key(remote_path);
+        let Some(path) = self.baseline_path() else {
+            return DeltaHold {
+                path: std::path::PathBuf::new(),
+                key,
+                released: true,
+            };
+        };
         {
-            let mut map = self
-                .delta_unusable
+            let mut map = delta_marks()
                 .lock()
                 .unwrap_or_else(|error| error.into_inner());
-            let state = map.entry(key.clone()).or_insert(DeltaUnusable {
-                holds: 0,
-                blocked: false,
-            });
+            let state = map
+                .entry((path.clone(), key.clone()))
+                .or_insert(DeltaUnusable {
+                    holds: 0,
+                    blocked: false,
+                });
             state.holds = state.holds.saturating_add(1);
         }
         DeltaHold {
+            path,
             key,
-            map: Arc::clone(&self.delta_unusable),
             released: false,
         }
     }
 
     fn delta_is_unusable(&self, key: &BaselineKey) -> bool {
-        self.delta_unusable
+        let Some(path) = self.baseline_path() else {
+            return false;
+        };
+        delta_marks()
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .contains_key(key)
+            .contains_key(&(path, key.clone()))
     }
 
     /// A successful invalidate or save of this key. In-flight Completes keep
     /// their hold, so a streaming save during that window does not clear it.
+    /// Removing the entry keeps the process registry from growing without a bound.
     fn note_delta_baseline_settled(&self, key: &BaselineKey) {
-        let mut map = self
-            .delta_unusable
+        let Some(path) = self.baseline_path() else {
+            return;
+        };
+        let mut map = delta_marks()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        if map.get(key).is_some_and(|state| state.holds == 0) {
-            map.remove(key);
+        let mark_key = (path, key.clone());
+        if map.get(&mark_key).is_some_and(|state| state.holds == 0) {
+            map.remove(&mark_key);
         }
     }
 
@@ -1035,7 +1074,6 @@ impl S3Provider {
             current_prefix: String::new(),
             connected: false,
             multipart_baselines: Arc::new(std::sync::Mutex::new(HashMap::new())),
-            delta_unusable: Arc::new(std::sync::Mutex::new(HashMap::new())),
             recent_markerless_uploads: Arc::new(std::sync::Mutex::new(HashMap::new())),
             #[cfg(test)]
             baseline_test_path: None,
@@ -1290,11 +1328,7 @@ impl S3Provider {
     }
 
     fn baseline_store(&self) -> Option<BaselineStore> {
-        #[cfg(test)]
-        let path = self.baseline_test_path.clone();
-        #[cfg(not(test))]
-        let path = BaselineStore::default_path();
-        path.map(BaselineStore::new)
+        self.baseline_path().map(BaselineStore::new)
     }
 
     async fn begin_baseline(
@@ -7623,7 +7657,8 @@ impl StorageProvider for S3Provider {
                 }
                 self.note_delta_baseline_settled(&cache_key);
                 // Mark before Complete. Cancelling this future leaves the
-                // mark. The mark is per process; another process is not covered.
+                // mark. Every provider in this process that uses the same
+                // baseline file sees it. Another process does not.
                 hold = Some(self.hold_delta_for_complete(&handle.remote_path));
             }
         }

@@ -1216,13 +1216,16 @@ async fn write_pattern(path: &std::path::Path, byte: u8) {
     file.sync_all().await.unwrap();
 }
 
-async fn assert_delta_refuses_the_saved_row(mock: &mut Mock, local: &std::path::Path) {
-    let outcome = mock
-        .provider
+async fn assert_delta_refuses_the_saved_row(
+    provider: &mut S3Provider,
+    seen: &Seen,
+    local: &std::path::Path,
+) {
+    let outcome = provider
         .baseline_store()
         .unwrap()
         .match_file(
-            mock.provider.delta_baseline_key("object"),
+            provider.delta_baseline_key("object"),
             "\"same\"".into(),
             SIZE,
             local,
@@ -1236,22 +1239,29 @@ async fn assert_delta_refuses_the_saved_row(mock: &mut Mock, local: &std::path::
         ),
         "the saved row is still a match, outcome={outcome:?}"
     );
-    let copies_before = mock.seen.copy_headers.lock().unwrap().len();
-    let creates_before = mock.seen.creates.load(Ordering::SeqCst);
-    let delta = try_delta_transfer(&mut mock.provider, SyncDirection::Upload, local, "object")
+    let copies_before = seen.copy_headers.lock().unwrap().len();
+    let creates_before = seen.creates.load(Ordering::SeqCst);
+    let heads_before = seen.heads.load(Ordering::SeqCst);
+    let delta = try_delta_transfer(provider, SyncDirection::Upload, local, "object")
         .await
         .expect("the S3 delta door did not run");
     assert!(!delta.used_delta);
     assert_eq!(delta.fallback_reason.as_deref(), Some("no_baseline"));
     assert!(delta.hard_error.is_none());
-    assert_eq!(mock.seen.copy_headers.lock().unwrap().len(), copies_before);
-    assert_eq!(mock.seen.creates.load(Ordering::SeqCst), creates_before);
+    assert_eq!(seen.copy_headers.lock().unwrap().len(), copies_before);
+    assert_eq!(seen.creates.load(Ordering::SeqCst), creates_before);
+    assert_eq!(
+        seen.heads.load(Ordering::SeqCst),
+        heads_before,
+        "a marked key is refused before HEAD"
+    );
 }
 
 /// The second delete can fail after a streaming upload has saved its row.
 /// The DAG upload still succeeds. This process then refuses a delta of that
 /// key, and does not copy, until a later invalidate or save clears the mark.
-/// The mark does not cross a process boundary.
+/// Every provider that opens the same baseline file shares the mark.
+/// Another process does not.
 #[tokio::test]
 async fn s3_adapter_second_delete_failure_blocks_a_later_delta() {
     let _hash_calls = hash_part_call_guard().await;
@@ -1293,7 +1303,7 @@ async fn s3_adapter_second_delete_failure_blocks_a_later_delta() {
         started.is_ok(),
         "the full DAG Complete did not reach the server"
     );
-    let uploaded = tokio::time::timeout(std::time::Duration::from_secs(180), async {
+    tokio::time::timeout(std::time::Duration::from_secs(180), async {
         mock.provider
             .clone()
             .upload(stream_local.to_str().unwrap(), "object", None)
@@ -1302,7 +1312,6 @@ async fn s3_adapter_second_delete_failure_blocks_a_later_delta() {
     .await
     .expect("the streaming upload did not finish while the DAG Complete was held")
     .expect("the streaming upload failed");
-    let _ = uploaded;
     super::super::s3_delta_baseline::fail_next_invalidates(
         mock.provider.baseline_test_path.as_ref().unwrap(),
         2,
@@ -1319,7 +1328,118 @@ async fn s3_adapter_second_delete_failure_blocks_a_later_delta() {
         "the object left by the DAG Complete must be the DAG bytes"
     );
     let mut mock = mock;
-    assert_delta_refuses_the_saved_row(&mut mock, &stream_local).await;
+    assert_delta_refuses_the_saved_row(&mut mock.provider, &mock.seen, &stream_local).await;
+}
+
+/// A second `S3Provider::new` on the same baseline file is another connection
+/// in this process. It sees the mark the first connection left, and it does
+/// not plan a delta. A successful invalidate removes the mark. A later save
+/// of the key lets the second connection plan a delta.
+#[tokio::test]
+async fn s3_adapter_second_provider_sees_a_blocked_key_until_a_later_save() {
+    let _hash_calls = hash_part_call_guard().await;
+    let mock = mock().await;
+    super::super::s3_delta_baseline::fail_next_invalidates(
+        mock.provider.baseline_test_path.as_ref().unwrap(),
+        0,
+    );
+    {
+        let mut fault = mock.seen.fault.lock().unwrap();
+        fault.hold_first_complete = true;
+        fault.fixed_complete_etag = Some("\"same\"");
+    }
+    let dag_local = mock.dir.path().join("dag.bin");
+    std::fs::File::create(&dag_local)
+        .unwrap()
+        .set_len(SIZE)
+        .unwrap();
+    let stream_local = mock.dir.path().join("stream.bin");
+    write_pattern(&stream_local, 3).await;
+    let (sink, executor) = full_upload_executor(
+        mock.provider.clone(),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    super::super::s3_delta_baseline::reset_hash_multipart_part_calls();
+    let dag = tokio::spawn(crate::transfer_dag_batch::execute_batch_dag(
+        sink,
+        dag_object_batch(&dag_local, "s3-second-provider-mark"),
+        executor,
+        Arc::new(AtomicBool::new(false)),
+        None,
+    ));
+    let started = tokio::time::timeout(
+        std::time::Duration::from_secs(180),
+        mock.seen.complete_started.notified(),
+    )
+    .await;
+    assert!(
+        started.is_ok(),
+        "the full DAG Complete did not reach the server"
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(180), async {
+        mock.provider
+            .clone()
+            .upload(stream_local.to_str().unwrap(), "object", None)
+            .await
+    })
+    .await
+    .expect("the streaming upload did not finish while the DAG Complete was held")
+    .expect("the streaming upload failed");
+    super::super::s3_delta_baseline::fail_next_invalidates(
+        mock.provider.baseline_test_path.as_ref().unwrap(),
+        2,
+    );
+    mock.seen.complete_release.notify_one();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(60), dag)
+        .await
+        .expect("the DAG upload did not finish after the Complete was released")
+        .expect("the DAG task panicked");
+    assert_eq!(result.completed, 1, "{result:?}");
+
+    let mut other = S3Provider::new(mock.provider.config.clone()).expect("second S3 provider");
+    other.connected = true;
+    other.disable_checksum = true;
+    other.baseline_test_path = mock.provider.baseline_test_path.clone();
+    assert_delta_refuses_the_saved_row(&mut other, &mock.seen, &stream_local).await;
+
+    let key = other.delta_baseline_key("object");
+    other
+        .baseline_store()
+        .unwrap()
+        .invalidate(key.clone())
+        .await
+        .expect("the later invalidate failed");
+    other.note_delta_baseline_settled(&key);
+    let heads_before = mock.seen.heads.load(Ordering::SeqCst);
+    let opened = try_delta_transfer(&mut other, SyncDirection::Upload, &stream_local, "object")
+        .await
+        .expect("the second provider did not reach the delta door after invalidate");
+    assert!(!opened.used_delta, "{opened:?}");
+    assert!(opened.hard_error.is_none(), "{opened:?}");
+    assert!(
+        mock.seen.heads.load(Ordering::SeqCst) > heads_before,
+        "a successful invalidate must let the second provider plan again"
+    );
+
+    {
+        let mut fault = mock.seen.fault.lock().unwrap();
+        fault.fixed_complete_etag = None;
+    }
+    let mut mock = mock;
+    mock.provider
+        .upload(stream_local.to_str().unwrap(), "object", None)
+        .await
+        .expect("the later upload that clears the mark failed");
+    pin_source_mtime(&stream_local);
+    let delta = try_delta_transfer(&mut other, SyncDirection::Upload, &stream_local, "object")
+        .await
+        .expect("the second provider did not reach the delta door");
+    assert!(
+        delta.used_delta,
+        "a later save must make the delta possible again, {delta:?}"
+    );
+    assert!(delta.hard_error.is_none(), "{delta:?}");
+    assert!(!mock.seen.copy_headers.lock().unwrap().is_empty());
 }
 
 /// Cancelling the executor while Complete is in flight drops the provider
@@ -1376,7 +1496,7 @@ async fn s3_adapter_cancel_during_complete_blocks_a_later_delta() {
     assert_eq!(result.completed, 0, "{result:?}");
     assert!(result.cancelled, "{result:?}");
     let mut mock = mock;
-    assert_delta_refuses_the_saved_row(&mut mock, &stream_local).await;
+    assert_delta_refuses_the_saved_row(&mut mock.provider, &mock.seen, &stream_local).await;
 }
 
 /// The stored baseline, as the columns that must not move when an upload is
