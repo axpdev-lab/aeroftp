@@ -3624,15 +3624,18 @@ pub(crate) async fn resolve_home_scope(
             restored.map_err(|e| {
                 format!("the overlay folder {scope} was resolved, but the session could not return to {back}: {e}")
             })?;
+            // The probe opened `~` itself: a server with no login folder may
+            // have a folder literally named `~`, which `pwd` then reports.
+            // A recorded hint (the FTP post-login `PWD`) is a real folder
+            // name instead, `/srv/~` included, and is not held to this.
+            if home == "~" || home.ends_with("/~") {
+                return Err(format!(
+                    "the overlay folder {scope} could not be resolved: this server has no login folder"
+                ));
+            }
             home
         }
     };
-    // A server with no login folder may open `~` as a folder of that name.
-    if home == "~" || home.ends_with("/~") {
-        return Err(format!(
-            "the overlay folder {scope} could not be resolved: this server has no login folder"
-        ));
-    }
     // The window places a path the same way (`placeUnderLoginFolder`).
     let home = home.trim_end_matches('/');
     Ok(Some(if rest.is_empty() {
@@ -6326,6 +6329,20 @@ pub(crate) mod tests {
         stuck.refuse_cd = Some("/srv");
         let err = resolve_home_scope(&mut stuck, "~/docs").await.unwrap_err();
         assert!(err.contains("could not return to /srv"), "{err}");
+
+        // A recorded login folder may itself end in `~`: `/srv/~` is a real
+        // directory an FTP `PWD` can report. Only the `cd ~` probe treats a
+        // trailing `~` as "no login folder".
+        let mut tilde_home = MemProvider::new();
+        tilde_home.kind = ProviderType::Ftp;
+        tilde_home.login_folder = Some("/srv/~".to_string());
+        assert_eq!(
+            resolve_home_scope(&mut tilde_home, "~/docs")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("/srv/~/docs")
+        );
 
         let mut inner_mem = MemProvider::new();
         inner_mem.kind = ProviderType::Sftp;

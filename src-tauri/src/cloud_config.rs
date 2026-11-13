@@ -8,7 +8,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 /// Serializes concurrent writes to the cloud config file
@@ -272,24 +272,62 @@ fn load_cloud_config_unlocked() -> CloudConfig {
     CloudConfig::default()
 }
 
-/// Load → mutate → save under one write lock.
+/// Strict load for the write path at an explicit location: a missing file
+/// is the default, a file that exists but cannot be read or parsed is an
+/// error, so a mutator never treats it as empty and overwrites what it
+/// could not read. `exists()` is deliberately not used: it reports false on
+/// metadata errors too, which would pick the default and lose the file.
+fn load_cloud_config_strict_at(path: &Path) -> Result<CloudConfig, String> {
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CloudConfig::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to read cloud config '{}': {}",
+                path.display(),
+                e
+            ));
+        }
+    };
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse cloud config '{}': {}", path.display(), e))
+}
+
+/// Strict load at the real config path: callers that read-then-save outside
+/// [`with_cloud_config_mut`] (CLI commands, one-shot tools) use this so an
+/// unreadable file is an error instead of an empty config that a later save
+/// would write over the user's data.
+pub fn load_cloud_config_strict() -> Result<CloudConfig, String> {
+    load_cloud_config_strict_at(&get_config_path())
+}
+
+/// Load → mutate → save under one write lock, at an explicit path.
 ///
 /// Use this for every read-modify-write of `cloud_config.json`. Taking the lock
 /// only around `save_cloud_config` still allows two concurrent mutators on the
 /// blocking pool to both load the same snapshot and last-write-win (lost
 /// update). The main-thread command path used to serialise this for free;
 /// `spawn_blocking` does not.
-pub fn with_cloud_config_mut<F, T>(f: F) -> Result<T, String>
+pub fn with_cloud_config_mut_at<F, T>(path: &Path, f: F) -> Result<T, String>
 where
     F: FnOnce(&mut CloudConfig) -> Result<T, String>,
 {
     let _lock = CONFIG_WRITE_LOCK
         .lock()
         .map_err(|_| "Config write lock poisoned".to_string())?;
-    let mut config = load_cloud_config_unlocked();
+    let mut config = load_cloud_config_strict_at(path)?;
     let out = f(&mut config)?;
-    save_cloud_config_unlocked(&config)?;
+    save_cloud_config_unlocked_at(&config, path)?;
     Ok(out)
+}
+
+pub fn with_cloud_config_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut CloudConfig) -> Result<T, String>,
+{
+    with_cloud_config_mut_at(&get_config_path(), f)
 }
 
 /// Save cloud configuration to disk (serialized via write lock, atomic temp+rename)
@@ -300,9 +338,50 @@ pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
     save_cloud_config_unlocked(config)
 }
 
-fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
-    let config_path = get_config_path();
+/// Save that may overwrite even an unreadable file. ONLY for explicit resets
+/// where starting from defaults is the user's intent: the setup wizard
+/// (`setup_aerocloud`) and `disable_aerocloud`. Every other save goes through
+/// [`save_cloud_config`], which refuses to destroy a file it cannot read.
+pub fn save_cloud_config_unchecked(config: &CloudConfig) -> Result<(), String> {
+    let _lock = CONFIG_WRITE_LOCK
+        .lock()
+        .map_err(|_| "Config write lock poisoned".to_string())?;
+    save_cloud_config_unlocked_at_force(config, &get_config_path())
+}
 
+fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
+    save_cloud_config_unlocked_at(config, &get_config_path())
+}
+
+fn save_cloud_config_unlocked_at(config: &CloudConfig, config_path: &Path) -> Result<(), String> {
+    // A full-file save built on a default config must never destroy a file
+    // that exists but cannot be read or parsed (same rule as the strict
+    // loaders: NotFound is the only "absent" that may be overwritten).
+    match fs::read_to_string(config_path) {
+        Ok(content) => {
+            if serde_json::from_str::<CloudConfig>(&content).is_err() {
+                return Err(format!(
+                    "Refusing to overwrite unreadable cloud config '{}'",
+                    config_path.display()
+                ));
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(format!(
+                "Cannot read existing cloud config '{}': {}",
+                config_path.display(),
+                e
+            ));
+        }
+    }
+    save_cloud_config_unlocked_at_force(config, config_path)
+}
+
+fn save_cloud_config_unlocked_at_force(
+    config: &CloudConfig,
+    config_path: &Path,
+) -> Result<(), String> {
     // Ensure parent directory exists
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)
@@ -315,7 +394,7 @@ fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
     // Atomic write: temp file + rename to prevent corruption on crash
     let tmp_path = config_path.with_extension("tmp");
     fs::write(&tmp_path, content).map_err(|e| format!("Failed to write temp config: {}", e))?;
-    fs::rename(&tmp_path, &config_path)
+    fs::rename(&tmp_path, config_path)
         .map_err(|e| format!("Failed to rename temp config: {}", e))?;
 
     tracing::info!("Cloud config saved to {:?}", config_path);
@@ -399,6 +478,173 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `cloud_config.json` that exists but does not parse is an error on
+    /// the write path: the mutator reports it and the file bytes stay
+    /// untouched, never overwritten by an empty config.
+    #[test]
+    fn an_unparseable_config_is_never_overwritten() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err = with_cloud_config_mut_at(&path, |_| Ok(())).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// A full-file save must refuse to overwrite a config that exists but
+    /// does not parse: the GUI/settings save path would otherwise turn an
+    /// unreadable file into defaults.
+    /// The reset path really overwrites a config the guarded save refuses:
+    /// the setup wizard and `disable_aerocloud` must still work when the
+    /// file is corrupt, since resetting it is how the user recovers.
+    #[test]
+    fn the_reset_save_overwrites_an_unparseable_config() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        std::fs::write(&path, b"{ not json").unwrap();
+        assert!(save_cloud_config_unlocked_at(&CloudConfig::default(), &path).is_err());
+        save_cloud_config_unlocked_at_force(&CloudConfig::default(), &path).unwrap();
+        assert!(load_cloud_config_strict_at(&path).is_ok());
+    }
+
+    /// Only the two explicit resets may bypass the guard: every caller of
+    /// `save_cloud_config_unchecked` in the crate sits inside
+    /// `setup_aerocloud` or `disable_aerocloud`. A new caller elsewhere
+    /// would silently reopen the overwrite-an-unreadable-file path.
+    #[test]
+    fn only_the_explicit_resets_call_the_unchecked_save() {
+        fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    rust_files(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&src, &mut files);
+        let mut callers = std::collections::BTreeSet::new();
+        for file in files {
+            if file.file_name().is_some_and(|n| n == "cloud_config.rs") {
+                continue;
+            }
+            let code = std::fs::read_to_string(&file).unwrap();
+            for (at, _) in code.match_indices("save_cloud_config_unchecked(") {
+                let before = &code[..at];
+                let fn_at = before.rfind("fn ").expect("call outside any fn");
+                let name: String = before[fn_at + 3..]
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                callers.insert(name);
+            }
+        }
+        let expected: std::collections::BTreeSet<String> = ["disable_aerocloud", "setup_aerocloud"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(callers, expected);
+    }
+
+    #[test]
+    fn a_save_refuses_to_overwrite_an_unparseable_config() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err = save_cloud_config_unlocked_at(&CloudConfig::default(), &path).unwrap_err();
+        assert!(err.contains("Refusing to overwrite"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        // A parseable existing config may still be overwritten.
+        let good = serde_json::to_vec(&CloudConfig::default()).unwrap();
+        std::fs::write(&path, &good).unwrap();
+        save_cloud_config_unlocked_at(&CloudConfig::default(), &path).unwrap();
+        assert_ne!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// Same guard on a metadata error: an unreadable FILE (permissions
+    /// removed from the file itself, directory still writable) makes the
+    /// save fail instead of overwriting it through tmp+rename.
+    #[cfg(unix)]
+    #[test]
+    fn a_save_refuses_when_the_config_file_is_unreadable() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the write, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let bytes = b"{ \"enabled\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o644));
+            }
+        }
+        let _guard = PermGuard(path.clone());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(save_cloud_config_unlocked_at(&CloudConfig::default(), &path).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// An absent `cloud_config.json` still takes the default-plus-save path.
+    #[test]
+    fn an_absent_config_still_saves() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        with_cloud_config_mut_at(&path, |config| {
+            config.enabled = true;
+            Ok(())
+        })
+        .unwrap();
+        let saved: CloudConfig =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved.enabled);
+    }
+
+    /// A metadata error on the config (unreadable parent directory) is an
+    /// error, not a missing file: the closure never runs and nothing is
+    /// written back.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_config_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("cloud_config.json");
+        let bytes = b"{ \"enabled\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut ran = false;
+        let err = with_cloud_config_mut_at(&path, |_| {
+            ran = true;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(!ran, "closure must not run on an unreadable config: {err}");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
 
     #[test]
     fn test_default_config() {

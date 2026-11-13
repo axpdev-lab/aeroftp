@@ -8,7 +8,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 use crate::cloud_config::{default_compress_level, CloudConfig, ConflictStrategy};
@@ -192,18 +192,57 @@ fn load_cloud_pairs_config_unlocked() -> CloudPairsConfig {
     CloudPairsConfig::default()
 }
 
-/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`).
-pub fn with_cloud_pairs_mut<F, T>(f: F) -> Result<T, String>
+/// Strict load for the write path at an explicit location: a missing file
+/// is the default, a file that exists but cannot be read or parsed is an
+/// error, so a mutator never treats it as empty and overwrites what it
+/// could not read. `exists()` is deliberately not used: it reports false on
+/// metadata errors too, which would pick the default and lose the file.
+fn load_cloud_pairs_config_strict_at(path: &Path) -> Result<CloudPairsConfig, String> {
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CloudPairsConfig::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to read cloud pairs '{}': {}",
+                path.display(),
+                e
+            ));
+        }
+    };
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse cloud pairs '{}': {}", path.display(), e))
+}
+
+/// Strict load at the real pairs path: callers that read-then-save outside
+/// [`with_cloud_pairs_mut`] (CLI commands, one-shot tools) use this so an
+/// unreadable file is an error instead of an empty config that a later save
+/// would write over the user's data.
+pub fn load_cloud_pairs_config_strict() -> Result<CloudPairsConfig, String> {
+    load_cloud_pairs_config_strict_at(&get_pairs_path())
+}
+
+/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`),
+/// at an explicit path.
+pub fn with_cloud_pairs_mut_at<F, T>(path: &Path, f: F) -> Result<T, String>
 where
     F: FnOnce(&mut CloudPairsConfig) -> Result<T, String>,
 {
     let _lock = PAIRS_WRITE_LOCK
         .lock()
         .map_err(|_| "Pairs write lock poisoned".to_string())?;
-    let mut config = load_cloud_pairs_config_unlocked();
+    let mut config = load_cloud_pairs_config_strict_at(path)?;
     let out = f(&mut config)?;
-    save_cloud_pairs_config_unlocked(&config)?;
+    save_cloud_pairs_config_unlocked_at(&config, path)?;
     Ok(out)
+}
+
+pub fn with_cloud_pairs_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut CloudPairsConfig) -> Result<T, String>,
+{
+    with_cloud_pairs_mut_at(&get_pairs_path(), f)
 }
 
 /// Save pairs config (atomic + lock protected).
@@ -215,7 +254,34 @@ pub fn save_cloud_pairs_config(config: &CloudPairsConfig) -> Result<(), String> 
 }
 
 fn save_cloud_pairs_config_unlocked(config: &CloudPairsConfig) -> Result<(), String> {
-    let path = get_pairs_path();
+    save_cloud_pairs_config_unlocked_at(config, &get_pairs_path())
+}
+
+fn save_cloud_pairs_config_unlocked_at(
+    config: &CloudPairsConfig,
+    path: &Path,
+) -> Result<(), String> {
+    // A full-file save built on a default config must never destroy a file
+    // that exists but cannot be read or parsed (same rule as the strict
+    // loaders: NotFound is the only "absent" that may be overwritten).
+    match fs::read_to_string(path) {
+        Ok(content) => {
+            if serde_json::from_str::<CloudPairsConfig>(&content).is_err() {
+                return Err(format!(
+                    "Refusing to overwrite unreadable cloud pairs '{}'",
+                    path.display()
+                ));
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(format!(
+                "Cannot read existing cloud pairs '{}': {}",
+                path.display(),
+                e
+            ));
+        }
+    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Failed to create pairs dir: {}", e))?;
     }
@@ -225,7 +291,7 @@ fn save_cloud_pairs_config_unlocked(config: &CloudPairsConfig) -> Result<(), Str
 
     let tmp = path.with_extension("tmp");
     fs::write(&tmp, content).map_err(|e| format!("Failed to write temp pairs: {}", e))?;
-    fs::rename(&tmp, &path).map_err(|e| format!("Failed to rename temp pairs: {}", e))?;
+    fs::rename(&tmp, path).map_err(|e| format!("Failed to rename temp pairs: {}", e))?;
 
     tracing::info!("Cloud pairs saved to {:?}", path);
     Ok(())
@@ -272,6 +338,115 @@ pub fn new_cloud_path_pair(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `cloud_pairs.json` that exists but does not parse is an error on
+    /// the write path: the mutator reports it and the file bytes stay
+    /// untouched, never overwritten by an empty config.
+    #[test]
+    fn an_unparseable_pairs_file_is_never_overwritten() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_pairs.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err = with_cloud_pairs_mut_at(&path, |_| Ok(())).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// A full-file save must refuse to overwrite pairs that exist but do
+    /// not parse.
+    #[test]
+    fn a_save_refuses_to_overwrite_unparseable_pairs() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_pairs.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err =
+            save_cloud_pairs_config_unlocked_at(&CloudPairsConfig::default(), &path).unwrap_err();
+        assert!(err.contains("Refusing to overwrite"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// Same guard on a metadata error: an unreadable FILE (permissions
+    /// removed from the file itself, directory still writable) makes the
+    /// save fail instead of overwriting it through tmp+rename.
+    #[cfg(unix)]
+    #[test]
+    fn a_save_refuses_when_the_pairs_file_is_unreadable() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the write, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_pairs.json");
+        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o644));
+            }
+        }
+        let _guard = PermGuard(path.clone());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(save_cloud_pairs_config_unlocked_at(&CloudPairsConfig::default(), &path).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// An absent `cloud_pairs.json` still takes the default-plus-save path.
+    #[test]
+    fn an_absent_pairs_file_still_saves() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_pairs.json");
+        with_cloud_pairs_mut_at(&path, |config| {
+            config.parallel_pairs = true;
+            Ok(())
+        })
+        .unwrap();
+        let saved: CloudPairsConfig =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved.parallel_pairs);
+    }
+
+    /// A metadata error on the pairs file (unreadable parent directory) is
+    /// an error, not a missing file: the closure never runs.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_pairs_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("cloud_pairs.json");
+        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut ran = false;
+        let err = with_cloud_pairs_mut_at(&path, |_| {
+            ran = true;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(
+            !ran,
+            "closure must not run on an unreadable pairs file: {err}"
+        );
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
 
     #[test]
     fn test_pair_exists_guard() {

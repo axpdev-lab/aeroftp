@@ -16731,8 +16731,9 @@ async fn setup_aerocloud(
         let _ = std::fs::write(&aeroignore_path, sync_ignore::DEFAULT_AEROIGNORE_TEMPLATE);
     }
 
-    // Save configuration
-    cloud_config::save_cloud_config(&config)?;
+    // Save configuration. The wizard may overwrite even an unreadable file:
+    // setting up AeroCloud from scratch is the explicit intent.
+    cloud_config::save_cloud_config_unchecked(&config)?;
     tray_badge::set_tray_cloud_actions_enabled(&app, true);
 
     info!(
@@ -16843,7 +16844,8 @@ async fn disable_aerocloud(app: AppHandle) -> Result<(), String> {
         let _ = stop_background_sync(app.clone()).await;
     }
 
-    cloud_config::save_cloud_config(&CloudConfig::default())?;
+    // Explicit reset to defaults: may overwrite even an unreadable file.
+    cloud_config::save_cloud_config_unchecked(&CloudConfig::default())?;
     tray_badge::set_tray_cloud_actions_enabled(&app, false);
 
     let _ = app.emit(

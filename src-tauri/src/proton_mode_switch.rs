@@ -738,7 +738,10 @@ pub struct DiskTargets<'a> {
 
 impl SwitchTargets for DiskTargets<'_> {
     fn store_cloud(&mut self, cloud: &CloudConfig, pairs: &CloudPairsConfig) -> Result<(), String> {
-        let previous = crate::cloud_config::load_cloud_config();
+        // Strict load for the rollback snapshot: if the config cannot be
+        // read, nothing is written at all, so the rollback can never save a
+        // default over the user's file.
+        let previous = crate::cloud_config::load_cloud_config_strict()?;
         crate::cloud_config::save_cloud_config(cloud)?;
         if let Err(e) = crate::cloud_pairs::save_cloud_pairs_config(pairs) {
             let _ = crate::cloud_config::save_cloud_config(&previous);
@@ -831,8 +834,8 @@ pub fn plan(
         &HistoryDirs::on_disk()?,
         profile,
         to,
-        &crate::cloud_config::load_cloud_config(),
-        &crate::cloud_pairs::load_cloud_pairs_config(),
+        &crate::cloud_config::load_cloud_config_strict()?,
+        &crate::cloud_pairs::load_cloud_pairs_config_strict()?,
         aerocloud_busy,
     )
 }
@@ -848,8 +851,8 @@ pub fn apply(
         &HistoryDirs::on_disk()?,
         profile,
         to,
-        &crate::cloud_config::load_cloud_config(),
-        &crate::cloud_pairs::load_cloud_pairs_config(),
+        &crate::cloud_config::load_cloud_config_strict()?,
+        &crate::cloud_pairs::load_cloud_pairs_config_strict()?,
         aerocloud_busy,
         targets,
     )
@@ -860,14 +863,46 @@ pub fn apply(
 pub fn cli_aerocloud_refusal(profile: &Value) -> Option<String> {
     let id = field(profile, "id");
     let name = field(profile, "name");
-    let cloud = crate::cloud_config::load_cloud_config();
+    aerocloud_refusal_from(
+        crate::cloud_config::load_cloud_config_strict(),
+        crate::cloud_pairs::load_cloud_pairs_config_strict(),
+        id,
+        name,
+    )
+}
+
+/// The refusal decision on already-loaded stores, pure so the
+/// unreadable-file rule is testable without touching disk.
+fn aerocloud_refusal_from(
+    cloud: Result<crate::cloud_config::CloudConfig, String>,
+    pairs: Result<crate::cloud_pairs::CloudPairsConfig, String>,
+    id: &str,
+    name: &str,
+) -> Option<String> {
+    // Strict loads: an unreadable config cannot prove the profile is NOT
+    // bound, so the switch is refused until the file can be read again.
+    let cloud = match cloud {
+        Ok(cloud) => cloud,
+        Err(e) => {
+            return Some(format!(
+                "the AeroCloud config cannot be read ({e}), so a binding to this profile cannot be ruled out: fix or remove the file, then switch"
+            ));
+        }
+    };
     if cloud.enabled && bound_config(&cloud, id, name) {
         return Some(format!(
             "AeroCloud syncs {} with this profile: run `aeroftp-cli aerocloud disable`, switch, then enable it again (or switch from the app, which updates AeroCloud itself)",
             cloud.remote_folder
         ));
     }
-    let pairs = crate::cloud_pairs::load_cloud_pairs_config();
+    let pairs = match pairs {
+        Ok(pairs) => pairs,
+        Err(e) => {
+            return Some(format!(
+                "the AeroCloud pairs file cannot be read ({e}), so a binding to this profile cannot be ruled out: fix or remove the file, then switch"
+            ));
+        }
+    };
     pairs
         .pairs
         .iter()
@@ -981,6 +1016,32 @@ pub async fn proton_translate_path(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    /// An unreadable AeroCloud store cannot prove the profile is unbound,
+    /// so the CLI switch is refused instead of failing open.
+    #[test]
+    fn an_unreadable_aerocloud_store_refuses_the_switch() {
+        let cloud_err = Err("Failed to parse cloud config".to_string());
+        let pairs_ok = Ok(crate::cloud_pairs::CloudPairsConfig::default());
+        let refusal =
+            aerocloud_refusal_from(cloud_err, pairs_ok, "srv_1", "Prod").expect("must refuse");
+        assert!(refusal.contains("cannot be read"), "{refusal}");
+
+        let cloud_ok = Ok(crate::cloud_config::CloudConfig::default());
+        let pairs_err = Err("Failed to parse cloud pairs".to_string());
+        let refusal =
+            aerocloud_refusal_from(cloud_ok, pairs_err, "srv_1", "Prod").expect("must refuse");
+        assert!(refusal.contains("cannot be read"), "{refusal}");
+
+        // Readable and unbound: no refusal.
+        assert!(aerocloud_refusal_from(
+            Ok(crate::cloud_config::CloudConfig::default()),
+            Ok(crate::cloud_pairs::CloudPairsConfig::default()),
+            "srv_1",
+            "Prod"
+        )
+        .is_none());
+    }
 
     #[test]
     fn translation_moves_only_the_my_files_prefix() {

@@ -6817,23 +6817,26 @@ fn save_cli_config(config: &CliConfigFile) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn load_update_cache() -> CliUpdateCache {
-    let Ok(path) = cli_update_cache_path() else {
-        return CliUpdateCache::default();
+fn load_update_cache_at(path: &Path) -> Result<CliUpdateCache, String> {
+    // No exists() here either: it reports false on metadata errors, which
+    // would pick the default and let a later save overwrite an unread file.
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CliUpdateCache::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Cannot read update cache '{}': {}",
+                path.display(),
+                e
+            ));
+        }
     };
-    if !path.exists() {
-        return CliUpdateCache::default();
-    }
-
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return CliUpdateCache::default();
-    };
-
-    toml::from_str(&raw).unwrap_or_default()
+    toml::from_str(&raw).map_err(|e| format!("Invalid update cache '{}': {}", path.display(), e))
 }
 
-fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
-    let path = cli_update_cache_path()?;
+fn save_update_cache_at(cache: &CliUpdateCache, path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -6846,9 +6849,9 @@ fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
 
     let content = toml::to_string_pretty(cache)
         .map_err(|e| format!("Cannot serialize update cache: {}", e))?;
-    std::fs::write(&path, content)
+    std::fs::write(path, content)
         .map_err(|e| format!("Cannot write update cache '{}': {}", path.display(), e))?;
-    Ok(path)
+    Ok(())
 }
 
 fn parse_json_fields(cli: &Cli) -> Option<std::collections::HashSet<String>> {
@@ -6963,33 +6966,69 @@ async fn fetch_latest_release_version() -> Result<String, String> {
         .ok_or_else(|| format!("Invalid release tag '{}'", release.tag_name))
 }
 
+/// Record the outcome of an update check on `path` and return the version
+/// to announce, if any. A cache that failed to load (`loaded` is `Err`) is
+/// never written back: the check still runs on defaults in memory, the
+/// file keeps its bytes.
+fn record_update_check_at(
+    path: &Path,
+    loaded: Result<CliUpdateCache, String>,
+    now: chrono::DateTime<chrono::Utc>,
+    fetched: Result<String, String>,
+) -> Option<String> {
+    let (mut cache, cache_readable) = match loaded {
+        Ok(cache) => (cache, true),
+        Err(_) => (CliUpdateCache::default(), false),
+    };
+    if !update_check_due(&cache, now) {
+        return None;
+    }
+
+    cache.checked_at = Some(now.to_rfc3339());
+    match fetched {
+        Ok(latest_version) => {
+            cache.latest_version = Some(latest_version.clone());
+            if cache_readable {
+                let _ = save_update_cache_at(&cache, path);
+            }
+            is_newer_release(&latest_version, env!("CARGO_PKG_VERSION")).then_some(latest_version)
+        }
+        Err(_) => {
+            if cache_readable {
+                let _ = save_update_cache_at(&cache, path);
+            }
+            None
+        }
+    }
+}
+
 async fn maybe_check_for_updates(cli: &Cli) {
     if cli.quiet {
         return;
     }
 
+    let Ok(path) = cli_update_cache_path() else {
+        return;
+    };
     let now = chrono::Utc::now();
-    let mut cache = load_update_cache();
-    if !update_check_due(&cache, now) {
+    // A cache file that exists but cannot be read is never rewritten: the
+    // check still runs on defaults, the file keeps its bytes.
+    let loaded = load_update_cache_at(&path);
+    let due = match &loaded {
+        Ok(cache) => update_check_due(cache, now),
+        Err(_) => update_check_due(&CliUpdateCache::default(), now),
+    };
+    if !due {
         return;
     }
 
-    cache.checked_at = Some(now.to_rfc3339());
-    match fetch_latest_release_version().await {
-        Ok(latest_version) => {
-            cache.latest_version = Some(latest_version.clone());
-            let _ = save_update_cache(&cache);
-            if is_newer_release(&latest_version, env!("CARGO_PKG_VERSION")) {
-                eprintln!(
-                    "Update available: v{} -> v{} (download the latest release from GitHub)",
-                    env!("CARGO_PKG_VERSION"),
-                    latest_version
-                );
-            }
-        }
-        Err(_) => {
-            let _ = save_update_cache(&cache);
-        }
+    let fetched = fetch_latest_release_version().await;
+    if let Some(latest_version) = record_update_check_at(&path, loaded, now, fetched) {
+        eprintln!(
+            "Update available: v{} -> v{} (download the latest release from GitHub)",
+            env!("CARGO_PKG_VERSION"),
+            latest_version
+        );
     }
 }
 
@@ -15687,7 +15726,13 @@ fn aerocloud_print_sync_result(
 /// Toggle `enabled` on the persisted AeroCloud config (`aerocloud enable|disable`).
 fn aerocloud_set_enabled(enabled: bool, format: OutputFormat) -> i32 {
     use ftp_client_gui_lib::cloud_config;
-    let mut config = cloud_config::load_cloud_config();
+    let mut config = match cloud_config::load_cloud_config_strict() {
+        Ok(config) => config,
+        Err(e) => {
+            print_error(format, &e, 11);
+            return 11;
+        }
+    };
     config.enabled = enabled;
     match cloud_config::save_cloud_config(&config) {
         Ok(()) => {
@@ -15836,7 +15881,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 }
             }
 
-            let mut config = cloud_config::load_cloud_config();
+            let mut config = match cloud_config::load_cloud_config_strict() {
+                Ok(config) => config,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             let mut changed = false;
             if let Some(local) = local {
                 config.local_folder = std::path::PathBuf::from(local);
@@ -16031,7 +16082,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 None => CompareDirection::Bidirectional,
             };
 
-            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
+            let mut pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             if cloud_pairs::pair_exists(&local_path, remote, &pairs_cfg.pairs) {
                 print_error(
                     format,
@@ -16095,7 +16152,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             0
         }
         PairCommands::Remove { id } => {
-            let mut cfg = cloud_pairs::load_cloud_pairs_config();
+            let mut cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             let before = cfg.pairs.len();
             cfg.pairs.retain(|p| p.id != *id);
             if cfg.pairs.len() == before {
@@ -16111,7 +16174,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
         }
         PairCommands::Enable { id } | PairCommands::Disable { id } => {
             let enable = matches!(command, PairCommands::Enable { .. });
-            let mut cfg = cloud_pairs::load_cloud_pairs_config();
+            let mut cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             if let Some(p) = cfg.pairs.iter_mut().find(|p| p.id == *id) {
                 p.enabled = enable;
                 if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
@@ -88673,6 +88742,122 @@ mod tests {
         };
 
         assert!(update_check_due(&cache, now));
+    }
+
+    /// An `update-check.toml` that exists but does not parse is an error on
+    /// the load path, so the update check runs on defaults and never
+    /// rewrites the file it could not read.
+    #[test]
+    fn an_unparseable_update_cache_is_an_error_not_a_default() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"not = [valid".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        assert!(load_update_cache_at(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        std::fs::remove_file(&path).unwrap();
+        assert!(load_update_cache_at(&path).unwrap().checked_at.is_none());
+    }
+
+    /// A metadata error on the cache (unreadable parent directory) is an
+    /// error, not a missing file: `exists()` would report false here.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_update_cache_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("update-check.toml");
+        let bytes = b"checked_at = \"2026-01-01T00:00:00Z\"".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(load_update_cache_at(&path).is_err());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// The save half of the guard: `record_update_check_at` on a cache that
+    /// failed to load must leave the file byte-identical whether the fetch
+    /// succeeded or failed, and still announce the newer version.
+    #[test]
+    fn an_unreadable_update_cache_is_never_rewritten_by_the_check() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"not = [valid".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let now = chrono::Utc::now();
+
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        let announced = record_update_check_at(
+            &path,
+            load_update_cache_at(&path),
+            now,
+            Err("network down".into()),
+        );
+        assert_eq!(announced, None);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// Same guarantee when the unreadability is a metadata error: the file
+    /// is write-only (chmod 200), so the load fails but a naive save would
+    /// still succeed and overwrite it.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_update_cache_file_is_never_rewritten_by_the_check() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"checked_at = \"2026-01-01T00:00:00Z\"".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o644));
+            }
+        }
+        let _guard = PermGuard(path.clone());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o200)).unwrap();
+        let now = chrono::Utc::now();
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// The positive case: an absent or readable cache is written back with
+    /// the fetched `latest_version`.
+    #[test]
+    fn a_readable_update_cache_records_the_check() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let now = chrono::Utc::now();
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        let saved = load_update_cache_at(&path).unwrap();
+        assert_eq!(saved.latest_version.as_deref(), Some("99.0.0"));
+        assert!(saved.checked_at.is_some());
     }
 
     // ── pget effective-segment-count tests ─────────────────────────
