@@ -96,6 +96,18 @@ describe('GitLabReleaseBrowser Back guard (Discussion #1527 review)', () => {
         expect(descriptionInput().value).toBe('');
     });
 
+    it('ESC in the create form asks like Back, and Keep retains the draft', async () => {
+        const onClose = vi.fn();
+        await openCreateForm(onClose);
+        await typeInto(descriptionInput(), 'sentinel release notes');
+        await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        await click('modalGuard.keepEditing');
+        expect(confirmOpen()).toBe(false);
+        expect(descriptionInput().value).toBe('sentinel release notes');
+    });
+
     it('Back with an empty form returns to the list without asking', async () => {
         const onClose = vi.fn();
         await openCreateForm(onClose);

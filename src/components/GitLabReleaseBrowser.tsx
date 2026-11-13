@@ -175,7 +175,9 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
       if (e.key === 'Escape') {
         e.preventDefault();
         // Like the backdrop: a form being typed or sent stays.
-        if (view === 'create') { if (!createGuard) setView('list'); } else guarded.requestClose();
+        // ESC in the create form is Back: it asks before dropping a typed
+        // draft and does nothing while a create runs.
+        if (view === 'create') requestBack(); else guarded.requestClose();
       }
     };
     window.addEventListener('keydown', handleKey);

@@ -198,8 +198,9 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       if (e.key === 'Escape') {
         e.preventDefault();
         if (view === 'create') {
-          // Like the backdrop: a form being typed or sent stays.
-          if (!createGuard) setView('list');
+          // ESC in the create form is Back: it asks before dropping a typed
+          // draft and does nothing while a create runs.
+          requestBack();
         } else {
           guarded.requestClose();
         }
