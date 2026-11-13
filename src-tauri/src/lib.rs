@@ -14610,6 +14610,98 @@ mod native_work_in_blocking_tests {
 #[cfg(test)]
 mod sync_ec_ipc_tests {
     use super::*;
+    use crate::providers::{ProviderError, ProviderType, RemoteEntry, StorageProvider};
+
+    const EC_LEAKED: &str = r#"{"errors":[{"status":"403","detail":"CONNECTION_CHANGED Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 session zq8Xv2Lr9TmPq4Ks7Wd1Hy"}]}"#;
+    const EC_SECRET: &str = "zq8Xv2Lr9TmPq4Ks7Wd1Hy";
+
+    struct SyncEcLeakyProvider;
+
+    #[async_trait::async_trait]
+    impl StorageProvider for SyncEcLeakyProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "sync-ec-leaky".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Ok(RemoteEntry::file("f".to_string(), path.to_string(), 1))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("sync-ec-leaky".to_string())
+        }
+    }
 
     /// A sidecar failure reported in an `Ok` result: the whole response the
     /// page receives keeps the status and carries none of the provider's text.
@@ -14625,6 +14717,48 @@ mod sync_ec_ipc_tests {
             assert!(matches!(result.status, SyncEcStatus::GenerateFailed));
             assert!(wire.contains("[sync-error:"), "{wire}");
         }
+    }
+
+    /// The command boundary itself, not the helper: a parity upload refused
+    /// with an opaque token still answers `GenerateFailed` with the provider
+    /// text removed from the serialized response.
+    #[tokio::test]
+    async fn the_sync_ec_generate_command_sanitizes_a_provider_upload_failure() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(AppState::new());
+        let provider_state = provider_commands::ProviderState::new();
+        *provider_state.provider.lock().await = Some(Box::new(SyncEcLeakyProvider));
+        app.manage(provider_state);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("data.bin");
+        let body: Vec<u8> = (0..262_144u32)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+            .collect();
+        std::fs::write(&local, body).unwrap();
+        let result = sync_ec_generate(
+            app.state::<AppState>(),
+            app.state::<provider_commands::ProviderState>(),
+            local.to_string_lossy().into_owned(),
+            "/remote/data.bin".to_string(),
+            "data.bin".to_string(),
+            Some(10),
+            None,
+            Some(true),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(result.status, SyncEcStatus::GenerateFailed),
+            "{:?}",
+            result.status
+        );
+        let wire = serde_json::to_string(&result).unwrap();
+        assert!(!wire.contains(EC_SECRET), "{wire}");
+        assert!(!wire.contains("detail"), "{wire}");
+        assert!(wire.contains("generate_failed"), "{wire}");
     }
 }
 
