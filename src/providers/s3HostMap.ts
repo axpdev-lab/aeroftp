@@ -37,11 +37,13 @@ export function s3ProviderForEndpoint(endpoint: string): string | undefined {
 
 /** The short label of an S3 server: the bucket of an R2 host or the
  *  bucket (and region) of an AWS host, else the host, cut to 30 characters.
+ *  An explicit endpoint, where the requests go, wins over the server field.
  *  The vendor is read from the shared table, so a lookalike host
  *  (`x.r2.cloudflarestorage.com.example`) is shown as itself. */
-export function s3ServerLabel(server: string): string {
+export function s3ServerLabel(server: string, endpoint?: unknown): string {
+    const target = typeof endpoint === 'string' && endpoint.trim() ? endpoint.trim() : server;
     try {
-        const host = new URL(server.startsWith('http') ? server : `https://${server}`).hostname;
+        const host = new URL(/^https?:\/\//i.test(target) ? target : `https://${target}`).hostname;
         const provider = s3ProviderForHost(host);
         if (provider === 'cloudflare-r2') return `R2: ${host.split('.')[0].slice(0, 8)}...`;
         if (provider === 'amazon-s3') {

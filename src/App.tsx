@@ -21868,7 +21868,7 @@ const App: React.FC = () => {
               if (protocol === 'azure') return 'Azure Blob';
               if (protocol === 'filen') return 'Filen';
               if (protocol === 'mega') return 'MEGA';
-              if (protocol === 's3') return s3ServerLabel(liveConnectionParams.server || '');
+              if (protocol === 's3') return s3ServerLabel(liveConnectionParams.server || '', liveConnectionParams.options?.endpoint);
               const server = liveConnectionParams.server;
               const username = liveConnectionParams.username;
               // For WebDAV-based protocols, extract hostname from full URL

@@ -183,16 +183,36 @@ describe('S3 host map consumers', () => {
         expect(s3ServerLabel('minio.lab:9000')).toBe('S3: minio.lab');
     });
 
+    it('labels the explicit endpoint the requests go to, else the server', () => {
+        expect(s3ServerLabel('s3.eu-central-1.wasabisys.com', 'https://abcdef123456.r2.cloudflarestorage.com')).toBe('R2: abcdef12...');
+        expect(s3ServerLabel('photos.s3.us-east-1.amazonaws.com', '  ')).toBe('photos (S3 us-east-1)');
+        expect(s3ServerLabel('photos.s3.us-east-1.amazonaws.com', undefined)).toBe('photos (S3 us-east-1)');
+        expect(s3ServerLabel('photos.s3.us-east-1.amazonaws.com', null)).toBe('photos (S3 us-east-1)');
+    });
+
+    it('reads a scheme in any case and a bare host that starts with http', () => {
+        expect(s3ServerLabel('HTTPS://photos.s3.us-east-1.amazonaws.com')).toBe('photos (S3 us-east-1)');
+        expect(s3ServerLabel('Http://minio.lab:9000')).toBe('S3: minio.lab');
+        expect(s3ServerLabel('http-storage.example')).toBe('S3: http-storage.example');
+        expect(s3ServerLabel('', 'HTTPS://abcdef123456.r2.cloudflarestorage.com')).toBe('R2: abcdef12...');
+    });
+
     it('keeps credentials and query values of an endpoint out of the label', () => {
         for (const server of [
             'https://alice:hunter2@photos.s3.us-east-1.amazonaws.com/?token=sekret',
             'https://alice:hunter2@abcdef123456.r2.cloudflarestorage.com/?X-Amz-Signature=sekret',
             'https://alice:hunter2@minio.lab:9000/bucket?token=sekret',
         ]) {
-            const label = s3ServerLabel(server);
-            for (const secret of ['alice', 'hunter2', 'sekret', 'token', 'Signature']) {
-                expect(label, server).not.toContain(secret);
+            // The same endpoint as the server field and as the explicit endpoint.
+            for (const label of [s3ServerLabel(server), s3ServerLabel('s3.example.com', server)]) {
+                for (const secret of ['alice', 'hunter2', 'sekret', 'token', 'Signature']) {
+                    expect(label, server).not.toContain(secret);
+                }
             }
+        }
+        // A malformed endpoint with credentials shows no part of itself.
+        for (const malformed of ['https://alice:hunter2@[bad/?token=sekret', 'HTTPS://alice:hunter2@exa mple.com/?token=sekret']) {
+            expect(s3ServerLabel('', malformed), malformed).toBe('S3');
         }
     });
 });
