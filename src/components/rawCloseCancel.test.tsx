@@ -184,6 +184,10 @@ it('CloudPairsEditor stays open while a pair removal is in flight', async () => 
     await click(buttonByText('common.cancel')!);
     expect(host.textContent).toContain('modalGuard.busyTitle');
     expect(onClose).not.toHaveBeenCalled();
+    // Save writes the whole list: it waits until the removal settles.
+    const save = buttonByText('common.save')!;
+    expect(save.disabled).toBe(true);
     await act(async () => resolveRemove({ pairs: [] }));
     await flush();
+    expect(buttonByText('common.save')!.disabled).toBe(false);
 });

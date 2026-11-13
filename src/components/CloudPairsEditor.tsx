@@ -245,6 +245,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const handleSave = async () => {
+        // Save writes the whole pair list: sent while an add, remove or
+        // toggle is still in flight it would revert that change on disk.
+        if (requests.count > 0) return;
         setSaving(true);
         try {
             await invoke('save_cloud_pairs_config_cmd', {
@@ -562,7 +565,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50"
                             onClick={handleSave}
-                            disabled={saving || loading}
+                            disabled={saving || loading || requests.count > 0}
                         >
                             {saving ? (t('common.saving')) : t('common.save')}
                         </button>
