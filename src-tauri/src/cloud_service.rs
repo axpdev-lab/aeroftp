@@ -3990,6 +3990,11 @@ pub struct PairCycleReport {
     /// The paths an incremental pass could not sync, for the worker to try
     /// again (a full scan reads them all anyway, and reports none).
     pub failed_paths: Vec<FailedPath>,
+    /// The scheduler key of the config the connection opened: the remote
+    /// folder may have been placed (`~/...` resolved under the login folder)
+    /// during connect, so it can differ from the key the caller computed
+    /// before the cycle.
+    pub placed_key: String,
 }
 
 /// A pair's background cycle that failed. A failure after the connection
@@ -4006,20 +4011,21 @@ pub struct PairCycleError {
     /// (config or local root changed since the watcher prepared it): the
     /// worker answers with a full scan instead of dropping the changes.
     pub needs_full_scan: bool,
-    /// The scheduler key of the config the connection opened: the remote
+    /// The scheduler key of the config the connection ended with: the remote
     /// folder may have been placed (`~/...` resolved under the login folder)
     /// during connect, so it can differ from the key the caller computed
-    /// before the cycle. `None` when the cycle never connected.
-    pub placed_key: Option<String>,
+    /// before the cycle. When the connect itself failed it is the key of the
+    /// config as far as the attempt mutated it.
+    pub placed_key: String,
 }
 
 impl PairCycleError {
-    pub(crate) fn before_connecting(message: String) -> Self {
+    pub(crate) fn before_connecting(message: String, placed_key: String) -> Self {
         Self {
             message,
             traits: None,
             needs_full_scan: false,
-            placed_key: None,
+            placed_key,
         }
     }
 }
@@ -4040,9 +4046,15 @@ pub async fn run_pair_full_cycle(
     app: Option<AppHandle>,
 ) -> Result<PairCycleReport, PairCycleError> {
     let mut config = config;
-    let opened = open_aerocloud_connection(&mut config, store)
-        .await
-        .map_err(PairCycleError::before_connecting)?;
+    let opened = match open_aerocloud_connection(&mut config, store).await {
+        Ok(opened) => opened,
+        Err(message) => {
+            return Err(PairCycleError::before_connecting(
+                message,
+                crate::cloud_scan_schedule::pair_key(&config),
+            ));
+        }
+    };
     let placed_key = crate::cloud_scan_schedule::pair_key(&config);
     let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
@@ -4060,12 +4072,13 @@ pub async fn run_pair_full_cycle(
             ran_full_scan: true,
             traits: Some(traits),
             failed_paths: Vec::new(),
+            placed_key,
         }),
         Err(message) => Err(PairCycleError {
             message,
             traits: Some(traits),
             needs_full_scan: false,
-            placed_key: Some(placed_key),
+            placed_key,
         }),
     }
 }
@@ -7543,12 +7556,11 @@ mod baseline_tests {
             placed.remote_folder = "/home/u/docs".to_string();
             let placed_key = crate::cloud_scan_schedule::pair_key(&placed);
             assert_eq!(
-                crate::cycle_error_scan_key(&err, &tilde_key),
-                placed_key,
-                "the request must use the key of the config the connect opened"
+                err.placed_key, placed_key,
+                "the error must carry the key of the config the connect opened"
             );
             let mut ledger = crate::cloud_scan_schedule::ScanLedger::default();
-            ledger.request_full_scan(crate::cycle_error_scan_key(&err, &tilde_key), &err.message);
+            ledger.request_full_scan(&err.placed_key, &err.message);
             let now = std::time::Instant::now();
             assert!(
                 ledger.pending_full_scan_due(&placed_key, now),
@@ -7573,6 +7585,23 @@ mod baseline_tests {
                 report.result.errors.is_empty(),
                 "{:?}",
                 report.result.errors
+            );
+            // Every ledger write of the cycle lands under the placed key:
+            // the scan just run answers the placed pair's schedule, and the
+            // `~` key the config no longer has stays untouched.
+            assert_eq!(report.placed_key, placed_key);
+            ledger.record_full_scan(&report.placed_key, now);
+            if let Some(traits) = report.traits {
+                ledger.learn(&report.placed_key, traits);
+            }
+            let user_interval = std::time::Duration::from_secs(5 * 60);
+            assert!(
+                !ledger.scheduled_full_scan_due(&placed_key, now, user_interval),
+                "the placed pair just scanned"
+            );
+            assert!(
+                ledger.scheduled_full_scan_due(&tilde_key, now, user_interval),
+                "nothing may be recorded under the `~` key"
             );
             let log = ftp.log.lock().unwrap().join("\n");
             assert!(log.contains("/home/u/docs"), "commands:\n{log}");

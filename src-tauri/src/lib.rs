@@ -17288,14 +17288,6 @@ fn empty_sync_result() -> cloud_service::SyncOperationResult {
     }
 }
 
-/// The scheduler key a pair cycle's error asks its full scan under: the key
-/// of the config the connection opened — a `~/...` remote folder placed during
-/// connect makes it differ from the key the worker computed before the cycle —
-/// or the pre-cycle key when the cycle never connected.
-fn cycle_error_scan_key<'a>(error: &'a cloud_service::PairCycleError, key: &'a str) -> &'a str {
-    error.placed_key.as_deref().unwrap_or(key)
-}
-
 /// Spend the scheduler's tick: its countdown starts again from now.
 fn mark_scheduled_tick_done() {
     let mut schedule = sync_scheduler::load_sync_schedule();
@@ -17681,6 +17673,10 @@ async fn background_sync_worker(app: AppHandle) {
                 let mut retry_paths: Vec<std::path::PathBuf> = Vec::new();
                 let mut agg = empty_sync_result();
                 agg.errors.extend(prep_errors);
+                // The ledger key each run's writes belong to: the config the
+                // connection opened, which a `~/...` folder placed during
+                // connect can move away from the pre-cycle `pair_key`.
+                let mut cycle_keys: Vec<String> = Vec::with_capacity(runs.len());
 
                 if visible {
                     let trigger_label = if startup {
@@ -17719,15 +17715,20 @@ async fn background_sync_worker(app: AppHandle) {
                     let started = std::time::Instant::now();
                     let outcome = match std::mem::replace(run, PairRun::Settled) {
                         PairRun::Full => {
-                            // A full scan answers the floor whatever its outcome:
-                            // it is the traversal the floor spaces out.
-                            ledger().record_full_scan(&key, started);
                             let outcome = cloud_service::run_pair_full_cycle(
                                 cfg.clone(),
                                 store.as_ref(),
                                 Some(app.clone()),
                             )
                             .await;
+                            // A full scan answers the floor whatever its outcome:
+                            // it is the traversal the floor spaces out, recorded
+                            // under the key of the config it opened.
+                            let scan_key = match &outcome {
+                                Ok(report) => report.placed_key.as_str(),
+                                Err(e) => e.placed_key.as_str(),
+                            };
+                            ledger().record_full_scan(scan_key, started);
                             // A scan that failed read nothing: the pair's changes
                             // stay in the backlog, for the next pass to try.
                             *run = if outcome.is_ok() {
@@ -17763,7 +17764,7 @@ async fn background_sync_worker(app: AppHandle) {
                                         }
                                     }
                                     if report.ran_full_scan {
-                                        ledger().record_full_scan(&key, started);
+                                        ledger().record_full_scan(&report.placed_key, started);
                                         *run = PairRun::Full;
                                     }
                                 }
@@ -17772,10 +17773,7 @@ async fn background_sync_worker(app: AppHandle) {
                                 // is discarded: the changes it carried are
                                 // covered by the full scan asked for here.
                                 Err(e) if e.needs_full_scan => {
-                                    ledger().request_full_scan(
-                                        cycle_error_scan_key(e, key.as_str()),
-                                        &e.message,
-                                    );
+                                    ledger().request_full_scan(&e.placed_key, &e.message);
                                 }
                                 // Nothing ran (no connection): the paths come back.
                                 Err(e)
@@ -17794,10 +17792,15 @@ async fn background_sync_worker(app: AppHandle) {
                             None
                         }
                     };
+                    cycle_keys.push(match &outcome {
+                        Some(Ok(report)) => report.placed_key.clone(),
+                        Some(Err(e)) => e.placed_key.clone(),
+                        None => key.clone(),
+                    });
                     match outcome {
                         Some(Ok(report)) => {
                             if let Some(traits) = report.traits {
-                                ledger().learn(&key, traits);
+                                ledger().learn(&report.placed_key, traits);
                             }
                             let r = report.result;
                             agg.uploaded += r.uploaded;
@@ -17812,7 +17815,7 @@ async fn background_sync_worker(app: AppHandle) {
                         }
                         Some(Err(e)) => {
                             if let Some(traits) = e.traits {
-                                ledger().learn(&key, traits);
+                                ledger().learn(&e.placed_key, traits);
                             }
                             agg.errors.push(e.message);
                         }
@@ -17825,13 +17828,14 @@ async fn background_sync_worker(app: AppHandle) {
                 // worth retrying comes back after a delay.
                 let roots: Vec<(String, &std::path::Path, PairJob)> = runs
                     .iter()
-                    .map(|(cfg, run)| {
+                    .zip(&cycle_keys)
+                    .map(|((cfg, run), key)| {
                         let covered = match run {
                             PairRun::Idle => PairJob::Idle,
                             PairRun::Full => PairJob::FullScan,
                             _ => PairJob::Changes,
                         };
-                        (pair_key(cfg), cfg.local_folder.as_path(), covered)
+                        (key.clone(), cfg.local_folder.as_path(), covered)
                     })
                     .collect();
                 backlog.settle(&roots, std_now);
