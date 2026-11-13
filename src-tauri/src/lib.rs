@@ -1868,8 +1868,8 @@ pub struct TransferEvent {
 /// moves bytes: every received frame on a download, every 4 MiB source slab on
 /// an upload. Only the GUI command path passes one of these; AeroSync and the
 /// CLI pass `None`.
-pub(crate) fn make_delta_progress_sink(
-    app: tauri::AppHandle,
+pub(crate) fn make_delta_progress_sink<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     transfer_id: String,
     filename: String,
     direction: &'static str,
