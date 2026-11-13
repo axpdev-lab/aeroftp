@@ -59,6 +59,7 @@ import { FilenNotesPanel } from './FilenNotesPanel';
 import { ImageSaveDialog } from './Preview/viewers/ImageSaveDialog';
 import { UniversalPreview } from './Preview/UniversalPreview';
 import { GitHubWriteModeIndicator } from './GitHubWriteModeIndicator';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -636,6 +637,21 @@ describe('ImageSaveDialog (Discussion #1527)', () => {
         await escape();
         expect(onSaveClose).toHaveBeenCalledTimes(1);
         expect(onPreviewClose).not.toHaveBeenCalled();
+    });
+
+    it('lets the preview answer ESC over a modal that was open before it', async () => {
+        // The preview used to step aside whenever any modal claimed ESC, so
+        // with an ESC-routing modal open beneath it one press closed that
+        // modal and left the preview on screen.
+        const onBelowClose = vi.fn();
+        const onPreviewClose = vi.fn();
+        const Below = () => { useGuardedClose({ guard: null, onClose: onBelowClose, escape: true }); return null; };
+        const file = { name: 'sentinel.bin', path: '/sentinel/sentinel.bin', size: 1, isRemote: false };
+        await render(<Below />);
+        await render(<><Below /><UniversalPreview isOpen file={file} onClose={onPreviewClose} /></>);
+        await escape();
+        expect(onPreviewClose).toHaveBeenCalledTimes(1);
+        expect(onBelowClose).not.toHaveBeenCalled();
     });
 });
 
