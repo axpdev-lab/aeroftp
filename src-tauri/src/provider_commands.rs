@@ -127,9 +127,9 @@ pub struct ProviderState {
     /// with (none for a config install); set with the provider, under the
     /// same locks. Part of the GUI target (see [`Self::gui_target_identity`]).
     gui_oauth_client: std::sync::Mutex<Option<String>>,
-    /// The namespace counter of the provider in the slot and the value the
-    /// GUI target last saw; see [`Self::observe_namespace_change`].
-    namespace_watch: std::sync::Mutex<Option<(Arc<AtomicU64>, u64)>>,
+    /// The poison of the provider in the slot and whether the GUI target has
+    /// seen it raised; see [`Self::observe_target_poison`].
+    target_poison: std::sync::Mutex<Option<(Arc<std::sync::atomic::AtomicBool>, bool)>>,
     /// Restored transfers pin a verified connection across multi-phase work.
     /// Swaps, disconnects and overlay mutations take the write side before
     /// touching the provider slot or changing how its paths are interpreted.
@@ -194,7 +194,7 @@ impl ProviderState {
             legacy_owner_binding: std::sync::Mutex::new(None),
             legacy_target_identity: std::sync::Mutex::new(None),
             gui_oauth_client: std::sync::Mutex::new(None),
-            namespace_watch: std::sync::Mutex::new(None),
+            target_poison: std::sync::Mutex::new(None),
             transfer_owner_gate: RwLock::new(()),
             connected_profile_id: std::sync::Mutex::new(None),
             config: Arc::new(Mutex::new(None)),
@@ -344,7 +344,7 @@ impl ProviderState {
         };
         let pin = self.transfer_owner_gate.read().await;
         self.validate_gui_owner()?;
-        self.observe_namespace_change();
+        self.observe_target_poison();
         if self.gui_target_epoch.load(Ordering::SeqCst) != expected {
             return Err(format!(
                 "{CONNECTION_CHANGED_MARKER}: the remote target changed; nothing was done"
@@ -475,11 +475,15 @@ impl ProviderState {
         let account = provider
             .sync_namespace_identity()
             .or_else(|| provider.account_email());
+        // With the GUI target epoch too: an overlay armed, applied, cleared
+        // or rearmed and a namespace change all advance it without a new
+        // connection, and each is another target (K7).
         let this_connection = || {
             format!(
-                "target-v1:connection:{}:{}",
+                "target-v1:connection:{}:{}:{}",
                 self.gui_process_nonce,
-                self.connection_generation.load(Ordering::SeqCst)
+                self.connection_generation.load(Ordering::SeqCst),
+                self.gui_target_epoch.load(Ordering::SeqCst)
             )
         };
         let overlay = if self.active_crypt_overlay.load(Ordering::SeqCst) {
@@ -495,6 +499,12 @@ impl ProviderState {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        // Tokens whose app is unknown: nothing tells this app's space from
+        // another app's on the same account, so no identity another
+        // connection could share (H1).
+        if oauth_client.as_deref() == Some(UNRECORDED_TOKEN_APP) {
+            return Ok(this_connection());
+        }
         Ok(crate::cloud_provider_factory::gui_target_identity(
             config.as_ref(),
             provider.provider_type(),
@@ -512,7 +522,7 @@ impl ProviderState {
         &self,
         is_provider: bool,
     ) -> Result<(String, u64), String> {
-        self.observe_namespace_change();
+        self.observe_target_poison();
         let epoch = self.gui_target_epoch.load(Ordering::SeqCst);
         let identity = self.gui_target_identity(is_provider).await?;
         if self.gui_target_epoch.load(Ordering::SeqCst) != epoch {
@@ -591,20 +601,16 @@ impl ProviderState {
     }
 
     /// The provider in the slot moved to another tree without a reconnect
-    /// (its namespace counter advanced, see
-    /// `StorageProvider::namespace_changes`): the GUI target advances, so
-    /// every pin taken against the previous tree is refused from here on,
-    /// the remaining commands of a run and its index publication included.
-    /// Read without the provider lock, at every pin and target read.
-    fn observe_namespace_change(&self) {
-        let mut watch = self
-            .namespace_watch
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some((counter, seen)) = watch.as_mut() {
-            let now = counter.load(Ordering::SeqCst);
-            if now != *seen {
-                *seen = now;
+    /// and poisoned itself (`StorageProvider::target_poison`): the GUI
+    /// target advances once, so every pin taken against the previous tree is
+    /// refused and the page reads the target again before a compare can use
+    /// a listing of it. The provider refuses the writes itself, pinned or
+    /// not. Read without the provider lock, at every pin and target read.
+    fn observe_target_poison(&self) {
+        let mut watch = self.target_poison.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((poison, seen)) = watch.as_mut() {
+            if !*seen && poison.load(Ordering::SeqCst) {
+                *seen = true;
                 self.advance_gui_target();
             }
         }
@@ -2457,9 +2463,9 @@ async fn install_connected_provider_with_owner(
     }
     let mut config_lock = state.config.lock().await;
     let validated_owner = owner.clone();
-    let namespace_watch = provider.namespace_changes().map(|counter| {
-        let seen = counter.load(Ordering::SeqCst);
-        (counter, seen)
+    let target_poison = provider.target_poison().map(|poison| {
+        let seen = poison.load(Ordering::SeqCst);
+        (poison, seen)
     });
     let mut candidate = Some(provider);
     let publish = || {
@@ -2487,9 +2493,9 @@ async fn install_connected_provider_with_owner(
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = oauth_client.clone();
         *state
-            .namespace_watch
+            .target_poison
             .lock()
-            .unwrap_or_else(|e| e.into_inner()) = namespace_watch.clone();
+            .unwrap_or_else(|e| e.into_inner()) = target_poison.clone();
         Ok(())
     };
     let result = if let Some(owner) = validated_owner {
@@ -7791,62 +7797,119 @@ async fn mkdir_for_ipc(
 
 /// Delete a file
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn provider_delete_file(
+    app: AppHandle,
     state: State<'_, ProviderState>,
     path: String,
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
     sync_run_lease: Option<String>,
+    operation_id: Option<String>,
 ) -> Result<(), String> {
+    use tauri::Manager;
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    // Registered before the target pin, which can wait (H8, K6).
+    let cancel = app
+        .state::<crate::AppState>()
+        .operation_cancel(sync_run_lease.is_some(), operation_id.as_deref());
     ipc_result(
         "provider_delete_file",
-        delete_file_for_ipc(&state, path, commit_message, expected_gui_target).await,
+        delete_file_for_ipc(
+            &state,
+            path,
+            commit_message,
+            expected_gui_target,
+            Some(&cancel),
+        )
+        .await,
     )
 }
 
+/// `cancel`: the panel gesture's (or the run's) flag; raised before the
+/// delete is sent, nothing is deleted.
 pub(crate) async fn delete_file_for_ipc(
     state: &ProviderState,
     path: String,
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
+    cancel: Option<&AtomicBool>,
 ) -> Result<(), crate::sync::IpcError> {
-    let _target = state
-        .pin_gui_target(expected_gui_target)
-        .await
-        .map_err(crate::sync::IpcError::from_native_pin)?;
-    // The raw view exposes raw paths. Deletion removes the selected object and
-    // cannot inject plaintext, so it remains available with CRYPT off (#390).
-
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    info!("Deleting file: {}", path);
-
-    if is_plain_github_provider(provider.as_mut()) {
-        let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-            .as_any_mut()
-            .downcast_mut::<crate::providers::github::GitHubProvider>()
-            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github
-            .delete_file(&path, commit_message.as_deref())
+    // The whole command runs against the cancel: the waits for the target
+    // pin and for the provider (M1), and the removal's own preparation, a
+    // lookup or a SHA read (L4). A cancel raised at any of them ends it
+    // there, releases the pin and sends no delete.
+    let deleting = async {
+        let _target = state
+            .pin_gui_target(expected_gui_target)
             .await
-            .map_err(crate::sync::IpcError::from)?;
-    } else {
-        provider
-            .delete(&path)
+            .map_err(crate::sync::IpcError::from_native_pin)?;
+        // The raw view exposes raw paths. Deletion removes the selected object and
+        // cannot inject plaintext, so it remains available with CRYPT off (#390).
+        let mut provider_lock = state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
+        info!("Deleting file: {}", path);
+        if is_plain_github_provider(provider.as_mut()) {
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+                .as_any_mut()
+                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+            github
+                .delete_file(&path, commit_message.as_deref())
+                .await
+                .map_err(crate::sync::IpcError::from)
+        } else {
+            provider
+                .delete(&path)
+                .await
+                .map_err(crate::sync::IpcError::from)
+        }
+    };
+    match cancel {
+        Some(cancel) => unless_cancelled(cancel, deleting)
             .await
-            .map_err(crate::sync::IpcError::from)?;
+            .unwrap_or(Err(crate::sync::IpcError::Cancelled)),
+        None => deleting.await,
     }
+}
 
-    Ok(())
+/// What a panel delete its gesture's cancel stopped answers.
+pub(crate) const DELETION_CANCELLED: &str = "Deletion cancelled";
+
+/// Run a provider removal so that a cancel raised while it is pending wins
+/// (`None`): the flag is read on every wake, before the removal is polled
+/// again, and a tick wakes it while the provider waits. The removal future
+/// is then dropped, so it sends no further request: a walk does not go on
+/// to its next child (K6), and a removal still in its preparation (a lookup,
+/// GitHub's SHA read) never sends the delete (L4). No backend runs its
+/// removal in a worker that outlives the future (L3): the walks run inside
+/// it, Proton's CLI process is killed on drop, an MTP device call removes
+/// at most the one object already asked for, and a server-side recursive
+/// delete is a single request a cancel can only keep from starting.
+pub(crate) async fn unless_cancelled<T>(
+    cancel: &AtomicBool,
+    removal: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    let mut removal = std::pin::pin!(removal);
+    let mut tick = tokio::time::interval(Duration::from_millis(25));
+    std::future::poll_fn(|cx| {
+        if cancel.load(Ordering::Relaxed) {
+            return std::task::Poll::Ready(None);
+        }
+        if let std::task::Poll::Ready(done) = removal.as_mut().poll(cx) {
+            return std::task::Poll::Ready(Some(done));
+        }
+        while tick.poll_tick(cx).is_ready() {}
+        std::task::Poll::Pending
+    })
+    .await
 }
 
 /// Delete a directory
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn provider_delete_dir(
     app: AppHandle,
     state: State<'_, ProviderState>,
@@ -7854,63 +7917,104 @@ pub async fn provider_delete_dir(
     recursive: bool,
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
+    operation_id: Option<String>,
 ) -> Result<(), String> {
-    let _target = state.pin_gui_target(expected_gui_target).await?;
-    // As for file deletion, use the path selected in the current raw/wrapped
-    // view. The plaintext-injection guard applies to writes, not removals.
+    provider_delete_dir_with(
+        &app,
+        &state,
+        path,
+        recursive,
+        commit_message,
+        expected_gui_target,
+        operation_id,
+    )
+    .await
+}
 
-    let mut provider_lock = state.provider.lock().await;
+/// The body of `provider_delete_dir`. The panel gesture's flag is
+/// registered before the target pin (H8) and read again right before the
+/// delete; the delete itself runs against it: once it is raised, the
+/// provider call is dropped at its next await, so a recursive delete that
+/// walks the tree sends no further removal (K6), as a cancelled transfer
+/// drops its call (#332).
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn provider_delete_dir_with<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &ProviderState,
+    path: String,
+    recursive: bool,
+    commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+    operation_id: Option<String>,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let cancel = app
+        .state::<crate::AppState>()
+        .operation_cancel(false, operation_id.as_deref());
+    // The whole command runs against the cancel, the waits for the target
+    // pin and for the provider included: a cancel raised while it waits
+    // ends it there and releases the pin (M1).
+    let deleting = async {
+        let _target = state.pin_gui_target(expected_gui_target).await?;
+        // As for file deletion, use the path selected in the current raw/wrapped
+        // view. The plaintext-injection guard applies to writes, not removals.
 
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
+        let mut provider_lock = state.provider.lock().await;
 
-    info!("Deleting directory: {} (recursive: {})", path, recursive);
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
 
-    // Emit scanning event for folder deletes so the ScanningToast appears
-    if recursive {
-        let folder_name = std::path::Path::new(&path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.clone());
-        crate::transfer_event_sink::emit_gui_transfer_event(
-            &app,
-            crate::TransferEvent {
-                event_type: "scanning".to_string(),
-                transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
-                filename: folder_name,
-                direction: "delete".to_string(),
-                message: Some("Scanning folder for deletion...".to_string()),
-                progress: None,
-                path: Some(path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
-    }
+        info!("Deleting directory: {} (recursive: {})", path, recursive);
 
-    if is_plain_github_provider(provider.as_mut()) {
-        // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
-        let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-            .as_any_mut()
-            .downcast_mut::<crate::providers::github::GitHubProvider>()
-            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github
-            .delete_directory_recursive(&path, commit_message.as_deref())
-            .await
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
-    } else if recursive {
-        provider
-            .rmdir_recursive(&path)
-            .await
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
-    } else {
-        // Not recursive: only an empty directory, since `rmdir` itself takes
-        // the content along on several backends.
-        crate::providers::remove_empty_directory(provider.as_mut(), &path)
-            .await
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
-    }
+        // Emit scanning event for folder deletes so the ScanningToast appears
+        if recursive {
+            let folder_name = std::path::Path::new(&path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                crate::TransferEvent {
+                    event_type: "scanning".to_string(),
+                    transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
+                    filename: folder_name,
+                    direction: "delete".to_string(),
+                    message: Some("Scanning folder for deletion...".to_string()),
+                    progress: None,
+                    path: Some(path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+        }
+
+        if is_plain_github_provider(provider.as_mut()) {
+            // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+                .as_any_mut()
+                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+            github
+                .delete_directory_recursive(&path, commit_message.as_deref())
+                .await
+                .map_err(|e| format!("Failed to delete directory: {}", e))
+        } else if recursive {
+            provider
+                .rmdir_recursive(&path)
+                .await
+                .map_err(|e| format!("Failed to delete directory: {}", e))
+        } else {
+            // Not recursive: only an empty directory, since `rmdir` itself takes
+            // the content along on several backends.
+            crate::providers::remove_empty_directory(provider.as_mut(), &path)
+                .await
+                .map_err(|e| format!("Failed to delete directory: {}", e))
+        }
+    };
+    unless_cancelled(&cancel, deleting)
+        .await
+        .unwrap_or_else(|| Err(DELETION_CANCELLED.to_string()))?;
 
     // Emit delete_complete so ScanningToast dismisses
     if recursive {
@@ -7919,7 +8023,7 @@ pub async fn provider_delete_dir(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.clone());
         crate::transfer_event_sink::emit_gui_transfer_event(
-            &app,
+            app,
             crate::TransferEvent {
                 event_type: "delete_complete".to_string(),
                 transfer_id: format!("del-dir-done-{}", chrono::Utc::now().timestamp_millis()),
@@ -8019,7 +8123,7 @@ pub async fn provider_gui_verify_resume_owner(
 #[tauri::command]
 pub async fn provider_gui_target_epoch(state: State<'_, ProviderState>) -> Result<u64, String> {
     let _target = state.transfer_owner_gate.read().await;
-    state.observe_namespace_change();
+    state.observe_target_poison();
     Ok(state.gui_target_epoch.load(Ordering::SeqCst))
 }
 
@@ -9187,11 +9291,16 @@ fn oauth_provider_named(provider: &str) -> Result<crate::providers::OAuthProvide
 /// The OAuth app a GUI connection's target names: the one recorded with the
 /// stored tokens, never the one configured now (a token keeps working after
 /// the app is changed in Settings, and it still sees its own app's space).
-/// A record written before the app was kept names no app: one fixed value,
-/// which no recorded app shares, stands for it.
+/// A record written before the app was kept names no app: the connection
+/// then gets an identity of its own, never reused (as one with no account,
+/// see [`ProviderState::gui_target_identity`]), since two such records can
+/// belong to two "app folder" apps of the same account.
 pub(crate) fn oauth_identity_client(recorded: Option<String>) -> String {
-    recorded.unwrap_or_else(|| "token-app-unrecorded".to_string())
+    recorded.unwrap_or_else(|| UNRECORDED_TOKEN_APP.to_string())
 }
+
+/// What [`oauth_identity_client`] answers for tokens whose app is unknown.
+pub(crate) const UNRECORDED_TOKEN_APP: &str = "token-app-unrecorded";
 
 /// Create a shareable link for a file using the OAuth provider's native sharing API
 #[tauri::command]
@@ -18863,7 +18972,7 @@ mod tests {
         *state.provider.lock().await = Some(Box::new(LeakyServer));
         let returned = ipc_result(
             "provider_delete_file",
-            delete_file_for_ipc(&state, "/a".into(), None, None).await,
+            delete_file_for_ipc(&state, "/a".into(), None, None, None).await,
         )
         .unwrap_err();
         DELETE_ERROR.with(|slot| slot.set(None));
@@ -19089,7 +19198,7 @@ mod tests {
         *state.provider.lock().await = Some(Box::new(LeakyServer));
         let deleted = ipc_result(
             "provider_delete_file",
-            delete_file_for_ipc(&state, "/a".into(), None, None).await,
+            delete_file_for_ipc(&state, "/a".into(), None, None, None).await,
         );
         let created = ipc_result(
             "provider_mkdir",
@@ -19115,7 +19224,7 @@ mod tests {
         assert!(log.contains("provider_mkdir failed"), "{log}");
         assert!(!log.contains("(HTTP"), "{log}");
         // Without the boundary the same call hands the token over.
-        let raw = delete_file_for_ipc(&state, "/a".into(), None, None)
+        let raw = delete_file_for_ipc(&state, "/a".into(), None, None, None)
             .await
             .unwrap_err();
         assert!(raw.text().contains(SECRETS[1]));
@@ -19240,9 +19349,14 @@ mod tests {
             (lib, "upload_file_for_ipc"),
             (lib, "delete_remote_file_for_ipc"),
         ] {
-            let start = source
-                .find(&format!("\nasync fn {function}("))
-                .unwrap_or_else(|| panic!("{function}"));
+            // The plain or the runtime-generic signature (`<R: Runtime>(`).
+            let start = [
+                format!("\nasync fn {function}("),
+                format!("\nasync fn {function}<"),
+            ]
+            .iter()
+            .find_map(|head| source.find(head.as_str()))
+            .unwrap_or_else(|| panic!("{function}"));
             let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
             assert!(
                 !body.contains("emit_gui_transfer_event("),
@@ -23651,18 +23765,114 @@ mod restored_transfer_owner_tests {
         drop(_change);
     }
 
-    /// E2: an upload refused on the protected branch makes GitHub write to a
-    /// working branch (here one that already exists, with other contents)
-    /// with no reconnect. That is another tree: the GUI target advances, so
-    /// the rest of a plan made against `main` is refused (a delete, the index
-    /// publication), and a page that reads the target again gets the working
-    /// branch's identity, never `main`'s.
+    /// H1: tokens whose app is unknown (a record from before the app was
+    /// kept) give each connection an identity of its own: two such
+    /// connections on one account (two "app folder" apps) never share a
+    /// baseline, so neither takes the other's history as deletion authority.
+    /// A recorded app keeps one identity across reconnects.
     #[tokio::test]
-    async fn a_working_branch_fallback_stops_the_plan_made_against_the_protected_branch() {
+    async fn tokens_of_an_unknown_app_get_no_identity_another_connection_shares() {
+        let config = crate::providers::ProviderConfig {
+            name: "repo".into(),
+            provider_type: crate::providers::ProviderType::GitHub,
+            host: "o/r".into(),
+            port: Some(443),
+            username: None,
+            password: Some("token".into()),
+            initial_path: Some("/".into()),
+            extra: std::collections::HashMap::new(),
+        };
+        let state = ProviderState::new();
+        let connect = |app: &str| {
+            let state = &state;
+            let config = config.clone();
+            let app = app.to_string();
+            async move {
+                let provider = crate::providers::github::GitHubProvider::connected_for_test(
+                    &config, "alice", "main",
+                );
+                install_connected_provider_with_owner(
+                    state,
+                    Box::new(provider),
+                    Some("p".into()),
+                    None,
+                    Some(app),
+                    None,
+                    Duration::from_secs(10),
+                )
+                .await
+                .unwrap();
+                state.gui_target_identity(true).await.unwrap()
+            }
+        };
+        let first = connect(UNRECORDED_TOKEN_APP).await;
+        let second = connect(UNRECORDED_TOKEN_APP).await;
+        assert!(first.starts_with("target-v1:connection:"), "{first}");
+        assert_ne!(first, second);
+        let mut index = crate::sync::SyncIndex::new("/local".into(), "/remote".into());
+        index.target_identity = Some(first.clone());
+        index.files.insert(
+            "x.txt".into(),
+            crate::sync::SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        assert!(
+            crate::sync::bind_index_to_target(Some(index), &second).is_none(),
+            "no baseline from the other connection"
+        );
+        // K7: an overlay transition on the same connection (each of them
+        // advances the GUI target, as `provider_apply_crypt_overlay_inner`
+        // does) is another target too: the old index gives no baseline.
+        let before_overlay = state.gui_target_identity(true).await.unwrap();
+        state.advance_gui_target();
+        let after_overlay = state.gui_target_identity(true).await.unwrap();
+        assert_ne!(before_overlay, after_overlay);
+        let mut index = crate::sync::SyncIndex::new("/local".into(), "/remote".into());
+        index.target_identity = Some(before_overlay);
+        index.files.insert(
+            "x.txt".into(),
+            crate::sync::SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        assert!(crate::sync::bind_index_to_target(Some(index), &after_overlay).is_none());
+        // A recorded app: the same target on every connection.
+        assert_eq!(connect("app-a").await, connect("app-a").await);
+        assert_ne!(connect("app-a").await, connect("app-b").await);
+    }
+
+    /// A GitHub API whose `main` refuses direct pushes as protected and whose
+    /// working branch exists already; it records every request made after the
+    /// working-branch write. `hold_working_put` keeps that write waiting.
+    async fn protected_github_server(
+        hold_working_put: bool,
+    ) -> (
+        String,
+        Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
         use axum::response::IntoResponse;
+        let requests_after_switch = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let switched = Arc::new(AtomicBool::new(false));
+        let (seen, on_working) = (requests_after_switch.clone(), switched.clone());
         let app = axum::Router::new().fallback(axum::routing::any(
-            |method: axum::http::Method, uri: axum::http::Uri, body: String| async move {
+            move |method: axum::http::Method, uri: axum::http::Uri, body: String| async move {
                 let path = uri.path().to_string();
+                if on_working.load(Ordering::SeqCst) {
+                    seen.lock().unwrap().push(format!("{method} {path}"));
+                }
+                if path.contains("/compare/") {
+                    // The working branch has a commit main does not.
+                    return axum::Json(serde_json::json!({"ahead_by": 1, "behind_by": 0}))
+                        .into_response();
+                }
                 if path.contains("/branches/") {
                     // The working branch exists already, ahead of main.
                     return axum::Json(serde_json::json!({
@@ -23681,6 +23891,11 @@ mod restored_transfer_owner_tests {
                         )
                             .into_response();
                     }
+                    on_working.store(true, Ordering::SeqCst);
+                    if hold_working_put {
+                        // Held: the test drops the upload while it waits.
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    }
                     return (
                         axum::http::StatusCode::CREATED,
                         axum::Json(serde_json::json!({"content": {"sha": "abc123"}})),
@@ -23697,6 +23912,22 @@ mod restored_transfer_owner_tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (addr.to_string(), requests_after_switch, server)
+    }
+
+    /// E2: an upload refused on the protected branch makes GitHub write to a
+    /// working branch (here one that already exists, with other contents)
+    /// with no reconnect. That is another tree: the GUI target advances, so
+    /// the rest of a plan made against `main` is refused (a delete, the index
+    /// publication), and a page that reads the target again gets the working
+    /// branch's identity, never `main`'s. H2: a delete pinned before the
+    /// fallback and queued on the provider behind the upload reaches the
+    /// provider after the switch: it is refused before any request, so no
+    /// delete lands on the working branch; once no command pinned before the
+    /// change is alive, the provider serves again.
+    #[tokio::test]
+    async fn a_working_branch_fallback_stops_the_plan_made_against_the_protected_branch() {
+        let (addr, requests_after_switch, server) = protected_github_server(false).await;
 
         let state = ProviderState::new();
         let provider =
@@ -23706,6 +23937,8 @@ mod restored_transfer_owner_tests {
             .unwrap();
         let before = state.gui_target_snapshot(true).await.unwrap();
         assert!(state.pin_gui_target(Some(before.1)).await.is_ok());
+        // A delete of the same plan, pinned now, queued behind the upload.
+        let queued_delete = state.pin_gui_target(Some(before.1)).await.unwrap();
 
         // The run's first upload: refused on main, written to the working branch.
         let dir = tempfile::tempdir().unwrap();
@@ -23721,6 +23954,22 @@ mod restored_transfer_owner_tests {
             .await
             .unwrap();
 
+        // The queued delete gets the provider now: refused, nothing sent.
+        let delete = state
+            .provider
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .delete("/b.txt")
+            .await;
+        assert!(
+            matches!(delete, Err(ProviderError::TargetChanged)),
+            "{delete:?}"
+        );
+        assert!(requests_after_switch.lock().unwrap().is_empty());
+        drop(queued_delete);
+
         // Its next command and its index publication, pinned on main's target.
         let refused = state.pin_gui_target(Some(before.1)).await.err().unwrap();
         assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
@@ -23733,6 +23982,227 @@ mod restored_transfer_owner_tests {
         assert_ne!(after.1, before.1);
         assert_ne!(after.0, before.0);
         assert!(state.pin_gui_target(Some(after.1)).await.is_ok());
+        // M2: the session stays poisoned. A delete pinned on the new target,
+        // and one that names no target at all, are refused by the provider
+        // itself, before any request: nothing ever settles it back.
+        for expected in [Some(after.1), None] {
+            let delete = delete_file_for_ipc(&state, "/c.txt".into(), None, expected, None).await;
+            assert!(delete.is_err(), "{expected:?}");
+        }
+        assert!(requests_after_switch.lock().unwrap().is_empty());
+        server.abort();
+    }
+
+    /// K6: a recursive provider delete that walks the tree, cancelled from
+    /// its gesture's toast after its first child: no further child is
+    /// removed, and the delete answers as cancelled.
+    #[tokio::test]
+    async fn a_gesture_cancel_stops_a_recursive_provider_delete_between_children() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(crate::AppState::new());
+        let state = ProviderState::new();
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut fake = crate::providers::probe_fake::ProbeFake::new();
+        fake.recursive_children = vec!["/d/a".into(), "/d/b".into(), "/d/c".into()];
+        fake.child_gate = Some(gate.clone());
+        fake.shared_writes = Some(writes.clone());
+        install_connected_provider(&state, Box::new(fake), None)
+            .await
+            .unwrap();
+        let handle = app.handle().clone();
+        let deleting = provider_delete_dir_with(
+            &handle,
+            &state,
+            "/d".into(),
+            true,
+            None,
+            None,
+            Some("gesture-provider-0001".into()),
+        );
+        let cancelling = async {
+            gate.add_permits(1);
+            while writes.lock().unwrap().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            app.state::<crate::AppState>()
+                .cancel_operation("gesture-provider-0001");
+            // Were the walk still running, these would let it go on.
+            gate.add_permits(2);
+        };
+        let (deleted, ()) = tokio::join!(deleting, cancelling);
+        assert_eq!(deleted, Err(DELETION_CANCELLED.to_string()));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(*writes.lock().unwrap(), ["delete /d/a"]);
+    }
+
+    /// M1: a delete queued behind another provider operation (the provider
+    /// mutex held) ends at its cancel, before the mutex is free, and its
+    /// target pin goes with it; the provider never sees it.
+    #[tokio::test]
+    async fn a_cancelled_delete_waiting_for_the_provider_ends_and_releases_its_pin() {
+        let state = ProviderState::new();
+        let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut fake = crate::providers::probe_fake::ProbeFake::new();
+        fake.shared_writes = Some(writes.clone());
+        install_connected_provider(&state, Box::new(fake), None)
+            .await
+            .unwrap();
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+        let busy = state.provider.lock().await;
+        let cancel = AtomicBool::new(false);
+        let deleting =
+            delete_file_for_ipc(&state, "/f.txt".into(), None, Some(epoch), Some(&cancel));
+        let cancelling = async {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            cancel.store(true, Ordering::Relaxed);
+        };
+        let (deleted, ()) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(deleting, cancelling)
+        })
+        .await
+        .expect("the cancel ends the wait, with the provider still busy");
+        assert!(matches!(deleted, Err(crate::sync::IpcError::Cancelled)));
+        // The pin is gone while the provider is still held.
+        assert!(state
+            .transfer_owner_write(Duration::from_millis(200))
+            .await
+            .is_ok());
+        drop(busy);
+        assert!(writes.lock().unwrap().is_empty());
+    }
+
+    /// L4: a cancel raised while a file removal is still preparing (the
+    /// lookup before the delete) keeps the delete from being sent, even
+    /// when the preparation finishes afterwards.
+    #[tokio::test]
+    async fn a_cancel_during_the_preparation_of_a_file_delete_sends_no_delete() {
+        let state = ProviderState::new();
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut fake = crate::providers::probe_fake::ProbeFake::new();
+        fake.delete_gate = Some(gate.clone());
+        fake.shared_writes = Some(writes.clone());
+        install_connected_provider(&state, Box::new(fake), None)
+            .await
+            .unwrap();
+        let cancel = AtomicBool::new(false);
+        let deleting = delete_file_for_ipc(&state, "/f.txt".into(), None, None, Some(&cancel));
+        let cancelling = async {
+            while writes.lock().unwrap().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            cancel.store(true, Ordering::Relaxed);
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            // The preparation finishes after the cancel.
+            gate.add_permits(1);
+        };
+        let (deleted, ()) = tokio::join!(deleting, cancelling);
+        assert!(matches!(deleted, Err(crate::sync::IpcError::Cancelled)));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(*writes.lock().unwrap(), ["prepare /f.txt"]);
+
+        // Without a cancel the same delete goes through.
+        let done = AtomicBool::new(false);
+        gate.add_permits(1);
+        delete_file_for_ipc(&state, "/g.txt".into(), None, None, Some(&done))
+            .await
+            .unwrap();
+        assert!(writes
+            .lock()
+            .unwrap()
+            .contains(&"delete /g.txt".to_string()));
+    }
+
+    /// K9, now without any pass: an upload dropped while its write to the
+    /// working branch waits (a cancel, a timeout) leaves the session wholly
+    /// on the protected branch, not switched and not poisoned. Its target is
+    /// unchanged, and nothing the session sends afterwards goes to the
+    /// working branch through it.
+    #[tokio::test]
+    async fn a_dropped_fallback_upload_leaves_the_session_on_its_branch() {
+        let (addr, _requests_after_switch, server) = protected_github_server(true).await;
+        let state = ProviderState::new();
+        let provider =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        install_connected_provider(&state, Box::new(provider), Some("gh".into()))
+            .await
+            .unwrap();
+        let before = state.gui_target_snapshot(true).await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"a").unwrap();
+        {
+            let mut slot = state.provider.lock().await;
+            let provider = slot.as_mut().unwrap();
+            let upload = provider.upload(file.to_str().unwrap(), "/a.txt", None);
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(500), upload)
+                    .await
+                    .is_err(),
+                "the working-branch write is held"
+            );
+        }
+        {
+            let mut slot = state.provider.lock().await;
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(
+                slot.as_mut().unwrap().as_mut(),
+            )
+            .as_any_mut()
+            .downcast_mut::<crate::providers::github::GitHubProvider>()
+            .unwrap();
+            assert_eq!(github.working_branch(), None);
+            assert!(!github
+                .target_poison()
+                .unwrap()
+                .load(std::sync::atomic::Ordering::SeqCst));
+        }
+        assert_eq!(state.gui_target_snapshot(true).await.unwrap(), before);
+        server.abort();
+    }
+
+    /// L6: a GitHub provider no GUI target watches (a CLI or AeroCloud sync)
+    /// holds a plan made against the protected branch. After the upload
+    /// that falls back to the working branch, the delete the plan had next
+    /// is refused before any request: it never reaches the working branch.
+    /// The next plan connects anew, and a new connection serves.
+    #[tokio::test]
+    async fn an_unwatched_plan_stops_after_a_fallback_and_a_new_connection_serves() {
+        let (addr, requests_after_switch, server) = protected_github_server(false).await;
+        let mut provider =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"a").unwrap();
+        provider
+            .upload(file.to_str().unwrap(), "/a.txt", None)
+            .await
+            .unwrap();
+        assert!(provider
+            .target_poison()
+            .unwrap()
+            .load(std::sync::atomic::Ordering::SeqCst));
+        let sent = requests_after_switch.lock().unwrap().len();
+        let planned_delete = provider.delete("/old.txt").await;
+        assert!(
+            matches!(planned_delete, Err(ProviderError::TargetChanged)),
+            "{planned_delete:?}"
+        );
+        assert_eq!(requests_after_switch.lock().unwrap().len(), sent);
+
+        // Reads stay allowed (the page reads the working branch again).
+        assert!(!matches!(
+            provider.stat("/b.txt").await,
+            Err(ProviderError::TargetChanged)
+        ));
+        let mut next =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        let stat = next.stat("/b.txt").await;
+        assert!(
+            !matches!(stat, Err(ProviderError::TargetChanged)),
+            "{stat:?}"
+        );
         server.abort();
     }
 
@@ -24195,6 +24665,15 @@ pub(crate) mod isolated_account_fixture {
         in_isolated_child_within(test, None)
     }
 
+    /// K12: the parent's early return comes only after the child ran the
+    /// named test and reported it passed. A name that runs nothing (here, a
+    /// test that does not exist) fails the parent.
+    #[test]
+    #[should_panic(expected = "running 0 tests")]
+    fn a_child_that_runs_no_test_fails_the_parent() {
+        in_isolated_child("provider_commands::isolated_account_fixture::no_such_test");
+    }
+
     /// [`in_isolated_child`] with a watchdog: a child that has not ended
     /// within `deadline` (a loop that never yields, which no in-process
     /// timeout can interrupt) is killed, and the test fails instead of hanging.
@@ -24204,11 +24683,25 @@ pub(crate) mod isolated_account_fixture {
     ) -> bool {
         let executable = std::env::current_exe().unwrap();
         if std::env::var_os(CHILD).is_some() {
-            assert!(executable
-                .parent()
-                .unwrap()
-                .join("portable.marker")
-                .is_file());
+            let root = executable.parent().unwrap();
+            assert!(root.join("portable.marker").is_file());
+            // Fail closed before the test touches anything (K11): the data
+            // root, the vault's folder and the partition database must all
+            // resolve inside this child's temporary folder.
+            let resolved = [
+                crate::portable::aeroftp_data_root(),
+                crate::portable::credential_store_dir(),
+                crate::user_partitions::cli_db_path().ok(),
+            ];
+            for path in resolved {
+                let path = path.expect("an isolated child resolves every storage path");
+                assert!(
+                    path.starts_with(root),
+                    "{} is outside the isolated child {}",
+                    path.display(),
+                    root.display()
+                );
+            }
             return true;
         }
         let root = tempfile::Builder::new()

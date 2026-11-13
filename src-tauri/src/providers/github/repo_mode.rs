@@ -499,6 +499,7 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -586,6 +587,7 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -641,6 +643,7 @@ impl GitHubProvider {
         path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -694,6 +697,7 @@ impl GitHubProvider {
         path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         let resolved = self.resolve_path(path);
 
         if let Some(virtual_path) = self.parse_virtual_path(&resolved) {

@@ -2468,12 +2468,51 @@ mod tests {
     /// Settings and no new sign-in, keeps naming A, through a refresh too; a
     /// genuine sign-in with B names B. A record from before the app was kept
     /// names one fixed value no recorded app shares.
+    ///
+    /// H3: it runs in an isolated child (its own data root, vault and
+    /// partition database next to a copy of the test binary) and deletes
+    /// nothing: the child checks that a legacy Dropbox authorization it
+    /// holds outside the test's profile is still there at the end. The
+    /// parent reads nothing of the real data root (L9).
     #[test]
     fn a_token_names_the_app_that_authorized_it_not_the_one_configured_now() {
         use super::{OAuth2Manager, OAuthProvider, StoredTokens};
+        // The parent reads nothing of the real data root (L9): the child's own
+        // root, vault and partition database are checked by
+        // `in_isolated_child` before the body runs (K11), and the child
+        // checks below that what it protects is still there.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_token_names_the_app_that_authorized_it_not_the_one_configured_now",
+        ) {
+            return;
+        }
+        let root = crate::portable::aeroftp_data_root().unwrap();
+        let executable_dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        assert!(root.starts_with(&executable_dir), "{}", root.display());
         let manager = OAuth2Manager::new();
-        let profile = format!("e1-token-app-{}", std::process::id());
-        let _ = manager.delete_tokens(OAuthProvider::Dropbox, &profile);
+        let profile = "e1-token-app".to_string();
+        // A legacy authorization outside the test's profile.
+        let legacy_file = OAuth2Manager::token_dir()
+            .unwrap()
+            .join("oauth2_dropbox.json");
+        std::fs::write(&legacy_file, b"{}").unwrap();
+        manager
+            .store_tokens(
+                OAuthProvider::Dropbox,
+                "",
+                &StoredTokens {
+                    access_token: "legacy".to_string(),
+                    refresh_token: None,
+                    expires_at: None,
+                    token_type: "Bearer".to_string(),
+                    scopes: vec![],
+                },
+            )
+            .unwrap();
         let tokens = |access: &str| StoredTokens {
             access_token: access.to_string(),
             refresh_token: Some("refresh".to_string()),
@@ -2538,14 +2577,26 @@ mod tests {
             )
             .unwrap();
         assert_eq!(named(&manager), app_b);
-        // A record from before: neither A nor B, and the same every time.
+        // A record from before names no app (the connection then gets an
+        // identity of its own, H1 in provider_commands).
         manager
             .store_tokens(OAuthProvider::Dropbox, &profile, &tokens("old"))
             .unwrap();
-        let unrecorded = named(&manager);
-        assert!(unrecorded != app_a && unrecorded != app_b);
-        assert_eq!(named(&manager), unrecorded);
-        let _ = manager.delete_tokens(OAuthProvider::Dropbox, &profile);
+        assert_eq!(
+            manager
+                .token_client_id(OAuthProvider::Dropbox, &profile)
+                .unwrap(),
+            None
+        );
+        // The authorization outside the test's profile is still there.
+        assert!(legacy_file.exists());
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "")
+                .unwrap()
+                .access_token,
+            "legacy"
+        );
     }
 
     #[test]

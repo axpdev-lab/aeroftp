@@ -219,7 +219,7 @@ import { getCredentialWithRetry } from './utils/profileVaultSecrets';
 import { loadFourSharedCredentials } from './utils/fourSharedCredentials';
 import { loadOAuthClientCredentials, oauthCredentialProvider } from './utils/oauthClientCredentials';
 import { keyReadFailure, notifyOAuthKeysUnavailable, OPEN_OAUTH_SETTINGS_EVENT } from './utils/oauthKeysMissing';
-import { trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
+import { isDeletionCancelled, trashLocalPaths, type HomeCopyChoice, type LocalTrashDeps } from './utils/localTrash';
 import { normalizeMegaOptions } from './utils/providerConnectionMeta';
 import { localizeRestrictedCharError } from './utils/restrictedCharError';
 import { previewRouteFor } from './utils/previewRoute';
@@ -1819,6 +1819,13 @@ const App: React.FC = () => {
   const transferQueue = useTransferQueue();
   const retryCallbacksRef = React.useRef<Map<string, () => void>>(new Map());
   const batchCancelledRef = React.useRef(false);
+  // The delete gestures started, most recent last, by id: the scanning
+  // toast's Cancel stops the native command in flight of each
+  // (`operation_scope_cancel`). A gesture adds its own id before its first
+  // await, and nobody takes one out: an id is never reused and a Cancel that
+  // reaches a gesture already over does nothing, so two overlapping deletes
+  // are both stopped by the toast they share, whichever started last (M4).
+  const deleteGesturesRef = React.useRef<string[]>([]);
   const cancelLevelRef = React.useRef(0); // 0=none, 1=soft, 2=hard
   // Every Stop, counted. The flag above stays set after a stopped batch; a
   // run that does not reset it tells a Stop of its own by this count.
@@ -6140,7 +6147,7 @@ const App: React.FC = () => {
       if (!dest || !event.payload.paths.length) return;
       let copied = 0;
       const failures: string[] = [];
-      // A Stop raised during the import ends it (see clipboardPaste).
+      // A Stop raised during this import starts no further copy (K4).
       const stops = stopCountRef.current;
       for (const src of event.payload.paths) {
         if (stopCountRef.current !== stops) break;
@@ -7313,7 +7320,7 @@ const App: React.FC = () => {
   }, [showHiddenFiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Drag & Drop (cross-panel callback set below after upload/download are defined)
-  const crossPanelDropRef = React.useRef<((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: 'remote' | 'local' | 'local2', target?: RemoteDragTarget) => Promise<void>) | null>(null);
+  const crossPanelDropRef = React.useRef<((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: 'remote' | 'local' | 'local2', target?: RemoteDragTarget, stops?: number) => Promise<void>) | null>(null);
 
   const {
     dragData, dropTargetPath, crossPanelTarget,
@@ -7332,11 +7339,12 @@ const App: React.FC = () => {
     activeSessionId,
     sessions: sessions as Array<{ id: string; connectionParams?: { protocol?: string } }>,
     connectionParams: liveConnectionParams,
-    onCrossPanelDrop: async (files, fromRemote, targetDir, sourceKey, target) => {
-      await crossPanelDropRef.current?.(files, fromRemote, targetDir, sourceKey, target);
+    onCrossPanelDrop: async (files, fromRemote, targetDir, sourceKey, target, stops) => {
+      await crossPanelDropRef.current?.(files, fromRemote, targetDir, sourceKey, target, stops);
     },
     // Called on a drop, long after the render that declares it.
     remoteActionGuard: () => remoteActionGuard(),
+    stopCount: stopCountRef,
     captureRemoteTarget: (check) => captureGuiTarget(check),
   });
 
@@ -12324,6 +12332,19 @@ const App: React.FC = () => {
 
   const executeUnifiedTransferPlan = useLatestCallback(async () => {
     if (!pendingUnifiedTransferPlan) return;
+    // This plan's Stop, by the count taken here: checked before each item
+    // and, inside each transfer, right before its native dispatch, after the
+    // transfer's own awaits (M5). Not `batchCancelledRef`, which only a batch
+    // resets and an earlier Stop leaves set (K3).
+    const stops = stopCountRef.current;
+    const stoppedSinceStart = () => stopCountRef.current !== stops;
+    const planDispatch = () => {
+      const onTarget = queuedTargetGuard(snapshotQueuedTarget());
+      return () => {
+        onTarget();
+        if (stoppedSinceStart()) throw new Error('Transfer cancelled');
+      };
+    };
     const { plan, sourceLocalPanelId } = pendingUnifiedTransferPlan;
     setUnifiedTransferExecuting(true);
     try {
@@ -12494,12 +12515,12 @@ const App: React.FC = () => {
           planStopped = outcome.aborted || batchCancelledRef.current;
         }
         for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
-          if (batchCancelledRef.current) break;
+          if (stoppedSinceStart()) break;
           try {
-            if (await uploadFile(entry.path, entry.name, entry.is_dir, entry.size)) ok += 1;
+            if (await uploadFile(entry.path, entry.name, entry.is_dir, entry.size, false, undefined, undefined, 'notify', undefined, planDispatch())) ok += 1;
           } catch (e) {
             failed += 1;
-            if (!batchCancelledRef.current) {
+            if (!stoppedSinceStart()) {
               notify.error(t('toast.uploadFailed') || 'Upload failed', `${entry.name}: ${String(e)}`);
             }
           }
@@ -12547,12 +12568,12 @@ const App: React.FC = () => {
           planStopped = outcome.aborted || batchCancelledRef.current;
         }
         for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
-          if (batchCancelledRef.current) break;
+          if (stoppedSinceStart()) break;
           try {
-            if (await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size)) ok += 1;
+            if (await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size, false, 'notify', undefined, planDispatch())) ok += 1;
           } catch (e) {
             failed += 1;
-            if (!batchCancelledRef.current) {
+            if (!stoppedSinceStart()) {
               notify.error(t('toast.downloadFailed') || 'Download failed', `${entry.name}: ${String(e)}`);
             }
           }
@@ -13564,11 +13585,16 @@ const App: React.FC = () => {
   const clipboardPaste = async (targetIsRemote: boolean, targetDir: string) => {
     const cb = fileClipboardRef.current;
     if (!cb) return;
-    // A Stop raised during the paste ends it: each local copy or delete is a
-    // native command with a cancel state of its own, so the loop itself must
-    // start no further item once a Stop came (the one in flight is stopped).
+    // A Stop raised during the paste ends it, from its first await on (the
+    // target preparation included, H7): no transfer, no source delete starts
+    // after it. `runFileBatch` resets `batchCancelledRef` when it starts, so
+    // the Stop count taken here is what tells.
     const stops = stopCountRef.current;
     const pasteStopped = () => stopCountRef.current !== stops;
+    // The paste's own scope: each native delete of a cut source carries it,
+    // so the Cancel of the toast a folder delete shows stops the delete in
+    // flight and starts none after it (L2).
+    const operationId = crypto.randomUUID();
 
     const { files, isRemote: sourceIsRemote, operation, sourceDir } = cb;
     // Remote files pasted after a switch to another server named that
@@ -13582,6 +13608,13 @@ const App: React.FC = () => {
     // remote write below checks it again, since every await is a window.
     const pasteTarget = cb.target ?? snapshotQueuedTarget();
     const onPasteTarget = queuedTargetGuard(pasteTarget);
+    // What a single transfer of this paste checks right before each native
+    // dispatch, after its own awaits (the destination listing, the overwrite
+    // question): this paste's Stop as well as its target (M5).
+    const onPasteDispatch = () => {
+      onPasteTarget();
+      if (pasteStopped()) throw new Error('Transfer cancelled');
+    };
     let expectedGuiTarget: number | undefined;
     if (sourceIsRemote || targetIsRemote) {
       try {
@@ -13589,6 +13622,8 @@ const App: React.FC = () => {
           ? await resolveGuiTarget(cb.preparedTarget, onPasteTarget)
           : await captureGuiTarget(onPasteTarget);
       } catch (error) { notify.error(t('contextMenu.paste'), String(error)); return; }
+      // H7: a Stop while the target was prepared ends the paste here.
+      if (pasteStopped()) return;
     }
     /** True, said once, when the paste's server is no longer live. */
     let retargetNotified = false;
@@ -13616,8 +13651,8 @@ const App: React.FC = () => {
         files,
         fileBatchSessionFlags(pasteDirection, { cut: operation === 'cut' }),
       );
-      let stopAfterBatch = false;
-      if (pasteBatch.length > 0) {
+      let stopAfterBatch = pasteStopped();
+      if (pasteBatch.length > 0 && !stopAfterBatch) {
         resetOverwriteSettings();
         const outcome = await runFileBatch(
           pasteDirection,
@@ -13644,18 +13679,20 @@ const App: React.FC = () => {
         for (const file of pasteBatch) {
           if (landedSources.has(file.path)) landed.push(file);
         }
-        stopAfterBatch = outcome.aborted || batchCancelledRef.current;
+        stopAfterBatch = outcome.aborted || batchCancelledRef.current || pasteStopped();
       }
       const pasteItems = stopAfterBatch ? [] : pasteBatch.length > 0 ? pasteRest : files;
 
       for (const file of pasteItems) {
-        if (batchCancelledRef.current || pasteRetargeted()) break;
+        // This gesture's Stop only: a Stop of an earlier gesture (which no
+        // batch has reset since) must not block this paste (K3).
+        if (pasteStopped() || pasteRetargeted()) break;
         try {
           const ok = sourceIsRemote
             // Remote → Local: download into the paste target panel path (not always panel 1)
-            ? await downloadFile(file.path, file.name, targetDir, file.is_dir, undefined, false, 'throw', undefined, onPasteTarget, expectedGuiTarget)
+            ? await downloadFile(file.path, file.name, targetDir, file.is_dir, undefined, false, 'throw', undefined, onPasteDispatch, expectedGuiTarget)
             // Local → Remote: upload each file using stored path (not current listing)
-            : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'throw', undefined, onPasteTarget, expectedGuiTarget);
+            : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'throw', undefined, onPasteDispatch, expectedGuiTarget);
           if (ok) landed.push(file);
         } catch (e) {
           if (e instanceof QueuedTargetChangedError || String(e).includes('CONNECTION_CHANGED')) {
@@ -13663,7 +13700,7 @@ const App: React.FC = () => {
             notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
             break;
           }
-          if (!batchCancelledRef.current) {
+          if (!pasteStopped()) {
             notify.error(t(sourceIsRemote ? 'toast.downloadFailed' : 'toast.uploadFailed'), `${file.name}: ${String(e)}`);
           }
         }
@@ -13676,7 +13713,8 @@ const App: React.FC = () => {
       if (operation === 'cut' && landed.length > 0) {
         // Delete source after successful transfer, and only those sources.
         if (sourceIsRemote && aeroVaultOverlaySession?.sessionId) {
-          if (!pasteRetargeted()) {
+          // H5: no source of the vault goes after a Stop.
+          if (!pasteStopped() && !pasteRetargeted()) {
             try {
               await invoke<number>('aerovault_overlay_delete_entries', {
                 sessionId: aeroVaultOverlaySession?.sessionId,
@@ -13690,23 +13728,29 @@ const App: React.FC = () => {
             }
           }
         } else {
+          deleteGesturesRef.current = [...deleteGesturesRef.current.slice(-15), operationId];
           for (const file of landed) {
             if (pasteStopped()) break;
             if (sourceIsRemote && pasteRetargeted()) break;
             try {
+              let deleted: unknown;
               if (sourceIsRemote) {
                 const protocol = liveConnectionParams.protocol;
                 if (usesProviderApi(protocol)) {
-                  await invoke('provider_delete_file', { path: file.path, expectedGuiTarget });
+                  deleted = await invoke('provider_delete_file', { path: file.path, expectedGuiTarget, operationId });
                 } else {
-                  await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir, expectedGuiTarget });
+                  deleted = await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId });
                 }
               } else {
-                await invoke('delete_local_file', { path: file.path });
+                deleted = await invoke('delete_local_file', { path: file.path, operationId });
               }
+              // A folder delete a Stop ended answers Ok with what it did: the
+              // source is not all gone, so it stays on the clipboard (H4).
+              if (isDeletionCancelled(deleted)) break;
               moved++;
               moveFinished.add(file.path);
             } catch (e) {
+              if (isDeletionCancelled(e)) break;
               console.error(`Failed to delete source after cut: ${file.name}`, e);
               if (String(e).includes('CONNECTION_CHANGED')) { retargetNotified = true; break; }
             }
@@ -13731,6 +13775,8 @@ const App: React.FC = () => {
         const isAeroVaultOverlay = targetIsRemote && !!aeroVaultOverlaySession?.sessionId;
 
         for (const file of files) {
+          // This gesture's Stop starts no further move (K4 twin).
+          if (pasteStopped()) break;
           if (targetIsRemote && pasteRetargeted()) break;
           const sep = targetIsRemote ? '/' : (targetDir.includes('\\') ? '\\' : '/');
           const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
@@ -13768,7 +13814,8 @@ const App: React.FC = () => {
       } else {
         // Copy files within same panel
         if (!targetIsRemote) {
-          // Local copy
+          // Local copy: a Stop raised during this paste starts no further
+          // copy (the one in flight runs to its end) (K4).
           for (const file of files) {
             if (pasteStopped()) break;
             const sep = targetDir.includes('\\') ? '\\' : '/';
@@ -13800,6 +13847,11 @@ const App: React.FC = () => {
           // Remote copy via server-side copy API
           let anyFailed = false;
           for (const file of files) {
+            // This gesture's Stop starts no further server copy (K4 twin).
+            if (pasteStopped()) {
+              anyFailed = true;
+              break;
+            }
             if (pasteRetargeted()) {
               anyFailed = true;
               break;
@@ -13839,10 +13891,11 @@ const App: React.FC = () => {
     }
 
     // Clear clipboard after cut (not after copy, so user can paste multiple
-    // times). A cut a switch stopped keeps the files it did not move.
+    // times). A cut a switch or a Stop ended keeps the files it did not move
+    // (H4), so Paste can finish the move.
     if (operation === 'cut') {
       const left = files.filter(file => !moveFinished.has(file.path));
-      if (retargetNotified && left.length > 0) {
+      if ((retargetNotified || pasteStopped()) && left.length > 0) {
         fileClipboardRef.current = { ...cb, files: left };
       } else {
         fileClipboardRef.current = null;
@@ -14314,12 +14367,20 @@ const App: React.FC = () => {
   });
 
   // Upload files (Selected or Dialog)
-  const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {
-    const stops = stopCountRef.current;
+  const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath, stopsAtStart?: number) => {
+    // A drop hands the Stop count it took before its own awaits (M6).
+    const stops = stopsAtStart ?? stopCountRef.current;
     if (!isConnected) return;
     // The target its Start and Retry are bound to, taken before any await.
     const queuedTarget = snapshotQueuedTarget();
     const onQueuedTarget = queuedTargetGuard(queuedTarget);
+    // Checked inside each transfer right before its native dispatch, after
+    // its own awaits (destination listing, overwrite question): this
+    // batch's Stop as well as its target (M5).
+    const onQueuedDispatch = () => {
+      onQueuedTarget();
+      if (stopCountRef.current !== stops) throw new Error('Transfer cancelled');
+    };
     let expectedGuiTarget: number;
     try { expectedGuiTarget = await captureGuiTarget(onQueuedTarget); }
     catch (error) { notify.error(t('toast.uploadFailed'), String(error)); return; }
@@ -14482,7 +14543,7 @@ const App: React.FC = () => {
           registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedDispatch);
               transferQueue.completeTransfer(id);
             } catch (error) {
               // Stopped during this Retry: the file reads as cancelled and the
@@ -14595,7 +14656,7 @@ const App: React.FC = () => {
             for (const item of kept.filter(i => i.file.is_dir)) {
               transferQueue.startTransfer(item.id);
               try {
-                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget, expectedGuiTarget);
+                await uploadFile(item.filePath, item.fileName, true, item.file.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedDispatch, expectedGuiTarget);
                 transferQueue.completeTransfer(item.id);
               } catch (error) {
                 transferQueue.failTransfer(item.id, String(error));
@@ -14731,7 +14792,7 @@ const App: React.FC = () => {
               transferQueue.startTransfer(item.id);
             }
             try {
-              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget, expectedGuiTarget);
+              await uploadFile(item.filePath, item.fileName, item.file?.is_dir || false, item.file?.size || undefined, true, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedDispatch, expectedGuiTarget);
               if (attempt > 0) transferQueue.retryItem(item.id);
               transferQueue.completeTransfer(item.id);
               circuitBreaker.recordSuccess();
@@ -14837,7 +14898,7 @@ const App: React.FC = () => {
         registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedDispatch);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -14954,7 +15015,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget, expectedGuiTarget);
+            await uploadFile(item.filePath, item.fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedDispatch, expectedGuiTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -14985,13 +15046,21 @@ const App: React.FC = () => {
   });
 
   // === Bulk Operations ===
-  const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localDir: string = currentLocalPath, dragTarget?: RemoteDragTarget) => {
-    const stops = stopCountRef.current;
+  const downloadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localDir: string = currentLocalPath, dragTarget?: RemoteDragTarget, stopsAtStart?: number) => {
+    // A drop hands the Stop count it took before its own awaits (M6).
+    const stops = stopsAtStart ?? stopCountRef.current;
     if (!isConnected) return;
     // The target its Start and Retry are bound to, taken before any await.
     const queuedTarget = snapshotQueuedTarget();
     const currentTargetCheck = queuedTargetGuard(queuedTarget);
     const onQueuedTarget = () => { dragTarget?.check(); currentTargetCheck(); };
+    // Checked inside each transfer right before its native dispatch, after
+    // its own awaits (destination listing, overwrite question): this
+    // batch's Stop as well as its target (M5).
+    const onQueuedDispatch = () => {
+      onQueuedTarget();
+      if (stopCountRef.current !== stops) throw new Error('Transfer cancelled');
+    };
     let expectedGuiTarget: number;
     try { expectedGuiTarget = dragTarget?.epoch ?? await captureGuiTarget(onQueuedTarget); onQueuedTarget(); }
     catch (error) { notify.error(t('toast.downloadFailed'), String(error)); return; }
@@ -15070,7 +15139,7 @@ const App: React.FC = () => {
         registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedTarget);
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedDispatch);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -15224,7 +15293,7 @@ const App: React.FC = () => {
             transferQueue.startTransfer(item.id);
           }
           try {
-            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw', undefined, onQueuedTarget, expectedGuiTarget);
+            await downloadFile(item.file.path, item.file.name, localDir, item.file.is_dir, item.file.size || undefined, true, 'throw', undefined, onQueuedDispatch, expectedGuiTarget);
             if (attempt > 0) transferQueue.retryItem(item.id);
             transferQueue.completeTransfer(item.id);
             circuitBreaker.recordSuccess();
@@ -15263,10 +15332,12 @@ const App: React.FC = () => {
   // Wire cross-panel drag & drop callback now that upload/download are defined
   useLayoutEffect(() => {
     // `targetDir` is the folder row dropped on, or the panel's own folder.
-    crossPanelDropRef.current = async (files, fromRemote, targetDir, sourceKey, target) => {
+    // `stops`: the Stop count when the drop began, before the drag's target
+    // was prepared (M6): a Stop raised meanwhile starts no transfer.
+    crossPanelDropRef.current = async (files, fromRemote, targetDir, sourceKey, target, stops) => {
       if (!isConnected || files.length === 0) return;
       if (fromRemote) {
-        await downloadMultipleFiles(files.map(f => f.name), targetDir || undefined, target);
+        await downloadMultipleFiles(files.map(f => f.name), targetDir || undefined, target, stops);
       } else {
         // The rows dragged, found by path in the panel they came from. A drag
         // carries each file's own name, and upload takes the panel's row keys:
@@ -15275,7 +15346,7 @@ const App: React.FC = () => {
         const panelId = sourceKey === 'local2' ? 'local2' : 'local';
         const dragged = new Set(files.map(f => f.path));
         const keys = getActiveLocalState(panelId).sortedFiles.filter(r => dragged.has(r.path)).map(r => r.name);
-        if (keys.length > 0) await uploadMultipleFiles(keys, panelId, targetDir || undefined);
+        if (keys.length > 0) await uploadMultipleFiles(keys, panelId, targetDir || undefined, stops);
       }
     };
   });
@@ -15309,9 +15380,16 @@ const App: React.FC = () => {
     const preparedTarget = prepareGuiTarget(onTarget);
 
     const performDelete = async () => {
+      // The gesture's id, before anything is awaited: every native delete of
+      // it carries the id, and the toast's Cancel reaches the one in flight.
+      const operationId = crypto.randomUUID();
+      deleteGesturesRef.current = [...deleteGesturesRef.current.slice(-15), operationId];
+      const stops = stopCountRef.current;
       let expectedGuiTarget: number;
       try { expectedGuiTarget = await resolveGuiTarget(preparedTarget, onTarget); }
       catch (error) { notify.error(t('toast.deleteFail'), String(error)); return; }
+      // A Stop while the target was resolved: nothing is deleted.
+      if (stopCountRef.current !== stops) return;
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
       // Protocol of the live connection (outside loop for efficiency)
@@ -15341,6 +15419,11 @@ const App: React.FC = () => {
       // transfer events (delete_start/delete_complete) that are logged by useTransferEvents
       const logId = isProvider ? humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: true }) : null;
 
+      // A Stop during the commit-message dialog: nothing is deleted (K5).
+      if (stopCountRef.current !== stops) return;
+      // This gesture's Stop, read before each destructive dispatch.
+      const deleteStopped = () => batchCancelledRef.current || stopCountRef.current !== stops;
+
       // Reset cancel flags before batch delete
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
@@ -15349,7 +15432,9 @@ const App: React.FC = () => {
       }
 
       // GitHub atomic batch delete: single commit for all non-dir files
-      if (isAeroVaultOverlay) {
+      if (deleteStopped()) {
+        // Stopped while the cancel state was reset: nothing is deleted.
+      } else if (isAeroVaultOverlay) {
         const resolvedFiles = names
           .map(name => remoteFiles.find(f => f.name === name))
           .filter(Boolean) as RemoteFile[];
@@ -15399,13 +15484,13 @@ const App: React.FC = () => {
 
         // Dirs: sequential delete (GitHub needs recursive tree traversal)
         for (const dir of dirFiles) {
-          if (batchCancelledRef.current) break;
+          if (deleteStopped()) break;
           try {
             onTarget();
-            await invoke('provider_delete_dir', { path: dir.path, recursive: true, commitMessage: batchCommitMessage, expectedGuiTarget });
+            await invoke('provider_delete_dir', { path: dir.path, recursive: true, commitMessage: batchCommitMessage, expectedGuiTarget, operationId });
             deletedFolders.push(dir.path);
           } catch (err) {
-            if (batchCancelledRef.current) break;
+            if (batchCancelledRef.current || isDeletionCancelled(err)) break;
             notify.error(t('toast.deleteFail'), `${dir.name}: ${String(err)}`);
             if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) return;
           }
@@ -15417,23 +15502,27 @@ const App: React.FC = () => {
         }
         // Non-GitHub: sequential delete
         for (const name of names) {
-          if (batchCancelledRef.current) break;
+          if (deleteStopped()) break;
 
           const file = remoteFiles.find(f => f.name === name);
           if (file) {
             try {
+              let answer: unknown;
               if (isProvider) {
                 if (file.is_dir) {
                   onTarget();
-                  await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null, expectedGuiTarget });
+                  answer = await invoke('provider_delete_dir', { path: file.path, recursive: true, commitMessage: batchCommitMessage || null, expectedGuiTarget, operationId });
                 } else {
                   onTarget();
-                  await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null, expectedGuiTarget });
+                  answer = await invoke('provider_delete_file', { path: file.path, commitMessage: batchCommitMessage || null, expectedGuiTarget, operationId });
                 }
               } else {
                 onTarget();
-                await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir, expectedGuiTarget });
+                answer = await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId });
               }
+              // Stopped part way: not deleted (or not all of it), and the
+              // gesture deletes nothing more.
+              if (isDeletionCancelled(answer)) break;
 
               if (file.is_dir) {
                 deletedFolders.push(file.path);
@@ -15441,7 +15530,7 @@ const App: React.FC = () => {
                 deletedFiles.push(file.path);
               }
             } catch (err) {
-              if (batchCancelledRef.current) break;
+              if (batchCancelledRef.current || isDeletionCancelled(err)) break;
               notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
               if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) {
                 setScanningState(INITIAL_SCANNING_STATE);
@@ -15535,6 +15624,9 @@ const App: React.FC = () => {
     if (names.length === 0) return;
 
     const performDelete = async () => {
+      // The gesture's id (see deleteMultipleRemoteFiles).
+      const operationId = crypto.randomUUID();
+      deleteGesturesRef.current = [...deleteGesturesRef.current.slice(-15), operationId];
       const logId = humanLog.logStart('DELETE_MULTIPLE', { count: names.length, isRemote: false });
       const deletedFiles: string[] = [];
       const deletedFolders: string[] = [];
@@ -15554,7 +15646,7 @@ const App: React.FC = () => {
       const selected = selectedLocalTrees(panel.sortedFiles, panel.files, new Set(names));
       const outcome = await trashLocalPaths(
         selected.map(file => file.path),
-        localTrashDeps(() => batchCancelledRef.current),
+        { ...localTrashDeps(() => batchCancelledRef.current), operationId },
       );
       for (const file of selected) {
         if (!outcome.removed.includes(file.path)) continue;
@@ -15641,12 +15733,17 @@ const App: React.FC = () => {
     }
 
     const performDelete = async () => {
+      // This delete's own scope, before any await: the Cancel of the toast a
+      // folder delete shows stops this one, not an earlier gesture (L2).
+      const operationId = crypto.randomUUID();
+      deleteGesturesRef.current = [...deleteGesturesRef.current.slice(-15), operationId];
       const logId = humanLog.logStart('DELETE', { filename: path });
       try {
         const expectedGuiTarget = await resolveGuiTarget(preparedTarget, onTarget);
         const isProvider = usesProviderApi(protocol);
         const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
 
+        let answer: unknown;
         if (isAeroVaultOverlay) {
           onTarget();
           await invoke<number>('aerovault_overlay_delete_entries', {
@@ -15657,22 +15754,25 @@ const App: React.FC = () => {
         } else if (isProvider) {
           if (isDir) {
             onTarget();
-            await invoke('provider_delete_dir', { path, recursive: true, expectedGuiTarget });
+            answer = await invoke('provider_delete_dir', { path, recursive: true, expectedGuiTarget, operationId });
           } else {
             onTarget();
-            await invoke('provider_delete_file', { path, commitMessage: commitMessage || null, expectedGuiTarget });
+            answer = await invoke('provider_delete_file', { path, commitMessage: commitMessage || null, expectedGuiTarget, operationId });
           }
         } else {
           onTarget();
-          await invoke('delete_remote_file', { path, isDir, expectedGuiTarget });
+          answer = await invoke('delete_remote_file', { path, isDir, expectedGuiTarget, operationId });
         }
-        humanLog.logSuccess('DELETE', { filename: path }, logId);
-        notify.success(t('toast.deleted'), fileName);
+        // A delete its toast cancelled is not reported as done.
+        if (!isDeletionCancelled(answer)) {
+          humanLog.logSuccess('DELETE', { filename: path }, logId);
+          notify.success(t('toast.deleted'), fileName);
+        }
         await loadRemoteFiles(undefined, true, undefined, { epoch: expectedGuiTarget, check: onTarget });
       }
       catch (error) {
         humanLog.logError('DELETE', { filename: path }, logId);
-        notify.error(t('toast.deleteFail'), String(error));
+        if (!isDeletionCancelled(error)) notify.error(t('toast.deleteFail'), String(error));
       }
     };
 
@@ -18751,7 +18851,10 @@ const App: React.FC = () => {
             dialog + session inbox + its own toasts. Mounted only while the flag
             is on; unmount stops the receive loop. */}
         {aeroShareEnabled && <AeroShareHub />}
-        <ScanningToast state={scanningState} t={t} onCancel={() => { stopCountRef.current += 1; batchCancelledRef.current = true; }} />
+        <ScanningToast state={scanningState} t={t} onCancel={() => {
+          stopCountRef.current += 1; batchCancelledRef.current = true;
+          for (const operationId of deleteGesturesRef.current) void invoke('operation_scope_cancel', { operationId }).catch(() => undefined);
+        }} />
         <FontSizeIndicator indicator={fontSizeIndicator} />
 
         {/* Update Available Toast with inline download */}
@@ -19416,10 +19519,16 @@ const App: React.FC = () => {
               );
             }}
             onDeleteFiles={async (paths) => {
+              // Its own scope and Stop count, before any await: the Cancel of
+              // the toast stops this delete and no other (L2).
+              const operationId = crypto.randomUUID();
+              deleteGesturesRef.current = [...deleteGesturesRef.current.slice(-15), operationId];
+              const stops = stopCountRef.current;
               // A trash failure used to fall through to a permanent delete
               // with no question asked; now the user decides.
               const outcome = await trashLocalPaths(paths, {
-                ...localTrashDeps(),
+                ...localTrashDeps(() => stopCountRef.current !== stops),
+                operationId,
                 askPermanentAfterFailure: askPermanentAfterTrashFailure,
               });
               for (const { path, error } of outcome.failed) {

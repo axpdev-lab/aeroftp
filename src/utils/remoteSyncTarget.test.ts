@@ -1403,7 +1403,7 @@ it('stops a multi-file remote delete between entries from the GUI controller', a
         prepareGuiTarget: () => Promise.resolve({ epoch: 7 }), resolveGuiTarget: async (prepared: Promise<{ epoch: number }>) => (await prepared).epoch,
         notify: { error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
         liveConnectionParams: { protocol: 'webdav' }, usesProviderApi: () => true, aeroVaultOverlaySession: null, currentRemotePath: '/',
-        remoteFiles, humanLog: { logStart: () => 'log', updateEntry: vi.fn() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        remoteFiles, humanLog: { logStart: () => 'log', updateEntry: vi.fn() }, batchCancelledRef: { current: false }, deleteGesturesRef: { current: [] }, cancelLevelRef: { current: 0 },
         invoke, setScanningState: vi.fn(), INITIAL_SCANNING_STATE: {}, loadRemoteFiles: vi.fn(), setSelectedRemoteFiles: vi.fn(),
         confirmBeforeDelete: false, QueuedTargetChangedError, setConfirmDialog: vi.fn(),
         // Stop, as the GUI controller reaches it with an idle queue.
@@ -1428,4 +1428,40 @@ it('stops a multi-file remote delete between entries from the GUI controller', a
     await batch;
     expect(deleted).toEqual(['/a']);
     expect(invoke.mock.calls.filter(([cmd]) => cmd === 'provider_delete_file')).toHaveLength(1);
+});
+
+it('deletes nothing when Stop comes while the commit message is asked (K5)', async () => {
+    const batchCode = await appSlice('  const withBatchLatch =', '  // Issue #591: every GUI entry point', 'k5-batch.ts');
+    const deleteCode = await appSlice('  const deleteMultipleRemoteFiles = withBatchLatch(', '  // Moving local items to the trash', 'k5-delete.ts');
+    const stopCode = await appSlice('  const cancelTransfer = async', '  // Circuit breaker: attempt reconnection', 'k5-stop.ts');
+    const { withTransferRun } = await import('./transferRun');
+    const invoke = vi.fn(async (_cmd: string, _args?: Record<string, unknown>) => undefined);
+    const remoteFiles = [
+        { name: 'a', path: '/a', is_dir: false },
+        { name: 'd', path: '/d', is_dir: true },
+    ];
+    let cancelTransfer!: () => Promise<void>;
+    const context = {
+        batchOpInFlightRef: { current: false }, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, withTransferRun,
+        selectedRemoteFiles: new Set<string>(), remoteActionGuard: () => () => undefined,
+        prepareGuiTarget: () => Promise.resolve({ epoch: 7 }), resolveGuiTarget: async (prepared: Promise<{ epoch: number }>) => (await prepared).epoch,
+        notify: { error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+        liveConnectionParams: { protocol: 'github' }, usesProviderApi: () => true, aeroVaultOverlaySession: null, currentRemotePath: '/',
+        // The user presses Stop while the dialog is open, then submits it.
+        requestGitHubBatchCommitMessage: async () => { await cancelTransfer(); return 'remove files'; },
+        remoteFiles, humanLog: { logStart: () => 'log', updateEntry: vi.fn() }, batchCancelledRef: { current: false }, deleteGesturesRef: { current: [] }, cancelLevelRef: { current: 0 },
+        invoke, setScanningState: vi.fn(), INITIAL_SCANNING_STATE: {}, loadRemoteFiles: vi.fn(), setSelectedRemoteFiles: vi.fn(),
+        confirmBeforeDelete: false, QueuedTargetChangedError, setConfirmDialog: vi.fn(),
+        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null }, setSyncPreflightPending: vi.fn(),
+        setDeltaEligibilityPrompt: vi.fn(), syncRefreshAbortRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
+        remoteSyncRunningRef: { current: false }, activeTransferRef: { current: null }, batchResumeResolverRef: { current: null },
+        transferQueue: { hasActiveTransfersNow: () => false, stopPending: vi.fn(), stopAll: vi.fn() }, dispatchTransferToast: vi.fn(),
+        setActiveTransfer: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(), setSyncCancelling: vi.fn(),
+        syncCancelPendingRef: { current: null }, cancelActiveConnect: async () => undefined, hasActiveTransfer: false, hasQueueActivity: false,
+    };
+    const deleteMany = new Function(...Object.keys(context), `${batchCode};${deleteCode};return deleteMultipleRemoteFiles;`)(...Object.values(context));
+    cancelTransfer = new Function(...Object.keys(context), `${stopCode};return cancelTransfer;`)(...Object.values(context));
+    await deleteMany(['a', 'd']);
+    const destructive = invoke.mock.calls.filter(([cmd]) => /delete/.test(cmd));
+    expect(destructive).toEqual([]);
 });

@@ -245,6 +245,14 @@ pub(crate) fn acquire_for_page(
     )
 }
 
+/// A lease as a page's run holds one, for a test of a command a run owns.
+#[cfg(test)]
+pub(crate) fn acquire_for_test(dir: &Path, pair: &str, window: &str) -> Result<String, String> {
+    let nonce = format!("test-run-{window}");
+    bind_page(window, &nonce)?;
+    acquire_at(dir, pair.to_owned(), window, &nonce)
+}
+
 /// The page of `window` was replaced (a reload, or a new web process after a
 /// crash), so the script that would end its runs no longer exists. Bump the
 /// window's page generation, take its leases out of the registry without

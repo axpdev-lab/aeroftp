@@ -91,6 +91,13 @@ pub struct GitHubBranch {
     pub commit: GitHubCommitRef,
 }
 
+/// `GET /compare/{base}...{head}`: how far `head` is ahead of and behind `base`.
+#[derive(Debug, Deserialize)]
+pub struct GitHubCompare {
+    pub ahead_by: u64,
+    pub behind_by: u64,
+}
+
 /// Minimal commit reference (SHA only)
 #[derive(Debug, Deserialize)]
 pub struct GitHubCommitRef {

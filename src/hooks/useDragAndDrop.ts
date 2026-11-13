@@ -67,10 +67,13 @@ interface UseDragAndDropParams {
     activeSessionId?: string | null;
     sessions?: Array<{ id: string; connectionParams?: { protocol?: string } }>;
     connectionParams?: { protocol?: string };
-    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: PanelKey, target?: RemoteDragTarget) => Promise<void>;
+    /** `stops`: the Stop count when the drop began, before any await (M6). */
+    onCrossPanelDrop?: (files: { name: string; path: string }[], fromRemote: boolean, targetDir: string, sourceKey: PanelKey, target?: RemoteDragTarget, stops?: number) => Promise<void>;
     /** The server check of a remote move, taken when the drop starts and run
      *  right before each move: it throws once another server is live. */
     remoteActionGuard?: () => () => void;
+    /** App's count of Stops: a Stop during a drop starts no further item. */
+    stopCount?: { current: number };
     captureRemoteTarget?: (check: () => void) => Promise<number>;
 }
 
@@ -89,6 +92,7 @@ export function useDragAndDrop({
     connectionParams,
     onCrossPanelDrop,
     remoteActionGuard,
+    stopCount,
     captureRemoteTarget,
 }: UseDragAndDropParams) {
 
@@ -278,12 +282,16 @@ export function useDragAndDrop({
         targetDir: string,
         isCopy: boolean,
         sourceKey: PanelKey,
-        targetKey: PanelKey
+        targetKey: PanelKey,
+        stops: number | undefined,
     ) => {
         // Refused while dragging (no drop effect); a drop that gets here anyway
         // does nothing rather than move or copy a folder into itself.
         if (dropsIntoItself(targetDir, sourcePaths)) return;
+        // A Stop raised since the drop began starts no further copy or move
+        // (K4); `stops` was taken before the drop's first await (M6).
         for (let i = 0; i < files.length; i++) {
+            if (stopCount && stopCount.current !== stops) break;
             const fileName = files[i];
             const sourcePath = sourcePaths[i];
             const sep = targetDir.includes('\\') && !targetDir.includes('/') ? '\\' : '/';
@@ -309,7 +317,7 @@ export function useDragAndDrop({
         }
         await refreshAfterLocal(sourceKey);
         if (sourceKey !== targetKey) await refreshAfterLocal(targetKey);
-    }, [humanLog, notify, refreshAfterLocal]);
+    }, [humanLog, notify, refreshAfterLocal, stopCount]);
 
     /**
      * Handle drop on a specific file/folder
@@ -321,6 +329,8 @@ export function useDragAndDrop({
     ) => {
         e.preventDefault();
         e.stopPropagation();
+        // The Stop count when the drop began, before its first await (M6).
+        const stops = stopCount?.current;
 
         if (!dragData) {
             setDragData(null);
@@ -346,13 +356,13 @@ export function useDragAndDrop({
         // local↔remote cross-panel: upload/download via callback
         if (sourceIsRemote !== targetIsRemote) {
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath, sourceKey, remoteOwner);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetPath, sourceKey, remoteOwner, stops);
             return;
         }
 
         // local-to-local across panels (local ↔ local2)
         if (!sourceIsRemote && !targetIsRemote && sourceKey !== targetPanelKey) {
-            await performLocalLocalTransfer(sourcePaths, files, targetPath, ctrlKey, sourceKey, targetPanelKey);
+            await performLocalLocalTransfer(sourcePaths, files, targetPath, ctrlKey, sourceKey, targetPanelKey, stops);
             return;
         }
 
@@ -362,8 +372,10 @@ export function useDragAndDrop({
         // The server the files were dropped on, checked before each move.
         const onTarget = remoteOwner?.check;
         const expectedGuiTarget = remoteOwner?.epoch;
+        // A Stop raised since the drop began starts no further move.
 
         for (let i = 0; i < files.length; i++) {
+            if (stopCount && stopCount.current !== stops) break;
             const fileName = files[i];
             const sourcePath = sourcePaths[i];
             const destPath = `${targetPath}/${fileName}`;
@@ -401,7 +413,7 @@ export function useDragAndDrop({
         } else {
             await refreshAfterLocal(sourceKey);
         }
-    }, [dragData, isProvider, humanLog, notify, loadRemoteFiles, refreshAfterLocal, onCrossPanelDrop, performLocalLocalTransfer, remoteActionGuard, captureRemoteTarget]);
+    }, [dragData, isProvider, humanLog, notify, loadRemoteFiles, refreshAfterLocal, onCrossPanelDrop, performLocalLocalTransfer, remoteActionGuard, captureRemoteTarget, stopCount]);
 
     /**
      * Panel-level drag over (for cross-panel drops on empty space)
@@ -439,6 +451,8 @@ export function useDragAndDrop({
     ) => {
         e.preventDefault();
         e.stopPropagation();
+        // The Stop count when the drop began, before its first await (M6).
+        const stops = stopCount?.current;
 
         if (!dragData || dragData.panelKey === targetPanelKey) {
             setCrossPanelTarget(null);
@@ -467,14 +481,14 @@ export function useDragAndDrop({
                 catch (err) { notify.error('Failed to move', String(err)); return; }
             }
             const fileData = files.map((name, i) => ({ name, path: sourcePaths[i] }));
-            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir, sourceKey, remoteOwner);
+            await onCrossPanelDrop?.(fileData, sourceIsRemote, targetDir, sourceKey, remoteOwner, stops);
             return;
         }
 
         if (!sourceIsRemote && !targetIsRemote && sourceKey !== targetPanelKey) {
-            await performLocalLocalTransfer(sourcePaths, files, targetDir, ctrlKey, sourceKey, targetPanelKey);
+            await performLocalLocalTransfer(sourcePaths, files, targetDir, ctrlKey, sourceKey, targetPanelKey, stops);
         }
-    }, [dragData, currentRemotePath, currentLocalPath, currentLocalPath2, onCrossPanelDrop, performLocalLocalTransfer, notify]);
+    }, [dragData, currentRemotePath, currentLocalPath, currentLocalPath2, onCrossPanelDrop, performLocalLocalTransfer, notify, stopCount]);
 
     /**
      * Panel-level drag leave

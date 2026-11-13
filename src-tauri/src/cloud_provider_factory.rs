@@ -1373,9 +1373,15 @@ mod tests {
     /// read: the token is still the capturing account's (an unbound read would
     /// answer with the other one's), and the connection is refused, also after
     /// switching back.
+    /// H3: in an isolated child (its own data root, vault and partition
+    /// database), so it runs with the suite and never reaches a real one.
     #[test]
-    #[ignore = "process-global vault/session/env; run alone with --ignored --test-threads=1"]
     fn yandex_token_and_connection_stay_with_the_account_that_began_connecting() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "cloud_provider_factory::tests::yandex_token_and_connection_stay_with_the_account_that_began_connecting",
+        ) {
+            return;
+        }
         use crate::credential_store::CredentialStore;
         use crate::providers::oauth2::StoredTokens;
         use crate::user_partitions as partitions;

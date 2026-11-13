@@ -152,3 +152,119 @@ describe('a drop of an entry where it already is does nothing, whichever separat
         ]);
     });
 });
+
+/**
+ * A Stop raised while the first move of a drop runs starts no further move,
+ * on the same panel (rename into a folder) as across the two local panels.
+ */
+describe('a Stop during a drop starts no further move (L5)', () => {
+    const mountStoppable = async (stopCount: { current: number }) => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const Probe = () => {
+            drag = useDragAndDrop({
+                notify: { success: () => null, error: () => null },
+                humanLog: { logStart: () => 'id', logSuccess: () => 'id', logError: () => 'id' },
+                currentRemotePath: '/',
+                currentLocalPath: '/a',
+                currentLocalPath2: '/b',
+                loadRemoteFiles: async () => undefined,
+                loadLocalFiles: async () => true,
+                loadLocalFiles2: async () => true,
+                stopCount,
+            });
+            return null;
+        };
+        root = createRoot(document.createElement('div'));
+        await act(async () => root!.render(createElement(Probe)));
+    };
+
+    const holdFirstMove = (stopCount: { current: number }) => {
+        let release: () => void = () => undefined;
+        let started = false;
+        tauri.invoke.mockImplementation(async () => {
+            if (!started) {
+                started = true;
+                await new Promise<void>(resolve => { release = resolve; });
+            }
+            return undefined;
+        });
+        return () => { stopCount.current += 1; release(); };
+    };
+
+    const rows = ['one', 'two', 'three'].map(name => ({ name, path: `/a/${name}`, is_dir: false }));
+
+    it('same panel', async () => {
+        const stopCount = { current: 0 };
+        await mountStoppable(stopCount);
+        const stopAndRelease = holdFirstMove(stopCount);
+        await act(async () => drag!.handleDragStart(event(), rows[0], 'local', new Set(['one', 'two', 'three']), rows));
+        let dropped: Promise<void> = Promise.resolve();
+        await act(async () => { dropped = drag!.handleDrop(event(), '/a/dest', 'local'); });
+        await act(async () => { stopAndRelease(); await dropped; });
+        expect(moves()).toEqual([
+            ['rename_local_file', { from: '/a/one', to: '/a/dest/one', overwrite: false }],
+        ]);
+    });
+
+    it('across the two local panels', async () => {
+        const stopCount = { current: 0 };
+        await mountStoppable(stopCount);
+        const stopAndRelease = holdFirstMove(stopCount);
+        await act(async () => drag!.handleDragStart(event(), rows[0], 'local', new Set(['one', 'two', 'three']), rows));
+        let dropped: Promise<void> = Promise.resolve();
+        await act(async () => { dropped = drag!.handlePanelDrop(event(), 'local2'); });
+        await act(async () => { stopAndRelease(); await dropped; });
+        expect(moves()).toHaveLength(1);
+    });
+});
+
+/**
+ * M6: the Stop count is taken when the drop begins, before the drag's
+ * remote target is prepared. A Stop raised while that preparation waits
+ * starts no move, and a cross-panel drop hands that count on.
+ */
+describe('a Stop while a drop prepares its remote target (M6)', () => {
+    const mountRemote = async (stopCount: { current: number }, crossPanel?: (...args: unknown[]) => Promise<void>) => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let release: (epoch: number) => void = () => undefined;
+        const Probe = () => {
+            drag = useDragAndDrop({
+                notify: { success: () => null, error: () => null },
+                humanLog: { logStart: () => 'id', logSuccess: () => 'id', logError: () => 'id' },
+                currentRemotePath: '/remote', currentLocalPath: '/local',
+                connectionParams: { protocol: 'ftp' }, loadRemoteFiles: async () => undefined, loadLocalFiles: async () => true,
+                remoteActionGuard: () => () => undefined,
+                captureRemoteTarget: () => new Promise<number>(resolve => { release = resolve; }),
+                onCrossPanelDrop: crossPanel,
+                stopCount,
+            });
+            return null;
+        };
+        root = createRoot(document.createElement('div'));
+        await act(async () => root!.render(createElement(Probe)));
+        return () => release(9);
+    };
+    const rows = ['one', 'two'].map(name => ({ name, path: `/remote/${name}`, is_dir: false }));
+
+    it('same panel: no move starts', async () => {
+        const stopCount = { current: 0 };
+        const prepared = await mountRemote(stopCount);
+        await act(async () => drag!.handleDragStart(event(), rows[0], 'remote', new Set(['one', 'two']), rows));
+        let dropped: Promise<void> = Promise.resolve();
+        await act(async () => { dropped = drag!.handleDrop(event(), '/remote/dest', 'remote'); });
+        await act(async () => { stopCount.current += 1; prepared(); await dropped; });
+        expect(tauri.invoke.mock.calls.filter(([cmd]) => /rename/.test(cmd))).toEqual([]);
+    });
+
+    it('across panels: the drop hands on the count it took first', async () => {
+        const stopCount = { current: 4 };
+        const crossPanel = vi.fn(async () => undefined);
+        const prepared = await mountRemote(stopCount, crossPanel);
+        await act(async () => drag!.handleDragStart(event(), rows[0], 'remote', new Set(['one', 'two']), rows));
+        let dropped: Promise<void> = Promise.resolve();
+        await act(async () => { dropped = drag!.handlePanelDrop(event(), 'local'); });
+        await act(async () => { stopCount.current += 1; prepared(); await dropped; });
+        expect(crossPanel).toHaveBeenCalledTimes(1);
+        expect((crossPanel.mock.calls[0] as unknown[])[5]).toBe(4);
+    });
+});

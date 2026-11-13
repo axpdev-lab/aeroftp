@@ -1536,6 +1536,48 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(files['emptydir']).toMatchObject({ is_dir: true });
     });
 
+    // L1: a delete the run's Stop cancelled answers the typed cancellation,
+    // never a resolved invocation: the item is not counted, the index keeps
+    // its entry and no journal record calls it completed.
+    it('keeps a delete its Stop cancelled out of the history', async () => {
+        let savedIndex: Record<string, unknown> | undefined;
+        const journals: Array<Record<string, unknown>> = [];
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 1,
+                last_sync: 'old',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: { 'stale.txt': { size: 1, modified: null, is_dir: false } },
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as Record<string, unknown>;
+            },
+            save_sync_journal_cmd: (args) => {
+                journals.push(JSON.parse(JSON.stringify(args?.journal ?? {})));
+            },
+            delete_remote_file: () => {
+                throw new Error('[delete_remote_file] Transfer cancelled by user');
+            },
+        });
+        const report = await runRemoteSync(
+            [file('stale.txt', 'delete-remote')],
+            noDirs,
+            baseConfig(),
+            {},
+            noWaitDeps(invoke, { writeIndex: true }),
+        );
+        expect(report.deleted).toBe(0);
+        expect((savedIndex?.files as Record<string, unknown>)['stale.txt']).toBeDefined();
+        expect(journals.length).toBeGreaterThan(0);
+        for (const journal of journals) {
+            const entries = (journal.entries ?? []) as Array<{ relative_path?: string; status?: string }>;
+            for (const entry of entries) {
+                if (entry.relative_path === 'stale.txt') expect(entry.status).not.toBe('completed');
+            }
+        }
+    });
+
     // Minor 1 (fourth review of #949): the time was read back when the index
     // was saved, after the whole run, so a same-size edit made in between was
     // recorded as the synced state. It is read when the download completes.

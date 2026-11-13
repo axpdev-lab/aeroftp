@@ -3601,7 +3601,7 @@ fn adopt_legacy_pair_in(
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|error| error.to_string())?;
     let index_path = index_dir.join(index_filename(local, remote));
-    if !index_path.exists() {
+    if !history_present(&index_path)? {
         for (l, r) in &legacy {
             let old = index_dir.join(index_filename(l, r));
             // Moved as stored: only the two roots the pair key names change.
@@ -3632,6 +3632,18 @@ fn adopt_legacy_pair_in(
     tx.commit().map_err(|error| error.to_string())
 }
 
+/// Whether a history file is at `path`, a link there included even when it
+/// leads nowhere. `exists()` answers false for a dangling or looping link and
+/// for any error it meets, and the adoption would then write the legacy
+/// history over a file it could not see; any error but NotFound stops it.
+fn history_present(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("Failed to inspect a sync history file: {error}")),
+    }
+}
+
 fn remove_if_present(path: &Path) -> Result<(), String> {
     match std::fs::remove_file(path) {
         Ok(()) => Ok(()),
@@ -3655,7 +3667,7 @@ fn adopt_legacy_journal_in(
     let _lock = JOURNAL_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if dir.join(journal_filename(local, remote)).exists() {
+    if history_present(&dir.join(journal_filename(local, remote)))? {
         return Ok(());
     }
     for (l, r) in legacy {
@@ -6257,7 +6269,10 @@ fn load_sync_journal_in(
     remote_path: &str,
 ) -> Result<Option<SyncJournal>, String> {
     let path = dir.join(journal_filename(local_path, remote_path));
-    if !path.exists() {
+    // A journal there that cannot be read (a link to nowhere, kept by the
+    // adoption) is unreadable recovery state, not an absent one: the loader
+    // then fences the whole index (L8).
+    if !history_present(&path)? {
         return Ok(None);
     }
     let data = std::fs::read_to_string(&path)
@@ -8993,6 +9008,112 @@ mod tests {
         let kept = read_sync_index_file(&index_path).unwrap().unwrap();
         assert_eq!(kept.profile_id.as_deref(), Some("A"));
         assert!(index_dir.join(index_filename("C:", "/")).exists());
+    }
+
+    /// A normalized history that is a link to nowhere (its target moved or
+    /// not mounted) is still there: `exists()` called it absent, and the
+    /// adoption replaced the link with the legacy history.
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_normalized_history_is_not_written_over_by_adoption() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let (old_local, old_remote) = ("C:\\", "");
+        let legacy_index = index_dir.join(index_filename(old_local, old_remote));
+        std::fs::write(
+            &legacy_index,
+            serde_json::to_vec(&SyncIndex::new(old_local.into(), old_remote.into())).unwrap(),
+        )
+        .unwrap();
+        let journal = SyncJournal::new(
+            old_local.into(),
+            old_remote.into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        save_sync_journal_in(&journal_dir, &journal).unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/"));
+        let journal_path = journal_dir.join(journal_filename("C:/", "/"));
+        let gone = dir.path().join("unmounted");
+        std::os::unix::fs::symlink(gone.join("index.json"), &index_path).unwrap();
+        std::os::unix::fs::symlink(gone.join("journal.json"), &journal_path).unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+
+        for link in [&index_path, &journal_path] {
+            assert!(
+                std::fs::symlink_metadata(link)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink(),
+                "{} replaced",
+                link.display()
+            );
+        }
+        assert!(!gone.exists(), "nothing written through the links");
+        assert!(legacy_index.exists(), "the legacy index stays where it is");
+        assert!(load_sync_journal_in(&journal_dir, old_local, old_remote)
+            .unwrap()
+            .is_some());
+    }
+
+    /// L8: the adoption keeps a dangling normalized journal (above), and the
+    /// legacy journal with its interrupted work stays where it is. The
+    /// recovery load reads the link as an unreadable journal, not as none:
+    /// every baseline of the index is fenced, so a one-sided file is never
+    /// taken as previously synced.
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_normalized_journal_fences_the_index_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/"));
+        let mut index = SyncIndex::new("C:/".into(), "/".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        save_index_with_intents_in(&mut conn, &index_path, &index, &[]).unwrap();
+        let (old_local, old_remote) = ("C:\\", "");
+        let interrupted = SyncJournal::new(
+            old_local.into(),
+            old_remote.into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        save_sync_journal_in(&journal_dir, &interrupted).unwrap();
+        std::os::unix::fs::symlink(
+            dir.path().join("unmounted/journal.json"),
+            journal_dir.join(journal_filename("C:/", "/")),
+        )
+        .unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+        assert!(load_sync_journal_in(&journal_dir, "C:/", "/").is_err());
+        let loaded = load_index_with_intents_in(&mut conn, &index_path, "C:/", "/", || {
+            load_sync_journal_in(&journal_dir, "C:/", "/")
+        })
+        .unwrap()
+        .expect("the index is still there");
+        assert!(loaded.unverified_keys.contains("one"));
+        assert!(loaded.pending_recovery_keys.contains("one"));
+        // A journal genuinely absent is still none.
+        assert!(load_sync_journal_in(&journal_dir, "/x", "/y")
+            .unwrap()
+            .is_none());
     }
 
     /// Two first-use callers (two sync jobs, or a job and the transfer-DAG

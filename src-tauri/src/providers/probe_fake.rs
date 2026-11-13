@@ -25,6 +25,16 @@ pub(crate) struct ProbeFake {
     pub folders: Option<std::collections::HashSet<String>>,
     /// `mkdir` of this path is refused (PermissionDenied).
     pub refuse_mkdir: Option<String>,
+    /// What `rmdir_recursive` deletes one by one, as a backend that walks
+    /// the tree does; each removal first takes a permit of `child_gate`
+    /// when there is one, so a test holds the walk between two children.
+    pub recursive_children: Vec<String>,
+    pub child_gate: Option<std::sync::Arc<tokio::sync::Semaphore>>,
+    /// The writes, also where a test reads them while the fake is in use.
+    pub shared_writes: Option<std::sync::Arc<std::sync::Mutex<Vec<String>>>>,
+    /// `delete` first records `prepare <path>` and takes a permit of this,
+    /// as a backend that looks the file up before it removes it.
+    pub delete_gate: Option<std::sync::Arc<tokio::sync::Semaphore>>,
 }
 
 impl ProbeFake {
@@ -38,6 +48,10 @@ impl ProbeFake {
             writes: Vec::new(),
             folders: None,
             refuse_mkdir: None,
+            recursive_children: Vec::new(),
+            child_gate: None,
+            shared_writes: None,
+            delete_gate: None,
         }
     }
 
@@ -161,7 +175,16 @@ impl StorageProvider for ProbeFake {
         Ok(())
     }
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        if let Some(gate) = self.delete_gate.clone() {
+            if let Some(shared) = &self.shared_writes {
+                shared.lock().unwrap().push(format!("prepare {path}"));
+            }
+            gate.acquire().await.unwrap().forget();
+        }
         self.files.remove(path);
+        if let Some(shared) = &self.shared_writes {
+            shared.lock().unwrap().push(format!("delete {path}"));
+        }
         self.writes.push(format!("delete {path}"));
         Ok(())
     }
@@ -170,6 +193,16 @@ impl StorageProvider for ProbeFake {
         Ok(())
     }
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        for child in self.recursive_children.clone() {
+            if let Some(gate) = &self.child_gate {
+                gate.acquire().await.unwrap().forget();
+            }
+            let write = format!("delete {child}");
+            if let Some(shared) = &self.shared_writes {
+                shared.lock().unwrap().push(write.clone());
+            }
+            self.writes.push(write);
+        }
         self.writes.push(format!("rmdir_recursive {path}"));
         Ok(())
     }

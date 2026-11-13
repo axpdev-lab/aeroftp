@@ -104,9 +104,15 @@ mod tests {
     /// an owner of the retired generation, and every reader of a published
     /// owner validates it first: the validation, the persistent tag, a second
     /// publication and the pin of the state that holds it all refuse.
+    /// H3: in an isolated child (its own data root, vault and partition
+    /// database), so it runs with the suite and never reaches a real one.
     #[test]
-    #[ignore = "process-global vault/session/env; run alone with --ignored --test-threads=1"]
     fn an_owner_published_across_a_vault_generation_change_fails_closed() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "sync_owner::tests::an_owner_published_across_a_vault_generation_change_fails_closed",
+        ) {
+            return;
+        }
         use crate::provider_commands::ProviderState;
         use crate::user_partitions as partitions;
 

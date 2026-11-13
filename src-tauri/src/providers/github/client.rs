@@ -44,6 +44,20 @@ pub struct GitHubHttpClient {
     rate_limit: RateLimitState,
     #[cfg(test)]
     pub(super) api_origin_override: Option<String>,
+    /// The session's poison (`StorageProvider::target_poison`): once it is
+    /// raised, every request that writes the tree is refused before it is
+    /// sent (see `writes_the_tree`).
+    pub(super) poison: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+/// A request that writes the repository's files or refs: the contents API,
+/// the git data API (refs, trees, commits, blobs) and GraphQL, which this
+/// client uses only for commits. A poisoned session refuses these. A pull
+/// request, a release, a Pages build or an Actions run names its branch or
+/// tag itself and changes no file of the session's tree, so it goes through.
+pub(super) fn writes_the_tree(method: &Method, path: &str) -> bool {
+    !matches!(*method, Method::GET | Method::HEAD)
+        && (path.contains("/contents/") || path.contains("/git/") || path.ends_with("/graphql"))
 }
 
 /// An empty hint is not a path.
@@ -103,6 +117,7 @@ impl GitHubHttpClient {
             rate_limit: RateLimitState::new(),
             #[cfg(test)]
             api_origin_override: None,
+            poison: None,
         })
     }
 
@@ -232,6 +247,20 @@ impl GitHubHttpClient {
         &mut self,
         builder: RequestBuilder,
     ) -> Result<Response, GitHubError> {
+        if self
+            .poison
+            .as_ref()
+            .is_some_and(|poison| poison.load(std::sync::atomic::Ordering::SeqCst))
+        {
+            // A request that cannot be read back is taken as a tree write.
+            let tree_write = builder
+                .try_clone()
+                .and_then(|clone| clone.build().ok())
+                .is_none_or(|request| writes_the_tree(request.method(), request.url().path()));
+            if tree_write {
+                return Err(GitHubError::TargetChanged);
+            }
+        }
         let response = builder
             .send()
             .await

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../shared/redaction-cases.json';
 import matrix from '../shared/redaction-matrix.json';
-import { redactCredentials, redactSensitive } from './redactSensitive';
+import { redactCredentials, redactSensitive, redactUrlUserinfo } from './redactSensitive';
 
 // The Rust table (`debug_tests.rs`, `redaction_patterns`) redacts the on-disk
 // log tail with the same policy and reads this very file, so a rule that
@@ -157,3 +157,26 @@ describe('redactCredentials: URL userinfo', () => {
             .toBe('ftp://***REDACTED***@host/docs/me@home.txt');
     });
 });
+
+describe('redactUrlUserinfo (H9: linear by construction)', () => {
+    it('stays linear on long adversarial input', () => {
+        const inputs = [
+            'ftp://bob:' + '\\'.repeat(200_000) + 'x',
+            'ftp://bob\\:' + '\\'.repeat(200_000),
+            'ftp://' + ':'.repeat(200_000),
+            'x'.repeat(100_000) + '://'.repeat(100_000),
+            'ftp://ftp://'.repeat(50_000),
+        ];
+        for (const input of inputs) {
+            const started = performance.now();
+            redactUrlUserinfo(input);
+            expect(performance.now() - started).toBeLessThan(1000);
+        }
+        // The input of the finding, through the whole pipeline.
+        const finding = 'ftp://bob:' + '\\'.repeat(20_000) + 'x';
+        const started = performance.now();
+        expect(redactSensitive(finding)).toBe(finding);
+        expect(performance.now() - started).toBeLessThan(1000);
+    });
+});
+

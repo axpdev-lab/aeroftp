@@ -1591,7 +1591,20 @@ pub(crate) struct AppState {
     speed_limits: SpeedLimits,
     /// The cancel flags of the copies and deletes running outside a sync run
     /// (F5, a paste, a delete from a panel); see [`AppState::operation_cancel`].
-    local_operations: std::sync::Mutex<Vec<std::sync::Weak<AtomicBool>>>,
+    /// The registry of those flags and of the cancelled gestures, under one
+    /// lock: a registration and a gesture's cancel never interleave (K1).
+    local_operations: std::sync::Mutex<OperationRegistry>,
+}
+
+/// The cancel flags of the local copies and deletes running outside a sync
+/// run, each with the id of the panel gesture it belongs to, if any (a delete
+/// of several selected items: one id for the whole gesture), and the
+/// gestures cancelled from their toast (`operation_scope_cancel`), the most
+/// recent ones: a later command of the same gesture starts cancelled.
+#[derive(Default)]
+pub(crate) struct OperationRegistry {
+    flags: Vec<(Option<String>, std::sync::Weak<AtomicBool>)>,
+    cancelled: std::collections::VecDeque<String>,
 }
 
 impl AppState {
@@ -1601,7 +1614,7 @@ impl AppState {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
             speed_limits: SpeedLimits::new(),
-            local_operations: std::sync::Mutex::new(Vec::new()),
+            local_operations: std::sync::Mutex::new(OperationRegistry::default()),
         }
     }
 
@@ -1613,27 +1626,77 @@ impl AppState {
     /// it began (another transfer's, never reset by F5 or a paste) does not
     /// touch it, a Stop raised while it runs does, and it never clears
     /// anyone else's Stop.
-    pub(crate) fn operation_cancel(&self, run_owned: bool) -> Arc<AtomicBool> {
+    /// With an `operation_id` (the panel gesture the command belongs to),
+    /// the gesture's cancel reaches it too, and a command of a gesture
+    /// already cancelled starts cancelled. The flag is registered when the
+    /// command starts, before it waits for anything (a target pin), so a
+    /// Stop raised while it waits is not lost (H8).
+    pub(crate) fn operation_cancel(
+        &self,
+        run_owned: bool,
+        operation_id: Option<&str>,
+    ) -> Arc<AtomicBool> {
         if run_owned {
             return self.cancel_flag.clone();
         }
-        let flag = Arc::new(AtomicBool::new(false));
-        let mut operations = self
+        // The lookup and the registration under the lock `cancel_operation`
+        // takes: a cancel lands either before (the flag starts raised) or
+        // after (it finds the flag and raises it), never in between (K1).
+        let mut registry = self
             .local_operations
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        operations.retain(|operation| operation.strong_count() > 0);
-        operations.push(Arc::downgrade(&flag));
+        let cancelled =
+            operation_id.is_some_and(|id| registry.cancelled.iter().any(|done| done == id));
+        let flag = Arc::new(AtomicBool::new(cancelled));
+        registry
+            .flags
+            .retain(|(_, operation)| operation.strong_count() > 0);
+        registry
+            .flags
+            .push((operation_id.map(str::to_owned), Arc::downgrade(&flag)));
         flag
     }
 
     fn cancel_local_operations(&self) {
-        let operations = self
+        let registry = self
             .local_operations
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        for flag in operations.iter().filter_map(std::sync::Weak::upgrade) {
+        for flag in registry
+            .flags
+            .iter()
+            .filter_map(|(_, operation)| operation.upgrade())
+        {
             flag.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Cancel one panel gesture (its toast's Cancel): its command in flight
+    /// stops, a later one of the gesture starts cancelled, and no other
+    /// transfer is touched.
+    pub(crate) fn cancel_operation(&self, operation_id: &str) {
+        let mut registry = self
+            .local_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // An id already recorded is not recorded again: a Cancel clicked
+        // many times (it names every recent gesture) must not push a gesture
+        // still running out of the bounded record (R3).
+        if !registry.cancelled.iter().any(|done| done == operation_id) {
+            if registry.cancelled.len() >= 256 {
+                registry.cancelled.pop_front();
+            }
+            registry.cancelled.push_back(operation_id.to_owned());
+        }
+        for (_, flag) in registry
+            .flags
+            .iter()
+            .filter(|(id, _)| id.as_deref() == Some(operation_id))
+        {
+            if let Some(flag) = flag.upgrade() {
+                flag.store(true, Ordering::Relaxed);
+            }
         }
     }
 
@@ -5966,6 +6029,19 @@ async fn reset_cancel_flag(
     Ok(())
 }
 
+/// Cancel one panel gesture (a delete of the selected items) from its
+/// toast: the command of the gesture in flight stops, and a later command of
+/// the same gesture (same `operation_id`) starts cancelled. Other transfers
+/// are not touched.
+#[tauri::command]
+async fn operation_scope_cancel(
+    state: State<'_, AppState>,
+    operation_id: String,
+) -> Result<(), String> {
+    state.cancel_operation(&operation_id);
+    Ok(())
+}
+
 // ============ Bandwidth Throttling =====
 /// Set global transfer speed limits (KB/s, 0 = unlimited)
 #[tauri::command]
@@ -6711,6 +6787,7 @@ async fn collect_ftp_delete_tree(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn delete_remote_file(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -6719,9 +6796,11 @@ async fn delete_remote_file(
     is_dir: bool,
     expected_gui_target: Option<u64>,
     sync_run_lease: Option<String>,
+    operation_id: Option<String>,
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    let cancel = state.operation_cancel(sync_run_lease.is_some());
+    let run_owned = sync_run_lease.is_some();
+    let cancel = state.operation_cancel(run_owned, operation_id.as_deref());
     provider_commands::ipc_result(
         "delete_remote_file",
         delete_remote_file_for_ipc(
@@ -6733,8 +6812,24 @@ async fn delete_remote_file(
             is_dir,
             expected_gui_target,
         )
-        .await,
+        .await
+        .and_then(|answer| run_cancel_is_an_error(run_owned, answer)),
     )
+}
+
+/// A delete a cancel stopped answers `Ok("Deletion cancelled: ...")`, which
+/// the panel gesture reads. A sync run counts every resolved delete as done
+/// and records it in its journal: for a run's command the cancel is the
+/// typed cancellation instead, so the item stays incomplete (L1).
+fn run_cancel_is_an_error(
+    run_owned: bool,
+    answer: String,
+) -> Result<String, crate::sync::IpcError> {
+    if run_owned && answer.starts_with(crate::provider_commands::DELETION_CANCELLED) {
+        Err(crate::sync::IpcError::Cancelled)
+    } else {
+        Ok(answer)
+    }
 }
 
 async fn delete_remote_file_for_ipc<R: tauri::Runtime>(
@@ -6746,17 +6841,47 @@ async fn delete_remote_file_for_ipc<R: tauri::Runtime>(
     is_dir: bool,
     expected_gui_target: Option<u64>,
 ) -> Result<String, crate::sync::IpcError> {
-    let _target = provider_state
-        .pin_gui_target(expected_gui_target)
-        .await
-        .map_err(crate::sync::IpcError::from_native_pin)?;
-    let mut ftp_manager = state.ftp_manager.lock().await;
+    // The waits for the target pin and for the FTP session run against the
+    // cancel: a cancel raised while the command waits ends it there and
+    // releases the pin (M1). Nothing was sent yet.
+    let waits = async {
+        let target = provider_state
+            .pin_gui_target(expected_gui_target)
+            .await
+            .map_err(crate::sync::IpcError::from_native_pin)?;
+        Ok::<_, crate::sync::IpcError>((target, state.ftp_manager.lock().await))
+    };
+    let Some(waited) = provider_commands::unless_cancelled(&cancel, waits).await else {
+        return Ok("Deletion cancelled: 0 of 1 files deleted".to_string());
+    };
+    let (_target, mut ftp_manager) = waited?;
 
     let file_name = path.split('/').next_back().unwrap_or(&path).to_string();
     let delete_id = format!("del-remote-{}", chrono::Utc::now().timestamp_millis());
 
     if !is_dir {
-        // Single file delete - simple case
+        // Single file delete - simple case. A cancel raised before it (its
+        // gesture's, or one while the command waited for its target or for
+        // the FTP session) deletes nothing (K2).
+        if cancel.load(Ordering::Relaxed) {
+            let message = "Deletion cancelled: 0 of 1 files deleted".to_string();
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "delete_remote_file",
+                &app,
+                TransferEvent {
+                    event_type: "delete_cancelled".to_string(),
+                    transfer_id: delete_id.clone(),
+                    filename: file_name.clone(),
+                    direction: "remote".to_string(),
+                    message: Some(message.clone()),
+                    progress: None,
+                    path: Some(path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            return Ok(message);
+        }
         crate::provider_commands::emit_gui_transfer_event_for_runner(
             "delete_remote_file",
             &app,
@@ -7075,6 +7200,7 @@ async fn delete_remote_file_for_ipc<R: tauri::Runtime>(
 /// Delete a local file or folder with detailed event emission for each deleted
 /// item, then drop the file tags of whatever is gone.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn delete_local_file(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -7083,13 +7209,58 @@ async fn delete_local_file(
     expected_gui_target: Option<u64>,
     is_provider: Option<bool>,
     sync_run_lease: Option<String>,
+    operation_id: Option<String>,
+) -> Result<String, String> {
+    delete_local_file_with(
+        app,
+        state,
+        path,
+        provider_state,
+        expected_gui_target,
+        is_provider,
+        sync_run_lease,
+        operation_id,
+    )
+    .await
+}
+
+/// The body of `delete_local_file`. The cancel state is taken before the
+/// target pin, which can wait: a Stop raised while it waits stops the
+/// delete (H8).
+#[allow(clippy::too_many_arguments)]
+async fn delete_local_file_with<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    path: String,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
+    operation_id: Option<String>,
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    let _target = provider_state
-        .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
-        .await?;
-    let cancel = state.operation_cancel(sync_run_lease.is_some());
-    let result = delete_local_file_inner(app.clone(), cancel, path.clone()).await;
+    let cancel = state.operation_cancel(sync_run_lease.is_some(), operation_id.as_deref());
+    // The wait for the target pin runs against the cancel (M1): a cancel
+    // raised while it waits ends the command there and releases the pin.
+    let pinned = provider_commands::unless_cancelled(
+        &cancel,
+        provider_state.pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false)),
+    )
+    .await;
+    let Some(pinned) = pinned else {
+        return run_cancel_is_an_error(
+            sync_run_lease.is_some(),
+            "Deletion cancelled: 0 of 1 files deleted".to_string(),
+        )
+        .map_err(|error| crate::sync::ipc_error_render("delete_local_file", &error));
+    };
+    let _target = pinned?;
+    let result = delete_local_file_inner(app.clone(), cancel, path.clone())
+        .await
+        .and_then(|answer| {
+            run_cancel_is_an_error(sync_run_lease.is_some(), answer)
+                .map_err(|error| crate::sync::ipc_error_render("delete_local_file", &error))
+        });
     // A folder delete can stop half way and still return Ok: follow_delete only
     // forgets the tags of paths that are no longer on disk.
     file_tags::follow_delete(&app, &path);
@@ -7182,6 +7353,296 @@ mod local_delete_cancel_tests {
         (addr, log)
     }
 
+    /// H8: a panel delete registers its cancel state before it waits for
+    /// the target pin. Held behind a writer of the GUI target, a Stop raised
+    /// while it waits reaches it: the delete reports a cancellation and the
+    /// folder stays whole.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_while_a_delete_waits_for_its_target_is_not_lost() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("kept");
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
+        let provider_state = app.state::<crate::provider_commands::ProviderState>();
+        let writer = provider_state
+            .transfer_owner_write(std::time::Duration::from_secs(5))
+            .await
+            .unwrap();
+        let handle = app.handle().clone();
+        let path = folder.to_string_lossy().into_owned();
+        let delete = tokio::spawn(async move {
+            super::delete_local_file_with(
+                handle.clone(),
+                handle.state::<super::AppState>(),
+                path,
+                handle.state::<crate::provider_commands::ProviderState>(),
+                Some(0),
+                Some(false),
+                None,
+                Some("gesture-h8-0001".to_string()),
+            )
+            .await
+        });
+        let state = app.state::<super::AppState>();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state.local_operations.lock().unwrap().flags.is_empty() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the delete never registered"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(!delete.is_finished(), "it waits for the target");
+        state.request_cancel().await;
+        drop(writer);
+        let result = delete.await.unwrap().unwrap();
+        assert!(result.contains("cancelled"), "{result}");
+        assert!(folder.join("sub").join("a.txt").exists());
+    }
+
+    /// K1: a command's registration and its gesture's cancel never
+    /// interleave (one lock): whichever comes first, the command's flag ends
+    /// raised. Raced many times on two threads, never once unraised.
+    #[test]
+    fn a_gesture_cancel_racing_a_registration_always_reaches_the_flag() {
+        let state = std::sync::Arc::new(super::AppState::new());
+        for round in 0..2000 {
+            let id = format!("gesture-race-{round:05}");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let registering = {
+                let (state, barrier, id) = (state.clone(), barrier.clone(), id.clone());
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    state.operation_cancel(false, Some(&id))
+                })
+            };
+            barrier.wait();
+            state.cancel_operation(&id);
+            let flag = registering.join().unwrap();
+            assert!(
+                flag.load(Ordering::SeqCst),
+                "round {round}: the cancel was lost"
+            );
+        }
+    }
+
+    /// R3: the toast's Cancel names every recent gesture, and may be clicked
+    /// many times. A gesture already cancelled is not recorded again, so the
+    /// bounded record never loses a gesture still running: its later
+    /// commands still start cancelled.
+    #[test]
+    fn a_repeated_cancel_does_not_evict_a_running_gesture() {
+        let state = super::AppState::new();
+        state.cancel_operation("running-gesture");
+        // Twenty clicks of a toast that names sixteen other recent gestures.
+        for _ in 0..20 {
+            for i in 0..16 {
+                state.cancel_operation(&format!("other-gesture-{i}"));
+            }
+        }
+        assert!(state
+            .operation_cancel(false, Some("running-gesture"))
+            .load(Ordering::SeqCst));
+        let registry = state.local_operations.lock().unwrap();
+        assert_eq!(registry.cancelled.len(), 17);
+    }
+
+    /// A sync run counts a resolved delete as done and records it in its
+    /// journal: a delete its Stop cancelled is the typed cancellation for
+    /// the run, so the planned item stays incomplete (L1). The panel gesture
+    /// keeps the answer it reads.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_cancelled_delete_of_a_sync_run_is_an_error_not_a_done_delete() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let leases = tempfile::tempdir().unwrap();
+        let token =
+            crate::sync_run_lease::acquire_for_test(leases.path(), "l1-pair", "l1-window").unwrap();
+        // The run's Stop raises the shared flag its commands observe.
+        app.state::<super::AppState>()
+            .cancel_flag
+            .store(true, Ordering::Relaxed);
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("planned.txt");
+        std::fs::write(&file, b"a").unwrap();
+        let handle = app.handle().clone();
+        let result = super::delete_local_file_with(
+            handle.clone(),
+            handle.state::<super::AppState>(),
+            file.to_string_lossy().into_owned(),
+            handle.state::<crate::provider_commands::ProviderState>(),
+            Some(0),
+            Some(false),
+            Some(token.clone()),
+            None,
+        )
+        .await;
+        crate::sync_run_lease::release(&token).unwrap();
+        let error = result.expect_err("a run's cancelled delete is not a done delete");
+        assert!(error.contains("cancelled"), "{error}");
+        assert!(file.exists());
+        // The FTP command answers through the same rule.
+        assert!(matches!(
+            super::run_cancel_is_an_error(true, "Deletion cancelled: 0 of 1 files deleted".into()),
+            Err(crate::sync::IpcError::Cancelled)
+        ));
+        assert_eq!(
+            super::run_cancel_is_an_error(false, "Deletion cancelled: 0 of 1 files deleted".into())
+                .ok()
+                .as_deref(),
+            Some("Deletion cancelled: 0 of 1 files deleted")
+        );
+        assert!(super::run_cancel_is_an_error(true, "Deleted".into()).is_ok());
+    }
+
+    /// K2: a single file is deleted only if no cancel came first: a later
+    /// command of a cancelled gesture, and one whose cancel was raised while
+    /// it waited for its target, leave the file and report the cancellation.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_single_file_of_a_cancelled_gesture_is_not_deleted() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let state = app.state::<super::AppState>();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("one.txt");
+        std::fs::write(&file, b"a").unwrap();
+        state.cancel_operation("gesture-single-0001");
+        let result = super::delete_local_file_inner(
+            app.handle().clone(),
+            state.operation_cancel(false, Some("gesture-single-0001")),
+            file.to_string_lossy().into_owned(),
+        )
+        .await
+        .unwrap();
+        assert!(result.starts_with("Deletion cancelled"), "{result}");
+        assert!(file.exists());
+
+        // Cancelled while the command waits for its target.
+        let provider_state = app.state::<crate::provider_commands::ProviderState>();
+        let writer = provider_state
+            .transfer_owner_write(std::time::Duration::from_secs(5))
+            .await
+            .unwrap();
+        let handle = app.handle().clone();
+        let path = file.to_string_lossy().into_owned();
+        let delete = tokio::spawn(async move {
+            super::delete_local_file_with(
+                handle.clone(),
+                handle.state::<super::AppState>(),
+                path,
+                handle.state::<crate::provider_commands::ProviderState>(),
+                Some(0),
+                Some(false),
+                None,
+                Some("gesture-single-0002".to_string()),
+            )
+            .await
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !state
+            .local_operations
+            .lock()
+            .unwrap()
+            .flags
+            .iter()
+            .any(|(id, _)| id.as_deref() == Some("gesture-single-0002"))
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the delete never registered"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        state.cancel_operation("gesture-single-0002");
+        drop(writer);
+        let result = delete.await.unwrap().unwrap();
+        assert!(result.starts_with("Deletion cancelled"), "{result}");
+        assert!(file.exists());
+    }
+
+    /// K2 on the legacy FTP session: a single-file delete whose cancel was
+    /// raised before it sends no DELE.
+    #[tokio::test]
+    async fn a_cancelled_single_ftp_file_delete_sends_no_dele() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let state = app.state::<super::AppState>();
+        let (addr, log) = scripted_folder_server(None).await;
+        {
+            let mut ftp = state.ftp_manager.lock().await;
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+        }
+        state.cancel_operation("gesture-ftp-0001");
+        let result = super::delete_remote_file_for_ipc(
+            app.handle().clone(),
+            app.state::<super::AppState>(),
+            state.operation_cancel(false, Some("gesture-ftp-0001")),
+            app.state::<crate::provider_commands::ProviderState>(),
+            "/d/a.txt".to_string(),
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(result.starts_with("Deletion cancelled"), "{result}");
+        let seen = log.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
+    }
+
+    /// A panel gesture's cancel (its toast): a later command of the same
+    /// gesture starts cancelled and deletes nothing; a command of another
+    /// gesture, or of none, is not touched.
+    #[tokio::test]
+    async fn a_cancelled_gesture_starts_no_further_delete_and_leaves_others_alone() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        let state = app.state::<super::AppState>();
+        let dir = tempfile::tempdir().unwrap();
+        let folder = |name: &str| {
+            let folder = dir.path().join(name);
+            std::fs::create_dir_all(folder.join("sub")).unwrap();
+            std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
+            folder
+        };
+        let delete = |cancel, folder: &std::path::Path| {
+            super::delete_local_file_inner(
+                app.handle().clone(),
+                cancel,
+                folder.to_string_lossy().into_owned(),
+            )
+        };
+        state.cancel_operation("gesture-one-0001");
+        let same = folder("same");
+        let result = delete(
+            state.operation_cancel(false, Some("gesture-one-0001")),
+            &same,
+        )
+        .await
+        .unwrap();
+        assert!(result.contains("cancelled"), "{result}");
+        assert!(same.join("sub").join("a.txt").exists());
+        for (name, id) in [("other", Some("gesture-two-0002")), ("none", None)] {
+            let other = folder(name);
+            let result = delete(state.operation_cancel(false, id), &other)
+                .await
+                .unwrap();
+            assert!(!result.contains("cancelled"), "{result}");
+            assert!(!other.exists());
+        }
+    }
+
     /// P1-b on the legacy FTP session: a folder delete from the GUI (no run
     /// lease) after another transfer's Stop, which nothing reset since,
     /// deletes the whole folder; a Stop raised while it deletes stops it
@@ -7222,7 +7683,7 @@ mod local_delete_cancel_tests {
         state.request_cancel().await;
         let (addr, log) = scripted_folder_server(None).await;
         connect(addr).await;
-        let result = delete(state.operation_cancel(false)).await.unwrap();
+        let result = delete(state.operation_cancel(false, None)).await.unwrap();
         assert_eq!(result, "Deleted 3 files, 1 folders");
         assert_eq!(
             *log.lock().unwrap(),
@@ -7246,7 +7707,7 @@ mod local_delete_cancel_tests {
                 done.send(()).unwrap();
             })
         };
-        let result = delete(state.operation_cancel(false)).await.unwrap();
+        let result = delete(state.operation_cancel(false, None)).await.unwrap();
         stopper.await.unwrap();
         assert_eq!(result, "Deletion cancelled: 1 of 3 files deleted");
         assert_eq!(*log.lock().unwrap(), ["DELE /d/a.txt"]);
@@ -7271,7 +7732,7 @@ mod local_delete_cancel_tests {
         let path = |name: &str| dir.path().join(name).to_string_lossy().into_owned();
 
         super::copy_local_file_with(
-            state.operation_cancel(false),
+            state.operation_cancel(false, None),
             path("source.txt"),
             path("copy.txt"),
             None,
@@ -7286,7 +7747,7 @@ mod local_delete_cancel_tests {
         );
 
         let of_the_run = super::copy_local_file_with(
-            state.operation_cancel(true),
+            state.operation_cancel(true, None),
             path("source.txt"),
             path("run-copy.txt"),
             None,
@@ -7301,7 +7762,7 @@ mod local_delete_cancel_tests {
         std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
         let deleted = super::delete_local_file_inner(
             app.handle().clone(),
-            state.operation_cancel(false),
+            state.operation_cancel(false, None),
             folder.to_string_lossy().into_owned(),
         )
         .await
@@ -7333,7 +7794,7 @@ mod local_delete_cancel_tests {
         }
         for run_owned in [true, false] {
             let state = std::sync::Arc::new(super::AppState::new());
-            let cancel = state.operation_cancel(run_owned);
+            let cancel = state.operation_cancel(run_owned, None);
             let dir = tempfile::tempdir().unwrap();
             let to = dir.path().join("copy.bin");
             let handle = tokio::runtime::Handle::current();
@@ -7381,7 +7842,7 @@ mod local_delete_cancel_tests {
         // A delete of the run: it observes the run's Stop.
         let result = super::delete_local_file_inner(
             app.handle().clone(),
-            state.operation_cancel(true),
+            state.operation_cancel(true, None),
             folder.to_string_lossy().into_owned(),
         )
         .await
@@ -7428,7 +7889,26 @@ async fn delete_local_file_inner<R: tauri::Runtime>(
     let is_dir = local_delete_walks_into(&path_buf);
 
     if !is_dir {
-        // Single file delete
+        // Single file delete. A cancel raised before it (its gesture's, or
+        // one while the command waited for its target) deletes nothing (K2).
+        if cancel.load(Ordering::Relaxed) {
+            let message = "Deletion cancelled: 0 of 1 files deleted".to_string();
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                TransferEvent {
+                    event_type: "delete_cancelled".to_string(),
+                    transfer_id: delete_id.clone(),
+                    filename: file_name.clone(),
+                    direction: "local".to_string(),
+                    message: Some(message.clone()),
+                    progress: None,
+                    path: Some(path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            return Ok(message);
+        }
         crate::transfer_event_sink::emit_gui_transfer_event(
             &app,
             TransferEvent {
@@ -7915,7 +8395,7 @@ async fn copy_local_file(
     sync_run_lease: Option<String>,
 ) -> Result<(), String> {
     copy_local_file_with(
-        state.operation_cancel(sync_run_lease.is_some()),
+        state.operation_cancel(sync_run_lease.is_some(), None),
         from,
         to,
         overwrite,
@@ -24275,6 +24755,7 @@ pub fn run() {
             set_download_content_check,
             stop_starting_transfers,
             reset_cancel_flag,
+            operation_scope_cancel,
             set_speed_limit,
             get_local_files,
             open_in_file_manager,
