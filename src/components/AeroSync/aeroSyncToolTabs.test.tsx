@@ -12,6 +12,7 @@ import english from '../../i18n/locales/en.json';
 import { AeroSyncDialog } from './AeroSyncDialog';
 import { useAeroSyncContextActions, type AeroSyncState } from './useAeroSyncContextActions';
 import { compareEntries, type CompareResult } from '../../utils/compareEndpoints';
+import { isEscapeClaimed } from '../../hooks/useGuardedClose';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import type { AeroSyncContext, AeroSyncDialogProps } from './types';
 
@@ -325,6 +326,57 @@ it.each(['success', 'failure'])('blocks close and stale Plan through restore %s 
     await clickVisible('Start comparison');
     expect(execute.disabled).toBe(false);
     await act(async () => close.click());
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+});
+
+
+it('keeps claiming ESC while a restore runs, without answering it', async () => {
+    let resolveRestore!: (result: unknown) => void;
+    const restoring = new Promise(resolve => { resolveRestore = resolve; });
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_sync_snapshots_cmd') return [{ id: 'snapshot-a', name: 'Snapshot A',
+            created_at: '2026-10-29T19:00:00Z', files: {} }];
+        if (command === 'restore_sync_snapshot_cmd') return restoring;
+        return [];
+    });
+    await renderAppContext({ ...context, compareResult: compareEntries([], []) });
+    await choose('Rollback snapshots');
+    await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
+    await clickVisible('Restore');
+    const restoreButtons = visibleButtons().filter(b => b.textContent?.trim() === 'Restore');
+    await act(async () => restoreButtons[restoreButtons.length - 1].click());
+    expect(invoke).toHaveBeenCalledWith('restore_sync_snapshot_cmd', expect.anything());
+    // The restore cannot be stopped, but the modal stays in the ESC stack so
+    // the app-wide shortcut cannot act underneath it; it answers no press.
+    expect(isEscapeClaimed()).toBe(true);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(host.querySelector('[role=alertdialog]')).toBeNull();
+    await act(async () => resolveRestore({ restored_from_remote: 0, restored_to_remote: 1, skipped: 0, failed: [] }));
+    // Restore over: the idle dialog answers ESC again and closes.
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+});
+
+
+it('lets ESC close only the restore confirm and leaves AeroSync open', async () => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_sync_snapshots_cmd') return [{ id: 'snapshot-a', name: 'Snapshot A',
+            created_at: '2026-10-29T19:00:00Z', files: {} }];
+        return [];
+    });
+    await renderAppContext({ ...context, compareResult: compareEntries([], []) });
+    await choose('Rollback snapshots');
+    await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
+    await clickVisible('Restore');
+    // The pane's confirmation overlay is now open over the snapshot row.
+    expect(visibleButtons().filter(b => b.textContent?.trim() === 'Restore')).toHaveLength(2);
+    // The confirm owns ESC: one press cancels only the confirm (Discussion #1527).
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(visibleButtons().filter(b => b.textContent?.trim() === 'Restore')).toHaveLength(1);
+    // With the confirm gone the modal answers ESC again and closes.
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
     expect(props.onClose).toHaveBeenCalledTimes(1);
 });
 

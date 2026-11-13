@@ -32,8 +32,14 @@ export const VaultBrowse: React.FC<VaultBrowseProps> = ({ state, iconProvider })
     const repairDrag = useDraggableModal();
     // A repair in flight writes the vault after a close: the backdrop is inert
     // while it runs and the X asks first (Discussion #1527).
+    // Each inline sub-dialog owns ESC while open (mounted order sets the
+    // stack rank: the new-folder bar below the scrub modal below the repair
+    // modal). VaultSyncDialog and VaultReceipt register on their own mount,
+    // so they always sit on top. The panel above stays suspended meanwhile.
+    const newDirEscape = useGuardedClose({ guard: null, onClose: () => state.setShowNewDirDialog(false), escape: state.showNewDirDialog });
+    const scrubEscape = useGuardedClose({ guard: null, onClose: () => state.setShowScrubDialog(false), escape: state.showScrubDialog });
     const closeRepair = React.useCallback(() => state.setShowRepairDialog(false), [state]);
-    const repairGuard = useGuardedClose({ guard: state.isRepairing ? 'busy' : null, onClose: closeRepair });
+    const repairGuard = useGuardedClose({ guard: state.isRepairing ? 'busy' : null, onClose: closeRepair, escape: state.showRepairDialog });
     const modalView = useModalFileView();
     const isZip = state.isPlaintextZip;
 

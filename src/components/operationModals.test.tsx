@@ -71,11 +71,11 @@ import { CrossProfilePanel } from './CrossProfile/CrossProfilePanel';
 import { ShareLinkModal } from './ShareLinkModal';
 import { TotpSetup } from './TotpSetup';
 import { ServerHealthCheck } from './ServerHealthCheck';
-import VaultSyncDialog from './VaultSyncDialog';
 import { UnifiedTransferPlanDialog } from './UnifiedTransferPlanDialog';
 import { ConfirmDialog, InputDialog } from './Dialogs';
 import { VaultPanel } from './VaultPanel';
 import { CanaryResultDialog } from './Sync/CanaryResultDialog';
+import VaultSyncDialog from './VaultSyncDialog';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -707,11 +707,12 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(confirmOpen()).toBe(true);
     });
 
-    it('leaves ESC to a dialog of its own open over it', async () => {
+    it('leaves ESC to a dialog of its own open over it, but keeps its stack place', async () => {
         const onClose = vi.fn();
         vault('browse');
         mocks.vaultState.showRepairDialog = true;
         await render(<VaultPanel onClose={onClose} />);
+        expect(isEscapeClaimed()).toBe(true);
         await escape();
         expect(onClose).not.toHaveBeenCalled();
         expect(confirmOpen()).toBe(false);
@@ -730,6 +731,23 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await click('common.close');
         expect(confirmOpen()).toBe(true);
+    });
+});
+
+describe('VaultSyncDialog over VaultPanel (Discussion #1527)', () => {
+    const SuspendedPanel = ({ onClose }: { onClose: () => void }) => {
+        useGuardedClose({ guard: null, onClose, escape: true, escapeSuspended: true });
+        return null;
+    };
+
+    it('takes one ESC for itself and leaves the suspended panel open', async () => {
+        const onPanel = vi.fn();
+        const onClose = vi.fn();
+        await render(<><SuspendedPanel onClose={onPanel} />
+            <VaultSyncDialog vaultPath="/vaults/sample.aerovault" password="pw" onClose={onClose} onSynced={vi.fn()} /></>);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(onPanel).not.toHaveBeenCalled();
     });
 });
 

@@ -94,7 +94,11 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
             if (compareScanning) onStopCompare?.();
         } : undefined,
         backdrop: context.compareResult ? 'never' : 'idle',
-        escape: isOpen && !restoreRunning,
+        // A restore cannot be stopped, but the modal keeps its place in the
+        // ESC stack while it runs: suspended, it answers no press and the
+        // app-wide shortcut cannot act underneath it (Discussion #1527).
+        escape: isOpen,
+        escapeSuspended: restoreRunning,
     });
 
     // The settings the Plan and Sync tabs hold, kept alive across a tab switch

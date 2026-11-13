@@ -150,7 +150,7 @@ it('answers ESC like the X: a compare scan asks first, an idle dialog closes', a
     expect(onStopCompare).not.toHaveBeenCalled();
     expect(button('modalGuard.stopAndClose')).toBeTruthy();
     await React.act(async () => root.render(React.createElement(AeroSyncDialog, withContext({ compareLoading: false, compareResult: null, compareIdle: true }, { onClose }))));
-    await React.act(async () => button('modalGuard.wait').click());
+    // The guard is gone, so the confirm has already dismissed itself.
     await React.act(async () => { document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
     expect(onClose).toHaveBeenCalledTimes(1);
 });

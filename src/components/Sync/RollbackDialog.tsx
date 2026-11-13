@@ -16,6 +16,7 @@ import { useTranslation } from '../../i18n';
 import { formatSize } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
 
 interface RollbackDialogProps {
     isOpen: boolean;
@@ -58,6 +59,16 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
     }, [isOpen, embedded, onClose]);
+
+    // Embedded, the restore confirm is a sub-dialog of the AeroSync modal: it
+    // takes the top ESC slot through the shared stack while open, so one press
+    // cancels only the confirm and the parent answers again once it is gone
+    // (Discussion #1527).
+    useGuardedClose({
+        guard: null,
+        onClose: () => setConfirmRestore(false),
+        escape: !!(isOpen && embedded && confirmRestore),
+    });
 
     useEffect(() => {
         if (!isOpen) return;
