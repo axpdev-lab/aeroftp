@@ -1849,7 +1849,15 @@ impl StorageProvider for FtpProvider {
         // not expand `CWD ~`, so it is read here, before `initial_path` moves
         // the session, and kept for `login_folder_hint`. A server that does
         // not answer this PWD leaves the field empty; the connect goes on.
-        self.login_folder = stream.pwd().await.ok().map(|dir| dir.replace('\\', "/"));
+        // A login folder that is not absolute (a Windows `C:\Users\u` PWD,
+        // read `C:/Users/u`) is not a folder the `~/...` placement can name:
+        // kept, it would read as relative and place `~/docs` under nothing.
+        self.login_folder = stream
+            .pwd()
+            .await
+            .ok()
+            .map(|dir| dir.replace('\\', "/"))
+            .filter(|dir| dir.starts_with('/'));
 
         // Navigate to initial path if specified.
         //
@@ -8439,6 +8447,33 @@ mod rename_contract_tests {
             },
         )
         .await;
+        let err = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap_err();
+        assert!(err.contains("did not report its login folder"), "{err}");
+        assert!(
+            !log.lock().unwrap().iter().any(|command| command == "CWD ~"),
+            "{:?}",
+            log.lock().unwrap()
+        );
+    }
+
+    /// A Windows `PWD` answer (`C:\Users\u`, read `C:/Users/u`) names no
+    /// absolute folder the `~/...` placement can use: the hint stays empty,
+    /// the connect goes on, and `resolve_home_scope` fails closed without a
+    /// `CWD ~` on the wire.
+    #[tokio::test]
+    async fn a_non_absolute_login_pwd_leaves_no_hint_and_fails_closed() {
+        let (mut provider, log) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                login_dir: Some("C:\\Users\\u"),
+                log_commands: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint(), None);
         let err = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
             .await
             .unwrap_err();

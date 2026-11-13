@@ -170,6 +170,8 @@ describe('an overlay scope under the login folder', () => {
         expect(loginRelativeForm('~/docs', 'sftp')).toBe('~/docs');
         expect(loginRelativeForm('', 'sftp')).toBe('');
         expect(loginRelativeForm('~docs', 'sftp')).toBe('~/~docs');
+        // An omitted protocol is FTP (the ServerProfile default), not unknown.
+        expect(loginRelativeForm('docs', undefined)).toBe('~/docs');
     });
 
     it('saves the anchor in the login folder form', () => {

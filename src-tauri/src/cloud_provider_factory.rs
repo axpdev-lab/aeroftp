@@ -336,10 +336,14 @@ fn profile_root(profile: &serde_json::Value) -> String {
     // No trim: the session opens the space as part of the folder name
     // (#1523, `549820d79`), so `" /var/www "` is a different folder than
     // `"/var/www"`. Trimming here named a folder the connect never opened.
-    let under_login = profile
-        .get("protocol")
-        .and_then(|v| v.as_str())
-        .is_some_and(crate::crypt_overlay_provider::login_relative_protocol);
+    let under_login = crate::crypt_overlay_provider::login_relative_protocol(
+        profile
+            .get("protocol")
+            .and_then(|v| v.as_str())
+            // A saved profile without `protocol` is FTP, the same default the
+            // connect path and `profile_protocol_class` apply.
+            .unwrap_or("ftp"),
+    );
     if root.trim().is_empty() {
         "/".to_string()
     } else {
@@ -1176,6 +1180,12 @@ mod tests {
         assert_eq!(
             profile_root(&serde_json::json!({ "protocol": "webdav", "initialPath": "docs" })),
             "docs"
+        );
+        // A profile that omits `protocol` is FTP, the connect-path default:
+        // `docs` opens under the login folder, so the root stays `~/docs`.
+        assert_eq!(
+            profile_root(&serde_json::json!({ "initialPath": "docs" })),
+            "~/docs"
         );
     }
 

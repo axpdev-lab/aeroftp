@@ -55,6 +55,11 @@ describe('aeroCloudBase', () => {
             .toBe('~/docs/cloud/');
     });
 
+    it('reads an omitted protocol as FTP, the ServerProfile default', () => {
+        expect(aeroCloudBase(profile({ initialPath: 'docs' }))).toBe('~/docs');
+        expect(aeroCloudRemoteFolder(profile({ initialPath: 'docs' }), 'sub')).toBe('~/docs/sub/');
+    });
+
     it('treats an all-blank starting folder as the server root on login-relative protocols', () => {
         for (const protocol of ['sftp', 'ftp'] as const) {
             expect(aeroCloudBase(profile({ protocol, initialPath: '  ' }))).toBe('');
@@ -84,8 +89,12 @@ describe('aeroCloudRemoteFolder', () => {
         expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: overlay('/data/enc/') }), 'cloud'))
             .toBe('/data/enc/cloud/');
         // A binding's folder is plaintext-absolute, as the app normalizes it.
-        expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: overlay('enc') }), 'cloud'))
+        expect(aeroCloudRemoteFolder(profile({ protocol: 'webdav', initialPath: '/data', aeroCryptOverlay: overlay('enc') }), 'cloud'))
             .toBe('/enc/cloud/');
+        // On FTP (the omitted-protocol default) a relative scope opens under
+        // the login folder, the same rule `initialPath` follows.
+        expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: overlay('enc') }), 'cloud'))
+            .toBe('~/enc/cloud/');
         expect(aeroCloudRemoteFolder(profile({ aeroCryptOverlay: overlay() }), 'cloud')).toBe('/cloud/');
     });
 

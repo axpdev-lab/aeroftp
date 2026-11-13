@@ -35,9 +35,13 @@ export const isLoginRelativeScope = (s?: string | null): boolean =>
  * resolve it against home (`resolve_start_dir` in the backend), FTP and FTPS
  * issue a relative `CWD` from the login directory. There `docs` is `~/docs`;
  * read from the root it was `/docs`, a folder the session never opened.
+ * `protocol` is optional on `ServerProfile` and defaults to `'ftp'`
+ * (`types.ts`), so an omitted protocol is FTP, not "unknown".
  */
-export const loginRelativeProtocol = (protocol?: string | null): boolean =>
-    protocol === 'sftp' || protocol === 'scp' || protocol === 'ftp' || protocol === 'ftps';
+export const loginRelativeProtocol = (protocol?: string | null): boolean => {
+    const effective = protocol ?? 'ftp';
+    return effective === 'sftp' || effective === 'scp' || effective === 'ftp' || effective === 'ftps';
+};
 
 /**
  * A path as the protocol opens it. On a login-relative protocol a relative

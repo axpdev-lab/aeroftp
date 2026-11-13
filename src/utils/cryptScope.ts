@@ -125,7 +125,7 @@ export const resolveBoundCryptScope = (
  * The folder a profile's overlay is bound to: its Overlays Path, or its
  * Remote Path when the binding names none, with the `{username}` template
  * resolved. The one place that fallback lives, so the anchor, the badge and
- * restored transfers read the same folder. On SFTP and SCP a relative folder
+ * restored transfers read the same folder. On SFTP, SCP, FTP and FTPS a relative folder
  * opens under the login folder, so it comes back as `~/...`: read as `/docs`,
  * the anchor was a folder the session never opened.
  */

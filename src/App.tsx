@@ -6414,7 +6414,7 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      // On SFTP and SCP a relative Remote Path opens under the login folder,
+      // On SFTP, SCP, FTP and FTPS a relative Remote Path opens under the login folder,
       // as the scope below reads it.
       const configuredLanding = loginRelativeForm(landingPath === undefined
         ? profileInitialPath
