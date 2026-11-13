@@ -773,6 +773,152 @@ struct EffectiveCredentials {
     session_token: Option<secrecy::SecretString>,
 }
 
+struct DeltaUnusable {
+    holds: u32,
+    blocked: bool,
+}
+
+/// One baseline file, one object key. Every `S3Provider::new` in this process
+/// that opens that file shares the entry. Another process does not.
+fn delta_marks(
+) -> &'static std::sync::Mutex<HashMap<(std::path::PathBuf, BaselineKey), DeltaUnusable>> {
+    static MARKS: std::sync::LazyLock<
+        std::sync::Mutex<HashMap<(std::path::PathBuf, BaselineKey), DeltaUnusable>>,
+    > = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+    &MARKS
+}
+
+/// Keeps one key out of delta matching while a full Complete is in flight.
+/// Dropping the future, or a second delete that still fails after one retry,
+/// leaves the key blocked. A later successful invalidate or save clears it
+/// only when no Complete is still holding the key.
+struct DeltaHold {
+    path: std::path::PathBuf,
+    key: BaselineKey,
+    released: bool,
+}
+
+impl DeltaHold {
+    fn mark_key(&self) -> (std::path::PathBuf, BaselineKey) {
+        (self.path.clone(), self.key.clone())
+    }
+
+    fn release(&mut self) {
+        if self.released {
+            return;
+        }
+        let mut map = delta_marks()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mark_key = self.mark_key();
+        if let Some(state) = map.get_mut(&mark_key) {
+            state.holds = state.holds.saturating_sub(1);
+            if state.holds == 0 && !state.blocked {
+                map.remove(&mark_key);
+            }
+        }
+        self.released = true;
+    }
+}
+
+impl Drop for DeltaHold {
+    fn drop(&mut self) {
+        if self.released {
+            return;
+        }
+        let mut map = delta_marks()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mark_key = self.mark_key();
+        if let Some(state) = map.get_mut(&mark_key) {
+            state.holds = state.holds.saturating_sub(1);
+            state.blocked = true;
+        }
+    }
+}
+
+impl S3Provider {
+    fn baseline_path(&self) -> Option<std::path::PathBuf> {
+        #[cfg(test)]
+        let path = self.baseline_test_path.clone();
+        #[cfg(not(test))]
+        let path = BaselineStore::default_path();
+        path
+    }
+
+    fn hold_delta_for_complete(&self, remote_path: &str) -> DeltaHold {
+        let key = self.delta_baseline_key(remote_path);
+        let Some(path) = self.baseline_path() else {
+            return DeltaHold {
+                path: std::path::PathBuf::new(),
+                key,
+                released: true,
+            };
+        };
+        {
+            let mut map = delta_marks()
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            let state = map
+                .entry((path.clone(), key.clone()))
+                .or_insert(DeltaUnusable {
+                    holds: 0,
+                    blocked: false,
+                });
+            state.holds = state.holds.saturating_add(1);
+        }
+        DeltaHold {
+            path,
+            key,
+            released: false,
+        }
+    }
+
+    fn delta_is_unusable(&self, key: &BaselineKey) -> bool {
+        let Some(path) = self.baseline_path() else {
+            return false;
+        };
+        delta_marks()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .contains_key(&(path, key.clone()))
+    }
+
+    /// A successful invalidate or save of this key. In-flight Completes keep
+    /// their hold, so a streaming save during that window does not clear it.
+    /// Removing the entry keeps the process registry from growing without a bound.
+    fn note_delta_baseline_settled(&self, key: &BaselineKey) {
+        let Some(path) = self.baseline_path() else {
+            return;
+        };
+        let mut map = delta_marks()
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        let mark_key = (path, key.clone());
+        if map.get(&mark_key).is_some_and(|state| state.holds == 0) {
+            map.remove(&mark_key);
+        }
+    }
+
+    async fn second_baseline_invalidate_ok(&self, remote_path: &str) -> bool {
+        let Some(store) = self.baseline_store() else {
+            return true;
+        };
+        let key = self.delta_baseline_key(remote_path);
+        let mut result = store.invalidate(key.clone()).await;
+        if result.is_err() {
+            result = store.invalidate(key).await;
+        }
+        match result {
+            Ok(()) => true,
+            Err(error) => {
+                warn!("S3 baseline cache invalidate after complete failed: {error}");
+                false
+            }
+        }
+    }
+}
+
 impl S3Provider {
     /// Worker-only single-page listing. The request cap is advisory for S3
     /// compatible servers, so cap the received XML before parsing as well.
@@ -1009,10 +1155,15 @@ impl S3Provider {
         };
         let key = remote_path.trim_start_matches('/');
         let cache_key = self.delta_baseline_key(key);
+        if self.delta_is_unusable(&cache_key) {
+            return Ok(S3DeltaOutcome::Refused("no_baseline"));
+        }
         let response = self.s3_request(Method::HEAD, key, None, None).await?;
         let status = response.status();
         if status == StatusCode::NOT_FOUND {
-            let _ = store.invalidate(cache_key).await;
+            if store.invalidate(cache_key.clone()).await.is_ok() {
+                self.note_delta_baseline_settled(&cache_key);
+            }
             return Ok(S3DeltaOutcome::Refused("no_baseline"));
         }
         if !status.is_success() {
@@ -1043,11 +1194,15 @@ impl S3Provider {
             .filter(|v| !v.trim_matches('"').is_empty())
             .map(str::to_owned)
         else {
-            let _ = store.invalidate(cache_key).await;
+            if store.invalidate(cache_key.clone()).await.is_ok() {
+                self.note_delta_baseline_settled(&cache_key);
+            }
             return Ok(S3DeltaOutcome::Refused("no_baseline_etag"));
         };
         if baseline_size <= super::s3_delta_plan::S3_PART_MIN {
-            let _ = store.invalidate(cache_key).await;
+            if store.invalidate(cache_key.clone()).await.is_ok() {
+                self.note_delta_baseline_settled(&cache_key);
+            }
             return Ok(S3DeltaOutcome::Refused("baseline_too_small"));
         }
         let (outcome, fresh) = match store
@@ -1081,9 +1236,10 @@ impl S3Provider {
         let Some(local_str) = local_path.to_str() else {
             return Ok(S3DeltaOutcome::Refused("local_path_invalid"));
         };
-        if store.invalidate(cache_key).await.is_err() {
+        if store.invalidate(cache_key.clone()).await.is_err() {
             return Ok(S3DeltaOutcome::Refused("baseline_cache_unavailable"));
         }
+        self.note_delta_baseline_settled(&cache_key);
         let content_type = mime_guess::from_path(local_path)
             .first_or_octet_stream()
             .to_string();
@@ -1172,11 +1328,7 @@ impl S3Provider {
     }
 
     fn baseline_store(&self) -> Option<BaselineStore> {
-        #[cfg(test)]
-        let path = self.baseline_test_path.clone();
-        #[cfg(not(test))]
-        let path = BaselineStore::default_path();
-        path.map(BaselineStore::new)
+        self.baseline_path().map(BaselineStore::new)
     }
 
     async fn begin_baseline(
@@ -1186,10 +1338,12 @@ impl S3Provider {
     ) -> Option<(BaselineStore, BaselineHasher)> {
         let store = self.baseline_store()?;
         // Also invalidate when an eligible object is replaced with a small one.
-        if let Err(error) = store.invalidate(self.delta_baseline_key(key)).await {
+        let cache_key = self.delta_baseline_key(key);
+        if let Err(error) = store.invalidate(cache_key.clone()).await {
             warn!("S3 baseline cache unavailable: {error}");
             return None;
         }
+        self.note_delta_baseline_settled(&cache_key);
         Some((store, BaselineHasher::new(size)?))
     }
 
@@ -1200,12 +1354,15 @@ impl S3Provider {
         etag: Option<String>,
     ) {
         if let (Some((store, hasher)), Some(etag)) = (pending, etag) {
+            let cache_key = self.delta_baseline_key(key);
             if let Err(error) = store
-                .record_completed(self.delta_baseline_key(key), hasher, etag)
+                .record_completed(cache_key.clone(), hasher, etag)
                 .await
             {
                 // Cache failure never turns a successful upload into a retry.
                 warn!("S3 baseline cache write failed: {error}");
+            } else {
+                self.note_delta_baseline_settled(&cache_key);
             }
         }
     }
@@ -7391,7 +7548,7 @@ impl StorageProvider for S3Provider {
     async fn begin_multipart_upload(
         &mut self,
         remote_path: &str,
-        total_size: u64,
+        _total_size: u64,
         content_type: Option<&str>,
         local_source_path: Option<&str>,
     ) -> Result<MultipartHandle, ProviderError> {
@@ -7408,7 +7565,10 @@ impl StorageProvider for S3Provider {
             ));
         }
         let key = remote_path.trim_start_matches('/');
-        let baseline = self.begin_baseline(key, total_size).await;
+        // A full DAG put does not hash the delta grid and does not write a
+        // new baseline. That grid only fills the local cache. The part
+        // upload and complete below stay the same requests. The legacy
+        // streaming upload still records its own baseline.
         let upload_id = self
             .create_multipart_upload(
                 key,
@@ -7416,33 +7576,6 @@ impl StorageProvider for S3Provider {
                 local_source_path.and_then(Self::source_mtime_metadata),
             )
             .await?;
-        if let Some((store, _)) = baseline {
-            let mut sessions = self
-                .multipart_baselines
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            sessions.retain(|_, session| {
-                session.touched.elapsed() < std::time::Duration::from_secs(3600)
-            });
-            if sessions.len() >= 128 {
-                if let Some(oldest) = sessions
-                    .iter()
-                    .min_by_key(|(_, session)| session.touched)
-                    .map(|(key, _)| key.clone())
-                {
-                    sessions.remove(&oldest);
-                }
-            }
-            sessions.insert(
-                upload_id.clone(),
-                super::s3_delta_baseline::MultipartBaseline {
-                    size: total_size,
-                    store,
-                    touched: std::time::Instant::now(),
-                    parts: std::collections::BTreeMap::new(),
-                },
-            );
-        }
         Ok(MultipartHandle {
             upload_id,
             remote_path: key.to_string(),
@@ -7510,10 +7643,47 @@ impl StorageProvider for S3Provider {
             .unwrap_or_else(|e| e.into_inner())
             .remove(&handle.upload_id);
         let pending = session.and_then(|session| session.finish(&numbered));
-        let etag = self
+        let mut hold = None;
+        if pending.is_none() {
+            // Drop the previous row before CompleteMultipartUpload. A lost
+            // response must not leave the old cells eligible for a reused
+            // ETag. If the delete itself fails, the row is still there, so
+            // the replacement is not committed.
+            if let Some(store) = self.baseline_store() {
+                let cache_key = self.delta_baseline_key(&handle.remote_path);
+                if let Err(error) = store.invalidate(cache_key.clone()).await {
+                    warn!("S3 baseline cache invalidate failed: {error}");
+                    return Err(ProviderError::IoError(std::io::Error::other(error)));
+                }
+                self.note_delta_baseline_settled(&cache_key);
+                // Mark before Complete. Cancelling this future leaves the
+                // mark. Every provider in this process that uses the same
+                // baseline file sees it. Another process does not.
+                hold = Some(self.hold_delta_for_complete(&handle.remote_path));
+            }
+        }
+        let completed = self
             .complete_multipart_upload_internal(&handle.remote_path, &handle.upload_id, &numbered)
-            .await?;
-        self.save_baseline(&handle.remote_path, pending, etag).await;
+            .await;
+        if pending.is_none() {
+            // A legacy streaming upload of this key can complete and save its
+            // own row while the Complete above is in flight. This object may
+            // have replaced that one, so drop the row again. Run it on a
+            // failed Complete too: a lost response can still commit. One
+            // retry, then the mark stays and the upload still succeeds.
+            if self
+                .second_baseline_invalidate_ok(&handle.remote_path)
+                .await
+            {
+                if let Some(hold) = hold.as_mut() {
+                    hold.release();
+                }
+            }
+        }
+        let etag = completed?;
+        if pending.is_some() {
+            self.save_baseline(&handle.remote_path, pending, etag).await;
+        }
         Ok(())
     }
 
