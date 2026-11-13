@@ -887,27 +887,38 @@ GPL-3.0-or-later - See [LICENSE](LICENSE) for details.
     <td align="center"><sub>OSI Individual Member</sub></td>
     <td align="center"><sub>Sigstore Signed Releases</sub></td>
   </tr>
+</table>
+
+<table align="center">
   <tr>
     <td align="center">
-      <a href="https://aikido.dev"><img src="icons/aikido_security.png" alt="Aikido Security" height="48" /></a>
+      <a href="https://www.coderabbit.ai"><img src="icons/coderabbit.png" alt="CodeRabbit" height="48" /></a>
     </td>
     <td align="center">
-      <a href="https://snyk.io"><img src="icons/snyk.png" alt="Snyk" height="48" /></a>
+      <a href="https://www.greptile.com"><img src="icons/greptile.png" alt="Greptile" height="48" /></a>
+    </td>
+    <td align="center">
+      <a href="https://aikido.dev"><img src="icons/aikido_security.png" alt="Aikido Security" height="48" /></a>
     </td>
     <td align="center">
       <a href="https://socket.dev"><img src="icons/socket.png" alt="Socket.dev" height="48" /></a>
     </td>
     <td align="center">
-      <a href="https://www.coderabbit.ai"><img src="icons/coderabbit.png" alt="CodeRabbit" height="48" /></a>
+      <a href="https://snyk.io"><img src="icons/snyk.png" alt="Snyk" height="48" /></a>
     </td>
   </tr>
   <tr>
-    <td align="center"><sub>Aikido Security</sub></td>
-    <td align="center"><sub>Snyk</sub></td>
-    <td align="center"><sub>Socket.dev</sub></td>
     <td align="center"><sub>CodeRabbit</sub></td>
+    <td align="center"><sub>Greptile</sub></td>
+    <td align="center"><sub>Aikido Security</sub></td>
+    <td align="center"><sub>Socket.dev</sub></td>
+    <td align="center"><sub>Snyk</sub></td>
   </tr>
 </table>
+
+<p align="center">
+  <a href="https://www.greptile.com/?utm_source=oss_badge&utm_medium=readme&utm_campaign=greptile_for_open_source"><img src="https://www.greptile.com/badge.svg" alt="Greptile: The War on Bugs" /></a>
+</p>
 
 <p align="center">
   <em>Built with Rust (Tauri 2) + React 18 + TypeScript</em>
