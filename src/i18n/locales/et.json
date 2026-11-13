@@ -64,6 +64,7 @@
             "name": "Nimi",
             "size": "Suurus",
             "retry": "Proovi uuesti",
+            "settingsLoadFailed": "Neid seadeid ei õnnestunud lugeda, seega nende peale midagi ei salvestata: {error}",
             "optional": "valikuline",
             "check": "Check",
             "selectAll": "Vali kõik",

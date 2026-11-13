@@ -64,6 +64,7 @@
             "name": "Izena",
             "size": "Tamaina",
             "retry": "Saiatu berriro",
+            "settingsLoadFailed": "Ezin izan dira ezarpen hauek irakurri, beraz ez da ezer gordeko haien gainean: {error}",
             "optional": "aukerakoa",
             "check": "Check",
             "selectAll": "Hautatu dena",

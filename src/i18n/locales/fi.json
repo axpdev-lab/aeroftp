@@ -64,6 +64,7 @@
             "name": "Nimi",
             "size": "Koko",
             "retry": "Yritä uudelleen",
+            "settingsLoadFailed": "Näitä asetuksia ei voitu lukea, joten niiden päälle ei tallenneta mitään: {error}",
             "optional": "valinnainen",
             "check": "Check",
             "selectAll": "Valitse kaikki",

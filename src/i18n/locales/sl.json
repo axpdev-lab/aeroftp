@@ -64,6 +64,7 @@
             "name": "Ime",
             "size": "Velikost",
             "retry": "Poskusi znova",
+            "settingsLoadFailed": "Teh nastavitev ni bilo mogoče prebrati, zato čeznje ne bo nič shranjeno: {error}",
             "optional": "neobvezno",
             "check": "Check",
             "selectAll": "Izberi vse",

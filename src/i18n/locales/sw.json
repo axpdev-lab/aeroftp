@@ -64,6 +64,7 @@
             "name": "Jina",
             "size": "Ukubwa",
             "retry": "Jaribu tena",
+            "settingsLoadFailed": "Mipangilio hii haikuweza kusomwa, kwa hivyo hakuna kitakachohifadhiwa juu yake: {error}",
             "optional": "hiari",
             "check": "Check",
             "selectAll": "Chagua Zote",

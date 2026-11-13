@@ -64,6 +64,7 @@
             "name": "이름",
             "size": "크기",
             "retry": "재시도",
+            "settingsLoadFailed": "이 설정을 읽을 수 없어 그 위에 아무것도 저장하지 않습니다: {error}",
             "optional": "선택 사항",
             "check": "확인",
             "selectAll": "모두 선택",

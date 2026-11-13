@@ -14612,18 +14612,16 @@ async fn sftp_probe_delta_eligibility(
 // ======================// Multi-Path Sync Commands (#52)
 // ======================
 #[tauri::command]
-async fn get_multi_path_config() -> sync::MultiPathConfig {
+async fn get_multi_path_config() -> Result<sync::MultiPathConfig, String> {
     tokio::task::spawn_blocking(get_multi_path_config_blocking)
         .await
-        .unwrap_or_else(|err| {
-            tracing::warn!("get_multi_path_config task failed: {err}");
-            sync::MultiPathConfig::default()
-        })
+        .unwrap_or_else(|err| Err(format!("get_multi_path_config task failed: {err}")))
 }
 
 /// The body of `get_multi_path_config`, kept synchronous and run on the blocking pool.
-fn get_multi_path_config_blocking() -> sync::MultiPathConfig {
-    sync::load_multi_path_config()
+/// Strict, as `get_cloud_config_blocking`.
+fn get_multi_path_config_blocking() -> Result<sync::MultiPathConfig, String> {
+    sync::load_multi_path_config_strict()
 }
 
 #[tauri::command]
@@ -16187,18 +16185,17 @@ async fn ai_list_models(
 
 // ============ AeroCloud Commands =====
 #[tauri::command]
-async fn get_cloud_config() -> CloudConfig {
+async fn get_cloud_config() -> Result<CloudConfig, String> {
     tokio::task::spawn_blocking(get_cloud_config_blocking)
         .await
-        .unwrap_or_else(|err| {
-            tracing::warn!("get_cloud_config task failed: {err}");
-            CloudConfig::default()
-        })
+        .unwrap_or_else(|err| Err(format!("get_cloud_config task failed: {err}")))
 }
 
 /// The body of `get_cloud_config`, kept synchronous and run on the blocking pool.
-fn get_cloud_config_blocking() -> CloudConfig {
-    cloud_config::load_cloud_config()
+/// Strict: a file that exists but cannot be read is an error, never defaults
+/// an editor could later save over it.
+fn get_cloud_config_blocking() -> Result<CloudConfig, String> {
+    cloud_config::load_cloud_config_strict()
 }
 
 #[tauri::command]
@@ -16220,18 +16217,16 @@ fn save_cloud_config_cmd_blocking(config: CloudConfig) -> Result<(), String> {
 // Mirrors the style of multi-path commands but targets CloudPathPair / CloudPairsConfig.
 // Seeding from legacy happens on first add via GUI (or CLI already supports).
 #[tauri::command]
-async fn get_cloud_pairs_config() -> cloud_pairs::CloudPairsConfig {
+async fn get_cloud_pairs_config() -> Result<cloud_pairs::CloudPairsConfig, String> {
     tokio::task::spawn_blocking(get_cloud_pairs_config_blocking)
         .await
-        .unwrap_or_else(|err| {
-            tracing::warn!("get_cloud_pairs_config task failed: {err}");
-            cloud_pairs::CloudPairsConfig::default()
-        })
+        .unwrap_or_else(|err| Err(format!("get_cloud_pairs_config task failed: {err}")))
 }
 
 /// The body of `get_cloud_pairs_config`, kept synchronous and run on the blocking pool.
-fn get_cloud_pairs_config_blocking() -> cloud_pairs::CloudPairsConfig {
-    cloud_pairs::load_cloud_pairs_config()
+/// Strict, as `get_cloud_config_blocking`.
+fn get_cloud_pairs_config_blocking() -> Result<cloud_pairs::CloudPairsConfig, String> {
+    cloud_pairs::load_cloud_pairs_config_strict()
 }
 
 #[tauri::command]

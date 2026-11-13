@@ -21,9 +21,10 @@ let root: Root | undefined;
 let host: HTMLDivElement;
 afterEach(async () => { if (root) await React.act(async () => root!.unmount()); host?.remove(); root = undefined; mocks.listeners.clear(); mocks.invoke.mockReset(); });
 
-async function mount(pairs: unknown[] | null) {
+async function mount(pairs: unknown[] | null, configReadable: () => boolean = () => true) {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     mocks.invoke.mockImplementation(async (command: string) => {
+        if (command === 'get_cloud_config' && !configReadable()) throw new Error('permission denied');
         if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
         if (command === 'get_cloud_status') return { type: 'has_conflicts', count: 1 };
         if (command === 'get_cloud_pairs_config') { if (pairs === null) throw new Error('unreadable pairs'); return { pairs }; }
@@ -39,6 +40,17 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         await React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
         const update = Array.from(host.querySelectorAll('label')).find(label => label.textContent?.includes('aerosync.updateOnly'));
         expect(Boolean(update)).toBe(pairs !== null && pairs.length === 0);
+    });
+
+    it('shows an unreadable configuration as an error, not as the setup wizard, until a retry reads it', async () => {
+        let readable = false;
+        await mount([], () => readable);
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        expect(host.querySelector('[aria-label="cloud.dialogSetupLabel"]')).toBeNull();
+        readable = true;
+        await React.act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'common.retry')!.click());
+        expect(host.querySelector('[role="alert"]')).toBeNull();
+        expect(host.querySelector('button[title="common.settings"]')).not.toBeNull();
     });
 
     it('keeps a deletion refusal visible alongside conflicts', async () => {

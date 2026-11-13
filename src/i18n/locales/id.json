@@ -64,6 +64,7 @@
             "name": "Nama",
             "size": "Ukuran",
             "retry": "Coba lagi",
+            "settingsLoadFailed": "Pengaturan ini tidak dapat dibaca, jadi tidak ada yang akan disimpan menimpanya: {error}",
             "optional": "opsional",
             "check": "Check",
             "selectAll": "Pilih Semua",

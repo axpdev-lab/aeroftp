@@ -241,7 +241,7 @@ pub struct CloudStats {
 }
 
 /// Get the path to the cloud config file
-fn get_config_path() -> PathBuf {
+pub(crate) fn get_config_path() -> PathBuf {
     crate::portable::aeroftp_data_root()
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
         .join("cloud_config.json")
@@ -260,7 +260,10 @@ fn load_cloud_config_unlocked() -> CloudConfig {
             Ok(content) => match serde_json::from_str(&content) {
                 Ok(config) => return config,
                 Err(e) => {
-                    tracing::warn!("Failed to parse cloud config: {}", e);
+                    tracing::warn!(
+                        "Failed to parse cloud config: {}",
+                        crate::util::describe_json_error(&e)
+                    );
                 }
             },
             Err(e) => {
@@ -291,8 +294,13 @@ fn load_cloud_config_strict_at(path: &Path) -> Result<CloudConfig, String> {
             ));
         }
     };
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse cloud config '{}': {}", path.display(), e))
+    serde_json::from_str(&content).map_err(|e| {
+        format!(
+            "Failed to parse cloud config '{}': {}",
+            path.display(),
+            crate::util::describe_json_error(&e)
+        )
+    })
 }
 
 /// Strict load at the real config path: callers that read-then-save outside
@@ -498,6 +506,18 @@ mod tests {
     /// unreadable file into defaults.
     /// The reset path really overwrites a config the guarded save refuses:
     /// the setup wizard and `disable_aerocloud` must still work when the
+    /// A parse error names the kind and position, never the value: a
+    /// credential in a mistyped field must not reach the log or the webview.
+    #[test]
+    fn a_parse_error_does_not_quote_the_config_values() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        std::fs::write(&path, r#"{"enabled": "SENTINEL-SECRET"}"#).unwrap();
+        let err = load_cloud_config_strict_at(&path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+    }
+
     /// file is corrupt, since resetting it is how the user recovers.
     #[test]
     fn the_reset_save_overwrites_an_unparseable_config() {

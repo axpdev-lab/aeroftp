@@ -64,6 +64,7 @@
             "name": "Enw",
             "size": "Maint",
             "retry": "Ailgeisio",
+            "settingsLoadFailed": "Methwyd darllen y gosodiadau hyn, felly ni fydd dim yn cael ei gadw drostynt: {error}",
             "optional": "dewisol",
             "check": "Check",
             "selectAll": "Dewis Popeth",

@@ -64,6 +64,7 @@
             "name": "Name",
             "size": "Größe",
             "retry": "Wiederholen",
+            "settingsLoadFailed": "Diese Einstellungen konnten nicht gelesen werden, daher wird nichts darüber gespeichert: {error}",
             "optional": "optional",
             "check": "Prüfen",
             "selectAll": "Alle auswählen",

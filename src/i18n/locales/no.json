@@ -64,6 +64,7 @@
             "name": "Navn",
             "size": "Størrelse",
             "retry": "Prøv igjen",
+            "settingsLoadFailed": "Disse innstillingene kunne ikke leses, så ingenting blir lagret over dem: {error}",
             "optional": "valgfritt",
             "check": "Check",
             "selectAll": "Velg alle",

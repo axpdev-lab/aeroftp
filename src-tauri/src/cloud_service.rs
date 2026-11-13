@@ -3795,34 +3795,50 @@ pub(crate) async fn anchor_login_relative_remote_folder(
         .await?
         .ok_or_else(|| format!("the remote folder '{remote}' could not be placed"))?;
     // Persist on the raw provider's answer, before any overlay wraps it: the
-    // `~` form only exists to be placed once.
-    cloud_config::with_cloud_config_mut(|stored| {
-        if stored.remote_folder == unresolved
+    // `~` form only exists to be placed once. Each file is written only when
+    // it holds an entry to place: a strict read decides, so a file that cannot
+    // be read is an error and is never rewritten, and a file with nothing to
+    // place keeps its bytes. The mutation re-checks under the write lock.
+    let config_unplaced = |stored: &CloudConfig| {
+        stored.remote_folder == unresolved
             && stored.local_folder == config.local_folder
             && same_server_profile(
                 stored.server_profile_id.as_deref(),
                 &stored.server_profile,
                 config,
             )
-        {
-            stored.remote_folder = placed.clone();
-        }
-        Ok(())
-    })?;
-    cloud_pairs::with_cloud_pairs_mut(|pairs| {
-        for pair in &mut pairs.pairs {
-            // Profile names are not unique: the local folder is part of the
-            // pair's identity (`pair_key`), so an homonymous pair on another
-            // machine keeps its own `~` form until its own connect places it.
-            if pair.remote_path == unresolved
-                && pair.server_profile == config.server_profile
-                && pair.local_path == config.local_folder
-            {
+    };
+    // Profile names are not unique: the local folder is part of the pair's
+    // identity (`pair_key`), so an homonymous pair on another machine keeps
+    // its own `~` form until its own connect places it.
+    let pair_unplaced = |pair: &cloud_pairs::CloudPathPair| {
+        pair.remote_path == unresolved
+            && pair.server_profile == config.server_profile
+            && pair.local_path == config.local_folder
+    };
+    // Both files are read before either is written, so an unreadable one
+    // leaves the other untouched too.
+    let place_config = config_unplaced(&cloud_config::load_cloud_config_strict()?);
+    let place_pairs = cloud_pairs::load_cloud_pairs_config_strict()?
+        .pairs
+        .iter()
+        .any(pair_unplaced);
+    if place_config {
+        cloud_config::with_cloud_config_mut(|stored| {
+            if config_unplaced(stored) {
+                stored.remote_folder = placed.clone();
+            }
+            Ok(())
+        })?;
+    }
+    if place_pairs {
+        cloud_pairs::with_cloud_pairs_mut(|pairs| {
+            for pair in pairs.pairs.iter_mut().filter(|pair| pair_unplaced(pair)) {
                 pair.remote_path = placed.clone();
             }
-        }
-        Ok(())
-    })?;
+            Ok(())
+        })?;
+    }
     Ok(Some(placed))
 }
 
@@ -7103,6 +7119,91 @@ mod baseline_tests {
                 .await
                 .unwrap();
             assert_eq!(placed, None);
+        });
+    }
+
+    /// Placing a `~/...` folder against a `cloud_pairs.json` that does not
+    /// parse is an error, and neither file is written: the pairs keep their
+    /// bytes and the legacy config keeps its `~` form.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn anchor_with_an_unparseable_pairs_file_writes_nothing() {
+        with_scratch_index(async {
+            cloud_config::with_cloud_config_mut(|stored| {
+                stored.remote_folder = "~/docs".to_string();
+                stored.server_profile = "nas".to_string();
+                stored.local_folder = std::path::PathBuf::from("/sync/a");
+                Ok(())
+            })
+            .unwrap();
+            let pairs_path = cloud_pairs::get_pairs_path();
+            let bytes = b"{ not json".as_slice();
+            std::fs::write(&pairs_path, bytes).unwrap();
+            let config = CloudConfig {
+                enabled: true,
+                local_folder: std::path::PathBuf::from("/sync/a"),
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+            let err = anchor_login_relative_remote_folder(&mut provider, &config)
+                .await
+                .unwrap_err();
+            assert!(err.contains("parse"), "{err}");
+            assert_eq!(std::fs::read(&pairs_path).unwrap(), bytes);
+            assert_eq!(cloud_config::load_cloud_config().remote_folder, "~/docs");
+        });
+    }
+
+    /// A placement with no entry to place rewrites no file: a pairs file
+    /// holding only other folders keeps its exact bytes, and an absent
+    /// legacy config is not created.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn anchor_rewrites_no_file_without_an_entry_to_place() {
+        with_scratch_index(async {
+            let pairs_path = cloud_pairs::get_pairs_path();
+            std::fs::create_dir_all(pairs_path.parent().unwrap()).unwrap();
+            let other: cloud_pairs::CloudPathPair = serde_json::from_value(serde_json::json!({
+                "id": "p1",
+                "name": "other",
+                "local_path": "/sync/b",
+                "remote_path": "/srv/other",
+                "enabled": true,
+                "server_profile": "nas",
+            }))
+            .unwrap();
+            let bytes = serde_json::to_vec(&cloud_pairs::CloudPairsConfig {
+                pairs: vec![other],
+                ..Default::default()
+            })
+            .unwrap();
+            std::fs::write(&pairs_path, &bytes).unwrap();
+            let config_path = cloud_config::get_config_path();
+            let _ = std::fs::remove_file(&config_path);
+            let config = CloudConfig {
+                enabled: true,
+                local_folder: std::path::PathBuf::from("/sync/a"),
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+            let placed = anchor_login_relative_remote_folder(&mut provider, &config)
+                .await
+                .unwrap();
+            assert_eq!(placed.as_deref(), Some("/home/u/docs"));
+            assert_eq!(std::fs::read(&pairs_path).unwrap(), bytes);
+            assert!(!config_path.exists());
         });
     }
 

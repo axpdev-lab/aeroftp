@@ -79,6 +79,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     const [saving, setSaving] = useState(false);
     const [savedServers, setSavedServers] = useState<any[]>([]);
     const [legacyConfig, setLegacyConfig] = useState<any>(null);
+    // Set when the pairs file could not be read: the list shown is not the
+    // file's content, so no full save may be written over it.
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -94,8 +97,13 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         (async () => {
             try {
                 // Load pairs
-                const cfg = await invoke<CloudPairsConfig>('get_cloud_pairs_config').catch(() => ({ pairs: [], parallel_pairs: false } as CloudPairsConfig));
-                setPairs((cfg.pairs || []).map(normalizePair));
+                const cfg = await invoke<CloudPairsConfig>('get_cloud_pairs_config').catch(e => {
+                    logger.error('[CloudPairsEditor] get_cloud_pairs_config failed:', e);
+                    setLoadError(String(e));
+                    return null;
+                });
+                if (cfg) setLoadError(null);
+                setPairs((cfg?.pairs || []).map(normalizePair));
 
                 // Load saved servers for profile picker
                 const servers = await loadSavedServerProfiles().catch(() => []);
@@ -103,13 +111,14 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
 
                 // Load legacy for possible import
                 const leg = await invoke<any>('get_cloud_config').catch(() => null);
-                if (leg && leg.enabled && (cfg.pairs || []).length === 0) {
+                if (cfg && leg && leg.enabled && (cfg.pairs || []).length === 0) {
                     setLegacyConfig(leg);
                 } else {
                     setLegacyConfig(null);
                 }
             } catch (e) {
                 logger.error('[CloudPairsEditor] load failed:', e);
+                setLoadError(String(e));
                 setPairs([]);
             } finally {
                 setLoading(false);
@@ -166,6 +175,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const handleToggle = async (pairId: string) => {
+        if (loadError) return;
         const previous = pairs;
         const updated = pairs.map(p =>
             p.id === pairId ? { ...p, enabled: !p.enabled } : p
@@ -291,6 +301,12 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                     </button>
                 </div>
 
+                {loadError && (
+                    <div role="alert" className="mx-5 mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300 break-words">
+                        {t('common.settingsLoadFailed', { error: loadError })}
+                    </div>
+                )}
+
                 {/* Legacy import banner */}
                 {legacyConfig && pairs.length === 0 && (
                     <div className="mx-5 mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded text-xs flex items-center justify-between">
@@ -308,7 +324,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
                     {loading ? (
                         <div className="text-center text-gray-400 py-8 text-sm">{t('common.loading')}</div>
-                    ) : pairs.length === 0 ? (
+                    ) : pairs.length === 0 && !loadError ? (
                         <div className="text-center text-gray-400 py-8 text-sm space-y-2">
                             <div>{t('cloud.pairsEmpty') || 'No AeroCloud pairs configured yet.'}</div>
                             <div className="text-xs">{t('cloud.pairsEmptyHint') || 'Add pairs for independent syncs (each with own profile, direction, excludes).'}</div>
@@ -532,7 +548,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50"
                             onClick={handleSave}
-                            disabled={saving || loading}
+                            disabled={saving || loading || loadError !== null}
                         >
                             {saving ? (t('common.saving')) : t('common.save')}
                         </button>

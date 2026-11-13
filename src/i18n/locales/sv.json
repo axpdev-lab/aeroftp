@@ -64,6 +64,7 @@
             "name": "Namn",
             "size": "Storlek",
             "retry": "Försök igen",
+            "settingsLoadFailed": "De här inställningarna kunde inte läsas, så inget sparas över dem: {error}",
             "optional": "valfritt",
             "check": "Check",
             "selectAll": "Markera alla",

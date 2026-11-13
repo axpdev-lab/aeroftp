@@ -163,7 +163,7 @@ pub struct CloudPairsConfig {
 }
 
 /// Path to cloud_pairs.json (sibling to cloud_config.json)
-fn get_pairs_path() -> PathBuf {
+pub(crate) fn get_pairs_path() -> PathBuf {
     crate::portable::aeroftp_data_root()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join("cloud_pairs.json")
@@ -181,7 +181,10 @@ fn load_cloud_pairs_config_unlocked() -> CloudPairsConfig {
             Ok(content) => match serde_json::from_str(&content) {
                 Ok(cfg) => return cfg,
                 Err(e) => {
-                    tracing::warn!("Failed to parse cloud pairs: {}", e);
+                    tracing::warn!(
+                        "Failed to parse cloud pairs: {}",
+                        crate::util::describe_json_error(&e)
+                    );
                 }
             },
             Err(e) => {
@@ -211,8 +214,13 @@ fn load_cloud_pairs_config_strict_at(path: &Path) -> Result<CloudPairsConfig, St
             ));
         }
     };
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse cloud pairs '{}': {}", path.display(), e))
+    serde_json::from_str(&content).map_err(|e| {
+        format!(
+            "Failed to parse cloud pairs '{}': {}",
+            path.display(),
+            crate::util::describe_json_error(&e)
+        )
+    })
 }
 
 /// Strict load at the real pairs path: callers that read-then-save outside
@@ -351,6 +359,22 @@ mod tests {
         let err = with_cloud_pairs_mut_at(&path, |_| Ok(())).unwrap_err();
         assert!(err.contains("parse"), "{err}");
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// A parse error names the kind and position, never the value: a
+    /// credential in a mistyped field must not reach the log or the webview.
+    #[test]
+    fn a_parse_error_does_not_quote_the_pairs_values() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_pairs.json");
+        std::fs::write(
+            &path,
+            r#"{"pairs": [], "parallel_pairs": "SENTINEL-SECRET"}"#,
+        )
+        .unwrap();
+        let err = load_cloud_pairs_config_strict_at(&path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert!(!err.contains("SENTINEL-SECRET"), "{err}");
     }
 
     /// A full-file save must refuse to overwrite pairs that exist but do

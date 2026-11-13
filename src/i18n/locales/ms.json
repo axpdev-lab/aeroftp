@@ -64,6 +64,7 @@
             "name": "Nama",
             "size": "Saiz",
             "retry": "Cuba lagi",
+            "settingsLoadFailed": "Tetapan ini tidak dapat dibaca, jadi tiada apa-apa akan disimpan menggantikannya: {error}",
             "optional": "pilihan",
             "check": "Check",
             "selectAll": "Pilih Semua",

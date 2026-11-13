@@ -1675,6 +1675,7 @@
             "refresh": "Refresh",
             "rename": "Rename",
             "retry": "Retry",
+            "settingsLoadFailed": "These settings could not be read, so nothing will be saved over them: {error}",
             "save": "Save",
             "search": "Search",
             "select": "Select",

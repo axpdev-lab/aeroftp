@@ -64,6 +64,7 @@
             "name": "Naziv",
             "size": "Veličina",
             "retry": "Pokušaj ponovo",
+            "settingsLoadFailed": "Ove postavke nije moguće pročitati, pa se preko njih neće ništa spremiti: {error}",
             "optional": "neobavezno",
             "check": "Check",
             "selectAll": "Odaberi sve",

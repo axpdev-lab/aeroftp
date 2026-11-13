@@ -64,6 +64,7 @@
             "name": "Nume",
             "size": "Dimensiune",
             "retry": "Reîncercare",
+            "settingsLoadFailed": "Aceste setări nu au putut fi citite, așa că nu se va salva nimic peste ele: {error}",
             "optional": "opțional",
             "check": "Check",
             "selectAll": "Selectați tot",

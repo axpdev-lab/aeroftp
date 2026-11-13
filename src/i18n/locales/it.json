@@ -66,6 +66,7 @@
             "name": "Nome",
             "size": "Dimensione",
             "retry": "Riprova",
+            "settingsLoadFailed": "Impossibile leggere queste impostazioni, quindi non verrà salvato nulla al loro posto: {error}",
             "check": "Verifica",
             "selectAll": "Seleziona Tutto",
             "required": "obbligatorio",

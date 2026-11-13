@@ -64,6 +64,7 @@
             "name": "Nosaukums",
             "size": "Izmērs",
             "retry": "Mēģināt vēlreiz",
+            "settingsLoadFailed": "Šos iestatījumus nevarēja nolasīt, tāpēc tiem pāri nekas netiks saglabāts: {error}",
             "optional": "neobligāts",
             "check": "Check",
             "selectAll": "Atlasīt visu",

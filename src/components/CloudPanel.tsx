@@ -354,6 +354,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const [config, setConfig] = useState<CloudConfig | null>(null);
     const [status, setStatus] = useState<CloudSyncStatus>({ type: 'not_configured' });
     const [isLoading, setIsLoading] = useState(true);
+    // An unreadable config file is not "not configured": showing the setup
+    // wizard, or keeping an older config editable, would let a save replace it.
+    const [configLoadError, setConfigLoadError] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
     const [showVersionBrowser, setShowVersionBrowser] = useState(false);
     const [showCloudPairs, setShowCloudPairs] = useState(false);
@@ -421,7 +424,16 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const loadConfig = async () => {
         setIsLoading(true);
         try {
-            const cfg = await invoke<CloudConfig>('get_cloud_config');
+            let cfg: CloudConfig;
+            try {
+                cfg = await invoke<CloudConfig>('get_cloud_config');
+            } catch (error) {
+                console.error('Failed to load cloud config:', error);
+                setConfig(null);
+                setConfigLoadError(String(error));
+                return;
+            }
+            setConfigLoadError(null);
             setConfig(cfg);
             // Pair-specific settings own Update whenever pairs exist. Failure
             // to read them must not expose an ineffective legacy checkbox.
@@ -529,6 +541,21 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     <div className="flex items-center justify-center gap-3">
                         <Loader2 className="animate-spin" size={32} />
                         <p>{t('common.loading')} {t('cloud.title')}...</p>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (configLoadError) {
+        return (
+            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.title')}>
+                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl p-6 max-w-xl w-full mx-4 flex flex-col items-center text-center" onClick={e => e.stopPropagation()}>
+                    <AlertCircle className="text-red-500 mb-4" size={28} />
+                    <p role="alert" className="text-sm text-gray-600 dark:text-gray-300 max-w-md break-words">{t('common.settingsLoadFailed', { error: configLoadError })}</p>
+                    <div className="flex gap-3 mt-6">
+                        <button onClick={onClose} className="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-sm">{t('common.close')}</button>
+                        <button onClick={() => void loadConfig()} className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm">{t('common.retry')}</button>
                     </div>
                 </div>
             </div>

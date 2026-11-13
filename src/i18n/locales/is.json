@@ -64,6 +64,7 @@
             "name": "Nafn",
             "size": "Stærð",
             "retry": "Reyna aftur",
+            "settingsLoadFailed": "Ekki tókst að lesa þessar stillingar, svo ekkert verður vistað yfir þær: {error}",
             "optional": "valfrjálst",
             "check": "Check",
             "selectAll": "Velja allt",

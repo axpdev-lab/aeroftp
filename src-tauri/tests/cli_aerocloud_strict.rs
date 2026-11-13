@@ -16,7 +16,14 @@ fn cli(root: &Path) -> Command {
 }
 
 fn data_dir(root: &Path) -> PathBuf {
-    root.join("cli").join("data").join("aeroftp-dev")
+    // The CLI picks its data leaf by build profile (`aeroftp-dev` in debug).
+    root.join("cli")
+        .join("data")
+        .join(if cfg!(debug_assertions) {
+            "aeroftp-dev"
+        } else {
+            "aeroftp"
+        })
 }
 
 fn run(root: &Path, args: &[&str]) -> Output {

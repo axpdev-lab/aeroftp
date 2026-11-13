@@ -64,6 +64,7 @@
             "name": "Naam",
             "size": "Grootte",
             "retry": "Opnieuw",
+            "settingsLoadFailed": "Deze instellingen konden niet worden gelezen, dus er wordt niets overheen opgeslagen: {error}",
             "optional": "optioneel",
             "check": "Check",
             "selectAll": "Alles Selecteren",

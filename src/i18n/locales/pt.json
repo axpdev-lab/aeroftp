@@ -64,6 +64,7 @@
             "name": "Nome",
             "size": "Tamanho",
             "retry": "Tentar novamente",
+            "settingsLoadFailed": "Não foi possível ler estas definições, por isso nada será guardado por cima delas: {error}",
             "optional": "opcional",
             "check": "Verificar",
             "selectAll": "Selecionar Todos",

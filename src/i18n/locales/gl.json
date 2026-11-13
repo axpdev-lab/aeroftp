@@ -64,6 +64,7 @@
             "name": "Nome",
             "size": "Tamaño",
             "retry": "Reintentar",
+            "settingsLoadFailed": "Non se puido ler esta configuración, así que non se gardará nada por riba: {error}",
             "optional": "opcional",
             "check": "Check",
             "selectAll": "Seleccionar todo",

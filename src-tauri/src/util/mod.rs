@@ -11,6 +11,7 @@
 
 pub mod abort_on_drop;
 pub mod endpoint;
+pub mod json_error;
 pub mod profile_name;
 pub mod provider_guard;
 pub mod scratch;
@@ -21,5 +22,6 @@ pub mod temp_name;
 
 pub use abort_on_drop::AbortOnDrop;
 pub use endpoint::endpoint_stays_on_this_machine;
+pub use json_error::describe_json_error;
 pub use provider_guard::ProviderGuard;
 pub use shutdown::{shutdown_signal, ShutdownSignal};

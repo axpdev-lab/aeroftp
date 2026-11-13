@@ -64,6 +64,7 @@
             "name": "Nazwa",
             "size": "Rozmiar",
             "retry": "Ponów",
+            "settingsLoadFailed": "Nie udało się odczytać tych ustawień, więc nic nie zostanie na nich zapisane: {error}",
             "optional": "opcjonalne",
             "check": "Check",
             "selectAll": "Zaznacz wszystko",

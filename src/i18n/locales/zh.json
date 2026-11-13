@@ -64,6 +64,7 @@
             "name": "名称",
             "size": "大小",
             "retry": "重试",
+            "settingsLoadFailed": "无法读取这些设置，因此不会覆盖保存: {error}",
             "optional": "可选",
             "check": "检查",
             "selectAll": "全选",

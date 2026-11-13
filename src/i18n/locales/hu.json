@@ -64,6 +64,7 @@
             "name": "Név",
             "size": "Méret",
             "retry": "Újra",
+            "settingsLoadFailed": "Ezeket a beállításokat nem sikerült beolvasni, ezért semmi sem lesz föléjük mentve: {error}",
             "optional": "nem kötelező",
             "check": "Check",
             "selectAll": "Összes kijelölése",

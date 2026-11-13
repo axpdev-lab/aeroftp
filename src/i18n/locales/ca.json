@@ -64,6 +64,7 @@
             "name": "Nom",
             "size": "Mida",
             "retry": "Reintentar",
+            "settingsLoadFailed": "No s'ha pogut llegir aquesta configuració, així que no es desarà res a sobre: {error}",
             "optional": "opcional",
             "check": "Check",
             "selectAll": "Seleccionar Tot",

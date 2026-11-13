@@ -158,10 +158,6 @@ pub(crate) fn locate_cli() -> Result<PathBuf, String> {
     Err(format!("Cannot locate {} binary on disk or PATH", exe_name))
 }
 
-fn detect_initial_storage_mode() -> StorageMode {
-    detect_storage_mode_at(&sidecar_path())
-}
-
 fn detect_storage_mode_at(sidecar: &Path) -> StorageMode {
     if let Ok(content) = std::fs::read_to_string(sidecar) {
         if let Ok(reg) = serde_json::from_str::<MountRegistry>(&content) {
@@ -172,28 +168,46 @@ fn detect_storage_mode_at(sidecar: &Path) -> StorageMode {
 }
 
 /// Load the mount registry, transparently handling both storage modes.
+///
+/// Readers take the write lock too: a vault-mode save publishes the new
+/// registry before the sidecar stub and rolls it back if the stub write
+/// fails, so an unlocked read in that window (`start_mount`, the list, the
+/// autostart install) could act on a value that never stays saved. The
+/// mutators never call this, they use [`load_registry_strict_at`] under the
+/// lock, so the non-reentrant mutex cannot deadlock here.
 pub fn load_registry() -> MountRegistry {
-    let mode = detect_initial_storage_mode();
-    match mode {
-        StorageMode::Sidecar => load_from_sidecar(),
-        StorageMode::Vault => load_from_vault().unwrap_or_else(|e| {
+    let store = CredentialStore::from_cache();
+    load_registry_at(&sidecar_path(), store.as_ref())
+}
+
+/// [`load_registry`] on an explicit sidecar path and store, so tests can
+/// pin the read lock on the production reader.
+fn load_registry_at(sidecar: &Path, store: Option<&CredentialStore>) -> MountRegistry {
+    let _guard = MOUNT_REGISTRY_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    match detect_storage_mode_at(sidecar) {
+        StorageMode::Sidecar => load_from_sidecar_at(sidecar),
+        StorageMode::Vault => load_from_vault_with(store).unwrap_or_else(|e| {
             tracing::warn!(
                 "Mount registry vault load failed ({}), falling back to sidecar",
                 e
             );
-            load_from_sidecar()
+            load_from_sidecar_at(sidecar)
         }),
     }
 }
 
-fn load_from_sidecar() -> MountRegistry {
-    let path = sidecar_path();
+fn load_from_sidecar_at(path: &Path) -> MountRegistry {
     if !path.exists() {
         return MountRegistry::default();
     }
-    match std::fs::read_to_string(&path) {
+    match std::fs::read_to_string(path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
-            tracing::warn!("Mount registry parse failed: {}", e);
+            tracing::warn!(
+                "Mount registry parse failed: {}",
+                crate::util::describe_json_error(&e)
+            );
             MountRegistry::default()
         }),
         Err(e) => {
@@ -222,8 +236,13 @@ fn load_from_sidecar_strict_at(path: &Path) -> Result<MountRegistry, String> {
             ));
         }
     };
-    serde_json::from_str(&content)
-        .map_err(|e| format!("Mount registry parse failed '{}': {}", path.display(), e))
+    serde_json::from_str(&content).map_err(|e| {
+        format!(
+            "Mount registry parse failed '{}': {}",
+            path.display(),
+            crate::util::describe_json_error(&e)
+        )
+    })
 }
 
 /// [`load_registry`] for the mutating paths (`upsert_config`,
@@ -261,9 +280,12 @@ fn registry_from_vault_store(store: &CredentialStore) -> Result<MountRegistry, S
 /// the NotFound-vs-error rule is testable without a vault.
 fn vault_registry_from_get(get: Result<String, CredentialError>) -> Result<MountRegistry, String> {
     match get {
-        Ok(json) => {
-            serde_json::from_str(&json).map_err(|e| format!("Mount registry vault parse: {}", e))
-        }
+        Ok(json) => serde_json::from_str(&json).map_err(|e| {
+            format!(
+                "Mount registry vault parse: {}",
+                crate::util::describe_json_error(&e)
+            )
+        }),
         Err(CredentialError::NotFound(_)) => Ok(MountRegistry {
             storage_mode: StorageMode::Vault,
             mounts: Vec::new(),
@@ -272,12 +294,15 @@ fn vault_registry_from_get(get: Result<String, CredentialError>) -> Result<Mount
     }
 }
 
-fn load_from_vault() -> Result<MountRegistry, String> {
-    let store = CredentialStore::from_cache().ok_or("Vault is locked")?;
+fn load_from_vault_with(store: Option<&CredentialStore>) -> Result<MountRegistry, String> {
+    let store = store.ok_or("Vault is locked")?;
     match store.get(VAULT_REGISTRY_KEY) {
-        Ok(json) => {
-            serde_json::from_str(&json).map_err(|e| format!("Mount registry vault parse: {}", e))
-        }
+        Ok(json) => serde_json::from_str(&json).map_err(|e| {
+            format!(
+                "Mount registry vault parse: {}",
+                crate::util::describe_json_error(&e)
+            )
+        }),
         Err(_) => Ok(MountRegistry {
             storage_mode: StorageMode::Vault,
             mounts: Vec::new(),
@@ -1148,6 +1173,27 @@ mod tests {
         assert!(vault_registry_from_get(Ok("{ not json".to_string())).is_err());
     }
 
+    /// A parse error names the kind and position, never the value, on every
+    /// registry read: sidecar, strict vault and the reader's vault path.
+    #[test]
+    fn a_registry_parse_error_does_not_quote_the_values() {
+        let bad = r#"{"storage_mode": "sidecar", "mounts": "SENTINEL-SECRET"}"#;
+        let data = tempfile::tempdir().unwrap();
+        let sidecar = data.path().join("mounts.json");
+        std::fs::write(&sidecar, bad).unwrap();
+        let vault_dir = tempfile::tempdir().unwrap();
+        let store = test_vault(vault_dir.path(), 11);
+        store.store(VAULT_REGISTRY_KEY, bad).unwrap();
+        for err in [
+            load_from_sidecar_strict_at(&sidecar).unwrap_err(),
+            vault_registry_from_get(Ok(bad.to_string())).unwrap_err(),
+            load_from_vault_with(Some(&store)).unwrap_err(),
+        ] {
+            assert!(err.contains("parse"), "{err}");
+            assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+        }
+    }
+
     fn test_vault(dir: &Path, key: u8) -> CredentialStore {
         let path = dir.join("vault.db");
         CredentialStore::write_test_vault(&path, &[key; 32]);
@@ -1415,6 +1461,47 @@ mod tests {
         let after = registry_from_vault_store(&store).unwrap();
         assert_eq!(after.mounts.len(), 2, "{:?}", after.mounts);
         assert!(after.mounts.iter().any(|m| m.id == "m0"));
+    }
+
+    /// A registry read waits for a mutation in progress: the production
+    /// reader runs under the write lock, so it never sees a vault value a
+    /// failed stub write is about to roll back.
+    #[test]
+    fn a_registry_read_waits_for_a_mutation_in_progress() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+        let data = tempfile::tempdir().unwrap();
+        let sidecar = data.path().join("mounts.json");
+        save_to_sidecar_at(
+            &MountRegistry {
+                storage_mode: StorageMode::Sidecar,
+                mounts: vec![test_mount("m1", data.path())],
+            },
+            &sidecar,
+        )
+        .unwrap();
+        let guard = MOUNT_REGISTRY_WRITE_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let done = Arc::new(AtomicBool::new(false));
+        let reader = {
+            let done = done.clone();
+            let sidecar = sidecar.clone();
+            std::thread::spawn(move || {
+                let registry = load_registry_at(&sidecar, None);
+                done.store(true, Ordering::SeqCst);
+                registry
+            })
+        };
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        assert!(
+            !done.load(Ordering::SeqCst),
+            "the read ran while a mutation held the lock"
+        );
+        drop(guard);
+        let registry = reader.join().unwrap();
+        assert!(done.load(Ordering::SeqCst));
+        assert_eq!(registry.mounts.len(), 1);
     }
 
     /// Concurrent upserts on the same sidecar must lose no mount: the

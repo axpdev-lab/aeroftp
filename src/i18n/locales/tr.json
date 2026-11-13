@@ -64,6 +64,7 @@
             "name": "Ad",
             "size": "Boyut",
             "retry": "Tekrar dene",
+            "settingsLoadFailed": "Bu ayarlar okunamadı, bu yüzden üzerlerine hiçbir şey kaydedilmeyecek: {error}",
             "optional": "isteğe bağlı",
             "check": "Check",
             "selectAll": "Tümünü Seç",

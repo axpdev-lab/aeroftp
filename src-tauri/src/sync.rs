@@ -5680,10 +5680,17 @@ fn load_multi_path_config_strict_at(path: &Path) -> Result<MultiPathConfig, Stri
     };
     serde_json::from_str(&content).map_err(|e| {
         format!(
-            "Failed to parse multi-path config '{}': {e}",
-            path.display()
+            "Failed to parse multi-path config '{}': {}",
+            path.display(),
+            crate::util::describe_json_error(&e)
         )
     })
+}
+
+/// Strict load at the real path, for the editor: an unreadable file is an
+/// error, so the editor never holds an empty list it could save over it.
+pub fn load_multi_path_config_strict() -> Result<MultiPathConfig, String> {
+    load_multi_path_config_strict_at(&multi_path_config_path()?)
 }
 
 fn multi_path_config_path() -> Result<PathBuf, String> {
@@ -5727,6 +5734,11 @@ fn save_multi_path_config_unlocked(config: &MultiPathConfig) -> Result<(), Strin
 }
 
 fn save_multi_path_config_unlocked_at(config: &MultiPathConfig, path: &Path) -> Result<(), String> {
+    // A full-file save (the editor's Save) must never replace a file that
+    // exists but cannot be read or parsed: the editor shows an empty list for
+    // it, and saving that list would erase the stored pairs. NotFound is the
+    // only "absent" that may be written.
+    load_multi_path_config_strict_at(path)?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -6954,6 +6966,63 @@ mod tests {
         let saved: MultiPathConfig =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(saved.parallel_pairs);
+    }
+
+    /// A parse error names the kind and position, never the value: a
+    /// credential in a mistyped field must not reach the log or the webview.
+    #[test]
+    fn a_parse_error_does_not_quote_the_multi_path_values() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        std::fs::write(
+            &path,
+            r#"{"pairs": [], "parallel_pairs": "SENTINEL-SECRET"}"#,
+        )
+        .unwrap();
+        let err = load_multi_path_config_strict_at(&path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+    }
+
+    /// The full-file save behind the editor's Save refuses to replace a
+    /// file it cannot parse: the editor shows an empty list for it, and
+    /// saving that list would erase the stored pairs. A missing file is
+    /// still created.
+    #[test]
+    fn a_full_save_refuses_to_overwrite_an_unparseable_multi_path_file() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err =
+            save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        let absent = data.path().join("absent").join("multi_path.json");
+        save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &absent).unwrap();
+        assert!(load_multi_path_config_strict_at(&absent).is_ok());
+    }
+
+    /// Same guard on a file that exists but cannot be read (write-only, so
+    /// a save that skipped the check would still succeed and replace it).
+    #[cfg(unix)]
+    #[test]
+    fn a_full_save_refuses_to_overwrite_an_unreadable_multi_path_file() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o200)).unwrap();
+        let result = save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &path);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
 
     /// A metadata error on the multi-path config (unreadable parent
