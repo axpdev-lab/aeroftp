@@ -69,6 +69,21 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(host.textContent).toContain('notes.txt');
     });
 
+    it('discards an unsaved remote_folder edit on Cancel instead of adopting it as the new baseline', async () => {
+        await mount([]);
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]')!;
+        await openSettings();
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '/other');
+            remoteFolder().dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(remoteFolder().value).toBe('/other');
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.cancel')!.click());
+        await openSettings();
+        expect(remoteFolder().value).toBe('/remote');
+    });
+
     it('does not clear a full-scan refusal on an unrelated clean watcher completion', async () => {
         await mount([]);
         const completed = async (errors: string[], complete: boolean) => {
