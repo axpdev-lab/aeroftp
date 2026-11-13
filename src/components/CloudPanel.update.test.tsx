@@ -234,13 +234,11 @@ describe('AeroCloud Update settings and cycle reporting', () => {
             return [];
         });
         const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
-        // Disable, then open Settings while the disable is still in flight:
-        // the open session must not survive the configuration it edited.
+        // Disable, then let it resolve while Settings stays closed to new
+        // sessions: the open session must not survive the configuration it edited.
         await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
         const confirmOverlay = host.querySelector('[aria-label="cloud.disableConfirm"]')!;
         await React.act(async () => [...confirmOverlay.querySelectorAll('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
-        await openSettings();
-        expect(host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]')?.value).toBe('/remote');
         await React.act(async () => resolveDisable());
         await React.act(async () => { await Promise.resolve(); });
         // Setup wizard is up; completing it installs the NEW configuration.
@@ -300,6 +298,62 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(host.textContent).toContain('blocked 20 deletes');
         await completed([], true);
         expect(host.textContent).not.toContain('blocked 20 deletes');
+    });
+
+    it('keeps the settings view mounted while the post-sync refresh is in flight', async () => {
+        let resolveRefresh!: (v: unknown) => void;
+        const refreshPromise = new Promise(res => { resolveRefresh = res; });
+        await mount([]);
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'trigger_cloud_sync') return 'done';
+            if (command === 'get_cloud_config') return refreshPromise;
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        // Sync Now starts the deferred refresh, then settings open dirty
+        // while it is still in flight.
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        await React.act(async () => { await Promise.resolve(); });
+        await openSettings();
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '/typed');
+            remoteFolder()!.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        // The timestamp refresh must not swap the settings view for the
+        // full-panel loading view, whose backdrop would close unguarded.
+        expect(remoteFolder()?.value).toBe('/typed');
+        expect(host.textContent).not.toContain('common.loading');
+        const backdrop = host.querySelector('[aria-label="cloud.dialogSettingsLabel"]')!;
+        await React.act(async () => backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+        expect(remoteFolder()?.value).toBe('/typed');
+        await React.act(async () => resolveRefresh({ enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [], last_sync: new Date().toISOString() }));
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(remoteFolder()?.value).toBe('/typed');
+    });
+
+    it('disables the Settings entry while a Pause request is in flight', async () => {
+        let resolvePause!: (v: unknown) => void;
+        const pausePromise = new Promise(res => { resolvePause = res; });
+        await mount([]);
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'pause_aerocloud') return pausePromise;
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        const settingsButton = () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!;
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.pause'))!.click());
+        expect(settingsButton().disabled).toBe(true);
+        await React.act(async () => resolvePause({ enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] }));
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(settingsButton().disabled).toBe(false);
+        await React.act(async () => settingsButton().click());
+        expect(host.querySelector('input[placeholder="/cloud/"]')).toBeTruthy();
     });
 
 });

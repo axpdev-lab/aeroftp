@@ -162,7 +162,8 @@ const CloudDashboard: React.FC<{
     onOpenFolder: () => void;
     onSettings: () => void;
     onManagePairs: () => void;
-}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings, onManagePairs }) => {
+    settingsDisabled?: boolean;
+}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings, onManagePairs, settingsDisabled }) => {
     const t = useTranslation();
     const caveatFor = useAeroCloudCaveat();
     const [countdown, setCountdown] = useState<string>('');
@@ -248,7 +249,7 @@ const CloudDashboard: React.FC<{
                         {countdown && <span className="countdown"> • {t('common.next')}: {countdown}</span>}
                     </p>
                 </div>
-                <button onClick={onSettings} className="btn-icon" title={t('common.settings')}>
+                <button onClick={onSettings} disabled={settingsDisabled} className="btn-icon disabled:opacity-50 disabled:cursor-not-allowed" title={t('common.settings')}>
                     <Settings size={20} />
                 </button>
                 <button onClick={onManagePairs} className="btn-icon" title={t('cloud.managePairs') || 'Manage pairs'} style={{ marginLeft: 4 }}>
@@ -378,6 +379,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // While a save is in flight they stay inert: restoring the baseline then
     // would show a target the backend has not stored yet (Discussion #1527).
     const [savingSettings, setSavingSettings] = React.useState(false);
+    // Pause, Resume and Disable replace the configuration when they resolve:
+    // Settings stays closed to new sessions while one is in flight, or an open
+    // draft would be dropped unasked by replaceConfig.
+    const [pendingLifecycle, setPendingLifecycle] = React.useState(0);
     const closeSettings = () => {
         if (savingSettings) return;
         setConfig(settingsBaseline);
@@ -450,7 +455,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     });
 
     const loadConfig = async (refresh = false) => {
-        setIsLoading(true);
+        // A refresh only merges last_sync: the full-panel loading view would
+        // unmount an open settings draft behind an unguarded backdrop.
+        if (!refresh) setIsLoading(true);
         try {
             const cfg = await invoke<CloudConfig>('get_cloud_config');
             if (refresh) {
@@ -476,7 +483,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         } catch (error) {
             console.error('Failed to load cloud config:', error);
         } finally {
-            setIsLoading(false);
+            if (!refresh) setIsLoading(false);
         }
     };
 
@@ -509,6 +516,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     };
 
     const handlePause = async () => {
+        setPendingLifecycle(c => c + 1);
         try {
             const updated = await invoke<CloudConfig>('pause_aerocloud');
             replaceConfig(updated);
@@ -516,10 +524,13 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             logger.debug('Sync paused');
         } catch (error) {
             console.error('Failed to pause sync:', error);
+        } finally {
+            setPendingLifecycle(c => c - 1);
         }
     };
 
     const handleResume = async () => {
+        setPendingLifecycle(c => c + 1);
         try {
             const updated = await invoke<CloudConfig>('resume_aerocloud');
             replaceConfig(updated);
@@ -527,6 +538,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             logger.debug('Sync resumed');
         } catch (error) {
             console.error('Failed to resume sync:', error);
+        } finally {
+            setPendingLifecycle(c => c - 1);
         }
     };
 
@@ -540,6 +553,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
 
     const performDisable = async () => {
         setPendingDisableConfirm(false);
+        setPendingLifecycle(c => c + 1);
         try {
             await invoke('disable_aerocloud');
             replaceConfig(null);
@@ -547,6 +561,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             logger.debug('AeroCloud disabled');
         } catch (error) {
             logger.error('Failed to disable:', error);
+        } finally {
+            setPendingLifecycle(c => c - 1);
         }
     };
 
@@ -919,6 +935,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     onOpenFolder={handleOpenFolder}
                     onSettings={openSettings}
                     onManagePairs={() => setShowCloudPairs(true)}
+                    settingsDisabled={pendingLifecycle > 0}
                 />
             </div>
             {showVersionBrowser && (
