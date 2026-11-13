@@ -301,6 +301,40 @@ it('BoxCollaboratorsDialog: the guard stays busy until every remove finishes', a
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+it('SharePermissionsDialog: the guard stays busy until every add finishes', async () => {
+    const pending = new Map<number, ReturnType<typeof deferred>>();
+    let addCalls = 0;
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_permissions') return [];
+        if (cmd === 'provider_add_permission') { const d = deferred<unknown>(); pending.set(++addCalls, d); return d.promise; }
+        return null;
+    });
+    const onClose = vi.fn();
+    await render(createElement(SharePermissionsDialog, { filePath: '/f.txt', fileName: 'f.txt', onClose }));
+    await flush();
+    const email = host.querySelector<HTMLInputElement>('input[type="email"]')!;
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(email, 'friend@example.com');
+        email.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    // Two Enter presses before the first add settles: the adds overlap.
+    for (let i = 0; i < 2; i++) {
+        await act(async () => { email.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); });
+    }
+    await flush();
+    expect(pending.size).toBe(2);
+    // The first add settles while the second is still pending.
+    await act(async () => { pending.get(1)!.resolve({}); });
+    await flush();
+    await click(closeButton()!);
+    expect(alertOpen()).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { pending.get(2)!.resolve({}); });
+    await flush();
+    await click(closeButton()!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
+
 it('SharePermissionsDialog: the guard stays busy until every remove finishes', async () => {
     const pending = new Map<string, ReturnType<typeof deferred>>();
     vi.mocked(invoke).mockImplementation(async (cmd, args) => {

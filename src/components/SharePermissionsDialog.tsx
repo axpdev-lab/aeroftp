@@ -35,14 +35,16 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('reader');
-  const [adding, setAdding] = useState(false);
+  // Adds can overlap (Enter twice before the first settles): count every
+  // pending request so the first finisher cannot drop the busy guard.
+  const [pendingAdds, setPendingAdds] = useState(0);
   const [removing, setRemoving] = useState<string | null>(null);
   // Removes on different permissions can overlap: count every pending
   // request so the first finisher cannot drop the busy guard (review).
   const [pendingRemoves, setPendingRemoves] = useState(0);
   // A share or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
   // inert in both cases and the X asks first (Discussion #1527).
-  const guarded = useGuardedClose({ guard: adding || pendingRemoves > 0 ? 'busy' : newEmail.trim() ? 'dirty' : null, onClose });
+  const guarded = useGuardedClose({ guard: pendingAdds > 0 || pendingRemoves > 0 ? 'busy' : newEmail.trim() ? 'dirty' : null, onClose });
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -69,7 +71,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
 
   const handleAdd = async () => {
     if (!newEmail.trim()) return;
-    setAdding(true);
+    setPendingAdds(c => c + 1);
     try {
       await invoke('provider_add_permission', {
         path: filePath,
@@ -82,7 +84,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
     } catch (err) {
       setError(String(err));
     } finally {
-      setAdding(false);
+      setPendingAdds(c => c - 1);
     }
   };
 
@@ -149,10 +151,10 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
           </select>
           <button
             onClick={handleAdd}
-            disabled={adding || !newEmail.trim()}
+            disabled={pendingAdds > 0 || !newEmail.trim()}
             className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-sm rounded-lg flex items-center gap-1"
           >
-            {adding ? <RefreshCw size={13} className="animate-spin" /> : <UserPlus size={13} />}
+            {pendingAdds > 0 ? <RefreshCw size={13} className="animate-spin" /> : <UserPlus size={13} />}
             {t('sharing.add') || 'Add'}
           </button>
         </div>
