@@ -49,6 +49,10 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
       role="alertdialog"
       aria-modal="true"
       onClick={(e) => { if (e.target === e.currentTarget) onKeep(); }}
+      // The confirm sits inside its host modal: a keystroke on one of its
+      // buttons (Enter confirms "keep editing") must not bubble to a host
+      // onKeyDown that would act on it (Discussion #1527 review).
+      onKeyDown={(e) => e.stopPropagation()}
     >
       <div className="w-[360px] max-w-[90vw] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl p-5 animate-scale-in">
         <div className="flex items-start gap-3">
