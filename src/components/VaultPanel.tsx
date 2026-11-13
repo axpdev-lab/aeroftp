@@ -68,12 +68,11 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
         onClose,
         backdrop: state.mode === 'home' ? 'idle' : 'never',
         // A dialog of its own open over the panel (repair, scrub, sync, a new
-        // folder, the receipt) owns ESC: it suspends the answer of this modal
-        // but keeps its place in the ESC stack, so one press closes only the
-        // sub-dialog and not the whole vault mid-repair or mid-sync.
+        // folder, the receipt) registers in the ESC stack when it opens, above
+        // the panel, so one press closes only that dialog. The stack decides,
+        // not the state flags: a flag left set while its dialog is unmounted
+        // (the new-folder bar after switching to Recent) must not mute ESC.
         escape: true,
-        escapeSuspended: !!(state.showRepairDialog || state.showScrubDialog || state.showSyncDialog || state.showNewDirDialog
-            || (state.lastReport && state.mode === 'browse')),
     });
 
     // Unified tabbed shell (owner-locked layout, 2026-06-24): the standalone intro

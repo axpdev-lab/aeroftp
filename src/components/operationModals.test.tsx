@@ -709,13 +709,30 @@ describe('VaultPanel (Discussion #1527)', () => {
 
     it('leaves ESC to a dialog of its own open over it, but keeps its stack place', async () => {
         const onClose = vi.fn();
+        const onSubClose = vi.fn();
+        // A sub-dialog registers in the stack when it opens, above the panel.
+        const SubDialog = () => { useGuardedClose({ guard: null, onClose: onSubClose, escape: true }); return null; };
         vault('browse');
         mocks.vaultState.showRepairDialog = true;
         await render(<VaultPanel onClose={onClose} />);
+        await render(<><VaultPanel onClose={onClose} /><SubDialog /></>);
         expect(isEscapeClaimed()).toBe(true);
         await escape();
+        expect(onSubClose).toHaveBeenCalledTimes(1);
         expect(onClose).not.toHaveBeenCalled();
         expect(confirmOpen()).toBe(false);
+    });
+
+    it('answers ESC when a sub-dialog flag is left set but its dialog is not mounted', async () => {
+        // The new-folder bar lives in VaultBrowse: after switching to Recent
+        // the bar is unmounted while showNewDirDialog stays true, and ESC
+        // must still reach the panel.
+        const onClose = vi.fn();
+        vault('browse');
+        mocks.vaultState.showNewDirDialog = true;
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it('closes from the backdrop on the home screen, unless an operation runs', async () => {
