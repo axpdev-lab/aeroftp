@@ -191,3 +191,47 @@ it('CloudPairsEditor stays open while a pair removal is in flight', async () => 
     await flush();
     expect(buttonByText('common.save')!.disabled).toBe(false);
 });
+
+it('CloudPairsEditor stays busy until an add and a removal running together both settle', async () => {
+    // A pending add guards like a removal, and with both in flight the first
+    // to settle does not release the editor or its Save.
+    const onClose = vi.fn();
+    const pair = {
+        id: 'p1', name: 'Pair 1', local_path: '/l', remote_path: '/r', enabled: true,
+        server_profile: '', protocol_type: 'ftp', connection_params: {},
+        sync_direction: 'bidirectional', preserve_remote_deletes: true, update_only: false,
+        compress_enabled: false, compress_level: 3, conflict_strategy: 'ask_user',
+        versioning_strategy: { type: 'trash_can', max_age_days: 30 },
+        excluded_folders: [], exclude_patterns: [], last_sync: null,
+    };
+    let resolveAdd!: (v: unknown) => void;
+    let resolveRemove!: (v: unknown) => void;
+    mocks.invoke.mockImplementation(async (command: string) => {
+        if (command === 'get_cloud_pairs_config') return { pairs: [pair], parallel_pairs: false };
+        if (command === 'get_cloud_config') throw new Error('none');
+        if (command === 'add_cloud_pair') return new Promise(res => { resolveAdd = res; });
+        if (command === 'remove_cloud_pair') return new Promise(res => { resolveRemove = res; });
+        return {};
+    });
+    await act(async () => root.render(<CloudPairsEditor isOpen onClose={onClose} />));
+    await flush();
+    await flush();
+    const backdrop = () => host.querySelector('[aria-label="cloud.pairsEditorLabel"]')!;
+    const clickBackdrop = () => act(async () => backdrop().dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    await click(buttonByText('cloud.pairsAdd')!);
+    await clickBackdrop();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(buttonByText('common.save')!.disabled).toBe(true);
+    await click(host.querySelector('button[title="common.delete"]')!);
+    await act(async () => resolveAdd({ pairs: [pair, { ...pair, id: 'p2', name: 'Pair 2' }] }));
+    await flush();
+    // The removal still runs.
+    await clickBackdrop();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(buttonByText('common.save')!.disabled).toBe(true);
+    await act(async () => resolveRemove({ pairs: [{ ...pair, id: 'p2', name: 'Pair 2' }] }));
+    await flush();
+    expect(buttonByText('common.save')!.disabled).toBe(false);
+    await clickBackdrop();
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
