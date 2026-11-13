@@ -323,6 +323,11 @@ async fn round_trip() {
                 .unwrap()
         };
         assert_eq!(partition_rows(), 1, "the legacy owner's partition mirror");
+        crate::providers::oauth2::seed_memory_token_for_test(account, &store.get(account).unwrap());
+        assert!(
+            crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the memory cache starts populated"
+        );
         crate::providers::oauth2::force_signout_enolck_for_test(true);
         let refused = manager.delete_tokens(OAuthProvider::Box, "enolck-profile");
         crate::providers::oauth2::force_signout_enolck_for_test(false);
@@ -334,12 +339,20 @@ async fn round_trip() {
         );
         assert!(store.get(account).is_ok(), "the vault entry stays");
         assert_eq!(partition_rows(), 1, "the partition row stays");
+        assert!(
+            crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the refused sign-out leaves the memory copy"
+        );
         assert!(manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
         manager
             .delete_tokens(OAuthProvider::Box, "enolck-profile")
             .unwrap();
         assert!(store.get(account).is_err(), "the retry removes it");
         assert_eq!(partition_rows(), 0, "and the partition row");
+        assert!(
+            !crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the retry removes the memory copy"
+        );
         assert!(!manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
     }
     let token_dir = crate::portable::aeroftp_data_root()
