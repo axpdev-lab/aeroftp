@@ -84,6 +84,64 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(remoteFolder().value).toBe('/remote');
     });
 
+    it('ignores Cancel and X while a settings save is in flight, then shows the persisted value', async () => {
+        await mount([]);
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        const deferredSave = () => {
+            let resolve!: (v: unknown) => void;
+            let reject!: (e: unknown) => void;
+            const promise = new Promise((res, rej) => { resolve = res; reject = rej; });
+            return { promise, resolve, reject };
+        };
+        const save = deferredSave();
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'save_cloud_config_cmd') return save.promise;
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        await openSettings();
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '/other');
+            remoteFolder()!.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('common.save'))!.click());
+        expect(mocks.invoke).toHaveBeenCalledWith('save_cloud_config_cmd', expect.objectContaining({ config: expect.objectContaining({ remote_folder: '/other' }) }));
+        // Cancel and X are inert while the save is pending.
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.cancel')!.click());
+        expect(remoteFolder()).not.toBeNull();
+        await React.act(async () => host.querySelector('button .lucide-x, button svg.lucide-x')!.closest('button')!.click());
+        expect(remoteFolder()).not.toBeNull();
+        await React.act(async () => save.resolve(null));
+        await React.act(async () => { await Promise.resolve(); });
+        expect(remoteFolder()).toBeNull();
+        expect(host.textContent).toContain('/other');
+    });
+
+    it('keeps the edit in place when the settings save rejects', async () => {
+        await mount([]);
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'save_cloud_config_cmd') throw new Error('sentinel save failure');
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        await openSettings();
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '/other');
+            remoteFolder()!.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('common.save'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(remoteFolder()?.value).toBe('/other');
+    });
+
     it('does not clear a full-scan refusal on an unrelated clean watcher completion', async () => {
         await mount([]);
         const completed = async (errors: string[], complete: boolean) => {

@@ -375,7 +375,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // Edits live in `config` until Save persists them, so Cancel and X must
     // hand the draft back to the baseline; otherwise a reopen would adopt the
     // unsaved values as its baseline and the dirty guard would never fire.
-    const closeSettings = () => { setConfig(settingsBaseline); setShowSettings(false); };
+    // While a save is in flight they stay inert: restoring the baseline then
+    // would show a target the backend has not stored yet (Discussion #1527).
+    const [savingSettings, setSavingSettings] = React.useState(false);
+    const closeSettings = () => {
+        if (savingSettings) return;
+        setConfig(settingsBaseline);
+        setShowSettings(false);
+    };
     const settingsEdited = showSettings && JSON.stringify(config) !== JSON.stringify(settingsBaseline);
     const settingsGuard = useGuardedClose({ guard: settingsEdited ? 'dirty' : null, onClose });
 
@@ -578,7 +585,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full mx-4 my-auto flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Settings className="text-cyan-500" /> {t('cloud.title')} {t('common.settings')}</h2>
-                        <button onClick={closeSettings} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={20} /></button>
+                        <button onClick={closeSettings} disabled={savingSettings} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-50"><X size={20} /></button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto">
@@ -818,7 +825,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <button
                             onClick={async () => {
-                                if (config) {
+                                if (config && !savingSettings) {
+                                    setSavingSettings(true);
                                     try {
                                         await invoke('save_cloud_config_cmd', { config });
                                         // Sync interval to SyncSchedule so the background worker uses the correct value
@@ -834,16 +842,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                         logger.debug('Settings saved!');
                                     } catch (e) {
                                         console.error('Failed to save settings:', e);
+                                    } finally {
+                                        setSavingSettings(false);
                                     }
                                 }
                             }}
-                            className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium"
+                            disabled={savingSettings}
+                            className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium disabled:opacity-60"
                         >
                             {t('common.save')} {t('common.settings')}
                         </button>
                         <button
                             onClick={closeSettings}
-                            className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium"
+                            disabled={savingSettings}
+                            className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium disabled:opacity-50"
                         >
                             {t('common.cancel')}
                         </button>
