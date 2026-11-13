@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import english from '../i18n/locales/en.json';
 import { UsersManagePanel } from './UsersManagePanel';
-import { addUser, listUsers } from '../utils/userPartitions';
+import { addUser, copyUser, listUsers } from '../utils/userPartitions';
 
 const { adminUser } = vi.hoisted(() => ({
     adminUser: {
@@ -124,4 +124,36 @@ it('stays busy while a second account creation is still pending', async () => {
     expect(onClose).not.toHaveBeenCalled();
     await act(async () => { resolvers[1](); });
     await flush();
+});
+
+it('stays busy while a second account operation is still pending', async () => {
+    const userB = { ...adminUser, id: 2, name: 'bob', isAdmin: false, isDefault: false, sortOrder: 1 };
+    vi.mocked(listUsers).mockResolvedValue([adminUser, userB]);
+    const resolvers: Array<() => void> = [];
+    vi.mocked(copyUser).mockImplementation(() => new Promise<typeof adminUser>(res => { resolvers.push(() => res(adminUser)); }));
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const copies = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(b => b.title?.includes('Duplicate user'));
+    expect(copies.length).toBe(2);
+    const clickX = async () => {
+        const x = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.innerHTML.includes('lucide-x'))!;
+        await act(async () => { x.click(); });
+    };
+    await act(async () => { copies[0].click(); });
+    await act(async () => { copies[1].click(); });
+    await flush();
+    expect(resolvers.length).toBe(2);
+    // Copy A settles while copy B is still in flight.
+    await act(async () => { resolvers[0](); });
+    await flush();
+    await clickX();
+    const alert = host.querySelector('[role=alertdialog]');
+    expect(alert).not.toBeNull();
+    expect(alert!.textContent).toContain('Operation in progress');
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { resolvers[1](); });
+    await flush();
+    await clickX();
+    expect(onClose).toHaveBeenCalledTimes(1);
 });

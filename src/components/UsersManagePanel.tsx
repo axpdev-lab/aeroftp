@@ -133,6 +133,10 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [avatarDraftColor, setAvatarDraftColor] = React.useState(COLOR_CHOICES[0]);
     const [avatarSaving, setAvatarSaving] = React.useState(false);
     const [pendingAdds, setPendingAdds] = React.useState(0);
+    // Per-account operations can overlap on different rows: count them all so
+    // the first finisher cannot drop the busy guard (busyUserId only marks the
+    // row that is busy right now).
+    const [pendingUserOps, setPendingUserOps] = React.useState(0);
     const [showIconPicker, setShowIconPicker] = React.useState(false);
     // N3 (#270): the default account that skips the welcome screen on next
     // boot. Mirrors the AccountLockScreen checkbox and shares the same
@@ -202,13 +206,16 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         }
     }, [t]);
 
+    const beginUserOp = (id: number) => { setBusyUserId(id); setPendingUserOps(c => c + 1); };
+    const endUserOp = () => { setBusyUserId(null); setPendingUserOps(c => c - 1); };
+
     const toggleDefaultAccount = React.useCallback(
         async (user: UserMetadata) => {
             // Only password-free accounts can skip the welcome screen (a protected
             // account always shows its prompt), matching the AccountLockScreen rule.
             if (user.hasPassphrase) return;
             const makeDefault = defaultAccountId !== user.id;
-            setBusyUserId(user.id);
+            beginUserOp(user.id);
             setError('');
             try {
                 // Single-winner DB flag, shared with the CLI `users -i` Fav verb.
@@ -217,7 +224,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             } catch (err) {
                 setError(mapUserPartitionError(err, t));
             } finally {
-                setBusyUserId(null);
+                endUserOp();
             }
         },
         [defaultAccountId, refresh, t],
@@ -233,7 +240,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const formTyped = newName.trim() !== '' || newPassphrase !== '' || newConfirmPassphrase !== ''
         || editingUserId !== null || passphraseForm !== null;
     const guarded = useGuardedClose({
-        guard: busyUserId !== null || avatarSaving || pendingAdds > 0 ? 'busy' : formTyped ? 'dirty' : null,
+        guard: pendingUserOps > 0 || avatarSaving || pendingAdds > 0 ? 'busy' : formTyped ? 'dirty' : null,
         onClose,
     });
 
@@ -292,7 +299,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setEditingUserId(null);
             return;
         }
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await renameUser(user.id, name);
@@ -302,7 +309,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp();
         }
     };
 
@@ -327,7 +334,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     };
 
     const performDelete = async (user: UserMetadata) => {
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await deleteUser(user.id);
@@ -336,7 +343,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp();
         }
     };
 
@@ -349,7 +356,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(t('manageUsers.copyLockedHint'));
             return;
         }
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             // No explicit name: the backend auto-names it "<source> (copy)",
@@ -360,7 +367,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp();
         }
     };
 
@@ -401,7 +408,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(t('password.mismatch'));
             return;
         }
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await changeUserPassphrase(
@@ -416,12 +423,12 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp();
         }
     };
 
     const handleSetAdmin = async (user: UserMetadata, isAdmin: boolean) => {
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await setUserAdmin(user.id, isAdmin);
@@ -430,7 +437,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp();
         }
     };
 
@@ -451,7 +458,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const handleAvatarSave = async () => {
         if (!avatarEditingUser) return;
         setAvatarSaving(true);
-        setBusyUserId(avatarEditingUser.id);
+        beginUserOp(avatarEditingUser.id);
         setError('');
         try {
             await setUserAvatar(avatarEditingUser.id, avatarDraftEmoji || null, avatarDraftColor || null);
@@ -463,7 +470,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(mapUserPartitionError(err, t));
         } finally {
             setAvatarSaving(false);
-            setBusyUserId(null);
+            endUserOp();
         }
     };
 
