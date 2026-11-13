@@ -147,6 +147,7 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, prov
     const guarded = useGuardedClose({
         guard: JSON.stringify(formData) !== JSON.stringify(initialForm) ? 'dirty' : null,
         onClose,
+        escape: true,
     });
 
     const handleNameChange = (name: string) => {
@@ -265,6 +266,14 @@ const ModelEditModal: React.FC<ModelEditModalProps> = ({ model, providerId, prov
                     </button>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };
