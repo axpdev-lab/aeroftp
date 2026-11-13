@@ -51,6 +51,7 @@ const flush = async () => {
 
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
     vi.mocked(listUsers).mockResolvedValue([adminUser]);
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
 });
