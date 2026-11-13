@@ -93,13 +93,11 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
           shared-key: delta-sync-windows
-          # Mirror the prefix bumped in build.yml / cli-smoke.yml on
-          # 2026-05-06 to invalidate any cached whisper-rs-sys
-          # CMakeCache.txt referencing Visual Studio 17 2022 after the
-          # windows-latest image rolled to VS 18 2026. windows-2022 is
-          # also pinned above as belt-and-suspenders, but if the pin is
-          # ever lifted we still want the cache invalidation in place.
-          prefix-key: 'v2-whisper-vs18'
+          # Mirror the prefix bumped in build.yml / cli-smoke.yml to invalidate
+          # legacy oversized cache entries containing transient whisper artifacts
+          # (v2-whisper-vs18 -> v3-whisper-purge). Forces fresh save on main
+          # and prevents rust-cache exact-hit save bypass.
+          prefix-key: 'v3-whisper-purge'
           # PRs restore; only main saves (Actions cache quota is 10 GB).
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
@@ -270,3 +268,24 @@ jobs:
         # if this step dies it has to die naming itself.
         timeout-minutes: 45
         run: cargo test --locked --lib --no-default-features --features aerorsync,proton-native --no-fail-fast
+
+      - name: Purge transient whisper-rs-sys build artifacts before cache save
+        if: always()
+        shell: pwsh
+        run: |
+          foreach ($profile in @('debug', 'release')) {
+            $base = "src-tauri/target/$profile/build"
+            if (Test-Path $base) {
+              $purged = 0
+              Get-ChildItem $base -Directory -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name -like 'whisper-rs-sys-*' } |
+                ForEach-Object {
+                  Remove-Item -Recurse -Force $_.FullName -ErrorAction Stop
+                  if (Test-Path $_.FullName) {
+                    throw "Failed to purge transient whisper build dir: $($_.FullName)"
+                  }
+                  $purged++
+                }
+              Write-Host "[$profile] Purged $purged transient whisper-rs-sys build dir(s) before cache save"
+            }
+          }
