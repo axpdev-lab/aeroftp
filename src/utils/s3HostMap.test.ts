@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import hostMap from '../shared/s3-host-map.json';
 import manifest from '../shared/connection-manifest.json';
 import { deriveProviderId } from './serverListFilter';
+import { s3ServerLabel } from '../providers/s3HostMap';
+import { resolveProfileS3Location } from '../providers/registry';
 
 /**
  * #1506 Requested 173: an S3 endpoint host is recognized on a domain boundary
@@ -151,6 +153,46 @@ describe('S3 host map', () => {
                 .split(/[:/]/)[0]
                 .replace(/\{[^}]+\}/g, 'x');
             expect(deriveProviderId({ name: 'x', host, username: '', protocol: 's3' }), preset.id).toBe(preset.id);
+        }
+    });
+});
+
+describe('S3 host map consumers', () => {
+    it('treats a host as an explicit endpoint unless the table says AWS', () => {
+        // The loader takes the host as the endpoint when it is not AWS, on the
+        // table's domain boundary as in Rust (map_s3_provider_from_endpoint).
+        const lookalike = 's3.amazonaws.com.example';
+        expect(resolveProfileS3Location('custom-s3', {}, lookalike).endpoint).toBe(lookalike);
+        const wasabiBucket = 'amazonaws.com-mirror.s3.eu-central-2.wasabisys.com';
+        expect(resolveProfileS3Location('wasabi', {}, wasabiBucket).endpoint).toBe(wasabiBucket);
+        expect(resolveProfileS3Location('amazon-s3', { region: 'eu-west-1' }, 's3.eu-west-1.amazonaws.com').endpoint)
+            .not.toBe('s3.eu-west-1.amazonaws.com');
+        expect(resolveProfileS3Location('amazon-s3', { region: 'cn-north-1' }, 's3.cn-north-1.amazonaws.com.cn').endpoint)
+            .not.toBe('s3.cn-north-1.amazonaws.com.cn');
+    });
+
+    it('labels an S3 server by the vendor of its host, not by a substring', () => {
+        expect(s3ServerLabel('https://abcdef123456.r2.cloudflarestorage.com')).toBe('R2: abcdef12...');
+        expect(s3ServerLabel('photos.s3.amazonaws.com')).toBe('photos');
+        expect(s3ServerLabel('https://photos.s3.us-east-1.amazonaws.com')).toBe('photos (S3 us-east-1)');
+        expect(s3ServerLabel('photos.s3.cn-north-1.amazonaws.com.cn')).toBe('photos (S3 cn-north-1)');
+        expect(s3ServerLabel('s3.eu-west-1.amazonaws.com')).toBe('s3.eu-west-1.amazonaws.com');
+        // Lookalikes are shown as themselves.
+        expect(s3ServerLabel('x.r2.cloudflarestorage.com.example')).toBe('S3: x.r2.cloudflarestorage.com....');
+        expect(s3ServerLabel('bucket.s3.amazonaws.com.example')).toBe('S3: bucket.s3.amazonaws.com.exa...');
+        expect(s3ServerLabel('minio.lab:9000')).toBe('S3: minio.lab');
+    });
+
+    it('keeps credentials and query values of an endpoint out of the label', () => {
+        for (const server of [
+            'https://alice:hunter2@photos.s3.us-east-1.amazonaws.com/?token=sekret',
+            'https://alice:hunter2@abcdef123456.r2.cloudflarestorage.com/?X-Amz-Signature=sekret',
+            'https://alice:hunter2@minio.lab:9000/bucket?token=sekret',
+        ]) {
+            const label = s3ServerLabel(server);
+            for (const secret of ['alice', 'hunter2', 'sekret', 'token', 'Signature']) {
+                expect(label, server).not.toContain(secret);
+            }
         }
     });
 });

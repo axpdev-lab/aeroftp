@@ -92,17 +92,17 @@ fn map_alias(alias: &McAlias) -> Result<MappedProfile, String> {
         return Err("no accessKey".to_string());
     }
 
-    let host_lower = crate::bridge_shared::endpoint_host(&alias.url).to_lowercase();
-    if host_lower.contains("storage.googleapis.com")
+    let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(&alias.url).to_string();
+    if provider_id == "google-cloud-storage"
         && (alias.access_key.trim().is_empty() || alias.secret_key.trim().is_empty())
     {
         // GCS only speaks S3 with explicit HMAC keys; without them the alias
-        // cannot authenticate against an S3 endpoint.
+        // cannot authenticate against an S3 endpoint. The host is read on the
+        // shared table's domain boundary, so a lookalike is not GCS.
         return Err("GCS without HMAC".to_string());
     }
 
     let (host, port) = host_port_from_url(&alias.url);
-    let provider_id = crate::bridge_shared::map_s3_provider_from_endpoint(&alias.url).to_string();
 
     let mut options = serde_json::Map::new();
     if !alias.api.trim().is_empty() {
@@ -499,6 +499,39 @@ mod tests {
         assert_eq!(result.servers.len(), 0);
         assert_eq!(result.skipped.len(), 1);
         assert_eq!(result.skipped[0].reason, "GCS without HMAC");
+    }
+
+    #[test]
+    fn test_gcs_is_read_on_its_domain_boundary() {
+        // A bucket host under GCS is still GCS; a lookalike host is not, and
+        // imports as the S3 server it is.
+        let body = r#"{
+            "version": "10",
+            "aliases": {
+                "gcsbucket": {
+                    "url": "https://photos.storage.googleapis.com",
+                    "accessKey": "GOOG1",
+                    "secretKey": "",
+                    "api": "S3v4",
+                    "path": "auto"
+                },
+                "lookalike": {
+                    "url": "https://storage.googleapis.com.example",
+                    "accessKey": "AKIA1",
+                    "secretKey": "",
+                    "api": "S3v4",
+                    "path": "auto"
+                }
+            }
+        }"#;
+        let p = write_tmp("gcs-boundary", body);
+        let result = import_mc(&p).expect("import should succeed");
+        std::fs::remove_file(&p).ok();
+
+        assert_eq!(result.skipped.len(), 1);
+        assert_eq!(result.skipped[0].reason, "GCS without HMAC");
+        assert_eq!(result.servers.len(), 1);
+        assert_eq!(result.servers[0].provider_id.as_deref(), Some("custom-s3"));
     }
 
     #[test]
