@@ -33,7 +33,8 @@ interface IngestReport {
 export default function CryptomatorCreateDialog({ outputDir, files, onClose, onCreated }: CryptomatorCreateDialogProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
-  const [vaultName, setVaultName] = useState(() => t('cryptomator.defaultVaultName'));
+  const [initialVaultName] = useState(() => t('cryptomator.defaultVaultName'));
+  const [vaultName, setVaultName] = useState(initialVaultName);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [creating, setCreating] = useState(false);
@@ -44,7 +45,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
   // would have to be typed again: the backdrop is inert then, and the X and
   // ESC ask first (Discussion #1527).
   const guarded = useGuardedClose({
-    guard: creating ? 'busy' : !skipped && (password || confirmPassword) ? 'dirty' : null,
+    guard: creating ? 'busy' : !skipped && (password || confirmPassword || vaultName !== initialVaultName) ? 'dirty' : null,
     onClose,
   });
 

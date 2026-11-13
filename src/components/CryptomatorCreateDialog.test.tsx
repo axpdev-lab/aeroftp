@@ -93,3 +93,19 @@ it('routes the footer Cancel through the dirty guard', async () => {
     await act(async () => { discard.click(); });
     expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it('keeps a vault name edited on its own from the backdrop, and Cancel asks first', async () => {
+    // Only the passwords made the form dirty: a renamed vault was dropped by
+    // a stray click.
+    const onClose = vi.fn();
+    await render(createElement(CryptomatorCreateDialog, { outputDir: '/vaults', onClose }));
+    const name = host.querySelector<HTMLInputElement>('input[type=text]')!;
+    await typeInto(name, 'Sentinel Vault');
+    const backdrop = host.querySelector('.fixed.inset-0')!;
+    await act(async () => { backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(onClose).not.toHaveBeenCalled();
+    const cancel = [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Cancel')!;
+    await act(async () => { cancel.click(); });
+    expect(host.querySelector('[role=alertdialog]')).not.toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+});
