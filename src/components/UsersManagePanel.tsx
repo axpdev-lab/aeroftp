@@ -252,6 +252,21 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         return () => window.removeEventListener('keydown', handleKey);
     }, [isOpen, guarded.requestClose]);
 
+    // Closing drops what was typed (the user discarded it, or nothing was
+    // typed): the panel stays mounted, so a reopen must start clean. Work in
+    // flight is left alone: a close never cancels it.
+    React.useEffect(() => {
+        if (isOpen) return;
+        setNewName('');
+        setNewPassphrase('');
+        setNewConfirmPassphrase('');
+        setAcknowledgeNoRecoveryNew(false);
+        setEditingUserId(null);
+        setEditingName('');
+        setPassphraseForm(null);
+        setAcknowledgeNoRecoveryForm(false);
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const handleAddUser = async (event: React.FormEvent) => {
@@ -740,7 +755,12 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         value={editingName}
                                                         onChange={(event) => setEditingName(event.target.value)}
                                                         autoFocus
-                                                        onBlur={() => { void commitRename(user); }}
+                                                        onBlur={(event) => {
+                                                            // Focus moving into the close confirm is not a commit:
+                                                            // the user has not chosen to keep or discard yet.
+                                                            if ((event.relatedTarget as Element | null)?.closest('[role="alertdialog"]')) return;
+                                                            void commitRename(user);
+                                                        }}
                                                         className="min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                                                     />
                                                     <button

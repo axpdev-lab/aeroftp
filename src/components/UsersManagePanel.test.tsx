@@ -6,7 +6,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import english from '../i18n/locales/en.json';
 import { UsersManagePanel } from './UsersManagePanel';
-import { addUser, copyUser, listUsers } from '../utils/userPartitions';
+import { addUser, copyUser, listUsers, renameUser } from '../utils/userPartitions';
 
 const { adminUser } = vi.hoisted(() => ({
     adminUser: {
@@ -184,4 +184,49 @@ it('keeps each account row disabled until its own operation settles', async () =
     await act(async () => { resolvers[1](); });
     await flush();
     expect(copies()[1].disabled).toBe(false);
+});
+
+it('does not send a typed rename when ESC opens the close confirm and the draft is discarded', async () => {
+    // The confirm takes focus on open; the rename input's blur used to
+    // commit the rename before the user had chosen to keep or discard it.
+    const userB = { ...adminUser, id: 2, name: 'bob', isAdmin: false, isDefault: false, sortOrder: 1 };
+    vi.mocked(listUsers).mockResolvedValue([adminUser, userB]);
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const rename = [...host.querySelectorAll<HTMLButtonElement>(`button[title="${translate('manageUsers.rename')}"]`)];
+    await act(async () => { rename[rename.length - 1].click(); });
+    const input = host.querySelector<HTMLInputElement>('form input[value="bob"]')!;
+    expect(input).not.toBeNull();
+    await act(async () => { input.focus(); });
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'robert');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    await flush();
+    expect(host.querySelector('[role=alertdialog]')).not.toBeNull();
+    expect(renameUser).not.toHaveBeenCalled();
+    const discard = [...host.querySelectorAll<HTMLButtonElement>('[role=alertdialog] button')].find(b => b.textContent?.trim() === translate('modalGuard.discardAndClose'))!;
+    await act(async () => { discard.click(); });
+    await flush();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(renameUser).not.toHaveBeenCalled();
+});
+
+it('forgets discarded drafts when the panel closes', async () => {
+    // Both parents keep the panel mounted: a draft dropped by closing came
+    // back on the next open.
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const nameInput = () => host.querySelector<HTMLInputElement>('input[placeholder]')!;
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput(), 'draft-name');
+        nameInput().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await render(createElement(UsersManagePanel, { isOpen: false, onClose, onChanged: vi.fn() }));
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    expect(nameInput().value).toBe('');
 });
