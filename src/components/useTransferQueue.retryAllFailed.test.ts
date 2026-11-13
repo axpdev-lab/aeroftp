@@ -51,6 +51,40 @@ describe('useTransferQueue retryAllFailed (#139)', () => {
         });
     });
 
+    // A staged Start waits for a sync run to end; a Stop during that wait
+    // settles the row as cancelled instead of leaving it pending.
+    it('cancels a staged row stopped while it waited for a sync run', async () => {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const start = app.indexOf('  const boundToQueuedServer =');
+        const end = app.indexOf('\n  /** Whether two connections', start);
+        const { code } = await transformWithOxc(app.slice(start, end), 'stopped-while-waiting.ts');
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'upload', { staged: true }); });
+        let endRun!: () => void;
+        const syncRun = new Promise<void>(resolve => { endRun = resolve; });
+        const stopCountRef = { current: 0 };
+        const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null },
+            syncRunnerPendingRef: { current: syncRun as Promise<void> | null }, stopCountRef, queuedTargetProblem: () => null,
+            transferQueue: queue, t: (key: string) => key };
+        const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
+        const executor = vi.fn();
+        await act(async () => {
+            queue.startStaged(id);
+            const waiting = bind({}, id, executor)();
+            stopCountRef.current++;
+            context.syncRunnerPendingRef.current = null;
+            endRun();
+            await waiting;
+        });
+        expect(executor).not.toHaveBeenCalled();
+        const row = queue.getItemNow(id);
+        expect(row?.status).not.toBe('pending');
+        expect(row?.cancelled).toBeTruthy();
+    });
+
     it('forgets a removed staged Start synchronously even through an older hook result', async () => {
         let queue!: ReturnType<typeof useTransferQueue>;
         const Probe = () => { queue = useTransferQueue(); return null; };

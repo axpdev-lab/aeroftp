@@ -691,7 +691,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // and leaving the original transfer running.
         const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
         if (trackedQueue) {
-          completeQueueRow(trackedQueue.value);
+          // Settled directly, held or not: a hold waits for a privacy update
+          // owed to a file that was written, and a skipped file wrote nothing.
+          optRef.current.transferQueue.completeTransfer(trackedQueue.value);
           transferIdToQueueId.current.delete(trackedQueue.key);
         } else {
           const skipDirection = data.direction === 'upload' ? 'upload' : 'download';

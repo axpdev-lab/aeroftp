@@ -455,6 +455,27 @@ describe('remoteSyncRunner: versioned backup', () => {
         });
     const idx = (calls: { cmd: string }[], cmd: string) => calls.findIndex((c) => c.cmd === cmd);
 
+    // A backup refused by the provider returns the command's fixed message with
+    // its classification tag. The report and the journal keep the text the
+    // user reads, without the tag.
+    it('keeps the classification tag out of the report and journal of a failed backup', async () => {
+        const { invoke, calls } = stampedInvoke({
+            sync_backup_archive_remote: () => { throw new Error('Permission denied (HTTP 403) [sync-error:permission_denied:false]'); },
+        });
+        const report = await runRemoteSync(
+            [file('docs/a.txt', 'upload', { overwritesExisting: true })],
+            noDirs,
+            baseConfig(backup),
+            {},
+            noWaitDeps(invoke),
+        );
+        expect(report.errors).toHaveLength(1);
+        expect(report.errors[0].message).toContain('Permission denied');
+        expect(report.errors[0].message).not.toContain('[sync-error:');
+        const journals = JSON.stringify(calls.filter(c => c.cmd === 'save_sync_journal_cmd').map(c => c.args));
+        expect(journals).not.toContain('[sync-error:');
+    });
+
     it('moves the remote copy aside before an upload overwrites it', async () => {
         const { invoke, calls } = stampedInvoke();
         const report = await runRemoteSync(
@@ -1756,6 +1777,26 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
             expect(report.cancelled).toBe(true);
             expect(calls.filter(call => call.cmd === 'sync_ec_verify_repair')).toHaveLength(0);
         }
+    });
+
+    // The same edited destination after an ordinary verification failure,
+    // with EC off: the resume is refused too and nothing is downloaded again.
+    it('refuses to resume a download whose ordinary verification failed, without EC', async () => {
+        let destination = 'old';
+        const { invoke, calls } = makeInvoke({
+            download_file: () => { destination = 'downloaded payload'; },
+            verify_local_transfer: () => ({ passed: false, size_match: false, mtime_match: null, hash_match: null, message: 'size mismatch' }),
+        });
+        await runRemoteSync([file('last', 'download')], noDirs, baseConfig({ verifyPolicy: 'size_only' }), {}, noWaitDeps(invoke));
+        const journal = lastSavedJournal(calls)!;
+        expect(journal.entries[0].status).toBe('verify_failed');
+        expect(journal.ec_enabled ?? false).toBe(false);
+        const downloadsBefore = calls.filter(call => call.cmd === 'download_file').length;
+        destination = 'user edit after the failed verification';
+        await expect(runRemoteSync(filesFromJournal(journal), noDirs, baseConfig({ verifyPolicy: 'size_only' }), {},
+            noWaitDeps(invoke, { resumeJournal: journal }))).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+        expect(calls.filter(call => call.cmd === 'download_file')).toHaveLength(downloadsBefore);
+        expect(destination).toBe('user edit after the failed verification');
     });
 
     it('counts an EC failure followed by a successful download as two processed files', async () => {

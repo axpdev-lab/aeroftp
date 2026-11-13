@@ -185,6 +185,24 @@ describe('privacy completion ownership', () => {
         expect(items[0].status).toBe('error');
     });
 
+    // A file the server skipped wrote nothing, so no privacy update is owed:
+    // its row completes even while completions are held.
+    it('completes a skipped row while completions are held', async () => {
+        let items = [{ id: 'q1', filename: 'b.txt', path: '/b.txt', size: 1, type: 'upload', status: 'transferring' }] as TransferItem[];
+        const queue = Object.assign(queueWith({ id: 'q1', filename: 'b.txt', status: 'transferring' }), {
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            failTransfer: (id: string, error: string) => { items = updateTransferStatus(items, id, 'error', undefined, error); },
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        const { controls } = await mount(queue);
+        controls.registerFileBatchRows('batch', ['q1']);
+        const release = controls.holdFileCompletions(['q1']);
+        await emit({ event_type: 'file_start', transfer_id: 'batch-0', filename: 'b.txt', path: '/b.txt', direction: 'upload' });
+        await emit({ event_type: 'file_skip', transfer_id: 'batch-0', filename: 'b.txt', path: '/b.txt', direction: 'upload', message: 'Destination already exists' });
+        expect(items[0].status).toBe('completed');
+        release();
+    });
+
     it.each(['opendrive', 'fourshared'] as const)('lets the App %s upload batch settle its own rows through the mounted hook', async protocol => {
         // The real App batch closure, the real hook and the real row guard:
         // the backend reports both files complete before privacy is known.

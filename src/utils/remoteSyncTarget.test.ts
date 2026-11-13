@@ -269,7 +269,7 @@ it('does not launch the App delta continuation after a tab switch', async () => 
 // hard refusal at the sync-start gate, fresh or cached (both answer the same
 // typed verdict), and also with the "do not ask again" opt-out. The run stops
 // there: no runner, no prompt to continue, nothing written.
-it.each([['fresh', false], ['cached', false], ['opted out of the prompt', true]] as const)('stops the run at the sync-start gate on a hard delta refusal (%s)', async (_label, skipPrompt) => {
+it.each([['fresh', false, false], ['cached', false, false], ['opted out of the prompt', true, false], ['saved profiles unreadable, delta off', false, true]] as const)('stops the run at the sync-start gate on a hard delta refusal (%s)', async (_label, skipPrompt, profilesFail) => {
     const { transformWithOxc } = await import('vite');
     const { default: app } = await import('../App.tsx?raw');
     const start = app.indexOf('  const runConnectedRemoteSync =');
@@ -293,13 +293,13 @@ it.each([['fresh', false], ['cached', false], ['opted out of the prompt', true]]
         activeUnifiedRemoteProfile: { protocol: 'sftp', savedProfileId: 'A', name: 'A' },
         currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
         localStorage: { getItem: () => null }, isCryptOverlayActive: () => false,
-        invoke, loadSavedServerProfiles: async () => [{ id: 'A', skipDeltaEligibilityPrompt: skipPrompt }],
+        invoke, loadSavedServerProfiles: async () => { if (profilesFail) throw new Error('profiles unreadable'); return [{ id: 'A', skipDeltaEligibilityPrompt: skipPrompt }]; },
         setDeltaEligibilityPrompt: (value: unknown) => { prompt = value; },
         remoteSyncRunningRef: { current: false }, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, runTrackedSync, notify: { error: vi.fn(), info: vi.fn() },
         t: (key: string) => key, debugMode: false, runRemoteSync: runner,
     };
     const launch = new Function(...Object.keys(context), `${code}; return runConnectedRemoteSync;`)(...Object.values(context));
-    launch([file('one')], { remote: [], local: [] }, { direction: 'local_to_remote', deltaSyncEnabled: true, verifyPolicy: 'none', profileId: 'A' });
+    launch([file('one')], { remote: [], local: [] }, { direction: 'local_to_remote', deltaSyncEnabled: !profilesFail, verifyPolicy: 'none', profileId: 'A' });
     await vi.waitFor(() => expect(context.notify.error).toHaveBeenCalledWith('aerosync.title', hard));
     await tick();
     expect(invoke).toHaveBeenCalledWith('sftp_probe_delta_eligibility', { expectedGuiTarget: 7 });
@@ -524,7 +524,7 @@ it.each(['settled', 'stopped', 'retargeted', 'removed', 'cancelled', 'completed'
     let row: { status: string } | undefined = { status: 'pending' };
     const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null as Promise<void> | null },
         syncRunnerPendingRef: { current: pending as Promise<void> | null }, runTrackedSync,
-        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, queuedTargetProblem: () => problem, transferQueue: { getItemNow: () => row, failTransfer: vi.fn() }, t: (key: string) => key };
+        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(), batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, queuedTargetProblem: () => problem, transferQueue: { getItemNow: () => row, failTransfer: vi.fn(), cancelTransfer: vi.fn() }, t: (key: string) => key };
     const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
     const executor = vi.fn(); const retry = bind({}, 'retry', executor)();
     expect(executor).not.toHaveBeenCalled();
@@ -536,6 +536,9 @@ it.each(['settled', 'stopped', 'retargeted', 'removed', 'cancelled', 'completed'
     context.syncRunnerPendingRef.current = null; settle(); await retry;
     expect(executor).toHaveBeenCalledTimes(outcome === 'settled' ? 1 : 0);
     if (outcome === 'retargeted') expect(context.transferQueue.failTransfer).toHaveBeenCalledWith('retry', 'target changed');
+    // A Stop during the wait settles the still-pending row instead of leaving it.
+    if (outcome === 'stopped') expect(context.transferQueue.cancelTransfer).toHaveBeenCalledWith('retry', 'transfer.cancelledByUser');
+    else expect(context.transferQueue.cancelTransfer).not.toHaveBeenCalled();
 });
 
 it('rejects an overlapping tracked runner without replacing the first runner or losing Stop', async () => {

@@ -652,6 +652,19 @@ impl Drop for ClaimedTokenFile {
 /// two independent owners. The OS releases the advisory lock after a crash.
 struct LegacyTokenGuard(Option<std::fs::File>);
 
+#[cfg(all(test, unix))]
+thread_local! {
+    /// Test seam: the sign-out lock on this thread answers ENOLCK, so a test
+    /// can drive the whole `delete_tokens` path, vault included, into it.
+    static FORCE_SIGNOUT_ENOLCK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Make the sign-out lock on this thread answer ENOLCK (tests only).
+#[cfg(all(test, unix))]
+pub(crate) fn force_signout_enolck_for_test(on: bool) {
+    FORCE_SIGNOUT_ENOLCK.with(|force| force.set(on));
+}
+
 /// Why the caller wants the legacy lock. Only the lock-error policy differs.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LegacyLockUse {
@@ -694,6 +707,14 @@ impl LegacyTokenGuard {
     }
 
     fn lock(legacy_path: &std::path::Path, use_: LegacyLockUse) -> Result<Self, ProviderError> {
+        #[cfg(all(test, unix))]
+        if use_ == LegacyLockUse::Signout && FORCE_SIGNOUT_ENOLCK.with(std::cell::Cell::get) {
+            return Self::lock_with(legacy_path, use_, |_| {
+                Err(std::fs::TryLockError::Error(
+                    std::io::Error::from_raw_os_error(libc::ENOLCK),
+                ))
+            });
+        }
         Self::lock_with(legacy_path, use_, |file| file.try_lock())
     }
 
@@ -1811,20 +1832,28 @@ impl OAuth2Manager {
             return Ok(());
         }
 
-        // MUV-4: drop the per-profile token from the active user's partition
-        // too, but only once the sign-out holds its lock (below): a sign-out
-        // refused for the lock must leave every copy in place.
-        let credential_user = self.credential_user;
-        let unmirror = || {
-            if !profile_id.is_empty() {
-                if let Some(user) = credential_user {
-                    crate::user_partitions::unmirror_credential_for_user_best_effort_any(
-                        user, &account,
-                    );
-                } else {
-                    crate::user_partitions::unmirror_active_credential(&account);
-                }
+        // MUV-4: drop the per-profile token from the user's partition too,
+        // but only once the sign-out holds its lock (below): a sign-out refused
+        // for the lock must leave every copy in place. The account is resolved
+        // now, before the wait: a switch while the lock is awaited must not
+        // move the delete to another account's row with the same profile id.
+        let partition_user = if profile_id.is_empty() {
+            None
+        } else {
+            match self.credential_user {
+                Some(user) => Some(user),
+                None => crate::user_partitions::active_user_for_signout()
+                    .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {e}")))?,
             }
+        };
+        let unmirror = || -> Result<(), ProviderError> {
+            let Some(user) = partition_user else {
+                return Ok(());
+            };
+            // Fallible: a partition copy that could not be removed fails the
+            // sign-out before the vault, the cache or the legacy files go.
+            crate::user_partitions::try_unmirror_active_credential(user, &account)
+                .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {e}")))
         };
 
         let json_path =
@@ -1846,26 +1875,24 @@ impl OAuth2Manager {
         account: &str,
         json_path: &std::path::Path,
         lock: impl FnOnce(&std::path::Path) -> Result<LegacyTokenGuard, ProviderError>,
-        unmirror: impl FnOnce(),
+        unmirror: impl FnOnce() -> Result<(), ProviderError>,
     ) -> Result<(), ProviderError> {
         let process = lock(json_path)?;
         with_legacy_signout_guard(&MEMORY_TOKEN_CACHE, json_path, process, |cache| {
-            unmirror();
+            unmirror()?;
             // Delete from vault
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 store.delete(account).map_err(|_| token_owner_changed())?;
             }
             invalidate_memory_tokens(cache, legacy_revision(provider), account);
-            // Delete legacy .json file if exists
-            let json_path =
-                Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+            // The legacy files are the ones next to the `json_path` this
+            // sign-out holds the lock for, never a path found again here: a
+            // second lookup would leave the lock's folder (a test's fixture)
+            // for the app's real token folder.
             if json_path.exists() {
-                let _ = crate::credential_store::secure_delete(&json_path);
+                let _ = crate::credential_store::secure_delete(json_path);
             }
-
-            // Delete legacy .enc file if exists
-            let enc_path =
-                Self::token_dir()?.join(format!("oauth2_{:?}.enc", provider).to_lowercase());
+            let enc_path = json_path.with_extension("enc");
             if enc_path.exists() {
                 let _ = crate::credential_store::secure_delete(&enc_path);
             }
@@ -2786,6 +2813,10 @@ mod tests {
     fn a_signout_refused_on_enolck_removes_no_copy_of_the_token() {
         let dir = tempfile::tempdir().unwrap();
         let json_path = dir.path().join("oauth2_box.json");
+        // The legacy files of THIS fixture: the sign-out removes these, next
+        // to the lock it holds, and nothing in the app's real token folder.
+        std::fs::write(&json_path, "legacy").unwrap();
+        std::fs::write(json_path.with_extension("enc"), "legacy").unwrap();
         let account = format!("oauth_box_enolck-{}", uuid::Uuid::new_v4());
         MEMORY_TOKEN_CACHE
             .lock()
@@ -2798,7 +2829,10 @@ mod tests {
             &account,
             &json_path,
             |path| LegacyTokenGuard::lock_with(path, LegacyLockUse::Signout, |_| Err(enolck())),
-            || unmirrored.set(true),
+            || {
+                unmirrored.set(true);
+                Ok(())
+            },
         );
         assert!(
             matches!(&refused, Err(ProviderError::Other(message)) if message.contains("nothing was signed out")),
@@ -2813,17 +2847,68 @@ mod tests {
                 .is_some_and(|map| map.contains_key(account))
         };
         assert!(cached(&account), "the memory cache stays");
+        assert!(
+            json_path.exists() && json_path.with_extension("enc").exists(),
+            "the legacy files stay"
+        );
 
         OAuth2Manager::delete_shared_tokens(
             OAuthProvider::Box,
             &account,
             &json_path,
             LegacyTokenGuard::acquire_for_signout,
-            || unmirrored.set(true),
+            || {
+                unmirrored.set(true);
+                Ok(())
+            },
         )
         .unwrap();
         assert!(unmirrored.get());
         assert!(!cached(&account));
+        assert!(
+            !json_path.exists() && !json_path.with_extension("enc").exists(),
+            "the fixture's legacy files are the ones removed"
+        );
+    }
+
+    /// The partition copy goes first, under the lock, and a failure to remove
+    /// it (here a refused SQLite delete) fails the sign-out before the vault,
+    /// the memory cache or the legacy files are touched.
+    #[test]
+    fn a_partition_delete_that_fails_stops_the_signout_before_any_other_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let json_path = dir.path().join("oauth2_box.json");
+        std::fs::write(&json_path, "legacy").unwrap();
+        let account = format!("oauth_box_partition-{}", uuid::Uuid::new_v4());
+        MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .get_or_insert_with(HashMap::new)
+            .insert(account.clone(), "{}".into());
+        let failed = OAuth2Manager::delete_shared_tokens(
+            OAuthProvider::Box,
+            &account,
+            &json_path,
+            LegacyTokenGuard::acquire_for_signout,
+            || {
+                Err(ProviderError::Other(
+                    "Failed to delete tokens: Delete user credential: database is locked".into(),
+                ))
+            },
+        );
+        assert!(failed.is_err(), "{failed:?}");
+        assert!(MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|map| map.contains_key(&account)));
+        assert!(json_path.exists(), "the legacy file stays");
+        MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .remove(&account);
     }
 
     /// A token miss with no legacy file and no claim answers "no stored

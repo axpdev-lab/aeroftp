@@ -11510,7 +11510,12 @@ const App: React.FC = () => {
   const boundToQueuedServer = useLatestCallback((queuedFor: QueuedTarget, id: string, run: () => unknown): (() => Promise<void>) => async () => {
     const stops = stopCountRef.current;
     while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
-    if (stopCountRef.current !== stops) return;
+    if (stopCountRef.current !== stops) {
+      // Stopped while it waited for a sync run: the row Start or Retry set
+      // pending never runs, so it is settled as cancelled, not left pending.
+      if (transferQueue.getItemNow(id)?.status === 'pending') transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
+      return;
+    }
     if (transferQueue.getItemNow(id)?.status !== 'pending') return;
     const problem = queuedTargetProblem(queuedFor);
     if (problem) {
@@ -13109,7 +13114,10 @@ const App: React.FC = () => {
           await launchRun();
           return;
         }
-        const stored = await loadSavedServerProfiles();
+        // The saved profiles only tell whether to ask about continuing
+        // without delta. Unreadable, they leave the question on: the safety
+        // probe below runs either way.
+        const stored = await loadSavedServerProfiles().catch(() => [] as Awaited<ReturnType<typeof loadSavedServerProfiles>>);
         if (!ownsPreflight()) return;
         checkTarget();
         const profile = stored.find((p) => p.id === opts.profileId);

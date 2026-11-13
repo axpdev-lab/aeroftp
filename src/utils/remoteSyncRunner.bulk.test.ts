@@ -120,6 +120,20 @@ describe('remoteSyncRunner on a native bulk', () => {
         expect(ftp.of('provider_bulk_support')).toHaveLength(0);
     });
 
+    // A bulk failure is ambiguous: the file may have landed. The journal is
+    // marked unsafe and a resume asks for a new compare instead of replaying
+    // or trusting the row.
+    it('marks the journal unsafe after an ambiguous bulk failure, and the resume is refused', async () => {
+        const h = harness();
+        await runRemoteSync([...files(2, 'upload'), { relativePath: 'docs/fail.txt', action: 'upload', size: 1024, mtime: '2026-10-24T05:00:00Z' }],
+            { remote: [], local: [] }, config(), {}, h.deps);
+        const journal = h.journal();
+        expect(journal.entries.find((e) => e.relative_path === 'docs/fail.txt')?.status).toBe('failed');
+        expect(journal.resume_safe).toBe(false);
+        await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...h.deps, resumeJournal: journal }))
+            .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    });
+
     it('takes a failed file as final and sends a file the bulk did not take on its own', async () => {
         const h = harness();
         const run = files(3, 'upload', (i) => ['docs/ok.txt', 'docs/fail.txt', 'docs/skip.txt'][i]);

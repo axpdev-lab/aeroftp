@@ -2007,6 +2007,139 @@ pub(crate) mod exists_tests {
         );
     }
 
+    /// A server whose listings depend on the folder: a plain `LIST` serves
+    /// the current folder's rows, `LIST -a` is read as the pathname `-a`
+    /// (the folder `-a` inside the current one), `NLST <dir>` serves the names
+    /// of that folder, and SIZE is not implemented, so existence goes through
+    /// the parent listing. Every command line is recorded.
+    pub(crate) async fn dir_server(
+        dirs: &'static [(&'static str, &'static str)],
+    ) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        let listing = |dir: &str| {
+            dirs.iter()
+                .find(|(path, _)| *path == dir)
+                .map(|(_, rows)| *rows)
+                .unwrap_or("")
+        };
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut cwd = "/".to_string();
+            let mut data_listener = None;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                log.lock().unwrap().push(line.clone());
+                let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match cmd {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
+                    "TYPE" | "NOOP" => "200 ok\r\n".to_string(),
+                    "MKD" => "257 created\r\n".to_string(),
+                    "RNFR" => "350 ready\r\n".to_string(),
+                    "RNTO" => "250 renamed\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" | "NLST" => {
+                        write.write_all(b"150 listing\r\n").await.unwrap();
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        let body = match (cmd, arg) {
+                            ("LIST", "-a") => {
+                                listing(&format!("{}/-a", cwd.trim_end_matches('/'))).to_string()
+                            }
+                            ("LIST", _) => listing(&cwd).to_string(),
+                            (_, dir) => listing(dir)
+                                .lines()
+                                .filter_map(|row| row.split_whitespace().last())
+                                .map(|name| format!("{name}\r\n"))
+                                .collect(),
+                        };
+                        data.write_all(body.as_bytes()).await.unwrap();
+                        data.shutdown().await.unwrap();
+                        "226 done\r\n".to_string()
+                    }
+                    "CWD" => {
+                        cwd = if arg.starts_with('/') {
+                            arg.to_string()
+                        } else {
+                            format!("{}/{arg}", cwd.trim_end_matches('/'))
+                        };
+                        "250 ok\r\n".to_string()
+                    }
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "502 not implemented\r\n".to_string(),
+                };
+                write.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        (addr, seen)
+    }
+
+    /// The source and both backup folders exist; the destination folder's
+    /// bare listing shows only a folder named `-a` and hides the dot-prefixed
+    /// backup already there. `LIST -a`, read as that folder's pathname, would
+    /// list `-a` and call the name free, and the rename would overwrite the
+    /// existing backup. The destination probe meets the `-a` entry and fails:
+    /// nothing is renamed.
+    #[tokio::test]
+    async fn a_backup_stops_when_its_destination_probe_meets_a_folder_named_dash_a() {
+        static DIRS: &[(&str, &str)] = &[
+            (
+                "/b",
+                "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env\r\n\
+                 drwxr-xr-x 2 user group 4096 Jan 20 10:00 .aeroftp-versions\r\n",
+            ),
+            (
+                "/b/.aeroftp-versions",
+                "drwxr-xr-x 2 user group 4096 Jan 20 10:00 20260925T070000Z\r\n",
+            ),
+            (
+                "/b/.aeroftp-versions/20260925T070000Z",
+                "drwxr-xr-x 2 user group 4096 Jan 20 10:00 -a\r\n",
+            ),
+            ("/b/.aeroftp-versions/20260925T070000Z/-a", ""),
+        ];
+        let (addr, seen) = dir_server(DIRS).await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let dir = crate::sync_backup::BackupDir::parse(".aeroftp-versions").unwrap();
+        let archived =
+            crate::sync_backup::archive_remote_on(&mut ftp, "/b", &dir, "20260925T070000Z", ".env")
+                .await;
+        assert!(archived.is_err(), "{archived:?}");
+        let log = seen.lock().unwrap();
+        // The destination folder was probed...
+        assert!(
+            log.iter()
+                .any(|line| line == "CWD /b/.aeroftp-versions/20260925T070000Z"),
+            "{log:?}"
+        );
+        // ...with its bare listing only, and nothing was renamed.
+        assert!(!log.iter().any(|line| line == "LIST -a"), "{log:?}");
+        assert!(
+            !log.iter()
+                .any(|line| line.starts_with("RNFR") || line.starts_with("RNTO")),
+            "{log:?}"
+        );
+    }
+
     /// Without a `-a` entry, a dot name the plain listing does not show is
     /// read from `LIST -a`; one the plain listing shows needs no `-a`.
     #[tokio::test]

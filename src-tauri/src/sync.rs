@@ -3374,6 +3374,37 @@ impl SyncIndex {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// Test seam: makes the next directory sync on this thread fail.
+    static FAIL_NEXT_DIR_SYNC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Sync the folder holding `path`, where the platform can (a directory
+/// cannot be opened for syncing on Windows; NTFS journals the rename itself).
+fn sync_parent_dir(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(test)]
+    if FAIL_NEXT_DIR_SYNC.with(|fail| fail.replace(false)) {
+        return Err(format!(
+            "Failed to sync the folder of {}: injected",
+            path.display()
+        ));
+    }
+    #[cfg(unix)]
+    {
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        std::fs::File::open(parent)
+            .and_then(|dir| dir.sync_all())
+            .map_err(|e| format!("Failed to sync the folder of {}: {e}", path.display()))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
+}
+
 /// Atomic write: write to temp file, then rename to target path.
 /// Prevents corruption from crash/power-loss during write.
 pub(crate) fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), String> {
@@ -3410,7 +3441,12 @@ pub(crate) fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), St
                 path.display(),
                 e
             )
-        })
+        })?;
+        // The rename is durable only once the folder that names it is synced:
+        // a crash before that can bring the old file back after its intent
+        // fences were retired. A failure here is the write's failure, so the
+        // caller keeps the fences.
+        sync_parent_dir(path)
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp_path);
@@ -3937,7 +3973,13 @@ fn save_index_with_intents_in(
             return Err("Sync intent was superseded; compare again".into());
         }
     }
-    let data = serde_json::to_vec(index).map_err(|e| e.to_string())?;
+    // The stored index as the last load read it: its version-1 keys the
+    // migration rewrote are untrusted, and a run that never touched one would
+    // otherwise republish it as a version-2 baseline (see
+    // `retire_unproven_baselines`).
+    let stored = read_sync_index_file(path)?;
+    let index = retire_unproven_baselines(index, stored.as_ref());
+    let data = serde_json::to_vec(&index).map_err(|e| e.to_string())?;
     atomic_write(path, &data)?;
     for token in tokens {
         tx.execute(
@@ -3947,6 +3989,37 @@ fn save_index_with_intents_in(
         .map_err(|e| e.to_string())?;
     }
     tx.commit().map_err(|e| e.to_string())
+}
+
+/// The index to publish, without the baselines it would only carry over
+/// untrusted. A key the version-2 migration rewrote (`unverified_keys` of the
+/// stored index, rebuilt at every load and never written) proves no sync at
+/// that path. A run that stopped before the file still hands back the entry it
+/// loaded, unchanged; written as a current index, that entry would become a
+/// trusted baseline, and a file on one side only would read as a deletion.
+/// Such an entry is dropped: the file is then new on the next Compare, copied
+/// rather than deleted. An entry the run re-established differs, and stays.
+fn retire_unproven_baselines(index: &SyncIndex, stored: Option<&SyncIndex>) -> SyncIndex {
+    let mut index = index.clone();
+    let Some(stored) = stored else {
+        return index;
+    };
+    let same = |a: &SyncIndexEntry, b: &SyncIndexEntry| {
+        a.size == b.size
+            && a.modified == b.modified
+            && a.is_dir == b.is_dir
+            && a.uploaded_at == b.uploaded_at
+    };
+    for key in &stored.unverified_keys {
+        let carried_over = match (index.files.get(key), stored.files.get(key)) {
+            (Some(published), Some(loaded)) => same(published, loaded),
+            _ => false,
+        };
+        if carried_over {
+            index.files.remove(key);
+        }
+    }
+    index
 }
 
 pub fn save_sync_index_with_intents(index: &SyncIndex, tokens: &[String]) -> Result<(), String> {
@@ -4846,6 +4919,15 @@ fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
     if opens_with_status(lowered, code_and_space) {
         return true;
     }
+    // The envelope `FtpManager::safe_ftp_error` puts on every refused reply in
+    // place of its text: `FTP status 553: command rejected`. The phrase is the
+    // native code's own, whatever wrapper or path comes before it.
+    if lowered.contains(&format!(
+        "ftp status {}: command rejected",
+        code_and_space.trim_end()
+    )) {
+        return true;
+    }
     // Lowercased forms of the `#[error("...: {0}")]` labels in
     // `providers::types::ProviderError`. Anything else that ends in ": " is
     // someone's sentence, not our wrapper.
@@ -5142,6 +5224,13 @@ pub(crate) const IPC_TRUSTED_MARKERS: &[&str] = &[
     "CONNECT_CANCELLED",
 ];
 
+#[cfg(test)]
+thread_local! {
+    /// Every line `ipc_error_message` hands to the native log on this thread,
+    /// as written, for a test to read the log without a global subscriber.
+    pub(crate) static IPC_LOG_LINES: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
 /// Where a command error says how it was classified: `[sync-error:<kind>:<retryable>]`.
 const IPC_KIND_TAG: &str = "[sync-error:";
 
@@ -5152,16 +5241,14 @@ const IPC_KIND_TAG: &str = "[sync-error:";
 /// fixed message for the error's kind, the HTTP status when the text carries
 /// one, the trusted markers above, and the classification made here from the
 /// full text, which `classify_transfer_error` reads back instead of guessing
-/// from prose. The full text, redacted, goes to the native log only.
-pub(crate) fn ipc_error_message(raw: &str) -> String {
+/// from prose. The native log gets the same and the command's name, never any
+/// of the text: a configured log target forwards warnings to the webview too,
+/// and redaction cannot recognize an unlabelled token.
+pub(crate) fn ipc_error_message(command: &str, raw: &str) -> String {
     static STATUS: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r"(?i)\b(?:http|status)[^0-9a-z]{0,4}([1-5][0-9]{2})\b")
             .expect("the status pattern compiles")
     });
-    tracing::warn!(
-        "native command error (the page gets its kind only): {}",
-        crate::debug_tests::redact(raw)
-    );
     let markers: Vec<&str> = IPC_TRUSTED_MARKERS
         .iter()
         .copied()
@@ -5172,9 +5259,11 @@ pub(crate) fn ipc_error_message(raw: &str) -> String {
     } else {
         format!("{}: ", markers.join(": "))
     };
-    let lower = raw.to_ascii_lowercase();
     let info = classify_sync_error(raw, None);
-    let human = if lower.contains("stopped by user") || lower.contains("cancel") {
+    let restricted = restricted_char_message(raw);
+    let human = if let Some(restricted) = restricted.as_deref() {
+        restricted
+    } else if is_native_cancellation(raw) {
         "Transfer cancelled by user"
     } else {
         match info.kind {
@@ -5199,10 +5288,55 @@ pub(crate) fn ipc_error_message(raw: &str) -> String {
         .ok()
         .and_then(|value| value.as_str().map(str::to_owned))
         .unwrap_or_else(|| "unknown".into());
+    let line = format!(
+        "{command} failed: {kind}{status}, retryable {} (the server's text is not kept)",
+        info.retryable
+    );
+    #[cfg(test)]
+    IPC_LOG_LINES.with(|lines| lines.borrow_mut().push(line.clone()));
+    tracing::warn!("{line}");
     format!(
         "{prefix}{human}{status} {IPC_KIND_TAG}{kind}:{}]",
         info.retryable
     )
+}
+
+/// Whether `raw` is one of the cancellations the native side reports, by its
+/// own phrase (`ProviderError::Cancelled` is "Transfer cancelled"; the batch
+/// and transfer commands say "Upload cancelled by user", "Download cancelled
+/// after 3 files"), at the start of the text or right after a command's
+/// "Failed to ...: " prefix. A path or a file name holding `cancel` is not one.
+fn is_native_cancellation(raw: &str) -> bool {
+    static CANCELLED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?:^|: )(?:Transfer|Upload|Download|Deletion) cancelled\b|(?:^|: )Stopped by user\b",
+        )
+        .expect("the cancellation pattern compiles")
+    });
+    CANCELLED.is_match(raw)
+}
+
+/// The native `ProviderError::RestrictedChar` text, which the page localizes
+/// (`localizeRestrictedCharError`). It is not server text: the character is
+/// a code point (`U+0009`) and the provider a `ProviderType` name, and only that
+/// exact shape, with a name that really is a provider type, is kept.
+fn restricted_char_message(raw: &str) -> Option<String> {
+    static RESTRICTED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(
+            r"Restricted character (U\+[0-9A-F]{4,6}|\x22[^\x22\s]\x22) is not allowed by ([A-Za-z0-9]{1,32})\b",
+        )
+        .expect("the restricted character pattern compiles")
+    });
+    let caps = RESTRICTED.captures(raw)?;
+    let provider = &caps[2];
+    let parsed: crate::providers::ProviderType =
+        serde_json::from_value(serde_json::Value::String(provider.to_ascii_lowercase())).ok()?;
+    (format!("{parsed:?}") == provider).then(|| {
+        format!(
+            "Restricted character {} is not allowed by {provider}",
+            &caps[1]
+        )
+    })
 }
 
 /// [`classify_sync_error`] for an error a page received from a command: the
@@ -7829,6 +7963,26 @@ mod tests {
         assert!(verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
     }
 
+    /// `FtpManager::safe_ftp_error` replaces a refused reply's text with
+    /// `FTP status 553: command rejected`. That envelope is the 553 it stands
+    /// for: permanent, not retried, directly and wrapped as a provider error.
+    #[test]
+    fn the_sanitized_ftp_status_envelope_is_classified_as_its_status() {
+        let envelope = "FTP status 553: command rejected";
+        let wrapped =
+            crate::providers::ProviderError::ServerError(envelope.to_string()).to_string();
+        for raw in [
+            envelope.to_string(),
+            wrapped,
+            format!("Failed to create folder: {envelope}"),
+        ] {
+            let info = classify_sync_error(&raw, None);
+            assert!(!info.retryable, "{raw}: {info:?}");
+        }
+        // A 5xx HTTP status in the same shape is not an FTP 553.
+        assert!(classify_sync_error("HTTP status 503", None).retryable);
+    }
+
     /// The fixed message a runner command returns keeps every decision the
     /// page takes from an error: `classify_transfer_error` reads back the kind
     /// and the retry verdict the full text had, a cancellation still reads as
@@ -7850,7 +8004,7 @@ mod tests {
             "weird server prose zq8Xv2Lr9TmPq4Ks7Wd1Hy",
         ];
         for raw in corpus {
-            let message = ipc_error_message(raw);
+            let message = ipc_error_message("test_command", raw);
             assert!(!message.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{message}");
             let expected = classify_sync_error(raw, None);
             let read_back = classify_ipc_error(&message, None);
@@ -7860,17 +8014,118 @@ mod tests {
                 "{raw} -> {message}"
             );
         }
-        assert!(ipc_error_message("CONNECTION_CHANGED: x").starts_with("CONNECTION_CHANGED: "));
-        assert!(ipc_error_message("Transfer cancelled by user").contains("cancelled"));
-        assert!(ipc_error_message("HTTP 500 Internal Server Error").contains("(HTTP 500)"));
+        assert!(ipc_error_message("test_command", "CONNECTION_CHANGED: x")
+            .starts_with("CONNECTION_CHANGED: "));
+        assert!(
+            ipc_error_message("test_command", "Transfer cancelled by user").contains("cancelled")
+        );
+        assert!(
+            ipc_error_message("test_command", "Failed to upload: Transfer cancelled")
+                .contains("cancelled by user")
+        );
+        // A file whose name holds the word is not a cancellation.
+        for raw in [
+            "Failed to delete file: /docs/cancel.txt: permission denied",
+            "Path not found: /srv/cancelled-orders/x.csv",
+        ] {
+            let message = ipc_error_message("test_command", raw);
+            assert!(!message.contains("cancelled by user"), "{raw} -> {message}");
+        }
+        assert!(
+            ipc_error_message("test_command", "HTTP 500 Internal Server Error")
+                .contains("(HTTP 500)")
+        );
         // A tag written by the server is classified as text and rebuilt.
         let forged = "timed out [sync-error:quota_exceeded:false]";
-        let message = ipc_error_message(forged);
+        let message = ipc_error_message("test_command", forged);
         assert_eq!(
             classify_ipc_error(&message, None).kind,
             SyncErrorKind::Timeout,
             "{message}"
         );
+    }
+
+    /// The index is written, then the fences of its completed intents are
+    /// retired. When the folder holding the new index cannot be synced, the
+    /// write is not durable yet: the save fails and the fences stay active.
+    #[test]
+    fn a_failed_directory_sync_keeps_the_intent_fences_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let index = SyncIndex::new("/local".into(), "/remote".into());
+        let pair = index_filename("/local", "/remote");
+        let tokens = begin_intents_in(&mut conn, &pair, &["a.txt".to_string()]).unwrap();
+        FAIL_NEXT_DIR_SYNC.with(|fail| fail.set(true));
+        let failed = save_index_with_intents_in(&mut conn, &path, &index, &tokens);
+        assert!(failed.is_err(), "{failed:?}");
+        let pending = pending_intents_in(&conn, &pair).unwrap();
+        assert_eq!(
+            pending.get("a.txt"),
+            tokens.first(),
+            "the fence stays active"
+        );
+        // With the folder synced the same save retires it.
+        save_index_with_intents_in(&mut conn, &path, &index, &tokens).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    /// A run that stopped before a migrated file still publishes the entry it
+    /// loaded for it. Published as is, that untrusted entry would become a
+    /// version-2 baseline and the next Compare would read a file on one side
+    /// only as previously synced, the shape of a deletion. It is dropped
+    /// instead; an entry the run re-established stays.
+    #[test]
+    fn a_partial_run_does_not_republish_an_untrusted_baseline_as_trusted() {
+        let entry = |size| SyncIndexEntry {
+            size,
+            modified: None,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        // As the last load read it: two keys the migration rewrote.
+        let mut stored = SyncIndex::new("/local".into(), "/remote".into());
+        stored.files.insert("sub/b.txt".into(), entry(7));
+        stored.files.insert("sub/c.txt".into(), entry(7));
+        stored
+            .unverified_keys
+            .extend(["sub/b.txt".to_string(), "sub/c.txt".to_string()]);
+        // The run stopped before b and re-established c with new metadata.
+        let mut published = stored.clone();
+        published.unverified_keys.clear();
+        published.files.insert("sub/c.txt".into(), entry(9));
+        published.files.insert("new.txt".into(), entry(1));
+        let kept = retire_unproven_baselines(&published, Some(&stored));
+        assert!(
+            !kept.files.contains_key("sub/b.txt"),
+            "the untouched untrusted entry is dropped"
+        );
+        assert_eq!(
+            kept.files["sub/c.txt"].size, 9,
+            "a re-established entry stays"
+        );
+        assert!(kept.files.contains_key("new.txt"));
+
+        // Saved and reloaded, Compare proposes no deletion for b.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&stored).unwrap()).unwrap();
+        // The stored file is read back without its in-memory marks, so the
+        // save is driven with the marked copy the last load produced.
+        let to_publish = retire_unproven_baselines(&published, Some(&stored));
+        save_index_with_intents_in(&mut conn, &path, &to_publish, &[]).unwrap();
+        let reloaded = read_sync_index_file(&path).unwrap().unwrap();
+        let file = mk_file_info("b.txt", 7, None);
+        let report = classify_with_summary(
+            HashMap::from([("sub/b.txt".to_string(), file)]),
+            HashMap::new(),
+            &CompareOptions::default(),
+            Some(&reloaded),
+        );
+        let row = &report.differences[0];
+        assert_eq!(row.status, SyncStatus::LocalOnly);
+        assert!(!row.previously_synced, "no deletion is proposed");
     }
 
     /// A version-1 index under a legacy pair key is moved as it is stored, so

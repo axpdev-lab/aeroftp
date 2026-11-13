@@ -133,3 +133,27 @@ describe('redactCredentials', () => {
         expect(redactCredentials(plain)).toBe(plain);
     });
 });
+
+describe('redactCredentials: URL userinfo', () => {
+    it.each([
+        ['ftp://bob:first@second@host/file', 'ftp://***REDACTED***@host/file'],
+        ['sftp://bob:p@ss@w0rd@host:22/a', 'sftp://***REDACTED***@host:22/a'],
+        ['https://user:pa@ss@example.com?x=1', 'https://***REDACTED***@example.com?x=1'],
+    ])('masks a password that holds @: %s', (raw, masked) => {
+        expect(redactCredentials(`Upload failed: ${raw}`)).toBe(`Upload failed: ${masked}`);
+        expect(redactCredentials(raw)).not.toMatch(/first|second|ss@w0rd|pa@ss/);
+    });
+
+    it.each([
+        ['an @ in the path', 'ftp://host/docs/me@home.txt'],
+        ['an @ in the query', 'https://host/a?to=me@example.com'],
+        ['an @ in the fragment', 'https://host/a#me@example.com'],
+    ])('leaves a URL without userinfo alone, with %s', (_label, raw) => {
+        expect(redactCredentials(raw)).toBe(raw);
+    });
+
+    it('stops at the authority when the path also holds an @', () => {
+        expect(redactCredentials('ftp://bob:x@y@host/docs/me@home.txt'))
+            .toBe('ftp://***REDACTED***@host/docs/me@home.txt');
+    });
+});

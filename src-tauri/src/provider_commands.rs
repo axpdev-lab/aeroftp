@@ -4231,6 +4231,7 @@ pub async fn provider_download_file(
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     ipc_result(
+        "provider_download_file",
         download_file_for_ipc(
             app,
             state,
@@ -6882,6 +6883,7 @@ pub async fn provider_upload_file(
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     ipc_result(
+        "provider_upload_file",
         upload_file_for_ipc(
             app,
             state,
@@ -7418,10 +7420,11 @@ async fn upload_file_for_ipc(
 /// none of that text crosses: the commands the runner calls return their
 /// errors through here, the one place the text leaves the native side, as the
 /// fixed message of [`crate::sync::ipc_error_message`] (the error's kind, its
-/// HTTP status, the trusted markers such as `CONNECTION_CHANGED`). The full
-/// text, redacted, is logged natively.
-pub(crate) fn ipc_result<T>(result: Result<T, String>) -> Result<T, String> {
-    result.map_err(|error| crate::sync::ipc_error_message(&error))
+/// HTTP status, the trusted markers such as `CONNECTION_CHANGED`). The native
+/// log gets no more than that and the command's name: a log target can reach
+/// the webview too.
+pub(crate) fn ipc_result<T>(command: &'static str, result: Result<T, String>) -> Result<T, String> {
+    result.map_err(|error| crate::sync::ipc_error_message(command, &error))
 }
 
 /// Create a directory
@@ -7434,7 +7437,10 @@ pub async fn provider_mkdir(
     sync_run_lease: Option<String>,
 ) -> Result<(), String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    ipc_result(mkdir_for_ipc(&state, path, commit_message, expected_gui_target).await)
+    ipc_result(
+        "provider_mkdir",
+        mkdir_for_ipc(&state, path, commit_message, expected_gui_target).await,
+    )
 }
 
 async fn mkdir_for_ipc(
@@ -7489,7 +7495,10 @@ pub async fn provider_delete_file(
     sync_run_lease: Option<String>,
 ) -> Result<(), String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    ipc_result(delete_file_for_ipc(&state, path, commit_message, expected_gui_target).await)
+    ipc_result(
+        "provider_delete_file",
+        delete_file_for_ipc(&state, path, commit_message, expected_gui_target).await,
+    )
 }
 
 pub(crate) async fn delete_file_for_ipc(
@@ -18474,6 +18483,49 @@ mod tests {
         "zq8Xv2Lr9TmPq4Ks7Wd1Hy",
     ];
 
+    /// Everything logged on this thread while the guard lives, as the fmt
+    /// layer of the app writes it.
+    fn capture_logs() -> (
+        tracing::subscriber::DefaultGuard,
+        std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    ) {
+        #[derive(Clone)]
+        struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(data);
+                Ok(data.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Sink(buffer.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || sink.clone())
+            .finish();
+        (tracing::subscriber::set_default(subscriber), buffer)
+    }
+
+    /// What was logged: the fmt layer's output, plus every line the IPC
+    /// boundary wrote to the log on this thread (`sync::IPC_LOG_LINES`). The
+    /// second is what the assertions rely on: in a parallel run a thread's
+    /// own subscriber can miss an event whose callsite interest another
+    /// thread cached.
+    fn logged(buffer: &std::sync::Mutex<Vec<u8>>) -> String {
+        let mut text = String::from_utf8_lossy(&buffer.lock().unwrap()).into_owned();
+        crate::sync::IPC_LOG_LINES.with(|lines| {
+            for line in lines.borrow_mut().drain(..) {
+                text.push('\n');
+                text.push_str(&line);
+            }
+        });
+        text
+    }
+
     fn assert_no_server_text(returned: &str) {
         for secret in SECRETS {
             assert!(!returned.contains(secret), "{returned}");
@@ -18581,10 +18633,17 @@ mod tests {
     /// confirms natively; `classify_transfer_error` reads the kind back.
     #[tokio::test]
     async fn a_provider_error_reaches_the_webview_without_the_server_text() {
+        let (_logs, log) = capture_logs();
         let state = ProviderState::new();
         *state.provider.lock().await = Some(Box::new(LeakyServer));
-        let deleted = ipc_result(delete_file_for_ipc(&state, "/a".into(), None, None).await);
-        let created = ipc_result(mkdir_for_ipc(&state, "/d".into(), None, None).await);
+        let deleted = ipc_result(
+            "provider_delete_file",
+            delete_file_for_ipc(&state, "/a".into(), None, None).await,
+        );
+        let created = ipc_result(
+            "provider_mkdir",
+            mkdir_for_ipc(&state, "/d".into(), None, None).await,
+        );
         for returned in [deleted.unwrap_err(), created.unwrap_err()] {
             assert_no_server_text(&returned);
             assert!(returned.starts_with("CONNECTION_CHANGED: "), "{returned}");
@@ -18596,6 +18655,13 @@ mod tests {
                 (raw_kind.kind, raw_kind.retryable)
             );
         }
+        // The native log (whose targets reach the webview too) holds the
+        // command, the kind and the status, and none of the server's text.
+        let log = logged(&log);
+        assert_no_server_text(&log);
+        assert!(log.contains("provider_delete_file failed"), "{log}");
+        assert!(log.contains("provider_mkdir failed"), "{log}");
+        assert!(log.contains("(HTTP 403)"), "{log}");
         // Without the boundary the same call hands the token over.
         let raw = delete_file_for_ipc(&state, "/a".into(), None, None)
             .await
@@ -18603,10 +18669,47 @@ mod tests {
         assert!(raw.contains(SECRETS[1]));
     }
 
+    /// A name the provider forbids is refused natively with a stable text
+    /// the page localizes (`localizeRestrictedCharError`). That text is not
+    /// the server's and keeps its shape through the boundary, for a mkdir the
+    /// command refuses itself and for a delete whose error carries it. A
+    /// server cannot pass its own text off as one: a forged provider name or
+    /// character is dropped with the rest of the text.
+    #[tokio::test]
+    async fn a_restricted_character_error_keeps_its_localizable_text() {
+        let pattern =
+            regex::Regex::new(r"Restricted character (\S+) is not allowed by (\S+)").unwrap();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let created = ipc_result(
+            "provider_mkdir",
+            mkdir_for_ipc(&state, "/bad\tname".into(), None, None).await,
+        )
+        .unwrap_err();
+        let caps = pattern.captures(&created).expect("localizable");
+        assert_eq!((&caps[1], &caps[2]), ("U+0009", "WebDav"), "{created}");
+        let deleted = ipc_result::<()>(
+            "provider_delete_file",
+            Err("Failed to delete file: Restricted character U+0001 is not allowed by Box".into()),
+        )
+        .unwrap_err();
+        let caps = pattern.captures(&deleted).expect("localizable");
+        assert_eq!((&caps[1], &caps[2]), ("U+0001", "Box"), "{deleted}");
+        for forged in [
+            "Restricted character U+0009 is not allowed by zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+            "Restricted character zq8Xv2Lr9TmPq4Ks7Wd1Hy is not allowed by Box",
+        ] {
+            let returned =
+                ipc_result::<()>("provider_delete_file", Err(forged.into())).unwrap_err();
+            assert!(!returned.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{returned}");
+        }
+    }
+
     /// The receipt check of a sync run's backup, on a provider whose `stat`
     /// fails with the server's text.
     #[tokio::test]
     async fn a_receipt_check_error_reaches_the_webview_without_the_server_text() {
+        let (_logs, log) = capture_logs();
         let app = crate::AppState::new();
         let state = ProviderState::new();
         *state.provider.lock().await = Some(Box::new(LeakyServer));
@@ -18625,9 +18728,12 @@ mod tests {
         };
         let raw = call().await.unwrap_err();
         assert!(raw.contains(SECRETS[1]), "{raw}");
-        let returned = ipc_result(call().await).unwrap_err();
+        let returned = ipc_result("sync_backup_verify_receipt", call().await).unwrap_err();
         assert_no_server_text(&returned);
         assert!(returned.starts_with("CONNECTION_CHANGED: "), "{returned}");
+        let log = logged(&log);
+        assert_no_server_text(&log);
+        assert!(log.contains("sync_backup_verify_receipt failed"), "{log}");
     }
 
     /// The remote backup of a sync run, on a provider: none of the provider's
@@ -18651,7 +18757,7 @@ mod tests {
         };
         let raw = call().await.unwrap_err();
         assert!(raw.contains(SECRETS[1]), "{raw}");
-        let returned = ipc_result(call().await).unwrap_err();
+        let returned = ipc_result("sync_backup_archive_remote", call().await).unwrap_err();
         assert_no_server_text(&returned);
         assert!(returned.contains("CONNECTION_CHANGED"), "{returned}");
     }
@@ -18689,13 +18795,19 @@ mod tests {
             ftp.login("u", "p").await.unwrap();
         }
         let state = ProviderState::new();
-        let returned =
-            ipc_result(crate::create_remote_folder_for_ipc(&app, &state, "/d".into(), None).await)
-                .unwrap_err();
+        let returned = ipc_result(
+            "create_remote_folder",
+            crate::create_remote_folder_for_ipc(&app, &state, "/d".into(), None).await,
+        )
+        .unwrap_err();
         assert_no_server_text(&returned);
         assert!(returned.contains("[sync-error:"), "{returned}");
         assert_no_server_text(
-            &ipc_result::<()>(Err(format!("Failed to create folder: {LEAKED}"))).unwrap_err(),
+            &ipc_result::<()>(
+                "create_remote_folder",
+                Err(format!("Failed to create folder: {LEAKED}")),
+            )
+            .unwrap_err(),
         );
     }
 

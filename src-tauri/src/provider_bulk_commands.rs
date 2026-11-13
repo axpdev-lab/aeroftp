@@ -63,6 +63,7 @@ pub async fn provider_sync_transfer_bulk(
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app));
     let results = crate::provider_commands::ipc_result(
+        "provider_sync_transfer_bulk",
         sync_transfer_bulk(
             &state,
             &sink,
@@ -83,7 +84,7 @@ fn redacted_bulk_results(results: Vec<SyncBulkResult>) -> Vec<SyncBulkResult> {
         .into_iter()
         .map(|result| match result {
             SyncBulkResult::Failed { message } => SyncBulkResult::Failed {
-                message: crate::sync::ipc_error_message(&message),
+                message: crate::sync::ipc_error_message("provider_sync_transfer_bulk", &message),
             },
             other => other,
         })

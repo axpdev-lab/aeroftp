@@ -3705,7 +3705,10 @@ async fn download_file(
     sync_run_lease: Option<String>,
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    provider_commands::ipc_result(download_file_for_ipc(app, state, provider_state, params).await)
+    provider_commands::ipc_result(
+        "download_file",
+        download_file_for_ipc(app, state, provider_state, params).await,
+    )
 }
 
 async fn download_file_for_ipc(
@@ -3862,7 +3865,10 @@ async fn upload_file(
     sync_run_lease: Option<String>,
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    provider_commands::ipc_result(upload_file_for_ipc(app, state, provider_state, params).await)
+    provider_commands::ipc_result(
+        "upload_file",
+        upload_file_for_ipc(app, state, provider_state, params).await,
+    )
 }
 
 async fn upload_file_for_ipc(
@@ -6645,6 +6651,7 @@ async fn delete_remote_file(
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     provider_commands::ipc_result(
+        "delete_remote_file",
         delete_remote_file_for_ipc(
             app,
             state,
@@ -7350,6 +7357,7 @@ async fn create_remote_folder(
 ) -> Result<(), String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     provider_commands::ipc_result(
+        "create_remote_folder",
         create_remote_folder_for_ipc(&state, &provider_state, path, expected_gui_target).await,
     )
 }
@@ -13160,6 +13168,82 @@ struct SyncEcCommandResult {
     message: Option<String>,
 }
 
+impl SyncEcCommandResult {
+    /// The result a page receives: a failure's `message` can carry the
+    /// provider's text (a failed sidecar upload or download), so it crosses
+    /// as the fixed message of `sync::ipc_error_message`, like an error does.
+    /// The status, `GenerateFailed` included, is kept.
+    fn for_ipc(mut self, command: &'static str) -> Self {
+        self.message = self
+            .message
+            .map(|message| sync::ipc_error_message(command, &message));
+        self
+    }
+}
+
+#[cfg(test)]
+mod native_work_in_blocking_tests {
+    /// A leased command that hands its work to the blocking pool moves its
+    /// admission guard into that work: the guard then counts the blocking
+    /// work until it ends, not the async handler that awaited it. Pinned on
+    /// the source, since dropping a command's future cannot be driven here.
+    #[test]
+    fn the_admission_guard_lives_in_the_blocking_work() {
+        let source = include_str!("lib.rs");
+        for command in [
+            "load_sync_index_cmd",
+            "save_sync_index_cmd",
+            "sync_intent_begin_cmd",
+            "sync_intent_snapshot_cmd",
+            "save_sync_journal_cmd",
+            "delete_sync_journal_cmd",
+        ] {
+            let start = source
+                .find(&format!("\nasync fn {command}("))
+                .unwrap_or_else(|| panic!("{command}"));
+            let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
+            let admit = body
+                .find("let native_work = crate::sync_run_lease::admit(")
+                .unwrap_or_else(|| panic!("{command}: admission"));
+            let spawn = body
+                .find("spawn_blocking(move || {")
+                .unwrap_or_else(|| panic!("{command}: blocking work"));
+            let moved = body
+                .find("let _native_work = native_work;")
+                .unwrap_or_else(|| panic!("{command}: guard moved"));
+            assert!(admit < spawn && spawn < moved, "{command}");
+        }
+        let removal = &source[source
+            .find("\nasync fn sync_remove_empty_dir_for_ipc(")
+            .unwrap()..];
+        let removal = &removal[..removal.find("\n}\n").unwrap()];
+        let spawn = removal.find("spawn_blocking(move || {").unwrap();
+        assert!(removal[spawn..]
+            .contains("let _native_work = crate::sync_run_lease::admit(None).ok();"));
+    }
+}
+
+#[cfg(test)]
+mod sync_ec_ipc_tests {
+    use super::*;
+
+    /// A sidecar failure reported in an `Ok` result: the whole response the
+    /// page receives keeps the status and carries none of the provider's text.
+    #[test]
+    fn an_ec_failure_payload_carries_no_provider_text() {
+        let leaked =
+            r#"{"errors":[{"status":"403","detail":"upload refused zq8Xv2Lr9TmPq4Ks7Wd1Hy"}]}"#;
+        for command in ["sync_ec_generate", "sync_ec_verify_repair"] {
+            let result = sync_ec_message(SyncEcStatus::GenerateFailed, leaked).for_ipc(command);
+            let wire = serde_json::to_string(&result).unwrap();
+            assert!(!wire.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{wire}");
+            assert!(!wire.contains("detail"), "{wire}");
+            assert!(matches!(result.status, SyncEcStatus::GenerateFailed));
+            assert!(wire.contains("[sync-error:"), "{wire}");
+        }
+    }
+}
+
 fn sync_ec_message(status: SyncEcStatus, message: impl Into<String>) -> SyncEcCommandResult {
     SyncEcCommandResult {
         status,
@@ -13267,6 +13351,7 @@ async fn sync_ec_generate(
 ) -> Result<SyncEcCommandResult, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     provider_commands::ipc_result(
+        "sync_ec_generate",
         sync_ec_generate_for_ipc(
             state,
             provider_state,
@@ -13280,6 +13365,7 @@ async fn sync_ec_generate(
         )
         .await,
     )
+    .map(|result| result.for_ipc("sync_ec_generate"))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -13379,6 +13465,7 @@ async fn sync_ec_verify_repair(
 ) -> Result<SyncEcCommandResult, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     provider_commands::ipc_result(
+        "sync_ec_verify_repair",
         sync_ec_verify_repair_for_ipc(
             state,
             provider_state,
@@ -13392,6 +13479,7 @@ async fn sync_ec_verify_repair(
         )
         .await,
     )
+    .map(|result| result.for_ipc("sync_ec_verify_repair"))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -14300,7 +14388,7 @@ async fn load_sync_index_cmd(
     // Its load can adopt a legacy history and insert recovery fences, so a
     // run's call is admitted only while the run's lease is live. Compare
     // passes no token and is only counted.
-    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _pin = provider_state
         .pin_gui_index_owner(
             expected_gui_target,
@@ -14309,6 +14397,8 @@ async fn load_sync_index_cmd(
         )
         .await?;
     tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
         load_sync_index_cmd_blocking(local_path, remote_path, profile_id)
     })
     .await
@@ -14390,7 +14480,7 @@ async fn save_sync_index_cmd(
     is_provider: Option<bool>,
     sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _pin = provider_state
         .pin_gui_index_owner(
             expected_gui_target,
@@ -14399,6 +14489,8 @@ async fn save_sync_index_cmd(
         )
         .await?;
     tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
         if let Some(tokens) = intent_tokens {
             validate_path(&index.local_path)?;
             validate_sync_remote_root(&index.remote_path)?;
@@ -14425,8 +14517,10 @@ async fn sync_intent_begin_cmd(
     paths: Vec<String>,
     sync_run_lease: String,
 ) -> Result<Vec<String>, String> {
-    let _native_work = crate::sync_run_lease::admit(Some(&sync_run_lease))?;
+    let native_work = crate::sync_run_lease::admit(Some(&sync_run_lease))?;
     tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
         if paths.len() > 100_000 {
@@ -14446,8 +14540,10 @@ async fn sync_intent_snapshot_cmd(
     remote_path: String,
     sync_run_lease: Option<String>,
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
         sync::snapshot_sync_intents(&local_path, &remote_path)
@@ -14515,10 +14611,14 @@ async fn save_sync_journal_cmd(
     journal: SyncJournal,
     sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    tokio::task::spawn_blocking(move || save_sync_journal_cmd_blocking(journal))
-        .await
-        .unwrap_or_else(|err| Err(format!("save_sync_journal_cmd task failed: {err}")))
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        save_sync_journal_cmd_blocking(journal)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("save_sync_journal_cmd task failed: {err}")))
 }
 
 /// The body of `save_sync_journal_cmd`, kept synchronous and run on the blocking pool.
@@ -14534,10 +14634,14 @@ async fn delete_sync_journal_cmd(
     remote_path: String,
     sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    tokio::task::spawn_blocking(move || delete_sync_journal_cmd_blocking(local_path, remote_path))
-        .await
-        .unwrap_or_else(|err| Err(format!("delete_sync_journal_cmd task failed: {err}")))
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        delete_sync_journal_cmd_blocking(local_path, remote_path)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("delete_sync_journal_cmd task failed: {err}")))
 }
 
 /// The body of `delete_sync_journal_cmd`, kept synchronous and run on the blocking pool.
@@ -16967,6 +17071,7 @@ async fn sync_backup_archive_remote(
 ) -> Result<Option<String>, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     provider_commands::ipc_result(
+        "sync_backup_archive_remote",
         sync_backup_archive_remote_for_ipc(
             &app_state,
             &provider_state,
@@ -17063,6 +17168,7 @@ async fn sync_backup_verify_receipt(
     expected_gui_target: Option<u64>,
 ) -> Result<bool, String> {
     provider_commands::ipc_result(
+        "sync_backup_verify_receipt",
         sync_backup_verify_receipt_for_ipc(
             &app_state,
             &provider_state,
@@ -17142,6 +17248,7 @@ async fn sync_remove_empty_dir(
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     provider_commands::ipc_result(
+        "sync_remove_empty_dir",
         sync_remove_empty_dir_for_ipc(app_state, provider_state, target, path, expected_gui_target)
             .await,
     )
@@ -17160,6 +17267,9 @@ async fn sync_remove_empty_dir_for_ipc(
             validate_path(&path)?;
             let local = path.clone();
             tokio::task::spawn_blocking(move || {
+                // Counted by the blocking work itself, as long as it runs,
+                // even if the command that awaited it is gone.
+                let _native_work = crate::sync_run_lease::admit(None).ok();
                 sync_empty_dir::remove_local_dir_if_empty(std::path::Path::new(&local))
                     .map_err(|e| e.to_string())
             })

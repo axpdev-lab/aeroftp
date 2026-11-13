@@ -299,6 +299,36 @@ async fn round_trip() {
         before + 1,
         "the expired token was refreshed"
     );
+    // The whole `delete_tokens` path refused on ENOLCK, with the vault open:
+    // the vault entry and the memory copy stay; with the lock the same call
+    // removes them. (No user is active in this fixture, so there is no
+    // partition row: the partition order is covered by the oauth2 tests.)
+    #[cfg(unix)]
+    {
+        use crate::providers::oauth2::OAuthProvider;
+        let manager = OAuth2Manager::new();
+        manager
+            .store_tokens(OAuthProvider::Box, "enolck-profile", &tokens)
+            .unwrap();
+        let account = "oauth_box_enolck-profile";
+        assert!(store.get(account).is_ok());
+        crate::providers::oauth2::force_signout_enolck_for_test(true);
+        let refused = manager.delete_tokens(OAuthProvider::Box, "enolck-profile");
+        crate::providers::oauth2::force_signout_enolck_for_test(false);
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|e| e.to_string().contains("nothing was signed out")),
+            "{refused:?}"
+        );
+        assert!(store.get(account).is_ok(), "the vault entry stays");
+        assert!(manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
+        manager
+            .delete_tokens(OAuthProvider::Box, "enolck-profile")
+            .unwrap();
+        assert!(store.get(account).is_err(), "the retry removes it");
+        assert!(!manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
+    }
     let token_dir = crate::portable::aeroftp_data_root()
         .unwrap()
         .join("oauth_tokens");

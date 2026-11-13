@@ -472,6 +472,10 @@ export const currentPageSyncEpoch = (): number | undefined => {
  * come from the command's tag; the message kept for the report, the journal
  * and the activity log is the same text without it.
  */
+/** An error's text as a report, a status or the journal keeps it: without the
+ *  classification tag a runner command's message ends with. */
+const errorText = (error: unknown): string => withoutErrorTag(String(error));
+
 const classifyRunError = async (invoke: RemoteSyncDeps['invoke'], rawError: string, filePath: string): Promise<SyncErrorInfo> => {
     const info = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath })
         .catch(() => ({
@@ -567,7 +571,10 @@ const runSync = async (
             // or sidecar generation can write anything.
             || entry.status === 'in_progress'
             || (entry.status === 'transferred' && (deps.resumeJournal?.ec_enabled === true || entry.action === 'download'))
-            || (entry.status === 'verify_failed' && entry.action === 'download' && deps.resumeJournal?.ec_enabled === true)
+            // A download whose verification failed left a destination nobody
+            // vouches for, with or without EC: replaying it could overwrite an
+            // edit made since. Only a new compare decides.
+            || (entry.status === 'verify_failed' && entry.action === 'download')
             || (entry.status !== 'completed' && (entry.intent_token ?? null) !== (observedIntents[intentKey(entry)] ?? null))
             || (entry.archive_state === 'archived' && (!entry.archive_receipt || !deps.resumeJournal?.backup_stamp))
             || (entry.status !== 'completed' && entry.action !== 'upload' && entry.action !== 'download')
@@ -707,11 +714,11 @@ const runSync = async (
                 if (transferTimedOut) {
                     journal.resume_safe = false;
                     return { success: false, attempts: attempt, error: {
-                        kind: 'unknown', message: String(err), retryable: false, file_path: filePath,
+                        kind: 'unknown', message: errorText(err), retryable: false, file_path: filePath,
                     } };
                 }
                 if (targetError) return { success: false, attempts: attempt, error: {
-                    kind: 'unknown', message: String(targetError), retryable: false, file_path: filePath,
+                    kind: 'unknown', message: errorText(targetError), retryable: false, file_path: filePath,
                 } };
                 const rawMsg = (err as { toString?: () => string })?.toString?.()
                     || 'Unknown error';
@@ -746,7 +753,7 @@ const runSync = async (
         }).catch((error) => ({
             path: localFilePath, passed: false, policy: config.verifyPolicy,
             expected_size: expectedSize, actual_size: null, size_match: false,
-            mtime_match: null, hash_match: null, message: String(error),
+            mtime_match: null, hash_match: null, message: errorText(error),
         }));
     };
 
@@ -857,7 +864,7 @@ const runSync = async (
     const failBackup = (item: SyncRunFile, journalEntry: SyncJournalEntry | undefined, e: unknown): void => {
         const errInfo: SyncErrorInfo = {
             kind: 'disk_error',
-            message: redactCredentials((e as Error)?.message || String(e)),
+            message: redactCredentials(withoutErrorTag((e as Error)?.message || String(e))),
             retryable: false,
             file_path: item.relativePath,
         };
@@ -1012,7 +1019,7 @@ const runSync = async (
             }
             entries.forEach((entry,index) => { entry.intent_token=tokens[index]; });
         } catch (error) {
-            checkpointError = new Error(`SYNC_RESUME_NEEDS_COMPARE: intent failed: ${String(error)}`);
+            checkpointError = new Error(`SYNC_RESUME_NEEDS_COMPARE: intent failed: ${errorText(error)}`);
             journal.resume_safe = false;
             throw checkpointError;
         }
@@ -1032,7 +1039,7 @@ const runSync = async (
         if (!journalEnabled) return;
         try { await invoke('save_sync_journal_cmd', { journal }); }
         catch (error) {
-            checkpointError = new Error(`SYNC_RESUME_NEEDS_COMPARE: checkpoint failed: ${String(error)}`);
+            checkpointError = new Error(`SYNC_RESUME_NEEDS_COMPARE: checkpoint failed: ${errorText(error)}`);
             journal.resume_safe = false;
             throw checkpointError;
         }
@@ -1072,7 +1079,7 @@ const runSync = async (
             }
         } catch (error) {
             // Not knowing is not a pass: writing could lose a file.
-            localTargets.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${String(error)}`));
+            localTargets.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${errorText(error)}`));
         }
     }
     // On a local pair an upload writes to a disk too, with the same limits.
@@ -1090,7 +1097,7 @@ const runSync = async (
                 problems.forEach((problem) => localNameProblems.set(problem.path, problem.reason));
             }
         } catch (error) {
-            localPairUploads.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${String(error)}`));
+            localPairUploads.forEach((path) => localNameProblems.set(path, `Could not check the local name: ${errorText(error)}`));
         }
     }
     const bulkEligible = (f: SyncRunFile): boolean =>
@@ -1244,6 +1251,10 @@ const runSync = async (
     /** The outcome of a file the bulk sent or failed, as the single-file path reports it. */
     const bulkOutcome = async (result: SyncBulkResult, filePath: string): Promise<TransferOutcome> => {
         if (result.status === 'completed') return { success: true, attempts: 1 };
+        // A bulk `failed` file was handed to the native program and may have
+        // reached the server: its journal row cannot say which. A resume must
+        // not trust it as a plain failure, so a new compare decides.
+        if (result.status === 'failed') journal.resume_safe = false;
         const rawError = result.status === 'target_changed' ? 'CONNECTION_CHANGED'
             : result.status === 'failed' ? result.message : 'Not sent';
         const error = await classifyRunError(invoke, rawError, filePath);
@@ -1819,11 +1830,11 @@ const runSync = async (
     }
     if (targetError) {
         runCancelled = true;
-        errors.push({ kind: 'unknown', message: String(targetError), retryable: false, file_path: '' });
+        errors.push({ kind: 'unknown', message: errorText(targetError), retryable: false, file_path: '' });
     }
     if (checkpointError) {
         runCancelled = true;
-        errors.push({ kind: 'disk_error', message: String(checkpointError), retryable: false, file_path: '' });
+        errors.push({ kind: 'disk_error', message: errorText(checkpointError), retryable: false, file_path: '' });
     }
     journal.completed = !runCancelled && errors.length === 0;
     await saveJournal();
@@ -1997,7 +2008,7 @@ const runSync = async (
             // change here left the baseline unpublished, so the report says so.
             if (targetError) {
                 runCancelled = true;
-                errors.push({ kind: 'unknown', message: String(targetError), retryable: false, file_path: '' });
+                errors.push({ kind: 'unknown', message: errorText(targetError), retryable: false, file_path: '' });
             }
         }
     }

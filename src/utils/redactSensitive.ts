@@ -136,7 +136,9 @@ export function redactSensitive(msg: string): string {
 const SIGNED_URL_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
     { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
     { pattern: /([?&](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
-    { pattern: /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, replacement: '$1***REDACTED***@' },
+    // The whole userinfo: up to the LAST `@` of the authority, since a password
+    // may hold `@` itself, and never past the authority (`/`, `?`, `#`).
+    { pattern: /\b([a-z][a-z0-9+.-]*:\/\/)[^\s/?#]+@/gi, replacement: '$1***REDACTED***@' },
 ];
 
 /**

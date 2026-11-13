@@ -8058,6 +8058,8 @@ mod rename_contract_tests {
         list_all_refused: bool,
         /// `LIST -a` is read as a pathname: it lists the folder named `-a`.
         dash_a_as_path: bool,
+        /// A bare LIST also shows the subfolders, as directory rows.
+        list_dirs: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -8158,14 +8160,28 @@ mod rename_contract_tests {
                         row(target.rsplit('/').next().unwrap_or(&target))
                     } else {
                         let dir = target.trim_end_matches('/');
-                        held.iter()
+                        let mut rows: String = held
+                            .iter()
                             .filter_map(|f| {
                                 let (parent, name) = f.rsplit_once('/')?;
                                 (parent == dir
                                     && (all || !quirks.hides_dotfiles || !name.starts_with('.')))
                                 .then(|| row(name))
                             })
-                            .collect()
+                            .collect();
+                        if quirks.list_dirs {
+                            let mut subdirs: Vec<&str> = held
+                                .iter()
+                                .filter_map(|f| f.strip_prefix(&format!("{dir}/")))
+                                .filter_map(|rest| rest.split_once('/').map(|(sub, _)| sub))
+                                .collect();
+                            subdirs.sort_unstable();
+                            subdirs.dedup();
+                            for sub in subdirs {
+                                rows.push_str(&format!("drwxr-xr-x 1 u g 0 Jan 01 2024 {sub}\r\n"));
+                            }
+                        }
+                        rows
                     };
                     if write.write_all(b"150 Here comes the listing\r\n").await.is_err() {
                         return;
@@ -8633,6 +8649,34 @@ mod rename_contract_tests {
             .await
             .expect("an unambiguous dotfile is found");
         assert_eq!(found.name, ".env");
+    }
+
+    /// The same through a backup receipt check, with `-a` a real folder of the
+    /// bare listing: an ambiguous receipt is not a file, an unambiguous one is.
+    #[tokio::test]
+    async fn a_receipt_beside_a_folder_named_dash_a_is_not_accepted() {
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            dash_a_as_path: true,
+            list_dirs: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/-a/.env"], quirks).await;
+        let refused = crate::sync_backup::provider_receipt_is_file(&mut provider, "/d/.env").await;
+        assert!(refused.is_err(), "unknown, not a file: {refused:?}");
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            list_dirs: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/.env", "/d/sub/x.txt"], quirks).await;
+        assert!(
+            crate::sync_backup::provider_receipt_is_file(&mut provider, "/d/.env")
+                .await
+                .unwrap()
+        );
     }
 
     /// vsftpd refuses `RMD` of a directory that is not empty with a bare 550

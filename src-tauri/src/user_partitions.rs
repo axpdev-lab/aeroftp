@@ -597,6 +597,21 @@ pub(crate) struct GuiAccountSnapshot {
     session_generation: u64,
 }
 
+/// A snapshot for a test that plays account changes without a database.
+#[cfg(test)]
+pub(crate) fn gui_account_snapshot_for_test(
+    user: Option<i64>,
+    activation_revision: i64,
+) -> GuiAccountSnapshot {
+    GuiAccountSnapshot {
+        user,
+        activation_revision,
+        dek_verifier: Vec::new(),
+        has_passphrase: false,
+        session_generation: 0,
+    }
+}
+
 pub(crate) fn gui_account_snapshot() -> Result<GuiAccountSnapshot, String> {
     gui_account_snapshot_from(&open_or_init_cli()?)
 }
@@ -3921,6 +3936,22 @@ fn muv3_credential_type(credential_id: &str) -> Option<&'static str> {
 /// Active user id resolved quietly without an AppHandle. Returns `None` on any
 /// error (DB unopenable, no active user): callers use it only to decide whether
 /// a best-effort mirror is possible, never to gate the authoritative vault write.
+/// Remove `credential_id` from `user_id`'s partition, reporting a failure:
+/// a sign-out must not go on while a partition copy it could not remove stays
+/// readable (`unmirror_credential_for_user_best_effort_any` drops the error).
+pub(crate) fn try_unmirror_active_credential(
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    delete_user_credential_for(&open_or_init_cli()?, user_id, credential_id)
+}
+
+/// The active account a sign-out removes a partition copy from, read before
+/// it waits for its lock: a failed lookup is an error, never "no account".
+pub(crate) fn active_user_for_signout() -> Result<Option<i64>, String> {
+    active_user_id_for_write()
+}
+
 fn active_user_id_quiet() -> Option<i64> {
     let conn = open_or_init_cli().ok()?;
     active_user_id(&conn).ok().flatten()

@@ -239,12 +239,47 @@ pub(crate) async fn create_cloud_connection(
     // connected: a switch, lock or unlock in between refuses the connection.
     let account =
         crate::credential_store::off_async_worker(crate::user_partitions::gui_account_snapshot)?;
-    let mut opened = open_cloud_connection(config, account.user).await?;
+    // The reads below see the captured account (`recheck_connecting_account`).
+    let mut opened = CONNECTING_ACCOUNT
+        .scope(account.clone(), open_cloud_connection(config, account.user))
+        .await?;
     if let Err(error) = crate::credential_store::off_async_worker(|| account_unchanged(&account)) {
         let _ = opened.provider.disconnect().await;
         return Err(error);
     }
     Ok(opened)
+}
+
+tokio::task_local! {
+    /// The account a `create_cloud_connection` began with, for the reads it
+    /// makes before it connects.
+    static CONNECTING_ACCOUNT: crate::user_partitions::GuiAccountSnapshot;
+}
+
+/// After the profile and its credentials were read and before anything is
+/// sent to a host: the account the connection began with must still be the
+/// active one, so credentials read across a switch never reach a server. The
+/// snapshot carries the activation revision and the session generation, so a
+/// switch away and back (A, B, A) is a change too. Outside a
+/// `create_cloud_connection` there is nothing captured to compare.
+async fn recheck_connecting_account() -> Result<(), String> {
+    let Ok(captured) = CONNECTING_ACCOUNT.try_with(Clone::clone) else {
+        return Ok(());
+    };
+    crate::credential_store::off_async_worker(move || {
+        account_still(&captured, crate::user_partitions::gui_account_snapshot)
+    })
+}
+
+/// [`account_unchanged`] against a given reader of the current account.
+fn account_still(
+    captured: &crate::user_partitions::GuiAccountSnapshot,
+    current: impl FnOnce() -> Result<crate::user_partitions::GuiAccountSnapshot, String>,
+) -> Result<(), String> {
+    if current()? != *captured {
+        return Err("The active account changed while connecting; retry the cycle".to_string());
+    }
+    Ok(())
 }
 
 /// Whether the active account is still the one `captured` describes: the same
@@ -560,6 +595,12 @@ async fn create_via_factory(
     };
 
     let binding = overlay_binding(profile.as_ref());
+    // The profile and its credentials were two reads: refuse now, before any
+    // connection, if the account changed between the first and this point.
+    if let Err(error) = recheck_connecting_account().await {
+        provider_config.zeroize_password();
+        return Err(error);
+    }
     let mut provider = ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
     // A3-05: Zeroize password after it has been consumed by the provider
@@ -914,6 +955,44 @@ async fn create_fourshared(config: &CloudConfig) -> Result<OpenedCloudProvider, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The account captured when a connection began, compared after the
+    /// profile and credential reads: another account, or the same one
+    /// activated again (A, B, A, a new activation revision), refuses.
+    #[test]
+    fn a_switch_between_the_reads_refuses_before_connecting() {
+        use crate::user_partitions::gui_account_snapshot_for_test as snapshot;
+        let captured = snapshot(Some(1), 4);
+        assert!(account_still(&captured, || Ok(snapshot(Some(1), 4))).is_ok());
+        assert!(account_still(&captured, || Ok(snapshot(Some(2), 5))).is_err());
+        assert!(
+            account_still(&captured, || Ok(snapshot(Some(1), 6))).is_err(),
+            "A, B, A"
+        );
+        assert!(account_still(&captured, || Err("db locked".into())).is_err());
+    }
+
+    /// Outside a connection there is nothing captured, and nothing to refuse.
+    #[tokio::test]
+    async fn the_recheck_needs_a_captured_account() {
+        assert!(recheck_connecting_account().await.is_ok());
+    }
+
+    /// The recheck sits between the reads and the first byte to a host: after
+    /// `profile_creds` and before `ProviderFactory::create`, so no provider is
+    /// built, let alone connected, with credentials read across a switch.
+    #[test]
+    fn the_recheck_comes_before_the_provider_is_built() {
+        let source = include_str!("cloud_provider_factory.rs");
+        let body = &source[source.find("async fn create_via_factory(").unwrap()..];
+        let body = &body[..body.find("\n}\n").unwrap()];
+        let read = body.find("profile_creds(&store, profile)").unwrap();
+        let recheck = body.find("recheck_connecting_account().await").unwrap();
+        let create = body
+            .find("ProviderFactory::create(&provider_config)")
+            .unwrap();
+        assert!(read < recheck && recheck < create);
+    }
 
     #[test]
     fn receipt_identity_follows_resolved_target_even_when_profile_labels_do_not_change() {
