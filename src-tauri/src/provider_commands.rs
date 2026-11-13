@@ -3667,8 +3667,8 @@ async fn provider_change_dir_inner(
 /// is in hand) events. The emitted events are byte-identical with the
 /// pre-convergence single-file path.
 #[allow(clippy::too_many_arguments)]
-async fn run_dag_download_leaf(
-    app: AppHandle,
+async fn run_dag_download_leaf<R: tauri::Runtime>(
+    app: AppHandle<R>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     // Holds the in-flight counter for the lifetime of this leaf so
     // `provider_disconnect` cannot drain past us. Held by name (not `_`)
@@ -3881,8 +3881,8 @@ async fn run_dag_download_leaf(
 /// engine and emit the GUI completion / error events. The upload mirror of
 /// [`run_dag_download_leaf`]; GitHub keeps its dedicated commit-based path.
 #[allow(clippy::too_many_arguments)]
-async fn run_dag_upload_leaf(
-    app: AppHandle,
+async fn run_dag_upload_leaf<R: tauri::Runtime>(
+    app: AppHandle<R>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     // Same role as the download leaf: pin the in-flight counter against
     // `provider_disconnect` (issue #233).
@@ -4387,8 +4387,8 @@ fn download_wrote_target(
 /// Download a file from the remote server
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn provider_download_file(
-    app: AppHandle,
+pub async fn provider_download_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
@@ -4426,8 +4426,8 @@ pub async fn provider_download_file(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn download_file_for_ipc(
-    app: AppHandle,
+async fn download_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
@@ -7057,8 +7057,8 @@ async fn provider_upload_folder_inner(
 // Keep the existing IPC arguments compatible; no_clobber is an optional field.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn provider_upload_file(
-    app: AppHandle,
+pub async fn provider_upload_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, ProviderState>,
     local_path: String,
     remote_path: String,
@@ -7096,8 +7096,8 @@ pub async fn provider_upload_file(
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn upload_file_for_ipc(
-    app: AppHandle,
+async fn upload_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, ProviderState>,
     local_path: String,
     remote_path: String,
