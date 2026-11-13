@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Map<string, (e
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ emit: vi.fn() }));
 vi.mock('../hooks/useTauriListener', () => ({ useTauriListener: (name: string, callback: (event: { payload: unknown }) => void) => { mocks.listeners.set(name, callback); } }));
-vi.mock('../hooks/useTraySync', () => ({ useTraySync: () => ({ isRunning: false }) }));
+vi.mock('../hooks/useTraySync', () => ({ useTraySync: () => ({ isRunning: false, startBackgroundSync: async () => {} }) }));
 vi.mock('../i18n', () => ({ useTranslation: () => (key: string) => key }));
 vi.mock('./AeroCloudProtocols', () => ({ AeroCloudMaturityBadge: () => null, useAeroCloudCaveat: () => () => null }));
 vi.mock('./SyncScheduler', () => ({ SyncScheduler: () => null }));
@@ -180,6 +180,42 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(remoteFolder()).not.toBeNull();
         await React.act(async () => resolveSave(null));
         await React.act(async () => { await Promise.resolve(); });
+    });
+
+    it('keeps an open settings draft when the post-sync refresh only moves last_sync', async () => {
+        const LAST_SYNC = new Date().toISOString();
+        let resolveSync!: (v: unknown) => void;
+        const syncPromise = new Promise(res => { resolveSync = res; });
+        await mount([]);
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'trigger_cloud_sync') return syncPromise;
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [], last_sync: LAST_SYNC };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        // Sync Now, then edit the draft while the sync is still running.
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        await openSettings();
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '/typed');
+            remoteFolder()!.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await React.act(async () => resolveSync('done'));
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        // The refresh merged only last_sync: the draft is still there and the
+        // dirty guard still owns the backdrop.
+        expect(remoteFolder()?.value).toBe('/typed');
+        const backdrop = host.querySelector('[aria-label="cloud.dialogSettingsLabel"]')!;
+        await React.act(async () => backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+        expect(remoteFolder()?.value).toBe('/typed');
+        // Cancel restores the baseline, which now carries the persisted
+        // last_sync, so the dashboard shows it.
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'common.cancel')!.click());
+        expect(host.textContent).toContain('cloud.justNow');
+        expect(host.textContent).not.toContain('cloud.never');
     });
 
     it('drops the stale settings baseline when Disable replaces the configuration', async () => {

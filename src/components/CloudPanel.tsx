@@ -449,11 +449,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setReauthRequired({ provider: event.payload.provider, message: event.payload.message });
     });
 
-    const loadConfig = async () => {
+    const loadConfig = async (refresh = false) => {
         setIsLoading(true);
         try {
             const cfg = await invoke<CloudConfig>('get_cloud_config');
-            replaceConfig(cfg);
+            if (refresh) {
+                // A sync only moves last_sync (the folders are inputs, not
+                // outputs), so merge that persisted field into the draft and
+                // the baseline: an open settings view is neither closed nor
+                // marked dirty by the refresh.
+                setConfig(prev => prev ? { ...prev, last_sync: cfg.last_sync } : cfg);
+                setSettingsBaseline(prev => prev ? { ...prev, last_sync: cfg.last_sync } : prev);
+            } else {
+                replaceConfig(cfg);
+            }
             // Pair-specific settings own Update whenever pairs exist. Failure
             // to read them must not expose an ineffective legacy checkbox.
             const pairs = await invoke<{ pairs: unknown[] }>('get_cloud_pairs_config').catch(() => null);
@@ -490,8 +499,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             const result = await invoke<string>('trigger_cloud_sync');
             logger.debug('Sync result:', result);
             setStatus({ type: 'idle' });
-            // Reload config to update last_sync
-            loadConfig();
+            // Reload config to update last_sync: a refresh, not a new
+            // configuration: an open settings draft must survive it.
+            loadConfig(true);
         } catch (error) {
             console.error('Sync failed:', error);
             setStatus({ type: 'error', message: String(error) });
