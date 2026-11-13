@@ -1,22 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 import type { RemoteSyncDeps } from '../remoteSyncRunner';
-// The generation native code hands a document when it finished loading
-// (`sync_run_lease::page_epoch_script`); a test of a page that has none
-// deletes it.
-(globalThis as Record<string, unknown>).__AEROFTP_SYNC_PAGE_EPOCH__ ??= 0;
 const fixtures = new WeakMap<RemoteSyncDeps['invoke'], ReturnType<typeof createIntentFixture>>();
 export function createIntentFixture() {
     const generations = new Map<string,string>();
     const leases = new Map<string, string>();
     const beginArgs: Record<string, unknown>[] = [];
+    const bindArgs: Record<string, unknown>[] = [];
     let sequence = 0;
-    return { generations, beginArgs, wrap(invoke: RemoteSyncDeps['invoke']): RemoteSyncDeps['invoke'] {
+    return { generations, beginArgs, bindArgs, wrap(invoke: RemoteSyncDeps['invoke']): RemoteSyncDeps['invoke'] {
         return async <T,>(cmd: string, args?: Record<string,unknown>): Promise<T> => {
+            if (cmd === 'sync_run_page_bind_cmd') {
+                bindArgs.push({ ...args });
+                return undefined as T;
+            }
             if (cmd === 'sync_run_lease_begin_cmd') {
                 beginArgs.push({ ...args });
-                // As natively: a begin that names no page generation is refused.
-                if (typeof args?.pageEpoch !== 'number') throw new Error('SYNC_RUN_PAGE_REPLACED');
+                // As natively: a begin that names no page nonce is refused.
+                if (typeof args?.pageNonce !== 'string' || !args.pageNonce) throw new Error('SYNC_RUN_PAGE_REPLACED');
                 const pair = JSON.stringify([args!.localPath, args!.remotePath]);
                 if (leases.has(pair)) throw new Error('SYNC_RUN_BUSY');
                 const token = `run-lease-${++sequence}`;

@@ -339,6 +339,17 @@ impl RusshSessionTransport {
         if let Some(pinned) = &config.pinned_private_key {
             pinned.verified_key()?;
         }
+        // The same before the socket opens for a session that logged in
+        // with a password: this login repeats that method or none at all.
+        if config.pinned_password
+            && (config.usable_password().is_none()
+                || config.pinned_private_key.is_some()
+                || config.auth_agent)
+        {
+            return Err(AerorsyncError::pinned_password_mismatch(
+                "the session logged in with a password and this login has no password to repeat it",
+            ));
+        }
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let handshake_count = Arc::new(AtomicU32::new(0));
         let raw_open_count = Arc::new(AtomicU32::new(0));
@@ -396,8 +407,17 @@ impl RusshSessionTransport {
         // A pinned key overrides all of that: the caller's session logged
         // in with that key, so this one offers that key and nothing else,
         // `none` included.
+        //
+        // A password pin does the same for a password session: `none`
+        // would let a server that accepts it later put this login in an
+        // account or root the session is not in.
         if config.pinned_private_key.is_some() {
             authenticate_publickey_with_rsa_fallbacks(&mut handle, &config).await?;
+        } else if config.pinned_password {
+            let password = config.usable_password().ok_or_else(|| {
+                AerorsyncError::pinned_password_mismatch("the password pin has no password")
+            })?;
+            authenticate_password(&mut handle, &config.username, password).await?;
         } else if authenticate_none(&mut handle, &config.username).await? {
             tracing::info!("aerorsync: server accepted the account with no credential");
         } else if let Some(password) = config.usable_password() {
@@ -668,6 +688,7 @@ pub(crate) fn test_dummy_config() -> SshTransportConfig {
         auth_password: None,
         auth_agent: false,
         pinned_private_key: None,
+        pinned_password: false,
     }
 }
 
@@ -1451,6 +1472,77 @@ mod tests {
         assert_eq!(nones.load(Ordering::SeqCst), 1);
         // The way in was the password, not some path that skipped it.
         assert_eq!(passwords.load(Ordering::SeqCst), 1);
+    }
+
+    /// A password session's delta login on a server that now accepts
+    /// `none`: it never sends `none`, and gets in with the password.
+    #[tokio::test]
+    async fn a_password_pin_never_sends_none_even_where_none_would_get_in() {
+        let (port, nones, passwords) = start_none_server(true, Some("testpass")).await;
+        let pinned = SshTransportConfig {
+            port,
+            auth_password: Some(SecretString::from("testpass".to_string())),
+            pinned_password: true,
+            ..dummy_config()
+        };
+        for _login in 0..2 {
+            // The same config serves every later login (probe, transfer,
+            // reconnect): each one repeats the password.
+            RusshSessionTransport::connect(pinned.clone())
+                .await
+                .expect("in through the password");
+        }
+        assert_eq!(nones.load(Ordering::SeqCst), 0);
+        assert_eq!(passwords.load(Ordering::SeqCst), 2);
+    }
+
+    /// A password pin with nothing to repeat it, or with another credential
+    /// beside it: a typed hard rejection before the socket opens, never a
+    /// login by another method.
+    #[tokio::test]
+    async fn a_password_pin_without_its_password_is_refused_before_any_attempt() {
+        let (port, nones, passwords) = start_none_server(true, Some("testpass")).await;
+        for config in [
+            SshTransportConfig {
+                port,
+                pinned_password: true,
+                ..dummy_config()
+            },
+            SshTransportConfig {
+                port,
+                auth_password: Some(SecretString::from(String::new())),
+                pinned_password: true,
+                ..dummy_config()
+            },
+            SshTransportConfig {
+                port,
+                auth_password: Some(SecretString::from("testpass".to_string())),
+                auth_agent: true,
+                pinned_password: true,
+                ..dummy_config()
+            },
+        ] {
+            let err = RusshSessionTransport::connect(config)
+                .await
+                .err()
+                .expect("refused");
+            assert_eq!(
+                err.kind,
+                crate::aerorsync::types::AerorsyncErrorKind::PinnedPasswordMismatch
+            );
+            assert_eq!(
+                crate::aerorsync::fallback_policy::classify_fallback(&err, false),
+                crate::aerorsync::fallback_policy::FallbackVerdict::HardError
+            );
+        }
+        assert_eq!(nones.load(Ordering::SeqCst), 0);
+        assert_eq!(passwords.load(Ordering::SeqCst), 0);
+        // The key-file leg refuses it too, and the pin routes away from it.
+        let libssh2 = SshTransportConfig {
+            pinned_password: true,
+            ..dummy_config()
+        };
+        assert!(libssh2.prefers_russh_leg());
     }
 
     #[tokio::test]

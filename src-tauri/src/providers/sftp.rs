@@ -1113,6 +1113,11 @@ pub(crate) enum SshAuthMethod {
     NoCredential,
     PrivateKey,
     Password,
+    /// The password, answered to a keyboard-interactive prompt after the
+    /// `password` method was refused. A redial repeats the same two steps;
+    /// the delta login can only repeat `password`, so such a session gets
+    /// no delta transport (its transfers use SFTP).
+    PasswordKeyboardInteractive,
 }
 
 /// The refusal of a server that wants a credential when the profile has
@@ -2092,7 +2097,10 @@ impl SftpProvider {
             .connection_spec
             .as_ref()
             .and_then(|spec| spec.pinned_auth_method);
-        if pinned == Some(SshAuthMethod::NoCredential) {
+        if matches!(
+            pinned,
+            Some(SshAuthMethod::NoCredential | SshAuthMethod::PasswordKeyboardInteractive)
+        ) {
             // Both delta adapters open a separate SSH login and neither is
             // given a way to repeat the session's `none` login here. Use the
             // pinned SFTP transfer path for these sessions instead.
@@ -2119,12 +2127,12 @@ impl SftpProvider {
         };
         let (ssh_key_path, ssh_password, auth_method) = if pinned_private_key.is_some() {
             (None, None, AuthMethod::SshKey)
-        } else if let Some(key_path_str) = self
-            .config
-            .private_key_path
-            .as_ref()
-            .filter(|_| pinned != Some(SshAuthMethod::Password))
-        {
+        } else if let Some(key_path_str) = self.config.private_key_path.as_ref().filter(|_| {
+            !matches!(
+                pinned,
+                Some(SshAuthMethod::Password | SshAuthMethod::PasswordKeyboardInteractive)
+            )
+        }) {
             (
                 Some(std::path::PathBuf::from(Self::expand_home_path(
                     key_path_str,
@@ -2158,6 +2166,10 @@ impl SftpProvider {
             strict_host_key_check: "accept-new".to_string(),
             known_hosts_path,
             pinned_private_key,
+            // The password branch is a password session's: its delta login
+            // repeats the password and never sends `none` (see
+            // `RusshSessionTransport::connect`).
+            pinned_password: matches!(auth_method, AuthMethod::Password),
             pinned_key_sha256,
         })
     }
@@ -2166,8 +2178,11 @@ impl SftpProvider {
 /// Whether the `rsync` binary may serve this session. It spawns `ssh -i
 /// <path>`, which reads the key file itself, so a session whose key is pinned
 /// in memory cannot be bound to it and is refused.
+/// The `rsync` binary runs `ssh` itself: it can neither sign with a key held
+/// in memory nor hold a password pin (OpenSSH sends `none` first). Such a
+/// session gets no binary transport, and its transfers use plain SFTP.
 fn classic_binary_allowed(rsync_config: &crate::rsync_over_ssh::RsyncConfig) -> bool {
-    rsync_config.pinned_private_key.is_none()
+    rsync_config.pinned_private_key.is_none() && !rsync_config.pinned_password
 }
 
 /// PR-T11 cross-OS helper. On Unix this constructs the classic
@@ -2362,15 +2377,15 @@ impl SftpProvider {
     ///
     /// Free of `&self` so `list` can call it from inside the concurrent
     /// per-entry futures without capturing the provider.
-    fn metadata_to_entry(
+    pub(crate) fn metadata_to_entry(
         name: String,
         path: String,
         metadata: &russh_sftp::protocol::FileAttributes,
     ) -> RemoteEntry {
-        let is_dir = metadata
-            .permissions
-            .map(|p| (p & 0o40000) != 0)
-            .unwrap_or(false);
+        // The file-type field (S_IFMT), not one bit of it: a socket
+        // (0o140000) also has the directory bit set.
+        let file_type = metadata.permissions.map(|p| p & 0o170000);
+        let is_dir = file_type == Some(0o040000);
 
         let permissions = metadata.permissions.map(|p| format_permissions(p, is_dir));
 
@@ -2380,7 +2395,7 @@ impl SftpProvider {
                 .unwrap_or_default()
         });
 
-        RemoteEntry {
+        let mut entry = RemoteEntry {
             name,
             path,
             is_dir,
@@ -2393,7 +2408,15 @@ impl SftpProvider {
             link_target: None,
             mime_type: None,
             metadata: Default::default(),
+        };
+        // Positive evidence only: no file-type bits, or a FIFO, socket or
+        // device, is not a regular file (`is_dir` and `is_symlink` false do
+        // not say "file"). A symlink's own mode is marked too; the receipt
+        // refuses a link on its own flag.
+        if !matches!(file_type, Some(0o100000) | Some(0o040000)) {
+            crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry);
         }
+        entry
     }
 
     async fn verify_remote_upload_size(
@@ -2608,6 +2631,7 @@ pub(crate) async fn ssh_login_pinned(
         false
     };
     let method = select_auth_method(config, pinned, none_accepted)?;
+    let mut via_keyboard_interactive = false;
     let authenticated = if method == SshAuthMethod::NoCredential {
         true
     } else if method == SshAuthMethod::PrivateKey {
@@ -2627,6 +2651,7 @@ pub(crate) async fn ssh_login_pinned(
         if matches!(result, AuthResult::Success) {
             true
         } else {
+            via_keyboard_interactive = true;
             // Fallback: keyboard-interactive (many servers like SourceForge require this)
             tracing::info!("SSH: Password auth not accepted, trying keyboard-interactive...");
             let ki_result = handle
@@ -2669,7 +2694,28 @@ pub(crate) async fn ssh_login_pinned(
         ));
     }
 
-    let _ = auth_method.set(method);
+    // Record the method that really got in: a password the server took only
+    // as a keyboard-interactive answer is not a `password` login.
+    let succeeded = if matches!(
+        method,
+        SshAuthMethod::Password | SshAuthMethod::PasswordKeyboardInteractive
+    ) {
+        if via_keyboard_interactive {
+            SshAuthMethod::PasswordKeyboardInteractive
+        } else {
+            SshAuthMethod::Password
+        }
+    } else {
+        method
+    };
+    // A redial must get in the way the session did: another method (the
+    // server now takes the password only as a keyboard-interactive answer,
+    // or the other way round) may put it in another root, so it is a changed
+    // target, never accepted under the method recorded first.
+    if pinned.is_some_and(|pinned| pinned != succeeded) {
+        return Err(ProviderError::TargetChanged);
+    }
+    let _ = auth_method.set(succeeded);
     Ok(handle)
 }
 
@@ -3193,7 +3239,7 @@ impl StorageProvider for SftpProvider {
                         until_sftp_ends(&sftp.ended, sftp.metadata(&entry_path)).await
                     {
                         if let Some(target_perms) = target_meta.permissions {
-                            remote_entry.is_dir = (target_perms & 0o40000) != 0;
+                            remote_entry.is_dir = (target_perms & 0o170000) == 0o040000;
                         }
                         // Update size from target if available
                         if let Some(target_size) = target_meta.size {
@@ -3264,7 +3310,7 @@ impl StorageProvider for SftpProvider {
         };
 
         if let Some(perms) = metadata.permissions {
-            if (perms & 0o40000) == 0 {
+            if (perms & 0o170000) != 0o040000 {
                 return Err(ProviderError::InvalidPath(format!(
                     "{} is not a directory",
                     full_path

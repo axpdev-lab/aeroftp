@@ -431,6 +431,7 @@ zbus = { version = "5", features = ["p2p"] }
 rcgen = "0.14"                                                       # Self-signed certificates for the loopback TLS tests
 rusqlite = { version = "0.32", features = ["bundled", "hooks"] }     # progress_handler, to interleave a second connection in the contention tests
 tracing-log = "0.2"                                                  # The log -> tracing bridge the CLI installs, for its log filter tests
+tauri = { version = "=2.11.0", features = ["test"] }                 # mock_app: the events a command really emits, in unit tests (no extra crate)
 
 [features]
 default = ["aerorsync", "local-stt", "proton-native"]

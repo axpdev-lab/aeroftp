@@ -129,6 +129,11 @@ pub struct RsyncConfig {
     /// logged in with, recorded at that login. Travels with
     /// `pinned_private_key`; a missing one never matches.
     pub pinned_key_sha256: Option<String>,
+    /// The SFTP session logged in with a password: the delta login uses
+    /// `ssh_password` and no other method, `none` included. The `rsync`
+    /// binary path cannot hold that (OpenSSH always sends `none` first), so
+    /// `build_ssh_e_arg` refuses a config that carries it.
+    pub pinned_password: bool,
 }
 
 impl fmt::Debug for RsyncConfig {
@@ -154,6 +159,7 @@ impl fmt::Debug for RsyncConfig {
                 &self.pinned_private_key.as_ref().map(|_| "<redacted>"),
             )
             .field("pinned_key_sha256", &self.pinned_key_sha256)
+            .field("pinned_password", &self.pinned_password)
             .finish()
     }
 }
@@ -175,6 +181,7 @@ impl Default for RsyncConfig {
             known_hosts_path: None,
             pinned_private_key: None,
             pinned_key_sha256: None,
+            pinned_password: false,
         }
     }
 }
@@ -578,6 +585,15 @@ pub async fn probe_local_rsync() -> Result<String, RsyncError> {
 /// transport. Covers: port, identity file, known_hosts, StrictHostKeyChecking.
 #[cfg(unix)]
 fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
+    // First, before any credential check: the session logged in with a
+    // password, and `ssh` would send `none` before it. Whatever else the
+    // config holds (no password, a pinned key too), this is a hard
+    // rejection, never a recoverable credential error or a classic fallback.
+    if cfg.pinned_password {
+        return Err(RsyncError::HardRejection(
+            "PinnedPasswordMismatch: the session logged in with a password; the rsync binary cannot repeat it".into(),
+        ));
+    }
     cfg.validate_auth_material()?;
 
     if cfg.pinned_private_key.is_some() {
@@ -1161,6 +1177,59 @@ mod tests {
         match build_ssh_e_arg(&cfg) {
             Err(RsyncError::PasswordAuthUnsupported) => {}
             other => panic!("expected PasswordAuthUnsupported, got {:?}", other),
+        }
+    }
+
+    /// A password session's pin cannot ride the `rsync` binary: refused as a
+    /// hard rejection, which the delta adapter never turns into a classic
+    /// fallback (`transfer_with_delta_maps_hard_rejection_to_hard_error`).
+    #[test]
+    fn ssh_e_arg_refuses_a_password_pin_as_a_hard_rejection() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Password,
+            ssh_password: Some(SecretString::from("pinned-session-password".to_string())),
+            pinned_password: true,
+            ..Default::default()
+        };
+        match build_ssh_e_arg(&cfg) {
+            Err(RsyncError::HardRejection(reason)) => {
+                assert!(reason.contains("PinnedPasswordMismatch"), "{reason}");
+                assert!(!reason.contains("pinned-session-password"));
+            }
+            other => panic!("expected HardRejection, got {:?}", other),
+        }
+        // D1: the same with no password at all (a key path set, so the
+        // credential check would answer MissingPassword, not its "neither"
+        // rejection), and with a pinned key too (MissingKey otherwise): the
+        // pin decides before any credential check.
+        for cfg in [
+            RsyncConfig {
+                auth_method: AuthMethod::Password,
+                ssh_password: None,
+                ssh_key_path: Some(std::path::PathBuf::from("/nonexistent/id_ed25519")),
+                pinned_password: true,
+                ..Default::default()
+            },
+            RsyncConfig {
+                auth_method: AuthMethod::SshKey,
+                pinned_private_key: Some(std::sync::Arc::new(
+                    russh::keys::PrivateKey::random(
+                        &mut rand_010::rng(),
+                        russh::keys::Algorithm::Ed25519,
+                    )
+                    .unwrap(),
+                )),
+                pinned_password: true,
+                ..Default::default()
+            },
+        ] {
+            assert!(
+                matches!(
+                    build_ssh_e_arg(&cfg),
+                    Err(RsyncError::HardRejection(reason)) if reason.contains("PinnedPasswordMismatch")
+                ),
+                "{cfg:?}"
+            );
         }
     }
 

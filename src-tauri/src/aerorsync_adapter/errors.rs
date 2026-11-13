@@ -92,7 +92,9 @@ fn map_native_error_to_rsync(err: AerorsyncError, committed: bool) -> RsyncError
 pub fn probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
     if matches!(
         err.kind,
-        AerorsyncErrorKind::HostKeyRejected | AerorsyncErrorKind::PinnedKeyMismatch
+        AerorsyncErrorKind::HostKeyRejected
+            | AerorsyncErrorKind::PinnedKeyMismatch
+            | AerorsyncErrorKind::PinnedPasswordMismatch
     ) {
         return map_native_error_to_rsync(err, false);
     }
@@ -197,6 +199,7 @@ mod tests {
             AerorsyncErrorKind::UnexpectedMessage,
             AerorsyncErrorKind::HostKeyRejected,
             AerorsyncErrorKind::PinnedKeyMismatch,
+            AerorsyncErrorKind::PinnedPasswordMismatch,
             AerorsyncErrorKind::Internal,
         ];
         for kind in kinds {

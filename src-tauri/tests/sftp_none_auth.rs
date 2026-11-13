@@ -75,12 +75,18 @@ struct Policy {
     password: Option<&'static str>,
     /// The one public key it accepts. `None` refuses every key.
     key: Option<PublicKey>,
+    /// The one answer it accepts to its keyboard-interactive password
+    /// prompt (servers that refuse the `password` method and ask this way).
+    keyboard_interactive: Option<&'static str>,
     /// Every attempt in arrival order: `"none"`, `"password"` or
     /// `"publickey"` (a key whose signature checked out).
     attempts: Mutex<Vec<&'static str>>,
     /// Set while the server runs to refuse `none` from then on, whatever
     /// `accept_none` says.
     refuse_none: AtomicBool,
+    /// Set while the server runs to refuse the `password` method from then
+    /// on, whatever `password` says.
+    refuse_password: AtomicBool,
     /// SHA-256 fingerprint of every public key named in a `publickey`
     /// request, with or without a signature, in arrival order.
     offered_keys: Mutex<Vec<String>>,
@@ -160,11 +166,46 @@ impl Handler for AuthHandler {
 
     async fn auth_password(&mut self, _user: &str, password: &str) -> Result<Auth, Self::Error> {
         self.policy.record("password");
-        Ok(if self.policy.password == Some(password) {
-            Auth::Accept
-        } else {
-            Auth::reject()
-        })
+        Ok(
+            if self.policy.password == Some(password)
+                && !self.policy.refuse_password.load(Ordering::SeqCst)
+            {
+                Auth::Accept
+            } else {
+                Auth::reject()
+            },
+        )
+    }
+
+    async fn auth_keyboard_interactive<'a>(
+        &'a mut self,
+        _user: &str,
+        _submethods: &str,
+        response: Option<russh::server::Response<'a>>,
+    ) -> Result<Auth, Self::Error> {
+        let Some(expected) = self.policy.keyboard_interactive else {
+            return Ok(Auth::reject());
+        };
+        match response {
+            None => Ok(Auth::Partial {
+                name: "".into(),
+                instructions: "".into(),
+                prompts: vec![("Password: ".into(), false)].into(),
+            }),
+            Some(mut answers) => {
+                let accepted = answers
+                    .next()
+                    .is_some_and(|answer| answer.as_ref() == expected.as_bytes());
+                if accepted {
+                    self.policy.record("keyboard-interactive");
+                }
+                Ok(if accepted {
+                    Auth::Accept
+                } else {
+                    Auth::reject()
+                })
+            }
+        }
     }
 
     /// Every key a client names, before any signature is checked.
@@ -713,5 +754,165 @@ async fn delta_transport_of_a_key_session_never_offers_the_replaced_key() {
         assert!(provider.delta_transport().is_none());
     }
     assert!(policy.offered_keys().is_empty());
+    provider.disconnect().await.unwrap();
+}
+
+/// A session that logged in with a password, after which the server starts
+/// accepting `none` (an account whose root depends on how it logged in).
+/// Every delta login repeats the password: the server sees `password`
+/// requests only, never `none` and never a key. With the classic setting,
+/// where only the `rsync` binary could serve (OpenSSH always sends `none`
+/// first), there is no delta transport: the sync uses plain SFTP.
+#[cfg(feature = "aerorsync")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn delta_transport_of_a_password_session_never_sends_none() {
+    use ftp_client_gui_lib::settings::{set_native_rsync_mode, NativeRsyncMode};
+
+    let _env = ENV_LOCK.lock().await;
+    let home = tempfile::tempdir().unwrap();
+    let _home_env = ScopedEnv::set("HOME", home.path());
+    let _config_env = ScopedEnv::set("XDG_CONFIG_HOME", home.path().join("config"));
+
+    let (port, policy) = start_server(Policy {
+        accept_none: true,
+        password: Some("session-password"),
+        ..Policy::default()
+    })
+    .await;
+    policy.refuse_none.store(true, Ordering::SeqCst);
+    let mut provider = connect(port, Credential::Password("session-password"))
+        .await
+        .expect("in through the password");
+    assert_eq!(policy.attempts(), ["none", "password"]);
+
+    // From here on `none` would get in, and would be recorded.
+    policy.refuse_none.store(false, Ordering::SeqCst);
+
+    // Classic: only the `rsync` binary could serve, and it cannot hold the
+    // pin (it would send `none` first): no delta transport, so the sync
+    // uses plain SFTP, the safe outcome, and nothing reaches the server.
+    set_native_rsync_mode(NativeRsyncMode::Classic).unwrap();
+    assert!(provider.delta_transport().is_none());
+    assert_eq!(policy.attempts(), ["none", "password"]);
+
+    let mut logins = 0;
+    for mode in [NativeRsyncMode::Auto, NativeRsyncMode::Native] {
+        set_native_rsync_mode(mode).unwrap();
+        let transport = provider
+            .delta_transport()
+            .expect("a password session keeps native delta");
+        assert_ne!(transport.name(), "rsync-binary-over-ssh");
+        let probe = tokio::time::timeout(Duration::from_secs(30), transport.probe_remote())
+            .await
+            .expect("probe timed out");
+        assert!(probe.is_err(), "this server runs no rsync");
+        logins += 1;
+    }
+
+    let mut expected = vec!["none", "password"];
+    expected.extend(std::iter::repeat_n("password", logins));
+    assert_eq!(
+        policy.attempts(),
+        expected,
+        "no `none` after the session's own"
+    );
+    assert!(policy.offered_keys().is_empty());
+    provider.disconnect().await.unwrap();
+}
+
+/// A server that refuses the `password` method and takes the password as the
+/// answer to a keyboard-interactive prompt. The session gets in that way,
+/// and records it: the delta login can only repeat `password`, so no delta
+/// transport is handed out in any mode (the sync uses plain SFTP), and none
+/// of the delta logins that could fail is attempted.
+#[cfg(feature = "aerorsync")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_keyboard_interactive_password_session_gets_no_delta_transport() {
+    use ftp_client_gui_lib::settings::{set_native_rsync_mode, NativeRsyncMode};
+
+    let _env = ENV_LOCK.lock().await;
+    let home = tempfile::tempdir().unwrap();
+    let _home_env = ScopedEnv::set("HOME", home.path());
+    let _config_env = ScopedEnv::set("XDG_CONFIG_HOME", home.path().join("config"));
+
+    let (port, policy) = start_server(Policy {
+        keyboard_interactive: Some("session-password"),
+        ..Policy::default()
+    })
+    .await;
+    let mut provider = connect(port, Credential::Password("session-password"))
+        .await
+        .expect("in through keyboard-interactive");
+    assert_eq!(
+        policy.attempts(),
+        ["none", "password", "keyboard-interactive"]
+    );
+    for mode in [
+        NativeRsyncMode::Classic,
+        NativeRsyncMode::Auto,
+        NativeRsyncMode::Native,
+    ] {
+        set_native_rsync_mode(mode).unwrap();
+        assert!(provider.delta_transport().is_none(), "{mode:?}");
+    }
+    assert_eq!(
+        policy.attempts(),
+        ["none", "password", "keyboard-interactive"],
+        "no delta login was attempted"
+    );
+    provider.disconnect().await.unwrap();
+}
+
+/// D2: a session that logged in with the `password` method; the server then
+/// takes the password only as a keyboard-interactive answer. Every redial (a
+/// lazy pool worker, a worker connected outright, the primary's reconnect)
+/// would get in another way than the session did: refused as a changed
+/// target, never accepted under the method recorded first.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_redial_that_gets_in_another_way_is_a_changed_target() {
+    let _env = ENV_LOCK.lock().await;
+    let home = tempfile::tempdir().unwrap();
+    let _home_env = ScopedEnv::set("HOME", home.path());
+    let (port, policy) = start_server(Policy {
+        password: Some("session-password"),
+        keyboard_interactive: Some("session-password"),
+        ..Policy::default()
+    })
+    .await;
+    let mut provider = connect(port, Credential::Password("session-password"))
+        .await
+        .expect("in through the password");
+    assert_eq!(policy.attempts(), ["none", "password"]);
+    policy.refuse_password.store(true, Ordering::SeqCst);
+
+    let mut lazy_worker = provider.clone_for_transfer().expect("pool worker");
+    match tokio::time::timeout(Duration::from_secs(15), lazy_worker.list("/"))
+        .await
+        .expect("worker dial timed out")
+    {
+        Err(ProviderError::TargetChanged) => {}
+        other => panic!(
+            "expected TargetChanged from the lazy worker, got {:?}",
+            other.map(|_| ())
+        ),
+    }
+    let mut worker = provider.clone_for_transfer().expect("pool worker");
+    match tokio::time::timeout(Duration::from_secs(15), worker.connect())
+        .await
+        .expect("worker connect timed out")
+    {
+        Err(ProviderError::TargetChanged) => {}
+        other => panic!("expected TargetChanged from the worker, got {other:?}"),
+    }
+    // The server did let each redial in through keyboard-interactive: the
+    // refusal is the method check, not a failed login.
+    assert!(
+        policy
+            .attempts()
+            .iter()
+            .filter(|method| **method == "keyboard-interactive")
+            .count()
+            >= 2
+    );
     provider.disconnect().await.unwrap();
 }

@@ -272,5 +272,35 @@
     "name": "scp url credential",
     "input": "connect scp://root:hunter2@router.lan:22/",
     "expected": "connect scp://root:***REDACTED***@router.lan:22/"
+  },
+  {
+    "name": "url password holding @",
+    "input": "connect ftp://bob:p@ss@host/file",
+    "expected": "connect ftp://bob:***REDACTED***@host/file"
+  },
+  {
+    "name": "url with a port and @ in the path",
+    "input": "GET https://host:443/docs/me@home",
+    "expected": "GET https://host:443/docs/me@home"
+  },
+  {
+    "name": "url with a port and @ in the query",
+    "input": "GET https://host:443/a?to=x@y",
+    "expected": "GET https://host:443/a?to=x@y"
+  },
+  {
+    "name": "url with a port and @ in the fragment",
+    "input": "GET https://host:443/a#x@y",
+    "expected": "GET https://host:443/a#x@y"
+  },
+  {
+    "name": "url followed by a json password field",
+    "input": "{\"url\":\"ftp://bob:pw1@host\",\"password\":\"foo@bar\"}",
+    "expected": "{\"url\":\"ftp://bob:***REDACTED***@host\",\"password\":\"***REDACTED***\"}"
+  },
+  {
+    "name": "url username holding @",
+    "input": "open ftp://alice@example.com:secret@host/file",
+    "expected": "open ftp://***@***:***REDACTED***@host/file"
   }
 ]

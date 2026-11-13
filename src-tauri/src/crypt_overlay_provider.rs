@@ -125,6 +125,39 @@ pub enum OverlayKeys {
     },
 }
 
+impl OverlayKeys {
+    /// What decides the names a listing shows through this overlay, for the
+    /// target identity a sync index records (`SyncIndex::target_identity`):
+    /// the naming settings (rclone: filename mode, directory names, the `off`
+    /// suffix; AeroCrypt: the config version) and a domain-separated digest
+    /// of the key that decrypts the names, so another vault or password under
+    /// the same profile is another target. The key itself never leaves; the
+    /// digest is hashed again into the identity.
+    pub(crate) fn naming_fingerprint(&self) -> serde_json::Value {
+        use sha2::Digest;
+        let digest = |key: &[u8]| {
+            let mut hash = sha2::Sha256::new();
+            hash.update(b"aeroftp target-identity overlay-names v1");
+            hash.update(key);
+            format!("{:x}", hash.finalize())
+        };
+        match self {
+            OverlayKeys::Rclone(keys) => serde_json::json!({
+                "kind": "rclone-crypt",
+                "filenameEncryption": format!("{:?}", keys.filename_encryption),
+                "directoryNameEncryption": keys.directory_name_encryption,
+                "offSuffix": keys.off_suffix,
+                "names": digest(&[keys.name_key.as_slice(), keys.name_tweak.as_slice()].concat()),
+            }),
+            OverlayKeys::AeroCrypt { master_key, config } => serde_json::json!({
+                "kind": "aerocrypt",
+                "version": config.version(),
+                "names": digest(master_key),
+            }),
+        }
+    }
+}
+
 impl Drop for OverlayKeys {
     fn drop(&mut self) {
         if let Self::AeroCrypt { master_key, .. } = self {

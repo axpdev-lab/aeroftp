@@ -361,7 +361,7 @@ fn last_component(path: &str) -> &str {
 /// The entry callers see, in the shape SFTP gives it.
 fn remote_entry(name: String, path: String, meta: &Meta, is_dir: bool) -> RemoteEntry {
     let modified = mtime_string(meta.mtime);
-    RemoteEntry {
+    let mut entry = RemoteEntry {
         name,
         path,
         is_dir,
@@ -374,7 +374,13 @@ fn remote_entry(name: String, path: String, meta: &Meta, is_dir: bool) -> Remote
         link_target: None,
         mime_type: None,
         metadata: Default::default(),
+    };
+    // A FIFO, socket or device is neither a directory nor a link, and not a
+    // regular file either: say so, as SFTP does for its modes.
+    if !matches!(meta.kind, Kind::File | Kind::Dir | Kind::Symlink) {
+        crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry);
     }
+    entry
 }
 
 fn entry_name(entry: &Entry) -> String {
@@ -1067,6 +1073,42 @@ mod tests {
         assert!(entry.is_dir && entry.is_symlink);
         assert_eq!(entry.modified.as_deref(), Some("2023-11-14 22:13:20Z"));
         assert_eq!(entry.permissions.as_deref(), Some("drwxrwxrwx"));
+    }
+
+    /// Only a regular file, a directory or a link has a confirmed type; a
+    /// receipt (`sync_backup::provider_receipt_is_file`) refuses the rest.
+    #[test]
+    fn a_special_file_is_not_a_confirmed_file() {
+        let entry_of = |kind| {
+            let meta = Meta {
+                kind,
+                mode: 0o644,
+                size: 0,
+                mtime: 1_700_000_000,
+                uid: "0".to_string(),
+                gid: "0".to_string(),
+            };
+            remote_entry("x".into(), "/x".into(), &meta, kind == Kind::Dir)
+        };
+        for kind in [
+            Kind::Fifo,
+            Kind::Socket,
+            Kind::CharDevice,
+            Kind::BlockDevice,
+        ] {
+            let entry = entry_of(kind);
+            assert!(!entry.is_dir && !entry.is_symlink, "{kind:?}");
+            assert!(
+                crate::providers::ftp_listing::type_is_unconfirmed(&entry),
+                "{kind:?}"
+            );
+        }
+        for kind in [Kind::File, Kind::Dir, Kind::Symlink] {
+            assert!(
+                !crate::providers::ftp_listing::type_is_unconfirmed(&entry_of(kind)),
+                "{kind:?}"
+            );
+        }
     }
 
     #[tokio::test]

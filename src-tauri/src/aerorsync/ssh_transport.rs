@@ -194,6 +194,12 @@ pub struct SshTransportConfig {
     /// libssh2 and cannot sign with an in-memory key, so it refuses such a
     /// config, and [`SshTransportConfig::prefers_russh_leg`] routes it away.
     pub pinned_private_key: Option<PinnedPrivateKey>,
+    /// The session logged in with a password: the russh leg authenticates
+    /// with `auth_password` and nothing else, `none` included, on every
+    /// login (probe, transfer, reconnect). Without a usable password it
+    /// refuses with a typed `PinnedPasswordMismatch` before the socket
+    /// opens. The libssh2 leg is key-file only and refuses such a config.
+    pub pinned_password: bool,
 }
 
 impl SshTransportConfig {
@@ -219,6 +225,7 @@ impl SshTransportConfig {
             auth_password: None,
             auth_agent: false,
             pinned_private_key: None,
+            pinned_password: false,
         }
     }
 
@@ -245,7 +252,10 @@ impl SshTransportConfig {
     /// this predicate so leg selection is consistent across the call
     /// sites in `delta_transport_impl.rs`.
     pub fn prefers_russh_leg(&self) -> bool {
-        self.usable_password().is_some() || self.auth_agent || self.pinned_private_key.is_some()
+        self.usable_password().is_some()
+            || self.auth_agent
+            || self.pinned_private_key.is_some()
+            || self.pinned_password
     }
 }
 
@@ -601,6 +611,12 @@ fn connect_and_auth(
         return Err(AerorsyncError::new(
             AerorsyncErrorKind::Internal,
             "the session key is pinned in memory; the libssh2 leg reads a key path and must not be used",
+        ));
+    }
+    if config.pinned_password {
+        // This leg logs in with a key file only: not the session's method.
+        return Err(AerorsyncError::pinned_password_mismatch(
+            "the session logged in with a password; the libssh2 leg cannot repeat it",
         ));
     }
     let tcp = TcpStream::connect((config.host.as_str(), config.port)).map_err(|e| {

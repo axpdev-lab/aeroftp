@@ -975,6 +975,54 @@ mod tests {
         }
     }
 
+    /// The entries are built by the production SFTP conversion, as
+    /// `SftpProvider::stat` builds them from the server's attributes. Only a
+    /// regular-file mode is a file: no mode bits (a server that sends none),
+    /// a FIFO, a socket (whose mode also has the directory bit) and a device
+    /// are not.
+    #[tokio::test]
+    async fn provider_receipt_requires_a_regular_file_mode_on_sftp() {
+        use russh_sftp::protocol::FileAttributes;
+        let entry = |permissions: Option<u32>| {
+            crate::providers::SftpProvider::metadata_to_entry(
+                "kept".into(),
+                "/root/kept".into(),
+                &FileAttributes {
+                    size: Some(5),
+                    permissions,
+                    ..Default::default()
+                },
+            )
+        };
+        let mut remote = MemTree::new(ProviderType::Sftp, &[]);
+        for (label, mode) in [
+            ("no mode bits", None),
+            ("permission bits without a type", Some(0o644)),
+            ("FIFO", Some(0o010644)),
+            ("socket", Some(0o140755)),
+            ("character device", Some(0o020644)),
+            ("block device", Some(0o060644)),
+        ] {
+            let row = entry(mode);
+            assert!(!row.is_dir && !row.is_symlink, "{label}: {row:?}");
+            remote.stat_rows.insert("/root/kept".into(), row);
+            assert!(
+                !provider_receipt_is_file(&mut remote, "/root/kept")
+                    .await
+                    .unwrap(),
+                "{label}"
+            );
+        }
+        remote
+            .stat_rows
+            .insert("/root/kept".into(), entry(Some(0o100644)));
+        assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+            .await
+            .unwrap());
+        let dir = entry(Some(0o040755));
+        assert!(dir.is_dir && !crate::providers::ftp_listing::type_is_unconfirmed(&dir));
+    }
+
     #[tokio::test]
     async fn filen_bridge_backup_waits_before_source_exists() {
         let mut p = MemTree::new(ProviderType::S3, &["/r/fresh.dat"]);

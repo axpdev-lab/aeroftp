@@ -659,6 +659,41 @@ thread_local! {
     static FORCE_SIGNOUT_ENOLCK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
+/// A sign-out step's name and the closure a test runs there.
+#[cfg(test)]
+type SignoutStepHook = Option<(&'static str, Box<dyn FnOnce()>)>;
+
+#[cfg(test)]
+thread_local! {
+    /// Test seam: a closure run once at the named step of a sign-out on this
+    /// thread ("resolved": its account is resolved; "lock-wait": it waits
+    /// for the sign-out lock), so a test can switch the account there.
+    static SIGNOUT_STEP_HOOK: std::cell::RefCell<SignoutStepHook> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Run `hook` once when a sign-out on this thread reaches `step` (tests only).
+#[cfg(test)]
+pub(crate) fn on_signout_step_for_test(step: &'static str, hook: impl FnOnce() + 'static) {
+    SIGNOUT_STEP_HOOK.with(|slot| *slot.borrow_mut() = Some((step, Box::new(hook))));
+}
+
+fn signout_step(_step: &'static str) {
+    #[cfg(test)]
+    {
+        let hook = SIGNOUT_STEP_HOOK.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            match slot.as_ref() {
+                Some((step, _)) if *step == _step => slot.take().map(|(_, hook)| hook),
+                _ => None,
+            }
+        });
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
+}
+
 /// Make the sign-out lock on this thread answer ENOLCK (tests only).
 #[cfg(all(test, unix))]
 pub(crate) fn force_signout_enolck_for_test(on: bool) {
@@ -743,6 +778,9 @@ impl LegacyTokenGuard {
                     return Ok(Self(Some(file)));
                 }
                 Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    if use_ == LegacyLockUse::Signout {
+                        signout_step("lock-wait");
+                    }
                     std::thread::sleep(std::time::Duration::from_millis(25))
                 }
                 Err(std::fs::TryLockError::WouldBlock) => {
@@ -1821,9 +1859,16 @@ impl OAuth2Manager {
     ) -> Result<(), ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
 
+        // Who owns this sign-out and whether it reaches the legacy owner's
+        // copies, resolved once, before any wait, and used for the whole
+        // cleanup: a switch meanwhile cannot split the two decisions.
+        let (owner, legacy_owner) =
+            crate::user_partitions::credential_owner_and_fallback(self.credential_user)
+                .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {e}")))?;
+        signout_step("resolved");
         // A non-owner's tokens live only in its partition: the global key,
         // memory cache and plaintext files belong to the legacy owner.
-        if let Some(user) = self.private_token_user()? {
+        if let (Some(user), false) = (owner, legacy_owner) {
             let conn = crate::user_partitions::open_or_init_cli()
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
@@ -1837,15 +1882,7 @@ impl OAuth2Manager {
         // for the lock must leave every copy in place. The account is resolved
         // now, before the wait: a switch while the lock is awaited must not
         // move the delete to another account's row with the same profile id.
-        let partition_user = if profile_id.is_empty() {
-            None
-        } else {
-            match self.credential_user {
-                Some(user) => Some(user),
-                None => crate::user_partitions::active_user_for_signout()
-                    .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {e}")))?,
-            }
-        };
+        let partition_user = if profile_id.is_empty() { None } else { owner };
         let unmirror = || -> Result<(), ProviderError> {
             let Some(user) = partition_user else {
                 return Ok(());
@@ -1878,8 +1915,11 @@ impl OAuth2Manager {
         unmirror: impl FnOnce() -> Result<(), ProviderError>,
     ) -> Result<(), ProviderError> {
         let process = lock(json_path)?;
+        // Under the lock, the partition copy first: if it cannot be removed,
+        // nothing else is, not even the recovery claims the guard below
+        // purges before the vault and the cache.
+        unmirror()?;
         with_legacy_signout_guard(&MEMORY_TOKEN_CACHE, json_path, process, |cache| {
-            unmirror()?;
             // Delete from vault
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                 store.delete(account).map_err(|_| token_owner_changed())?;
@@ -2879,6 +2919,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let json_path = dir.path().join("oauth2_box.json");
         std::fs::write(&json_path, "legacy").unwrap();
+        let claim = json_path.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&claim, "stranded").unwrap();
         let account = format!("oauth_box_partition-{}", uuid::Uuid::new_v4());
         MEMORY_TOKEN_CACHE
             .lock()
@@ -2903,12 +2945,208 @@ mod tests {
             .as_ref()
             .is_some_and(|map| map.contains_key(&account)));
         assert!(json_path.exists(), "the legacy file stays");
+        assert!(
+            claim.exists(),
+            "a recovery claim is purged only after the partition copy is gone"
+        );
         MEMORY_TOKEN_CACHE
             .lock()
             .unwrap()
             .as_mut()
             .unwrap()
             .remove(&account);
+    }
+
+    /// A vault with two accounts, each signed in to Box under the same
+    /// profile id: the first is the legacy owner (vault and partition), the
+    /// second holds its token in its partition only. Runs `body` with the
+    /// store, the two account ids and the token account key, then restores
+    /// the environment. For a test that runs in its own process.
+    fn with_two_box_accounts(
+        body: impl FnOnce(&crate::credential_store::CredentialStore, i64, i64, &str),
+    ) {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("signout-two-users-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("signout-two-users-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account")
+            .id;
+        for (user, token) in [(first, "first-token"), (second, "second-token")] {
+            OAuth2Manager::new()
+                .with_credential_user(Some(user))
+                .store_tokens(
+                    OAuthProvider::Box,
+                    "shared-profile",
+                    &StoredTokens {
+                        access_token: token.into(),
+                        refresh_token: None,
+                        expires_at: None,
+                        token_type: "Bearer".into(),
+                        scopes: vec![],
+                    },
+                )
+                .expect("sign the account in");
+        }
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "shared-profile");
+        body(&store, first, second, &account);
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+    }
+
+    /// The partition rows of `user` for `account`, read from the database.
+    fn partition_rows(user: i64, account: &str) -> i64 {
+        crate::user_partitions::open_or_init_cli()
+            .expect("partition DB")
+            .query_row(
+                "SELECT COUNT(*) FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+                rusqlite::params![user, account],
+                |row| row.get(0),
+            )
+            .expect("count rows")
+    }
+
+    /// Sign the active (first) account out of Box while the second account
+    /// is activated at `step`: only the first account's partition row goes,
+    /// and the second account's token, under the same profile id, stays.
+    fn signout_with_a_switch_at(step: &'static str) {
+        with_two_box_accounts(|_store, first, second, account| {
+            assert_eq!(partition_rows(first, account), 1);
+            assert_eq!(partition_rows(second, account), 1);
+            let json_path = OAuth2Manager::token_dir().unwrap().join("oauth2_box.json");
+            // For the lock wait: another holder of the sign-out lock, which
+            // the hook releases as it switches the account.
+            let holder = (step == "lock-wait").then(|| {
+                let file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .write(true)
+                    .open(json_path.with_extension("migration.lock"))
+                    .unwrap();
+                file.try_lock().expect("hold the sign-out lock");
+                file
+            });
+            let switch_conn = crate::user_partitions::open_or_init_cli().unwrap();
+            on_signout_step_for_test(step, move || {
+                crate::user_partitions::set_active_user(&switch_conn, second)
+                    .expect("switch to the second account");
+                drop(holder);
+            });
+            OAuth2Manager::new()
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("sign-out");
+            assert_eq!(
+                crate::user_partitions::open_or_init_cli()
+                    .and_then(|conn| crate::user_partitions::get_active_user(&conn))
+                    .unwrap()
+                    .map(|user| user.id),
+                Some(second),
+                "the switch happened at {step}"
+            );
+            assert_eq!(partition_rows(first, account), 0, "the captured row goes");
+            assert_eq!(partition_rows(second, account), 1, "the other row stays");
+            let other = OAuth2Manager::new()
+                .with_credential_user(Some(second))
+                .load_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("the second account is still signed in");
+            assert_eq!(other.access_token, "second-token");
+        });
+    }
+
+    #[test]
+    fn a_switch_after_the_signout_resolves_its_account_deletes_only_that_row() {
+        if crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_switch_after_the_signout_resolves_its_account_deletes_only_that_row",
+        ) {
+            signout_with_a_switch_at("resolved");
+        }
+    }
+
+    #[test]
+    fn a_switch_during_the_signout_lock_wait_deletes_only_the_captured_row() {
+        if crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_switch_during_the_signout_lock_wait_deletes_only_the_captured_row",
+        ) {
+            signout_with_a_switch_at("lock-wait");
+        }
+    }
+
+    /// Through the production `delete_tokens`, the partition delete itself
+    /// fails in SQLite (a trigger aborts every delete of `user_credentials`).
+    /// A recovery claim hard-linked to the legacy file is on disk. Nothing
+    /// is signed out: the partition row, the vault entry, the claim and the
+    /// legacy file and its content all stay. Once SQLite deletes again, the
+    /// retry removes every copy.
+    #[test]
+    fn a_forced_sqlite_failure_of_the_partition_delete_keeps_every_copy() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_forced_sqlite_failure_of_the_partition_delete_keeps_every_copy",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, _second, account| {
+            let json_path = OAuth2Manager::token_dir().unwrap().join("oauth2_box.json");
+            std::fs::write(&json_path, "legacy-token-file").unwrap();
+            let claim = json_path.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+            std::fs::hard_link(&json_path, &claim).expect("hard-link the claim");
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER refuse_credential_delete BEFORE DELETE ON user_credentials
+                 BEGIN SELECT RAISE(ABORT, 'forced failure'); END;",
+            )
+            .unwrap();
+
+            let refused = OAuth2Manager::new().delete_tokens(OAuthProvider::Box, "shared-profile");
+            assert!(refused.is_err(), "{refused:?}");
+            assert_eq!(partition_rows(first, account), 1, "the partition row stays");
+            assert!(
+                store.get(account).is_ok_and(|value| !value.is_empty()),
+                "the vault entry stays"
+            );
+            assert!(claim.exists(), "the claim stays");
+            assert_eq!(
+                std::fs::read_to_string(&json_path).unwrap(),
+                "legacy-token-file",
+                "the legacy file and its content stay"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&claim).unwrap(),
+                "legacy-token-file"
+            );
+
+            conn.execute_batch("DROP TRIGGER refuse_credential_delete;")
+                .unwrap();
+            OAuth2Manager::new()
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("the retry signs out");
+            assert_eq!(partition_rows(first, account), 0);
+            assert!(store.get(account).is_err());
+            assert!(!json_path.exists());
+            assert!(!claim.exists(), "the claim is purged with the rest");
+        });
     }
 
     /// A token miss with no legacy file and no claim answers "no stored
@@ -3045,9 +3283,28 @@ mod tests {
         assert_eq!(names, ["refresh-oauth_box_rclone-team_drive___x-1.lock"]);
     }
 
+    /// Run in its own process under a watchdog: `tokio::time::timeout` cannot
+    /// interrupt a retry loop that never yields, so a regression to a spin
+    /// would hang the suite instead of failing; the watchdog kills the child
+    /// and the test fails.
     #[cfg(unix)]
-    #[tokio::test]
-    async fn a_stale_lease_that_cannot_be_removed_is_an_error_not_a_spin() {
+    #[test]
+    fn a_stale_lease_that_cannot_be_removed_is_an_error_not_a_spin() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child_within(
+            "providers::oauth2::tests::a_stale_lease_that_cannot_be_removed_is_an_error_not_a_spin",
+            Some(std::time::Duration::from_secs(60)),
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(stale_lease_that_cannot_be_removed());
+    }
+
+    #[cfg(unix)]
+    async fn stale_lease_that_cannot_be_removed() {
         let dir = tempfile::tempdir().unwrap();
         // A directory at the lease path: create_new sees it, unlink cannot
         // remove it.

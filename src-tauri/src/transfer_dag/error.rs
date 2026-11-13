@@ -162,6 +162,21 @@ impl TransferError {
         err
     }
 
+    /// [`Self::from_message`] for text that may hold a server's: the same
+    /// classes and Retry-After, but never `TargetChanged` (the owner-change
+    /// marker in such text proves nothing).
+    pub fn from_untrusted_text(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let retry_after = parse_embedded_retry_after(&message);
+        let kind = classify_provider_text(&message);
+        let mut err = Self::new(kind, message);
+        err.retry_after = retry_after;
+        if retry_after.is_some() && matches!(kind, TransferErrorKind::RateLimited) {
+            err.retry = RetryDirective::AfterHint;
+        }
+        err
+    }
+
     /// Adapter: map a provider error into a typed transfer error.
     ///
     /// Known [`ProviderError`] variants map by discriminant. String-bearing
@@ -387,8 +402,16 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
 /// Classify the text carried by a string-bearing [`ProviderError`]. Unlike
 /// [`classify_raw_message`] it never answers `TargetChanged`: the text may
 /// repeat what a server sent, and the owner-change marker in it proves nothing.
+///
+/// Nor `Cancelled`: a cancellation is the typed `ProviderError::Cancelled` or
+/// the run's own token, never a server's sentence that says "cancelled".
 fn classify_provider_text(raw: &str) -> TransferErrorKind {
-    classify_text_without_owner_marker(crate::providers::types::without_unclassified_items(raw))
+    match classify_text_without_owner_marker(crate::providers::types::without_unclassified_items(
+        raw,
+    )) {
+        TransferErrorKind::Cancelled => TransferErrorKind::Unknown,
+        kind => kind,
+    }
 }
 
 /// The taxonomy shared by both entry points, on text already cut at the

@@ -348,6 +348,8 @@ pub fn build_rsync_config(ctx: &DeltaSyncContext) -> RsyncConfig {
         known_hosts_path: ctx.known_hosts_path.clone(),
         pinned_private_key: None,
         pinned_key_sha256: None,
+        // A key-file login: there is no password session to repeat.
+        pinned_password: false,
     }
 }
 
@@ -949,6 +951,46 @@ mod tests {
             "hard_error and fallback_reason must be mutually exclusive"
         );
         assert_eq!(r.hard_error.as_deref(), Some("host key mismatch"));
+    }
+
+    /// The binary transport handed a password pin (which `providers::sftp`
+    /// never does: `classic_binary_allowed`) ends in a hard error: the
+    /// classic transfer does not run behind a refused pin.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_password_pin_on_the_binary_transport_is_a_hard_error_not_a_fallback() {
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        let transport = crate::delta_transport::RsyncBinaryTransport::new(
+            RsyncConfig {
+                auth_method: crate::rsync_over_ssh::AuthMethod::Password,
+                ssh_password: Some(secrecy::SecretString::from("pw".to_string())),
+                pinned_password: true,
+                ssh_host: "127.0.0.1".into(),
+                ssh_user: "u".into(),
+                ..Default::default()
+            },
+            None,
+        );
+        let result = transfer_with_delta(
+            &transport,
+            SyncDirection::Upload,
+            Path::new("/tmp/nope"),
+            "/remote/nope",
+            "test-password-pin-binary",
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(!result.used_delta);
+        assert!(result.fallback_reason.is_none(), "{result:?}");
+        assert!(
+            result
+                .hard_error
+                .as_deref()
+                .is_some_and(|e| e.contains("PinnedPasswordMismatch")),
+            "{result:?}"
+        );
     }
 
     #[tokio::test]

@@ -81,8 +81,10 @@ const CREDENTIAL_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string 
     { pattern: new RegExp(String.raw`\bx-api-key\s*[:=]\s*${SECRET_VALUE}`, 'gi'), replacement: 'x-api-key: ***REDACTED***' },
     // JWT-shaped tokens (3 base64url segments separated by '.')
     { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
-    // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
-    { pattern: /\b((?:ftps?|sftp|scp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
+    // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host.
+    // The password runs to the LAST `@` of the authority (it may hold `@`) and
+    // never past `/`, `?` or `#`: `https://host:443/docs/me@home` has none.
+    { pattern: /\b((?:ftps?|sftp|scp|https?|webdav):\/\/[^:\s/"']+:)[^\s/?#"']+(@)/gi, replacement: '$1***REDACTED***$2' },
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     {

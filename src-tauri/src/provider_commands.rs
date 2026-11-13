@@ -82,6 +82,21 @@ struct CachedCryptOverlay {
     generation: u64,
 }
 
+/// A compare whose target changed while it scanned (or whose target cannot be
+/// read): refused under the scan-completeness contract, so the page fails
+/// closed (no rows, no executable plan) instead of falling back to a flat
+/// compare over panel listings that may belong to the other connection.
+pub(crate) fn compare_target_refusal() -> String {
+    format!(
+        "{}: the connection changed during the compare; compare again",
+        crate::SCAN_INCOMPLETE_MARKER
+    )
+}
+
+/// [`ProviderState::gui_target_identity`] with no connection: both roots
+/// of the pair are local folders.
+pub(crate) const LOCAL_PAIR_TARGET_IDENTITY: &str = "target-v1:local-pair";
+
 pub struct ProviderState {
     /// Currently active provider (if connected)
     pub provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
@@ -105,6 +120,9 @@ pub struct ProviderState {
     gui_owner_context: std::sync::Mutex<Option<crate::sync_owner::GuiOwnerContext>>,
     gui_process_nonce: String,
     legacy_owner_binding: std::sync::Mutex<Option<String>>,
+    /// Target identity of the legacy FTP session (`connect_ftp`), set with
+    /// its owner and dropped with it; see [`Self::gui_target_identity`].
+    legacy_target_identity: std::sync::Mutex<Option<String>>,
     /// Restored transfers pin a verified connection across multi-phase work.
     /// Swaps, disconnects and overlay mutations take the write side before
     /// touching the provider slot or changing how its paths are interpreted.
@@ -167,6 +185,7 @@ impl ProviderState {
             gui_owner_context: std::sync::Mutex::new(None),
             gui_process_nonce: uuid::Uuid::new_v4().to_string(),
             legacy_owner_binding: std::sync::Mutex::new(None),
+            legacy_target_identity: std::sync::Mutex::new(None),
             transfer_owner_gate: RwLock::new(()),
             connected_profile_id: std::sync::Mutex::new(None),
             config: Arc::new(Mutex::new(None)),
@@ -405,6 +424,97 @@ impl ProviderState {
             .legacy_owner_binding
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .legacy_target_identity
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// Record the target of the legacy FTP session just logged in.
+    pub(crate) fn set_legacy_target_identity(&self, identity: String) {
+        *self
+            .legacy_target_identity
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(identity);
+    }
+
+    /// The target the GUI is connected to, as a page-saved sync index
+    /// records it (`SyncIndex::target_identity`): the provider slot's config,
+    /// the account it reports and the naming of the crypt overlay applied to
+    /// it; for the legacy FTP session, its server and login; with neither
+    /// connected, a pair of two local folders. A connection whose target
+    /// nothing identifies (an overlay whose keys are not at hand, a sign-in
+    /// that reports no account) gets an identity of this connection only, so
+    /// no index it saves serves another connection as a baseline. The caller
+    /// holds the GUI target pin, so it is the target the run's plan was made
+    /// against.
+    pub(crate) async fn gui_target_identity(&self, is_provider: bool) -> Result<String, String> {
+        if !is_provider {
+            return Ok(self
+                .legacy_target_identity
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+                .unwrap_or_else(|| LOCAL_PAIR_TARGET_IDENTITY.to_string()));
+        }
+        let provider = self.provider.lock().await;
+        let provider = provider
+            .as_ref()
+            .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+        let config = self.config.lock().await.clone();
+        let account = provider
+            .sync_namespace_identity()
+            .or_else(|| provider.account_email());
+        let this_connection = || {
+            format!(
+                "target-v1:connection:{}:{}",
+                self.gui_process_nonce,
+                self.connection_generation.load(Ordering::SeqCst)
+            )
+        };
+        let overlay = if self.active_crypt_overlay.load(Ordering::SeqCst) {
+            match self.cached_overlay_naming() {
+                Some(naming) => naming,
+                None => return Ok(this_connection()),
+            }
+        } else {
+            serde_json::Value::Null
+        };
+        Ok(crate::cloud_provider_factory::gui_target_identity(
+            config.as_ref(),
+            provider.provider_type(),
+            account.as_deref(),
+            &overlay,
+        )
+        .unwrap_or_else(this_connection))
+    }
+
+    /// [`Self::gui_target_identity`] with the GUI target epoch, which every
+    /// connect, disconnect and overlay change moves: two reads that agree on
+    /// both saw one connection, not an A, B, A sequence of equal targets.
+    pub(crate) async fn gui_target_snapshot(
+        &self,
+        is_provider: bool,
+    ) -> Result<(String, u64), String> {
+        let epoch = self.gui_target_epoch.load(Ordering::SeqCst);
+        let identity = self.gui_target_identity(is_provider).await?;
+        if self.gui_target_epoch.load(Ordering::SeqCst) != epoch {
+            return Err(ProviderError::TargetChanged.to_string());
+        }
+        Ok((identity, epoch))
+    }
+
+    /// The naming the live overlay of this connection applies, with its scope.
+    fn cached_overlay_naming(&self) -> Option<serde_json::Value> {
+        let live = self.connection_generation.load(Ordering::SeqCst);
+        let slot = self.cached_overlay.lock().ok()?;
+        slot.as_ref().filter(|c| c.generation == live).map(|c| {
+            serde_json::json!({
+                "kind": c.kind,
+                "scope": c.scope,
+                "naming": c.keys.naming_fingerprint(),
+            })
+        })
     }
 
     /// Caller keeps the read pin throughout capture/verification. The epoch
@@ -2291,10 +2401,7 @@ async fn install_connected_provider_with_owner(
         .gui_owner_context
         .lock()
         .unwrap_or_else(|e| e.into_inner()) = None;
-    *state
-        .legacy_owner_binding
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = None;
+    state.clear_legacy_gui_owner();
     state.active_crypt_overlay.store(false, Ordering::SeqCst);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     state.invalidate_overlay_key_cache();
@@ -2315,10 +2422,7 @@ async fn install_connected_provider_with_owner(
             .gui_owner_context
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = owner;
-        *state
-            .legacy_owner_binding
-            .lock()
-            .unwrap_or_else(|e| e.into_inner()) = None;
+        state.clear_legacy_gui_owner();
         *prov_lock = candidate.take();
         *state
             .connected_profile_id
@@ -3522,7 +3626,7 @@ async fn run_dag_download_leaf(
     // FINDING-4 Part B: the live session cancel token so an in-flight Stop
     // aborts the current file (see `execute_single_file_dag`).
     cancel_token: Option<CancellationToken>,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
     // Capability snapshot drives the shaped-graph shape (single transfer
     // core vs multipart fan-out). For downloads the shape collapses to one
     // transfer node regardless, but we still resolve caps here so the
@@ -3575,9 +3679,7 @@ async fn run_dag_download_leaf(
                         match &cancel_token {
                             Some(tok) => tokio::select! {
                                 biased;
-                                _ = tok.cancelled() => Err(ProviderError::TransferFailed(
-                                    "Transfer cancelled by user".to_string(),
-                                )),
+                                _ = tok.cancelled() => Err(ProviderError::Cancelled),
                                 r = dl => r,
                             },
                             None => dl.await,
@@ -3605,7 +3707,8 @@ async fn run_dag_download_leaf(
                     .await
                     .map(|m| m.len())
                     .unwrap_or(file_size);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "provider_download_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "complete".to_string(),
@@ -3630,21 +3733,24 @@ async fn run_dag_download_leaf(
                 Ok(format!("Downloaded: {}", filename))
             }
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                let error = crate::sync::IpcError::of(&e);
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_download_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id,
                         filename: filename.clone(),
                         direction: "download".to_string(),
-                        message: Some(format!("Download failed: {}", e)),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &error,
                 );
-                Err(format!("Download failed: {}", e))
+                Err(error)
             }
         };
     }
@@ -3657,7 +3763,8 @@ async fn run_dag_download_leaf(
     // Seed with the discovered remote size; the transfer node overwrites it
     // with the real on-disk size once the download succeeds.
     let report_size = Arc::new(AtomicU64::new(file_size));
-    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
+    let sink: Arc<dyn TransferEventSink> =
+        Arc::new(RunnerEventSink::new(app.clone(), "provider_download_file"));
     let observer: Arc<dyn DagObserver> = Arc::new(GuiDagObserver::new(
         sink,
         transfer_id.clone(),
@@ -3689,21 +3796,24 @@ async fn run_dag_download_leaf(
             Ok(format!("Downloaded: {}", filename))
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            let error = crate::sync::IpcError::of(&e);
+            crate::provider_commands::emit_runner_error_event(
+                "provider_download_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "download".to_string(),
-                    message: Some(format!("Download failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Download failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -3728,7 +3838,7 @@ async fn run_dag_upload_leaf(
     // FINDING-4 Part B: the live session cancel token so an in-flight Stop
     // aborts the current file (see `execute_single_file_dag`).
     cancel_token: Option<CancellationToken>,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
     // Capability snapshot drives the shaped-graph shape. On an upload, this
     // is the gate between the legacy single-`UploadFile` core and a native
     // multipart fan-out (`UploadPart` x N) when the provider advertises
@@ -3768,9 +3878,7 @@ async fn run_dag_upload_leaf(
                 match &cancel_token {
                     Some(tok) => tokio::select! {
                         biased;
-                        _ = tok.cancelled() => Err(ProviderError::TransferFailed(
-                            "Transfer cancelled by user".to_string(),
-                        )),
+                        _ = tok.cancelled() => Err(ProviderError::Cancelled),
                         r = ul => r,
                     },
                     None => ul.await,
@@ -3781,21 +3889,24 @@ async fn run_dag_upload_leaf(
         return match result {
             Ok(()) => Ok(format!("Uploaded: {}", filename)),
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                let error = crate::sync::IpcError::of(&e);
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id,
                         filename: filename.clone(),
                         direction: "upload".to_string(),
-                        message: Some(format!("Upload failed: {}", e)),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &error,
                 );
-                Err(format!("Upload failed: {}", e))
+                Err(error)
             }
         };
     }
@@ -3808,7 +3919,8 @@ async fn run_dag_upload_leaf(
     // The upload node does not touch the report size: the local file size is
     // the value the legacy completion event reports.
     let report_size = Arc::new(AtomicU64::new(file_size));
-    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
+    let sink: Arc<dyn TransferEventSink> =
+        Arc::new(RunnerEventSink::new(app.clone(), "provider_upload_file"));
     let observer: Arc<dyn DagObserver> = Arc::new(GuiDagObserver::new(
         sink,
         transfer_id.clone(),
@@ -3840,21 +3952,24 @@ async fn run_dag_upload_leaf(
             Ok(format!("Uploaded: {}", filename))
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            let error = crate::sync::IpcError::of(&e);
+            crate::provider_commands::emit_runner_error_event(
+                "provider_upload_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "upload".to_string(),
-                    message: Some(format!("Upload failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Upload failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -4266,7 +4381,7 @@ async fn download_file_for_ipc(
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
     let _transfer_owner = state
         .pin_gui_transfer_owner(
             expected_gui_target,
@@ -4276,7 +4391,8 @@ async fn download_file_for_ipc(
             expected_crypt_scope.as_deref(),
             &remote_path,
         )
-        .await?;
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     crate::local_download_target::refuse_unwritable_name(&local_path)?;
     let mut provider_lock = state.provider.lock().await;
 
@@ -4297,7 +4413,8 @@ async fn download_file_for_ipc(
     );
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(
+    crate::provider_commands::emit_gui_transfer_event_for_runner(
+        "provider_download_file",
         &app,
         crate::TransferEvent {
             event_type: "start".to_string(),
@@ -4347,7 +4464,8 @@ async fn download_file_for_ipc(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_download_file",
                 &app_progress,
                 crate::TransferEvent {
                     event_type: "progress".to_string(),
@@ -4421,22 +4539,23 @@ async fn download_file_for_ipc(
                 }
             };
             if delta_cancelled {
-                let err_msg = format!("Download cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_download_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
                         direction: "download".to_string(),
-                        message: Some("Download cancelled by user".to_string()),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &crate::sync::IpcError::Cancelled,
                 );
-                return Err(err_msg);
+                return Err(crate::sync::IpcError::Cancelled);
             }
             if let Some(result) = delta_outcome {
                 if result.used_delta {
@@ -4449,7 +4568,8 @@ async fn download_file_for_ipc(
                         .await
                         .map(|m| m.len())
                         .unwrap_or(file_size);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_download_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "complete".to_string(),
@@ -4475,7 +4595,8 @@ async fn download_file_for_ipc(
                 }
                 if let Some(hard_err) = result.hard_error {
                     let err_msg = format!("delta hard rejection: {}", hard_err);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_download_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
@@ -4489,7 +4610,7 @@ async fn download_file_for_ipc(
                             fallback_reason: None,
                         },
                     );
-                    return Err(err_msg);
+                    return Err(err_msg.into());
                 }
                 // Silent fallback: result.fallback_reason populated but we continue
                 // with the classic provider path below.
@@ -4579,22 +4700,23 @@ async fn download_file_for_ipc(
                     }
                 }
                 if session_cancel.is_cancelled() || e.is_cancelled() {
-                    let message = format!("Download cancelled by user: {}", filename);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_runner_error_event(
+                        "provider_download_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
                             direction: "download".to_string(),
-                            message: Some(message.clone()),
+                            message: None,
                             progress: None,
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
                         },
+                        &crate::sync::IpcError::Cancelled,
                     );
-                    return Err(message);
+                    return Err(crate::sync::IpcError::Cancelled);
                 }
                 e.report_fallback();
                 warn!(
@@ -4628,7 +4750,8 @@ async fn download_file_for_ipc(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_download_file",
                 &app_progress_fb,
                 crate::TransferEvent {
                     event_type: "progress".to_string(),
@@ -4736,21 +4859,19 @@ async fn download_file_for_ipc(
                 r = &mut work => break r,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {
                     if dl_cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                        crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                        crate::provider_commands::emit_runner_error_event("provider_download_file", &app, crate::TransferEvent {
                                 event_type: "error".to_string(),
                                 transfer_id: transfer_id.clone(),
                                 filename: filename.clone(),
                                 direction: "download".to_string(),
-                                message: Some("Download cancelled by user".to_string()),
+                                message: None,
                                 progress: None,
                                 path: None,
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },);
+                            }, &crate::sync::IpcError::Cancelled);
                         // Break so MTP (and others) can drop a partial local file.
-                        break Err(crate::providers::types::ProviderError::TransferFailed(
-                            format!("Download cancelled by user: {}", filename),
-                        ));
+                        break Err(crate::providers::types::ProviderError::Cancelled);
                     }
                 }
             }
@@ -4759,12 +4880,20 @@ async fn download_file_for_ipc(
 
     // Partial local target is not a valid whole file after cancel (MTP has no resume).
     // A file the download never touched is the old one, and it stays.
-    if let Err(ref err) = result {
-        if crate::transfer_dag::error::message_names_a_cancellation(&err.to_string())
-            && download_wrote_target(target_before, local_target_state(&local_path))
-        {
-            let _ = tokio::fs::remove_file(&local_path).await;
-        }
+    // A cancellation is the native state: the typed error, or the Stop that
+    // raised this transfer's flag or the session token. Never the text, which
+    // a server or a file name can make read like one.
+    let session_cancelled = state.current_cancel_token().await.is_cancelled();
+    let cancelled = matches!(
+        &result,
+        Err(crate::providers::types::ProviderError::Cancelled)
+    ) || (result.is_err()
+        && (session_cancelled || dl_cancel.load(std::sync::atomic::Ordering::Relaxed)));
+    if result.is_err()
+        && cancelled
+        && download_wrote_target(target_before, local_target_state(&local_path))
+    {
+        let _ = tokio::fs::remove_file(&local_path).await;
     }
 
     match &result {
@@ -4783,7 +4912,8 @@ async fn download_file_for_ipc(
                 .await
                 .map(|m| m.len())
                 .unwrap_or(file_size);
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_download_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "complete".to_string(),
@@ -4807,26 +4937,29 @@ async fn download_file_for_ipc(
             info!("Download completed: {}", filename);
             Ok(format!("Downloaded: {}", filename))
         }
-        Err(e) if crate::transfer_dag::error::message_names_a_cancellation(&e.to_string()) => {
+        Err(_) if cancelled => {
             // Cancel path already emitted a transfer_event above.
-            Err(format!("Download cancelled by user: {}", filename))
+            Err(crate::sync::IpcError::Cancelled)
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            let error = crate::sync::IpcError::of(e);
+            crate::provider_commands::emit_runner_error_event(
+                "provider_download_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "download".to_string(),
-                    message: Some(format!("Download failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Download failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -6918,7 +7051,7 @@ async fn upload_file_for_ipc(
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
     let _transfer_owner = state
         .pin_gui_transfer_owner(
             expected_gui_target,
@@ -6928,7 +7061,8 @@ async fn upload_file_for_ipc(
             expected_crypt_scope.as_deref(),
             &remote_path,
         )
-        .await?;
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     // Fail-closed: never write plaintext into a crypt store whose overlay is
     // currently unwrapped (badge locked / outside the encrypted scope). A remote
     // target provably outside the overlay anchor is plain territory (#390).
@@ -6943,7 +7077,7 @@ async fn upload_file_for_ipc(
     // Reject upload targets with characters this provider's backend forbids
     // before any transfer work starts (delta / DAG / GitHub branches below).
     crate::restricted_chars::validate_path(provider.provider_type(), &remote_path)
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::sync::IpcError::from)?;
 
     let filename = std::path::Path::new(&local_path)
         .file_name()
@@ -6959,7 +7093,8 @@ async fn upload_file_for_ipc(
     info!("Uploading via provider: {} -> {}", local_path, remote_path);
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(
+    crate::provider_commands::emit_gui_transfer_event_for_runner(
+        "provider_upload_file",
         &app,
         crate::TransferEvent {
             event_type: "start".to_string(),
@@ -6992,7 +7127,8 @@ async fn upload_file_for_ipc(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_upload_file",
                 &app_progress,
                 crate::TransferEvent {
                     event_type: "progress".to_string(),
@@ -7026,31 +7162,44 @@ async fn upload_file_for_ipc(
         let cancel = state.current_cancel_token().await;
         let result = tokio::select! {
             biased;
-            _=cancel.cancelled()=>Err(ProviderError::TransferFailed("Transfer cancelled by user".into())),
+            _=cancel.cancelled()=>Err(ProviderError::Cancelled),
             result=provider.upload_if_absent(&local_path,&remote_path,progress_cb)=>result,
         };
         let (event_type, message) = match &result {
             Ok(()) => ("complete", format!("Uploaded: {filename}")),
             Err(ProviderError::AlreadyExists(_)) => ("file_skip", format!("Skipped: {filename}")),
-            Err(error) => ("error", error.to_string()),
+            Err(_) => ("error", String::new()),
         };
-        crate::transfer_event_sink::emit_gui_transfer_event(
-            &app,
-            crate::TransferEvent {
-                event_type: event_type.into(),
-                transfer_id,
-                filename,
-                direction: "upload".into(),
-                message: Some(message.clone()),
-                progress: None,
-                path: Some(remote_path),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+        let event = crate::TransferEvent {
+            event_type: event_type.into(),
+            transfer_id,
+            filename,
+            direction: "upload".into(),
+            message: Some(message.clone()),
+            progress: None,
+            path: Some(remote_path),
+            delta_stats: None,
+            fallback_reason: None,
+        };
         return match result {
-            Ok(()) | Err(ProviderError::AlreadyExists(_)) => Ok(message),
-            Err(_) => Err(message),
+            Ok(()) | Err(ProviderError::AlreadyExists(_)) => {
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "provider_upload_file",
+                    &app,
+                    event,
+                );
+                Ok(message)
+            }
+            Err(error) => {
+                let error = crate::sync::IpcError::of(&error);
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
+                    &app,
+                    event,
+                    &error,
+                );
+                Err(error)
+            }
         };
     }
 
@@ -7093,22 +7242,23 @@ async fn upload_file_for_ipc(
                 }
             };
             if delta_cancelled {
-                let err_msg = format!("Upload cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
                         direction: "upload".to_string(),
-                        message: Some("Upload cancelled by user".to_string()),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &crate::sync::IpcError::Cancelled,
                 );
-                return Err(err_msg);
+                return Err(crate::sync::IpcError::Cancelled);
             }
             if let Some(delta_result) = delta_outcome {
                 if delta_result.used_delta {
@@ -7116,7 +7266,8 @@ async fn upload_file_for_ipc(
                         .stats
                         .as_ref()
                         .map(crate::sync::DeltaTransferStats::from_rsync);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "complete".to_string(),
@@ -7142,7 +7293,8 @@ async fn upload_file_for_ipc(
                 }
                 if let Some(hard_err) = delta_result.hard_error {
                     let err_msg = format!("delta hard rejection: {}", hard_err);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
@@ -7156,7 +7308,7 @@ async fn upload_file_for_ipc(
                             fallback_reason: None,
                         },
                     );
-                    return Err(err_msg);
+                    return Err(err_msg.into());
                 }
                 // Silent fallback to classic provider upload below.
                 delta_fallback_reason = delta_result.fallback_reason;
@@ -7197,26 +7349,28 @@ async fn upload_file_for_ipc(
                 r = &mut up_fut => { resume_outcome = Some(r); false }
             };
             if cancelled {
-                let err_msg = format!("Upload cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
                         direction: "upload".to_string(),
-                        message: Some("Upload cancelled by user".to_string()),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &crate::sync::IpcError::Cancelled,
                 );
-                return Err(err_msg);
+                return Err(crate::sync::IpcError::Cancelled);
             }
             return match resume_outcome.expect("resume outcome set when not cancelled") {
                 Ok(()) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "complete".to_string(),
@@ -7241,22 +7395,24 @@ async fn upload_file_for_ipc(
                     Ok(format!("Uploaded: {}", filename))
                 }
                 Err(e) => {
-                    let err_msg = format!("Upload failed: {}", e);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    let error = crate::sync::IpcError::of(&e);
+                    crate::provider_commands::emit_runner_error_event(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
                             direction: "upload".to_string(),
-                            message: Some(err_msg.clone()),
+                            message: None,
                             progress: None,
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
                         },
+                        &error,
                     );
-                    Err(err_msg)
+                    Err(error)
                 }
             };
         }
@@ -7308,16 +7464,18 @@ async fn upload_file_for_ipc(
                 let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
                     .as_any_mut()
                     .downcast_mut::<crate::providers::github::GitHubProvider>()
-                    .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+                    .ok_or_else(|| {
+                        crate::sync::IpcError::from("Failed to access GitHub provider")
+                    })?;
                 github
                     .upload_file(&local_path, &remote_path, commit_message.as_deref())
                     .await
-                    .map_err(|e| format!("Upload failed: {}", e))
+                    .map_err(crate::sync::IpcError::from)
             } else {
                 provider
                     .upload(&local_path, &remote_path, progress_cb)
                     .await
-                    .map_err(|e| format!("Upload failed: {}", e))
+                    .map_err(crate::sync::IpcError::from)
             }
         };
         tokio::pin!(work);
@@ -7327,21 +7485,21 @@ async fn upload_file_for_ipc(
                 r = &mut work => break r,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {
                     if ul_cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                        crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                        crate::provider_commands::emit_runner_error_event("provider_upload_file", &app, crate::TransferEvent {
                                 event_type: "error".to_string(),
                                 transfer_id: transfer_id.clone(),
                                 filename: filename.clone(),
                                 direction: "upload".to_string(),
-                                message: Some("Upload cancelled by user".to_string()),
+                                message: None,
                                 progress: None,
                                 path: None,
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },);
+                            }, &crate::sync::IpcError::Cancelled);
                         // Break (do not return) so MTP can best-effort delete a
                         // partial object below. MTP has no honest resume: a
                         // half-sent object is invalid on many devices.
-                        break Err(format!("Upload cancelled by user: {}", filename));
+                        break Err(crate::sync::IpcError::Cancelled);
                     }
                 }
             }
@@ -7350,22 +7508,28 @@ async fn upload_file_for_ipc(
 
     // MTP honesty: cancelled whole-file upload may leave a partial object.
     // Delete it when the backend allows; never claim resume.
-    if let Err(ref err) = result {
-        if crate::transfer_dag::error::message_names_a_cancellation(err)
-            && provider.provider_type() == crate::providers::types::ProviderType::Mtp
-        {
-            if let Err(del_err) = provider.delete(&remote_path).await {
-                warn!(
-                    "MTP cancelled upload cleanup delete failed for {}: {}",
-                    remote_path, del_err
-                );
-            }
+    // A cancellation is the native state (the typed error, the transfer's
+    // flag, the session token), never the text.
+    let session_cancelled = state.current_cancel_token().await.is_cancelled();
+    let cancelled = matches!(&result, Err(crate::sync::IpcError::Cancelled))
+        || (result.is_err()
+            && (session_cancelled || ul_cancel.load(std::sync::atomic::Ordering::Relaxed)));
+    if result.is_err()
+        && cancelled
+        && provider.provider_type() == crate::providers::types::ProviderType::Mtp
+    {
+        if let Err(del_err) = provider.delete(&remote_path).await {
+            warn!(
+                "MTP cancelled upload cleanup delete failed for {}: {}",
+                remote_path, del_err
+            );
         }
     }
 
     match &result {
         Ok(()) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_upload_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "complete".to_string(),
@@ -7389,26 +7553,29 @@ async fn upload_file_for_ipc(
             info!("Upload completed: {}", filename);
             Ok(format!("Uploaded: {}", filename))
         }
-        Err(e) if crate::transfer_dag::error::message_names_a_cancellation(e) => {
+        Err(_) if cancelled => {
             // Cancel path already emitted a transfer_event above.
-            Err(e.clone())
+            Err(crate::sync::IpcError::Cancelled)
         }
-        Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+        Err(_) => {
+            let Err(error) = result else { unreachable!() };
+            crate::provider_commands::emit_runner_error_event(
+                "provider_upload_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "upload".to_string(),
-                    message: Some(e.clone()),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(e.clone())
+            Err(error)
         }
     }
 }
@@ -7423,8 +7590,89 @@ async fn upload_file_for_ipc(
 /// HTTP status, the trusted markers such as `CONNECTION_CHANGED`). The native
 /// log gets no more than that and the command's name: a log target can reach
 /// the webview too.
-pub(crate) fn ipc_result<T>(command: &'static str, result: Result<T, String>) -> Result<T, String> {
-    result.map_err(|error| crate::sync::ipc_error_message(command, &error))
+/// A transfer event of a sync runner's command, as the webview receives it:
+/// an `error` event's message is the same fixed message the command's
+/// returned error is (`ipc_result`), so the server's text reaches the page by
+/// neither route. Other events are unchanged.
+pub(crate) fn runner_transfer_event(
+    command: &'static str,
+    mut event: crate::TransferEvent,
+) -> crate::TransferEvent {
+    // Every kind that reports a failure: `error`, and the per-file and
+    // delete kinds (`file_error`, `delete_error`, `delete_file_error`).
+    if event.event_type == "error" || event.event_type.ends_with("_error") {
+        event.message = event
+            .message
+            .map(|message| crate::sync::ipc_error_message(command, &message));
+    }
+    event
+}
+
+/// [`crate::transfer_event_sink::emit_gui_transfer_event`] for a sync
+/// runner's upload and download commands, through [`runner_transfer_event`].
+pub(crate) fn emit_gui_transfer_event_for_runner<R: tauri::Runtime>(
+    command: &'static str,
+    app: &AppHandle<R>,
+    event: crate::TransferEvent,
+) {
+    crate::transfer_event_sink::emit_gui_transfer_event(app, runner_transfer_event(command, event));
+}
+
+/// A runner command's `error` event for a typed failure: its message is the
+/// text the command returns for the same failure, made from where it came.
+pub(crate) fn emit_runner_error_event<R: tauri::Runtime>(
+    command: &'static str,
+    app: &AppHandle<R>,
+    mut event: crate::TransferEvent,
+    error: &crate::sync::IpcError,
+) {
+    event.message = Some(crate::sync::ipc_error_text(command, error));
+    crate::transfer_event_sink::emit_gui_transfer_event(app, event);
+}
+
+/// The GUI sink a runner's transfer hands to the transfer engine: every event
+/// goes to the webview as [`AppHandleSink`] sends it, an error event through
+/// [`runner_transfer_event`].
+pub(crate) struct RunnerEventSink<R: tauri::Runtime = tauri::Wry> {
+    inner: AppHandleSink<R>,
+    command: &'static str,
+}
+
+impl<R: tauri::Runtime> RunnerEventSink<R> {
+    pub(crate) fn new(app: AppHandle<R>, command: &'static str) -> Self {
+        Self {
+            inner: AppHandleSink::new(app),
+            command,
+        }
+    }
+}
+
+impl<R: tauri::Runtime> TransferEventSink for RunnerEventSink<R> {
+    fn emit_transfer_event(&self, event: crate::TransferEvent) {
+        self.inner
+            .emit_transfer_event(runner_transfer_event(self.command, event));
+    }
+    fn emit_batch_started(&self, payload: serde_json::Value) {
+        self.inner.emit_batch_started(payload);
+    }
+    fn emit_batch_progress(&self, snapshot: &crate::transfer_domain::BatchProgressSnapshot) {
+        self.inner.emit_batch_progress(snapshot);
+    }
+    fn emit_batch_completed(&self, result: &crate::transfer_domain::TransferBatchResult) {
+        self.inner.emit_batch_completed(result);
+    }
+    fn emit_engine_stats(&self, stats: &crate::transfer_dag::EngineTransferStats) {
+        self.inner.emit_engine_stats(stats);
+    }
+}
+
+/// A command's error as the page receives it: rendered from where it came
+/// (`sync::IpcError`), never from its text.
+pub(crate) fn ipc_result<T, E: Into<crate::sync::IpcError>>(
+    command: &'static str,
+    result: Result<T, E>,
+) -> Result<T, String> {
+    result.map_err(|error| crate::sync::ipc_error_render(command, &error.into()))
 }
 
 /// Create a directory
@@ -7448,8 +7696,11 @@ async fn mkdir_for_ipc(
     path: String,
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
-) -> Result<(), String> {
-    let _target = state.pin_gui_target(expected_gui_target).await?;
+) -> Result<(), crate::sync::IpcError> {
+    let _target = state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store,
     // unless the target is provably outside the overlay anchor (#390).
     state.guard_no_raw_crypt_write_outside("Create directory", &[&path])?;
@@ -7464,7 +7715,7 @@ async fn mkdir_for_ipc(
 
     // Reject folder names with characters this provider's backend forbids.
     crate::restricted_chars::validate_path(provider.provider_type(), &path)
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::sync::IpcError::from)?;
 
     if is_plain_github_provider(provider.as_mut()) {
         let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -7474,12 +7725,12 @@ async fn mkdir_for_ipc(
         github
             .create_directory(&path, commit_message.as_deref())
             .await
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(crate::sync::IpcError::from)?;
     } else {
         provider
             .mkdir(&path)
             .await
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(crate::sync::IpcError::from)?;
     }
 
     Ok(())
@@ -7506,8 +7757,11 @@ pub(crate) async fn delete_file_for_ipc(
     path: String,
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
-) -> Result<(), String> {
-    let _target = state.pin_gui_target(expected_gui_target).await?;
+) -> Result<(), crate::sync::IpcError> {
+    let _target = state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     // The raw view exposes raw paths. Deletion removes the selected object and
     // cannot inject plaintext, so it remains available with CRYPT off (#390).
 
@@ -7527,12 +7781,12 @@ pub(crate) async fn delete_file_for_ipc(
         github
             .delete_file(&path, commit_message.as_deref())
             .await
-            .map_err(|e| format!("Failed to delete file: {}", e))?;
+            .map_err(crate::sync::IpcError::from)?;
     } else {
         provider
             .delete(&path)
             .await
-            .map_err(|e| format!("Failed to delete file: {}", e))?;
+            .map_err(crate::sync::IpcError::from)?;
     }
 
     Ok(())
@@ -9610,7 +9864,7 @@ pub async fn provider_compare_directories(
     progress_id: Option<String>,
     profile_id: Option<String>,
 ) -> Result<crate::sync::CompareReport, String> {
-    use crate::sync::{classify_with_summary, load_sync_index_for_profile, FileInfo};
+    use crate::sync::{classify_with_summary, FileInfo};
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
@@ -9697,6 +9951,12 @@ pub async fn provider_compare_directories(
         }
         state.connection_generation.load(Ordering::SeqCst)
     };
+    // The target this scan reads, which its baseline must have been written
+    // for, with the epoch of the connection that serves it.
+    let scanned_target = state
+        .gui_target_snapshot(true)
+        .await
+        .map_err(|_| compare_target_refusal())?;
 
     // Pin the crypt overlay wrap state for the whole remote scan + normalize
     // pass. Sampling only after the scan (old behaviour) raced a badge toggle
@@ -9949,10 +10209,26 @@ pub async fn provider_compare_directories(
         }),
     );
 
-    // Another profile's index is no baseline here (see `sync::history_serves`).
-    let index = load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
-        .ok()
-        .flatten();
+    // Another profile's index is no baseline here (see `sync::history_serves`),
+    // nor another target's (see `sync::bind_index_to_target`). The target is
+    // the one scanned: a reconnect during the scan refuses the compare.
+    // The same identity AND the same epoch: an A, B, A reconnect during the
+    // scan has equal identities and a moved epoch, and is refused.
+    let (target, epoch) = state
+        .gui_target_snapshot(true)
+        .await
+        .map_err(|_| compare_target_refusal())?;
+    if (target.as_str(), epoch) != (scanned_target.0.as_str(), scanned_target.1) {
+        return Err(compare_target_refusal());
+    }
+    let index = crate::sync::load_sync_index_for_target(
+        &local_path,
+        &remote_path,
+        profile_id.as_deref(),
+        &target,
+    )
+    .ok()
+    .flatten();
     let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
         "Provider compare complete: {} differences out of {} examined (index: {})",
@@ -10048,10 +10324,22 @@ fn store_fourshared_tokens(
 /// Load 4shared tokens from credential vault: this profile's key first, then
 /// the legacy singleton, through the same resolver the export and the CLI use.
 pub(crate) fn load_fourshared_tokens(profile_id: &str) -> Result<(String, String), String> {
+    load_fourshared_tokens_for(profile_id, None)
+}
+
+/// [`load_fourshared_tokens`] for the account `user` (see
+/// `bridge_commands::resolve_profile_oauth_token_for`).
+pub(crate) fn load_fourshared_tokens_for(
+    profile_id: &str,
+    user: Option<i64>,
+) -> Result<(String, String), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        if let Some(data) =
-            crate::bridge_commands::resolve_profile_oauth_token(&store, "fourshared", profile_id)
-        {
+        if let Some(data) = crate::bridge_commands::resolve_profile_oauth_token_for(
+            &store,
+            "fourshared",
+            profile_id,
+            user,
+        ) {
             if let Some((token, secret)) = data.split_once(':') {
                 return Ok((token.to_string(), secret.to_string()));
             }
@@ -18472,7 +18760,82 @@ mod tests {
 
     /// A server that answers a delete and a mkdir with a JSON error detail
     /// quoting the ownership marker and a bearer token, as a Twake server can.
-    struct LeakyServer;
+    pub(super) struct LeakyServer;
+
+    thread_local! {
+        /// What [`LeakyServer`]'s delete fails with on this thread, in place
+        /// of its leaky text.
+        static DELETE_ERROR: std::cell::Cell<Option<fn() -> ProviderError>> =
+            const { std::cell::Cell::new(None) };
+    }
+
+    /// The error `delete_file_for_ipc` returns, through the boundary, when the
+    /// provider's delete fails with `make()`.
+    async fn deleted_through_the_boundary(make: fn() -> ProviderError) -> String {
+        DELETE_ERROR.with(|slot| slot.set(Some(make)));
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let returned = ipc_result(
+            "provider_delete_file",
+            delete_file_for_ipc(&state, "/a".into(), None, None).await,
+        )
+        .unwrap_err();
+        DELETE_ERROR.with(|slot| slot.set(None));
+        returned
+    }
+
+    /// The four things a page branches on, each written well-formed by a
+    /// server into its own text, through the real `delete_file_for_ipc`: a
+    /// marker, a restricted character message, a cancellation phrase and the
+    /// FTP envelope of a 553 inside a retryable 425. None of them is honoured:
+    /// the page gets the generic class of the text. The same facts made by
+    /// native code (typed) still cross.
+    #[tokio::test]
+    async fn server_text_shaped_like_a_native_fact_is_not_one() {
+        let forged = [
+            || ProviderError::Other("CONNECTION_CHANGED: reconnect and compare again".into()),
+            || {
+                ProviderError::ServerError(
+                    "Restricted character U+CAFE is not allowed by Box".into(),
+                )
+            },
+            || ProviderError::NotFound("/docs/report: Transfer cancelled.txt".into()),
+            || {
+                ProviderError::ServerError(
+                    "425 Can't open data connection: FTP status 553: command rejected".into(),
+                )
+            },
+        ];
+        let restricted =
+            regex::Regex::new(r"Restricted character (\S+) is not allowed by (\S+)").unwrap();
+        for make in forged {
+            let returned = deleted_through_the_boundary(make).await;
+            assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
+            assert!(!restricted.is_match(&returned), "{returned}");
+            assert!(!returned.contains("cancelled"), "{returned}");
+            assert!(!returned.contains("(FTP"), "{returned}");
+        }
+        let envelope = deleted_through_the_boundary(forged[3]).await;
+        assert!(
+            crate::sync::classify_ipc_error(&envelope, None).retryable,
+            "a 425 reply stays retryable: {envelope}"
+        );
+        // The native facts.
+        let changed = deleted_through_the_boundary(|| ProviderError::TargetChanged).await;
+        assert!(changed.starts_with("CONNECTION_CHANGED: "), "{changed}");
+        let cancelled = deleted_through_the_boundary(|| ProviderError::Cancelled).await;
+        assert!(
+            cancelled.starts_with("Transfer cancelled by user"),
+            "{cancelled}"
+        );
+        let native = deleted_through_the_boundary(|| ProviderError::RestrictedChar {
+            ch_display: "U+0001".into(),
+            provider: "Box".into(),
+        })
+        .await;
+        let caps = restricted.captures(&native).expect("localizable");
+        assert_eq!((&caps[1], &caps[2]), ("U+0001", "Box"), "{native}");
+    }
 
     /// A JSON error detail as a Twake server writes it: the ownership marker,
     /// an Authorization header, and an opaque token with no label any pattern
@@ -18591,7 +18954,9 @@ mod tests {
             Err(ProviderError::Other(LEAKED.to_string()))
         }
         async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
-            Err(ProviderError::Other(LEAKED.to_string()))
+            Err(DELETE_ERROR
+                .with(std::cell::Cell::get)
+                .map_or_else(|| ProviderError::Other(LEAKED.to_string()), |make| make()))
         }
         async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -18646,8 +19011,9 @@ mod tests {
         );
         for returned in [deleted.unwrap_err(), created.unwrap_err()] {
             assert_no_server_text(&returned);
-            assert!(returned.starts_with("CONNECTION_CHANGED: "), "{returned}");
-            assert!(returned.contains("(HTTP 403)"), "{returned}");
+            // The server wrote the marker and a status: neither is honoured.
+            assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
+            assert!(!returned.contains("(HTTP"), "{returned}");
             let raw_kind = crate::sync::classify_sync_error(LEAKED, None);
             let read_back = crate::sync::classify_ipc_error(&returned, None);
             assert_eq!(
@@ -18661,12 +19027,208 @@ mod tests {
         assert_no_server_text(&log);
         assert!(log.contains("provider_delete_file failed"), "{log}");
         assert!(log.contains("provider_mkdir failed"), "{log}");
-        assert!(log.contains("(HTTP 403)"), "{log}");
+        assert!(!log.contains("(HTTP"), "{log}");
         // Without the boundary the same call hands the token over.
         let raw = delete_file_for_ipc(&state, "/a".into(), None, None)
             .await
             .unwrap_err();
-        assert!(raw.contains(SECRETS[1]));
+        assert!(raw.text().contains(SECRETS[1]));
+    }
+
+    /// The tracing event itself, as a subscriber receives it: in a child
+    /// process with this test alone on one thread, so no other test's
+    /// subscriber has decided the callsite's interest first. The event names
+    /// the command and the kind, and holds none of the server's text.
+    #[test]
+    fn the_logged_tracing_event_of_a_command_error_holds_no_server_text() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::the_logged_tracing_event_of_a_command_error_holds_no_server_text",
+        ) {
+            return;
+        }
+        let (guard, buffer) = capture_logs();
+        tracing::callsite::rebuild_interest_cache();
+        let returned =
+            ipc_result::<(), String>("provider_delete_file", Err(LEAKED.into())).unwrap_err();
+        drop(guard);
+        let event = String::from_utf8_lossy(&buffer.lock().unwrap()).into_owned();
+        assert!(
+            event.contains("provider_delete_file failed"),
+            "the event was captured: {event:?}"
+        );
+        assert!(event.contains("WARN"), "{event}");
+        assert_no_server_text(&event);
+        assert_no_server_text(&returned);
+    }
+
+    /// An EC sidecar whose upload the provider refuses: the command answers
+    /// `Ok` with `GenerateFailed`, and the whole response as the webview
+    /// receives it (the command's own composition: `ipc_result` then
+    /// `for_ipc`) carries none of the server's detail.
+    #[tokio::test]
+    async fn an_ec_upload_failure_reaches_the_webview_without_the_server_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("data.bin");
+        let body: Vec<u8> = (0..262_144u32)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+            .collect();
+        std::fs::write(&local, body).unwrap();
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let raw = crate::sync_ec_generate_for_ipc(
+            &app,
+            &state,
+            local.to_string_lossy().into_owned(),
+            "/remote/data.bin".into(),
+            "data.bin".into(),
+            Some(10),
+            None,
+            Some(true),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(raw.status, crate::sync::SyncEcStatus::GenerateFailed),
+            "{:?}",
+            raw.status
+        );
+        assert!(
+            raw.message
+                .as_deref()
+                .is_some_and(|m| m.contains(SECRETS[1])),
+            "the raw payload holds the token"
+        );
+        let response = ipc_result::<_, String>("sync_ec_generate", Ok(raw))
+            .map(|r| r.for_ipc("sync_ec_generate"))
+            .unwrap();
+        let wire = serde_json::to_string(&response).unwrap();
+        assert_no_server_text(&wire);
+        assert!(wire.contains("generate_failed"), "{wire}");
+    }
+
+    /// The runner's upload and download report a failure twice: the returned
+    /// error and an `error` transfer event. Both reach the webview as the same
+    /// fixed message, so the opaque token in the server's detail is in neither.
+    #[test]
+    fn a_runner_transfer_error_event_carries_no_server_text() {
+        let event = |event_type: &str, message: &str| crate::TransferEvent {
+            event_type: event_type.to_string(),
+            transfer_id: "t".into(),
+            filename: "a.bin".into(),
+            direction: "upload".into(),
+            message: Some(message.to_string()),
+            progress: None,
+            path: None,
+            delta_stats: None,
+            fallback_reason: None,
+        };
+        let emitted = runner_transfer_event("provider_upload_file", event("error", LEAKED));
+        let emitted = emitted.message.unwrap();
+        assert_no_server_text(&emitted);
+        let returned =
+            ipc_result::<(), String>("provider_upload_file", Err(LEAKED.into())).unwrap_err();
+        assert_eq!(emitted, returned, "the event says what the command returns");
+        // Every kind that reports a failure: a bulk file's and a delete's too.
+        for kind in ["file_error", "delete_error", "delete_file_error"] {
+            let emitted = runner_transfer_event("delete_remote_file", event(kind, LEAKED));
+            assert_no_server_text(emitted.message.as_deref().unwrap());
+        }
+        // Other events keep their text.
+        let start = runner_transfer_event(
+            "provider_upload_file",
+            event("start", "Starting upload: a.bin"),
+        );
+        assert_eq!(start.message.as_deref(), Some("Starting upload: a.bin"));
+
+        // Every event of the runner's transfer bodies goes through it.
+        let provider = include_str!("provider_commands.rs");
+        let lib = include_str!("lib.rs");
+        for (source, function) in [
+            (provider, "download_file_for_ipc"),
+            (provider, "upload_file_for_ipc"),
+            (provider, "run_dag_download_leaf"),
+            (provider, "run_dag_upload_leaf"),
+            (lib, "download_file_for_ipc"),
+            (lib, "upload_file_for_ipc"),
+            (lib, "delete_remote_file_for_ipc"),
+        ] {
+            let start = source
+                .find(&format!("\nasync fn {function}("))
+                .unwrap_or_else(|| panic!("{function}"));
+            let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
+            assert!(
+                !body.contains("emit_gui_transfer_event("),
+                "{function} emits around the boundary"
+            );
+            assert!(
+                !body.contains("AppHandleSink::new("),
+                "{function} hands the engine a raw sink"
+            );
+        }
+    }
+
+    /// The events a run's command really emits, read back from a mock
+    /// application (`tauri::test`): the error of a single-file transfer and
+    /// a bulk file's `file_error` reach the webview as the fixed message,
+    /// never with the server's text, and a start event keeps its own.
+    #[test]
+    fn the_emitted_runner_events_carry_no_server_text() {
+        use tauri::Listener;
+        let app = tauri::test::mock_app();
+        let captured = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = captured.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let handle = app.handle().clone();
+        let event = |event_type: &str, id: &str, message: &str| crate::TransferEvent {
+            event_type: event_type.to_string(),
+            transfer_id: id.into(),
+            filename: "a.bin".into(),
+            direction: "download".into(),
+            message: Some(message.to_string()),
+            progress: None,
+            path: None,
+            delta_stats: None,
+            fallback_reason: None,
+        };
+        emit_gui_transfer_event_for_runner(
+            "provider_download_file",
+            &handle,
+            event("start", "emitted-single", "Starting download: a.bin"),
+        );
+        emit_gui_transfer_event_for_runner(
+            "provider_download_file",
+            &handle,
+            event("error", "emitted-single", LEAKED),
+        );
+        let bulk = RunnerEventSink::new(handle.clone(), "provider_sync_transfer_bulk");
+        bulk.emit_transfer_event(event("file_start", "emitted-bulk", "a.bin"));
+        bulk.emit_transfer_event(event("file_error", "emitted-bulk", LEAKED));
+        let payloads = captured.lock().unwrap().clone();
+        assert_eq!(payloads.len(), 4, "{payloads:?}");
+        for payload in &payloads {
+            assert_no_server_text(payload);
+        }
+        assert!(payloads[0].contains("Starting download: a.bin"));
+        let returned =
+            ipc_result::<(), String>("provider_download_file", Err(LEAKED.into())).unwrap_err();
+        let error: serde_json::Value = serde_json::from_str(&payloads[1]).unwrap();
+        assert_eq!(
+            error["message"],
+            returned.as_str(),
+            "the event says what the command returns"
+        );
+        // The bulk command hands the engine this sink, not a raw one.
+        let bulk_source = include_str!("provider_bulk_commands.rs");
+        let start = bulk_source
+            .find("pub async fn provider_sync_transfer_bulk(")
+            .unwrap();
+        let body = &bulk_source[start..start + bulk_source[start..].find("\n}\n").unwrap()];
+        assert!(body.contains("RunnerEventSink::new(app, \"provider_sync_transfer_bulk\")"));
+        assert!(!body.contains("AppHandleSink::new("));
     }
 
     /// A name the provider forbids is refused natively with a stable text
@@ -18688,19 +19250,19 @@ mod tests {
         .unwrap_err();
         let caps = pattern.captures(&created).expect("localizable");
         assert_eq!((&caps[1], &caps[2]), ("U+0009", "WebDav"), "{created}");
-        let deleted = ipc_result::<()>(
+        // The same sentence as text, with no typed origin: not localized.
+        let deleted = ipc_result::<(), String>(
             "provider_delete_file",
             Err("Failed to delete file: Restricted character U+0001 is not allowed by Box".into()),
         )
         .unwrap_err();
-        let caps = pattern.captures(&deleted).expect("localizable");
-        assert_eq!((&caps[1], &caps[2]), ("U+0001", "Box"), "{deleted}");
+        assert!(pattern.captures(&deleted).is_none(), "{deleted}");
         for forged in [
             "Restricted character U+0009 is not allowed by zq8Xv2Lr9TmPq4Ks7Wd1Hy",
             "Restricted character zq8Xv2Lr9TmPq4Ks7Wd1Hy is not allowed by Box",
         ] {
             let returned =
-                ipc_result::<()>("provider_delete_file", Err(forged.into())).unwrap_err();
+                ipc_result::<(), String>("provider_delete_file", Err(forged.into())).unwrap_err();
             assert!(!returned.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{returned}");
         }
     }
@@ -18727,10 +19289,11 @@ mod tests {
             )
         };
         let raw = call().await.unwrap_err();
-        assert!(raw.contains(SECRETS[1]), "{raw}");
+        assert!(raw.text().contains(SECRETS[1]), "{raw:?}");
         let returned = ipc_result("sync_backup_verify_receipt", call().await).unwrap_err();
         assert_no_server_text(&returned);
-        assert!(returned.starts_with("CONNECTION_CHANGED: "), "{returned}");
+        // The provider's text quotes the marker: not a typed owner change.
+        assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
         let log = logged(&log);
         assert_no_server_text(&log);
         assert!(log.contains("sync_backup_verify_receipt failed"), "{log}");
@@ -18756,10 +19319,10 @@ mod tests {
             )
         };
         let raw = call().await.unwrap_err();
-        assert!(raw.contains(SECRETS[1]), "{raw}");
+        assert!(raw.text().contains(SECRETS[1]), "{raw:?}");
         let returned = ipc_result("sync_backup_archive_remote", call().await).unwrap_err();
         assert_no_server_text(&returned);
-        assert!(returned.contains("CONNECTION_CHANGED"), "{returned}");
+        assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
     }
 
     /// The legacy FTP session of a sync run: a server reply quoting the marker
@@ -18803,7 +19366,7 @@ mod tests {
         assert_no_server_text(&returned);
         assert!(returned.contains("[sync-error:"), "{returned}");
         assert_no_server_text(
-            &ipc_result::<()>(
+            &ipc_result::<(), String>(
                 "create_remote_folder",
                 Err(format!("Failed to create folder: {LEAKED}")),
             )
@@ -22972,6 +23535,84 @@ mod restored_transfer_owner_tests {
         }
     }
 
+    /// The target a page-saved index records: the legacy FTP session's while
+    /// it is logged in, a local pair with no connection, and never a stale
+    /// one after the legacy session changes; a provider run with no provider
+    /// installed is a changed target, not a local pair.
+    #[tokio::test]
+    async fn the_gui_target_identity_follows_the_installed_session() {
+        let state = ProviderState::new();
+        assert_eq!(
+            state.gui_target_identity(false).await.unwrap(),
+            LOCAL_PAIR_TARGET_IDENTITY
+        );
+        assert_eq!(
+            state.gui_target_identity(true).await,
+            Err(ProviderError::TargetChanged.to_string())
+        );
+        let first = crate::cloud_provider_factory::legacy_ftp_target_identity("a.example", "u");
+        state.set_legacy_target_identity(first.clone());
+        assert_eq!(state.gui_target_identity(false).await.unwrap(), first);
+        let _change = state
+            .begin_legacy_ftp_target_change(Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert_eq!(
+            state.gui_target_identity(false).await.unwrap(),
+            LOCAL_PAIR_TARGET_IDENTITY,
+            "a new legacy login records its own target"
+        );
+        drop(_change);
+    }
+
+    /// A compare that read target A, then saw B, then A again (A, B, A
+    /// reconnects while it scanned) reads equal identities: the epoch tells
+    /// the two A connections apart, so the compare refuses its rows.
+    #[tokio::test]
+    async fn an_a_b_a_reconnect_moves_the_target_epoch() {
+        // D4: the compare refuses such a change under the scan-completeness
+        // contract, which the page answers by failing closed.
+        assert!(compare_target_refusal().starts_with(crate::SCAN_INCOMPLETE_MARKER));
+        for source in [include_str!("lib.rs"), include_str!("provider_commands.rs")] {
+            assert!(source.matches("compare_target_refusal());").count() >= 1);
+        }
+        let state = ProviderState::new();
+        let a = crate::cloud_provider_factory::legacy_ftp_target_identity("a.example", "u");
+        let b = crate::cloud_provider_factory::legacy_ftp_target_identity("b.example", "u");
+        state.set_legacy_target_identity(a.clone());
+        let scanned = state.gui_target_snapshot(false).await.unwrap();
+        for next in [b, a.clone()] {
+            let _change = state
+                .begin_legacy_ftp_target_change(Duration::from_secs(1))
+                .await
+                .unwrap();
+            state.set_legacy_target_identity(next);
+        }
+        let now = state.gui_target_snapshot(false).await.unwrap();
+        assert_eq!(now.0, scanned.0, "the same target identity");
+        assert_ne!(now.1, scanned.1, "another connection");
+    }
+
+    /// A provider that reports no account and has no config (an OAuth
+    /// sign-in without an email, as 4shared allows) has no reusable target:
+    /// each connection gets its own identity, so a baseline saved under one
+    /// sign-in is no baseline of the next.
+    #[tokio::test]
+    async fn a_connection_without_an_account_gets_an_identity_of_its_own() {
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(super::tests::LeakyServer));
+        let first = state.gui_target_identity(true).await.unwrap();
+        assert!(first.starts_with("target-v1:connection:"), "{first}");
+        assert_eq!(state.gui_target_identity(true).await.unwrap(), first);
+        // Another sign-in on the same slot is another connection.
+        state.invalidate_overlay_key_cache();
+        assert_ne!(state.gui_target_identity(true).await.unwrap(), first);
+        // An overlay whose naming is not at hand is not identified either.
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        let overlaid = state.gui_target_identity(true).await.unwrap();
+        assert!(overlaid.starts_with("target-v1:connection:"), "{overlaid}");
+    }
+
     #[tokio::test]
     async fn interrupted_disconnect_cannot_leave_installed_connection_metadata() {
         let state = Arc::new(state_with_profile());
@@ -23380,6 +24021,16 @@ pub(crate) mod isolated_account_fixture {
     /// parent it runs the test named `test` in such a child, asserts that it
     /// passed and returns false.
     pub(crate) fn in_isolated_child(test: &str) -> bool {
+        in_isolated_child_within(test, None)
+    }
+
+    /// [`in_isolated_child`] with a watchdog: a child that has not ended
+    /// within `deadline` (a loop that never yields, which no in-process
+    /// timeout can interrupt) is killed, and the test fails instead of hanging.
+    pub(crate) fn in_isolated_child_within(
+        test: &str,
+        deadline: Option<std::time::Duration>,
+    ) -> bool {
         let executable = std::env::current_exe().unwrap();
         if std::env::var_os(CHILD).is_some() {
             assert!(executable
@@ -23403,7 +24054,7 @@ pub(crate) mod isolated_account_fixture {
         std::fs::write(root.path().join("portable.marker"), b"").unwrap();
         let empty_path = root.path().join("no-external-tools");
         std::fs::create_dir(&empty_path).unwrap();
-        let output = std::process::Command::new(child)
+        let child = std::process::Command::new(child)
             .args(["--exact", test, "--nocapture", "--test-threads=1"])
             .env(CHILD, "1")
             .env("PATH", &empty_path)
@@ -23414,8 +24065,28 @@ pub(crate) mod isolated_account_fixture {
                 "DBUS_SESSION_BUS_ADDRESS",
                 "unix:path=/nonexistent-gui-owner-fixture",
             )
-            .output()
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
             .unwrap();
+        let output = match deadline {
+            None => child.wait_with_output().unwrap(),
+            Some(deadline) => {
+                let mut child = child;
+                let started = std::time::Instant::now();
+                loop {
+                    if child.try_wait().unwrap().is_some() {
+                        break child.wait_with_output().unwrap();
+                    }
+                    if started.elapsed() > deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("{test} did not end within {deadline:?}: killed by the watchdog");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        };
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(
             output.status.success() && stdout.contains("1 passed"),

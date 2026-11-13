@@ -134,6 +134,19 @@ describe('remoteSyncRunner on a native bulk', () => {
             .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
     });
 
+    // Mixed results: one file failed (it may have landed) and the target
+    // changed for another. The journal the run saves is already unsafe.
+    it('marks the journal unsafe when a bulk answer mixes failed and target_changed', async () => {
+        const h = harness({
+            provider_sync_transfer_bulk: () => [{ status: 'failed', message: 'refused' }, { status: 'target_changed' }],
+        });
+        await runRemoteSync(files(2, 'upload'), { remote: [], local: [] }, config(), {}, h.deps).catch(() => undefined);
+        const saved = h.of('save_sync_journal_cmd').map((call) => (call.args?.journal as SyncJournal));
+        const failedSaved = saved.filter((journal) => journal.entries.some((e) => e.status === 'failed'));
+        expect(failedSaved.length).toBeGreaterThan(0);
+        expect(failedSaved.every((journal) => journal.resume_safe === false)).toBe(true);
+    });
+
     it('takes a failed file as final and sends a file the bulk did not take on its own', async () => {
         const h = harness();
         const run = files(3, 'upload', (i) => ['docs/ok.txt', 'docs/fail.txt', 'docs/skip.txt'][i]);
@@ -565,9 +578,9 @@ describe('sync intent fixture', () => {
             .rejects.toThrow('SYNC_RUN_BUSY');
         expect(fixture.generations.size).toBe(0);
         // With the pair's lease the same request is served.
-        // A begin names its page generation; one that names none is refused.
+        // A begin names its page nonce; one that names none is refused.
         await expect(invoke('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r' })).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
-        const lease = await invoke<string>('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r', pageEpoch: 0 });
+        const lease = await invoke<string>('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r', pageNonce: 'page-test' });
         await expect(invoke('sync_intent_begin_cmd', { localPath: '/l', remotePath: '/r', paths: ['a.txt'], syncRunLease: lease }))
             .resolves.toHaveLength(1);
         expect([...fixture.generations.keys()]).toEqual(['a.txt']);

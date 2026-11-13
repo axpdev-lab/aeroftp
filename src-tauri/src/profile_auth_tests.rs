@@ -299,10 +299,9 @@ async fn round_trip() {
         before + 1,
         "the expired token was refreshed"
     );
-    // The whole `delete_tokens` path refused on ENOLCK, with the vault open:
-    // the vault entry and the memory copy stay; with the lock the same call
-    // removes them. (No user is active in this fixture, so there is no
-    // partition row: the partition order is covered by the oauth2 tests.)
+    // The whole `delete_tokens` path refused on ENOLCK, with the vault open
+    // and the legacy owner active: its partition row, the vault entry and the
+    // memory copy all stay; with the lock the same call removes all three.
     #[cfg(unix)]
     {
         use crate::providers::oauth2::OAuthProvider;
@@ -312,6 +311,18 @@ async fn round_trip() {
             .unwrap();
         let account = "oauth_box_enolck-profile";
         assert!(store.get(account).is_ok());
+        let legacy_owner = users::cli_get_active_user(&store).unwrap().unwrap();
+        let partition_rows = || {
+            users::open_or_init_cli()
+                .unwrap()
+                .query_row(
+                    "SELECT COUNT(*) FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
+                    rusqlite::params![legacy_owner.id, account],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(partition_rows(), 1, "the legacy owner's partition mirror");
         crate::providers::oauth2::force_signout_enolck_for_test(true);
         let refused = manager.delete_tokens(OAuthProvider::Box, "enolck-profile");
         crate::providers::oauth2::force_signout_enolck_for_test(false);
@@ -322,11 +333,13 @@ async fn round_trip() {
             "{refused:?}"
         );
         assert!(store.get(account).is_ok(), "the vault entry stays");
+        assert_eq!(partition_rows(), 1, "the partition row stays");
         assert!(manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
         manager
             .delete_tokens(OAuthProvider::Box, "enolck-profile")
             .unwrap();
         assert!(store.get(account).is_err(), "the retry removes it");
+        assert_eq!(partition_rows(), 0, "and the partition row");
         assert!(!manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
     }
     let token_dir = crate::portable::aeroftp_data_root()

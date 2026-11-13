@@ -143,6 +143,11 @@ pub enum AerorsyncErrorKind {
     /// private key is not the key that login used (its SHA-256 fingerprint
     /// differs). Nothing was offered to the server. Never fall back.
     PinnedKeyMismatch,
+    /// The session logged in with a password and the delta login cannot
+    /// repeat that method: no usable password was handed over, or it would
+    /// offer something else (`none`, an agent identity, a key). Nothing was
+    /// offered to the server. Never fall back.
+    PinnedPasswordMismatch,
     Internal,
 }
 
@@ -246,6 +251,10 @@ impl AerorsyncError {
 
     pub fn pinned_key_mismatch(detail: impl Into<String>) -> Self {
         Self::new(AerorsyncErrorKind::PinnedKeyMismatch, detail)
+    }
+
+    pub fn pinned_password_mismatch(detail: impl Into<String>) -> Self {
+        Self::new(AerorsyncErrorKind::PinnedPasswordMismatch, detail)
     }
 
     /// Translate a terminal out-of-band `AerorsyncEvent` into the
@@ -436,6 +445,7 @@ impl TransferError {
                 AerorsyncErrorKind::Cancelled => "Native(Cancelled)",
                 AerorsyncErrorKind::HostKeyRejected => "Native(HostKeyRejected)",
                 AerorsyncErrorKind::PinnedKeyMismatch => "Native(PinnedKeyMismatch)",
+                AerorsyncErrorKind::PinnedPasswordMismatch => "Native(PinnedPasswordMismatch)",
                 AerorsyncErrorKind::Internal => "Native(Internal)",
             },
         }

@@ -106,6 +106,10 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
   // Correlation maps between backend transfer IDs and frontend UI elements
   const transferIdToQueueId = useRef<Map<string, string>>(new Map());
+  // Transfers whose `start` registered a single file's row under the bare
+  // id: only those may be found by it (a folder's or a batch's bare id is
+  // the whole folder's or batch's row, never one of its files).
+  const singleFileTransferIds = useRef<Set<string>>(new Set());
   const completionHolds = useRef(new Set<string>());
   const transferIdToLogId = useRef<Map<string, string>>(new Map());
   const pendingFileLogIds = useRef<Map<string, string>>(new Map());
@@ -173,6 +177,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         if (key.startsWith(prefix)) {
           return { key, value };
         }
+      }
+
+      // A single-file transfer's `start` registers its row under the bare id.
+      const bareValue = singleFileTransferIds.current.has(transferId) ? map.get(transferId) : undefined;
+      if (bareValue !== undefined) {
+        return { key: transferId, value: bareValue };
       }
 
       return null;
@@ -510,6 +520,13 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
 
         const queueItem = transferQueue.items.find((i: { filename: string; status: string; id: string }) =>
           i.filename === data.filename && (i.status === 'pending' || i.status === 'transferring'));
+        // A folder command (`-folder-`) and a file batch (`-files-`) start
+        // a row for many files; every other `start` is one file's.
+        if (data.transfer_id.includes('-folder-') || data.transfer_id.includes('-files-')) {
+          singleFileTransferIds.current.delete(data.transfer_id);
+        } else {
+          singleFileTransferIds.current.add(data.transfer_id);
+        }
         if (queueItem) {
           transferIdToQueueId.current.set(data.transfer_id, queueItem.id);
           // Only a folder command's start describes a folder row. The
@@ -1080,6 +1097,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   const registerFileBatchRows = useCallback((batchId: string, queueIds: readonly string[]) => {
     queueIds.forEach((queueId, index) => {
       transferIdToQueueId.current.set(`${batchId}-${index}`, queueId);
+      // Each one is a single file's row: a file_skip that comes before its
+      // file_start (a batch's preflight) finds it by the bare id.
+      singleFileTransferIds.current.add(`${batchId}-${index}`);
     });
   }, []);
 

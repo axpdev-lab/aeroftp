@@ -1505,6 +1505,8 @@ impl CloudService {
                 .retain_remote_observations(plan.remote_observations.clone(), &rows),
             unverified_keys: Default::default(),
             pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);
@@ -1552,6 +1554,8 @@ impl CloudService {
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
             pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         });
         // The prior index was migrated when it was loaded, and the keys the
         // migration could not vouch for are not saved with it: written back
@@ -3790,7 +3794,10 @@ async fn open_aerocloud_connection(
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
     let mut provider = opened.provider;
-    if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
+    let account = opened.account.as_ref().and_then(|account| account.user);
+    if cloud_provider_factory::current_overlay_binding(config, store, account)?
+        != opened.overlay_binding
+    {
         let _ = provider.disconnect().await;
         return Err("Profile encryption binding changed while connecting; retry the cycle".into());
     }
@@ -3810,11 +3817,24 @@ async fn open_aerocloud_connection(
             config.compress_level,
         ));
     }
-    if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
+    if cloud_provider_factory::current_overlay_binding(config, store, account)?
+        != opened.overlay_binding
+    {
         let _ = provider.disconnect().await;
         return Err(
             "Profile encryption binding changed during overlay composition; retry the cycle".into(),
         );
+    }
+    // The overlay stack read the profile and its keys for the active account.
+    // The snapshot carries the activation revision, so an unchanged one
+    // proves that account was the connection's all along (A, B, A included).
+    if let Some(captured) = opened.account.as_ref() {
+        if let Err(error) = crate::credential_store::off_async_worker(|| {
+            cloud_provider_factory::account_unchanged(captured)
+        }) {
+            let _ = provider.disconnect().await;
+            return Err(error);
+        }
     }
     Ok(ConnectedCloudProvider {
         provider,
@@ -4188,6 +4208,8 @@ mod baseline_tests {
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: Default::default(),
                 pending_recovery_keys: Default::default(),
+                target_identity: None,
+                history_only_keys: Default::default(),
             };
             let row = cmp(
                 SyncStatus::Identical,
@@ -5523,6 +5545,8 @@ mod baseline_tests {
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
             pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         let next = build_comparison_results_with_index(
             HashMap::from([("f.txt".to_string(), now_local)]),
@@ -5900,6 +5924,8 @@ mod baseline_tests {
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: std::collections::HashSet::from(["sub/b.txt".to_string()]),
                 pending_recovery_keys: Default::default(),
+                target_identity: None,
+                history_only_keys: Default::default(),
             };
             let svc = CloudService::new();
             svc.unsettled.lock().unwrap().push("f.txt".to_string());
@@ -8818,6 +8844,8 @@ mod baseline_tests {
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
             pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         let gone = CloudService::gone_on_both(
             &config,
@@ -9262,6 +9290,8 @@ mod secval_b_tests {
                             cloud_remote_metadata: Default::default(),
                             unverified_keys: Default::default(),
                             pending_recovery_keys: Default::default(),
+                            target_identity: None,
+                            history_only_keys: Default::default(),
                         })
                         .unwrap();
                         let remote_time = DateTime::<Utc>::from_timestamp(1_760_000_000, 0)

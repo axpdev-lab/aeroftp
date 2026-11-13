@@ -355,13 +355,15 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Compilation alone does not exercise missing-tail case aliases on APFS.
-      # Run the policy fixtures natively once, on the arm64 macOS leg.
+      # Run the policy fixtures natively once, on the arm64 macOS leg, with
+      # the native local copy (fcopyfile: extended attributes, Stop).
       - name: MCP and archive path policy regressions (macOS)
         if: matrix.target == 'macos' && matrix.arch == 'aarch64'
         working-directory: src-tauri
         run: |
           cargo test --locked --lib mcp::security::tests
           cargo test --locked --lib requested102
+          cargo test --locked --lib native_local_copy
         env:
           CARGO_BUILD_JOBS: "1"
           CARGO_INCREMENTAL: "0"

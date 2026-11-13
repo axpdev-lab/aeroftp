@@ -3946,13 +3946,7 @@ pub(crate) fn try_unmirror_active_credential(
     delete_user_credential_for(&open_or_init_cli()?, user_id, credential_id)
 }
 
-/// The active account a sign-out removes a partition copy from, read before
-/// it waits for its lock: a failed lookup is an error, never "no account".
-pub(crate) fn active_user_for_signout() -> Result<Option<i64>, String> {
-    active_user_id_for_write()
-}
-
-fn active_user_id_quiet() -> Option<i64> {
+pub(crate) fn active_user_id_quiet() -> Option<i64> {
     let conn = open_or_init_cli().ok()?;
     active_user_id(&conn).ok().flatten()
 }
@@ -6209,11 +6203,29 @@ pub fn cli_set_user_setting(
 /// user or the partition errors (downgrade). A locked partition refuses access;
 /// MUV-6 drops the fallback once the vault is purged.
 pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
+    mcp_list_server_profiles(store, None)
+}
+
+/// [`mcp_list_active_server_profiles`] for the account `user`, whichever is
+/// active now: a connection bound to the account it began with reads that
+/// account's list across a switch (`cloud_provider_factory`). `None` reads
+/// the active account, as the MCP server does. An account that no longer
+/// exists refuses, never falls back to another list.
+pub fn mcp_list_server_profiles(
+    store: &CredentialStore,
+    user: Option<i64>,
+) -> Result<Vec<Value>, String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
-    let active = match get_active_user(&conn)? {
-        Some(user) => user,
-        None => return read_legacy_server_profiles_blob(store),
+    let active = match user {
+        Some(id) => list_users(&conn)?
+            .into_iter()
+            .find(|candidate| candidate.id == id)
+            .ok_or_else(|| "The account this connection began with no longer exists".to_string())?,
+        None => match get_active_user(&conn)? {
+            Some(user) => user,
+            None => return read_legacy_server_profiles_blob(store),
+        },
     };
 
     // Unlock a passphrase-protected active user transiently from the env so the
@@ -6230,11 +6242,16 @@ pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
     }
 
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = list_active_server_profiles(&conn, &root_key);
+    let result = match user {
+        Some(id) => list_server_profiles_for(&conn, &root_key, id),
+        None => list_active_server_profiles(&conn, &root_key),
+    };
     root_key.zeroize();
     match result {
         Ok(profiles) => Ok(profiles),
-        Err(e) if e == "NO_ACTIVE_USER" => read_legacy_server_profiles_blob(store),
+        Err(e) if user.is_none() && e == "NO_ACTIVE_USER" => {
+            read_legacy_server_profiles_blob(store)
+        }
         Err(e) => Err(e),
     }
 }

@@ -73,6 +73,9 @@ pub fn transport_from_rsync_config(
                 cfg.pinned_key_sha256.clone().unwrap_or_default(),
             )
         }),
+        // The session logged in with a password: every native login repeats
+        // it and sends nothing else, `none` included.
+        pinned_password: cfg.pinned_password,
         // B.1/B.4: probe stock `rsync --version` on the remote. The
         // parser in `parse_probe_protocol` extracts the numeric
         // protocol version from the multi-line banner. A missing

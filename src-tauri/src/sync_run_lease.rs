@@ -63,6 +63,8 @@ struct Lease {
     file: Arc<File>,
     /// Label of the window whose page began the run.
     window: String,
+    /// The load nonce of the document that asked for it (see [`bind_page`]).
+    nonce: String,
 }
 
 /// Every sync lease, under one lock: the live ones, the orphans whose page is
@@ -78,28 +80,126 @@ struct Registry {
     orphans: HashMap<String, Lease>,
     /// Bumped each time a window's page is replaced.
     page_epochs: HashMap<String, u64>,
+    /// The one document of each window that owns its runs: the nonce it
+    /// bound at its start, and the generation it bound in (see [`bind_page`]).
+    bindings: HashMap<String, (u64, String)>,
+    /// The generation whose first `Finished` each window has had.
+    finished: HashMap<String, u64>,
 }
 
 static REGISTRY: LazyLock<Mutex<Registry>> = LazyLock::new(|| Mutex::new(Registry::default()));
 
-/// The page generation of `window`, read when a command of its page begins.
-/// [`acquire`] refuses to register a lease for a generation that is over.
-pub(crate) fn page_epoch(window: &str) -> Result<u64, String> {
-    let registry = REGISTRY
-        .lock()
-        .map_err(|_| "Sync lease registry unavailable")?;
-    Ok(registry.page_epochs.get(window).copied().unwrap_or(0))
-}
+/// The refusal of a document that is not, or no longer, the window's page.
+/// The runner binds its nonce once more and retries once (`beginRunLease`):
+/// a live document gets its window back, a dead one sends nothing.
+const PAGE_REPLACED: &str =
+    "SYNC_RUN_PAGE_REPLACED: this window's page was replaced; reload it and compare again";
 
-fn acquire_at(dir: &Path, pair: String, window: &str, epoch: u64) -> Result<String, String> {
+/// The document whose load nonce is `nonce` binds its window, as its first
+/// native call at start (`sync_run_page_bind_cmd`); a begin never binds.
+///
+/// The rules, with the page events (`orphan_window` on `Started`,
+/// [`page_finished`] on the first `Finished` of a generation):
+/// - a binding is refused while the current one holds a live lease: the
+///   document running a sync is the live one, and a binding sent earlier by
+///   a document that is gone (dispatched before the navigation, handled
+///   after) cannot take its window from it;
+/// - otherwise the last binding wins (it holds nothing to orphan);
+/// - `Started` and the first `Finished` of a generation end the binding and
+///   orphan the window's leases: what was bound or taken between them may be
+///   the old document's, and the live one binds again (the runner's retry);
+/// - a later `Finished` of the same generation changes nothing, so a
+///   spurious one (WebView2 reports a failed or overlapped navigation as one)
+///   never interrupts a live sync.
+///
+/// Residual case: if the first `Finished` of a generation is spurious and
+/// the old document, still alive, binds and takes a lease after it, that
+/// lease stays its own and the new document cannot bind
+/// (`SYNC_RUN_PAGE_REPLACED`) until the user reloads (`Started`, which
+/// orphans it). Availability only: a gone document sends no command.
+pub(crate) fn bind_page(window: &str, nonce: &str) -> Result<(), String> {
+    let valid = (16..=128).contains(&nonce.len())
+        && nonce
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    if !valid {
+        return Err(PAGE_REPLACED.into());
+    }
     let mut registry = REGISTRY
         .lock()
         .map_err(|_| "Sync lease registry unavailable")?;
-    // The page that asked was replaced while the request waited for this
-    // worker: no script is left to end the run, and its page loss has already
-    // been handled, so nothing would orphan this lease. Refuse before any lock.
-    if registry.page_epochs.get(window).copied().unwrap_or(0) != epoch {
-        return Err("SYNC_RUN_PAGE_REPLACED: the page that began this sync was reloaded".into());
+    bind_page_locked(&mut registry, window, nonce)
+}
+
+fn bind_page_locked(registry: &mut Registry, window: &str, nonce: &str) -> Result<(), String> {
+    let generation = registry.page_epochs.get(window).copied().unwrap_or(0);
+    if let Some((_, owner)) = registry.bindings.get(window) {
+        if owner != nonce
+            && registry
+                .leases
+                .values()
+                .any(|lease| lease.window == window && &lease.nonce == owner)
+        {
+            return Err(PAGE_REPLACED.into());
+        }
+    }
+    registry
+        .bindings
+        .insert(window.to_owned(), (generation, nonce.to_owned()));
+    Ok(())
+}
+
+/// The first `Finished` of the window's current generation: the binding ends
+/// and the window's leases are orphaned (see [`bind_page`]); the tokens are
+/// returned for [`release_orphans_once_settled`]. Any later `Finished` of
+/// the same generation does nothing.
+pub(crate) fn page_finished(window: &str) -> Vec<String> {
+    let Ok(mut registry) = REGISTRY.lock() else {
+        return Vec::new();
+    };
+    let generation = registry.page_epochs.get(window).copied().unwrap_or(0);
+    if registry.finished.get(window) == Some(&generation) {
+        return Vec::new();
+    }
+    registry.finished.insert(window.to_owned(), generation);
+    registry.bindings.remove(window);
+    orphan_leases_of(&mut registry, window)
+}
+
+/// Move every live lease of `window` to the orphans; their tokens.
+fn orphan_leases_of(registry: &mut Registry, window: &str) -> Vec<String> {
+    let tokens: Vec<String> = registry
+        .leases
+        .iter()
+        .filter(|(_, lease)| lease.window == window)
+        .map(|(token, _)| token.clone())
+        .collect();
+    for token in &tokens {
+        if let Some(lease) = registry.leases.remove(token) {
+            registry.orphans.insert(token.clone(), lease);
+        }
+    }
+    tokens
+}
+
+/// Whether the document of `nonce` owns `window` in its current generation.
+fn owns_page(registry: &Registry, window: &str, nonce: &str) -> bool {
+    let generation = registry.page_epochs.get(window).copied().unwrap_or(0);
+    registry
+        .bindings
+        .get(window)
+        .is_some_and(|(bound, owner)| *bound == generation && owner == nonce)
+}
+
+fn acquire_at(dir: &Path, pair: String, window: &str, nonce: &str) -> Result<String, String> {
+    let mut registry = REGISTRY
+        .lock()
+        .map_err(|_| "Sync lease registry unavailable")?;
+    // Under the same lock as page loss and as binding: a document replaced
+    // or taken over while the request waited for this worker is refused
+    // before any folder lock, so no lease outlives the cleanup of its page.
+    if !owns_page(&registry, window, nonce) {
+        return Err(PAGE_REPLACED.into());
     }
     if registry.leases.len() >= 256 {
         return Err("Too many active sync runs; finish them or restart the application".into());
@@ -122,54 +222,27 @@ fn acquire_at(dir: &Path, pair: String, window: &str, epoch: u64) -> Result<Stri
             pair,
             file: Arc::new(file),
             window: window.to_owned(),
+            nonce: nonce.to_owned(),
         },
     );
     Ok(token)
 }
 
-/// Register a lease for the page of `window` whose generation was `epoch`
-/// when its command began (see [`page_epoch`]).
-pub(crate) fn acquire(
-    local: &str,
-    remote: &str,
-    window: &str,
-    epoch: u64,
-) -> Result<String, String> {
-    acquire_at(
-        &crate::sync::sync_index_dir()?,
-        crate::sync::index_filename(local, remote),
-        window,
-        epoch,
-    )
-}
-
-/// The script `on_page_load` evaluates in a document that finished loading:
-/// it gives that document the window's page generation, once, read-only.
-/// A document keeps the first value it receives; one the window replaced
-/// never receives a later one, and its script cannot write its own.
-pub(crate) fn page_epoch_script(epoch: u64) -> String {
-    format!(
-        "if (!Object.prototype.hasOwnProperty.call(window, '{PAGE_EPOCH_GLOBAL}')) {{ \
-         Object.defineProperty(window, '{PAGE_EPOCH_GLOBAL}', {{ value: {epoch}, writable: false, configurable: false }}); }}"
-    )
-}
-
-/// The document global [`page_epoch_script`] sets; the runner reads it.
-pub(crate) const PAGE_EPOCH_GLOBAL: &str = "__AEROFTP_SYNC_PAGE_EPOCH__";
-
-/// [`acquire`] for a begin request from a page, with the generation that page
-/// read at its start. A request that names none is refused: reading the
-/// generation now could give the page that replaced it.
+/// Register a lease for the document of `window` whose load nonce is
+/// `nonce` (see [`bind_page`]). A request that names none is refused.
 pub(crate) fn acquire_for_page(
     local: &str,
     remote: &str,
     window: &str,
-    epoch: Option<u64>,
+    nonce: Option<&str>,
 ) -> Result<String, String> {
-    let epoch = epoch.ok_or(
-        "SYNC_RUN_PAGE_REPLACED: the page did not name its generation; reload it and compare again",
-    )?;
-    acquire(local, remote, window, epoch)
+    let nonce = nonce.ok_or(PAGE_REPLACED)?;
+    acquire_at(
+        &crate::sync::sync_index_dir()?,
+        crate::sync::index_filename(local, remote),
+        window,
+        nonce,
+    )
 }
 
 /// The page of `window` was replaced (a reload, or a new web process after a
@@ -181,18 +254,10 @@ pub(crate) fn orphan_window(window: &str) -> Vec<String> {
         return Vec::new();
     };
     *registry.page_epochs.entry(window.to_owned()).or_insert(0) += 1;
-    let tokens: Vec<String> = registry
-        .leases
-        .iter()
-        .filter(|(_, lease)| lease.window == window)
-        .map(|(token, _)| token.clone())
-        .collect();
-    for token in &tokens {
-        if let Some(lease) = registry.leases.remove(token) {
-            registry.orphans.insert(token.clone(), lease);
-        }
-    }
-    tokens
+    // The document that owned the generation now over is gone; the next
+    // one binds at its start (see [`bind_page`]).
+    registry.bindings.remove(window);
+    orphan_leases_of(&mut registry, window)
 }
 
 pub(crate) fn release_orphans(tokens: &[String]) {
@@ -250,9 +315,23 @@ pub(crate) fn with_guard<T>(
 mod tests {
     use super::*;
 
-    /// A registration from the page of `window` as it is now.
+    /// The nonce a test's document of `window` binds: one per window, so
+    /// tests sharing a window agree on it and never take it from each other.
+    fn test_nonce(window: &str) -> String {
+        let cleaned: String = window
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
+        format!("test-document-{cleaned}")
+    }
+
+    /// A registration from the current document of `window`: its nonce is
+    /// chosen and bound in one call under the registry lock ([`bind_page`],
+    /// idempotent for the same nonce), then the lease is asked for.
     fn acquire_now(dir: &Path, pair: String, window: &str) -> Result<String, String> {
-        acquire_at(dir, pair, window, page_epoch(window).unwrap())
+        let nonce = test_nonce(window);
+        bind_page(window, &nonce)?;
+        acquire_at(dir, pair, window, &nonce)
     }
 
     /// Item 8 of the review: a command the lost page had already dispatched
@@ -304,73 +383,188 @@ mod tests {
         release(&replacement).unwrap();
     }
 
-    /// The lease is registered on a blocking worker, after the command began.
-    /// A page reload in that gap used to register a lease no cleanup would
-    /// ever orphan: the reload had already been handled. The registration now
-    /// carries the page generation read when the command began, and one for a
-    /// page that is gone is refused before any lock is taken, so a replacement
-    /// run gets the pair.
+    fn refused_as(result: &Result<String, String>, marker: &str) -> bool {
+        result.as_ref().is_err_and(|e| e.starts_with(marker))
+    }
+
+    fn nonce(label: &str) -> String {
+        format!("{label}-{}", uuid::Uuid::new_v4())
+    }
+
+    /// A document binds at its start and owns its window: its begins are
+    /// accepted, another document's (never bound) are refused; a begin never
+    /// binds by itself; after a reload's `Started` the old binding is gone.
+    #[test]
+    fn a_page_owns_its_window_from_its_binding_until_the_next_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/bind-local", "/bind-remote");
+        let window = "bind-window";
+        let old = nonce("old");
+        bind_page(window, &old).unwrap();
+        let token = acquire_at(dir.path(), pair.clone(), window, &old).unwrap();
+        release(&token).unwrap();
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &nonce("stranger")),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        orphan_window(window);
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &old),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        let new = nonce("new");
+        bind_page(window, &new).unwrap();
+        let token = acquire_at(dir.path(), pair, window, &new).unwrap();
+        release(&token).unwrap();
+    }
+
+    /// The orders of a reload, each with its outcome:
+    /// - an old document's delayed binding handled before the new one binds:
+    ///   the first `Finished` ends it, the new document binds and runs;
+    /// - the new document binds before `Finished`: `Finished` ends its
+    ///   binding, its begin is refused, it binds again (the runner's retry)
+    ///   and runs;
+    /// - an old document still alive between `Started` and `Finished` takes a
+    ///   lease: `Finished` orphans it;
+    /// - an old document's delayed binding handled after the new document
+    ///   took a lease: refused, and the new lease keeps working;
+    /// - a later, spurious `Finished` of the same generation changes nothing.
+    #[test]
+    fn every_order_of_a_reload_leaves_the_window_to_the_live_document() {
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/orders-local", "/orders-remote");
+        let window = "orders-window";
+        let (old, new) = (nonce("old"), nonce("new"));
+        bind_page(window, &old).unwrap();
+
+        // The reload starts; the old document is still alive and takes a lease.
+        orphan_window(window);
+        bind_page(window, &old).unwrap();
+        let stale = acquire_at(dir.path(), pair.clone(), window, &old).unwrap();
+        // The new document binds before `Finished`: refused while the old
+        // binding holds that live lease.
+        assert!(bind_page(window, &new).is_err());
+        // `Finished`: the old lease is an orphan, the binding is gone.
+        let orphans = page_finished(window);
+        assert_eq!(orphans, std::slice::from_ref(&stale));
+        assert!(
+            admit(Some(&stale)).is_err(),
+            "the old document's lease admits nothing"
+        );
+        release_orphans(&orphans);
+        // The new document's begin is refused until it binds again.
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &new),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        bind_page(window, &new).unwrap();
+        let live = acquire_at(dir.path(), pair.clone(), window, &new).unwrap();
+        // An old binding handled now (dispatched before the navigation) is
+        // refused: the new binding holds a live lease.
+        assert!(bind_page(window, &old).is_err());
+        assert!(admit(Some(&live)).is_ok(), "the live sync goes on");
+        // A spurious second `Finished` of the same generation does nothing.
+        assert!(page_finished(window).is_empty());
+        assert!(admit(Some(&live)).is_ok(), "still the live sync's");
+        release(&live).unwrap();
+        // With nothing held, a delayed old binding may land; the live document
+        // is refused once, binds again and runs.
+        bind_page(window, &old).unwrap();
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &new),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        bind_page(window, &new).unwrap();
+        let token = acquire_at(dir.path(), pair, window, &new).unwrap();
+        release(&token).unwrap();
+    }
+
+    /// The residual case, pinned as it behaves: the first `Finished` of a
+    /// generation was spurious, and the old document, still alive, binds and
+    /// takes a lease after it. The new document cannot bind (it is told its
+    /// page was replaced, the existing message) and the lease stays the old
+    /// document's until the next `Started` (the user's reload) orphans it.
+    /// Availability only: the gone document sends no command, and the new
+    /// one's begins are refused rather than run against the old binding.
+    #[test]
+    fn a_spurious_first_finished_leaves_the_window_to_the_old_document_until_a_reload() {
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/residual-local", "/residual-remote");
+        let window = "residual-window";
+        let (old, new) = (nonce("old"), nonce("new"));
+        orphan_window(window);
+        assert!(
+            page_finished(window).is_empty(),
+            "spurious, nothing to orphan"
+        );
+        bind_page(window, &old).unwrap();
+        let stale = acquire_at(dir.path(), pair.clone(), window, &old).unwrap();
+        // The real `Finished` of this generation is not acted on: already had.
+        assert!(page_finished(window).is_empty());
+        assert!(refused_as(
+            &bind_page(window, &new).map(|_| String::new()),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &new),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        // The reload: the old document's lease is an orphan, the new binds.
+        let orphans = orphan_window(window);
+        assert_eq!(orphans, std::slice::from_ref(&stale));
+        release_orphans(&orphans);
+        bind_page(window, &new).unwrap();
+        let token = acquire_at(dir.path(), pair, window, &new).unwrap();
+        release(&token).unwrap();
+    }
+
+    /// The registration runs on a blocking worker after the command began. A
+    /// reload in that gap is a `Started` under the same lock: the late
+    /// registration of the document it replaced is refused before any folder
+    /// lock, so the new page's run gets the pair. A malformed or missing
+    /// nonce is refused before any folder is touched.
     #[test]
     fn a_lease_requested_by_a_page_replaced_before_registration_is_refused() {
         let dir = tempfile::tempdir().unwrap();
         let pair = crate::sync::index_filename("/epoch-local", "/epoch-remote");
-        // The command begins and reads its page's generation...
-        let epoch = page_epoch("epoch-window").unwrap();
-        // ...the page reloads while the worker has not registered yet...
-        assert!(orphan_window("epoch-window").is_empty());
-        // ...and the worker resumes.
-        let late = acquire_at(dir.path(), pair.clone(), "epoch-window", epoch);
-        assert!(
-            late.as_ref()
-                .is_err_and(|e| e.starts_with("SYNC_RUN_PAGE_REPLACED")),
-            "{late:?}"
-        );
-        // Nothing holds the pair: the new page's run acquires it at once.
-        let replacement = acquire_now(dir.path(), pair, "epoch-window").unwrap();
+        let window = "epoch-window";
+        let page = nonce("page");
+        bind_page(window, &page).unwrap();
+        orphan_window(window);
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &page),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        for bad in ["", "short", "has a space in it ok", &"x".repeat(129)] {
+            assert!(bind_page(window, bad).is_err());
+        }
+        assert!(refused_as(
+            &acquire_for_page("/epoch-local", "/epoch-remote", window, None),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        let replacement = acquire_now(dir.path(), pair, window).unwrap();
         assert!(admit(Some(&replacement)).is_ok());
         release(&replacement).unwrap();
     }
 
-    /// The value `on_page_load` hands a document is set once and read-only,
-    /// so a document holds the first generation it received and nothing
-    /// written later, by the page or by a stray delivery, replaces it.
+    /// C13: tests that share a window choose and bind its nonce atomically:
+    /// many registrations at once, on different pairs, all succeed.
     #[test]
-    fn the_page_generation_is_handed_to_a_document_once_and_read_only() {
-        let script = page_epoch_script(7);
-        assert!(script.contains(PAGE_EPOCH_GLOBAL));
-        assert!(script.contains("value: 7"));
-        assert!(script.contains("writable: false, configurable: false"));
-        assert!(script.starts_with("if (!Object.prototype.hasOwnProperty.call(window, "));
-    }
-
-    /// The generation a document was given: the old document's, sent after the
-    /// reload, is refused; the new document's is accepted; a begin without one
-    /// is refused rather than given the generation of the moment.
-    #[test]
-    fn a_begin_carries_the_generation_its_page_read_at_start() {
-        let dir = tempfile::tempdir().unwrap();
-        let pair = crate::sync::index_filename("/start-local", "/start-remote");
-        let read_at_start = page_epoch("start-window").unwrap();
-        // The window starts loading another page.
-        orphan_window("start-window");
-        let new_page = page_epoch("start-window").unwrap();
-        assert_ne!(read_at_start, new_page);
-        let old = acquire_at(dir.path(), pair.clone(), "start-window", read_at_start);
-        assert!(
-            old.as_ref()
-                .is_err_and(|e| e.starts_with("SYNC_RUN_PAGE_REPLACED")),
-            "{old:?}"
-        );
-        // Refused before any folder is touched: no generation is read here.
-        let unnamed = acquire_for_page("/start-local", "/start-remote", "start-window", None);
-        assert!(
-            unnamed
-                .as_ref()
-                .is_err_and(|e| e.starts_with("SYNC_RUN_PAGE_REPLACED")),
-            "{unnamed:?}"
-        );
-        let token = acquire_at(dir.path(), pair, "start-window", new_page).unwrap();
-        release(&token).unwrap();
+    fn concurrent_test_registrations_on_one_window_do_not_conflict() {
+        let dir = std::sync::Arc::new(tempfile::tempdir().unwrap());
+        let handles: Vec<_> = (0..8)
+            .map(|n| {
+                let dir = dir.clone();
+                std::thread::spawn(move || {
+                    let pair = crate::sync::index_filename(&format!("/concurrent-{n}"), "/remote");
+                    acquire_now(dir.path(), pair, "concurrent-window")
+                })
+            })
+            .collect();
+        for handle in handles {
+            let token = handle.join().unwrap().expect("no nonce race");
+            release(&token).unwrap();
+        }
     }
 
     #[test]
@@ -479,6 +673,270 @@ mod tests {
         release(&other_window).unwrap();
     }
 
+    /// The copy runs on the blocking pool and owns the admission: dropping
+    /// the command's future (the task awaiting it is aborted) does not end the
+    /// count while the copy itself still runs, so a lost page's pair stays
+    /// locked until the mutation really ends.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_abandoned_copy_keeps_its_admission_until_the_copy_ends() {
+        struct Unblock(std::path::PathBuf);
+        impl Drop for Unblock {
+            fn drop(&mut self) {
+                use std::os::unix::fs::OpenOptionsExt;
+                let _ = std::fs::OpenOptions::new()
+                    .write(true)
+                    .custom_flags(libc::O_NONBLOCK)
+                    .open(&self.0);
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/abandoned-copy", "/abandoned-copy-right");
+        let lost = acquire_now(dir.path(), pair.clone(), "abandoned-window").unwrap();
+        let source = dir.path().join("source.fifo");
+        let c_source = std::ffi::CString::new(source.to_str().unwrap()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(c_source.as_ptr(), 0o600) }, 0);
+        let unblock = Unblock(source.clone());
+        let destination = dir.path().join("copied.bin");
+        let copy = tokio::spawn(crate::copy_local_file_with(
+            std::sync::Arc::default(),
+            source.to_string_lossy().into_owned(),
+            destination.to_string_lossy().into_owned(),
+            None,
+            None,
+        ));
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        // The future awaiting the copy is dropped; the copy is still blocked.
+        copy.abort();
+        let _ = copy.await;
+        let orphans = orphan_window("abandoned-window");
+        assert_eq!(orphans, std::slice::from_ref(&lost));
+        let waiter = tokio::spawn(release_orphans_once_settled(orphans, native_work_settled));
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        assert!(
+            !waiter.is_finished(),
+            "the abandoned copy still runs and still counts"
+        );
+        // A writer appears: the copy's open returns and the count ends.
+        tokio::task::spawn_blocking(move || {
+            let _writer = std::fs::OpenOptions::new().write(true).open(&source);
+        })
+        .await
+        .unwrap();
+        drop(unblock);
+        tokio::time::timeout(std::time::Duration::from_secs(30), waiter)
+            .await
+            .expect("released once the copy ended")
+            .unwrap();
+        let replacement = acquire_now(dir.path(), pair, "new-window").unwrap();
+        release(&replacement).unwrap();
+    }
+
+    /// A Stop during a long local copy: the copy observes the flag between
+    /// chunks, returns the native cancellation at once, and leaves neither a
+    /// partial file under the final name nor its temporary. Through the
+    /// command, a Stop already raised returns before anything is written, the
+    /// run's own admission ends with it, and the run's normal end releases
+    /// the pair for the next run.
+    #[test]
+    fn a_stopped_local_copy_returns_promptly_and_leaves_no_partial_file() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        struct StopAfterFirstChunk<'a> {
+            cancel: &'a AtomicBool,
+            reads: usize,
+        }
+        impl std::io::Read for StopAfterFirstChunk<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.reads += 1;
+                if self.reads == 2 {
+                    // The user presses Stop while the copy is in flight.
+                    self.cancel.store(true, Ordering::SeqCst);
+                }
+                buf.fill(7);
+                Ok(buf.len())
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("copied.bin");
+        let cancel = AtomicBool::new(false);
+        let mut endless = StopAfterFirstChunk {
+            cancel: &cancel,
+            reads: 0,
+        };
+        let permissions = std::fs::metadata(dir.path()).unwrap().permissions();
+        let started = std::time::Instant::now();
+        let copied = crate::copy_into_place(&mut endless, permissions, &destination, &cancel);
+        assert!(
+            matches!(copied, Err(crate::sync::IpcError::Cancelled)),
+            "{copied:?}"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert_eq!(endless.reads, 2, "stopped at the next chunk");
+        assert!(
+            !destination.exists(),
+            "no partial file under the final name"
+        );
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            0,
+            "the temporary is removed"
+        );
+
+        // Through the command, with the run's lease.
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let pair = crate::sync::index_filename("/stopped-copy", "/stopped-copy-right");
+        let token = acquire_now(dir.path(), pair.clone(), "stopped-copy-window").unwrap();
+        let source = dir.path().join("source.bin");
+        std::fs::write(&source, vec![1u8; 3 << 20]).unwrap();
+        let stopped = std::sync::Arc::new(AtomicBool::new(true));
+        let returned = runtime.block_on(crate::copy_local_file_with(
+            stopped,
+            source.to_string_lossy().into_owned(),
+            destination.to_string_lossy().into_owned(),
+            None,
+            Some(token.clone()),
+        ));
+        let message = returned.unwrap_err();
+        assert!(
+            message.starts_with("Transfer cancelled by user"),
+            "{message}"
+        );
+        assert!(message.contains("[sync-error:"), "{message}");
+        assert!(!destination.exists());
+        // The run's own end releases the pair; the next run takes it.
+        release(&token).unwrap();
+        let next = acquire_now(dir.path(), pair, "stopped-copy-window").unwrap();
+        release(&next).unwrap();
+        // Without a Stop the same command copies the whole file.
+        runtime
+            .block_on(crate::copy_local_file_with(
+                std::sync::Arc::default(),
+                source.to_string_lossy().into_owned(),
+                destination.to_string_lossy().into_owned(),
+                None,
+                None,
+            ))
+            .unwrap();
+        assert_eq!(std::fs::read(&destination).unwrap().len(), 3 << 20);
+    }
+
+    /// D3: a Stop raised while the source returns its end (after the last
+    /// chunk-boundary check): the copy is not published, the destination keeps
+    /// its old content, and the temporary is removed.
+    #[test]
+    fn a_stop_at_the_end_of_the_source_does_not_publish_the_copy() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        struct StopAtEof<'a> {
+            cancel: &'a AtomicBool,
+            sent: bool,
+        }
+        impl std::io::Read for StopAtEof<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.sent {
+                    self.cancel.store(true, Ordering::SeqCst);
+                    return Ok(0);
+                }
+                self.sent = true;
+                buf[..3].copy_from_slice(b"new");
+                Ok(3)
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let destination = dir.path().join("kept.txt");
+        std::fs::write(&destination, b"old content").unwrap();
+        let cancel = AtomicBool::new(false);
+        let copied = crate::copy_into_place(
+            &mut StopAtEof {
+                cancel: &cancel,
+                sent: false,
+            },
+            std::fs::metadata(&destination).unwrap().permissions(),
+            &destination,
+            &cancel,
+        );
+        assert!(
+            matches!(copied, Err(crate::sync::IpcError::Cancelled)),
+            "{copied:?}"
+        );
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old content");
+        assert_eq!(
+            std::fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "no temporary left"
+        );
+    }
+
+    /// While the data of a private source arrives, the temporary is owner-only
+    /// (never the umask's 0644), and it carries no part of the destination's
+    /// name: a name near the filesystem's 255-byte limit still copies.
+    #[cfg(unix)]
+    #[test]
+    fn a_local_copy_temporary_is_private_and_fits_any_valid_name() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::atomic::AtomicBool;
+        struct Inspecting<'a> {
+            dir: &'a std::path::Path,
+            reads: usize,
+            modes: Vec<u32>,
+        }
+        impl std::io::Read for Inspecting<'_> {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                self.reads += 1;
+                for entry in std::fs::read_dir(self.dir).unwrap() {
+                    let entry = entry.unwrap();
+                    if entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with(".aeroftp-copy-")
+                    {
+                        self.modes
+                            .push(entry.metadata().unwrap().permissions().mode() & 0o777);
+                    }
+                }
+                if self.reads > 3 {
+                    return Ok(0);
+                }
+                buf[..4].copy_from_slice(b"data");
+                Ok(4)
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let name = format!("{}.txt", "n".repeat(250));
+        assert_eq!(name.len(), 254);
+        let destination = dir.path().join(&name);
+        let mut source = Inspecting {
+            dir: dir.path(),
+            reads: 0,
+            modes: Vec::new(),
+        };
+        crate::copy_into_place(
+            &mut source,
+            std::fs::Permissions::from_mode(0o600),
+            &destination,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        assert!(
+            !source.modes.is_empty(),
+            "the temporary was seen while written"
+        );
+        assert!(
+            source.modes.iter().all(|mode| *mode == 0o600),
+            "{:?}",
+            source.modes
+        );
+        assert_eq!(std::fs::read(&destination).unwrap(), b"datadatadata");
+        assert_eq!(
+            std::fs::metadata(&destination)
+                .unwrap()
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 1);
+    }
+
     /// A local-local run gives its commands no expected target, so a copy it
     /// started holds no pin. The pair of its lost page stays locked while
     /// the real `copy_local_file` is still in flight, and is released once
@@ -516,7 +974,8 @@ mod tests {
         assert!(state.gui_work_settled());
         // Called as a local-local run calls it before this PR's admission
         // existed: no lease token, so the copy is only counted.
-        let copy = tokio::spawn(crate::copy_local_file(
+        let copy = tokio::spawn(crate::copy_local_file_with(
+            std::sync::Arc::default(),
             source.to_string_lossy().into_owned(),
             destination.to_string_lossy().into_owned(),
             None,

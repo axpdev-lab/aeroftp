@@ -11330,7 +11330,12 @@ const App: React.FC = () => {
   const retryRestoredEntry = useLatestCallback(async (id: string, entry: TransferQueueJournalEntryDto) => {
     const stops = stopCountRef.current;
     while (syncRunnerPendingRef.current || syncCancelPendingRef.current) await (syncRunnerPendingRef.current ?? syncCancelPendingRef.current);
-    if (stopCountRef.current !== stops) return;
+    if (stopCountRef.current !== stops) {
+      // As for a queued row (`boundToQueuedServer`): stopped while it waited
+      // for a sync run, the restored row is settled as cancelled.
+      if (transferQueue.getItemNow(id)?.status === 'pending') transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
+      return;
+    }
     if (transferQueue.getItemNow(id)?.status !== 'pending') return;
     const direction = entry.direction === 'upload' ? 'upload' : 'download';
     transferQueue.startTransfer(id);
@@ -13097,7 +13102,9 @@ const App: React.FC = () => {
 
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
-    // unavailable. A saved per-server opt-out skips the probe entirely.
+    // unavailable. A saved per-server opt-out skips the question about
+    // continuing without delta, never the probe: a hard refusal still stops
+    // the run before any write.
     syncPreflightPendingRef.current = preflightOwner;
     setSyncPreflightPending(true);
     void (async () => {
@@ -19070,8 +19077,9 @@ const App: React.FC = () => {
             setDeltaEligibilityPrompt(null);
             if (skipFuturePrompts && prompt.profileId) {
               // Persist `skipDeltaEligibilityPrompt: true` on the saved
-              // server so future runs against the same profile skip the
-              // probe entirely. Best-effort: vault errors don't block
+              // server so future runs against the same profile skip this
+              // question; the probe still runs, and a hard refusal still
+              // stops the run. Best-effort: vault errors don't block
               // the queued plan from dispatching.
               (async () => {
                 try {

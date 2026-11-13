@@ -433,38 +433,61 @@ export const LEASED_COMMANDS: ReadonlySet<string> = new Set([
 export const withRunLease = (cmd: string, args: Record<string, unknown> | undefined, token: string): Record<string, unknown> | undefined =>
     LEASED_COMMANDS.has(cmd) ? { ...args, syncRunLease: token } : args;
 
-/** The document global native code sets when this document finished loading. */
-export const PAGE_EPOCH_GLOBAL = '__AEROFTP_SYNC_PAGE_EPOCH__';
+/**
+ * This document's load nonce: made once, when the module loads. The document
+ * binds it natively to its window at start (`bindSyncPage`, called from
+ * `main.tsx` before any run), and the last binding owns the window: the runs
+ * of a document bound before become orphans (`sync_run_lease::bind_page`).
+ * Nothing native code sends a document carries an identity, so no overlapped
+ * load can hand the window to the wrong one.
+ */
+export const PAGE_NONCE: string = (() => {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return `page-${Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('')}`;
+})();
+
+let pageBinding: Promise<void> | undefined;
 
 /**
- * This document's page generation, handed to it by native code when it
- * finished loading (`sync_run_lease::page_epoch_script`): set once, read-only,
- * and never given to the document a reload replaced. `undefined` until then.
- * Every run's lease request names it, and the native side refuses a request
- * from a document that was replaced since.
+ * Bind this document's nonce to its window, once (the same promise for every
+ * caller), or again when `rebind`: a run awaits the acknowledgement before it
+ * asks for a lease. A failed binding is forgotten, so the next run tries again.
  */
-/** Polls a run makes for the generation before it refuses: 50 x 100 ms. */
-export const PAGE_EPOCH_POLLS = 50;
-const PAGE_EPOCH_POLL_MS = 100;
-
-/**
- * This document's generation, waited for a short while: a run that starts as
- * the window opens (a sync resumed or scheduled at start) can come before the
- * native side handed it over on `Finished`. Counted in polls, not by a clock,
- * so a test's fixed clock cannot hold it. `undefined` once the polls are used
- * up: the run then refuses, fail closed.
- */
-export const awaitPageSyncEpoch = async (delay: (ms: number) => Promise<void>): Promise<number | undefined> => {
-    for (let poll = 0; ; poll++) {
-        const epoch = currentPageSyncEpoch();
-        if (epoch !== undefined || poll >= PAGE_EPOCH_POLLS) return epoch;
-        await delay(PAGE_EPOCH_POLL_MS);
+export const bindSyncPage = (invoke: RemoteSyncDeps['invoke'], rebind = false): Promise<void> => {
+    if (!pageBinding || rebind) {
+        const attempt: Promise<void> = invoke<void>('sync_run_page_bind_cmd', { pageNonce: PAGE_NONCE })
+            .catch(error => {
+                if (pageBinding === attempt) pageBinding = undefined;
+                throw error;
+            });
+        pageBinding = attempt;
     }
+    return pageBinding;
 };
 
-export const currentPageSyncEpoch = (): number | undefined => {
-    const epoch = (globalThis as Record<string, unknown>)[PAGE_EPOCH_GLOBAL];
-    return typeof epoch === 'number' && Number.isSafeInteger(epoch) && epoch >= 0 ? epoch : undefined;
+/**
+ * The run's lease, asked for by this document once its binding is
+ * acknowledged. A document whose binding another one took over (a window
+ * whose first load was reported after it bound, or an old document of an
+ * overlapped load that bound later) is refused as replaced: it binds again
+ * and asks once more. A live document gets its window back; one that is gone
+ * sends nothing, so the retry cannot hand the window back to it.
+ */
+const beginRunLease = async (
+    invoke: RemoteSyncDeps['invoke'],
+    localPath: string,
+    remotePath: string,
+): Promise<string> => {
+    const begin = () => invoke<string>('sync_run_lease_begin_cmd', { localPath, remotePath, pageNonce: PAGE_NONCE });
+    await bindSyncPage(invoke);
+    try {
+        return await begin();
+    } catch (error) {
+        if (!String(error).includes('SYNC_RUN_PAGE_REPLACED')) throw error;
+        await bindSyncPage(invoke, true);
+        return begin();
+    }
 };
 
 /**
@@ -504,13 +527,9 @@ export const runRemoteSync = (
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => withTransferRun(async () => {
-    const pageEpoch = await awaitPageSyncEpoch(deps.delay ?? defaultDelay);
-    if (pageEpoch === undefined) {
-        throw new Error('SYNC_RUN_PAGE_REPLACED: this window has not finished loading; try again in a moment');
-    }
-    const token = await deps.invoke<string>('sync_run_lease_begin_cmd', {
-        localPath: normalizedSyncRoot(config.localRoot), remotePath: normalizedSyncRoot(config.remoteRoot), pageEpoch,
-    });
+    const token = await beginRunLease(
+        deps.invoke, normalizedSyncRoot(config.localRoot), normalizedSyncRoot(config.remoteRoot),
+    );
     if (typeof token !== 'string' || !token) throw new Error('Cannot acquire sync run ownership');
     const pending = new Set<Promise<unknown>>();
     const trackedInvoke: RemoteSyncDeps['invoke'] = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
@@ -1214,6 +1233,10 @@ const runSync = async (
         // BEFORE checking the live target or performing any follow-up work.
         const ownerChanged = results?.some(result => result.status === 'target_changed');
         if (ownerChanged) targetError = new QueuedTargetChangedError('CONNECTION_CHANGED: reconnect and compare again');
+        // A `failed` file may have reached the server, whatever the other
+        // results say: the journal is unsafe to resume before the first
+        // checkpoint below saves it, even when the run stops on a target change.
+        if (results?.some(result => result.status === 'failed')) journal.resume_safe = false;
         for (const [k, file] of send.entries()) {
             const result = results?.[k];
             const index = journalEntryMap.get(file.relativePath);
@@ -1717,7 +1740,7 @@ const runSync = async (
                     outcome = 'failed';
                     const errInfo: SyncErrorInfo = {
                         kind: 'unknown',
-                        message: `Delete failed: ${item.relativePath} - ${redactCredentials((e as { toString?: () => string })?.toString?.() || 'unknown')}`,
+                        message: `Delete failed: ${item.relativePath} - ${redactCredentials(withoutErrorTag((e as { toString?: () => string })?.toString?.() || 'unknown'))}`,
                         retryable: false,
                         file_path: item.relativePath,
                     };
@@ -1783,7 +1806,7 @@ const runSync = async (
             } catch (e) {
                 const errInfo: SyncErrorInfo = {
                     kind: 'permission_denied',
-                    message: `Delete failed: ${item.relativePath} - ${redactCredentials((e as { toString?: () => string })?.toString?.() || 'unknown')}`,
+                    message: `Delete failed: ${item.relativePath} - ${redactCredentials(withoutErrorTag((e as { toString?: () => string })?.toString?.() || 'unknown'))}`,
                     retryable: false,
                     file_path: item.relativePath,
                 };

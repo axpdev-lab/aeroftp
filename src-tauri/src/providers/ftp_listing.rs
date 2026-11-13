@@ -116,9 +116,23 @@ pub(crate) const SIZE_UNREADABLE: &str = "ftp.size_unreadable";
 /// false for such a row, which is not the same as "this is a file".
 pub(crate) const TYPE_UNCONFIRMED: &str = "ftp.type_unconfirmed";
 
-/// Whether `entry` carries [`TYPE_UNCONFIRMED`].
+/// The same verdict from any provider: the entry's metadata does not confirm
+/// a regular file, a directory or a symlink (an SFTP entry with no file-type
+/// bits, or a FIFO, socket or device). A receipt or any other check that needs
+/// a regular file must read [`type_is_unconfirmed`], which sees both keys.
+pub(crate) const ENTRY_TYPE_UNCONFIRMED: &str = "entry.type_unconfirmed";
+
+/// Whether `entry` carries [`TYPE_UNCONFIRMED`] or [`ENTRY_TYPE_UNCONFIRMED`].
 pub fn type_is_unconfirmed(entry: &RemoteEntry) -> bool {
     entry.metadata.contains_key(TYPE_UNCONFIRMED)
+        || entry.metadata.contains_key(ENTRY_TYPE_UNCONFIRMED)
+}
+
+/// Put [`ENTRY_TYPE_UNCONFIRMED`] on an entry of a provider other than FTP.
+pub(crate) fn mark_entry_type_unconfirmed(entry: &mut RemoteEntry) {
+    entry
+        .metadata
+        .insert(ENTRY_TYPE_UNCONFIRMED.to_string(), "1".to_string());
 }
 
 fn mark_type_unconfirmed(entry: &mut RemoteEntry, confirmed: bool) {

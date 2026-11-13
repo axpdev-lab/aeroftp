@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 809
+    "tauri_commands": 810
   },
   "mcp": {
     "count": 78,
@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 473,
+    "name_matched_count": 474,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1407,6 +1407,7 @@
       "save_sync_index_cmd",
       "sync_intent_begin_cmd",
       "sync_run_lease_begin_cmd",
+      "sync_run_page_bind_cmd",
       "sync_run_lease_end_cmd",
       "sync_intent_snapshot_cmd",
       "load_sync_journal_cmd",
@@ -2127,6 +2128,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 809
+    "count": 810
   }
 }

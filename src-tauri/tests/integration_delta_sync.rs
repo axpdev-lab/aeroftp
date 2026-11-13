@@ -1446,6 +1446,7 @@ mod native_against_stock_rsync {
             auth_password: None,
             auth_agent: false,
             pinned_private_key: None,
+            pinned_password: false,
         };
         // 1 MiB min size so small test payloads still flow through.
         AerorsyncDeltaTransport::new(config, 1024)
@@ -1662,6 +1663,7 @@ mod native_rsync_password_auth {
             auth_password: Some(SecretString::from(password.to_string())),
             auth_agent: false,
             pinned_private_key: None,
+            pinned_password: false,
         }
     }
 

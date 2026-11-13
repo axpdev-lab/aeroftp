@@ -85,6 +85,39 @@ describe('useTransferQueue retryAllFailed (#139)', () => {
         expect(row?.cancelled).toBeTruthy();
     });
 
+    // Resume All of a restored row while a sync run holds the session, then
+    // Stop: the restored retry settles its row as cancelled too.
+    it('cancels a restored row whose resume was stopped while a sync run held it', async () => {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const start = app.indexOf('  const retryRestoredEntry = useLatestCallback(');
+        const end = app.indexOf('\n\n  // Queues the restorable entries of the journal read at startup.', start);
+        const { code } = await transformWithOxc(app.slice(start, end), 'restored-stopped-while-waiting.ts');
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'download'); });
+        let endRun!: () => void;
+        const syncRun = new Promise<void>(resolve => { endRun = resolve; });
+        const stopCountRef = { current: 0 };
+        const downloadFile = vi.fn();
+        const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null },
+            syncRunnerPendingRef: { current: syncRun as Promise<void> | null }, stopCountRef,
+            transferQueue: queue, t: (key: string) => key, downloadFile, uploadFile: vi.fn() };
+        const retry = new Function(...Object.keys(context), `${code};return retryRestoredEntry;`)(...Object.values(context));
+        await act(async () => {
+            const waiting = retry(id, { direction: 'download', remote_path: '/file.txt', local_path: '/tmp/file.txt' });
+            stopCountRef.current++;
+            context.syncRunnerPendingRef.current = null;
+            endRun();
+            await waiting;
+        });
+        expect(downloadFile).not.toHaveBeenCalled();
+        const row = queue.getItemNow(id);
+        expect(row?.status).not.toBe('pending');
+        expect(row?.cancelled).toBeTruthy();
+    });
+
     it('forgets a removed staged Start synchronously even through an older hook result', async () => {
         let queue!: ReturnType<typeof useTransferQueue>;
         const Probe = () => { queue = useTransferQueue(); return null; };

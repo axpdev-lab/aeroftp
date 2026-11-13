@@ -340,7 +340,9 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         Replacement::Text("***JWT-REDACTED***"),
     ),
     (
-        r"(?i)\b((?:ftps?|sftp|scp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
+        // The password runs to the last `@` of the authority, never past
+        // `/`, `?` or `#` (the TS twin in redactSensitive.ts says the same).
+        r#"(?i)\b((?:ftps?|sftp|scp|https?|webdav)://[^:\s/"']+:)[^\s/?#"']+(@)"#,
         Replacement::Text("$1***REDACTED***$2"),
     ),
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".

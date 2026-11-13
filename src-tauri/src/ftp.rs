@@ -31,6 +31,12 @@ pub enum FtpManagerError {
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 
+    /// A reply the server refused, by the code the reply parser read: the
+    /// IPC boundary reads the status from here (`sync::IpcError::from_ftp`),
+    /// never from text. Same text as `OperationFailed` of the envelope.
+    #[error("Operation failed: FTP status {code}: command rejected")]
+    Refused { code: u16 },
+
     #[error("Timeout occurred")]
     Timeout,
 }
@@ -129,6 +135,17 @@ impl FtpManager {
             }
             .into(),
             _ => "FTP protocol error".into(),
+        }
+    }
+
+    /// The error of a refused or failed operation: a refused reply keeps its
+    /// code typed ([`FtpManagerError::Refused`]), anything else its safe text.
+    fn operation_failure(error: &FtpError) -> FtpManagerError {
+        match error {
+            FtpError::UnexpectedResponse(reply) => FtpManagerError::Refused {
+                code: reply.status.code() as u16,
+            },
+            other => FtpManagerError::OperationFailed(Self::safe_ftp_error(other)),
         }
     }
 
@@ -406,11 +423,9 @@ impl FtpManager {
             Ok(Err(error)) if Self::definitive_refusal(&error) => {
                 self.abandoned_command = false;
                 self.stream = Some(stream);
-                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into());
+                return Err(Self::operation_failure(&error).into());
             }
-            Ok(Err(error)) => {
-                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into())
-            }
+            Ok(Err(error)) => return Err(Self::operation_failure(&error).into()),
             Err(error) => return Err(anyhow::Error::new(error).context("List operation timeout")),
         };
         self.abandoned_command = false;
@@ -480,18 +495,16 @@ impl FtpManager {
             Ok(Err(error)) if Self::definitive_refusal(&error) => {
                 self.abandoned_command = false;
                 self.stream = Some(stream);
-                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into());
+                return Err(Self::operation_failure(&error).into());
             }
-            Ok(Err(error)) => {
-                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&error)).into())
-            }
+            Ok(Err(error)) => return Err(Self::operation_failure(&error).into()),
             Err(error) => return Err(anyhow::Error::new(error).context("Change directory timeout")),
         }
         let changed: Result<String> = async {
             tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
                 .await
                 .context("PWD timeout")?
-                .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into())
+                .map_err(|e| Self::operation_failure(&e).into())
         }
         .await;
         self.abandoned_command = false;
@@ -527,7 +540,7 @@ impl FtpManager {
         let path = tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
             .await
             .context("PWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(path)
     }
@@ -564,7 +577,7 @@ impl FtpManager {
         if binary.is_ok() || binary.as_ref().is_err_and(Self::definitive_refusal) {
             self.abandoned_command = false;
         }
-        binary.map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+        binary.map_err(|e| Self::operation_failure(&e))?;
         self.abandoned_command = true;
         let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
@@ -584,7 +597,7 @@ impl FtpManager {
             {
                 return self.exists_in_parent_listing(path).await;
             }
-            Err(e) => return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into()),
+            Err(e) => return Err(Self::operation_failure(&e).into()),
         }
         self.abandoned_command = true;
         match tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
@@ -600,14 +613,14 @@ impl FtpManager {
                 if Self::definitive_refusal(&e) {
                     self.abandoned_command = false;
                 }
-                return Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into());
+                return Err(Self::operation_failure(&e).into());
             }
         }
         let previous = self.current_path.clone();
         tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(&previous))
             .await
             .context("CWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
         self.abandoned_command = false;
         Ok(true)
     }
@@ -656,7 +669,7 @@ impl FtpManager {
             Ok(names) => Ok(names
                 .iter()
                 .any(|n| n.trim_end_matches('/').rsplit('/').next() == Some(name))),
-            Err(e) => Err(FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)).into()),
+            Err(e) => Err(Self::operation_failure(&e).into()),
         }
     }
 
@@ -760,11 +773,11 @@ impl FtpManager {
         )
         .await
         .context("TYPE timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+        .map_err(|e| Self::operation_failure(&e))?;
         let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
             .context("SIZE timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
         Ok(size as u64)
     }
 
@@ -778,7 +791,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Create local directory if needed
         if let Some(parent) = PathBuf::from(local_path).parent() {
@@ -800,7 +813,7 @@ impl FtpManager {
                 stream
                     .transfer_type(FileType::Binary)
                     .await
-                    .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+                    .map_err(|e| Self::operation_failure(&e))?;
                 None
             }
         };
@@ -810,7 +823,7 @@ impl FtpManager {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Read all data
         let mut buf = Vec::new();
@@ -820,7 +833,7 @@ impl FtpManager {
         data_stream
             .finish()
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         if let Some(expected) = expected_size {
             if buf.len() as u64 != expected as u64 {
@@ -870,13 +883,13 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Download using retr_as_stream
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // H2: Read with size cap to prevent OOM
         let mut buf = Vec::new();
@@ -902,7 +915,7 @@ impl FtpManager {
         data_stream
             .finish()
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         if bytes_read as u64 > LIMIT {
             return Err(FtpManagerError::OperationFailed(format!(
@@ -938,7 +951,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Create local directory if needed
         if let Some(parent) = PathBuf::from(local_path).parent() {
@@ -949,7 +962,7 @@ impl FtpManager {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Stream to disk in 8KB chunks (no full-file RAM buffering), through
         // a temporary renamed over the name at the end: a link standing at
@@ -988,7 +1001,7 @@ impl FtpManager {
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
-        finalize_result.map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+        finalize_result.map_err(|e| Self::operation_failure(&e))?;
         local_file.commit().await?;
 
         info!("Download completed: {} ({} bytes)", remote_path, total_read);
@@ -1005,7 +1018,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Read local file
         let data = tokio::fs::read(local_path).await?;
@@ -1018,7 +1031,7 @@ impl FtpManager {
         )
         .await
         .context("Upload timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+        .map_err(|e| Self::operation_failure(&e))?;
 
         info!("Upload completed: {}", remote_path);
         Ok(())
@@ -1044,7 +1057,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Open local file for streaming read
         let mut file = tokio::fs::File::open(local_path).await?;
@@ -1057,7 +1070,7 @@ impl FtpManager {
         let mut data_stream = stream
             .put_with_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Write in 8KB chunks with progress tracking
         let mut chunk = [0u8; 8192];
@@ -1101,7 +1114,7 @@ impl FtpManager {
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
-        finalize_result.map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+        finalize_result.map_err(|e| Self::operation_failure(&e))?;
 
         info!(
             "Upload completed: {} ({} bytes)",
@@ -1119,7 +1132,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.mkdir(path))
             .await
             .context("MKDIR timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -1133,7 +1146,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rm(path))
             .await
             .context("Remove timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -1147,7 +1160,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rmdir(path))
             .await
             .context("Remove directory timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -1161,7 +1174,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rename(from, to))
             .await
             .context("Rename timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -1202,7 +1215,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.site(&args))
             .await
             .context("CHMOD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(Self::safe_ftp_error(&e)))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }

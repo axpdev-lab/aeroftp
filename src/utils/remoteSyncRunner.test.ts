@@ -8,8 +8,7 @@ import {
     runRemoteSync,
     LEASED_COMMANDS,
     withRunLease,
-    PAGE_EPOCH_GLOBAL,
-    PAGE_EPOCH_POLLS,
+    PAGE_NONCE,
     groupErrorsByKind,
     filesFromJournal,
     retryPolicyForSpeed,
@@ -130,6 +129,29 @@ const file = (
 // report (and the journal and activity log it feeds) shows the text without
 // the tag.
 describe('remoteSyncRunner: a command error in the report', () => {
+    // The two delete handlers: a failed file delete and a failed empty-folder
+    // removal keep the tag out of the report, the status callback and the journal.
+    it.each(['file', 'empty folder'] as const)('keeps the tag out of a failed %s delete', async kind => {
+        const tagged = 'Permission denied (HTTP 403) [sync-error:permission_denied:false]';
+        const { invoke, calls } = makeInvoke({
+            delete_remote_file: () => { throw new Error(tagged); },
+            sync_remove_empty_dir: () => { throw new Error(tagged); },
+            classify_transfer_error: (args) => ({ kind: 'permission_denied', retryable: false, message: String(args?.rawError), file_path: String(args?.filePath) } as SyncErrorInfo),
+        });
+        const statuses: string[] = [];
+        const row = kind === 'file' ? file('gone.txt', 'delete-remote') : file('gone-dir', 'delete-remote', { isDir: true });
+        const report = await runRemoteSync([row], noDirs, baseConfig(), {
+            onFileStatus: (_path, _status, message) => { if (message) statuses.push(message); },
+        }, noWaitDeps(invoke));
+        const everything = JSON.stringify({
+            errors: report.errors,
+            statuses,
+            journals: calls.filter(c => c.cmd === 'save_sync_journal_cmd').map(c => c.args),
+        });
+        expect(report.errors.length + statuses.length).toBeGreaterThan(0);
+        expect(everything).not.toContain('[sync-error:');
+    });
+
     it.each([
         ['Permission denied (HTTP 403) [sync-error:permission_denied:false]', 'permission_denied', false, 1],
         ['Network error (HTTP 503) [sync-error:network:true]', 'network', true, 2],
@@ -155,53 +177,50 @@ describe('remoteSyncRunner: a command error in the report', () => {
 });
 
 describe('remoteSyncRunner: lease token on native commands', () => {
-    // The generation native code handed this document names every lease
-    // request; a document that has none yet starts no run, and asks nothing.
-    // A run that starts before the native side handed the document its
-    // generation waits for it a short while, then refuses, fail closed.
-    it.each(['handed over during the wait', 'never handed over'] as const)('waits a bounded time for the page generation (%s)', async when => {
-        const global = globalThis as Record<string, unknown>;
-        const saved = global[PAGE_EPOCH_GLOBAL];
-        try {
-            delete global[PAGE_EPOCH_GLOBAL];
-            const { invoke } = makeInvoke({ load_sync_index_cmd: () => null });
-            const fixture = createIntentFixture();
-            const waits: number[] = [];
-            const delay = async (ms: number) => {
-                waits.push(ms);
-                if (when === 'handed over during the wait' && waits.length === 3) global[PAGE_EPOCH_GLOBAL] = 4;
-            };
-            const run = runRemoteSync([file('one.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke), delay });
-            if (when === 'never handed over') {
-                await expect(run).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
-                expect(waits.filter(ms => ms === 100)).toHaveLength(PAGE_EPOCH_POLLS);
-                expect(fixture.beginArgs).toHaveLength(0);
-                return;
+    // The document binds its nonce before its first lease request, and every
+    // request names it. A request refused as replaced (another document's
+    // binding took the window) binds again and asks once more; a second
+    // refusal stops the run.
+    it('binds the document before asking, and retries once after a replaced page', async () => {
+        const { invoke } = makeInvoke({ load_sync_index_cmd: () => null });
+        const fixture = createIntentFixture();
+        const calls: string[] = [];
+        let refusals = 0;
+        const replacedOnce: RemoteSyncDeps['invoke'] = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+            if (cmd === 'sync_run_page_bind_cmd' || cmd === 'sync_run_lease_begin_cmd') calls.push(cmd);
+            if (cmd === 'sync_run_lease_begin_cmd' && refusals === 0) {
+                refusals++;
+                throw new Error('SYNC_RUN_PAGE_REPLACED: this window\'s page was replaced; reload it and compare again');
             }
-            await run;
-            expect(waits.slice(0, 3)).toEqual([100, 100, 100]);
-            expect(fixture.beginArgs.map(args => args.pageEpoch)).toEqual([4]);
-        } finally {
-            global[PAGE_EPOCH_GLOBAL] = saved;
-        }
+            return fixture.wrap(invoke)<T>(cmd, args);
+        };
+        await runRemoteSync([file('one.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: replacedOnce });
+        // The first binding may come from an earlier run of this document.
+        expect(calls.slice(-3)).toEqual(['sync_run_lease_begin_cmd', 'sync_run_page_bind_cmd', 'sync_run_lease_begin_cmd']);
+        expect(fixture.bindArgs[fixture.bindArgs.length - 1]?.pageNonce).toBe(PAGE_NONCE);
+        expect(fixture.beginArgs.map(args => args.pageNonce)).toEqual([PAGE_NONCE]);
+        // Refused again after the new binding: the run stops, no third ask.
+        let begins = 0;
+        const alwaysReplaced: RemoteSyncDeps['invoke'] = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+            if (cmd === 'sync_run_lease_begin_cmd') {
+                begins++;
+                throw new Error('SYNC_RUN_PAGE_REPLACED: this window\'s page was replaced; reload it and compare again');
+            }
+            return fixture.wrap(invoke)<T>(cmd, args);
+        };
+        await expect(runRemoteSync([file('two.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: alwaysReplaced }))
+            .rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        expect(begins).toBe(2);
+        expect(PAGE_NONCE).toMatch(/^page-[0-9a-f]{32}$/);
     });
 
-    it('names the page generation native code gave this document, and refuses without one', async () => {
-        const global = globalThis as Record<string, unknown>;
-        const saved = global[PAGE_EPOCH_GLOBAL];
-        try {
-            const { invoke } = makeInvoke({ load_sync_index_cmd: () => null });
-            global[PAGE_EPOCH_GLOBAL] = 7;
-            const fixture = createIntentFixture();
-            await runRemoteSync([file('one.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) });
-            expect(fixture.beginArgs.map(args => args.pageEpoch)).toEqual([7]);
-            delete global[PAGE_EPOCH_GLOBAL];
-            await expect(runRemoteSync([file('two.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) }))
-                .rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
-            expect(fixture.beginArgs).toHaveLength(1);
-        } finally {
-            global[PAGE_EPOCH_GLOBAL] = saved;
-        }
+    it('binds once for every run of the document', async () => {
+        const { invoke } = makeInvoke({ load_sync_index_cmd: () => null });
+        const fixture = createIntentFixture();
+        await runRemoteSync([file('one.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) });
+        await runRemoteSync([file('two.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) });
+        expect(fixture.bindArgs.length).toBeLessThanOrEqual(1);
+        expect(fixture.beginArgs.map(args => args.pageNonce)).toEqual([PAGE_NONCE, PAGE_NONCE]);
     });
 
     // Every member of the set, not only the commands a plan happens to reach.

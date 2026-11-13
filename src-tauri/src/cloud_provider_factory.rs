@@ -102,6 +102,11 @@ pub(crate) struct OpenedCloudProvider {
     pub provider: Box<dyn StorageProvider>,
     pub identity: Option<String>,
     pub overlay_binding: serde_json::Value,
+    /// The account the connection began with, set by
+    /// [`create_cloud_connection`]: every later read made for it (the overlay
+    /// binding, the overlay stack) is that account's, and
+    /// [`account_unchanged`] proves no switch happened in between.
+    pub account: Option<crate::user_partitions::GuiAccountSnapshot>,
 }
 
 /// Hash canonical structured identity without persisting credentials or depending on map order.
@@ -135,11 +140,73 @@ fn resolved_target_identity(
     binding: &serde_json::Value,
     account: Option<&str>,
 ) -> Option<String> {
+    let account = account.filter(|value| !value.trim().is_empty());
+    let (principal, options) = target_selectors(config);
+    if account.is_none() && principal.is_none() {
+        return None;
+    }
+    Some(identity_digest(serde_json::json!({
+        "protocol": config.provider_type.to_string(), "host": config.host, "port": config.port.unwrap_or(config.provider_type.default_port()),
+        "principal": principal, "account": account, "root": config.initial_path,
+        "options": options, "overlay": overlay_identity(binding),
+    })))
+}
+
+/// The target a GUI connection addresses, as the digest a page-saved sync
+/// index records (`SyncIndex::target_identity`): the same selectors as
+/// [`resolved_target_identity`], the account the provider reports, and what
+/// decides the names the run sees through a crypt overlay (`overlay`, see
+/// `OverlayKeys::naming_fingerprint`). A provider installed without a config
+/// (the OAuth ones) is its type and account; with no account either, there is
+/// nothing that tells one sign-in from another, and `None` is returned: the
+/// caller gives such a connection an identity of its own, never reused. Never
+/// secret: no password or token is part of it.
+pub(crate) fn gui_target_identity(
+    config: Option<&ProviderConfig>,
+    provider_type: ProviderType,
+    account: Option<&str>,
+    overlay: &serde_json::Value,
+) -> Option<String> {
+    let account = account.filter(|value| !value.trim().is_empty());
+    let value = match config {
+        Some(config) => {
+            let (principal, options) = target_selectors(config);
+            serde_json::json!({
+                "surface": "gui-v1", "protocol": config.provider_type.to_string(), "host": config.host,
+                "port": config.port.unwrap_or(config.provider_type.default_port()),
+                "principal": principal, "account": account, "root": config.initial_path,
+                "options": options, "overlay": overlay,
+            })
+        }
+        None => serde_json::json!({
+            "surface": "gui-v1", "protocol": provider_type.to_string(),
+            "account": account?, "overlay": overlay,
+        }),
+    };
+    Some(format!("target-v1:{}", identity_digest(value)))
+}
+
+/// The target of a legacy FTP connection (`connect_ftp`), which has no
+/// provider config: the server as typed (host and port) and the login.
+pub(crate) fn legacy_ftp_target_identity(server: &str, username: &str) -> String {
+    format!(
+        "target-v1:{}",
+        identity_digest(serde_json::json!({
+            "surface": "gui-v1", "protocol": "ftp-legacy",
+            "server": server.trim().to_ascii_lowercase(), "principal": username,
+        }))
+    )
+}
+
+/// The login or namespace selector a builder consumes, and the options that
+/// can change the addressed namespace.
+fn target_selectors(
+    config: &ProviderConfig,
+) -> (Option<&str>, std::collections::BTreeMap<&String, &String>) {
     let username = config
         .username
         .as_deref()
         .filter(|value| !value.trim().is_empty());
-    let account = account.filter(|value| !value.trim().is_empty());
     // These are the actual login or namespace selectors consumed by each builder,
     // not the display username (token/bridge profiles may carry a placeholder).
     let principal = match config.provider_type {
@@ -162,9 +229,6 @@ fn resolved_target_identity(
         _ => None,
     }
     .filter(|value| !value.trim().is_empty());
-    if account.is_none() && principal.is_none() {
-        return None;
-    }
     let options: std::collections::BTreeMap<_, _> = config
         .extra
         .iter()
@@ -192,11 +256,7 @@ fn resolved_target_identity(
             )
         })
         .collect();
-    Some(identity_digest(serde_json::json!({
-        "protocol": config.provider_type.to_string(), "host": config.host, "port": config.port.unwrap_or(config.provider_type.default_port()),
-        "principal": principal, "account": account, "root": config.initial_path,
-        "options": options, "overlay": overlay_identity(binding),
-    })))
+    (principal, options)
 }
 
 /// Canonical mapping options, excluding UI-only fields and explicit defaults.
@@ -223,11 +283,15 @@ fn overlay_binding(profile: Option<&serde_json::Value>) -> serde_json::Value {
 }
 
 /// Recheck overlay selection around composition so a profile edit cannot mix a new binding with an old connection.
+/// `account` is the one the connection began with (`OpenedCloudProvider::account`).
 pub(crate) fn current_overlay_binding(
     config: &CloudConfig,
     store: &credential_store::CredentialStore,
+    account: Option<i64>,
 ) -> Result<serde_json::Value, String> {
-    Ok(overlay_binding(saved_profile(store, config)?.as_ref()))
+    Ok(overlay_binding(
+        saved_profile(store, config, account)?.as_ref(),
+    ))
 }
 
 pub(crate) async fn create_cloud_connection(
@@ -247,6 +311,7 @@ pub(crate) async fn create_cloud_connection(
         let _ = opened.provider.disconnect().await;
         return Err(error);
     }
+    opened.account = Some(account);
     Ok(opened)
 }
 
@@ -284,7 +349,9 @@ fn account_still(
 
 /// Whether the active account is still the one `captured` describes: the same
 /// user, activation, key revision and session.
-fn account_unchanged(captured: &crate::user_partitions::GuiAccountSnapshot) -> Result<(), String> {
+pub(crate) fn account_unchanged(
+    captured: &crate::user_partitions::GuiAccountSnapshot,
+) -> Result<(), String> {
     if crate::user_partitions::gui_account_snapshot()? != *captured {
         return Err("The active account changed while connecting; retry the cycle".to_string());
     }
@@ -297,29 +364,29 @@ async fn open_cloud_connection(
 ) -> Result<OpenedCloudProvider, String> {
     match config.protocol_type.as_str() {
         // --- Direct auth providers: use ProviderFactory ---
-        "ftp" => create_via_factory(config, ProviderType::Ftp).await,
-        "ftps" => create_via_factory(config, ProviderType::Ftps).await,
-        "sftp" => create_via_factory(config, ProviderType::Sftp).await,
-        "scp" => create_via_factory(config, ProviderType::Scp).await,
-        "webdav" => create_via_factory(config, ProviderType::WebDav).await,
-        "s3" => create_via_factory(config, ProviderType::S3).await,
-        "azure" => create_via_factory(config, ProviderType::Azure).await,
-        "mega" => create_via_factory(config, ProviderType::Mega).await,
-        "proton" | "protondrive" => create_via_factory(config, ProviderType::Proton).await,
-        "filen" => create_via_factory(config, ProviderType::Filen).await,
-        "internxt" => create_via_factory(config, ProviderType::Internxt).await,
-        "kdrive" => create_via_factory(config, ProviderType::KDrive).await,
-        "jottacloud" => create_via_factory(config, ProviderType::Jottacloud).await,
-        "filelu" => create_via_factory(config, ProviderType::FileLu).await,
-        "koofr" => create_via_factory(config, ProviderType::Koofr).await,
-        "twake" => create_via_factory(config, ProviderType::Twake).await,
-        "opendrive" => create_via_factory(config, ProviderType::OpenDrive).await,
+        "ftp" => create_via_factory(config, ProviderType::Ftp, account).await,
+        "ftps" => create_via_factory(config, ProviderType::Ftps, account).await,
+        "sftp" => create_via_factory(config, ProviderType::Sftp, account).await,
+        "scp" => create_via_factory(config, ProviderType::Scp, account).await,
+        "webdav" => create_via_factory(config, ProviderType::WebDav, account).await,
+        "s3" => create_via_factory(config, ProviderType::S3, account).await,
+        "azure" => create_via_factory(config, ProviderType::Azure, account).await,
+        "mega" => create_via_factory(config, ProviderType::Mega, account).await,
+        "proton" | "protondrive" => create_via_factory(config, ProviderType::Proton, account).await,
+        "filen" => create_via_factory(config, ProviderType::Filen, account).await,
+        "internxt" => create_via_factory(config, ProviderType::Internxt, account).await,
+        "kdrive" => create_via_factory(config, ProviderType::KDrive, account).await,
+        "jottacloud" => create_via_factory(config, ProviderType::Jottacloud, account).await,
+        "filelu" => create_via_factory(config, ProviderType::FileLu, account).await,
+        "koofr" => create_via_factory(config, ProviderType::Koofr, account).await,
+        "twake" => create_via_factory(config, ProviderType::Twake, account).await,
+        "opendrive" => create_via_factory(config, ProviderType::OpenDrive, account).await,
         "yandexdisk" => create_yandex(config, account).await,
-        "imagekit" => create_via_factory(config, ProviderType::ImageKit).await,
-        "uploadcare" => create_via_factory(config, ProviderType::Uploadcare).await,
-        "cloudinary" => create_via_factory(config, ProviderType::Cloudinary).await,
+        "imagekit" => create_via_factory(config, ProviderType::ImageKit, account).await,
+        "uploadcare" => create_via_factory(config, ProviderType::Uploadcare, account).await,
+        "cloudinary" => create_via_factory(config, ProviderType::Cloudinary, account).await,
         "backblaze" | "b2" | "backblazeb2" => {
-            create_via_factory(config, ProviderType::Backblaze).await
+            create_via_factory(config, ProviderType::Backblaze, account).await
         }
 
         // --- OAuth2 providers: direct instantiation ---
@@ -331,7 +398,7 @@ async fn open_cloud_connection(
         "zohoworkdrive" => create_zoho(config, account).await,
 
         // --- OAuth1 provider ---
-        "fourshared" => create_fourshared(config).await,
+        "fourshared" => create_fourshared(config, account).await,
 
         other => Err(format!("Unsupported protocol for AeroCloud: {}", other)),
     }
@@ -353,10 +420,12 @@ struct SavedCreds {
 /// The saved profile an AeroCloud config names (by id, or by exact name for a
 /// legacy config): the selection the crypt overlay stack makes, so the
 /// connection and the encryption binding of a sync always come from the same
-/// profile.
+/// profile. The list is `account`'s, the account the connection began with,
+/// whichever is active when it is read (`None`: no account, the active list).
 fn saved_profile(
     store: &credential_store::CredentialStore,
     config: &CloudConfig,
+    account: Option<i64>,
 ) -> Result<Option<serde_json::Value>, String> {
     let has_id = config
         .server_profile_id
@@ -365,7 +434,7 @@ fn saved_profile(
     if !has_id && config.server_profile.is_empty() {
         return Ok(None);
     }
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+    let profiles = crate::user_partitions::mcp_list_server_profiles(store, account)?;
     Ok(crate::crypt_overlay_provider::select_aerocloud_profile(
         &profiles,
         config.server_profile_id.as_deref(),
@@ -426,9 +495,11 @@ async fn enter_profile_root(
 /// Connection credentials of a saved profile: host and username from the
 /// profile record, the password from the canonical `server_{id}` credential
 /// (or a legacy inline password), the way the normal connect path reads them.
+/// The credential is `account`'s, as the profile is (see [`saved_profile`]).
 fn profile_creds(
     store: &credential_store::CredentialStore,
     profile: &serde_json::Value,
+    account: Option<i64>,
 ) -> Result<SavedCreds, String> {
     let name = profile.get("name").and_then(|v| v.as_str()).unwrap_or("");
     let id = profile
@@ -442,21 +513,17 @@ fn profile_creds(
     // The vault credential may be the bare password or a structured blob
     // (username plus password, access token or API key), read the way the MCP
     // pool reads it; a legacy inline password is the fallback.
-    let (username, password) =
-        match crate::user_partitions::resolve_active_credential(store, &format!("server_{}", id))
-            .ok()
-            .flatten()
-        {
-            Some(raw) => crate::profile_loader::parse_server_credential(&raw, profile_username),
-            None => (
-                profile_username.to_string(),
-                profile
-                    .get("password")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-            ),
-        };
+    let (username, password) = match account_credential(store, account, &format!("server_{}", id)) {
+        Some(raw) => crate::profile_loader::parse_server_credential(&raw, profile_username),
+        None => (
+            profile_username.to_string(),
+            profile
+                .get("password")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        ),
+    };
     let host = profile
         .get("server")
         .or_else(|| profile.get("host"))
@@ -474,6 +541,28 @@ fn profile_creds(
         username,
         password,
     })
+}
+
+/// One credential of `account` (see [`saved_profile`]); with no account, the
+/// active reader. Owner-aware: only the legacy owner falls back to the shared
+/// vault, so an account whose partition lacks the row never borrows another
+/// account's secret stored there under the same key. An unreadable
+/// credential reads as absent, as before.
+fn account_credential(
+    store: &credential_store::CredentialStore,
+    account: Option<i64>,
+    credential_id: &str,
+) -> Option<zeroize::Zeroizing<String>> {
+    match account {
+        Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
+            store,
+            user,
+            credential_id,
+        ),
+        None => crate::user_partitions::resolve_active_credential(store, credential_id),
+    }
+    .ok()
+    .flatten()
 }
 
 /// Provider options for an AeroCloud connection and the host to dial: the
@@ -531,22 +620,24 @@ fn connection_extra(
 async fn create_via_factory(
     config: &CloudConfig,
     provider_type: ProviderType,
+    account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
 
-    let profile = saved_profile(&store, config)?;
+    // Profile and credential are both read for the account the connection
+    // began with, so a switch between the two reads cannot pair one
+    // account's host with another's password.
+    let profile = saved_profile(&store, config, account)?;
     let mut creds = match &profile {
-        Some(profile) => profile_creds(&store, profile)?,
-        // MUV-3: resolve_active_credential prefers the active user's per-user
-        // store and falls back to the legacy (dual-written) vault.
+        Some(profile) => profile_creds(&store, profile, account)?,
+        // MUV-3: the per-user store first, then the legacy (dual-written) vault.
         None => {
-            let json = crate::user_partitions::resolve_active_credential(
+            let json = account_credential(
                 &store,
+                account,
                 &format!("server_{}", config.server_profile),
             )
-            .ok()
-            .flatten()
             .ok_or_else(|| format!("No credentials for profile '{}'", config.server_profile))?;
             serde_json::from_str::<SavedCreds>(&json)
                 .map_err(|e| format!("Failed to parse credentials: {}", e))?
@@ -603,6 +694,14 @@ async fn create_via_factory(
     }
     let mut provider = ProviderFactory::create(&provider_config)
         .map_err(|e| format!("Failed to create provider: {}", e))?;
+    // Jottacloud reads and rotates its refresh chain during `connect`, after
+    // the recheck above: bound here, both are the capturing account's.
+    if let Some(jotta) = provider
+        .as_any_mut()
+        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
+    {
+        jotta.set_credential_user(account);
+    }
     // A3-05: Zeroize password after it has been consumed by the provider
     provider_config.zeroize_password();
     // A-L2: the SFTP key passphrase reaches `extra` from the profile options and
@@ -640,6 +739,7 @@ async fn create_via_factory(
         provider,
         identity,
         overlay_binding: binding,
+        account: None,
     })
 }
 
@@ -653,7 +753,7 @@ async fn create_yandex(
     account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
     if let Some(store) = credential_store::CredentialStore::from_cache() {
-        let profile = saved_profile(&store, config)?;
+        let profile = saved_profile(&store, config, account)?;
         let profile_id = profile
             .as_ref()
             .and_then(|p| p.get("id").and_then(|v| v.as_str()).map(str::to_string))
@@ -667,7 +767,7 @@ async fn create_yandex(
             .await;
         }
     }
-    create_via_factory(config, ProviderType::YandexDisk).await
+    create_via_factory(config, ProviderType::YandexDisk, account).await
 }
 
 /// The Yandex Disk OAuth access token of `profile_id`, read once on a manager
@@ -715,6 +815,7 @@ async fn open_yandex_oauth(
         provider: Box::new(provider),
         identity,
         overlay_binding: binding,
+        account: None,
     })
 }
 
@@ -751,7 +852,13 @@ struct OAuthApp {
 /// authorized into the provider's singleton token slot; any other config takes
 /// both from the saved profile it names, as a normal connect does: the app from
 /// the vault, the tokens from the profile's own slot (#214).
-fn oauth_app(config: &CloudConfig, id_key: &str, secret_key: &str) -> Result<OAuthApp, String> {
+/// `account` is the one the connection began with (see [`saved_profile`]).
+fn oauth_app(
+    config: &CloudConfig,
+    id_key: &str,
+    secret_key: &str,
+    account: Option<i64>,
+) -> Result<OAuthApp, String> {
     let param_region = config
         .connection_params
         .get("region")
@@ -772,7 +879,7 @@ fn oauth_app(config: &CloudConfig, id_key: &str, secret_key: &str) -> Result<OAu
 
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "Credential vault not open".to_string())?;
-    let profile = saved_profile(&store, config)?
+    let profile = saved_profile(&store, config, account)?
         .ok_or_else(|| format!("No saved profile named '{}'", config.server_profile))?;
     let cred_key = crate::bridge_commands::oauth_client_cred_key(&config.protocol_type)
         .ok_or_else(|| format!("'{}' has no OAuth app", config.protocol_type))?;
@@ -814,6 +921,7 @@ fn opened_oauth(provider: Box<dyn StorageProvider>, app: &OAuthApp) -> OpenedClo
         provider,
         identity,
         overlay_binding: app.overlay_binding.clone(),
+        account: None,
     }
 }
 
@@ -821,7 +929,7 @@ async fn create_google_drive(
     config: &CloudConfig,
     account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
-    let app = oauth_app(config, "client_id", "client_secret")?;
+    let app = oauth_app(config, "client_id", "client_secret", account)?;
     let gc = GoogleDriveConfig::new(&app.client_id, &app.client_secret);
     let mut p = GoogleDriveProvider::new(gc)
         .with_profile_id(&app.profile_id)
@@ -838,7 +946,7 @@ async fn create_dropbox(
     config: &CloudConfig,
     account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
-    let app = oauth_app(config, "client_id", "client_secret")?;
+    let app = oauth_app(config, "client_id", "client_secret", account)?;
     let dc = DropboxConfig::new(&app.client_id, &app.client_secret);
     let mut p = DropboxProvider::new(dc)
         .with_profile_id(&app.profile_id)
@@ -853,7 +961,7 @@ async fn create_onedrive(
     config: &CloudConfig,
     account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
-    let app = oauth_app(config, "client_id", "client_secret")?;
+    let app = oauth_app(config, "client_id", "client_secret", account)?;
     let oc = OneDriveConfig::new(&app.client_id, &app.client_secret);
     let mut p = OneDriveProvider::new(oc)
         .with_profile_id(&app.profile_id)
@@ -868,7 +976,7 @@ async fn create_box(
     config: &CloudConfig,
     account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
-    let app = oauth_app(config, "client_id", "client_secret")?;
+    let app = oauth_app(config, "client_id", "client_secret", account)?;
     let bc = BoxConfig::new(&app.client_id, &app.client_secret);
     let mut p = BoxProvider::new(bc)
         .with_profile_id(&app.profile_id)
@@ -883,7 +991,7 @@ async fn create_pcloud(
     config: &CloudConfig,
     account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
-    let mut app = oauth_app(config, "client_id", "client_secret")?;
+    let mut app = oauth_app(config, "client_id", "client_secret", account)?;
     // pCloud tokens are region-locked: the region detected during the token
     // exchange (vault) wins, as in the normal connect path.
     let region = credential_store::CredentialStore::from_cache()
@@ -905,7 +1013,7 @@ async fn create_zoho(
     config: &CloudConfig,
     account: Option<i64>,
 ) -> Result<OpenedCloudProvider, String> {
-    let mut app = oauth_app(config, "client_id", "client_secret")?;
+    let mut app = oauth_app(config, "client_id", "client_secret", account)?;
     // The profile's region, then the one stored at authorization, as the normal
     // connect path resolves it.
     let region = app
@@ -931,12 +1039,16 @@ async fn create_zoho(
 
 // ── OAuth1 (4shared) ───────────────────────────────────────────────
 
-async fn create_fourshared(config: &CloudConfig) -> Result<OpenedCloudProvider, String> {
-    let app = oauth_app(config, "consumer_key", "consumer_secret")?;
+async fn create_fourshared(
+    config: &CloudConfig,
+    account: Option<i64>,
+) -> Result<OpenedCloudProvider, String> {
+    let app = oauth_app(config, "consumer_key", "consumer_secret", account)?;
     // The tokens live where the 4shared connect path stores them: the
-    // profile's slot, or the provider singleton for a legacy config.
+    // profile's slot, or the provider singleton for a legacy config, read
+    // for the account the connection began with.
     let (access_token, access_token_secret) =
-        crate::provider_commands::load_fourshared_tokens(&app.profile_id)?;
+        crate::provider_commands::load_fourshared_tokens_for(&app.profile_id, account)?;
 
     let fs_config = FourSharedConfig {
         consumer_key: app.client_id.clone(),
@@ -986,12 +1098,96 @@ mod tests {
         let source = include_str!("cloud_provider_factory.rs");
         let body = &source[source.find("async fn create_via_factory(").unwrap()..];
         let body = &body[..body.find("\n}\n").unwrap()];
-        let read = body.find("profile_creds(&store, profile)").unwrap();
+        let read = body
+            .find("profile_creds(&store, profile, account)")
+            .unwrap();
         let recheck = body.find("recheck_connecting_account().await").unwrap();
         let create = body
             .find("ProviderFactory::create(&provider_config)")
             .unwrap();
         assert!(read < recheck && recheck < create);
+    }
+
+    /// The target a GUI sync index records changes with every selector of the
+    /// addressed namespace, the account and the overlay, and with nothing
+    /// else: a renamed profile or a rotated password is the same target.
+    #[test]
+    fn the_gui_target_identity_follows_the_addressed_target_only() {
+        let original = ProviderConfig {
+            name: "saved profile".into(),
+            provider_type: ProviderType::S3,
+            host: "first.example".into(),
+            port: Some(443),
+            username: Some("access-id".into()),
+            password: Some("secret-one".into()),
+            initial_path: Some("/root".into()),
+            extra: HashMap::from([
+                ("bucket".into(), "first-bucket".into()),
+                ("region".into(), "first-region".into()),
+            ]),
+        };
+        let id = |config: &ProviderConfig, account: Option<&str>, overlay: bool| {
+            let overlay = if overlay {
+                serde_json::json!({"kind": "rclone-crypt", "offSuffix": ".bin"})
+            } else {
+                serde_json::Value::Null
+            };
+            gui_target_identity(Some(config), config.provider_type, account, &overlay).unwrap()
+        };
+        let expected = id(&original, Some("acct"), false);
+        assert!(expected.starts_with("target-v1:"));
+        assert!(!expected.contains("secret-one") && !expected.contains("access-id"));
+        let mut same = original.clone();
+        same.name = "renamed".into();
+        same.password = Some("secret-two".into());
+        assert_eq!(id(&same, Some("acct"), false), expected);
+        for change in ["host", "port", "username", "root", "bucket", "region"] {
+            let mut changed = original.clone();
+            match change {
+                "host" => changed.host = "second.example".into(),
+                "port" => changed.port = Some(9443),
+                "username" => changed.username = Some("other-id".into()),
+                "root" => changed.initial_path = Some("/other".into()),
+                option => {
+                    changed
+                        .extra
+                        .insert(option.into(), format!("other-{option}"));
+                }
+            }
+            assert_ne!(id(&changed, Some("acct"), false), expected, "{change}");
+        }
+        assert_ne!(id(&original, Some("other-acct"), false), expected);
+        assert_ne!(id(&original, Some("acct"), true), expected);
+        // A provider installed without a config: its type and account; with
+        // no account (a 4shared sign-in without an email) no reusable one.
+        let none = serde_json::Value::Null;
+        let oauth = |account| gui_target_identity(None, ProviderType::GoogleDrive, account, &none);
+        assert_eq!(oauth(Some("a@x")), oauth(Some("a@x")));
+        assert_ne!(oauth(Some("a@x")), oauth(Some("b@x")));
+        assert!(oauth(None).is_none());
+        assert!(gui_target_identity(None, ProviderType::FourShared, Some(" "), &none).is_none());
+        // Two overlays that name the same files differently are two targets.
+        let suffixed = |suffix: &str| {
+            let overlay = serde_json::json!({"kind": "rclone-crypt", "offSuffix": suffix});
+            gui_target_identity(
+                Some(&original),
+                original.provider_type,
+                Some("acct"),
+                &overlay,
+            )
+        };
+        assert_ne!(suffixed(".bin"), suffixed(".enc"));
+        // The legacy FTP session: server and login.
+        let legacy = legacy_ftp_target_identity("ftp.example:21", "alice");
+        assert_eq!(
+            legacy,
+            legacy_ftp_target_identity(" FTP.example:21 ", "alice")
+        );
+        assert_ne!(
+            legacy,
+            legacy_ftp_target_identity("ftp.example:2121", "alice")
+        );
+        assert_ne!(legacy, legacy_ftp_target_identity("ftp.example:21", "bob"));
     }
 
     #[test]
@@ -1216,6 +1412,149 @@ mod tests {
         assert!(account_unchanged(&account).is_err());
         assert!(yandex_oauth_access_token(account.user, "").is_none());
 
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+    }
+
+    /// Two accounts hold a direct-auth profile under one id, each with its
+    /// own host and its own `server_<id>` password. The connection captures
+    /// the first; the second is activated between the profile read and the
+    /// credential read. Both reads stay the first account's (never one
+    /// account's host with the other's password), and through the
+    /// production `create_via_factory` the connection is refused before any
+    /// host is contacted: neither account's server sees a connection.
+    #[test]
+    fn a_switch_between_the_profile_and_credential_reads_mixes_nothing_and_refuses() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        // A process-global vault, session and environment: its own process.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "cloud_provider_factory::tests::a_switch_between_the_profile_and_credential_reads_mixes_nothing_and_refuses",
+        ) {
+            return;
+        }
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("factory-owner-test-pass")
+            .expect("bootstrap vault");
+        CredentialStore::unlock_with_master("factory-owner-test-pass", None).expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        // One listener per account's host, counting every connection.
+        let listen = || {
+            runtime.block_on(async {
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let port = listener.local_addr().unwrap().port();
+                let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+                let counter = hits.clone();
+                tokio::spawn(async move {
+                    while let Ok((_stream, _)) = listener.accept().await {
+                        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    }
+                });
+                (port, hits)
+            })
+        };
+        let (first_port, first_hits) = listen();
+        let (second_port, second_hits) = listen();
+        for (user, port, password) in [
+            (first.id, first_port, "first-password"),
+            (second.id, second_port, "second-password"),
+        ] {
+            let profile = serde_json::json!({
+                "id": "shared-profile", "name": "Shared", "protocol": "ftp",
+                "server": "127.0.0.1", "port": port, "username": "u",
+            });
+            partitions::replace_server_profiles_for(&mut conn, &root_key, user, &[profile])
+                .expect("store the account's profile");
+            partitions::store_credential_for_user(
+                &store,
+                user,
+                "server_shared-profile",
+                "server",
+                password,
+            )
+            .expect("store the account's password");
+        }
+        let config = CloudConfig {
+            protocol_type: "ftp".into(),
+            server_profile: "Shared".into(),
+            server_profile_id: Some("shared-profile".into()),
+            ..CloudConfig::default()
+        };
+
+        // What `create_cloud_connection` captures before its first read.
+        let account = partitions::gui_account_snapshot().expect("capture account");
+        assert_eq!(account.user, Some(first.id));
+        let profile = saved_profile(&store, &config, account.user)
+            .expect("profile read")
+            .expect("the first account's profile");
+        // The switch lands between the two reads.
+        partitions::set_active_user(&conn, second.id).expect("switch to second");
+        let creds = profile_creds(&store, &profile, account.user).expect("credential read");
+        assert_eq!(creds.server, format!("127.0.0.1:{first_port}"));
+        assert_eq!(creds.password, "first-password");
+        // An unbound read would have answered for the second account.
+        let unbound = saved_profile(&store, &config, None)
+            .expect("unbound read")
+            .expect("the active account's profile");
+        assert_eq!(unbound["port"], second_port);
+
+        // A partition that lacks the row: the shared vault holds a secret
+        // under the same key, which only the legacy owner may read.
+        store
+            .store("server_vault-only", "vault-password")
+            .expect("store in the shared vault");
+        assert!(
+            account_credential(&store, Some(second.id), "server_vault-only").is_none(),
+            "another account's shared secret is not borrowed"
+        );
+        assert_eq!(
+            account_credential(&store, Some(first.id), "server_vault-only")
+                .as_deref()
+                .map(String::as_str),
+            Some("vault-password"),
+            "the legacy owner still reads its own"
+        );
+
+        // The production path, with the switch already behind it.
+        let refused = runtime.block_on(CONNECTING_ACCOUNT.scope(
+            account.clone(),
+            create_via_factory(&config, ProviderType::Ftp, account.user),
+        ));
+        let error = refused.err().expect("refused across the switch");
+        assert!(error.contains("active account changed"), "{error}");
+        runtime.block_on(async { tokio::time::sleep(std::time::Duration::from_millis(50)).await });
+        assert_eq!(first_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(second_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        drop(runtime);
         CredentialStore::clear_cache();
         match previous_xdg {
             Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
