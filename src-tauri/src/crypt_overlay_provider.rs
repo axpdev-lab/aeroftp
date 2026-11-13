@@ -340,7 +340,7 @@ pub(crate) fn norm_anchor(scope: &str) -> String {
 }
 
 /// Normalize an absolute path: leading slash, no trailing slash.
-fn norm_abs(p: &str) -> String {
+pub(crate) fn norm_abs(p: &str) -> String {
     let trimmed = p.trim_end_matches('/');
     if trimmed.is_empty() {
         return "/".to_string();

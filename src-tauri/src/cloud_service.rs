@@ -3697,11 +3697,8 @@ pub async fn sync_one_config(
     app: Option<AppHandle>,
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
-    let opened = open_aerocloud_connection(&config, store).await?;
     let mut config = config;
-    if let Some(remote_folder) = opened.remote_folder.clone() {
-        config.remote_folder = remote_folder;
-    }
+    let opened = open_aerocloud_connection(&mut config, store).await?;
     sync_opened_config(config, opened, app, dry_run).await
 }
 
@@ -3751,16 +3748,15 @@ pub(crate) async fn open_aerocloud_provider(
     config: &CloudConfig,
     store: Option<&credential_store::CredentialStore>,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    Ok(open_aerocloud_connection(config, store).await?.provider)
+    let mut config = config.clone();
+    Ok(open_aerocloud_connection(&mut config, store)
+        .await?
+        .provider)
 }
 
 pub(crate) struct ConnectedCloudProvider {
     provider: Box<dyn StorageProvider>,
     identity: Option<String>,
-    /// The absolute remote folder a `~/...` `remote_folder` was placed at on
-    /// this connect, already persisted; `None` when it named an absolute
-    /// folder already.
-    remote_folder: Option<String>,
 }
 
 /// Whether a stored profile reference names the same profile the running
@@ -3831,8 +3827,13 @@ pub(crate) async fn anchor_login_relative_remote_folder(
 }
 
 /// Preserve the identity of the exact factory connection through the validated overlay stack.
+///
+/// `config` is taken mutable because a `~/...` remote folder is placed under
+/// the login folder here and the absolute value written back into it: every
+/// caller then syncs the folder the session actually opened, never the `~`
+/// form.
 async fn open_aerocloud_connection(
-    config: &CloudConfig,
+    config: &mut CloudConfig,
     store: Option<&credential_store::CredentialStore>,
 ) -> Result<ConnectedCloudProvider, String> {
     if !config.enabled {
@@ -3869,6 +3870,9 @@ async fn open_aerocloud_connection(
     // absolute value persisted: the cycle below, its index identity and every
     // later connect read the placed folder, never the `~` form.
     let remote_folder = anchor_login_relative_remote_folder(&mut *provider, config).await?;
+    if let Some(placed) = remote_folder {
+        config.remote_folder = placed;
+    }
     if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
         let _ = provider.disconnect().await;
         return Err("Profile encryption binding changed while connecting; retry the cycle".into());
@@ -3882,6 +3886,14 @@ async fn open_aerocloud_connection(
     )
     .await
     .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
+    // Mixed mode passes writes outside the overlay anchor through as
+    // plaintext: a sync target that resolved elsewhere (a persisted folder
+    // from another login home, a hand-set absolute path) must be refused
+    // here, before any transfer, not uploaded cleartext.
+    if let Err(e) = ensure_remote_folder_within_overlay(&mut *provider, &config.remote_folder) {
+        let _ = provider.disconnect().await;
+        return Err(e);
+    }
     if config.compress_enabled {
         validate_compress_level(config.compress_level)?;
         provider = Box::new(CompressOverlayProvider::new(
@@ -3898,8 +3910,40 @@ async fn open_aerocloud_connection(
     Ok(ConnectedCloudProvider {
         provider,
         identity: opened.identity,
-        remote_folder,
     })
+}
+
+/// Refuse a sync whose remote folder sits outside the resolved crypt overlay
+/// anchor. The overlay's mixed mode encrypts writes strictly below the scope
+/// and passes everything else through as plaintext, so an out-of-scope target
+/// (a folder persisted under a previous login home, or a hand-set absolute
+/// path) would upload cleartext next to the vault it was meant to protect.
+/// The containment test mirrors [`encode_plain_target`]'s: the anchor itself
+/// and descendants under `"{scope}/"` are in scope, anything else is not. A
+/// provider without a crypt overlay, a whole-remote scope (`""`) and a
+/// relative target (encrypted in full) are all unrestricted.
+fn ensure_remote_folder_within_overlay(
+    provider: &mut dyn StorageProvider,
+    remote_folder: &str,
+) -> Result<(), String> {
+    let Some(overlay) = provider
+        .as_any_mut()
+        .downcast_mut::<crypt_overlay_provider::CryptOverlayProvider>()
+    else {
+        return Ok(());
+    };
+    let scope = overlay.scope();
+    if scope.is_empty() || !remote_folder.starts_with('/') {
+        return Ok(());
+    }
+    let target = crypt_overlay_provider::norm_abs(remote_folder);
+    if target == scope || target.strip_prefix(&format!("{scope}/")).is_some() {
+        return Ok(());
+    }
+    Err(format!(
+        "AeroCloud remote folder '{remote_folder}' is outside the profile's encrypted \
+         overlay scope '{scope}'; refusing to sync plaintext outside the anchor"
+    ))
 }
 
 /// What a connected provider said about how a pair may be scanned, for the
@@ -3958,6 +4002,10 @@ pub struct PairCycleError {
     pub message: String,
     /// `None` when the cycle never connected.
     pub traits: Option<ProviderScanTraits>,
+    /// The incremental pass refused a plan that no longer matches the pair
+    /// (config or local root changed since the watcher prepared it): the
+    /// worker answers with a full scan instead of dropping the changes.
+    pub needs_full_scan: bool,
 }
 
 impl PairCycleError {
@@ -3965,6 +4013,7 @@ impl PairCycleError {
         Self {
             message,
             traits: None,
+            needs_full_scan: false,
         }
     }
 }
@@ -3984,7 +4033,8 @@ pub async fn run_pair_full_cycle(
     store: Option<&credential_store::CredentialStore>,
     app: Option<AppHandle>,
 ) -> Result<PairCycleReport, PairCycleError> {
-    let opened = open_aerocloud_connection(&config, store)
+    let mut config = config;
+    let opened = open_aerocloud_connection(&mut config, store)
         .await
         .map_err(PairCycleError::before_connecting)?;
     let mut provider = opened.provider;
@@ -4007,6 +4057,7 @@ pub async fn run_pair_full_cycle(
         Err(message) => Err(PairCycleError {
             message,
             traits: Some(traits),
+            needs_full_scan: false,
         }),
     }
 }
@@ -6943,7 +6994,6 @@ mod baseline_tests {
                     ..Default::default()
                 }),
                 identity: None,
-                remote_folder: None,
             };
             sync_opened_config(config, opened, None, true)
                 .await
@@ -7090,6 +7140,411 @@ mod baseline_tests {
                 "~/docs",
                 "a refused placement must not persist"
             );
+        });
+    }
+
+    /// A minimal FTP server for the AeroCloud cycle tests: answers the control
+    /// conversation, logs every command line, and serves an empty listing over
+    /// a PASV data connection. `login_dir` is what `PWD` reports after login,
+    /// which is where the FTP provider anchors its login-relative paths.
+    struct ScriptedFtp {
+        port: u16,
+        log: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    async fn scripted_ftp_server(login_dir: &'static str) -> ScriptedFtp {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let task_log = log.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let task_log = task_log.clone();
+                tokio::spawn(async move {
+                    let (read, mut write) = stream.into_split();
+                    let _ = write.write_all(b"220 AeroFTP test server\r\n").await;
+                    let mut reader = BufReader::new(read);
+                    let mut data: Option<tokio::net::TcpListener> = None;
+                    let mut line = String::new();
+                    loop {
+                        line.clear();
+                        if reader.read_line(&mut line).await.unwrap_or(0) == 0 {
+                            break;
+                        }
+                        let cmd = line.trim_end_matches(['\r', '\n']).to_string();
+                        let verb = cmd.split_whitespace().next().unwrap_or("").to_uppercase();
+                        task_log.lock().unwrap().push(cmd);
+                        if matches!(
+                            verb.as_str(),
+                            "MLSD" | "MLST" | "LIST" | "NLST" | "RETR" | "STOR" | "APPE"
+                        ) {
+                            let _ = write.write_all(b"150 Opening data connection\r\n").await;
+                            if let Some(listener) = data.take() {
+                                if let Ok((mut conn, _)) = listener.accept().await {
+                                    match verb.as_str() {
+                                        "STOR" | "APPE" => {
+                                            let mut sink = Vec::new();
+                                            let _ = tokio::io::AsyncReadExt::read_to_end(
+                                                &mut conn, &mut sink,
+                                            )
+                                            .await;
+                                        }
+                                        "MLSD" | "MLST" => {}
+                                        _ => {
+                                            let _ = conn.write_all(b"total 0\r\n").await;
+                                        }
+                                    }
+                                    let _ = tokio::io::AsyncWriteExt::shutdown(&mut conn).await;
+                                }
+                            }
+                            let _ = write.write_all(b"226 Transfer complete\r\n").await;
+                            continue;
+                        }
+                        let reply = match verb.as_str() {
+                            "USER" => "331 Password required".to_string(),
+                            "PASS" => "230 Logged in".to_string(),
+                            "PWD" | "XPWD" => format!("257 \"{login_dir}\""),
+                            "CWD" | "XCWD" | "CDUP" | "XCUP" => "250 OK".to_string(),
+                            "TYPE" | "OPTS" | "PBSZ" | "PROT" | "NOOP" => "200 OK".to_string(),
+                            "SYST" => "215 UNIX Type: L8".to_string(),
+                            "FEAT" => "211-Features:\r\n UTF8\r\n211 End".to_string(),
+                            "PASV" => {
+                                let listener =
+                                    tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                                let port = listener.local_addr().unwrap().port();
+                                data = Some(listener);
+                                format!(
+                                    "227 Entering Passive Mode (127,0,0,1,{},{})",
+                                    port / 256,
+                                    port % 256
+                                )
+                            }
+                            "EPSV" => {
+                                let listener =
+                                    tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                                let port = listener.local_addr().unwrap().port();
+                                data = Some(listener);
+                                format!("229 Entering Extended Passive Mode (|||{port}|)")
+                            }
+                            "MKD" | "XMKD" => "257 \"created\"".to_string(),
+                            "RMD" | "XRMD" | "DELE" => "250 OK".to_string(),
+                            "RNFR" => "350 Ready for RNTO".to_string(),
+                            "RNTO" => "250 OK".to_string(),
+                            "QUIT" => {
+                                let _ = write.write_all(b"221 Bye\r\n").await;
+                                break;
+                            }
+                            "MDTM" | "SIZE" | "MLST" | "STAT" => "550 Not available".to_string(),
+                            _ => "502 Not implemented".to_string(),
+                        };
+                        if write
+                            .write_all(format!("{reply}\r\n").as_bytes())
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+        ScriptedFtp { port, log }
+    }
+
+    /// Clears the process-wide cached vault on drop so a test vault never
+    /// leaks into the next test.
+    struct VaultGuard;
+    impl Drop for VaultGuard {
+        fn drop(&mut self) {
+            credential_store::CredentialStore::clear_cache();
+        }
+    }
+
+    /// An unlocked test vault cached for `create_cloud_connection`, plus the
+    /// guard that clears the cache when the test ends.
+    fn open_test_vault() -> (
+        tempfile::TempDir,
+        credential_store::CredentialStore,
+        VaultGuard,
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("vault.db");
+        let key = [0x24; 32];
+        credential_store::CredentialStore::write_test_vault(&path, &key);
+        credential_store::CredentialStore::cache_vault(path, key);
+        let store = credential_store::CredentialStore::from_cache().expect("vault cached");
+        (dir, store, VaultGuard)
+    }
+
+    /// Seed the legacy profiles blob and the `server_<id>` credential the
+    /// factory reads, the way a saved FTP profile is stored.
+    fn seed_ftp_profile(
+        store: &credential_store::CredentialStore,
+        id: &str,
+        port: u16,
+        overlay: Option<serde_json::Value>,
+    ) {
+        let mut profile = serde_json::json!({
+            "id": id,
+            "name": "nas",
+            "protocol": "ftp",
+            "host": "127.0.0.1",
+            "port": port,
+            "username": "u",
+            "options": {"tlsMode": "none"},
+        });
+        if let Some(overlay) = overlay {
+            profile["aeroCryptOverlay"] = overlay;
+        }
+        let mut profiles: Vec<serde_json::Value> = store
+            .get("config_server_profiles")
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default();
+        profiles.push(profile);
+        store
+            .store(
+                "config_server_profiles",
+                &serde_json::json!(profiles).to_string(),
+            )
+            .unwrap();
+        store.store(&format!("server_{id}"), "pw").unwrap();
+    }
+
+    /// Seed the keystore secrets an AeroCrypt binding unlocks from, so the
+    /// overlay stack resolves without a remote marker (headerless).
+    fn seed_aerocrypt_overlay(store: &credential_store::CredentialStore, id: &str) {
+        use base64::Engine as _;
+        let salt = crate::aerocrypt::overlay::random_salt_v3();
+        let tmp = crate::aerocrypt::overlay::OverlayConfig::v3_bootstrap(salt);
+        let master_key =
+            crate::aerocrypt::overlay::derive_master_key(&tmp, "overlay-pass").unwrap();
+        let config_json = crate::aerocrypt::overlay::init_config_v3(&salt, &master_key).unwrap();
+        let salt_b64 = base64::engine::general_purpose::STANDARD.encode(salt);
+        store
+            .store(&format!("aerocrypt_overlay_pw_{id}"), "overlay-pass")
+            .unwrap();
+        store
+            .store(&format!("aerocrypt_overlay_salt_{id}"), &salt_b64)
+            .unwrap();
+        store
+            .store(&format!("aerocrypt_overlay_config_{id}"), &config_json)
+            .unwrap();
+    }
+
+    fn aerocloud_config(local: &std::path::Path, remote: &str, id: &str) -> CloudConfig {
+        CloudConfig {
+            enabled: true,
+            server_profile: "nas".to_string(),
+            server_profile_id: Some(id.to_string()),
+            protocol_type: "ftp".to_string(),
+            connection_params: serde_json::json!({}),
+            local_folder: local.to_path_buf(),
+            remote_folder: remote.to_string(),
+            exclude_patterns: Vec::new(),
+            sync_direction: CompareDirection::Bidirectional,
+            ..CloudConfig::default()
+        }
+    }
+
+    /// A `~/docs` pair on a full cycle writes under the placed login folder
+    /// (`/home/u/docs`), never under a literal `~`: `run_pair_full_cycle`
+    /// applies the folder `open_aerocloud_connection` placed, like the other
+    /// two cycle paths already did.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn full_cycle_places_a_login_relative_folder_under_the_login_dir() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_full", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+            let config = aerocloud_config(local.path(), "~/docs", "srv_full");
+            cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                pairs
+                    .pairs
+                    .push(crate::cloud_pairs::CloudPathPair::from_legacy(&config));
+                Ok(())
+            })
+            .unwrap();
+            cloud_config::with_cloud_config_mut(|stored| {
+                stored.remote_folder = "~/docs".to_string();
+                stored.server_profile = "nas".to_string();
+                stored.local_folder = local.path().to_path_buf();
+                Ok(())
+            })
+            .unwrap();
+
+            let report = run_pair_full_cycle(config, Some(&store), None)
+                .await
+                .unwrap();
+            assert!(
+                report.result.errors.is_empty(),
+                "full cycle errors: {:?}",
+                report.result.errors
+            );
+            assert!(report.result.uploaded >= 1, "the local file must upload");
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(log.contains("/home/u/docs"), "commands:\n{log}");
+            assert!(!log.contains('~'), "commands:\n{log}");
+            assert_eq!(
+                cloud_config::load_cloud_config().remote_folder,
+                "/home/u/docs"
+            );
+        });
+    }
+
+    /// A remote folder persisted under a previous login home must not sync
+    /// once the profile's login-relative overlay resolves beneath the new
+    /// one: mixed mode would upload it plaintext, so the cycle refuses
+    /// before any transfer.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn full_cycle_refuses_a_folder_persisted_under_another_login_home() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/srv/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let overlay = serde_json::json!({
+                "enabled": true,
+                "kind": "aerocrypt",
+                "remoteScope": "~/docs",
+                "withHeader": false,
+            });
+            seed_ftp_profile(&store, "srv_move", ftp.port, Some(overlay));
+            seed_aerocrypt_overlay(&store, "srv_move");
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+            // The absolute value the first connect persisted under /home/u.
+            let config = aerocloud_config(local.path(), "/home/u/docs", "srv_move");
+
+            let err = run_pair_full_cycle(config, Some(&store), None)
+                .await
+                .unwrap_err();
+            assert!(
+                err.message.contains("/home/u/docs") && err.message.contains("/srv/u/docs"),
+                "the refusal must name target and anchor: {}",
+                err.message
+            );
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(!log.contains("STOR"), "no upload may happen:\n{log}");
+        });
+    }
+
+    /// A hand-set absolute remote folder outside the overlay anchor is
+    /// refused the same way: nothing uploads cleartext beside the vault.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn full_cycle_refuses_an_absolute_folder_outside_the_overlay_scope() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let overlay = serde_json::json!({
+                "enabled": true,
+                "kind": "aerocrypt",
+                "remoteScope": "/docs",
+                "withHeader": false,
+            });
+            seed_ftp_profile(&store, "srv_elsewhere", ftp.port, Some(overlay));
+            seed_aerocrypt_overlay(&store, "srv_elsewhere");
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+            let config = aerocloud_config(local.path(), "/altrove", "srv_elsewhere");
+
+            let err = run_pair_full_cycle(config, Some(&store), None)
+                .await
+                .unwrap_err();
+            assert!(
+                err.message.contains("/altrove") && err.message.contains("/docs"),
+                "the refusal must name target and anchor: {}",
+                err.message
+            );
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(!log.contains("STOR"), "no upload may happen:\n{log}");
+        });
+    }
+
+    /// A watcher plan prepared while the remote folder still read `~/docs`
+    /// is refused once the connect places it: the pass fails closed before
+    /// any write, asks for a full scan, and the next full cycle syncs the
+    /// placed absolute folder.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn incremental_plan_prepared_on_the_tilde_form_is_refused_then_full_scanned() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_plan", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            // A baseline the pair would have from before placement existed,
+            // keyed on the `~` form, plus a local file the watcher reports.
+            std::fs::write(local.path().join("old.txt"), b"old").unwrap();
+            let mut index = crate::sync::SyncIndex::new(
+                local.path().to_string_lossy().into_owned(),
+                "~/docs".to_string(),
+            );
+            index.files.insert(
+                "old.txt".to_string(),
+                crate::sync::SyncIndexEntry {
+                    size: 3,
+                    modified: chrono::DateTime::<chrono::Utc>::from_timestamp(1_700_000_000, 0),
+                    is_dir: false,
+                    uploaded_at: None,
+                },
+            );
+            crate::sync::save_sync_index(&index).unwrap();
+            std::fs::write(local.path().join("new.txt"), b"new").unwrap();
+
+            let config = aerocloud_config(local.path(), "~/docs", "srv_plan");
+            let changes = LocalChanges {
+                paths: vec![local.path().join("new.txt")],
+                renames: Vec::new(),
+            };
+            let prep =
+                prepare_incremental(&config, &changes, IncrementalHints { compare_size: true })
+                    .unwrap();
+            let plan = match prep {
+                IncrementalPrep::Work { plan, .. } => plan,
+                IncrementalPrep::Settled { .. } => {
+                    panic!("expected a work plan, every path settled")
+                }
+                IncrementalPrep::FullScanOnly(reason) => {
+                    panic!("expected a work plan, full scan only: {reason}")
+                }
+            };
+
+            let err = run_pair_incremental_cycle(config.clone(), Some(&store), None, plan, false)
+                .await
+                .unwrap_err();
+            assert!(
+                err.message.contains("configuration changed"),
+                "the stale plan must be refused: {}",
+                err.message
+            );
+            assert!(
+                err.needs_full_scan,
+                "the worker must answer the refusal with a full scan"
+            );
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(
+                !log.contains("STOR"),
+                "the refused pass wrote nothing:\n{log}"
+            );
+
+            // The next cycle is the full scan the worker asked for, on the
+            // placed absolute folder.
+            let report = run_pair_full_cycle(config, Some(&store), None)
+                .await
+                .unwrap();
+            assert!(
+                report.result.errors.is_empty(),
+                "{:?}",
+                report.result.errors
+            );
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(log.contains("/home/u/docs"), "commands:\n{log}");
+            assert!(!log.contains('~'), "commands:\n{log}");
         });
     }
 

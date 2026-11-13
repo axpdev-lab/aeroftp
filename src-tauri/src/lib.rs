@@ -17759,6 +17759,13 @@ async fn background_sync_worker(app: AppHandle) {
                                         *run = PairRun::Full;
                                     }
                                 }
+                                // A plan the pair outgrew (the config moved,
+                                // e.g. a `~/...` folder placed on this connect)
+                                // is discarded: the changes it carried are
+                                // covered by the full scan asked for here.
+                                Err(e) if e.needs_full_scan => {
+                                    ledger().request_full_scan(&key, &e.message);
+                                }
                                 // Nothing ran (no connection): the paths come back.
                                 Err(e)
                                     if crate::sync::classify_sync_error(&e.message, None)

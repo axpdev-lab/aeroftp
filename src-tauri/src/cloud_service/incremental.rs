@@ -1148,7 +1148,8 @@ pub async fn run_pair_incremental_cycle(
     plan: Box<IncrementalPlan>,
     full_scan_allowed: bool,
 ) -> Result<PairCycleReport, PairCycleError> {
-    let opened = super::open_aerocloud_connection(&config, store)
+    let mut config = config;
+    let opened = super::open_aerocloud_connection(&mut config, store)
         .await
         .map_err(PairCycleError::before_connecting)?;
     let mut provider = opened.provider;
@@ -1157,10 +1158,6 @@ pub async fn run_pair_incremental_cycle(
     svc.connection_identity = Some(opened.identity);
     if let Some(handle) = app {
         svc.set_app_handle(handle);
-    }
-    let mut config = config;
-    if let Some(remote_folder) = opened.remote_folder.clone() {
-        config.remote_folder = remote_folder;
     }
     svc.init(config).await;
     let work_limit = full_scan_allowed.then_some(REMOTE_WORK_LIMIT);
@@ -1191,9 +1188,18 @@ pub async fn run_pair_incremental_cycle(
     };
     let _ = provider.disconnect().await;
     report.map_err(|message| PairCycleError {
+        needs_full_scan: plan_discarded_for_rescan(&message),
         message,
         traits: Some(traits),
     })
+}
+
+/// True when an incremental pass refused a plan the pair outgrew (the config
+/// identity or the local root changed after the watcher prepared it): both
+/// refusals tell the caller to discard the plan and run a full scan, so the
+/// worker schedules one instead of settling the changes away.
+fn plan_discarded_for_rescan(message: &str) -> bool {
+    message.contains("discard plan")
 }
 
 #[cfg(test)]
