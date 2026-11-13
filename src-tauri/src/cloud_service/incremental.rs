@@ -1152,6 +1152,7 @@ pub async fn run_pair_incremental_cycle(
     let opened = super::open_aerocloud_connection(&mut config, store)
         .await
         .map_err(PairCycleError::before_connecting)?;
+    let placed_key = crate::cloud_scan_schedule::pair_key(&config);
     let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
@@ -1191,6 +1192,7 @@ pub async fn run_pair_incremental_cycle(
         needs_full_scan: plan_discarded_for_rescan(&message),
         message,
         traits: Some(traits),
+        placed_key: Some(placed_key),
     })
 }
 

@@ -4006,6 +4006,11 @@ pub struct PairCycleError {
     /// (config or local root changed since the watcher prepared it): the
     /// worker answers with a full scan instead of dropping the changes.
     pub needs_full_scan: bool,
+    /// The scheduler key of the config the connection opened: the remote
+    /// folder may have been placed (`~/...` resolved under the login folder)
+    /// during connect, so it can differ from the key the caller computed
+    /// before the cycle. `None` when the cycle never connected.
+    pub placed_key: Option<String>,
 }
 
 impl PairCycleError {
@@ -4014,6 +4019,7 @@ impl PairCycleError {
             message,
             traits: None,
             needs_full_scan: false,
+            placed_key: None,
         }
     }
 }
@@ -4037,6 +4043,7 @@ pub async fn run_pair_full_cycle(
     let opened = open_aerocloud_connection(&mut config, store)
         .await
         .map_err(PairCycleError::before_connecting)?;
+    let placed_key = crate::cloud_scan_schedule::pair_key(&config);
     let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
@@ -4058,6 +4065,7 @@ pub async fn run_pair_full_cycle(
             message,
             traits: Some(traits),
             needs_full_scan: false,
+            placed_key: Some(placed_key),
         }),
     }
 }
@@ -7525,6 +7533,30 @@ mod baseline_tests {
             assert!(
                 err.needs_full_scan,
                 "the worker must answer the refusal with a full scan"
+            );
+            // The worker asks the full scan under the key of the config the
+            // connect opened, not the `~` key it computed before the cycle:
+            // the pending request must land where the next turn's reloaded
+            // config will look for it.
+            let tilde_key = crate::cloud_scan_schedule::pair_key(&config);
+            let mut placed = config.clone();
+            placed.remote_folder = "/home/u/docs".to_string();
+            let placed_key = crate::cloud_scan_schedule::pair_key(&placed);
+            assert_eq!(
+                crate::cycle_error_scan_key(&err, &tilde_key),
+                placed_key,
+                "the request must use the key of the config the connect opened"
+            );
+            let mut ledger = crate::cloud_scan_schedule::ScanLedger::default();
+            ledger.request_full_scan(crate::cycle_error_scan_key(&err, &tilde_key), &err.message);
+            let now = std::time::Instant::now();
+            assert!(
+                ledger.pending_full_scan_due(&placed_key, now),
+                "the placed pair waits for its full scan"
+            );
+            assert!(
+                !ledger.pending_full_scan_due(&tilde_key, now),
+                "nothing may pend under the `~` key the config no longer has"
             );
             let log = ftp.log.lock().unwrap().join("\n");
             assert!(

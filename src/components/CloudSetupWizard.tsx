@@ -65,10 +65,12 @@ export function aeroCloudBase(profile: ServerProfile): string {
             ))
             : '';
         if (scope) return scope;
-        return normalizeOverlayAnchor(loginRelativeForm(
-            resolveUsernameTemplate(profile.initialPath, profile.username),
-            profile.protocol,
-        ));
+        const initial = resolveUsernameTemplate(profile.initialPath, profile.username);
+        // The same rule as `profileRoot` and the backend's `profile_root`:
+        // an all-blank starting folder is the server root, not a folder
+        // named by its spaces.
+        if (!initial || initial.trim() === '') return '';
+        return normalizeOverlayAnchor(loginRelativeForm(initial, profile.protocol));
     }
     const scope = getServerCryptOverlay(profile) ? normCryptScope(profile.aeroCryptOverlay?.remoteScope) : '';
     return scope || profileRoot(profile);

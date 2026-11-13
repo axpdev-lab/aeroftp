@@ -17288,6 +17288,14 @@ fn empty_sync_result() -> cloud_service::SyncOperationResult {
     }
 }
 
+/// The scheduler key a pair cycle's error asks its full scan under: the key
+/// of the config the connection opened — a `~/...` remote folder placed during
+/// connect makes it differ from the key the worker computed before the cycle —
+/// or the pre-cycle key when the cycle never connected.
+fn cycle_error_scan_key<'a>(error: &'a cloud_service::PairCycleError, key: &'a str) -> &'a str {
+    error.placed_key.as_deref().unwrap_or(key)
+}
+
 /// Spend the scheduler's tick: its countdown starts again from now.
 fn mark_scheduled_tick_done() {
     let mut schedule = sync_scheduler::load_sync_schedule();
@@ -17764,7 +17772,10 @@ async fn background_sync_worker(app: AppHandle) {
                                 // is discarded: the changes it carried are
                                 // covered by the full scan asked for here.
                                 Err(e) if e.needs_full_scan => {
-                                    ledger().request_full_scan(&key, &e.message);
+                                    ledger().request_full_scan(
+                                        cycle_error_scan_key(e, key.as_str()),
+                                        &e.message,
+                                    );
                                 }
                                 // Nothing ran (no connection): the paths come back.
                                 Err(e)

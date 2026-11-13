@@ -54,6 +54,14 @@ describe('aeroCloudBase', () => {
         expect(aeroCloudRemoteFolder(profile({ protocol: 'ftp', initialPath: 'docs' }), 'cloud'))
             .toBe('~/docs/cloud/');
     });
+
+    it('treats an all-blank starting folder as the server root on login-relative protocols', () => {
+        for (const protocol of ['sftp', 'ftp'] as const) {
+            expect(aeroCloudBase(profile({ protocol, initialPath: '  ' }))).toBe('');
+            expect(aeroCloudRemoteFolder(profile({ protocol, initialPath: '  ' }), 'sub'))
+                .toBe('/sub/');
+        }
+    });
 });
 
 describe('aeroCloudRemoteFolder', () => {
