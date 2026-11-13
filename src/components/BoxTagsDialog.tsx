@@ -151,7 +151,7 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
         {/* Footer */}
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
           <button
-            onClick={onClose}
+            onClick={guarded.requestClose}
             disabled={saving}
             className="px-4 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"
           >

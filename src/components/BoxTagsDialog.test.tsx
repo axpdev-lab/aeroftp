@@ -40,3 +40,23 @@ it('rendering and cancelling leave the caller currentTags array untouched', asyn
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(currentTags).toEqual(['zeta', 'alpha', 'mid']);
 });
+
+it('routes the footer Cancel through the dirty guard', async () => {
+    const currentTags = ['alpha'];
+    const onClose = vi.fn();
+    await act(async () => {
+        root.render(<BoxTagsDialog filePath="/f.txt" currentTags={currentTags} onClose={onClose} onUpdated={() => undefined} />);
+    });
+    const input = host.querySelector<HTMLInputElement>('input[placeholder="box.tagsPlaceholder"]')!;
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'newtag');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const cancel = [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'common.cancel')!;
+    await act(async () => { cancel.click(); });
+    expect(host.textContent).toContain('modalGuard.dirtyTitle');
+    expect(onClose).not.toHaveBeenCalled();
+    const discard = [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'modalGuard.discardAndClose')!;
+    await act(async () => { discard.click(); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+});

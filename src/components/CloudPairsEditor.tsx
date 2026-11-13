@@ -537,7 +537,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                     <div className="flex items-center gap-2">
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                            onClick={onClose}
+                            onClick={guarded.requestClose}
                             disabled={saving}
                         >
                             {t('common.cancel')}

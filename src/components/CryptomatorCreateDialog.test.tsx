@@ -79,3 +79,17 @@ it('Enter on either Cryptomator confirm action never reaches handleCreate', asyn
     expect(host.querySelector('[role=alertdialog]')).toBeNull();
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'cryptomator_create')).toHaveLength(0);
 });
+
+it('routes the footer Cancel through the dirty guard', async () => {
+    const onClose = vi.fn();
+    await render(createElement(CryptomatorCreateDialog, { outputDir: '/vaults', onClose }));
+    const inputs = host.querySelectorAll<HTMLInputElement>('input[type=password]');
+    await typeInto(inputs[0], 'correct horse');
+    const cancel = [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Cancel')!;
+    await act(async () => { cancel.click(); });
+    expect(host.querySelector('[role=alertdialog]')).not.toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    const discard = alertButtons().find(b => /discard/i.test(b.textContent ?? ''))!;
+    await act(async () => { discard.click(); });
+    expect(onClose).toHaveBeenCalledTimes(1);
+});

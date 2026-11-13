@@ -353,7 +353,7 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
                     </div>
                     {error && <p className="text-xs text-red-500" role="alert">{error}</p>}
                     <div className="flex justify-end gap-2 pt-1">
-                        <button type="button" onClick={onClose} disabled={verifying} className="px-3 py-1.5 text-sm rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40">
+                        <button type="button" onClick={guarded.requestClose} disabled={verifying} className="px-3 py-1.5 text-sm rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40">
                             {t('common.cancel')}
                         </button>
                         <button type="submit" disabled={!password || verifying} className="px-3 py-1.5 text-sm rounded-md bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-50 flex items-center gap-1.5">
@@ -1933,7 +1933,7 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
                     {/* Cancel link */}
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         disabled={isLoading}
                         className="w-full text-center text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-50"
                     >

@@ -76,7 +76,7 @@ describe('CryptomatorBrowser decrypt guard', () => {
         await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
         expect(host.textContent).toContain('a.txt');
 
-        const decryptButtons = () => [...host.querySelectorAll('button[title="cryptomator.decryptAndSave"]')];
+        const decryptButtons = () => [...host.querySelectorAll<HTMLButtonElement>('button[title="cryptomator.decryptAndSave"]')];
         expect(decryptButtons()).toHaveLength(2);
         // Two decrypts start before the first settle.
         await React.act(async () => { decryptButtons()[0].click(); decryptButtons()[1].click(); });

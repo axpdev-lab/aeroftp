@@ -760,7 +760,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                         <CompletionStats result={result} t={t} />
                         <div className="flex justify-end px-5 py-3 border-t" style={{ borderColor: 'var(--compress-border)' }}>
                             <button
-                                onClick={onClose}
+                                onClick={guarded.requestClose}
                                 className="flex items-center gap-2 px-5 py-2 rounded-lg text-sm font-medium text-white transition-colors"
                                 style={{ background: 'var(--compress-accent)' }}
                                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-accent-hover)')}
@@ -801,7 +801,7 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
                 ) : (
                     <div className="flex justify-end gap-2.5 px-5 py-3.5 border-t" style={{ borderColor: 'var(--compress-border)' }}>
                         <button
-                            onClick={onClose}
+                            onClick={guarded.requestClose}
                             className="px-4 py-2 text-sm rounded-lg transition-colors"
                             style={{ color: 'var(--compress-text-secondary)' }}
                             onMouseEnter={e => (e.currentTarget.style.background = 'var(--compress-bg-hover)')}

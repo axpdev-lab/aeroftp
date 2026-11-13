@@ -236,7 +236,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
         <div className="flex justify-end gap-2">
           {skipped ? (
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
             >
               {t('cryptomator.done') || 'Done'}
@@ -244,7 +244,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
           ) : (
             <>
               <button
-                onClick={creating ? guarded.requestClose : onClose}
+                onClick={guarded.requestClose}
                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 {t('common.cancel') || 'Cancel'}

@@ -149,7 +149,7 @@ export function S3TagsDialog({ path, name, onClose, onSaved }: S3TagsDialogProps
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-700">
-          <button onClick={onClose} disabled={saving} className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
+          <button onClick={guarded.requestClose} disabled={saving} className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
             {t('common.cancel')}
           </button>
           <button
