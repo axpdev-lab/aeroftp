@@ -748,6 +748,32 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(confirmOpen()).toBe(false);
     });
 
+    it('asks on ESC before dropping a create form being filled in, or a password typed to open', async () => {
+        const onClose = vi.fn();
+        vault('create');
+        Object.assign(mocks.vaultState, { password: 'sentinel-pass-1', confirmPassword: '', description: '' });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        await click('modalGuard.keepEditing');
+        vault('open');
+        Object.assign(mocks.vaultState, { password: 'sentinel-pass-1' });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('closes an empty create form on ESC at once', async () => {
+        const onClose = vi.fn();
+        vault('create');
+        Object.assign(mocks.vaultState, { password: '', confirmPassword: '', description: '' });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('answers ESC when a sub-dialog flag is left set but its dialog is not mounted', async () => {
         // The new-folder bar lives in VaultBrowse: after switching to Recent
         // the bar is unmounted while showNewDirDialog stays true, and ESC
