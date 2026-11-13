@@ -105,7 +105,7 @@ export function AeroShareDialog({
           prefillShareFolder={prefillShareFolder}
           onFriendSaved={onFriendSaved}
           onConnectFriend={onConnectFriend}
-          onClose={onClose}
+          onClose={guarded.requestClose}
           onCloseGuardChange={onCloseGuardChange}
         />
       </div>

@@ -710,6 +710,25 @@ describe('AeroShareDialog (Discussion #1527)', () => {
         await expectDirtyConfirmThenDiscard(onClose);
     });
 
+    it('asks before the share success Close discards a dirty receive form', async () => {
+        const onClose = vi.fn();
+        const run = deferred<typeof started>();
+        mocks.peerShareStart.mockImplementation(() => run.promise);
+        await openShare(onClose);
+        await click('aeroShare.dialog.receiveTab');
+        await typeInto(input('input[placeholder="aeroShare.dialog.linkPlaceholder"]'), 'aeroftp-share://v1/sentinel-link');
+        await click('aeroShare.dialog.shareTab');
+        await click('aeroShare.dialog.shareSubmit');
+        await act(async () => run.resolve(started));
+        await flush();
+        expect(host.textContent).toContain('aeroShare.dialog.shareReadyTitle');
+        await click('aeroShare.dialog.close');
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        await click('modalGuard.keepEditing');
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('closes from the backdrop and ESC with nothing typed', async () => {
         const onClose = vi.fn();
         await openShare(onClose);
