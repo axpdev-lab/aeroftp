@@ -9,8 +9,9 @@
 #![allow(unused_imports)]
 
 use crate::cloud_config::{
-    validate_compress_level, CloudConfig, CloudSyncStatus, ConflictStrategy,
+    self, validate_compress_level, CloudConfig, CloudSyncStatus, ConflictStrategy,
 };
+use crate::cloud_pairs;
 use crate::cloud_provider_factory;
 use crate::compress_overlay_provider::CompressOverlayProvider;
 use crate::credential_store;
@@ -3697,6 +3698,10 @@ pub async fn sync_one_config(
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
     let opened = open_aerocloud_connection(&config, store).await?;
+    let mut config = config;
+    if let Some(remote_folder) = opened.remote_folder.clone() {
+        config.remote_folder = remote_folder;
+    }
     sync_opened_config(config, opened, app, dry_run).await
 }
 
@@ -3752,6 +3757,77 @@ pub(crate) async fn open_aerocloud_provider(
 pub(crate) struct ConnectedCloudProvider {
     provider: Box<dyn StorageProvider>,
     identity: Option<String>,
+    /// The absolute remote folder a `~/...` `remote_folder` was placed at on
+    /// this connect, already persisted; `None` when it named an absolute
+    /// folder already.
+    remote_folder: Option<String>,
+}
+
+/// Whether a stored profile reference names the same profile the running
+/// config resolved to: by id when both carry one (names are not unique), by
+/// exact name otherwise, as `select_aerocloud_profile` does.
+fn same_server_profile(stored_id: Option<&str>, stored_name: &str, config: &CloudConfig) -> bool {
+    match (stored_id, config.server_profile_id.as_deref()) {
+        (Some(stored), Some(running)) => stored == running,
+        _ => stored_name == config.server_profile,
+    }
+}
+
+/// Place a `~/...` remote folder under the login folder on the connected
+/// provider and persist the absolute value, so the index identity is born on
+/// the folder the session opens and never on the `~` form. A `/~/...` value
+/// already on disk names a literal `~` directory: it is refused with the
+/// correction, never synced. Returns the placed absolute path, `None` when
+/// the remote folder was already absolute.
+pub(crate) async fn anchor_login_relative_remote_folder(
+    provider: &mut dyn StorageProvider,
+    config: &CloudConfig,
+) -> Result<Option<String>, String> {
+    let remote = config.remote_folder.as_str();
+    if remote == "/~" || remote.starts_with("/~/") {
+        return Err(format!(
+            "the remote folder '{remote}' names a literal '~' directory: write it as \
+             '{}' or an absolute path",
+            remote.trim_start_matches('/')
+        ));
+    }
+    if !crate::crypt_overlay_provider::is_login_relative_scope(remote) {
+        return Ok(None);
+    }
+    let unresolved = remote.to_string();
+    let placed = crate::crypt_overlay_provider::resolve_home_scope(provider, remote)
+        .await?
+        .ok_or_else(|| format!("the remote folder '{remote}' could not be placed"))?;
+    // Persist on the raw provider's answer, before any overlay wraps it: the
+    // `~` form only exists to be placed once.
+    cloud_config::with_cloud_config_mut(|stored| {
+        if stored.remote_folder == unresolved
+            && stored.local_folder == config.local_folder
+            && same_server_profile(
+                stored.server_profile_id.as_deref(),
+                &stored.server_profile,
+                config,
+            )
+        {
+            stored.remote_folder = placed.clone();
+        }
+        Ok(())
+    })?;
+    cloud_pairs::with_cloud_pairs_mut(|pairs| {
+        for pair in &mut pairs.pairs {
+            // Profile names are not unique: the local folder is part of the
+            // pair's identity (`pair_key`), so an homonymous pair on another
+            // machine keeps its own `~` form until its own connect places it.
+            if pair.remote_path == unresolved
+                && pair.server_profile == config.server_profile
+                && pair.local_path == config.local_folder
+            {
+                pair.remote_path = placed.clone();
+            }
+        }
+        Ok(())
+    })?;
+    Ok(Some(placed))
 }
 
 /// Preserve the identity of the exact factory connection through the validated overlay stack.
@@ -3788,6 +3864,11 @@ async fn open_aerocloud_connection(
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
     let mut provider = opened.provider;
+    // A `~/...` remote folder is placed under the login folder here, on the
+    // raw provider (through the overlay `~` is a ciphertext name), and the
+    // absolute value persisted: the cycle below, its index identity and every
+    // later connect read the placed folder, never the `~` form.
+    let remote_folder = anchor_login_relative_remote_folder(&mut *provider, config).await?;
     if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
         let _ = provider.disconnect().await;
         return Err("Profile encryption binding changed while connecting; retry the cycle".into());
@@ -3817,6 +3898,7 @@ async fn open_aerocloud_connection(
     Ok(ConnectedCloudProvider {
         provider,
         identity: opened.identity,
+        remote_folder,
     })
 }
 
@@ -6634,6 +6716,12 @@ mod baseline_tests {
         fail_stat_path: Option<String>,
         stat_calls: Vec<String>,
         scan_floor: Option<Duration>,
+        /// The login folder the provider recorded at connect, as FTP keeps
+        /// the post-login `PWD`.
+        login_folder: Option<String>,
+        /// `None` answers SFTP; `Some(Ftp)` exercises the FTP rule that a
+        /// missing login folder fails closed instead of a `cd("~")`.
+        kind: Option<crate::providers::ProviderType>,
     }
 
     impl MemoryProvider {
@@ -6660,7 +6748,10 @@ mod baseline_tests {
             self
         }
         fn provider_type(&self) -> crate::providers::ProviderType {
-            crate::providers::ProviderType::Sftp
+            self.kind.unwrap_or(crate::providers::ProviderType::Sftp)
+        }
+        fn login_folder_hint(&self) -> Option<String> {
+            self.login_folder.clone()
         }
         fn display_name(&self) -> String {
             "memory".to_string()
@@ -6852,6 +6943,7 @@ mod baseline_tests {
                     ..Default::default()
                 }),
                 identity: None,
+                remote_folder: None,
             };
             sync_opened_config(config, opened, None, true)
                 .await
@@ -6870,6 +6962,133 @@ mod baseline_tests {
                     start + floor,
                     five_minutes,
                 )
+            );
+        });
+    }
+
+    /// A `~/...` remote folder is placed under the login folder on the first
+    /// connect and the absolute value persisted: the pair whose local folder
+    /// matches moves, an homonymous pair on another machine keeps its `~`
+    /// form until its own connect places it.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn anchor_places_a_login_relative_remote_folder_and_persists_the_pair() {
+        with_scratch_index(async {
+            let local_a = std::path::PathBuf::from("/sync/a");
+            let local_b = std::path::PathBuf::from("/sync/b");
+            let pair_for = |local: &std::path::Path| {
+                crate::cloud_pairs::CloudPathPair::from_legacy(&CloudConfig {
+                    enabled: true,
+                    local_folder: local.to_path_buf(),
+                    remote_folder: "~/docs".to_string(),
+                    server_profile: "nas".to_string(),
+                    protocol_type: "sftp".to_string(),
+                    ..Default::default()
+                })
+            };
+            cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                pairs.pairs = vec![pair_for(&local_a), pair_for(&local_b)];
+                Ok(())
+            })
+            .unwrap();
+            // The legacy single config resolves the same way.
+            cloud_config::with_cloud_config_mut(|stored| {
+                stored.remote_folder = "~/docs".to_string();
+                stored.server_profile = "nas".to_string();
+                stored.local_folder = local_a.clone();
+                Ok(())
+            })
+            .unwrap();
+
+            let config = CloudConfig {
+                enabled: true,
+                local_folder: local_a.clone(),
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+            let placed = anchor_login_relative_remote_folder(&mut provider, &config)
+                .await
+                .unwrap();
+            assert_eq!(placed.as_deref(), Some("/home/u/docs"));
+
+            let pairs = cloud_pairs::load_cloud_pairs_config();
+            assert_eq!(pairs.pairs[0].remote_path, "/home/u/docs");
+            assert_eq!(pairs.pairs[1].remote_path, "~/docs");
+            let stored = cloud_config::load_cloud_config();
+            assert_eq!(stored.remote_folder, "/home/u/docs");
+
+            // A second connect finds the absolute value and places nothing.
+            let config = CloudConfig {
+                remote_folder: "/home/u/docs".to_string(),
+                ..config
+            };
+            let placed = anchor_login_relative_remote_folder(&mut provider, &config)
+                .await
+                .unwrap();
+            assert_eq!(placed, None);
+        });
+    }
+
+    /// A `/~/...` remote folder already on disk names a literal `~`
+    /// directory: refused with the correction, never synced.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn anchor_refuses_a_literal_tilde_remote_folder() {
+        with_scratch_index(async {
+            let config = CloudConfig {
+                remote_folder: "/~/docs".to_string(),
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider::default();
+            let err = anchor_login_relative_remote_folder(&mut provider, &config)
+                .await
+                .unwrap_err();
+            assert!(err.contains("literal '~' directory"), "{err}");
+            assert!(err.contains("~/docs"), "{err}");
+        });
+    }
+
+    /// An FTP session whose post-login `PWD` did not answer cannot place a
+    /// `~/...` remote folder: `cd("~")` is not portable there, so the anchor
+    /// fails closed and nothing is persisted.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn anchor_on_ftp_without_a_login_pwd_fails_and_persists_nothing() {
+        with_scratch_index(async {
+            cloud_config::with_cloud_config_mut(|stored| {
+                stored.remote_folder = "~/docs".to_string();
+                stored.server_profile = "nas".to_string();
+                stored.local_folder = std::path::PathBuf::from("/sync/a");
+                Ok(())
+            })
+            .unwrap();
+            let config = CloudConfig {
+                enabled: true,
+                local_folder: std::path::PathBuf::from("/sync/a"),
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                protocol_type: "ftp".to_string(),
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider {
+                kind: Some(crate::providers::ProviderType::Ftp),
+                login_folder: None,
+                ..Default::default()
+            };
+            let err = anchor_login_relative_remote_folder(&mut provider, &config)
+                .await
+                .unwrap_err();
+            assert!(err.contains("did not report its login folder"), "{err}");
+            assert_eq!(
+                cloud_config::load_cloud_config().remote_folder,
+                "~/docs",
+                "a refused placement must not persist"
             );
         });
     }

@@ -16589,6 +16589,11 @@ async fn list_remote_folders_tree(
     // `create_cloud_provider` returns the provider connected and standing in
     // the profile root; connecting again would reset it to the account root.
     let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
+    // A `~/...` remote folder is placed under the login folder on this connect
+    // and persisted, as the sync cycles do.
+    let remote_folder = cloud_service::anchor_login_relative_remote_folder(&mut *provider, &config)
+        .await?
+        .unwrap_or_else(|| config.remote_folder.clone());
 
     // Crypt-overlay chokepoint (fail-closed). A crypt-bound AeroCloud profile
     // must show DECRYPTED folder names in the selective-sync tree (and match
@@ -16607,7 +16612,7 @@ async fn list_remote_folders_tree(
 
     let folders = walk_cloud_folder_tree(
         provider.as_mut(),
-        &config.remote_folder,
+        &remote_folder,
         max_d,
         &config.excluded_folders,
     )

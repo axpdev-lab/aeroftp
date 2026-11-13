@@ -246,6 +246,12 @@ pub struct FtpProvider {
     /// command redials ([`Self::redial_if_a_reply_is_pending`]) and
     /// `disconnect` closes without QUIT; a new control connection clears it.
     abandoned_command: Arc<AtomicBool>,
+    /// The directory the server put the session in right after login, read
+    /// with `PWD` before `initial_path` moves it. FTP has no reliable `~`, so
+    /// this is the only certain login folder: a relative `initial_path` and a
+    /// `~/...` scope both anchor under it. `None` when that `PWD` failed (the
+    /// connect does not fail for it) or before the first connect.
+    login_folder: Option<String>,
 }
 
 /// The error for a server that did not accept the explicit TLS upgrade, the
@@ -283,12 +289,45 @@ impl FtpProvider {
             has_dialled: false,
             restart_unsupported: false,
             abandoned_command: Arc::default(),
+            login_folder: None,
         }
     }
 
     /// Get mutable reference to the FTP stream, returning error if not connected
     fn stream_mut(&mut self) -> Result<&mut FtpControl, ProviderError> {
         self.stream.as_mut().ok_or(ProviderError::NotConnected)
+    }
+
+    /// The `initial_path` as a `CWD` argument. `~` and `~/...` name folders
+    /// under the login folder, the only `~` FTP has: `CWD ~` is not portable
+    /// (many servers have no such folder), so the path is placed against the
+    /// `PWD` read right after login, the same rule `resolve_start_dir`
+    /// applies for SFTP. A relative path stays relative: the server resolves
+    /// it against the login directory, which is where the session is.
+    fn place_initial_path(&self, path: &str) -> Result<String, ProviderError> {
+        let Some(rest) = path.strip_prefix('~') else {
+            return Ok(path.to_string());
+        };
+        if !rest.is_empty() && !rest.starts_with('/') {
+            return Ok(path.to_string());
+        }
+        let home = self.login_folder.as_deref().ok_or_else(|| {
+            ProviderError::InvalidPath(format!(
+                "the start folder '{path}' is under the login folder, which this \
+                 server did not report"
+            ))
+        })?;
+        let home = home.trim_end_matches('/');
+        let rest = rest.trim_start_matches('/');
+        Ok(if rest.is_empty() {
+            if home.is_empty() {
+                "/".to_string()
+            } else {
+                home.to_string()
+            }
+        } else {
+            format!("{home}/{rest}")
+        })
     }
 
     /// Connection spec captured at `connect()` (`None` until connected, or
@@ -1806,6 +1845,12 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
+        // The login folder is the only `~` this protocol has: many servers do
+        // not expand `CWD ~`, so it is read here, before `initial_path` moves
+        // the session, and kept for `login_folder_hint`. A server that does
+        // not answer this PWD leaves the field empty; the connect goes on.
+        self.login_folder = stream.pwd().await.ok().map(|dir| dir.replace('\\', "/"));
+
         // Navigate to initial path if specified.
         //
         // Skip CWD on bare "/" so we don't override the server-provided
@@ -1819,8 +1864,9 @@ impl StorageProvider for FtpProvider {
         // non-"/" `initial_path` explicitly.
         if let Some(ref initial_path) = self.config.initial_path {
             if !initial_path.is_empty() && initial_path != "/" {
+                let target = self.place_initial_path(initial_path)?;
                 stream
-                    .cwd(initial_path)
+                    .cwd(&target)
                     .await
                     .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
             }
@@ -1930,6 +1976,10 @@ impl StorageProvider for FtpProvider {
         let outcome = self.pwd_command().await;
         guard.disarm();
         outcome
+    }
+
+    fn login_folder_hint(&self) -> Option<String> {
+        self.login_folder.clone()
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -7748,11 +7798,13 @@ mod late_reply_guard_tests {
             }
             if cmd == "PWD" {
                 pwd_seen += 1;
-                // The first PWD on the wire belongs to connect() itself; the
-                // second is the caller's first command. The goodbye leaves in
-                // its own write after THAT answer, when every check the
-                // failure paths own has already run.
-                if late_goodbye && pwd_seen == 2 {
+                // connect() itself issues two PWDs since the login folder is
+                // captured right after login: the first for that folder, the
+                // last for the current path. The caller's first command is
+                // therefore the third. The goodbye leaves in its own write
+                // after THAT answer, when every check the failure paths own
+                // has already run.
+                if late_goodbye && pwd_seen == 3 {
                     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                     if write
                         .write_all(b"421 Service not available, closing\r\n")
@@ -8032,6 +8084,15 @@ mod rename_contract_tests {
         rnto_refuses_taken: bool,
         /// `LIST -a` is refused; a bare LIST still answers.
         list_all_refused: bool,
+        /// The directory the session opens in after login, as a chrooted or
+        /// jailed account reports it; `/` by default.
+        login_dir: Option<&'static str>,
+        /// The first `PWD` after login fails, as on a server that does not
+        /// answer it; the connect must go on without a login-folder hint.
+        fail_login_pwd: bool,
+        /// Every command is appended to the shared log, for tests that check
+        /// what went on the wire.
+        log_commands: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -8052,11 +8113,15 @@ mod rename_contract_tests {
         }
         let mut data: Option<TcpListener> = None;
         let mut rename_from = String::new();
-        let mut cwd = "/".to_string();
+        let mut cwd = quirks.login_dir.unwrap_or("/").to_string();
+        let mut pwd_calls = 0u32;
         while let Ok(Some(line)) = lines.next_line().await {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
             let cmd = cmd.to_uppercase();
             let argument = argument.trim().to_string();
+            if quirks.log_commands {
+                log.lock().unwrap().push(format!("{cmd} {argument}"));
+            }
             let present =
                 |path: &str| {
                     files.lock().unwrap().iter().any(|f| {
@@ -8075,7 +8140,14 @@ mod rename_contract_tests {
                 "LIST" | "NLST" | "MLSD" | "MLST" if quirks.listing_denied => {
                     "550 Permission denied\r\n".to_string()
                 }
-                "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                "PWD" => {
+                    pwd_calls += 1;
+                    if quirks.fail_login_pwd && pwd_calls == 1 {
+                        "500 PWD refused\r\n".to_string()
+                    } else {
+                        format!("257 \"{cwd}\" is current\r\n")
+                    }
+                }
                 "CWD" => {
                     let target = if argument.starts_with('/') {
                         argument.clone()
@@ -8239,6 +8311,15 @@ mod rename_contract_tests {
         files: &[&str],
         quirks: Quirks,
     ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        provider_on_server_full(files, quirks, None).await
+    }
+
+    /// `provider_on_server_with` with an `initial_path` for the connect.
+    async fn provider_on_server_full(
+        files: &[&str],
+        quirks: Quirks,
+        initial_path: Option<&str>,
+    ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let files = Arc::new(Mutex::new(
@@ -8263,7 +8344,7 @@ mod rename_contract_tests {
             password: "p".to_string().into(),
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
-            initial_path: None,
+            initial_path: initial_path.map(str::to_string),
             trust_pasv_address: false,
         });
         provider
@@ -8271,6 +8352,145 @@ mod rename_contract_tests {
             .await
             .expect("connect to the scripted server");
         (provider, log)
+    }
+
+    /// The post-login `PWD` is the login folder: a relative `initial_path`
+    /// goes out as a relative `CWD` the server resolves under it, and
+    /// `login_folder_hint` answers it for the overlay scope resolution.
+    #[tokio::test]
+    async fn connect_records_the_login_folder_and_opens_a_relative_start() {
+        let (mut provider, _) = provider_on_server_full(
+            &["/home/u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("/home/u"),
+                ..Default::default()
+            },
+            Some("docs"),
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint().as_deref(), Some("/home/u"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs");
+    }
+
+    /// A `~/...` start folder is placed against the recorded login folder
+    /// and sent absolute, never as `CWD ~`, which many servers do not expand.
+    #[tokio::test]
+    async fn connect_places_a_login_relative_start_under_the_login_folder() {
+        let (mut provider, _) = provider_on_server_full(
+            &["/home/u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("/home/u"),
+                ..Default::default()
+            },
+            Some("~/docs"),
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint().as_deref(), Some("/home/u"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs");
+    }
+
+    /// A server that does not answer the post-login `PWD` leaves no hint;
+    /// the connect still succeeds and the session opens where it always did.
+    #[tokio::test]
+    async fn connect_survives_a_failed_login_pwd() {
+        let (mut provider, _) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                fail_login_pwd: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint(), None);
+        assert_eq!(provider.pwd().await.unwrap(), "/");
+    }
+
+    /// `resolve_home_scope` on a live FTP session answers from the recorded
+    /// login folder: no `CWD ~` goes on the wire (this server would fail it
+    /// or open a literal `~`), and the session stays where it was.
+    #[tokio::test]
+    async fn overlay_scope_resolution_uses_the_ftp_login_folder() {
+        let (mut provider, _) = provider_on_server_with(
+            &["/home/u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("/home/u"),
+                ..Default::default()
+            },
+        )
+        .await;
+        let resolved = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap();
+        assert_eq!(resolved.as_deref(), Some("/home/u/docs"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u");
+    }
+
+    /// With no login `PWD` on an FTP session the login folder is unknown:
+    /// `resolve_home_scope` fails closed instead of sending `CWD ~`, the
+    /// command the ACK excluded.
+    #[tokio::test]
+    async fn overlay_scope_resolution_fails_closed_without_a_login_pwd() {
+        let (mut provider, log) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                fail_login_pwd: true,
+                log_commands: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        let err = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap_err();
+        assert!(err.contains("did not report its login folder"), "{err}");
+        assert!(
+            !log.lock().unwrap().iter().any(|command| command == "CWD ~"),
+            "{:?}",
+            log.lock().unwrap()
+        );
+    }
+
+    /// On a chrooted account whose login folder is `/`, `~/docs` is `/docs`.
+    #[tokio::test]
+    async fn overlay_scope_resolution_places_under_a_root_login_folder() {
+        let (mut provider, _) = provider_on_server_with(&["/docs/a.txt"], Quirks::default()).await;
+        let resolved = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap();
+        assert_eq!(resolved.as_deref(), Some("/docs"));
+    }
+
+    /// `place_initial_path`: a relative path stays relative (the server
+    /// resolves it under the login directory), `~` forms are placed against
+    /// the recorded login folder, and without one they fail closed.
+    #[test]
+    fn place_initial_path_keeps_relative_and_places_login_relative() {
+        let config = || FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: 21,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+            trust_pasv_address: false,
+        };
+        let mut provider = FtpProvider::new(config());
+        provider.login_folder = Some("/home/u".to_string());
+        assert_eq!(provider.place_initial_path("docs").unwrap(), "docs");
+        assert_eq!(provider.place_initial_path("docs/sub").unwrap(), "docs/sub");
+        assert_eq!(
+            provider.place_initial_path("~/docs").unwrap(),
+            "/home/u/docs"
+        );
+        assert_eq!(provider.place_initial_path("~").unwrap(), "/home/u");
+        assert_eq!(provider.place_initial_path("/abs").unwrap(), "/abs");
+        // `~docs` is not the login folder notation: it stays a literal name.
+        assert_eq!(provider.place_initial_path("~docs").unwrap(), "~docs");
+        provider.login_folder = None;
+        assert!(provider.place_initial_path("~/docs").is_err());
+        assert!(provider.place_initial_path("~").is_err());
+        assert_eq!(provider.place_initial_path("docs").unwrap(), "docs");
     }
 
     #[tokio::test]

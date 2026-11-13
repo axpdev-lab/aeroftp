@@ -1139,6 +1139,10 @@ impl StorageProvider for CryptOverlayProvider {
         Ok(decode_scoped(&self.keys, &self.scope, &enc, true))
     }
 
+    fn login_folder_hint(&self) -> Option<String> {
+        self.inner.login_folder_hint()
+    }
+
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         if path == ".." {
             return self.inner.cd_up().await;
@@ -2603,33 +2607,7 @@ pub async fn wrap_connected_provider_for_profile_named(
         return Ok(inner);
     };
     let profile = aerocloud_overlay_profile(profile);
-    refuse_login_relative_aerocloud_scope(&profile)?;
     wrap_connected_provider_for_profile(inner, &profile, store).await
-}
-
-/// AeroCloud names its remote folders as absolute paths below the profile's
-/// starting folder, so an overlay bound under the login folder (`~/docs`, as
-/// the rclone import writes for `nas:docs`) has no folder AeroCloud can name:
-/// the session anchors the overlay at the resolved `/home/<user>/docs` while
-/// AeroCloud syncs `/~/docs`, outside it, in plaintext. Refused before any
-/// transfer, with the setting that fixes it.
-fn refuse_login_relative_aerocloud_scope(profile: &serde_json::Value) -> Result<(), String> {
-    let Some(binding) = overlay_binding_from_profile(profile) else {
-        return Ok(());
-    };
-    let ssh = matches!(
-        profile.get("protocol").and_then(|v| v.as_str()),
-        Some("sftp" | "scp")
-    );
-    let scope = login_relative_form(&binding.remote_scope, ssh);
-    if is_login_relative_scope(&scope) {
-        return Err(format!(
-            "the encrypted folder of this profile is {scope}, under the login folder, and AeroCloud \
-             syncs absolute folders only: set the profile's Overlays Path to the absolute \
-             folder (for example /home/<user>/docs) to sync it"
-        ));
-    }
-    Ok(())
 }
 
 /// The profile as AeroCloud wraps it: a binding without a folder of its own
@@ -3618,15 +3596,37 @@ pub(crate) async fn resolve_home_scope(
     let rest = rest.as_str();
     let unresolved =
         |e: ProviderError| format!("the overlay folder {scope} could not be resolved: {e}");
-    let back = provider.pwd().await.map_err(unresolved)?;
-    provider.cd("~").await.map_err(unresolved)?;
-    let home = provider.pwd().await;
-    let restored = provider.cd(&back).await;
-    let home = home.map_err(unresolved)?;
-    // Left in the login folder, every later relative path would land there.
-    restored.map_err(|e| {
-        format!("the overlay folder {scope} was resolved, but the session could not return to {back}: {e}")
-    })?;
+    // A provider that recorded its login folder at connect (FTP keeps the
+    // post-login `PWD`, the only `~` it has) answers without a `cd("~")`:
+    // on FTP that command is not portable and can open a folder literally
+    // named `~`. Otherwise the login folder is read through the session, as
+    // before, and the provider's folder is restored.
+    let home = match provider.login_folder_hint() {
+        Some(home) => home,
+        None => {
+            // FTP and FTPS have no portable `~`: when the post-login `PWD`
+            // did not answer, the login folder is unknown and `cd("~")`
+            // could open a folder literally named `~`. Fail closed instead.
+            if matches!(
+                provider.provider_type(),
+                ProviderType::Ftp | ProviderType::Ftps
+            ) {
+                return Err(format!(
+                    "the overlay folder {scope} could not be resolved: the server did not report its login folder"
+                ));
+            }
+            let back = provider.pwd().await.map_err(unresolved)?;
+            provider.cd("~").await.map_err(unresolved)?;
+            let home = provider.pwd().await;
+            let restored = provider.cd(&back).await;
+            let home = home.map_err(unresolved)?;
+            // Left in the login folder, every later relative path would land there.
+            restored.map_err(|e| {
+                format!("the overlay folder {scope} was resolved, but the session could not return to {back}: {e}")
+            })?;
+            home
+        }
+    };
     // A server with no login folder may open `~` as a folder of that name.
     if home == "~" || home.ends_with("/~") {
         return Err(format!(
@@ -3700,13 +3700,24 @@ pub(crate) fn is_login_relative_scope(scope: &str) -> bool {
     scope == "~" || scope.starts_with("~/")
 }
 
-/// A scope as the protocol opens it. SFTP and SCP open a relative folder
-/// under the login folder ([`crate::providers::sftp::resolve_start_dir`]), as
-/// rclone's sftp does, so there `docs` is `~/docs`; read from the root it was
-/// `/docs`, a folder the session never opened. Anything else comes back as
-/// given. The window maps a scope the same way (`loginRelativeForm`).
-pub(crate) fn login_relative_form(scope: &str, ssh: bool) -> std::borrow::Cow<'_, str> {
-    if !ssh || scope.is_empty() || scope.starts_with('/') || is_login_relative_scope(scope) {
+/// Protocols that open a relative folder under the login folder: SFTP and SCP
+/// resolve it against home (`resolve_start_dir`), FTP and FTPS issue a
+/// relative `CWD` from the login directory, as rclone's sftp does. There
+/// `docs` is `~/docs`; read from the root it was `/docs`, a folder the
+/// session never opened.
+pub(crate) fn login_relative_protocol(protocol: &str) -> bool {
+    matches!(protocol, "sftp" | "scp" | "ftp" | "ftps")
+}
+
+/// A scope as the protocol opens it. On a login-relative protocol a relative
+/// folder is under the login folder
+/// ([`crate::providers::sftp::resolve_start_dir`] for SSH, the relative `CWD`
+/// for FTP), so there `docs` is `~/docs`; read from the root it was `/docs`,
+/// a folder the session never opened. Anything else comes back as given. The
+/// window maps a scope the same way (`loginRelativeForm`).
+pub(crate) fn login_relative_form(scope: &str, under_login: bool) -> std::borrow::Cow<'_, str> {
+    if !under_login || scope.is_empty() || scope.starts_with('/') || is_login_relative_scope(scope)
+    {
         return std::borrow::Cow::Borrowed(scope);
     }
     std::borrow::Cow::Owned(format!("~/{scope}"))
@@ -3720,11 +3731,11 @@ async fn binding_with_resolved_scope<'a>(
     provider: &mut dyn StorageProvider,
     binding: &'a OverlayUnlockParams,
 ) -> Result<std::borrow::Cow<'a, OverlayUnlockParams>, String> {
-    let ssh = matches!(
+    let under_login = matches!(
         provider.provider_type(),
-        ProviderType::Sftp | ProviderType::Scp
+        ProviderType::Sftp | ProviderType::Scp | ProviderType::Ftp | ProviderType::Ftps
     );
-    let scope = login_relative_form(&binding.remote_scope, ssh);
+    let scope = login_relative_form(&binding.remote_scope, under_login);
     Ok(match resolve_home_scope(provider, &scope).await? {
         Some(remote_scope) => std::borrow::Cow::Owned(OverlayUnlockParams {
             remote_scope,
@@ -5411,6 +5422,10 @@ pub(crate) mod tests {
         literal_tilde: bool,
         /// `cd` into this folder fails, as on a folder removed meanwhile.
         refuse_cd: Option<&'static str>,
+        /// The login folder the provider recorded at connect, as FTP keeps
+        /// the post-login `PWD`: `resolve_home_scope` uses it instead of a
+        /// `cd("~")` the protocol may not honour.
+        login_folder: Option<String>,
         /// What `provider_type` answers: SFTP and SCP read a relative scope
         /// under the login folder.
         kind: ProviderType,
@@ -5436,6 +5451,7 @@ pub(crate) mod tests {
                 identity_calls: Mutex::new(Vec::new()),
                 literal_tilde: false,
                 refuse_cd: None,
+                login_folder: None,
                 kind: ProviderType::Ftp,
             }
         }
@@ -5551,6 +5567,9 @@ pub(crate) mod tests {
         }
         fn provider_type(&self) -> ProviderType {
             self.kind
+        }
+        fn login_folder_hint(&self) -> Option<String> {
+            self.login_folder.clone()
         }
         fn display_name(&self) -> String {
             "mem".into()
@@ -6266,6 +6285,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_login_folder_scope_anchors_under_the_login_folder() {
         let mut mem = MemProvider::new();
+        mem.kind = ProviderType::Sftp;
         mem.cd("/srv").await.unwrap();
         for (scope, expected) in [
             ("~/ docs", Some("/home/mem/ docs")),
@@ -6294,18 +6314,22 @@ pub(crate) mod tests {
         );
         // A server that opens `~` as a plain folder has no login folder.
         let mut literal = MemProvider::new();
+        literal.kind = ProviderType::Sftp;
         literal.cd("/srv").await.unwrap();
         literal.literal_tilde = true;
         assert!(resolve_home_scope(&mut literal, "~/docs").await.is_err());
         assert_eq!(literal.pwd().await.unwrap(), "/srv");
         // A session that cannot go back says so instead of staying at home.
         let mut stuck = MemProvider::new();
+        stuck.kind = ProviderType::Sftp;
         stuck.cd("/srv").await.unwrap();
         stuck.refuse_cd = Some("/srv");
         let err = resolve_home_scope(&mut stuck, "~/docs").await.unwrap_err();
         assert!(err.contains("could not return to /srv"), "{err}");
 
-        let inner: Box<dyn StorageProvider> = Box::new(MemProvider::new());
+        let mut inner_mem = MemProvider::new();
+        inner_mem.kind = ProviderType::Sftp;
+        let inner: Box<dyn StorageProvider> = Box::new(inner_mem);
         let binding = OverlayUnlockParams {
             kind: "rclone-crypt".to_string(),
             remote_scope: "~/docs".to_string(),
@@ -6330,7 +6354,9 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(overlay.scope, "/home/mem/docs");
 
-        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(MemProvider::new()));
+        let mut slot_mem = MemProvider::new();
+        slot_mem.kind = ProviderType::Sftp;
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(slot_mem));
         apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, false, false)
             .await
             .unwrap();
@@ -6431,7 +6457,13 @@ pub(crate) mod tests {
             .await
             .is_err());
         }
-        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(on(ProviderType::Ftp)));
+        // FTP reads a relative scope under its login folder too: with the
+        // post-login `PWD` recorded it anchors there; without it the session
+        // fails closed rather than sending `CWD ~`.
+        let mut ftp_mem = MemProvider::new();
+        ftp_mem.kind = ProviderType::Ftp;
+        ftp_mem.login_folder = Some("/home/u".to_string());
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(ftp_mem));
         apply_overlay_in_place(
             &mut slot,
             &binding("docs"),
@@ -6449,7 +6481,19 @@ pub(crate) mod tests {
             .as_any_mut()
             .downcast_mut::<CryptOverlayProvider>()
             .unwrap();
-        assert_eq!(overlay.scope, "/docs");
+        assert_eq!(overlay.scope, "/home/u/docs");
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(on(ProviderType::Ftp)));
+        assert!(apply_overlay_in_place(
+            &mut slot,
+            &binding("docs"),
+            "pw",
+            "salt",
+            None,
+            false,
+            false,
+        )
+        .await
+        .is_err());
     }
 
     /// One fallback for every reader: the binding's folder, else the starting
@@ -6558,6 +6602,9 @@ pub(crate) mod tests {
             salt_form: None,
         };
         let mut mem = MemProvider::new();
+        // A protocol without a login folder: the literal-space scope stays
+        // relative to the root, as the vault was bootstrapped.
+        mem.kind = ProviderType::WebDav;
         unlock_overlay_keys_encrypting(
             &mut mem,
             &binding,
@@ -7923,6 +7970,7 @@ pub(crate) mod tests {
             "/home/mem/docs"
         );
         let mut at_root = MemProvider::new();
+        at_root.kind = ProviderType::Sftp;
         assert_eq!(
             place_start_folder(&mut at_root, "docs").await.unwrap(),
             "/docs"
@@ -7944,11 +7992,12 @@ pub(crate) mod tests {
         assert_eq!(at_root.pwd().await.unwrap(), "/");
     }
 
-    /// The import binds `nas:docs` at `~/docs`, which the session resolves and
-    /// AeroCloud cannot name: refused, never synced in plaintext beside it. An
-    /// absolute folder, a literal `~docs` and an unbound profile sync.
-    #[test]
-    fn aerocloud_refuses_an_overlay_under_the_login_folder() {
+    /// The rclone import binds `nas:docs` at `~/docs`: AeroCloud anchors it
+    /// where the session places it, like the window, instead of refusing it.
+    /// The binding keeps the `~` form; `binding_with_resolved_scope` resolves
+    /// it against the provider's login folder.
+    #[tokio::test]
+    async fn an_overlay_under_the_login_folder_anchors_on_aerocloud_too() {
         let bound_on = |protocol: &str, scope: &str, start: &str| {
             aerocloud_overlay_profile(&serde_json::json!({
                 "protocol": protocol,
@@ -7956,30 +8005,133 @@ pub(crate) mod tests {
                 "aeroCryptOverlay": { "enabled": true, "kind": "rclone-crypt", "remoteScope": scope }
             }))
         };
-        let bound = |scope: &str, start: &str| bound_on("sftp", scope, start);
-        for (scope, start) in [("~/docs", "~/docs"), ("", "~/docs"), ("~", "/")] {
-            let err = refuse_login_relative_aerocloud_scope(&bound(scope, start)).unwrap_err();
-            assert!(
-                err.contains("Overlays Path"),
-                "{scope:?} over {start:?}: {err}"
+        // The scope reaches the binding unresolved; the session places it.
+        for (scope, start) in [("~/docs", "docs"), ("", "docs")] {
+            let profile = bound_on("ftp", scope, start);
+            let binding = overlay_binding_from_profile(&profile).unwrap();
+            let mut mem = MemProvider::new();
+            mem.login_folder = Some("/home/u".to_string());
+            // A `cd("~")` would land on a literal folder: only the recorded
+            // login folder may answer.
+            mem.literal_tilde = true;
+            let resolved = binding_with_resolved_scope(&mut mem, &binding)
+                .await
+                .unwrap();
+            assert_eq!(
+                resolved.remote_scope, "/home/u/docs",
+                "{scope:?} over {start:?}"
             );
         }
-        // A relative folder is under the login folder on SFTP and SCP, where
-        // the session opens it: from the root it was `/docs`, beside it.
-        for protocol in ["sftp", "scp"] {
-            for (scope, start) in [("", "docs"), ("docs/sub", "docs")] {
-                let err = refuse_login_relative_aerocloud_scope(&bound_on(protocol, scope, start))
-                    .unwrap_err();
-                assert!(err.contains("is ~/docs"), "{protocol} {scope:?}: {err}");
-            }
-        }
-        // Elsewhere a relative folder keeps its meaning.
-        refuse_login_relative_aerocloud_scope(&bound_on("ftp", "", "docs")).unwrap();
-        for (scope, start) in [("/home/u/docs", "~/docs"), ("/~docs", "/"), ("", "/data")] {
-            refuse_login_relative_aerocloud_scope(&bound(scope, start)).unwrap();
-        }
-        refuse_login_relative_aerocloud_scope(&serde_json::json!({ "initialPath": "~/docs" }))
+        // A relative scope on FTP is under the login folder, as on SFTP.
+        let mut binding =
+            overlay_binding_from_profile(&bound_on("ftp", "docs/sub", "docs")).unwrap();
+        binding.remote_scope = "docs/sub".to_string();
+        let mut mem = MemProvider::new();
+        mem.login_folder = Some("/home/u".to_string());
+        mem.literal_tilde = true;
+        let resolved = binding_with_resolved_scope(&mut mem, &binding)
+            .await
             .unwrap();
+        assert_eq!(resolved.remote_scope, "/home/u/docs/sub");
+        // Without a recorded login folder an SSH session still resolves
+        // through `cd("~")`; FTP without its post-login `PWD` fails closed.
+        let mut mem = MemProvider::new();
+        mem.kind = ProviderType::Sftp;
+        let resolved = binding_with_resolved_scope(&mut mem, &binding)
+            .await
+            .unwrap();
+        assert_eq!(resolved.remote_scope, "/home/mem/docs/sub");
+        let mut ftp = MemProvider::new();
+        ftp.kind = ProviderType::Ftp;
+        let err = match binding_with_resolved_scope(&mut ftp, &binding).await {
+            Ok(_) => panic!("an FTP session without its login PWD must fail closed"),
+            Err(err) => err,
+        };
+        assert!(err.contains("did not report its login folder"), "{err}");
+    }
+
+    /// The row-202 defect end to end: an AeroCloud overlay bound to `~/docs`
+    /// on an FTP profile anchors under the recorded login folder, and a sync
+    /// upload lands encrypted below that absolute anchor, never in plaintext
+    /// and never relative to the root.
+    #[tokio::test]
+    async fn an_aerocloud_overlay_on_ftp_encrypts_uploads_below_the_login_anchor() {
+        let binding = OverlayUnlockParams {
+            kind: "rclone-crypt".to_string(),
+            remote_scope: "~/docs".to_string(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+            with_header: false,
+            use_default_salt: false,
+            password_form: None,
+            salt_form: None,
+        };
+        let mut ftp = MemProvider::new();
+        ftp.kind = ProviderType::Ftp;
+        ftp.login_folder = Some("/home/u".to_string());
+        ftp.dirs
+            .lock()
+            .unwrap()
+            .extend(["/home/u".to_string(), "/home/u/docs".to_string()]);
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(ftp));
+        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, false, false)
+            .await
+            .expect("a ~/docs binding on FTP with a login PWD must anchor, not refuse");
+        {
+            let overlay = slot
+                .as_mut()
+                .unwrap()
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .unwrap();
+            assert_eq!(overlay.scope, "/home/u/docs");
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("note.txt");
+        let payload = b"sync payload";
+        std::fs::write(&local, payload).unwrap();
+        slot.as_mut()
+            .unwrap()
+            .upload(local.to_str().unwrap(), "/home/u/docs/note.txt", None)
+            .await
+            .unwrap();
+
+        let overlay = slot
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .unwrap();
+        let inner = overlay
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let raw = inner.raw_paths();
+        assert_eq!(raw.len(), 1, "{raw:?}");
+        assert!(
+            raw[0].starts_with("/home/u/docs/"),
+            "the wire path must sit below the placed anchor: {}",
+            raw[0]
+        );
+        assert!(
+            !raw[0].contains("note.txt"),
+            "the file name must be encrypted on the wire: {}",
+            raw[0]
+        );
+        assert_ne!(
+            inner.raw_bytes(&raw[0]).as_deref(),
+            Some(payload.as_slice()),
+            "the content must be encrypted on the wire"
+        );
+        // And the plaintext view reads it back under the anchor.
+        let listed = slot.as_mut().unwrap().list("/home/u/docs").await.unwrap();
+        assert!(listed.iter().any(|e| e.name == "note.txt"), "{listed:?}");
     }
 
     #[test]

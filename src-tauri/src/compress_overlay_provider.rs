@@ -354,6 +354,10 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.pwd().await
     }
 
+    fn login_folder_hint(&self) -> Option<String> {
+        self.inner.login_folder_hint()
+    }
+
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         self.inner.cd(path).await
     }

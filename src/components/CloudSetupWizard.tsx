@@ -16,7 +16,8 @@ import {
 import { ServerProfile, getServerCryptOverlay } from '../types';
 import { useTranslation } from '../i18n';
 import { pickFile } from '../utils/pickPath';
-import { normCryptScope } from '../utils/cryptScope';
+import { normCryptScope, resolveUsernameTemplate } from '../utils/cryptScope';
+import { loginRelativeForm, loginRelativeProtocol, normalizeOverlayAnchor } from '../utils/overlayScope';
 import { loadSavedServerProfilesStrict } from '../utils/serverProfileStore';
 import { Checkbox } from './ui/Checkbox';
 import { ProfileIcon, ProfileRail } from './common/ProfileRail';
@@ -34,11 +35,13 @@ const PRIMARY_BUTTON_CLASS = 'px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-
  */
 export function profileRoot(profile: ServerProfile): string {
     // Every occurrence, as the backend resolves it (`replaceAll` needs ES2021).
+    // No trim, as the backend's `profile_root`: a space is part of the folder
+    // name, so `"/var/www "` is a different folder than `"/var/www"`. Only an
+    // all-blank path is the server root.
     const base = (profile.initialPath || '')
         .split('{username}').join(profile.username || '')
-        .trim()
         .replace(/\/+$/, '');
-    if (!base) return '';
+    if (base.trim() === '') return '';
     return base.startsWith('/') ? base : `/${base}`;
 }
 
@@ -50,6 +53,23 @@ export function profileRoot(profile: ServerProfile): string {
  * encrypted folder.
  */
 export function aeroCloudBase(profile: ServerProfile): string {
+    if (loginRelativeProtocol(profile.protocol)) {
+        // On SFTP, SCP, FTP and FTPS a relative folder opens under the login
+        // folder, which only the connected session knows: the base stays in
+        // `~/...` form and the backend places and saves the absolute folder
+        // on the first connect. An absolute base comes back normalized.
+        const scope = getServerCryptOverlay(profile)
+            ? normalizeOverlayAnchor(loginRelativeForm(
+                resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username),
+                profile.protocol,
+            ))
+            : '';
+        if (scope) return scope;
+        return normalizeOverlayAnchor(loginRelativeForm(
+            resolveUsernameTemplate(profile.initialPath, profile.username),
+            profile.protocol,
+        ));
+    }
     const scope = getServerCryptOverlay(profile) ? normCryptScope(profile.aeroCryptOverlay?.remoteScope) : '';
     return scope || profileRoot(profile);
 }

@@ -1,5 +1,3 @@
-import { isSshProtocol } from '../types';
-
 const normalizeSegments = (value: string): string[] => {
     const segments: string[] = [];
     for (const part of value.split('/')) {
@@ -33,16 +31,24 @@ export const isLoginRelativeScope = (s?: string | null): boolean =>
     s === '~' || !!s?.startsWith('~/');
 
 /**
- * A path as the protocol opens it. SFTP and SCP open a relative folder under
- * the login folder (`resolve_start_dir` in the backend), as rclone's sftp
- * does, so there `docs` is `~/docs`; read from the root it was `/docs`, which
- * the session never opened. Any other path, and any other protocol, comes
- * back as given. The backend maps a relative scope the same way
- * (`binding_with_resolved_scope`).
+ * Protocols that open a relative folder under the login folder: SFTP and SCP
+ * resolve it against home (`resolve_start_dir` in the backend), FTP and FTPS
+ * issue a relative `CWD` from the login directory. There `docs` is `~/docs`;
+ * read from the root it was `/docs`, a folder the session never opened.
+ */
+export const loginRelativeProtocol = (protocol?: string | null): boolean =>
+    protocol === 'sftp' || protocol === 'scp' || protocol === 'ftp' || protocol === 'ftps';
+
+/**
+ * A path as the protocol opens it. On a login-relative protocol a relative
+ * folder opens under the login folder, so there `docs` is `~/docs`; read from
+ * the root it was `/docs`, which the session never opened. Any other path,
+ * and any other protocol, comes back as given. The backend maps a relative
+ * scope the same way (`binding_with_resolved_scope`).
  */
 export const loginRelativeForm = (path: string | null | undefined, protocol?: string | null): string => {
     const p = path || '';
-    if (!p || p.startsWith('/') || isLoginRelativeScope(p) || !isSshProtocol(protocol)) return p;
+    if (!p || p.startsWith('/') || isLoginRelativeScope(p) || !loginRelativeProtocol(protocol)) return p;
     return `~/${p}`;
 };
 
@@ -116,7 +122,7 @@ export const resolveOverlayScope = (input: string, remotePath: string, protocol?
     const r = normalizeRemotePath(remote);
     if (raw === '' || raw === '/') return r;           // same as the Remote Path
     if (r === '') {                                    // remote is root: any folder is absolute
-        return isSshProtocol(protocol) && isLoginRelativeScope(raw) ? normalizeLoginRelative(raw) : normalizeRemotePath(raw);
+        return loginRelativeProtocol(protocol) && isLoginRelativeScope(raw) ? normalizeLoginRelative(raw) : normalizeRemotePath(raw);
     }
     const s = normalizeRemotePath(raw);
     if (s === r || s.startsWith(r + '/')) return s;    // already absolute and in scope

@@ -161,10 +161,11 @@ it('retains whitespace names through profile save and scope matching', () => {
 // only the session places it. The saved anchor keeps that form: `docs` and
 // `~/docs` were saved as `/docs` and `/~/docs`, folders the session never opened.
 describe('an overlay scope under the login folder', () => {
-    it('reads a relative path under the login folder on SFTP and SCP only', () => {
-        expect(loginRelativeForm('docs', 'sftp')).toBe('~/docs');
-        expect(loginRelativeForm('docs', 'scp')).toBe('~/docs');
-        expect(loginRelativeForm('docs', 'ftp')).toBe('docs');
+    it('reads a relative path under the login folder on SFTP, SCP, FTP and FTPS', () => {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps']) {
+            expect(loginRelativeForm('docs', protocol)).toBe('~/docs');
+        }
+        expect(loginRelativeForm('docs', 'webdav')).toBe('docs');
         expect(loginRelativeForm('/docs', 'sftp')).toBe('/docs');
         expect(loginRelativeForm('~/docs', 'sftp')).toBe('~/docs');
         expect(loginRelativeForm('', 'sftp')).toBe('');
@@ -172,7 +173,7 @@ describe('an overlay scope under the login folder', () => {
     });
 
     it('saves the anchor in the login folder form', () => {
-        for (const protocol of ['sftp', 'scp']) {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps']) {
             expect(resolveOverlayScope('', 'docs', protocol)).toBe('~/docs');
             expect(resolveOverlayScope('', '~/docs/', protocol)).toBe('~/docs');
             expect(resolveOverlayScope('sub', 'docs', protocol)).toBe('~/docs/sub');
@@ -191,8 +192,8 @@ describe('an overlay scope under the login folder', () => {
             expect(isValidOverlayScope(resolveOverlayScope('~/../etc', '', protocol), '', protocol)).toBe(false);
         }
         // Elsewhere the old reading stays: a relative Remote Path is from the root.
-        expect(resolveOverlayScope('', 'docs', 'ftp')).toBe('/docs');
-        expect(resolveOverlayScope('~/vault', '', 'ftp')).toBe('/~/vault');
+        expect(resolveOverlayScope('', 'docs', 'webdav')).toBe('/docs');
+        expect(resolveOverlayScope('~/vault', '', 'webdav')).toBe('/~/vault');
     });
 
     it('normalizes an anchor in the form the backend reads', () => {

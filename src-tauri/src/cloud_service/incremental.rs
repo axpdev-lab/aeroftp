@@ -1158,6 +1158,10 @@ pub async fn run_pair_incremental_cycle(
     if let Some(handle) = app {
         svc.set_app_handle(handle);
     }
+    let mut config = config;
+    if let Some(remote_folder) = opened.remote_folder.clone() {
+        config.remote_folder = remote_folder;
+    }
     svc.init(config).await;
     let work_limit = full_scan_allowed.then_some(REMOTE_WORK_LIMIT);
     let outcome = svc

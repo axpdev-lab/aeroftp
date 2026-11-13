@@ -317,12 +317,12 @@ fn saved_profile(
 /// presets keep in it resolved, `/` when it has none. AeroCloud connects
 /// there, as every other surface opens the profile, so a crypt overlay bound
 /// to the profile anchors where it always does, and the sync creates the
-/// remote folder (which may not exist yet) inside it. On SFTP and SCP a
-/// relative folder is under the login folder (`~/docs`), where the connect
-/// opens it: entered again as `docs`, the root became `docs/docs`. The root
-/// is also in the target identity, so a config made when `docs` read from
-/// the root starts a fresh index instead of reading the old folder's state
-/// against another folder.
+/// remote folder (which may not exist yet) inside it. On SFTP, SCP, FTP and
+/// FTPS a relative folder is under the login folder (`~/docs`), where the
+/// connect opens it: entered again as `docs`, the root became `docs/docs`.
+/// The root is also in the target identity, so a config made when `docs`
+/// read from the root starts a fresh index instead of reading the old
+/// folder's state against another folder.
 fn profile_root(profile: &serde_json::Value) -> String {
     let username = profile
         .get("username")
@@ -333,32 +333,49 @@ fn profile_root(profile: &serde_json::Value) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .replace("{username}", username);
-    let root = root.trim();
-    let ssh = matches!(
-        profile.get("protocol").and_then(|v| v.as_str()),
-        Some("sftp" | "scp")
-    );
-    if root.is_empty() {
+    // No trim: the session opens the space as part of the folder name
+    // (#1523, `549820d79`), so `" /var/www "` is a different folder than
+    // `"/var/www"`. Trimming here named a folder the connect never opened.
+    let under_login = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .is_some_and(crate::crypt_overlay_provider::login_relative_protocol);
+    if root.trim().is_empty() {
         "/".to_string()
     } else {
-        crate::crypt_overlay_provider::login_relative_form(root, ssh).into_owned()
+        crate::crypt_overlay_provider::login_relative_form(&root, under_login).into_owned()
     }
 }
 
 /// Open the profile root on a provider that connected at the account root
 /// (the OAuth providers take no starting folder). A legacy config without a
 /// saved profile has no root to open.
+///
+/// A `~/...` root names a folder under the login folder, which only the
+/// connected session can place (`CWD ~` is not portable on FTP): it is
+/// resolved first and the absolute folder entered. Returns that absolute
+/// path when the root was login-relative, so the caller can put it in the
+/// target identity; `None` otherwise.
 async fn enter_profile_root(
     provider: &mut dyn StorageProvider,
     root: Option<&str>,
-) -> Result<(), String> {
-    match root {
-        Some(root) if root != "/" => provider
-            .cd(root)
-            .await
-            .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e)),
-        _ => Ok(()),
-    }
+) -> Result<Option<String>, String> {
+    let Some(root) = root.filter(|root| *root != "/") else {
+        return Ok(None);
+    };
+    let (placed, placed_root) = if crate::crypt_overlay_provider::is_login_relative_scope(root) {
+        let placed = crate::crypt_overlay_provider::resolve_home_scope(provider, root)
+            .await?
+            .ok_or_else(|| format!("Cannot resolve the profile folder '{}'", root))?;
+        (placed.clone(), Some(placed))
+    } else {
+        (root.to_string(), None)
+    };
+    provider
+        .cd(&placed)
+        .await
+        .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e))?;
+    Ok(placed_root)
 }
 
 /// Connection credentials of a saved profile: host and username from the
@@ -556,7 +573,25 @@ async fn create_via_factory(
     // root), so the root is entered explicitly, as the CLI does before it wraps
     // a crypt overlay: the overlay unlocks where the provider stands.
     if let Some(profile) = &profile {
-        enter_profile_root(&mut *provider, Some(&profile_root(profile))).await?;
+        let placed_root = enter_profile_root(&mut *provider, Some(&profile_root(profile))).await?;
+        // The identity names the folder the session actually opens: a `~/...`
+        // root is placed first, so the digest carries the absolute path and a
+        // config written against the `~` form starts a fresh index.
+        if let Some(placed) = placed_root {
+            provider_config.initial_path = Some(placed);
+        }
+    }
+    // A legacy config without a saved profile starts in its remote folder,
+    // which a `~/...` value places under the login folder: the identity names
+    // the absolute folder the session opened, as for a profile root.
+    if let Some(initial) = provider_config.initial_path.clone() {
+        if crate::crypt_overlay_provider::is_login_relative_scope(&initial) {
+            if let Some(placed) =
+                crate::crypt_overlay_provider::resolve_home_scope(&mut *provider, &initial).await?
+            {
+                provider_config.initial_path = Some(placed);
+            }
+        }
     }
 
     // Config identity is immutable here; authenticated identity further isolates API accounts.
@@ -1121,8 +1156,9 @@ mod tests {
             })),
             "/files/ale/"
         );
-        // SFTP and SCP open a relative folder under the login folder.
-        for protocol in ["sftp", "scp"] {
+        // SFTP, SCP, FTP and FTPS open a relative folder under the login
+        // folder, so the root stays in `~/...` form until the session places it.
+        for protocol in ["sftp", "scp", "ftp", "ftps"] {
             assert_eq!(
                 profile_root(&serde_json::json!({ "protocol": protocol, "initialPath": "docs" })),
                 "~/docs"
@@ -1136,10 +1172,90 @@ mod tests {
                 "~/v"
             );
         }
+        // Elsewhere a relative folder keeps its meaning.
         assert_eq!(
-            profile_root(&serde_json::json!({ "protocol": "ftp", "initialPath": "docs" })),
+            profile_root(&serde_json::json!({ "protocol": "webdav", "initialPath": "docs" })),
             "docs"
         );
+    }
+
+    /// The `docs/docs` defect end to end on a scripted FTP server: the
+    /// profile root stays `~/docs`, the connect opens `/home/u/docs`, and
+    /// `enter_profile_root` enters that same absolute folder once, never
+    /// `docs` again below it.
+    #[tokio::test]
+    async fn a_login_relative_profile_root_is_entered_once_under_the_login_folder() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (read, mut write) = stream.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    if write.write_all(b"220 ready\r\n").await.is_err() {
+                        return;
+                    }
+                    let mut cwd = "/home/u".to_string();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                        let reply = match cmd.to_uppercase().as_str() {
+                            "USER" => "331 password please\r\n".to_string(),
+                            "PASS" => "230 logged in\r\n".to_string(),
+                            "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                            "CWD" => {
+                                let target = if argument.starts_with('/') {
+                                    argument.to_string()
+                                } else {
+                                    format!("{}/{argument}", cwd.trim_end_matches('/'))
+                                };
+                                if target == "/home/u" || target == "/home/u/docs" {
+                                    cwd = target;
+                                    "250 Directory changed\r\n".to_string()
+                                } else {
+                                    "550 Failed to change directory.\r\n".to_string()
+                                }
+                            }
+                            "FEAT" => "211-Features:\r\n UTF8\r\n211 End\r\n".to_string(),
+                            "QUIT" => {
+                                let _ = write.write_all(b"221 bye\r\n").await;
+                                return;
+                            }
+                            _ => "200 ok\r\n".to_string(),
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+
+        let profile = serde_json::json!({ "protocol": "ftp", "initialPath": "docs" });
+        let root = profile_root(&profile);
+        assert_eq!(root, "~/docs");
+        let mut provider = crate::providers::FtpProvider::new(crate::providers::FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: crate::providers::FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: Some(root.clone()),
+            trust_pasv_address: false,
+        });
+        provider.connect().await.unwrap();
+        // The connect opened the placed folder, not `docs` below the login one.
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs");
+        // `enter_profile_root` resolves `~/docs` and enters the absolute
+        // folder: the session stays, it does not descend into `docs/docs`.
+        let placed = enter_profile_root(&mut provider, Some(&root))
+            .await
+            .unwrap();
+        assert_eq!(placed.as_deref(), Some("/home/u/docs"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs");
     }
 
     #[test]
@@ -1310,14 +1426,22 @@ mod tests {
                     .filter(|o| o.get("enabled").and_then(|v| v.as_bool()) == Some(true))
                     .and_then(|o| o.get("remoteScope"))
                     .and_then(|v| v.as_str())
-                    .map(str::trim)
                     .filter(|s| !s.is_empty())
                     .map(str::to_string)
                     .unwrap_or_else(|| profile_root(profile)),
                 ..CloudConfig::default()
             };
             let outcome = tokio::time::timeout(Duration::from_secs(90), async {
-                let provider = create_cloud_provider(&config).await?;
+                let mut provider = create_cloud_provider(&config).await?;
+                // A `~/...` remote folder is placed under the login folder on
+                // this connect, as the sync cycles do, before the overlay
+                // wraps the provider and the listing reads it.
+                let remote_folder = crate::cloud_service::anchor_login_relative_remote_folder(
+                    &mut *provider,
+                    &config,
+                )
+                .await?
+                .unwrap_or_else(|| config.remote_folder.clone());
                 let mut provider = crate::crypt_overlay_provider::build_aerocloud_overlay_stack(
                     provider,
                     config.server_profile_id.as_deref(),
@@ -1326,7 +1450,7 @@ mod tests {
                 )
                 .await?;
                 let listed = provider
-                    .list(&config.remote_folder)
+                    .list(&remote_folder)
                     .await
                     .map_err(|e| e.to_string());
                 let _ = provider.disconnect().await;

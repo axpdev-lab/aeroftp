@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { aeroCloudRemoteFolder, profileRoot } from './CloudSetupWizard';
+import { aeroCloudBase, aeroCloudRemoteFolder, profileRoot } from './CloudSetupWizard';
 import { profileMatchesQuery } from './common/ProfileRail';
 import type { ServerProfile } from '../types';
 
@@ -24,6 +24,35 @@ describe('profileRoot', () => {
     it('resolves the {username} template some WebDAV presets keep in the start path', () => {
         expect(profileRoot(profile({ initialPath: '/files/{username}/', username: 'ale' }))).toBe('/files/ale');
         expect(profileRoot(profile({ initialPath: '/{username}/files/{username}', username: 'ale' }))).toBe('/ale/files/ale');
+    });
+
+    it('keeps the spaces of the starting folder, as the backend does', () => {
+        expect(profileRoot(profile({ initialPath: '/var/www ' }))).toBe('/var/www ');
+        expect(profileRoot(profile({ initialPath: '  /var/www' }))).toBe('/  /var/www');
+    });
+});
+
+describe('aeroCloudBase', () => {
+    it('keeps a login-relative profile base in ~/ form for the backend to place', () => {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps'] as const) {
+            expect(aeroCloudBase(profile({ protocol, initialPath: 'docs' }))).toBe('~/docs');
+            expect(aeroCloudBase(profile({ protocol, initialPath: '/srv' }))).toBe('/srv');
+        }
+        expect(aeroCloudBase(profile({ protocol: 'webdav', initialPath: '/var/www' }))).toBe('/var/www');
+        expect(aeroCloudBase(profile({ initialPath: '/var/www' }))).toBe('/var/www');
+    });
+
+    it('prefers the overlay folder, in ~/ form when it is relative', () => {
+        const overlay = (remoteScope?: string) =>
+            ({ enabled: true, kind: 'aerocrypt', remoteScope }) as ServerProfile['aeroCryptOverlay'];
+        expect(aeroCloudBase(profile({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: overlay('~/vault') })))
+            .toBe('~/vault');
+        expect(aeroCloudBase(profile({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: overlay('vault') })))
+            .toBe('~/vault');
+        expect(aeroCloudBase(profile({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: overlay('/abs/vault') })))
+            .toBe('/abs/vault');
+        expect(aeroCloudRemoteFolder(profile({ protocol: 'ftp', initialPath: 'docs' }), 'cloud'))
+            .toBe('~/docs/cloud/');
     });
 });
 

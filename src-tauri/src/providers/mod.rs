@@ -1315,6 +1315,14 @@ pub trait StorageProvider: Send + Sync {
     /// Get current working directory
     async fn pwd(&mut self) -> Result<String, ProviderError>;
 
+    /// The login folder the connect observed, when the protocol has one the
+    /// client can name without asking the server (`~` is unreliable on FTP,
+    /// so the post-login `PWD` is kept). `None` when unknown: callers fall
+    /// back to resolving `~` through the session.
+    fn login_folder_hint(&self) -> Option<String> {
+        None
+    }
+
     /// Change current directory
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError>;
 

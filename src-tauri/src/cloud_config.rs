@@ -381,9 +381,14 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
         return Err("Remote folder cannot be empty".to_string());
     }
 
-    // Only server protocols require absolute paths; cloud providers accept "/" or relative
+    // Only server protocols require absolute paths; cloud providers accept "/" or relative.
+    // A `~/...` folder is accepted on the login-relative protocols (SFTP, SCP,
+    // FTP, FTPS): it names a folder under the login folder and is placed to an
+    // absolute path on the first connect. WebDAV and a bare relative stay refused.
     if ABSOLUTE_PATH_PROTOCOLS.contains(&config.protocol_type.as_str())
         && !config.remote_folder.starts_with('/')
+        && !(crate::crypt_overlay_provider::is_login_relative_scope(&config.remote_folder)
+            && crate::crypt_overlay_provider::login_relative_protocol(&config.protocol_type))
     {
         return Err("Remote folder must be an absolute path for server protocols".to_string());
     }
