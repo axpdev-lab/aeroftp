@@ -100,11 +100,13 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     const [destPath, setDestPath] = useState('/');
     const [recursive, setRecursive] = useState(true);
     const [skipExisting, setSkipExisting] = useState(false);
-    // True once the user changed a setting by hand (a profile, a path, an
-    // option, a swap): ESC and the X then ask before dropping the setup
-    // instead of closing it at once (Discussion #1527).
-    const [settingsTouched, setSettingsTouched] = useState(false);
-    const touched = <T,>(set: (value: T) => void) => (value: T) => { setSettingsTouched(true); set(value); };
+    // The setup as it was before the user's first change by hand (a profile,
+    // a path, an option, a swap): while it differs from that, ESC and the X
+    // ask before dropping it instead of closing at once, and an edit undone
+    // by hand closes at once again (Discussion #1527).
+    const setupSnapshot = JSON.stringify([sourceProfile?.id ?? null, destProfile?.id ?? null, sourcePath, destPath, recursive, skipExisting]);
+    const [setupBaseline, setSetupBaseline] = useState<string | null>(null);
+    const touched = <T,>(set: (value: T) => void) => (value: T) => { setSetupBaseline(b => b ?? setupSnapshot); set(value); };
 
     const [plan, setPlan] = useState<CrossProfilePlan | null>(null);
     const [summary, setSummary] = useState<TransferSummary | null>(null);
@@ -355,7 +357,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     };
 
     const handleSwapProfiles = () => {
-        setSettingsTouched(true);
+        setSetupBaseline(b => b ?? setupSnapshot);
         setSourceProfile(destProfile);
         setDestProfile(sourceProfile);
         setSourcePath(destPath);
@@ -372,7 +374,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     // too: only the X or ESC close it (Discussion #1527). Only a transfer can
     // be stopped: a plan being built goes on, and the confirm says so.
     const guarded = useGuardedClose({
-        guard: phase === 'executing' || loading ? 'busy' : phase === 'setup' && settingsTouched ? 'dirty' : null,
+        guard: phase === 'executing' || loading ? 'busy' : phase === 'setup' && setupBaseline !== null && setupSnapshot !== setupBaseline ? 'dirty' : null,
         onClose,
         onAbort: phase === 'executing' ? handleCancel : undefined,
         backdrop: plan || summary ? 'never' : 'idle',

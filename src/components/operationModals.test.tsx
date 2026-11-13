@@ -303,6 +303,19 @@ describe('CrossProfilePanel (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('closes on ESC at once when a hand edit was undone', async () => {
+        const onClose = vi.fn();
+        await open(onClose);
+        await flush();
+        const dest = host.querySelector<HTMLInputElement>('input[placeholder="transfer.crossProfile.destinationPathPlaceholder"]')!;
+        const original = dest.value;
+        await typeInto(dest, '/sentinel/dest');
+        await typeInto(dest, original);
+        await escape();
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('closes an untouched setup on ESC at once', async () => {
         const onClose = vi.fn();
         await open(onClose);
