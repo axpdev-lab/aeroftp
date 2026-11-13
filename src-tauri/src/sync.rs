@@ -5468,6 +5468,7 @@ impl From<crate::providers::ProviderError> for IpcError {
                 provider,
             },
             ProviderError::TargetChanged => IpcError::Marker("CONNECTION_CHANGED"),
+            ProviderError::FtpRefused { code, .. } => IpcError::FtpStatus(code),
             other => IpcError::Other(other.to_string()),
         }
     }
@@ -5509,6 +5510,7 @@ impl IpcError {
                 provider: provider.clone(),
             },
             ProviderError::TargetChanged => IpcError::Marker("CONNECTION_CHANGED"),
+            ProviderError::FtpRefused { code, .. } => IpcError::FtpStatus(*code),
             other => IpcError::Other(other.to_string()),
         }
     }
@@ -9868,6 +9870,8 @@ mod tests {
                 // in `mentions_ftp_status` is what recognises this one.
                 PE::Other(_) | PE::ParallelRefused(_) | PE::PinRefused(_) => true,
                 PE::NotConnected | PE::TargetChanged | PE::Cancelled | PE::Timeout => false,
+                // The status alone, typed: no reply text behind it.
+                PE::FtpRefused { .. } => false,
                 PE::RestrictedChar { .. } => false,
                 // Our own sentence about the server's key, built before any
                 // file operation: there is never a server reply behind it.

@@ -7764,7 +7764,9 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::NotSupported(_) => 7,
         ProviderError::Timeout => 8,
         ProviderError::AlreadyExists(_) | ProviderError::DirectoryNotEmpty(_) => 9,
-        ProviderError::ParseError(_) | ProviderError::ServerError(_) => 10,
+        ProviderError::ParseError(_)
+        | ProviderError::ServerError(_)
+        | ProviderError::FtpRefused { .. } => 10,
         ProviderError::IoError(_) => 11,
         ProviderError::Unknown(_) | ProviderError::Other(_) => 99,
     }

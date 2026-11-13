@@ -233,6 +233,7 @@ describe('privacy completion ownership', () => {
         let items = [{ id: 'folder', filename: 'docs', path: '/docs', size: 0, type: 'upload', status: 'transferring' }] as TransferItem[];
         const queue = Object.assign(queueWith({ id: 'folder', filename: 'docs', status: 'transferring' }), {
             completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            updateFolderProgress: vi.fn(),
             addItem: vi.fn((filename: string, path: string, size: number, type: string) => {
                 items = [...items, { id: `added-${items.length}`, filename, path, size, type, status: 'pending' } as TransferItem];
                 return `added-${items.length - 1}`;
@@ -246,6 +247,13 @@ describe('privacy completion ownership', () => {
         // The next child transfers and the folder row still follows it.
         await emit({ event_type: 'file_start', transfer_id: 'ul-folder-7', filename: 'b.txt', path: '/docs/b.txt', direction: 'upload' });
         expect(items.find(item => item.id === 'folder')?.status).toBe('transferring');
+        // T10: a symlink skipped inside the folder carries the folder's id;
+        // its progress and its end still reach the folder row.
+        await emit({ event_type: 'file_skip', transfer_id: 'ul-folder-7', filename: 'link', path: '/docs/link', direction: 'upload', message: 'Symlink skipped' });
+        await emit({ event_type: 'progress', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload', progress: { transfer_id: 'ul-folder-7', filename: 'docs', total: 3, transferred: 2, percentage: 66, speed_bps: 0, eta_seconds: 0 } });
+        expect(items.find(item => item.id === 'folder')?.status).toBe('transferring');
+        await emit({ event_type: 'complete', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload' });
+        expect(items.find(item => item.id === 'folder')?.status).toBe('completed');
     });
 
     // A file the server skipped wrote nothing, so no privacy update is owed:

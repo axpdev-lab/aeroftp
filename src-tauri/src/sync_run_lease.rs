@@ -63,8 +63,6 @@ struct Lease {
     file: Arc<File>,
     /// Label of the window whose page began the run.
     window: String,
-    /// The load nonce of the document that asked for it (see [`bind_page`]).
-    nonce: String,
 }
 
 /// Every sync lease, under one lock: the live ones, the orphans whose page is
@@ -112,12 +110,15 @@ const PAGE_REPLACED: &str =
 ///   spurious one (WebView2 reports a failed or overlapped navigation as one)
 ///   never interrupts a live sync.
 ///
-/// Residual case: if the first `Finished` of a generation is spurious and
-/// the old document, still alive, binds and takes a lease after it, that
-/// lease stays its own and the new document cannot bind
-/// (`SYNC_RUN_PAGE_REPLACED`) until the user reloads (`Started`, which
-/// orphans it). Availability only: a gone document sends no command.
-pub(crate) fn bind_page(window: &str, nonce: &str) -> Result<(), String> {
+/// A window runs one document at a time, so a bind with another nonce while
+/// the bound document holds leases comes from a document loaded after it
+/// (or from a late message of one already gone): the bound document is no
+/// longer the window's. Its leases are orphaned as a `Started` orphans them,
+/// and the tokens returned for [`release_orphans_once_settled`]: the pairs
+/// stay locked until the work they admitted has settled, then the new
+/// document acquires them with no reload (T6a). This covers a first
+/// `Finished` that was spurious, after which the old document took a lease.
+pub(crate) fn bind_page(window: &str, nonce: &str) -> Result<Vec<String>, String> {
     let valid = (16..=128).contains(&nonce.len())
         && nonce
             .bytes()
@@ -131,22 +132,25 @@ pub(crate) fn bind_page(window: &str, nonce: &str) -> Result<(), String> {
     bind_page_locked(&mut registry, window, nonce)
 }
 
-fn bind_page_locked(registry: &mut Registry, window: &str, nonce: &str) -> Result<(), String> {
+fn bind_page_locked(
+    registry: &mut Registry,
+    window: &str,
+    nonce: &str,
+) -> Result<Vec<String>, String> {
     let generation = registry.page_epochs.get(window).copied().unwrap_or(0);
-    if let Some((_, owner)) = registry.bindings.get(window) {
-        if owner != nonce
-            && registry
-                .leases
-                .values()
-                .any(|lease| lease.window == window && &lease.nonce == owner)
-        {
-            return Err(PAGE_REPLACED.into());
-        }
-    }
+    let replaced = registry
+        .bindings
+        .get(window)
+        .is_some_and(|(_, owner)| owner != nonce);
+    let orphans = if replaced {
+        orphan_leases_of(registry, window)
+    } else {
+        Vec::new()
+    };
     registry
         .bindings
         .insert(window.to_owned(), (generation, nonce.to_owned()));
-    Ok(())
+    Ok(orphans)
 }
 
 /// The first `Finished` of the window's current generation: the binding ends
@@ -222,7 +226,6 @@ fn acquire_at(dir: &Path, pair: String, window: &str, nonce: &str) -> Result<Str
             pair,
             file: Arc::new(file),
             window: window.to_owned(),
-            nonce: nonce.to_owned(),
         },
     );
     Ok(token)
@@ -433,9 +436,11 @@ mod tests {
     ///   binding, its begin is refused, it binds again (the runner's retry)
     ///   and runs;
     /// - an old document still alive between `Started` and `Finished` takes a
-    ///   lease: `Finished` orphans it;
+    ///   lease: the new document's binding orphans it (T6a);
     /// - an old document's delayed binding handled after the new document
-    ///   took a lease: refused, and the new lease keeps working;
+    ///   took a lease: it orphans the new lease (availability only), the new
+    ///   document binds again and runs once the work settled; at no moment do
+    ///   two documents hold admitted work on the pair;
     /// - a later, spurious `Finished` of the same generation changes nothing.
     #[test]
     fn every_order_of_a_reload_leaves_the_window_to_the_live_document() {
@@ -449,17 +454,19 @@ mod tests {
         orphan_window(window);
         bind_page(window, &old).unwrap();
         let stale = acquire_at(dir.path(), pair.clone(), window, &old).unwrap();
-        // The new document binds before `Finished`: refused while the old
-        // binding holds that live lease.
-        assert!(bind_page(window, &new).is_err());
-        // `Finished`: the old lease is an orphan, the binding is gone.
-        let orphans = page_finished(window);
+        // The new document binds before `Finished`: the old lease is an
+        // orphan from here, and admits nothing more.
+        let orphans = bind_page(window, &new).unwrap();
         assert_eq!(orphans, std::slice::from_ref(&stale));
         assert!(
             admit(Some(&stale)).is_err(),
             "the old document's lease admits nothing"
         );
+        // Until its work settled, the pair is still locked: no second owner.
+        assert!(acquire_at(dir.path(), pair.clone(), window, &new).is_err());
         release_orphans(&orphans);
+        // `Finished`: nothing left to orphan; it ends the new binding.
+        assert!(page_finished(window).is_empty());
         // The new document's begin is refused until it binds again.
         assert!(refused_as(
             &acquire_at(dir.path(), pair.clone(), window, &new),
@@ -467,13 +474,23 @@ mod tests {
         ));
         bind_page(window, &new).unwrap();
         let live = acquire_at(dir.path(), pair.clone(), window, &new).unwrap();
-        // An old binding handled now (dispatched before the navigation) is
-        // refused: the new binding holds a live lease.
-        assert!(bind_page(window, &old).is_err());
-        assert!(admit(Some(&live)).is_ok(), "the live sync goes on");
         // A spurious second `Finished` of the same generation does nothing.
         assert!(page_finished(window).is_empty());
-        assert!(admit(Some(&live)).is_ok(), "still the live sync's");
+        assert!(admit(Some(&live)).is_ok(), "the live sync goes on");
+        // A delayed binding of the dead old document lands now: the live
+        // lease is orphaned (its run stops: no command of it is admitted),
+        // and the dead document holds nothing. At no moment do two documents
+        // hold admitted work on the pair: the live one's admission ends here,
+        // and the pair stays locked until its work settled.
+        let orphans = bind_page(window, &old).unwrap();
+        assert_eq!(orphans, std::slice::from_ref(&live));
+        assert!(admit(Some(&live)).is_err());
+        assert!(acquire_at(dir.path(), pair.clone(), window, &old).is_err());
+        release_orphans(&orphans);
+        // The live document binds again (taking nothing from the dead one)
+        // and runs.
+        assert!(bind_page(window, &new).unwrap().is_empty());
+        let live = acquire_at(dir.path(), pair.clone(), window, &new).unwrap();
         release(&live).unwrap();
         // With nothing held, a delayed old binding may land; the live document
         // is refused once, binds again and runs.
@@ -487,15 +504,14 @@ mod tests {
         release(&token).unwrap();
     }
 
-    /// The residual case, pinned as it behaves: the first `Finished` of a
-    /// generation was spurious, and the old document, still alive, binds and
-    /// takes a lease after it. The new document cannot bind (it is told its
-    /// page was replaced, the existing message) and the lease stays the old
-    /// document's until the next `Started` (the user's reload) orphans it.
-    /// Availability only: the gone document sends no command, and the new
-    /// one's begins are refused rather than run against the old binding.
+    /// T6a: the first `Finished` of a generation was spurious, and the old
+    /// document, still alive, binds and takes a lease after it; then it dies
+    /// and its real `Finished` is not acted on (already had). The new
+    /// document's binding takes the window over as a reload would: the old
+    /// lease is orphaned, the pair stays locked until the old document's work
+    /// has settled, and the new document then acquires it with no reload.
     #[test]
-    fn a_spurious_first_finished_leaves_the_window_to_the_old_document_until_a_reload() {
+    fn a_new_document_takes_the_window_over_after_a_spurious_finished() {
         let dir = tempfile::tempdir().unwrap();
         let pair = crate::sync::index_filename("/residual-local", "/residual-remote");
         let window = "residual-window";
@@ -509,19 +525,14 @@ mod tests {
         let stale = acquire_at(dir.path(), pair.clone(), window, &old).unwrap();
         // The real `Finished` of this generation is not acted on: already had.
         assert!(page_finished(window).is_empty());
-        assert!(refused_as(
-            &bind_page(window, &new).map(|_| String::new()),
-            "SYNC_RUN_PAGE_REPLACED"
-        ));
-        assert!(refused_as(
-            &acquire_at(dir.path(), pair.clone(), window, &new),
-            "SYNC_RUN_PAGE_REPLACED"
-        ));
-        // The reload: the old document's lease is an orphan, the new binds.
-        let orphans = orphan_window(window);
+        // The new document binds: the old lease is orphaned.
+        let orphans = bind_page(window, &new).unwrap();
         assert_eq!(orphans, std::slice::from_ref(&stale));
+        assert!(admit(Some(&stale)).is_err());
+        // Its work not settled yet: the pair is still the old document's.
+        assert!(acquire_at(dir.path(), pair.clone(), window, &new).is_err());
+        // Settled: the new document acquires the pair, with no reload.
         release_orphans(&orphans);
-        bind_page(window, &new).unwrap();
         let token = acquire_at(dir.path(), pair, window, &new).unwrap();
         release(&token).unwrap();
     }
@@ -679,6 +690,49 @@ mod tests {
         let replacement = acquire_now(dir.path(), pair, "new-window").unwrap();
         release(&replacement).unwrap();
         release(&other_window).unwrap();
+    }
+
+    /// T6b: the legacy `upload_file` runs its upload in a task that owns the
+    /// admission (`run_owning_admission`). The command's future is dropped
+    /// while the upload still runs: the lost page's pair stays locked until
+    /// the upload ends, then the replacement acquires it.
+    #[tokio::test]
+    async fn an_abandoned_upload_keeps_its_admission_until_the_upload_ends() {
+        let source = include_str!("lib.rs");
+        let start = source.find("\nasync fn upload_file(").unwrap();
+        let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
+        assert!(body.contains("let native_work = crate::sync_run_lease::admit("));
+        assert!(body.contains("run_owning_admission(native_work, async move {"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/abandoned-upload", "/abandoned-upload-right");
+        let lost = acquire_now(dir.path(), pair.clone(), "abandoned-upload-window").unwrap();
+        let (finish, finished) = tokio::sync::oneshot::channel::<()>();
+        let command = tokio::spawn(crate::run_owning_admission(
+            admit(Some(&lost)).unwrap(),
+            async move {
+                let _ = finished.await;
+            },
+        ));
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        // The command's future is dropped; its upload still runs.
+        command.abort();
+        let _ = command.await;
+        let orphans = orphan_window("abandoned-upload-window");
+        assert_eq!(orphans, std::slice::from_ref(&lost));
+        let waiter = tokio::spawn(release_orphans_once_settled(orphans, native_work_settled));
+        tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+        assert!(
+            !waiter.is_finished(),
+            "the abandoned upload still runs and still counts"
+        );
+        finish.send(()).unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(30), waiter)
+            .await
+            .expect("released once the upload ended")
+            .unwrap();
+        let replacement = acquire_now(dir.path(), pair, "new-upload-window").unwrap();
+        release(&replacement).unwrap();
     }
 
     /// The copy runs on the blocking pool and owns the admission: dropping

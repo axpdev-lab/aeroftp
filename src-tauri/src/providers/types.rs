@@ -2171,6 +2171,13 @@ pub enum ProviderError {
     #[error("CONNECTION_CHANGED: the authorization changed; reconnect and compare again")]
     TargetChanged,
 
+    /// An FTP reply that refused the command, by the status the reply parser
+    /// read, and what we were doing (`during`: our own words, ` (while
+    /// uploading /x)`). Never the server's text: the status alone is
+    /// classified, so a reply whose text holds `HTTP 403` stays a 425 (T8).
+    #[error("FTP status {code}: command rejected{during}")]
+    FtpRefused { code: u16, during: String },
+
     #[error("Not connected to server")]
     NotConnected,
 

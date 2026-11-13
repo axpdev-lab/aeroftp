@@ -630,6 +630,11 @@ impl FtpProvider {
     /// is how suppaftp prints every refused reply, so routing a SITE command
     /// through here would send each refused administrative command twice.
     fn is_stale_data_connection_error(err: &ProviderError) -> bool {
+        // 125 (a data connection already open) and 425 (none could be
+        // opened), as the typed status the reply left (T8).
+        if let ProviderError::FtpRefused { code, .. } = err {
+            return matches!(code, 125 | 425);
+        }
         let message = match err {
             ProviderError::ServerError(msg)
             | ProviderError::TransferFailed(msg)
@@ -683,6 +688,9 @@ impl FtpProvider {
     /// again. A dropped connection is not in it: it may come after the
     /// transfer landed.
     fn is_desync_before_transfer_error(err: &ProviderError) -> bool {
+        if let ProviderError::FtpRefused { code, .. } = err {
+            return matches!(code, 125 | 425);
+        }
         let message = match err {
             ProviderError::ServerError(msg)
             | ProviderError::TransferFailed(msg)
@@ -875,7 +883,7 @@ impl FtpProvider {
                     return Ok(entries);
                 }
                 Err(err) => {
-                    let provider_err = ProviderError::ServerError(err.to_string());
+                    let provider_err = ftp_failure(&err);
                     tracing::debug!(
                         "[FTP] MLSD failed for {}: {}. Disabling MLSD for this provider: the \
                          flag outlives the session and is re-read on reconnect.",
@@ -922,21 +930,13 @@ impl FtpProvider {
                 (Err(list_err), Ok(())) => {
                     return Err(
                         Self::classify_missing_path("listing", &base_path, &list_err)
-                            .unwrap_or_else(|| {
-                                ProviderError::ServerError(Self::doing(
-                                    "listing", &base_path, list_err,
-                                ))
-                            }),
+                            .unwrap_or_else(|| ftp_failure(&list_err)),
                     )
                 }
                 (Ok(Some(_)), Err(restore_err)) => return Err(restore_err),
-                (Err(list_err), Err(restore_err)) => {
-                    return Err(ProviderError::ServerError(Self::doing(
-                        "listing",
-                        &base_path,
-                        format!("{list_err}; and {restore_err}"),
-                    )))
-                }
+                // The listing's failure, typed; the unrestored directory is
+                // the next command's to find (its redial checks the session).
+                (Err(list_err), Err(_restore_err)) => return Err(ftp_failure(&list_err)),
             }
         } else {
             let stream = self.stream_mut()?;
@@ -951,7 +951,7 @@ impl FtpProvider {
                             FtpError::ConnectionError(_) => {
                                 ProviderError::ConnectionFailed(e.to_string())
                             }
-                            _ => ProviderError::ServerError(e.to_string()),
+                            _ => ftp_failure(&e),
                         }));
                 }
             }
@@ -1098,7 +1098,7 @@ impl FtpProvider {
                 return ProviderError::AlreadyExists(to.to_string());
             }
         }
-        ProviderError::ServerError(err.to_string())
+        ftp_failure(&err)
     }
 
     /// Whether a refusal says the name is taken: "exists", and none of the
@@ -1119,9 +1119,7 @@ impl FtpProvider {
     /// the connection pointing somewhere else.
     async fn cwd_into(&mut self, target: &str) -> Result<String, ProviderError> {
         let stream = self.stream_mut()?;
-        let saved = stream.pwd().await.map_err(|e| {
-            ProviderError::ServerError(format!("{e} (while asking the server where we are)"))
-        })?;
+        let saved = stream.pwd().await.map_err(|e| ftp_failure(&e))?;
         if let Err(e) = stream.cwd(target).await {
             return Err(Self::classify_cwd_failure("entering", target, &e));
         }
@@ -1213,17 +1211,26 @@ impl FtpProvider {
         };
         let text = response.to_string();
         if response.status != Status::FileUnavailable {
-            return ProviderError::ServerError(Self::doing(operation, target, &text));
+            return ftp_failure_during(err, format!(" (while {operation} {target})"));
         }
         // A 550 on CWD is not only "it is not there": it is also what a server
         // sends for a directory you may not enter. Reading every one as
         // NotFound turns an inaccessible directory into a nonexistent one,
         // which is the mistake this change already made once on mkdir and had
         // corrected by a live server.
+        // Decided on the reply, reported without it (T8).
         if super::types::message_names_a_missing_path_for(&text, target) {
-            ProviderError::NotFound(Self::doing(operation, target, &text))
+            ProviderError::NotFound(Self::doing(
+                operation,
+                target,
+                "FTP status 550: no such folder",
+            ))
         } else {
-            ProviderError::InvalidPath(Self::doing(operation, target, &text))
+            ProviderError::InvalidPath(Self::doing(
+                operation,
+                target,
+                "FTP status 550: the server refused the folder",
+            ))
         }
     }
 
@@ -1272,8 +1279,15 @@ impl FtpProvider {
             return None;
         }
         let text = response.to_string();
-        super::types::message_names_a_missing_path_for(&text, path)
-            .then(|| ProviderError::NotFound(Self::doing(operation, path, &text)))
+        // Decided on the reply, reported without it (T8).
+        let code = response.status.code();
+        super::types::message_names_a_missing_path_for(&text, path).then(|| {
+            ProviderError::NotFound(Self::doing(
+                operation,
+                path,
+                format!("FTP status {code}: no such file or folder"),
+            ))
+        })
     }
 
     /// Classify a STOR failure instead of calling everything a transfer error.
@@ -1351,9 +1365,19 @@ impl FtpProvider {
                 response.status,
                 Status::FileUnavailable | Status::BadFilename
             ) {
-                let text = response.to_string();
-                return ProviderError::InvalidPath(Self::doing(operation, path, &text));
+                let code = response.status.code();
+                return ProviderError::InvalidPath(Self::doing(
+                    operation,
+                    path,
+                    format!("FTP status {code}: the server refused the name"),
+                ));
             }
+            // Any other refusal: its status, typed, with what we were doing,
+            // never the server's text (T8).
+            return ProviderError::FtpRefused {
+                code: response.status.code() as u16,
+                during: format!(" (while {operation} {path})"),
+            };
         }
         ProviderError::TransferFailed(Self::doing(operation, path, err))
     }
@@ -1370,7 +1394,7 @@ impl FtpProvider {
                 return ProviderError::InvalidPath(Self::doing(operation, path, io));
             }
         }
-        ProviderError::ServerError(err.to_string())
+        ftp_failure_during(&err, format!(" (while {operation} {path})"))
     }
 
     /// A remote path carrying CR or LF, refused before any command is sent.
@@ -1573,9 +1597,28 @@ impl FtpProvider {
         let stream = self.stream_mut()?;
         let size = stream.size(path).await.map_err(|e| {
             Self::classify_missing_path("reading size of", path, &e)
-                .unwrap_or_else(|| ProviderError::ServerError(e.to_string()))
+                .unwrap_or_else(|| ftp_failure(&e))
         })?;
         Ok(size as u64)
+    }
+}
+
+/// An FTP failure at the provider boundary (T8): a refused reply keeps only
+/// its status, typed ([`ProviderError::FtpRefused`]), never the server's text,
+/// which can hold anything (`425 ... HTTP 403`); any other failure keeps the
+/// client library's own description.
+fn ftp_failure(err: &FtpError) -> ProviderError {
+    ftp_failure_during(err, String::new())
+}
+
+/// [`ftp_failure`] saying what we were doing (`" (while deleting /a)"`).
+fn ftp_failure_during(err: &FtpError, during: String) -> ProviderError {
+    match err {
+        FtpError::UnexpectedResponse(reply) => ProviderError::FtpRefused {
+            code: reply.status.code() as u16,
+            during,
+        },
+        other => ProviderError::ServerError(other.to_string()),
     }
 }
 
@@ -1633,16 +1676,14 @@ impl FtpProvider {
         let mut outcome = self.stream_mut()?.pwd().await;
         if let Err(err) = &outcome {
             if self.closed_control_failure(err).await {
-                let failure = ProviderError::ServerError(err.to_string());
+                let failure = ftp_failure(err);
                 let saved = self.current_path.clone();
                 self.reconnect_after_data_error("PWD", &saved, &failure)
                     .await?;
                 outcome = self.stream_mut()?.pwd().await;
             }
         }
-        let path = outcome
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?
-            .replace('\\', "/");
+        let path = outcome.map_err(|e| ftp_failure(&e))?.replace('\\', "/");
         self.current_path = path.clone();
         Ok(path)
     }
@@ -1673,10 +1714,7 @@ impl FtpProvider {
     async fn cd_up_command(&mut self) -> Result<(), ProviderError> {
         self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
-        stream
-            .cdup()
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        stream.cdup().await.map_err(|e| ftp_failure(&e))?;
 
         self.current_path = stream
             .pwd()
@@ -1828,7 +1866,7 @@ impl StorageProvider for FtpProvider {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            .map_err(|e| ftp_failure(&e))?;
 
         // Navigate to initial path if specified.
         //
@@ -1878,7 +1916,7 @@ impl StorageProvider for FtpProvider {
         self.current_path = stream
             .pwd()
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?
+            .map_err(|e| ftp_failure(&e))?
             .replace('\\', "/");
 
         self.stream = Some(stream);
@@ -2299,7 +2337,7 @@ impl StorageProvider for FtpProvider {
                         Err(probe_failure) => Err(probe_failure),
                     }
                 }
-                Err(e) => Err(ProviderError::ServerError(e.to_string())),
+                Err(e) => Err(ftp_failure(&e)),
             }
         }
         .await;
@@ -2344,16 +2382,28 @@ impl StorageProvider for FtpProvider {
             let Err(error) = refused else {
                 return Ok(());
             };
+            // Read on the reply before it becomes a typed status (T8).
+            let says_not_empty = matches!(&error, FtpError::UnexpectedResponse(reply)
+                if reply_names_not_empty(&reply.to_string()));
             match Self::classify_command_refusal("rmdir", path, error) {
-                ProviderError::ServerError(text) if reply_names_not_empty(&text) => {
-                    Err(ProviderError::DirectoryNotEmpty(text))
+                ProviderError::ServerError(_) | ProviderError::FtpRefused { .. }
+                    if says_not_empty =>
+                {
+                    Err(ProviderError::DirectoryNotEmpty(format!(
+                        "{path} is not empty"
+                    )))
                 }
-                ProviderError::ServerError(text) => match self.list_for_delete(path).await {
-                    Ok(entries) if !entries.is_empty() => Err(ProviderError::DirectoryNotEmpty(
-                        format!("{text} ({path} holds {} entries)", entries.len()),
-                    )),
-                    _ => Err(ProviderError::ServerError(text)),
-                },
+                refusal @ (ProviderError::ServerError(_) | ProviderError::FtpRefused { .. }) => {
+                    match self.list_for_delete(path).await {
+                        Ok(entries) if !entries.is_empty() => {
+                            Err(ProviderError::DirectoryNotEmpty(format!(
+                                "{path} holds {} entries",
+                                entries.len()
+                            )))
+                        }
+                        _ => Err(refusal),
+                    }
+                }
                 other => Err(other),
             }
         }
@@ -2510,10 +2560,7 @@ impl StorageProvider for FtpProvider {
         let outcome: Result<(), ProviderError> = async {
             self.redial_if_a_reply_is_pending().await?;
             let stream = self.stream_mut()?;
-            stream
-                .noop()
-                .await
-                .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            stream.noop().await.map_err(|e| ftp_failure(&e))?;
             Ok(())
         }
         .await;
@@ -2911,10 +2958,11 @@ impl StorageProvider for FtpProvider {
             let opts = ftp_site::SiteOptions::default().with_settle(std::time::Duration::ZERO);
             match self.site_command(&args, &opts).await {
                 SiteOutcome::Replied { reply, .. } if (200..300).contains(&reply.code) => Ok(()),
-                SiteOutcome::Replied { reply, .. } => Err(ProviderError::ServerError(format!(
-                    "the server refused SITE CHMOD on {path}: {}",
-                    reply.lines.join(" ")
-                ))),
+                // The status alone, never the reply's text (T8).
+                SiteOutcome::Replied { reply, .. } => Err(ProviderError::FtpRefused {
+                    code: reply.code,
+                    during: format!(" (while changing the mode of {path})"),
+                }),
                 SiteOutcome::NotSent(NotSentReason::NotConnected) => {
                     Err(ProviderError::NotConnected)
                 }
@@ -4586,6 +4634,13 @@ impl FtpProvider {
             ProviderError::TransferFailed(_) => {
                 ProviderError::TransferFailed(Self::doing(operation, &at_offset, reply))
             }
+            // A refused offset: retryable, said as a refused restart, and its
+            // status, never the server's text (T8).
+            ProviderError::FtpRefused { code, .. } => ProviderError::TransferFailed(Self::doing(
+                operation,
+                &at_offset,
+                format!("FTP status {code}: restart refused"),
+            )),
             classified => classified,
         }
     }
@@ -5166,11 +5221,7 @@ impl FtpProvider {
                     self.stream_mut()?
                         .custom_command(format!("OPTS HASH {label}"), &[Status::CommandOk])
                         .await
-                        .map_err(|e| {
-                            ProviderError::ServerError(format!(
-                                "The server refused OPTS HASH {label}: {e}"
-                            ))
-                        })?;
+                        .map_err(|e| ftp_failure(&e))?;
                     self.hash.hash_selected = Some(label);
                 }
                 let response = self
@@ -5179,10 +5230,7 @@ impl FtpProvider {
                     .await
                     .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
                 let (key, hex) = parse_hash_reply(&response.body).ok_or_else(|| {
-                    ProviderError::ServerError(format!(
-                        "Unrecognised HASH reply: {}",
-                        String::from_utf8_lossy(&response.body).trim()
-                    ))
+                    ProviderError::ServerError("Unrecognised HASH reply".to_string())
                 })?;
                 result.insert(key, hex);
             }
@@ -5200,10 +5248,7 @@ impl FtpProvider {
                     .await
                     .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
                 let hex = parse_legacy_reply(&response.body).ok_or_else(|| {
-                    ProviderError::ServerError(format!(
-                        "Unrecognised {verb} reply: {}",
-                        String::from_utf8_lossy(&response.body).trim()
-                    ))
+                    ProviderError::ServerError(format!("Unrecognised {verb} reply"))
                 })?;
                 result.insert(key.to_string(), hex);
             }
@@ -6269,6 +6314,47 @@ pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// T8: an FTP refusal crosses the provider boundary as its status,
+    /// typed, never as the server's text. A 425 whose text holds `HTTP 403`
+    /// (an upload's data connection) stays a 425 at the IPC boundary:
+    /// retryable, not a permission refusal; and the text is gone.
+    #[test]
+    fn an_ftp_refusal_crosses_the_boundary_as_its_status_not_its_text() {
+        let reply = |status, body: &str| {
+            FtpError::UnexpectedResponse(suppaftp::types::Response::new(
+                status,
+                body.as_bytes().to_vec(),
+            ))
+        };
+        let refused = FtpProvider::map_store_error(
+            "/up.bin",
+            reply(
+                Status::CannotOpenDataConnection,
+                "425 Cannot open data connection: upstream said HTTP 403 Forbidden",
+            ),
+        );
+        assert!(
+            matches!(refused, ProviderError::FtpRefused { code: 425, .. }),
+            "{refused:?}"
+        );
+        assert!(!refused.to_string().contains("403"), "{refused}");
+        let rendered =
+            crate::sync::ipc_error_render("upload_file", &crate::sync::IpcError::from(refused));
+        assert!(rendered.contains("(FTP 425)"), "{rendered}");
+        assert!(!rendered.contains("permission_denied"), "{rendered}");
+        assert!(rendered.ends_with(":true]"), "retryable: {rendered}");
+        // A command refusal too, and the stale-session check still knows 425.
+        let command = FtpProvider::classify_command_refusal(
+            "delete",
+            "/a",
+            reply(Status::CannotOpenDataConnection, "425 HTTP 403"),
+        );
+        assert!(matches!(
+            command,
+            ProviderError::FtpRefused { code: 425, .. }
+        ));
+        assert!(FtpProvider::is_stale_data_connection_error(&command));
+    }
 
     use super::*;
 
@@ -6345,9 +6431,16 @@ mod tests {
             // without touching the test; it is also blind to the case a reviewer
             // would most want flagged, a change that reclassifies the failure
             // into a third thing nobody considered.
+            // T8: the refusal keeps its status, typed, and what we were
+            // doing; the server's text is gone.
             assert!(
-                matches!(err, ProviderError::TransferFailed(_)),
-                "{code} {body} must remain TransferFailed: {err:?}"
+                matches!(err, ProviderError::FtpRefused { code: c, .. } if u32::from(c) == code),
+                "{code} {body} must be its typed status: {err:?}"
+            );
+            let rendered = err.to_string();
+            assert!(
+                rendered.contains("/srv/data/report.csv") && !rendered.contains(body),
+                "{rendered}"
             );
         }
 
@@ -6402,14 +6495,13 @@ mod tests {
             (
                 421,
                 "421 Service not available, closing control connection",
-                "ServerError",
+                "FtpRefused",
             ),
-            (450, "450 Requested file action not taken", "ServerError"),
-            // Permanent, but about the session and not the path. Kept as
-            // ServerError on purpose: a wrong retry costs two round trips, a
-            // false statement about the path costs the reader's trust.
-            (530, "530 Not logged in", "ServerError"),
-            (500, "500 Unknown command", "ServerError"),
+            (450, "450 Requested file action not taken", "FtpRefused"),
+            // Permanent, but about the session and not the path. Its typed
+            // status (T8), never a statement about the path.
+            (530, "530 Not logged in", "FtpRefused"),
+            (500, "500 Unknown command", "FtpRefused"),
         ];
         for (code, body, expected) in cases {
             let got =
@@ -6417,20 +6509,25 @@ mod tests {
             let actual = match got {
                 ProviderError::NotFound(_) => "NotFound",
                 ProviderError::InvalidPath(_) => "InvalidPath",
-                ProviderError::ServerError(_) => "ServerError",
+                ProviderError::FtpRefused { .. } => "FtpRefused",
                 ref other => panic!("{code}: unexpected variant {other:?}"),
             };
             assert_eq!(
                 actual, *expected,
                 "CWD {code} ({body:?}) classified as {actual}, expected {expected}"
             );
-            // Whatever the verdict, the server's own words survive it. A
-            // classification that replaces the reply with a sentence of ours
-            // leaves the user with our guess and no way back to the fact.
+            // Whatever the verdict, the status and the target survive it, and
+            // the server's text does not (T8): it can hold anything, and the
+            // classifier must never read a status out of it.
             let rendered = got.to_string();
             assert!(
-                rendered.contains(body) && rendered.contains("/target"),
-                "CWD {code}: the reply or the target was dropped from {rendered:?}"
+                rendered.contains(&code.to_string()) && rendered.contains("/target"),
+                "CWD {code}: the status or the target was dropped from {rendered:?}"
+            );
+            let words = body.split_once(' ').map_or(*body, |(_, words)| words);
+            assert!(
+                !rendered.contains(words),
+                "CWD {code}: the reply's text is in {rendered:?}"
             );
         }
     }
@@ -8202,9 +8299,10 @@ mod rename_contract_tests {
             },
         )
         .await;
+        // A denial is the typed refusal (T8), never a missing path.
         assert!(matches!(
             denied.list("/private").await,
-            Err(ProviderError::ServerError(_))
+            Err(ProviderError::FtpRefused { .. })
         ));
     }
 

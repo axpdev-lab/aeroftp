@@ -321,8 +321,15 @@ pub(crate) async fn create_cloud_connection(
     let account =
         crate::credential_store::off_async_worker(crate::user_partitions::gui_account_snapshot)?;
     // The reads below see the captured account (`recheck_connecting_account`).
+    // No active account when it began: the legacy owner only, never an
+    // account activated while it reads (T9).
+    let reads = Some(
+        account
+            .user
+            .unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT),
+    );
     let mut opened = CONNECTING_ACCOUNT
-        .scope(account.clone(), open_cloud_connection(config, account.user))
+        .scope(account.clone(), open_cloud_connection(config, reads))
         .await?;
     if let Err(error) = crate::credential_store::off_async_worker(|| account_unchanged(&account)) {
         let _ = opened.provider.disconnect().await;
@@ -330,6 +337,14 @@ pub(crate) async fn create_cloud_connection(
     }
     opened.account = Some(account);
     Ok(opened)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A test's action between the profile read and the credential read of
+    /// `create_via_factory` (an account switch there, T9).
+    static BETWEEN_PROFILE_AND_CREDENTIAL_READS: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        std::cell::RefCell::new(None);
 }
 
 tokio::task_local! {
@@ -646,6 +661,12 @@ async fn create_via_factory(
     // began with, so a switch between the two reads cannot pair one
     // account's host with another's password.
     let profile = saved_profile(&store, config, account)?;
+    #[cfg(test)]
+    BETWEEN_PROFILE_AND_CREDENTIAL_READS.with(|hook| {
+        if let Some(hook) = hook.borrow_mut().take() {
+            hook();
+        }
+    });
     let mut creds = match &profile {
         Some(profile) => profile_creds(&store, profile, account)?,
         // MUV-3: the per-user store first, then the legacy (dual-written) vault.
@@ -1601,6 +1622,151 @@ mod tests {
         assert!(error.contains("active account changed"), "{error}");
         runtime.block_on(async { tokio::time::sleep(std::time::Duration::from_millis(50)).await });
         assert_eq!(first_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(second_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        // T9 (2): the switch lands DURING the production call, between its
+        // profile read and its credential read. Neither host is contacted.
+        partitions::set_active_user(&conn, first.id).expect("back to first");
+        let account = partitions::gui_account_snapshot().expect("capture account");
+        let switch_to = second.id;
+        BETWEEN_PROFILE_AND_CREDENTIAL_READS.with(|hook| {
+            *hook.borrow_mut() = Some(Box::new(move || {
+                let conn = partitions::open_or_init_cli().expect("partition DB");
+                partitions::set_active_user(&conn, switch_to).expect("switch during the call");
+            }));
+        });
+        let refused = runtime.block_on(CONNECTING_ACCOUNT.scope(
+            account.clone(),
+            create_via_factory(&config, ProviderType::Ftp, account.user),
+        ));
+        assert!(
+            BETWEEN_PROFILE_AND_CREDENTIAL_READS.with(|hook| hook.borrow().is_none()),
+            "the switch ran"
+        );
+        let error = refused
+            .err()
+            .expect("refused across the switch during the call");
+        assert!(error.contains("active account changed"), "{error}");
+        runtime.block_on(async { tokio::time::sleep(std::time::Duration::from_millis(50)).await });
+        assert_eq!(first_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(second_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        // T9 (1): a connection that began with no account reads as the legacy
+        // owner only (`LEGACY_ONLY_ACCOUNT`), whatever is active by then. With
+        // the second account active and holding its own profile, credential
+        // and token, every entry point given the reserved id answers none of
+        // its data and writes none of it; an entry point not taught about the
+        // id finds no account and refuses, never reading the active one.
+        let legacy = partitions::LEGACY_ONLY_ACCOUNT;
+        partitions::store_credential_for_user(
+            &store,
+            second.id,
+            "oauth_second",
+            "oauth",
+            "second-token",
+        )
+        .expect("the second account's token");
+        let second_before = (
+            partitions::list_server_profiles_for(&conn, &root_key, second.id).expect("profiles"),
+            partitions::get_user_credential_for(
+                &conn,
+                &root_key,
+                second.id,
+                "server_shared-profile",
+            )
+            .expect("credential")
+            .map(|secret| secret.to_string()),
+            partitions::get_user_credential_for(&conn, &root_key, second.id, "oauth_second")
+                .expect("token")
+                .map(|secret| secret.to_string()),
+        );
+        assert_eq!(second_before.1.as_deref(), Some("second-password"));
+        // Taught: the legacy stores.
+        let legacy_profiles =
+            partitions::mcp_list_server_profiles(&store, Some(legacy)).unwrap_or_default();
+        assert!(
+            legacy_profiles.iter().all(|p| p["port"] != second_port),
+            "{legacy_profiles:?}"
+        );
+        for read in [
+            partitions::resolve_credential_for_user(&store, legacy, "server_shared-profile"),
+            partitions::resolve_credential_for_user_owner_aware(
+                &store,
+                legacy,
+                "server_shared-profile",
+            ),
+            partitions::resolve_credential_for_user(&store, legacy, "oauth_second"),
+        ] {
+            let value = read.unwrap_or_default().map(|secret| secret.to_string());
+            assert_ne!(value.as_deref(), Some("second-password"));
+            assert_ne!(value.as_deref(), Some("second-token"));
+        }
+        assert_eq!(
+            partitions::credential_owner_and_fallback(Some(legacy)).unwrap(),
+            (None, true)
+        );
+        assert_eq!(
+            partitions::private_token_user(Some(legacy), "oauth").unwrap(),
+            None
+        );
+        assert!(partitions::mirror_credential_for_user_typed(
+            &store,
+            legacy,
+            "oauth_second",
+            "oauth",
+            "mirrored"
+        )
+        .is_ok());
+        // Not taught: no account with that id, a refusal.
+        assert!(partitions::get_user_credential_for(
+            &conn,
+            &root_key,
+            legacy,
+            "server_shared-profile"
+        )
+        .map_or(true, |found| found.is_none()));
+        assert!(
+            partitions::list_server_profiles_for(&conn, &root_key, legacy)
+                .map_or(true, |found| found.is_empty())
+        );
+        assert!(partitions::store_credential_for_user(
+            &store,
+            legacy,
+            "oauth_second",
+            "oauth",
+            "written"
+        )
+        .is_err());
+        assert!(partitions::ensure_credential_user_unlocked(legacy).is_err());
+        assert!(partitions::snapshot_credential_for_user(&store, legacy, "oauth_second").is_err());
+        assert!(partitions::list_user_credential_ids_for(&conn, legacy)
+            .map_or(true, |ids| ids.is_empty()));
+        assert!(
+            partitions::get_user_setting_for(&conn, &root_key, legacy, "sync")
+                .map_or(true, |found| found.is_none())
+        );
+        // The second account's data is as it was.
+        let second_after = (
+            partitions::list_server_profiles_for(&conn, &root_key, second.id).expect("profiles"),
+            partitions::get_user_credential_for(
+                &conn,
+                &root_key,
+                second.id,
+                "server_shared-profile",
+            )
+            .expect("credential")
+            .map(|secret| secret.to_string()),
+            partitions::get_user_credential_for(&conn, &root_key, second.id, "oauth_second")
+                .expect("token")
+                .map(|secret| secret.to_string()),
+        );
+        assert_eq!(second_after, second_before);
+        // The production factory path, begun with no account: nothing of the
+        // active second account is read, so its host is not contacted.
+        let refused =
+            runtime.block_on(create_via_factory(&config, ProviderType::Ftp, Some(legacy)));
+        assert!(refused.is_err());
+        runtime.block_on(async { tokio::time::sleep(std::time::Duration::from_millis(50)).await });
         assert_eq!(second_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 
         drop(runtime);

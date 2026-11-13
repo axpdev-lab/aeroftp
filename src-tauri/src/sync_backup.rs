@@ -396,6 +396,20 @@ impl ArchiveRemote for ProviderRemote<'_> {
     }
 }
 
+/// A failure of the GUI's FTP session at the archive boundary: a refused
+/// reply keeps its status, typed (`ProviderError::FtpRefused`, then
+/// `IpcError::FtpStatus` at the page), never as text the classifier would
+/// read again (T8); anything else keeps the session's safe text.
+fn legacy_ftp_failure(error: &anyhow::Error) -> ProviderError {
+    match error.downcast_ref::<crate::ftp::FtpManagerError>() {
+        Some(crate::ftp::FtpManagerError::Refused { code }) => ProviderError::FtpRefused {
+            code: *code,
+            during: String::new(),
+        },
+        _ => ProviderError::ServerError(error.to_string()),
+    }
+}
+
 /// The GUI's FTP session. RNFR/RNTO takes full paths, so it moves across
 /// folders; on Unix servers it also replaces an occupied destination, which
 /// is why the archive picks a free name before it moves.
@@ -408,19 +422,15 @@ impl ArchiveRemote for crate::ftp::FtpManager {
         "FTP".to_string()
     }
     async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        self.exists(path)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
+        self.exists(path).await.map_err(|e| legacy_ftp_failure(&e))
     }
     async fn make_dir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.mkdir(path)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
+        self.mkdir(path).await.map_err(|e| legacy_ftp_failure(&e))
     }
     async fn move_path(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.rename(from, to)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
+            .map_err(|e| legacy_ftp_failure(&e))
     }
 }
 
@@ -522,6 +532,33 @@ pub async fn archive_remote_on<R: ArchiveRemote + ?Sized>(
 
 #[cfg(test)]
 mod tests {
+    /// T8: the legacy FTP session's 553 reaches the IPC boundary as its
+    /// status, typed: not retryable, not text the classifier reads again.
+    #[test]
+    fn a_legacy_ftp_refusal_keeps_its_status_at_the_ipc_boundary() {
+        let refused: anyhow::Error = crate::ftp::FtpManagerError::Refused { code: 553 }.into();
+        let error = super::legacy_ftp_failure(&refused);
+        assert!(
+            matches!(
+                error,
+                crate::providers::ProviderError::FtpRefused { code: 553, .. }
+            ),
+            "{error:?}"
+        );
+        let rendered = crate::sync::ipc_error_render(
+            "sync_backup_archive_remote",
+            &crate::sync::IpcError::from(error),
+        );
+        assert!(rendered.contains("(FTP 553)"), "{rendered}");
+        assert!(rendered.ends_with(":false]"), "not retryable: {rendered}");
+        let other: anyhow::Error =
+            crate::ftp::FtpManagerError::OperationFailed("timed out".into()).into();
+        assert!(matches!(
+            super::legacy_ftp_failure(&other),
+            crate::providers::ProviderError::ServerError(_)
+        ));
+    }
+
     #[test]
     fn archive_receipt_rejects_wrong_root_name_and_stamp() {
         let dir = super::BackupDir::parse(".versions").unwrap();

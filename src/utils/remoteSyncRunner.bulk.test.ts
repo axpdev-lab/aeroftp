@@ -145,6 +145,16 @@ describe('remoteSyncRunner on a native bulk', () => {
         const failedSaved = saved.filter((journal) => journal.entries.some((e) => e.status === 'failed'));
         expect(failedSaved.length).toBeGreaterThan(0);
         expect(failedSaved.every((journal) => journal.resume_safe === false)).toBe(true);
+        // T3: the destination is edited after the run (the failed file may
+        // have landed and been changed since). Resume from the saved journal
+        // is refused and dispatches no replacement transfer.
+        const journal = failedSaved[failedSaved.length - 1];
+        const dispatched = () => h.of('provider_sync_transfer_bulk').length + h.of('provider_upload_file').length
+            + h.of('provider_download_file').length;
+        const before = dispatched();
+        await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...h.deps, resumeJournal: journal }))
+            .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+        expect(dispatched()).toBe(before);
     });
 
     it('takes a failed file as final and sends a file the bulk did not take on its own', async () => {

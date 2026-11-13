@@ -505,6 +505,20 @@ impl ProviderState {
         if oauth_client.as_deref() == Some(UNRECORDED_TOKEN_APP) {
             return Ok(this_connection());
         }
+        // A WebDAV or S3 bridge: its endpoint and credentials do not prove
+        // the account upstream, which can change behind them between two
+        // connections; no baseline of one may serve the next (T4).
+        if config.as_ref().is_some_and(|config| {
+            matches!(
+                config.provider_type,
+                ProviderType::WebDav | ProviderType::S3
+            ) && crate::providers::webdav::upstream_account_unverified(
+                config.extra.get("provider_id").map(String::as_str),
+                &config.host,
+            )
+        }) {
+            return Ok(this_connection());
+        }
         Ok(crate::cloud_provider_factory::gui_target_identity(
             config.as_ref(),
             provider.provider_type(),
@@ -23770,6 +23784,86 @@ mod restored_transfer_owner_tests {
     /// connections on one account (two "app folder" apps) never share a
     /// baseline, so neither takes the other's history as deletion authority.
     /// A recorded app keeps one identity across reconnects.
+    /// T4: a WebDAV or S3 bridge (a Filen Desktop preset, any loopback
+    /// endpoint) can change its upstream account behind the same endpoint
+    /// and credentials. Each connection to it is a target of its own: the
+    /// index of the first gives the second no baseline, so a Compare after
+    /// the account change plans no deletion from it. A remote server keeps
+    /// one identity across reconnects.
+    #[tokio::test]
+    async fn a_bridge_account_change_across_reconnects_reuses_no_baseline() {
+        let config = |host: &str, provider_type, provider_id: Option<&str>| {
+            let mut extra = std::collections::HashMap::new();
+            if let Some(id) = provider_id {
+                extra.insert("provider_id".to_string(), id.to_string());
+            }
+            crate::providers::ProviderConfig {
+                name: "bridge".into(),
+                provider_type,
+                host: host.into(),
+                port: None,
+                username: Some("bridge-user".into()),
+                password: Some("bridge-pass".into()),
+                initial_path: Some("/".into()),
+                extra,
+            }
+        };
+        let state = ProviderState::new();
+        let connect = |config: crate::providers::ProviderConfig| {
+            let state = &state;
+            async move {
+                install_connected_provider_with_config(
+                    state,
+                    Box::new(crate::providers::probe_fake::ProbeFake::new()),
+                    Some("p".into()),
+                    Some(config),
+                    Duration::from_secs(10),
+                )
+                .await
+                .unwrap();
+                state.gui_target_identity(true).await.unwrap()
+            }
+        };
+        for bridge in [
+            config(
+                "http://127.0.0.1:1900/",
+                ProviderType::WebDav,
+                Some("filen-desktop-webdav"),
+            ),
+            config("http://localhost:8080/dav", ProviderType::WebDav, None),
+            config("127.0.0.1:1700", ProviderType::S3, Some("filen-desktop-s3")),
+            config("https://local.webdav.filen.io/", ProviderType::WebDav, None),
+        ] {
+            // The upstream account changes between the two connections.
+            let first = connect(bridge.clone()).await;
+            let second = connect(bridge.clone()).await;
+            assert!(
+                first.starts_with("target-v1:connection:"),
+                "{} {first}",
+                bridge.host
+            );
+            assert_ne!(first, second, "{}", bridge.host);
+            let mut index = crate::sync::SyncIndex::new("/local".into(), "/remote".into());
+            index.target_identity = Some(first);
+            index.files.insert(
+                "x.txt".into(),
+                crate::sync::SyncIndexEntry {
+                    size: 7,
+                    modified: None,
+                    is_dir: false,
+                    uploaded_at: None,
+                },
+            );
+            assert!(
+                crate::sync::bind_index_to_target(Some(index), &second).is_none(),
+                "{}: no baseline from the previous connection",
+                bridge.host
+            );
+        }
+        let server = config("https://dav.example.com/", ProviderType::WebDav, None);
+        assert_eq!(connect(server.clone()).await, connect(server).await);
+    }
+
     #[tokio::test]
     async fn tokens_of_an_unknown_app_get_no_identity_another_connection_shares() {
         let config = crate::providers::ProviderConfig {

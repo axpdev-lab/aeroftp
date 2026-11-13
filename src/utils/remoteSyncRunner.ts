@@ -702,12 +702,21 @@ const runSync = async (
         filePath: string,
     ): Promise<TransferOutcome> => {
         const maxAttempts = Math.max(1, config.retryPolicy.max_retries);
+        // A native timeout or network error can come after the request was
+        // sent: the write may have landed, its reply lost. A transfer that
+        // ends without success after one is uncertain, like the JS timeout
+        // above, so Resume compares before writing again (T14).
+        let writeUncertain = false;
+        const failed = (outcome: TransferOutcome): TransferOutcome => {
+            if (writeUncertain) journal.resume_safe = false;
+            return outcome;
+        };
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             // Metadata/backup preparation can await after the main-loop gate.
             // Recheck immediately before every native attempt, including the first.
             if (isCancelled()) {
                 runCancelled = true;
-                return { success: false, attempts: attempt - 1 };
+                return failed({ success: false, attempts: attempt - 1 });
             }
             try {
                 if (config.retryPolicy.timeout_ms > 0) {
@@ -736,12 +745,13 @@ const runSync = async (
                         kind: 'unknown', message: errorText(err), retryable: false, file_path: filePath,
                     } };
                 }
-                if (targetError) return { success: false, attempts: attempt, error: {
+                if (targetError) return failed({ success: false, attempts: attempt, error: {
                     kind: 'unknown', message: errorText(targetError), retryable: false, file_path: filePath,
-                } };
+                } });
                 const rawMsg = (err as { toString?: () => string })?.toString?.()
                     || 'Unknown error';
                 const errorInfo = await classifyRunError(invoke, rawMsg, filePath);
+                if (errorInfo.kind === 'timeout' || errorInfo.kind === 'network') writeUncertain = true;
 
                 if (errorInfo.retryable && attempt < maxAttempts) {
                     setStatus(filePath, 'retrying');
@@ -751,10 +761,10 @@ const runSync = async (
                     await delay(getRetryDelay(attempt, config.retryPolicy));
                     continue;
                 }
-                return { success: false, attempts: attempt, error: errorInfo };
+                return failed({ success: false, attempts: attempt, error: errorInfo });
             }
         }
-        return { success: false, attempts: maxAttempts };
+        return failed({ success: false, attempts: maxAttempts });
     };
 
     // ── Post-transfer verification for downloads ───────────────────────────

@@ -695,7 +695,18 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       } else if (data.event_type === 'file_skip') {
         // A preflight keep policy or a native create-only server collision skipped the file.
         const displayName = resolveTransferDisplayPath(data, optRef.current.currentLocalPath, optRef.current.currentRemotePath);
-        const trackedLog = findTrackedEntry(pendingFileLogIds.current, data.transfer_id, data.path, data.filename);
+        // A folder's or a batch's id names the whole transfer: a skipped child
+        // (a symlink, an occupied name) is found only by its own path, never
+        // as another child's entry or the folder's row, and leaves the row,
+        // the mapping and the toast to the rest of the transfer (T10).
+        const aggregate = data.transfer_id.includes('-folder-') || data.transfer_id.includes('-files-');
+        const findSkipped = <T,>(map: Map<string, T>) => {
+          if (!aggregate) return findTrackedEntry(map, data.transfer_id, data.path, data.filename);
+          const key = `${data.transfer_id}:${data.path || data.filename || ''}`;
+          const value = map.get(key);
+          return value === undefined ? null : { key, value };
+        };
+        const trackedLog = findSkipped(pendingFileLogIds.current);
         if (trackedLog) {
           activityLog.updateEntry(trackedLog.value, { status: 'success', message: t('activity.file_skipped', { filename: displayName }) });
           pendingFileLogIds.current.delete(trackedLog.key);
@@ -706,7 +717,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // A native create-only upload can start before the server decides to
         // skip it. Settle that row rather than creating a second completed row
         // and leaving the original transfer running.
-        const trackedQueue = findTrackedEntry(transferIdToQueueId.current, data.transfer_id, data.path, data.filename);
+        const trackedQueue = findSkipped(transferIdToQueueId.current);
         if (trackedQueue) {
           // Settled directly, held or not: a hold waits for a privacy update
           // owed to a file that was written, and a skipped file wrote nothing.
@@ -717,11 +728,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           const skipQueueId = transferQueue.addItem(data.filename, data.path || '', 0, skipDirection);
           completeQueueRow(skipQueueId);
         }
-        transferIdToQueueId.current.delete(data.transfer_id);
-        const existingLane = toastLanesRef.current.get(data.transfer_id);
-        if (existingLane) {
-          toastLanesRef.current.set(data.transfer_id, { ...existingLane, percentage: 100, speed_bps: 0, eta_seconds: 0, state: 'completed' });
-          scheduleLaneCleanup(data.transfer_id);
+        // Only a single file's skip ends its own mapping and toast.
+        if (!aggregate) {
+          transferIdToQueueId.current.delete(data.transfer_id);
+          const existingLane = toastLanesRef.current.get(data.transfer_id);
+          if (existingLane) {
+            toastLanesRef.current.set(data.transfer_id, { ...existingLane, percentage: 100, speed_bps: 0, eta_seconds: 0, state: 'completed' });
+            scheduleLaneCleanup(data.transfer_id);
+          }
         }
         emitToastState();
       } else if (data.event_type === 'progress' && data.progress) {

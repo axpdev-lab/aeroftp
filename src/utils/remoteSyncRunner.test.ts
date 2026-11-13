@@ -1283,6 +1283,27 @@ describe('remoteSyncRunner: journal kept on failures', () => {
         expect(calls.some((c) => c.cmd === 'delete_sync_journal_cmd')).toBe(false);
     });
 
+    // T14: a native timeout or network error can follow a write that landed
+    // (its reply lost). The journal then requires a comparison before Resume
+    // writes again; a definite refusal leaves it resumable.
+    it('requires a comparison before Resume after a native outcome that leaves the write uncertain', async () => {
+        for (const [kind, uncertain] of [['timeout', true], ['network', true], ['permission_denied', false]] as const) {
+            const { invoke, calls } = makeInvoke({
+                upload_file: () => { throw new Error('the reply did not come back'); },
+                classify_transfer_error: (args) => ({
+                    kind,
+                    message: String(args?.rawError),
+                    retryable: false,
+                    file_path: String(args?.filePath),
+                } satisfies SyncErrorInfo),
+            });
+            await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));
+            const saved = lastSavedJournal(calls);
+            expect(saved?.entries[0]?.status, kind).toBe('failed');
+            expect(saved?.resume_safe, kind).toBe(!uncertain);
+        }
+    });
+
     it('keeps the journal resumable when one file succeeds and another fails', async () => {
         const { invoke, calls } = makeInvoke({
             upload_file: (_args, idx) => {

@@ -449,6 +449,18 @@ fn redact_url_userinfo(text: &str) -> String {
             if matches!(b, b'/' | b'?' | b'#') || is_space(b) || (b == b'"' && !escaped) {
                 break;
             }
+            // An escaped quote that closes a JSON value inside a string
+            // (`\",\"b\"`, `\"}`, `\"]`, `\":`, a space, the end) ends the
+            // authority; one followed by anything else is part of the value (T11).
+            if b == b'\\'
+                && !escaped
+                && bytes.get(k + 1) == Some(&b'"')
+                && bytes
+                    .get(k + 2)
+                    .is_none_or(|&next| matches!(next, b',' | b'}' | b']' | b':') || is_space(next))
+            {
+                break;
+            }
             if b == b'@' {
                 last_at = Some(k);
             }

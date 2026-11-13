@@ -674,6 +674,36 @@ fn body_cut_short(error: &reqwest::Error, received: u64, announced: u64) -> Stri
 
 /// #958: the Filen Desktop bridge never answers `Depth: infinity`, so asking
 /// it cost every used-storage scan the whole header cap.
+/// Whether the account behind a WebDAV or S3 endpoint cannot be verified from
+/// the connection: a local bridge (Filen Desktop, MEGAcmd, OpenDrive Desktop,
+/// by preset) or any loopback endpoint, which can be a hand-configured bridge.
+/// Its endpoint and credentials are the bridge's, and the account upstream
+/// can change behind them. Such a connection owns no stable identity: no sync
+/// owner, and a GUI target of this connection only (T4). One rule for both.
+pub(crate) fn upstream_account_unverified(provider_id: Option<&str>, endpoint: &str) -> bool {
+    let bridge = provider_id.is_some_and(|id| {
+        crate::local_bridge::bridge_kind_for_provider_id(id).is_some()
+            || matches!(id, "filen" | "opendrive-desktop")
+    });
+    // An endpoint saved without a scheme (`127.0.0.1:4566`) is read as one.
+    let url = url::Url::parse(endpoint)
+        .ok()
+        .filter(|url| url.host_str().is_some())
+        .or_else(|| url::Url::parse(&format!("http://{endpoint}")).ok());
+    let local = url
+        .as_ref()
+        .and_then(url::Url::host_str)
+        .is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+                || host.ends_with(".filen.io") && host.starts_with("local.")
+        });
+    bridge || local
+}
+
 fn infinity_refused_from_the_start(provider_id: Option<&str>) -> bool {
     provider_id == Some("filen-desktop-webdav")
 }
@@ -3915,22 +3945,7 @@ impl NextcloudMultipartHandle {
 impl StorageProvider for WebDavProvider {
     fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
         use secrecy::ExposeSecret;
-        let bridge = self.config.provider_id.as_deref().is_some_and(|id| {
-            crate::local_bridge::bridge_kind_for_provider_id(id).is_some()
-                || matches!(id, "filen" | "opendrive-desktop")
-        });
-        // A generic loopback URL can be a hand-configured external bridge.
-        let local = url::Url::parse(&self.config.url).ok().is_some_and(|url| {
-            url.host_str().is_some_and(|host| {
-                host.eq_ignore_ascii_case("localhost")
-                    || host
-                        .trim_matches(['[', ']'])
-                        .parse::<std::net::IpAddr>()
-                        .is_ok_and(|ip| ip.is_loopback())
-                    || host.ends_with(".filen.io") && host.starts_with("local.")
-            })
-        });
-        if bridge || local {
+        if upstream_account_unverified(self.config.provider_id.as_deref(), &self.config.url) {
             return Ok(None);
         }
         serde_json::to_string(&(

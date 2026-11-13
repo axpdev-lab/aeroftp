@@ -392,5 +392,15 @@
     "name": "url password after a url without userinfo in an escaped json string",
     "input": "{\\\"a\\\":\\\"ftp://mirror.example\\\",\\\"b\\\":\\\"sftp://bob:s3cret@host/x\\\"}",
     "expected": "{\\\"a\\\":\\\"ftp://mirror.example\\\",\\\"b\\\":\\\"sftp://***REDACTED***@host/x\\\"}"
+  },
+  {
+    "name": "a url without userinfo in an escaped json string keeps the next field",
+    "input": "{\\\"a\\\":\\\"https://host:443\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"a\\\":\\\"https://host:443\\\",\\\"b\\\":\\\"x@y\\\"}"
+  },
+  {
+    "name": "url password in an escaped json string ends at its field",
+    "input": "{\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}"
   }
 ]

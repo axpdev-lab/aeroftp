@@ -190,6 +190,10 @@ impl TransferError {
 
         let kind = match err {
             ProviderError::TargetChanged => TransferErrorKind::TargetChanged,
+            // The status alone is classified (`during` names our path).
+            ProviderError::FtpRefused { code, .. } => {
+                classify_text_body(&format!("FTP status {code}: command rejected"))
+            }
             ProviderError::Timeout => TransferErrorKind::Timeout,
             ProviderError::Cancelled => TransferErrorKind::Cancelled,
             ProviderError::NotConnected => TransferErrorKind::NotConnected,
@@ -406,22 +410,25 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
 /// Nor `Cancelled`: a cancellation is the typed `ProviderError::Cancelled` or
 /// the run's own token, never a server's sentence that says "cancelled".
 fn classify_provider_text(raw: &str) -> TransferErrorKind {
-    match classify_text_without_owner_marker(crate::providers::types::without_unclassified_items(
-        raw,
-    )) {
-        TransferErrorKind::Cancelled => TransferErrorKind::Unknown,
-        kind => kind,
-    }
+    // Text decides nothing about a cancellation (only the typed one does),
+    // and does not hide the rest either: `HTTP 403: Transfer cancelled` is a
+    // refusal, classified as one (T12).
+    classify_text_body(crate::providers::types::without_unclassified_items(raw))
 }
 
 /// The taxonomy shared by both entry points, on text already cut at the
 /// unclassified-item marker.
 fn classify_text_without_owner_marker(raw: &str) -> TransferErrorKind {
-    let lower = raw.to_lowercase();
-
-    if message_names_a_cancellation(&lower) {
+    if message_names_a_cancellation(&raw.to_lowercase()) {
         return TransferErrorKind::Cancelled;
     }
+    classify_text_body(raw)
+}
+
+/// Everything but a cancellation.
+fn classify_text_body(raw: &str) -> TransferErrorKind {
+    let lower = raw.to_lowercase();
+
     if lower.contains("503") || lower.contains("service unavailable") {
         return TransferErrorKind::ServiceUnavailable;
     }
@@ -614,6 +621,29 @@ mod tests {
             TransferError::from_message("404 not found").kind,
             TransferErrorKind::NotFound
         );
+        assert_eq!(
+            TransferError::from_message("Transfer cancelled by user").kind,
+            TransferErrorKind::Cancelled
+        );
+    }
+
+    /// T12: a provider's text that mentions a cancellation is classified by
+    /// the rest of it: the refusal stays a refusal, not retried; a text that
+    /// only says "cancelled" is Unknown, never a cancellation.
+    #[test]
+    fn a_cancellation_word_in_provider_text_hides_nothing() {
+        let refused = TransferError::from_provider(&ProviderError::ServerError(
+            "HTTP 403: Transfer cancelled".into(),
+        ));
+        assert_eq!(refused.kind, TransferErrorKind::PermissionDenied);
+        assert_eq!(refused.retry, RetryDirective::Never);
+        let busy = TransferError::from_provider(&ProviderError::ServerError(
+            "503 Service Unavailable: upload cancelled".into(),
+        ));
+        assert_eq!(busy.kind, TransferErrorKind::ServiceUnavailable);
+        assert_ne!(busy.retry, RetryDirective::Never);
+        let only = TransferError::from_untrusted_text("Transfer cancelled by user");
+        assert_eq!(only.kind, TransferErrorKind::Unknown);
         assert_eq!(
             TransferError::from_message("Transfer cancelled by user").kind,
             TransferErrorKind::Cancelled

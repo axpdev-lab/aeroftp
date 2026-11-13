@@ -4064,6 +4064,10 @@ pub(crate) fn mirror_credential_for_user_typed(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    if user_id == LEGACY_ONLY_ACCOUNT {
+        // The legacy owner has no partition: the vault entry is its copy.
+        return Ok(());
+    }
     let conn = open_or_init_cli()?;
     mirror_into_partition(
         &conn,
@@ -4170,6 +4174,9 @@ pub fn resolve_credential_for_user(
     user_id: i64,
     credential_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
+    if user_id == LEGACY_ONLY_ACCOUNT {
+        return get_optional_secret(store, credential_id);
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user(&conn, store, user_id, credential_id)
@@ -4195,6 +4202,9 @@ pub fn resolve_credential_for_user_owner_aware(
     user_id: i64,
     credential_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
+    if user_id == LEGACY_ONLY_ACCOUNT {
+        return get_optional_secret(store, credential_id);
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user_owner_aware(&conn, store, user_id, credential_id)
@@ -4235,7 +4245,22 @@ pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
 /// whether that user may read pre-partition global credentials, on one
 /// connection. No user means the installation has not entered the multi-user
 /// ownership model yet, so the legacy fallback stays open.
+/// The account a reader names when the connection began with NO active
+/// account (T9): the legacy owner only, never whichever account is active by
+/// the time it reads. `i64::MIN` is no row id (AUTOINCREMENT ids are
+/// positive), so any reader or writer not taught about it finds no account
+/// and fails closed; it never falls back to the active one, since it is not
+/// `None`. Taught: [`credential_owner_and_fallback`], [`mcp_list_server_profiles`],
+/// [`resolve_credential_for_user`], [`resolve_credential_for_user_owner_aware`]
+/// (the legacy stores) and [`mirror_credential_for_user_typed`] (no partition
+/// to mirror into).
+pub const LEGACY_ONLY_ACCOUNT: i64 = i64::MIN;
+
 pub fn credential_owner_and_fallback(explicit: Option<i64>) -> Result<(Option<i64>, bool), String> {
+    if explicit == Some(LEGACY_ONLY_ACCOUNT) {
+        // The legacy owner: no partition, the legacy stores only.
+        return Ok((None, true));
+    }
     let conn = open_or_init_cli()?;
     let user = match explicit {
         Some(user) => Some(user),
@@ -6215,6 +6240,9 @@ pub fn mcp_list_server_profiles(
     store: &CredentialStore,
     user: Option<i64>,
 ) -> Result<Vec<Value>, String> {
+    if user == Some(LEGACY_ONLY_ACCOUNT) {
+        return read_legacy_server_profiles_blob(store);
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let active = match user {

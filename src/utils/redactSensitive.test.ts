@@ -158,6 +158,20 @@ describe('redactCredentials: URL userinfo', () => {
     });
 });
 
+describe('redactCredentials: one URL rule, any scheme, never past a field (T11)', () => {
+    it('keeps the field after an authority without userinfo', () => {
+        expect(redactCredentials('{"a":"https://host:443","b":"x@y"}')).toBe('{"a":"https://host:443","b":"x@y"}');
+    });
+    it('keeps it in JSON escaped inside a string too', () => {
+        const escaped = '{\\"a\\":\\"https://host:443\\",\\"b\\":\\"x@y\\"}';
+        expect(redactCredentials(escaped)).toBe(escaped);
+    });
+    it('still masks the userinfo of other schemes', () => {
+        expect(redactCredentials('get s3://AKIAEXAMPLE:secretkey@bucket/key failed'))
+            .toBe('get s3://***REDACTED***@bucket/key failed');
+    });
+});
+
 describe('redactUrlUserinfo (H9: linear by construction)', () => {
     it('stays linear on long adversarial input', () => {
         const inputs = [

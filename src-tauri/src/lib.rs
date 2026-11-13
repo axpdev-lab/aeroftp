@@ -3976,16 +3976,36 @@ async fn download_file_for_ipc(
 #[tauri::command]
 async fn upload_file(
     app: AppHandle,
-    state: State<'_, AppState>,
-    provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams,
     sync_run_lease: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
-    provider_commands::ipc_result(
-        "upload_file",
-        upload_file_for_ipc(app, state, provider_state, params).await,
-    )
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    // The upload runs in a task that owns the admission (T6b): dropped with
+    // its page, this handler leaves the upload counted until it ends.
+    let uploaded = run_owning_admission(native_work, async move {
+        let state = app.state::<AppState>();
+        let provider_state = app.state::<provider_commands::ProviderState>();
+        upload_file_for_ipc(app.clone(), state, provider_state, params).await
+    })
+    .await?;
+    provider_commands::ipc_result("upload_file", uploaded)
+}
+
+/// Run `work` in a task of its own that owns `native_work`, the admission of
+/// a leased command: the work counts until it really ends, even when the
+/// command's future is dropped (its page lost), so the cleanup of a lost
+/// page keeps the pair locked until then. The async counterpart of moving
+/// the guard into blocking work.
+pub(crate) async fn run_owning_admission<T: Send + 'static>(
+    native_work: crate::sync_run_lease::NativeWork,
+    work: impl std::future::Future<Output = T> + Send + 'static,
+) -> Result<T, String> {
+    tokio::spawn(async move {
+        let _native_work = native_work;
+        work.await
+    })
+    .await
+    .map_err(|e| format!("The command's work ended abnormally: {e}"))
 }
 
 async fn upload_file_for_ipc(
@@ -16003,15 +16023,31 @@ async fn sync_run_lease_begin_cmd(
 }
 
 /// A document binds its load nonce to its window at start, before any run
-/// (`sync_run_lease::bind_page`). Refused while the current binding holds a
-/// live lease: a binding a gone document sent earlier cannot take the window
-/// from the document running a sync.
+/// (`sync_run_lease::bind_page`). A binding of another document ends the
+/// leases of the one bound before, as a reload does: their pairs are freed
+/// once the work they admitted has settled (T6a).
 #[tauri::command]
-async fn sync_run_page_bind_cmd(window: tauri::Window, page_nonce: String) -> Result<(), String> {
+async fn sync_run_page_bind_cmd(
+    app: AppHandle,
+    window: tauri::Window,
+    page_nonce: String,
+) -> Result<(), String> {
     let window = window.label().to_string();
-    tokio::task::spawn_blocking(move || sync_run_lease::bind_page(&window, &page_nonce))
-        .await
-        .map_err(|_| "Sync run lock worker failed".to_string())?
+    let orphans =
+        tokio::task::spawn_blocking(move || sync_run_lease::bind_page(&window, &page_nonce))
+            .await
+            .map_err(|_| "Sync run lock worker failed".to_string())??;
+    if !orphans.is_empty() {
+        tauri::async_runtime::spawn(async move {
+            sync_run_lease::release_orphans_once_settled(orphans, || {
+                app.state::<provider_commands::ProviderState>()
+                    .gui_work_settled()
+                    && sync_run_lease::native_work_settled()
+            })
+            .await;
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]
