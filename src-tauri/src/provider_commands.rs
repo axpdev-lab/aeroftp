@@ -19445,6 +19445,115 @@ mod tests {
         assert!(!body.contains("AppHandleSink::new("));
     }
 
+    /// The `message` of every `error` event among the captured payloads.
+    fn error_event_messages(payloads: &[String]) -> Vec<String> {
+        payloads
+            .iter()
+            .filter_map(|payload| serde_json::from_str::<serde_json::Value>(payload).ok())
+            .filter(|event| event.get("event_type").and_then(|v| v.as_str()) == Some("error"))
+            .filter_map(|event| {
+                event
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+            })
+            .collect()
+    }
+
+    /// The real download command, not a fabricated error: `LeakyServer`'s
+    /// opaque token is in neither the returned error nor the emitted events,
+    /// and the error event says what the command returns.
+    #[tokio::test]
+    async fn a_failing_provider_download_command_carries_no_server_text() {
+        use tauri::{Listener, Manager};
+        let app = tauri::test::mock_app();
+        let captured = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = captured.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let provider_state = ProviderState::new();
+        *provider_state.provider.lock().await = Some(Box::new(LeakyServer));
+        app.manage(provider_state);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("downloaded.bin");
+        let returned = provider_download_file(
+            app.handle().clone(),
+            app.state::<ProviderState>(),
+            "/remote/a.bin".to_string(),
+            local.to_string_lossy().into_owned(),
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_no_server_text(&returned);
+        let payloads = captured.lock().unwrap().clone();
+        for payload in &payloads {
+            assert_no_server_text(payload);
+        }
+        assert_eq!(
+            error_event_messages(&payloads),
+            vec![returned.clone()],
+            "{payloads:?}"
+        );
+    }
+
+    /// The real upload command, same boundary as the download: the provider's
+    /// opaque token reaches the page by neither the return nor the events.
+    #[tokio::test]
+    async fn a_failing_provider_upload_command_carries_no_server_text() {
+        use tauri::{Listener, Manager};
+        let app = tauri::test::mock_app();
+        let captured = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = captured.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let provider_state = ProviderState::new();
+        *provider_state.provider.lock().await = Some(Box::new(LeakyServer));
+        app.manage(provider_state);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("upload.bin");
+        std::fs::write(&local, b"payload").unwrap();
+        let returned = provider_upload_file(
+            app.handle().clone(),
+            app.state::<ProviderState>(),
+            local.to_string_lossy().into_owned(),
+            "/remote/upload.bin".to_string(),
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_no_server_text(&returned);
+        let payloads = captured.lock().unwrap().clone();
+        for payload in &payloads {
+            assert_no_server_text(payload);
+        }
+        assert_eq!(
+            error_event_messages(&payloads),
+            vec![returned.clone()],
+            "{payloads:?}"
+        );
+    }
+
     /// A name the provider forbids is refused natively with a stable text
     /// the page localizes (`localizeRestrictedCharError`). That text is not
     /// the server's and keeps its shape through the boundary, for a mkdir the
