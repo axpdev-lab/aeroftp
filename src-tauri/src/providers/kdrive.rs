@@ -2612,11 +2612,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            moves.lock().unwrap().is_empty(),
-            "{:?}",
-            moves.lock().unwrap()
-        );
+        {
+            let seen_moves = moves.lock().unwrap().clone();
+            assert!(seen_moves.is_empty(), "{:?}", seen_moves);
+        }
     }
 
     /// A name taken between the look and the move is refused by kDrive with
@@ -2978,11 +2977,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
             "{outcome:?}"
         );
-        assert!(
-            purges.lock().unwrap().is_empty(),
-            "{:?}",
-            purges.lock().unwrap()
-        );
+        {
+            let seen_purges = purges.lock().unwrap().clone();
+            assert!(seen_purges.is_empty(), "{:?}", seen_purges);
+        }
     }
 
     /// The trash listing read its first page only: with the two generations
@@ -3001,11 +2999,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
             "{outcome:?}"
         );
-        assert!(
-            purges.lock().unwrap().is_empty(),
-            "{:?}",
-            purges.lock().unwrap()
-        );
+        {
+            let seen_purges = purges.lock().unwrap().clone();
+            assert!(seen_purges.is_empty(), "{:?}", seen_purges);
+        }
     }
 
     /// A listing that announces more items without a cursor to reach them
@@ -3024,11 +3021,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("cursor")),
             "{outcome:?}"
         );
-        assert!(
-            purges.lock().unwrap().is_empty(),
-            "{:?}",
-            purges.lock().unwrap()
-        );
+        {
+            let seen_purges = purges.lock().unwrap().clone();
+            assert!(seen_purges.is_empty(), "{:?}", seen_purges);
+        }
     }
 
     /// A page without `has_more`, which the API documents as always
@@ -3277,11 +3273,10 @@ mod tests {
             matches!(restored, Err(ProviderError::NotFound(_))),
             "{restored:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// A replace onto `a.txt` beside only `A.txt` took `A.txt` for the file
@@ -3297,11 +3292,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
         assert_eq!(store.lock().unwrap().len(), 2);
     }
 

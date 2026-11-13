@@ -1444,11 +1444,14 @@ mod tests {
             send(&mut stream, "GET", path, host(addr));
             assert_eq!(read_response(&mut stream, false).0, 404, "{path}");
         }
-        assert!(
-            asked.lock().unwrap().is_empty(),
-            "a refused path reached the assets: {:?}",
-            asked.lock().unwrap()
-        );
+        {
+            let seen_asked = asked.lock().unwrap().clone();
+            assert!(
+                seen_asked.is_empty(),
+                "a refused path reached the assets: {:?}",
+                seen_asked
+            );
+        }
 
         // A legitimately encoded name is decoded once and served.
         let mut stream = connect(addr);
@@ -1897,11 +1900,10 @@ mod tests {
             send(&mut stream, "GET", path, host(addr));
             assert_eq!(read_response(&mut stream, false).0, 404, "{path}");
         }
-        assert!(
-            asked.lock().unwrap().is_empty(),
-            "{:?}",
-            asked.lock().unwrap()
-        );
+        {
+            let seen_asked = asked.lock().unwrap().clone();
+            assert!(seen_asked.is_empty(), "{:?}", seen_asked);
+        }
     }
 
     /// A socket that notes where each slice it is asked to write starts.

@@ -1437,11 +1437,10 @@ mod engine_runs {
         let outcome = run(provider, "/data", opts, &Silent).await.unwrap();
         // The run folder and the two prefix folders the run created were
         // purged where they stood, never moved to the trash by a plain delete.
-        assert!(
-            trash.lock().unwrap().is_empty(),
-            "{:?}",
-            trash.lock().unwrap()
-        );
+        {
+            let seen_trash = trash.lock().unwrap().clone();
+            assert!(seen_trash.is_empty(), "{:?}", seen_trash);
+        }
         assert!(
             outcome.report.summary.errors.is_empty(),
             "{:?}",
@@ -1514,11 +1513,10 @@ mod engine_runs {
         assert!(ops.contains(&"delete-all"), "{ops:?}");
         // Each file delete-all sent to the trash is purged after it, and so is
         // the run folder: nothing of the run is left in the trash.
-        assert!(
-            trash.lock().unwrap().is_empty(),
-            "{:?}",
-            trash.lock().unwrap()
-        );
+        {
+            let seen_trash = trash.lock().unwrap().clone();
+            assert!(seen_trash.is_empty(), "{:?}", seen_trash);
+        }
         assert!(
             outcome.report.summary.errors.is_empty(),
             "{:?}",

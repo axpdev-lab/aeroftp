@@ -4751,11 +4751,10 @@ mod cli_sequence_tests {
             )
             .await;
         assert!(outcome.is_err(), "{outcome:?}");
-        assert!(
-            updates.lock().unwrap().is_empty(),
-            "{:?}",
-            updates.lock().unwrap()
-        );
+        {
+            let seen_updates = updates.lock().unwrap().clone();
+            assert!(seen_updates.is_empty(), "{:?}", seen_updates);
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

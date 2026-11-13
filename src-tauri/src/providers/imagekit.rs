@@ -2635,11 +2635,10 @@ mod tests {
                 "{message}"
             );
         }
-        assert!(
-            writes.lock().unwrap().is_empty(),
-            "{:?}",
-            writes.lock().unwrap()
-        );
+        {
+            let seen_writes = writes.lock().unwrap().clone();
+            assert!(seen_writes.is_empty(), "{:?}", seen_writes);
+        }
         let upload = refused[0].1.as_ref().unwrap_err().to_string();
         assert!(upload.contains("\"a_b.txt\", not \"a b.txt\""), "{upload}");
         let astral = refused[2].1.as_ref().unwrap_err().to_string();
@@ -2704,11 +2703,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// An ImageKit double holding `tree` (paths; a name without a dot is a
@@ -2813,11 +2811,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// `moveFolder` merges into an existing folder of the same name.
@@ -2830,11 +2827,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// Moving first would land `a.jpg` on top of `/dst/a.jpg` (as its newest
@@ -2890,11 +2886,10 @@ mod tests {
             matches!(across, Err(ProviderError::AlreadyExists(_))),
             "{across:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
         let (mut provider, calls) =
             provider_on_tree(&["/src", "/dst", "/src/photos", "/dst/photos"], &[]).await;
         let merge = provider.replace("/src/photos", "/dst/photos").await;
@@ -2902,11 +2897,10 @@ mod tests {
             matches!(merge, Err(ProviderError::NotSupported(_))),
             "{merge:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// A poll that fails says nothing about the job, which was queued and may
