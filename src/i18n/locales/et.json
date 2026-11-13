@@ -2704,7 +2704,9 @@
             "rollbackRestoreNothing": "Pole midagi taastada",
             "rollbackRestoreFailed": "Taastamine ebaõnnestus: {error}",
             "intervalHoursOne": "{count} tund",
-            "intervalHoursMany": "{count} tundi"
+            "intervalHoursMany": "{count} tundi",
+            "resumeNeedsCompare": "Seda katkestatud sünkroonimist ei saa turvaliselt jätkata. Enne sünkroonimist võrdle uuesti.",
+            "planStaleAfterBatch": "Pärast selle plaani arvutamist lõppes mõni muu failitoiming. Enne sünkroonimist võrdle uuesti."
         },
         "ui": {
             "syncing": "Sünkroniseerimine...",

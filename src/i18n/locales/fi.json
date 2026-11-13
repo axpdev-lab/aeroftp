@@ -2704,7 +2704,9 @@
             "rollbackRestoreNothing": "Ei palautettavaa",
             "rollbackRestoreFailed": "Palautus epäonnistui: {error}",
             "intervalHoursOne": "{count} tunti",
-            "intervalHoursMany": "{count} tuntia"
+            "intervalHoursMany": "{count} tuntia",
+            "resumeNeedsCompare": "Keskeytynyttä synkronointia ei voi jatkaa turvallisesti. Tee uusi vertailu ennen synkronointia.",
+            "planStaleAfterBatch": "Toinen tiedostotoiminto päättyi sen jälkeen, kun tämä suunnitelma laskettiin. Tee uusi vertailu ennen synkronointia."
         },
         "ui": {
             "syncing": "Synkronoidaan...",

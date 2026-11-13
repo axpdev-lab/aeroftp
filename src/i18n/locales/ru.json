@@ -2704,7 +2704,9 @@
             "rollbackRestoreNothing": "Нечего восстанавливать",
             "rollbackRestoreFailed": "Не удалось восстановить: {error}",
             "intervalHoursOne": "{count} час",
-            "intervalHoursMany": "{count} ч"
+            "intervalHoursMany": "{count} ч",
+            "resumeNeedsCompare": "Невозможно безопасно возобновить прерванную синхронизацию. Перед синхронизацией выполните новое сравнение.",
+            "planStaleAfterBatch": "После вычисления этого плана завершилась другая файловая операция. Перед синхронизацией выполните новое сравнение."
         },
         "ui": {
             "syncing": "Синхронизация...",

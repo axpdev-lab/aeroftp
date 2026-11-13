@@ -2704,7 +2704,9 @@
             "rollbackRestoreNothing": "Intet at gendanne",
             "rollbackRestoreFailed": "Gendannelse mislykkedes: {error}",
             "intervalHoursOne": "{count} time",
-            "intervalHoursMany": "{count} timer"
+            "intervalHoursMany": "{count} timer",
+            "resumeNeedsCompare": "Denne afbrudte synkronisering kan ikke genoptages sikkert. Foretag en ny sammenligning før synkronisering.",
+            "planStaleAfterBatch": "En anden filhandling blev afsluttet, efter at denne plan blev beregnet. Foretag en ny sammenligning før synkronisering."
         },
         "ui": {
             "syncing": "Synkroniserer...",
