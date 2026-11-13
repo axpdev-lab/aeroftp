@@ -186,7 +186,8 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         const LAST_SYNC = new Date().toISOString();
         let resolveSync!: (v: unknown) => void;
         const syncPromise = new Promise(res => { resolveSync = res; });
-        await mount([]);
+        const onClose = vi.fn();
+        await mount([], onClose);
         mocks.invoke.mockImplementation(async (command: string) => {
             if (command === 'trigger_cloud_sync') return syncPromise;
             if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [], last_sync: LAST_SYNC };
@@ -211,6 +212,7 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         const backdrop = host.querySelector('[aria-label="cloud.dialogSettingsLabel"]')!;
         await React.act(async () => backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true })));
         expect(remoteFolder()?.value).toBe('/typed');
+        expect(onClose).not.toHaveBeenCalled();
         // Cancel restores the baseline, which now carries the persisted
         // last_sync, so the dashboard shows it.
         await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'common.cancel')!.click());
@@ -381,6 +383,32 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(reauthButton().disabled).toBe(false);
         await React.act(async () => reauthButton().click());
         expect(host.querySelector('input[placeholder="/cloud/"]')).toBeTruthy();
+    });
+
+    it('keeps a post-sync refresh that lands after Disable from restoring the configuration', async () => {
+        // The refresh read the configuration before Disable cleared it; its
+        // late answer must not bring the disabled setup back to the dashboard.
+        const before = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+        let resolveRefresh!: (v: unknown) => void;
+        await mount([]);
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'trigger_cloud_sync') return 'done';
+            if (command === 'get_cloud_config') return new Promise(res => { resolveRefresh = res; });
+            if (command === 'disable_aerocloud') return null;
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.disable'))!.click());
+        const confirm = host.querySelector('[aria-label="cloud.disableConfirm"]')!;
+        await React.act(async () => [...confirm.querySelectorAll('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(host.querySelector('[data-testid="setup-complete"]')).toBeTruthy();
+        await React.act(async () => resolveRefresh(before));
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(host.querySelector('[data-testid="setup-complete"]')).toBeTruthy();
+        expect([...host.querySelectorAll('button')].some(b => b.textContent?.includes('cloud.syncNow'))).toBe(false);
     });
 
 });

@@ -473,7 +473,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                 // outputs), so merge that persisted field into the draft and
                 // the baseline: an open settings view is neither closed nor
                 // marked dirty by the refresh.
-                setConfig(prev => prev ? { ...prev, last_sync: cfg.last_sync } : cfg);
+                // A configuration cleared meanwhile (Disable) stays cleared: a
+                // late refresh must not bring the disabled setup back.
+                setConfig(prev => prev ? { ...prev, last_sync: cfg.last_sync } : prev);
                 setSettingsBaseline(prev => prev ? { ...prev, last_sync: cfg.last_sync } : prev);
             } else {
                 replaceConfig(cfg);
