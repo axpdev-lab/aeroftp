@@ -803,6 +803,30 @@ describe('FilenNotesPanel (Discussion #1527)', () => {
         }
     });
 
+    it('keeps the close guard up for an edit typed while an auto-save runs', async () => {
+        // The auto-save of A cleared `dirty` when it finished, although B had
+        // been typed meanwhile: a stray click then closed the panel and
+        // cancelled B's pending auto-save.
+        const onClose = vi.fn();
+        await openNote(onClose);
+        const firstSave = deferred<unknown>();
+        mocks.handlers.filen_notes_edit_content = () => firstSave.promise;
+        vi.useFakeTimers();
+        try {
+            await typeInto(input('textarea'), 'sentinel body A');
+            await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+            expect(mocks.invoke).toHaveBeenCalledWith('filen_notes_edit_content', expect.objectContaining({ content: 'sentinel body A' }));
+            await typeInto(input('textarea'), 'sentinel body B');
+            await act(async () => { firstSave.resolve(null); await vi.advanceTimersByTimeAsync(0); });
+        } finally {
+            vi.useRealTimers();
+        }
+        await clickBackdrop();
+        expect(onClose).not.toHaveBeenCalled();
+        await clickX();
+        expect(confirmOpen()).toBe(true);
+    });
+
     it('saves a title edit on the way back to the list after the content auto-save completes', async () => {
         // Back to the list saved only while `dirty`, which the content
         // auto-save clears: a title typed before it was dropped unasked.

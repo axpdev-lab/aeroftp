@@ -135,6 +135,9 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   // Refs
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped on every edit: a save clears `dirty` only when no edit came in
+  // while it ran, so a later edit keeps the close guard up (Discussion #1527).
+  const editVersionRef = useRef(0);
   // The open note, so a late request result is applied only to the note it was made on
   const selectedUuidRef = useRef<string | null>(null);
   const creatingTagRef = useRef(false);
@@ -256,11 +259,13 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const handleContentChange = useCallback((value: string) => {
     setNoteContent(value);
     setDirty(true);
+    editVersionRef.current += 1;
 
     // Auto-save after 2s of inactivity
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
       if (!selectedNote) return;
+      const savedVersion = editVersionRef.current;
       setSaving(true);
       try {
         await invoke('filen_notes_edit_content', {
@@ -268,7 +273,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           content: value,
           noteType: noteType,
         });
-        setDirty(false);
+        if (editVersionRef.current === savedVersion) setDirty(false);
       } catch (err) {
         setError(String(err));
       } finally {
@@ -280,6 +285,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const handleTitleChange = useCallback((value: string) => {
     setNoteTitle(value);
     setDirty(true);
+    editVersionRef.current += 1;
   }, []);
 
   const saveNow = useCallback(async () => {
@@ -289,6 +295,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
+    const savedVersion = editVersionRef.current;
     setSaving(true);
     const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
@@ -305,7 +312,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         setSavedTitle(noteTitle);
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_saved', { provider: 'Filen', title: noteTitle }) });
-      setDirty(false);
+      if (editVersionRef.current === savedVersion) setDirty(false);
     } catch (err) {
       humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_save_error', { provider: 'Filen' }) });
       setError(String(err));
