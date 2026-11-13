@@ -132,6 +132,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [avatarDraftEmoji, setAvatarDraftEmoji] = React.useState('');
     const [avatarDraftColor, setAvatarDraftColor] = React.useState(COLOR_CHOICES[0]);
     const [avatarSaving, setAvatarSaving] = React.useState(false);
+    const [adding, setAdding] = React.useState(false);
     const [showIconPicker, setShowIconPicker] = React.useState(false);
     // N3 (#270): the default account that skips the welcome screen on next
     // boot. Mirrors the AccountLockScreen checkbox and shares the same
@@ -232,7 +233,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const formTyped = newName.trim() !== '' || newPassphrase !== '' || newConfirmPassphrase !== ''
         || editingUserId !== null || passphraseForm !== null;
     const guarded = useGuardedClose({
-        guard: busyUserId !== null || avatarSaving ? 'busy' : formTyped ? 'dirty' : null,
+        guard: busyUserId !== null || avatarSaving || adding ? 'busy' : formTyped ? 'dirty' : null,
         onClose,
     });
 
@@ -261,6 +262,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             return;
         }
         setError('');
+        setAdding(true);
         try {
             await addUser(newName.trim(), newAvatar, newColor, newPassphrase || null);
             setNewName('');
@@ -273,6 +275,8 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             notifyProfilesChanged(onChanged);
         } catch (err) {
             setError(mapUserPartitionError(err, t));
+        } finally {
+            setAdding(false);
         }
     };
 
