@@ -13,6 +13,7 @@
 // (Tauri `invoke`, the clock, the sleep, id generation) is injected so the
 // loop can be exercised under Vitest's `node` environment.
 
+import { withoutErrorTag } from './transferErrorClassifier';
 import { withTransferRun } from './transferRun';
 import { QueuedTargetChangedError } from './queuedTarget';
 import { redactCredentials } from './redactSensitive';
@@ -425,29 +426,63 @@ export const LEASED_COMMANDS: ReadonlySet<string> = new Set([
     'delete_sync_journal_cmd', 'sync_backup_archive_local', 'sync_backup_archive_remote',
     'sync_ec_generate', 'sync_ec_verify_repair', 'sync_remove_empty_dir', 'sync_intent_begin_cmd',
     'sync_intent_snapshot_cmd', 'provider_delete_file', 'provider_download_file', 'provider_mkdir',
-    'provider_upload_file', 'provider_sync_transfer_bulk',
+    'provider_upload_file', 'provider_sync_transfer_bulk', 'load_sync_index_cmd',
 ]);
 
-let pageSyncEpoch: Promise<number> | null = null;
+/** The arguments a run sends for `cmd`: its lease token for a leased command. */
+export const withRunLease = (cmd: string, args: Record<string, unknown> | undefined, token: string): Record<string, unknown> | undefined =>
+    LEASED_COMMANDS.has(cmd) ? { ...args, syncRunLease: token } : args;
+
+/** The document global native code sets when this document finished loading. */
+export const PAGE_EPOCH_GLOBAL = '__AEROFTP_SYNC_PAGE_EPOCH__';
 
 /**
- * This page's generation (`sync_page_epoch_cmd`), read once and kept for the
- * page's life. App reads it at start; every run's lease request names it, and
- * the native side refuses a request from a page that was replaced since. It is
- * never read again later: after a reload begins the old page still runs for a
- * moment, and a late read would hand it the new page's generation. A failed
- * read stays failed, so this page starts no run (fail closed until a reload).
+ * This document's page generation, handed to it by native code when it
+ * finished loading (`sync_run_lease::page_epoch_script`): set once, read-only,
+ * and never given to the document a reload replaced. `undefined` until then.
+ * Every run's lease request names it, and the native side refuses a request
+ * from a document that was replaced since.
  */
-export const readPageSyncEpoch = (invoke: RemoteSyncDeps['invoke']): Promise<number> => {
-    pageSyncEpoch ??= invoke<number>('sync_page_epoch_cmd').then(epoch => {
-        if (!Number.isSafeInteger(epoch) || epoch < 0) throw new Error('Cannot read this page\'s sync generation');
-        return epoch;
-    });
-    return pageSyncEpoch;
+/** Polls a run makes for the generation before it refuses: 50 x 100 ms. */
+export const PAGE_EPOCH_POLLS = 50;
+const PAGE_EPOCH_POLL_MS = 100;
+
+/**
+ * This document's generation, waited for a short while: a run that starts as
+ * the window opens (a sync resumed or scheduled at start) can come before the
+ * native side handed it over on `Finished`. Counted in polls, not by a clock,
+ * so a test's fixed clock cannot hold it. `undefined` once the polls are used
+ * up: the run then refuses, fail closed.
+ */
+export const awaitPageSyncEpoch = async (delay: (ms: number) => Promise<void>): Promise<number | undefined> => {
+    for (let poll = 0; ; poll++) {
+        const epoch = currentPageSyncEpoch();
+        if (epoch !== undefined || poll >= PAGE_EPOCH_POLLS) return epoch;
+        await delay(PAGE_EPOCH_POLL_MS);
+    }
 };
 
-/** Forget the generation read, for a test that plays a new page. */
-export const forgetPageSyncEpochForTests = (): void => { pageSyncEpoch = null; };
+export const currentPageSyncEpoch = (): number | undefined => {
+    const epoch = (globalThis as Record<string, unknown>)[PAGE_EPOCH_GLOBAL];
+    return typeof epoch === 'number' && Number.isSafeInteger(epoch) && epoch >= 0 ? epoch : undefined;
+};
+
+/**
+ * A run's failed file, classified natively. The kind and the retry verdict
+ * come from the command's tag; the message kept for the report, the journal
+ * and the activity log is the same text without it.
+ */
+const classifyRunError = async (invoke: RemoteSyncDeps['invoke'], rawError: string, filePath: string): Promise<SyncErrorInfo> => {
+    const info = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath })
+        .catch(() => ({
+            kind: 'unknown' as SyncErrorKind,
+            // Fixed text: never the raw provider message.
+            message: 'Transfer failed; compare again before retrying',
+            retryable: false,
+            file_path: filePath,
+        }));
+    return { ...info, message: withoutErrorTag(info.message) };
+};
 
 /** Files sent in one `provider_sync_transfer_bulk` call at most. */
 const BULK_CHUNK_FILES = 256;
@@ -465,7 +500,10 @@ export const runRemoteSync = (
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => withTransferRun(async () => {
-    const pageEpoch = await readPageSyncEpoch(deps.invoke);
+    const pageEpoch = await awaitPageSyncEpoch(deps.delay ?? defaultDelay);
+    if (pageEpoch === undefined) {
+        throw new Error('SYNC_RUN_PAGE_REPLACED: this window has not finished loading; try again in a moment');
+    }
     const token = await deps.invoke<string>('sync_run_lease_begin_cmd', {
         localPath: normalizedSyncRoot(config.localRoot), remotePath: normalizedSyncRoot(config.remoteRoot), pageEpoch,
     });
@@ -474,7 +512,7 @@ export const runRemoteSync = (
     const trackedInvoke: RemoteSyncDeps['invoke'] = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
         // A command of this run is admitted natively only while its lease is
         // live: one that reaches its handler after the page was lost is refused.
-        const call = deps.invoke<T>(cmd, LEASED_COMMANDS.has(cmd) ? { ...args, syncRunLease: token } : args);
+        const call = deps.invoke<T>(cmd, withRunLease(cmd, args, token));
         pending.add(call);
         void call.then(() => pending.delete(call), () => pending.delete(call));
         return call;
@@ -677,15 +715,7 @@ const runSync = async (
                 } };
                 const rawMsg = (err as { toString?: () => string })?.toString?.()
                     || 'Unknown error';
-                const errorInfo = await invoke<SyncErrorInfo>('classify_transfer_error', {
-                    rawError: rawMsg,
-                    filePath,
-                }).catch(() => ({
-                    kind: 'unknown' as SyncErrorKind,
-                    message: 'Transfer failed; compare again before retrying',
-                    retryable: false,
-                    file_path: filePath,
-                }));
+                const errorInfo = await classifyRunError(invoke, rawMsg, filePath);
 
                 if (errorInfo.retryable && attempt < maxAttempts) {
                     setStatus(filePath, 'retrying');
@@ -1216,14 +1246,7 @@ const runSync = async (
         if (result.status === 'completed') return { success: true, attempts: 1 };
         const rawError = result.status === 'target_changed' ? 'CONNECTION_CHANGED'
             : result.status === 'failed' ? result.message : 'Not sent';
-        const error = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath })
-            .catch(() => ({
-                kind: 'unknown' as SyncErrorKind,
-                // Fixed text, as on the single-file path: never the raw provider message.
-                message: 'Transfer failed; compare again before retrying',
-                retryable: false,
-                file_path: filePath,
-            }));
+        const error = await classifyRunError(invoke, rawError, filePath);
         return { success: false, attempts: 1, error };
     };
 

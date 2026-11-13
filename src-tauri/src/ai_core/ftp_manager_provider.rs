@@ -245,10 +245,16 @@ impl StorageProvider for FtpManagerProvider {
             }
             Err(error) => return Err(error),
         };
+        // A server that reads `-a` as a pathname would list the folder named
+        // `-a` instead (see `FtpManager::list_receipt_folder`).
+        let ambiguous = entries.iter().any(|entry| entry.name == "-a");
         if let Some(entry) = entries.into_iter().find(|entry| entry.name == name) {
             return Ok(entry);
         }
         if name.starts_with('.') {
+            if ambiguous {
+                return Err(ProviderError::Other("LIST -a is ambiguous here: the folder holds an entry named -a, so a dot-prefixed name cannot be looked up".into()));
+            }
             if let Some(entry) = self
                 .list_probe(parent, true)
                 .await?

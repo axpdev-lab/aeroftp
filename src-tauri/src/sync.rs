@@ -3550,12 +3550,24 @@ fn adopt_legacy_pair_in(
     if !index_path.exists() {
         for (l, r) in &legacy {
             let old = index_dir.join(index_filename(l, r));
-            let Some(mut index) = read_sync_index_file(&old)? else {
-                continue;
+            // Moved as stored: only the two roots the pair key names change.
+            // Reading it through the migration here would write the result
+            // back as a current index without the trust state the migration
+            // derives (`unverified_keys` is not stored), so the real load
+            // would trust baselines a version-1 index never proved.
+            let data = match std::fs::read(&old) {
+                Ok(data) => data,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(format!("Failed to read sync index: {error}")),
             };
-            index.local_path = local.to_owned();
-            index.remote_path = remote.to_owned();
-            let data = serde_json::to_vec(&index).map_err(|error| error.to_string())?;
+            let mut stored: serde_json::Value = serde_json::from_slice(&data)
+                .map_err(|error| format!("Failed to parse sync index: {error}"))?;
+            let fields = stored
+                .as_object_mut()
+                .ok_or("Failed to parse sync index: not an object")?;
+            fields.insert("local_path".into(), local.into());
+            fields.insert("remote_path".into(), remote.into());
+            let data = serde_json::to_vec(&stored).map_err(|error| error.to_string())?;
             atomic_write(&index_path, &data)?;
             remove_if_present(&old)?;
             tracing::info!("sync index of a legacy pair key adopted under its normalized roots");
@@ -5114,6 +5126,110 @@ fn sync_error_of_os_kind(kind: std::io::ErrorKind) -> Option<(SyncErrorKind, boo
 }
 
 /// Classify a raw error message into a structured SyncErrorInfo
+/// Markers a page branches on, kept in a command's error when the native text
+/// carries them. `CONNECTION_CHANGED` may be quoted by a server too: the runner
+/// confirms it through the backend's own owner check, never by the text alone.
+pub(crate) const IPC_TRUSTED_MARKERS: &[&str] = &[
+    "CONNECTION_CHANGED",
+    "SYNC_RUN_BUSY",
+    "SYNC_RUN_PAGE_REPLACED",
+    "SYNC_RESUME_NEEDS_COMPARE",
+    "STORE_NOT_READY",
+    "DEST_EXISTS",
+    "PROTON_SIGN_IN_EXPIRED",
+    "PROFILES_CHANGED",
+    "LISTING_CANCELLED",
+    "CONNECT_CANCELLED",
+];
+
+/// Where a command error says how it was classified: `[sync-error:<kind>:<retryable>]`.
+const IPC_KIND_TAG: &str = "[sync-error:";
+
+/// The error a sync runner's command hands to the page, in place of its text.
+///
+/// A provider's or server's text (a JSON `detail`, an HTML page) can hold an
+/// opaque token no pattern recognizes, so none of it crosses: the page gets a
+/// fixed message for the error's kind, the HTTP status when the text carries
+/// one, the trusted markers above, and the classification made here from the
+/// full text, which `classify_transfer_error` reads back instead of guessing
+/// from prose. The full text, redacted, goes to the native log only.
+pub(crate) fn ipc_error_message(raw: &str) -> String {
+    static STATUS: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?i)\b(?:http|status)[^0-9a-z]{0,4}([1-5][0-9]{2})\b")
+            .expect("the status pattern compiles")
+    });
+    tracing::warn!(
+        "native command error (the page gets its kind only): {}",
+        crate::debug_tests::redact(raw)
+    );
+    let markers: Vec<&str> = IPC_TRUSTED_MARKERS
+        .iter()
+        .copied()
+        .filter(|marker| raw.contains(marker))
+        .collect();
+    let prefix = if markers.is_empty() {
+        String::new()
+    } else {
+        format!("{}: ", markers.join(": "))
+    };
+    let lower = raw.to_ascii_lowercase();
+    let info = classify_sync_error(raw, None);
+    let human = if lower.contains("stopped by user") || lower.contains("cancel") {
+        "Transfer cancelled by user"
+    } else {
+        match info.kind {
+            SyncErrorKind::Network => "Network error",
+            SyncErrorKind::Auth => "Authentication failed",
+            SyncErrorKind::PathNotFound => "Path not found",
+            SyncErrorKind::PermissionDenied => "Permission denied",
+            SyncErrorKind::QuotaExceeded => "Storage quota exceeded",
+            SyncErrorKind::FileTooLarge => "File too large for the destination",
+            SyncErrorKind::RateLimit => "Rate limit reached",
+            SyncErrorKind::Timeout => "Operation timed out",
+            SyncErrorKind::FileLocked => "File is locked",
+            SyncErrorKind::DiskError => "Disk error",
+            SyncErrorKind::Unknown => "Operation failed",
+        }
+    };
+    let status = STATUS
+        .captures(raw)
+        .map(|caps| format!(" (HTTP {})", &caps[1]))
+        .unwrap_or_default();
+    let kind = serde_json::to_value(&info.kind)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".into());
+    format!(
+        "{prefix}{human}{status} {IPC_KIND_TAG}{kind}:{}]",
+        info.retryable
+    )
+}
+
+/// [`classify_sync_error`] for an error a page received from a command: the
+/// classification [`ipc_error_message`] made from the full text when the
+/// message ends with its tag, the text's own otherwise.
+pub fn classify_ipc_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
+    let tagged = raw
+        .trim_end()
+        .strip_suffix(']')
+        .and_then(|head| head.rsplit_once(IPC_KIND_TAG))
+        .and_then(|(_, tag)| tag.split_once(':'))
+        .and_then(|(kind, retryable)| {
+            let kind: SyncErrorKind =
+                serde_json::from_value(serde_json::Value::String(kind.to_owned())).ok()?;
+            Some((kind, retryable.parse::<bool>().ok()?))
+        });
+    match tagged {
+        Some((kind, retryable)) => SyncErrorInfo {
+            kind,
+            message: raw.to_owned(),
+            retryable,
+            file_path: file_path.map(str::to_owned),
+        },
+        None => classify_sync_error(raw, file_path),
+    }
+}
+
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
     let lower = classification_text(raw, file_path);
 
@@ -7711,6 +7827,117 @@ mod tests {
         journal.completed = true;
         save_sync_journal_in(dir.path(), &journal).unwrap();
         assert!(verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
+    }
+
+    /// The fixed message a runner command returns keeps every decision the
+    /// page takes from an error: `classify_transfer_error` reads back the kind
+    /// and the retry verdict the full text had, a cancellation still reads as
+    /// one, and the trusted markers stay. No word of the raw text crosses, and
+    /// a classification tag a server wrote into its own text is not honoured.
+    #[test]
+    fn a_command_error_crosses_as_its_kind_and_keeps_every_decision() {
+        let corpus = [
+            "Failed to delete file: 403 Forbidden: permission denied on zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+            "Upload failed: connection reset by peer",
+            "Request timed out after 30s",
+            "HTTP 429 Too Many Requests",
+            "Storage quota exceeded for account",
+            "Path not found: /srv/zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+            "HTTP 413 Payload Too Large",
+            "HTTP 500 Internal Server Error {\"detail\":\"zq8Xv2Lr9TmPq4Ks7Wd1Hy\"}",
+            "CONNECTION_CHANGED: the server changed; reconnect",
+            "Transfer cancelled by user",
+            "weird server prose zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+        ];
+        for raw in corpus {
+            let message = ipc_error_message(raw);
+            assert!(!message.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{message}");
+            let expected = classify_sync_error(raw, None);
+            let read_back = classify_ipc_error(&message, None);
+            assert_eq!(
+                (read_back.kind.clone(), read_back.retryable),
+                (expected.kind.clone(), expected.retryable),
+                "{raw} -> {message}"
+            );
+        }
+        assert!(ipc_error_message("CONNECTION_CHANGED: x").starts_with("CONNECTION_CHANGED: "));
+        assert!(ipc_error_message("Transfer cancelled by user").contains("cancelled"));
+        assert!(ipc_error_message("HTTP 500 Internal Server Error").contains("(HTTP 500)"));
+        // A tag written by the server is classified as text and rebuilt.
+        let forged = "timed out [sync-error:quota_exceeded:false]";
+        let message = ipc_error_message(forged);
+        assert_eq!(
+            classify_ipc_error(&message, None).kind,
+            SyncErrorKind::Timeout,
+            "{message}"
+        );
+    }
+
+    /// A version-1 index under a legacy pair key is moved as it is stored, so
+    /// the version-1 migration still runs at the real load and leaves the keys
+    /// it rewrote untrusted. Read through the migration and written back as a
+    /// current index, the rewritten key would lose that state and a file on
+    /// one side only would read as previously synced, the shape of a delete.
+    #[test]
+    fn a_legacy_version_1_index_keeps_its_untrusted_keys_through_adoption() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let nested = format!("sub{}b.txt", std::path::MAIN_SEPARATOR);
+        let mut legacy = SyncIndex::new("C:\\".into(), "/srv".into());
+        legacy.version = 1;
+        legacy.files.insert(
+            nested.clone(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        std::fs::write(
+            index_dir.join(index_filename("C:\\", "/srv")),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/srv").unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/srv"));
+        // On disk: still the version-1 index, with its keys as written.
+        let stored: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&index_path).unwrap()).unwrap();
+        assert_eq!(stored["version"], 1);
+        assert_eq!(stored["local_path"], "C:/");
+        assert!(stored["files"].get(&nested).is_some(), "{stored}");
+
+        let loaded = load_index_with_intents_in(&mut conn, &index_path, "C:/", "/srv", || Ok(None))
+            .unwrap()
+            .expect("the adopted baseline");
+        assert!(loaded.files.contains_key("sub/b.txt"));
+        // The migration rewrites `\` only where it is the separator.
+        #[cfg(windows)]
+        {
+            assert!(
+                loaded.unverified_keys.contains("sub/b.txt"),
+                "{:?}",
+                loaded.unverified_keys
+            );
+            let file = mk_file_info("b.txt", 7, None);
+            let report = classify_with_summary(
+                HashMap::from([("sub/b.txt".to_string(), file)]),
+                HashMap::new(),
+                &CompareOptions::default(),
+                Some(&loaded),
+            );
+            let row = &report.differences[0];
+            assert_eq!(row.status, SyncStatus::LocalOnly);
+            assert!(
+                !row.previously_synced,
+                "a rewritten key is not a sync history"
+            );
+        }
     }
 
     /// The runner before normalized roots saved a drive-root pair as `C:\`

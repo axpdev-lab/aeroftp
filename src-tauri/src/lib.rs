@@ -13147,10 +13147,10 @@ fn relabel_installed_menu(
 // ============ Sync Commands =====
 use cloud_config::{CloudConfig, CloudSyncStatus};
 use sync::{
-    classify_sync_error, classify_with_summary, delete_sync_journal, load_sync_index,
-    save_sync_index, save_sync_journal, select_canary_sample, verify_local_file, CanaryResult,
-    CanarySampleResult, CanarySummary, CompareOptions, CompareReport, FileInfo, SyncEcStatus,
-    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    classify_with_summary, delete_sync_journal, load_sync_index, save_sync_index,
+    save_sync_journal, select_canary_sample, verify_local_file, CanaryResult, CanarySampleResult,
+    CanarySummary, CompareOptions, CompareReport, FileInfo, SyncEcStatus, SyncErrorInfo, SyncIndex,
+    SyncJournal, VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -14285,6 +14285,7 @@ async fn get_remote_files_recursive_with_progress(
     scanned
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn load_sync_index_cmd(
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -14294,7 +14295,12 @@ async fn load_sync_index_cmd(
     expected_gui_target: Option<u64>,
     owner_binding: Option<String>,
     is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
 ) -> Result<Option<SyncIndex>, String> {
+    // Its load can adopt a legacy history and insert recovery fences, so a
+    // run's call is admitted only while the run's lease is live. Compare
+    // passes no token and is only counted.
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _pin = provider_state
         .pin_gui_index_owner(
             expected_gui_target,
@@ -14458,9 +14464,9 @@ async fn sync_run_lease_begin_cmd(
     page_epoch: Option<u64>,
 ) -> Result<String, String> {
     let window = window.label().to_string();
-    // The page generation the page read at its own start (`sync_page_epoch_cmd`),
-    // not one read here: this handler may run after the page was replaced, and
-    // would then read the new page's generation.
+    // The page generation native code gave the requesting document when it
+    // finished loading (`page_epoch_script`), not one read here: this handler
+    // may run after the page was replaced, and would then read the new page's.
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
@@ -14468,15 +14474,6 @@ async fn sync_run_lease_begin_cmd(
     })
     .await
     .map_err(|_| "Sync run lock worker failed")?
-}
-
-/// The page generation of the calling window. A page reads it once at its start
-/// and passes it to every `sync_run_lease_begin_cmd`; the generation moves on
-/// when the window starts loading another page (`on_page_load`, `Started`),
-/// before that page's script can run.
-#[tauri::command]
-fn sync_page_epoch_cmd(window: tauri::Window) -> Result<u64, String> {
-    sync_run_lease::page_epoch(window.label())
 }
 
 #[tauri::command]
@@ -14873,6 +14870,9 @@ struct DeltaServerIdentity {
 struct DeltaEligibilityProbeResult {
     eligible: bool,
     reason: Option<String>,
+    /// Set when the run must stop before any write (see
+    /// `DeltaEligibilityStatus::hard_error`).
+    hard_error: Option<String>,
     server_identity: Option<DeltaServerIdentity>,
 }
 
@@ -15013,6 +15013,7 @@ async fn sftp_probe_delta_eligibility(
         return Ok(DeltaEligibilityProbeResult {
             eligible: false,
             reason: Some(reason.to_string()),
+            hard_error: None,
             server_identity,
         });
     }
@@ -15030,11 +15031,13 @@ async fn sftp_probe_delta_eligibility(
         .unwrap_or(crate::delta_sync_rsync::DeltaEligibilityStatus {
             eligible: false,
             reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
+            hard_error: None,
         });
 
     Ok(DeltaEligibilityProbeResult {
         eligible: verdict.eligible,
         reason: verdict.reason,
+        hard_error: verdict.hard_error,
         server_identity,
     })
 }
@@ -16342,7 +16345,9 @@ fn verify_local_transfer_blocking(
 
 #[tauri::command]
 fn classify_transfer_error(raw_error: String, file_path: Option<String>) -> SyncErrorInfo {
-    classify_sync_error(&raw_error, file_path.as_deref())
+    // A runner command's error carries the classification made natively from
+    // its full text (`ipc_error_message`); any other text is classified here.
+    sync::classify_ipc_error(&raw_error, file_path.as_deref())
 }
 
 // ============ AI Commands =====
@@ -17049,6 +17054,34 @@ mod sync_receipt_file_tests {
 async fn sync_backup_verify_receipt(
     app_state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
+    target: String,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+    receipt: String,
+    expected_gui_target: Option<u64>,
+) -> Result<bool, String> {
+    provider_commands::ipc_result(
+        sync_backup_verify_receipt_for_ipc(
+            &app_state,
+            &provider_state,
+            target,
+            root,
+            dir,
+            stamp,
+            rel,
+            receipt,
+            expected_gui_target,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_backup_verify_receipt_for_ipc(
+    app_state: &AppState,
+    provider_state: &provider_commands::ProviderState,
     target: String,
     root: String,
     dir: String,
@@ -23008,6 +23041,17 @@ pub fn run() {
             // end those runs, so their folder pairs are unlocked here, once
             // no GUI operation holds a target pin and no native command of
             // a sync run (a local-local one holds no pin) is still running.
+            //
+            // `Finished` hands the generation to the document that finished
+            // loading, the current one (a webview's `Finished` is the load it
+            // is showing): a value only native code gives, to one document,
+            // which no command answer can carry to another.
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                if let Ok(epoch) = sync_run_lease::page_epoch(webview.window().label()) {
+                    let _ = webview.eval(sync_run_lease::page_epoch_script(epoch));
+                }
+                return;
+            }
             if payload.event() != tauri::webview::PageLoadEvent::Started {
                 return;
             }
@@ -23191,7 +23235,6 @@ pub fn run() {
             save_sync_index_cmd,
             sync_intent_begin_cmd,
             sync_run_lease_begin_cmd,
-            sync_page_epoch_cmd,
             sync_run_lease_end_cmd,
             sync_intent_snapshot_cmd,
             load_sync_journal_cmd,

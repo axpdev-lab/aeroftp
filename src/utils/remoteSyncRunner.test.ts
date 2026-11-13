@@ -7,8 +7,9 @@ import {
     readEmptyDirAnswer,
     runRemoteSync,
     LEASED_COMMANDS,
-    readPageSyncEpoch,
-    forgetPageSyncEpochForTests,
+    withRunLease,
+    PAGE_EPOCH_GLOBAL,
+    PAGE_EPOCH_POLLS,
     groupErrorsByKind,
     filesFromJournal,
     retryPolicyForSpeed,
@@ -124,23 +125,95 @@ const file = (
 
 // The native side admits a run's command only while its lease is live, so
 // every command of the set must carry the run's token, and no other one.
+// A runner command's error ends with the classification the native side made
+// from the full text. The run keeps that kind and retry verdict, and the
+// report (and the journal and activity log it feeds) shows the text without
+// the tag.
+describe('remoteSyncRunner: a command error in the report', () => {
+    it.each([
+        ['Permission denied (HTTP 403) [sync-error:permission_denied:false]', 'permission_denied', false, 1],
+        ['Network error (HTTP 503) [sync-error:network:true]', 'network', true, 2],
+    ] as const)('reports %s without the tag, with its kind and retry verdict', async (returned, kind, retryable, attempts) => {
+        let uploads = 0;
+        const { invoke } = makeInvoke({
+            upload_file: () => { uploads++; throw new Error(returned); },
+            // As natively (`classify_ipc_error`): the tag, read back.
+            classify_transfer_error: (args) => {
+                const raw = String(args?.rawError);
+                const tag = /\[sync-error:([a-z_]+):(true|false)\]$/.exec(raw)!;
+                return { kind: tag[1], retryable: tag[2] === 'true', message: raw, file_path: String(args?.filePath) } as SyncErrorInfo;
+            },
+            load_sync_index_cmd: () => null,
+        });
+        const report = await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig({ retryPolicy: { ...RETRY, max_retries: 2 } }), {}, noWaitDeps(invoke));
+        expect(report.errors).toHaveLength(1);
+        const [error] = report.errors;
+        expect(error.message).not.toContain('[sync-error:');
+        expect([error.kind, error.retryable]).toEqual([kind, retryable]);
+        expect(uploads).toBe(attempts);
+    });
+});
+
 describe('remoteSyncRunner: lease token on native commands', () => {
-    // The page reads its generation once at start; a later reload moves the
-    // native generation on, and this page's runs keep naming the one it read,
-    // which the native side then refuses.
-    it('names the page generation read at start on every lease request, read once', async () => {
-        forgetPageSyncEpochForTests();
-        let native = 7;
-        const { invoke, calls } = makeInvoke({ sync_page_epoch_cmd: () => native, load_sync_index_cmd: () => null });
-        expect(await readPageSyncEpoch(invoke)).toBe(7);
-        native = 8;
-        const fixture = createIntentFixture();
-        for (const name of ['one.txt', 'two.txt']) {
-            await runRemoteSync([file(name, 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) });
+    // The generation native code handed this document names every lease
+    // request; a document that has none yet starts no run, and asks nothing.
+    // A run that starts before the native side handed the document its
+    // generation waits for it a short while, then refuses, fail closed.
+    it.each(['handed over during the wait', 'never handed over'] as const)('waits a bounded time for the page generation (%s)', async when => {
+        const global = globalThis as Record<string, unknown>;
+        const saved = global[PAGE_EPOCH_GLOBAL];
+        try {
+            delete global[PAGE_EPOCH_GLOBAL];
+            const { invoke } = makeInvoke({ load_sync_index_cmd: () => null });
+            const fixture = createIntentFixture();
+            const waits: number[] = [];
+            const delay = async (ms: number) => {
+                waits.push(ms);
+                if (when === 'handed over during the wait' && waits.length === 3) global[PAGE_EPOCH_GLOBAL] = 4;
+            };
+            const run = runRemoteSync([file('one.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke), delay });
+            if (when === 'never handed over') {
+                await expect(run).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+                expect(waits.filter(ms => ms === 100)).toHaveLength(PAGE_EPOCH_POLLS);
+                expect(fixture.beginArgs).toHaveLength(0);
+                return;
+            }
+            await run;
+            expect(waits.slice(0, 3)).toEqual([100, 100, 100]);
+            expect(fixture.beginArgs.map(args => args.pageEpoch)).toEqual([4]);
+        } finally {
+            global[PAGE_EPOCH_GLOBAL] = saved;
         }
-        expect(fixture.beginArgs.map(args => args.pageEpoch)).toEqual([7, 7]);
-        expect(calls.filter(c => c.cmd === 'sync_page_epoch_cmd')).toHaveLength(1);
-        forgetPageSyncEpochForTests();
+    });
+
+    it('names the page generation native code gave this document, and refuses without one', async () => {
+        const global = globalThis as Record<string, unknown>;
+        const saved = global[PAGE_EPOCH_GLOBAL];
+        try {
+            const { invoke } = makeInvoke({ load_sync_index_cmd: () => null });
+            global[PAGE_EPOCH_GLOBAL] = 7;
+            const fixture = createIntentFixture();
+            await runRemoteSync([file('one.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) });
+            expect(fixture.beginArgs.map(args => args.pageEpoch)).toEqual([7]);
+            delete global[PAGE_EPOCH_GLOBAL];
+            await expect(runRemoteSync([file('two.txt', 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) }))
+                .rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+            expect(fixture.beginArgs).toHaveLength(1);
+        } finally {
+            global[PAGE_EPOCH_GLOBAL] = saved;
+        }
+    });
+
+    // Every member of the set, not only the commands a plan happens to reach.
+    it.each([...LEASED_COMMANDS])('sends the run lease with %s', cmd => {
+        expect(withRunLease(cmd, { path: '/a' }, 'run-lease-9')).toEqual({ path: '/a', syncRunLease: 'run-lease-9' });
+    });
+    it('sends no lease with a command outside the set', () => {
+        for (const cmd of ['reset_cancel_flag', 'ftp_noop', 'provider_bulk_support', 'sync_backup_verify_receipt', 'classify_transfer_error']) {
+            expect(LEASED_COMMANDS.has(cmd), cmd).toBe(false);
+            expect(withRunLease(cmd, { path: '/a' }, 'run-lease-9')).toEqual({ path: '/a' });
+        }
+        expect(LEASED_COMMANDS.size).toBe(23);
     });
 
     it.each([false, true])('passes the run lease to every leased command (local-local: %s)', async isLocalLocal => {

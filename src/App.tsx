@@ -197,7 +197,7 @@ import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
 import { createFileBatchDispatcher, rearmedOnUserAction } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
-import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from './utils/transferErrorClassifier';
+import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey, withoutErrorTag } from './utils/transferErrorClassifier';
 import {
   buildJournalEntries,
   displayPathForRestore,
@@ -475,7 +475,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, readPageSyncEpoch, filesFromJournal, normalizedSyncRoot, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, normalizedSyncRoot, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -1074,6 +1074,10 @@ const App: React.FC = () => {
   // its comparison began with: a batch that ran (or ended) since, even one
   // that is over by the time the plan is launched, is a different number.
   const batchGenerationRef = useRef(0);
+  // Transfers that run under `withTransferGeneration` and have not ended. A
+  // Mirror plan is not launched while one runs: it may be replacing a path
+  // the plan deletes, whenever it started.
+  const transfersInFlightRef = useRef(0);
   // A transfer that runs outside `withBatchLatch` counts too: a staged Start,
   // a Retry, a restored entry and a single upload or download each move the
   // number when they begin and again when they end, so a Mirror plan compared
@@ -1081,24 +1085,25 @@ const App: React.FC = () => {
   const withTransferGeneration = <A extends unknown[], R>(fn: (...args: A) => R | Promise<R>) =>
     async (...args: A): Promise<Awaited<R>> => {
       batchGenerationRef.current += 1;
+      transfersInFlightRef.current += 1;
       try {
         return await fn(...args);
       } finally {
+        transfersInFlightRef.current -= 1;
         batchGenerationRef.current += 1;
       }
     };
   // Staged Start (the effect below) and Retry both run what is stored here.
+  // A stored callback may return before its files are sent (the batch
+  // dispatcher starts its run and returns), so the work it starts is wrapped
+  // too, where it really runs: `launchBatch`, `runSingles`, `uploadFile` and
+  // `downloadFile`.
   const registerTransferCallback = (id: string, callback: () => unknown) => {
     retryCallbacksRef.current.set(id, withTransferGeneration(callback));
   };
   useEffect(() => {
     batchOpInFlightRef.current = scanningState.active;
   }, [scanningState.active]);
-  // This page's generation, read once at its start: a sync run's lease names
-  // it, so a request this page sent before a reload is refused natively.
-  useEffect(() => {
-    readPageSyncEpoch(invoke).catch(error => console.error('sync page generation unavailable', error));
-  }, []);
 
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green'; secondaryLabel?: string; onSecondary?: () => void; informational?: boolean } | null>(null);
@@ -2529,7 +2534,10 @@ const App: React.FC = () => {
       logActivity('INFO', message ? `${title}: ${message}` : title, 'success');
       return showToastNotifications ? toastSuccess(title, message) : null;
     },
-    error: (title: string, message?: string): string | null => {
+    error: (title: string, rawMessage?: string): string | null => {
+      // A runner command's error ends with its classification tag, which the
+      // user never sees (see `withoutErrorTag`).
+      const message = rawMessage === undefined ? undefined : withoutErrorTag(rawMessage);
       // Activity log: short title only. Debug panel: full details via console.error
       logActivity('INFO', message ? `${title}: ${message}` : title, 'error');
       if (message) console.error(`[ERROR] ${title}: ${message}`);
@@ -12982,7 +12990,9 @@ const App: React.FC = () => {
       // started or ended since the plan's comparison began (during the
       // preflight, or before Sync was pressed), may have replaced a path the
       // plan deletes or overwrites: the plan is not run.
-      if (waitedForBatch || batchGenerationRef.current !== planGeneration) {
+      // A transfer still running refuses it too, even one that began before
+      // the comparison and so moved the number before the plan read it.
+      if (waitedForBatch || batchGenerationRef.current !== planGeneration || transfersInFlightRef.current > 0) {
         notify.error(t('aerosync.title'), t('syncPanel.planStaleAfterBatch'));
         return;
       }
@@ -13103,17 +13113,21 @@ const App: React.FC = () => {
         if (!ownsPreflight()) return;
         checkTarget();
         const profile = stored.find((p) => p.id === opts.profileId);
-        if (profile?.skipDeltaEligibilityPrompt) {
-          await launchRun();
-          return;
-        }
+        // Probed even when the prompt is turned off: the opt-out skips the
+        // question about continuing without delta, not a refusal.
         const verdict = await invoke<DeltaEligibilityProbeResult>(
           'sftp_probe_delta_eligibility',
           { expectedGuiTarget: targetEpoch },
         );
         if (!ownsPreflight()) return;
         checkTarget();
-        if (verdict.eligible) {
+        // A hard refusal stops the run here, before it creates a folder or
+        // archives a file: a transfer would only meet the same refusal later.
+        if (verdict.hard_error) {
+          notify.error(t('aerosync.title'), verdict.hard_error);
+          return;
+        }
+        if (verdict.eligible || profile?.skipDeltaEligibilityPrompt) {
           await launchRun();
           return;
         }
@@ -13191,7 +13205,7 @@ const App: React.FC = () => {
     }
     // This launch does not wait: a batch still running, or one since the
     // plan's comparison began, refuses the plan, as on the connected path.
-    if (batchOperationPendingRef.current
+    if (batchOperationPendingRef.current || transfersInFlightRef.current > 0
       || (opts.planBatchGeneration !== undefined && batchGenerationRef.current !== opts.planBatchGeneration)) {
       notify.error(t('aerosync.title'), t('syncPanel.planStaleAfterBatch'));
       return;
@@ -14081,7 +14095,7 @@ const App: React.FC = () => {
 
     // Each runner resolves with the queue ids of the files that landed, so a
     // dispatcher never sends a landed file twice.
-    const launchBatch = async (batchEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
+    const launchBatch = withTransferGeneration(async (batchEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
       const stops = userAction ? stopCountRef.current : initialStops;
       const landedIds = new Set<string>();
       const attempt = { epoch: expectedGuiTarget, changed: false };
@@ -14168,9 +14182,9 @@ const App: React.FC = () => {
         }
       } finally { releaseCompletion(); }
       return landedIds;
-    };
+    });
 
-    const runSingles = async (singleEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
+    const runSingles = withTransferGeneration(async (singleEntries: Entry[], queueIds: string[], userAction: boolean): Promise<Set<string>> => {
       const stops = userAction ? stopCountRef.current : initialStops;
       const landedIds = new Set<string>();
       const attempt = { epoch: expectedGuiTarget, changed: false };
@@ -14237,7 +14251,7 @@ const App: React.FC = () => {
         } finally { releaseCompletion(); }
       }
       return landedIds;
-    };
+    });
 
     const enqueue = (list: Entry[], staged: boolean) => list.map(entry => {
       const id = transferQueue.addItem(entry.display_name, entry.remote_path, entry.size, direction, staged ? { staged: true } : undefined);

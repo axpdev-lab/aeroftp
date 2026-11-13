@@ -54,7 +54,7 @@ function openAeroSync(roots: { local: string; right: string; localLocal: boolean
     const invoke = vi.fn(async (cmd: string, _args?: Record<string, unknown>) =>
         cmd.startsWith('compare_') || cmd === 'provider_compare_directories' ? { differences: [], summary: {}, modify_window: 0 } : null);
     const context = {
-        useLatestCallback: (fn: unknown) => fn, aeroSyncCompareSeqRef: { current: 0 }, batchGenerationRef: { current: 0 }, AEROSYNC_DEFAULT_BACKUP_DIR: '.versions',
+        useLatestCallback: (fn: unknown) => fn, aeroSyncCompareSeqRef: { current: 0 }, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, AEROSYNC_DEFAULT_BACKUP_DIR: '.versions',
         showDualLocalPanel: roots.localLocal, isConnected: !roots.localLocal, showRemotePanel: !roots.localLocal,
         currentLocalPath: roots.local, currentLocalPath2: roots.localLocal ? roots.right : '', currentRemotePath: roots.localLocal ? '/' : roots.right,
         localFiles: [], localFiles2: [], remoteFiles: [], swapPanels: true,

@@ -1514,8 +1514,16 @@ impl FtpProvider {
             Err(error) => return Err(error),
         };
 
+        // A server that reads `-a` as a pathname lists the folder named `-a`
+        // instead, where a same-named file would pass for this one: with such
+        // an entry here a dot name not shown by the bare listing is unknown,
+        // never missing and never found.
+        let ambiguous = entries.iter().any(|e| e.name == "-a");
         let found = match entries.into_iter().find(|e| e.name == name) {
             Some(entry) => Some(entry),
+            None if name.starts_with('.') && ambiguous => {
+                return Err(ProviderError::Other("LIST -a is ambiguous here: the folder holds an entry named -a, so a dot-prefixed name cannot be looked up".into()))
+            }
             // A bare LIST hides dotfiles on vsftpd and its kin, and a server
             // with MLST never reaches this listing, so a dotfile that is
             // there read as missing: a non-recursive delete then listed the
@@ -8048,6 +8056,8 @@ mod rename_contract_tests {
         rnto_refuses_taken: bool,
         /// `LIST -a` is refused; a bare LIST still answers.
         list_all_refused: bool,
+        /// `LIST -a` is read as a pathname: it lists the folder named `-a`.
+        dash_a_as_path: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -8134,6 +8144,9 @@ mod rename_contract_tests {
                 }
                 "LIST" => {
                     let (all, target) = match argument.strip_prefix("-a") {
+                        Some(_) if quirks.dash_a_as_path => {
+                            (true, format!("{}/-a", cwd.trim_end_matches('/')))
+                        }
                         Some(_) => (true, cwd.clone()),
                         None if argument.is_empty() => (false, cwd.clone()),
                         None => (false, argument.clone()),
@@ -8589,6 +8602,37 @@ mod rename_contract_tests {
             .await
             .expect("a plain file is deleted");
         assert_eq!(*log.lock().unwrap(), ["DELE /d/.env"]);
+    }
+
+    /// A server that reads `-a` as a pathname lists the folder named `-a`, and
+    /// a same-named dotfile there would pass for the one asked about. With an
+    /// entry named `-a` in the bare listing a dot name it does not show is
+    /// neither found nor missing; without one, `LIST -a` finds it as before.
+    #[tokio::test]
+    async fn a_dotfile_lookup_refuses_a_folder_named_dash_a() {
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            dash_a_as_path: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/-a", "/d/-a/.env"], quirks).await;
+        let refused = provider.stat("/d/.env").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::Other(message)) if message.contains("ambiguous")),
+            "{refused:?}"
+        );
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/.env", "/d/b.txt"], quirks).await;
+        let found = provider
+            .stat("/d/.env")
+            .await
+            .expect("an unambiguous dotfile is found");
+        assert_eq!(found.name, ".env");
     }
 
     /// vsftpd refuses `RMD` of a directory that is not empty with a bare 550

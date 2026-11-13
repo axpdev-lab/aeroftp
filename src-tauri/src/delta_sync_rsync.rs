@@ -159,6 +159,10 @@ pub struct DeltaSyncResult {
 pub struct DeltaEligibilityStatus {
     pub eligible: bool,
     pub reason: Option<String>,
+    /// A refusal the run must not go past (a pinned session key that is not
+    /// the login key, a rejected host key), kept apart from an ordinary
+    /// "delta unavailable" so the gate stops before anything is written.
+    pub hard_error: Option<String>,
 }
 
 impl DeltaSyncResult {
@@ -507,6 +511,24 @@ pub async fn check_delta_eligibility_with_transport(
 
     let capability = match remote_capability {
         Ok(Ok(capability)) => capability,
+        // The same split as a transfer's: a refusal that must not fall back
+        // stays a hard error, fresh or cached, so the sync-start gate stops
+        // the run instead of offering to continue without delta.
+        Ok(Err(ProbeFailure::Hard(reason))) => {
+            let verdict = hard_rejection_result(&reason);
+            if let Some(hard) = verdict.hard_error {
+                return DeltaEligibilityStatus {
+                    eligible: false,
+                    reason: Some(hard.clone()),
+                    hard_error: Some(hard),
+                };
+            }
+            return DeltaEligibilityStatus {
+                eligible: false,
+                reason: verdict.fallback_reason,
+                hard_error: None,
+            };
+        }
         Ok(Err(reason)) => {
             return DeltaEligibilityStatus {
                 eligible: false,
@@ -514,12 +536,14 @@ pub async fn check_delta_eligibility_with_transport(
                     "remote delta unavailable: {}",
                     reason
                 ))),
+                hard_error: None,
             };
         }
         Err(_) => {
             return DeltaEligibilityStatus {
                 eligible: false,
                 reason: Some("remote delta probe timed out after 5s".to_string()),
+                hard_error: None,
             };
         }
     };
@@ -531,6 +555,7 @@ pub async fn check_delta_eligibility_with_transport(
                 "local delta unavailable: {}",
                 error
             ))),
+            hard_error: None,
         };
     }
 
@@ -543,6 +568,7 @@ pub async fn check_delta_eligibility_with_transport(
     DeltaEligibilityStatus {
         eligible: true,
         reason: None,
+        hard_error: None,
     }
 }
 
@@ -697,6 +723,7 @@ pub async fn check_delta_eligibility(
         return Some(DeltaEligibilityStatus {
             eligible: false,
             reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
+            hard_error: None,
         });
     }
 
@@ -707,6 +734,7 @@ pub async fn check_delta_eligibility(
                 "This server has no SFTP, and the session runs in SCP mode, which has no delta sync."
                     .to_string(),
             ),
+            hard_error: None,
         });
     }
 
@@ -719,6 +747,7 @@ pub async fn check_delta_eligibility(
                     "Delta sync is unavailable for this SFTP session; reconnect or verify its SSH authentication and host-key state."
                         .to_string(),
                 ),
+                hard_error: None,
             });
         }
     };
@@ -1208,6 +1237,66 @@ mod tests {
             transport.probes.load(Ordering::SeqCst),
             1,
             "a failed remote probe must be cached, not re-run on the next transfer"
+        );
+    }
+
+    /// The sync-start gate reads the same cached probe: a pinned key that is
+    /// not the login key is a hard error there too, on the fresh probe and on
+    /// the cached one, never an ordinary "delta unavailable" to continue past.
+    #[tokio::test]
+    async fn the_sync_start_gate_keeps_a_pinned_key_mismatch_hard_fresh_and_cached() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Mismatch(AtomicUsize);
+
+        #[async_trait]
+        impl DeltaTransport for Mismatch {
+            fn name(&self) -> &'static str {
+                "pinned-key-mismatch-gate"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Err(RsyncError::HardRejection(
+                    "native hard rejection (PinnedKeyMismatch): the pinned key is not the login key"
+                        .into(),
+                ))
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                unreachable!("the gate transfers nothing")
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                unreachable!("the gate transfers nothing")
+            }
+        }
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        let transport = Mismatch(AtomicUsize::new(0));
+        for attempt in ["fresh", "cached"] {
+            let status =
+                check_delta_eligibility_with_transport(&transport, "test-gate-pinned-key").await;
+            assert!(!status.eligible, "{attempt}");
+            assert!(
+                status
+                    .hard_error
+                    .as_deref()
+                    .is_some_and(|e| e.contains("PinnedKeyMismatch")),
+                "{attempt}: {status:?}"
+            );
+        }
+        assert_eq!(
+            transport.0.load(Ordering::SeqCst),
+            1,
+            "the second read is the cache"
         );
     }
 

@@ -56,7 +56,7 @@ const { code: pickerCode } = await transformWithOxc(
 );
 async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<typeof breaker>, picked = [`${LOCAL}/up.txt`], onPick = () => {}) {
   const context = {
-    withBatchLatch: <T,>(fn: T) => fn, batchGenerationRef: { current: 0 }, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
+    withBatchLatch: <T,>(fn: T) => fn, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
     getActiveLocalState: () => f.panels.local, resetOverwriteSettings: vi.fn(),
     pickFile: vi.fn(async () => { onPick(); return picked; }), t: (key: string) => key,
     splitForFileBatch, usesProviderApi, liveConnectionParams: f.liveConnectionParams, loadRemoteFiles: f.loadRemoteFiles,

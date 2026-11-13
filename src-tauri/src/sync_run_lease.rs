@@ -143,6 +143,20 @@ pub(crate) fn acquire(
     )
 }
 
+/// The script `on_page_load` evaluates in a document that finished loading:
+/// it gives that document the window's page generation, once, read-only.
+/// A document keeps the first value it receives; one the window replaced
+/// never receives a later one, and its script cannot write its own.
+pub(crate) fn page_epoch_script(epoch: u64) -> String {
+    format!(
+        "if (!Object.prototype.hasOwnProperty.call(window, '{PAGE_EPOCH_GLOBAL}')) {{ \
+         Object.defineProperty(window, '{PAGE_EPOCH_GLOBAL}', {{ value: {epoch}, writable: false, configurable: false }}); }}"
+    )
+}
+
+/// The document global [`page_epoch_script`] sets; the runner reads it.
+pub(crate) const PAGE_EPOCH_GLOBAL: &str = "__AEROFTP_SYNC_PAGE_EPOCH__";
+
 /// [`acquire`] for a begin request from a page, with the generation that page
 /// read at its start. A request that names none is refused: reading the
 /// generation now could give the page that replaced it.
@@ -317,9 +331,21 @@ mod tests {
         release(&replacement).unwrap();
     }
 
-    /// The generation a page read at its start: the old page's, sent after the
-    /// reload, is refused; the new page's is accepted; a begin without one is
-    /// refused rather than given the generation of the moment.
+    /// The value `on_page_load` hands a document is set once and read-only,
+    /// so a document holds the first generation it received and nothing
+    /// written later, by the page or by a stray delivery, replaces it.
+    #[test]
+    fn the_page_generation_is_handed_to_a_document_once_and_read_only() {
+        let script = page_epoch_script(7);
+        assert!(script.contains(PAGE_EPOCH_GLOBAL));
+        assert!(script.contains("value: 7"));
+        assert!(script.contains("writable: false, configurable: false"));
+        assert!(script.starts_with("if (!Object.prototype.hasOwnProperty.call(window, "));
+    }
+
+    /// The generation a document was given: the old document's, sent after the
+    /// reload, is refused; the new document's is accepted; a begin without one
+    /// is refused rather than given the generation of the moment.
     #[test]
     fn a_begin_carries_the_generation_its_page_read_at_start() {
         let dir = tempfile::tempdir().unwrap();

@@ -76,14 +76,14 @@ pub async fn provider_sync_transfer_bulk(
     Ok(redacted_bulk_results(results))
 }
 
-/// A file's failure text crosses to the webview like a command error: through
-/// the same redaction (see [`crate::provider_commands::ipc_result`]).
+/// A file's failure crosses to the webview like a command error: as its fixed
+/// message (see [`crate::provider_commands::ipc_result`]).
 fn redacted_bulk_results(results: Vec<SyncBulkResult>) -> Vec<SyncBulkResult> {
     results
         .into_iter()
         .map(|result| match result {
             SyncBulkResult::Failed { message } => SyncBulkResult::Failed {
-                message: crate::debug_tests::redact(&message),
+                message: crate::sync::ipc_error_message(&message),
             },
             other => other,
         })

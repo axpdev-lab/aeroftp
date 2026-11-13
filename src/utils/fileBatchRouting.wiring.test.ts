@@ -201,7 +201,7 @@ describe('runFileBatch keeps one writer per destination', () => {
     // the remote path of an upload. Without the claim, two picked files with
     // one name from different folders shared a batch and one destination.
     const start = APP.indexOf('const runFileBatch = useLatestCallback(async (');
-    const end = APP.indexOf('const launchBatch = async', start);
+    const end = APP.indexOf('const launchBatch = withTransferGeneration(async', start);
     expect(start).toBeGreaterThan(-1);
     expect(end).toBeGreaterThan(start);
     const body = APP.slice(start, end);
@@ -228,9 +228,9 @@ describe('a cut on a legacy session keeps per-file calls', () => {
 
 describe('#591: Start and Retry re-arm the cancel state, the runners never do', () => {
   const body = (name: string) => {
-    const start = APP.indexOf(`const ${name} = async`);
+    const start = APP.indexOf(`const ${name} = withTransferGeneration(async`);
     expect(start, name).toBeGreaterThan(-1);
-    return APP.slice(start, APP.indexOf('\n    };\n', start));
+    return APP.slice(start, APP.indexOf('\n    });\n', start));
   };
 
   it('registers every file-batch row callback through rearmedOnUserAction', () => {

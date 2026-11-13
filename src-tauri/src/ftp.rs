@@ -623,7 +623,18 @@ impl FtpManager {
         if name.starts_with('.') {
             let previous = self.current_path.clone();
             self.change_dir(parent).await?;
-            let listed = self.list_files_for_probe(true).await;
+            // The same guard as a receipt (`list_receipt_folder`): `LIST -a`
+            // only when the bare listing proves `-a` names nothing here. With
+            // an entry named `-a` the answer is an error, never "absent", so a
+            // backup name is never taken for free.
+            let listed = match self.list_files_for_probe(false).await {
+                Ok(plain) if plain.iter().any(|entry| entry.name == name) => Ok(plain),
+                Ok(plain) if plain.iter().any(|entry| entry.name == "-a") => Err(
+                    FtpManagerError::OperationFailed("LIST -a is ambiguous here: the folder holds an entry named -a, so a dot-prefixed name cannot be looked up".into()).into(),
+                ),
+                Ok(_) => self.list_files_for_probe(true).await,
+                Err(error) => Err(error),
+            };
             if self.stream.is_none() {
                 return Err(listed
                     .err()
@@ -1962,6 +1973,38 @@ pub(crate) mod exists_tests {
             .cloned()
             .collect();
         assert_eq!(lists, ["LIST"], "LIST -a must not be sent");
+    }
+
+    /// The existence probe a versioned backup uses on a server without SIZE:
+    /// with a folder named `-a` beside it, a dot name is not looked up through
+    /// `LIST -a`, and the probe fails instead of answering "free", so the
+    /// backup stops before any rename and an existing backup is never
+    /// overwritten.
+    #[tokio::test]
+    async fn a_dot_name_probe_fails_closed_beside_a_folder_named_dash_a() {
+        let (addr, seen) = receipt_server(
+            "drwxr-xr-x 2 user group 4096 Jan 20 10:00 -a\r\n\
+             -rw-r--r-- 1 user group 5 Jan 20 10:00 a.txt\r\n",
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env\r\n",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let probe = ftp.exists("/b/.env").await;
+        assert!(probe.is_err(), "unknown, not absent: {probe:?}");
+        let dir = crate::sync_backup::BackupDir::parse(".aeroftp-versions").unwrap();
+        let archived =
+            crate::sync_backup::archive_remote_on(&mut ftp, "/b", &dir, "20260925T070000Z", ".env")
+                .await;
+        assert!(archived.is_err(), "{archived:?}");
+        let log = seen.lock().unwrap();
+        assert!(!log.iter().any(|line| line == "LIST -a"), "{log:?}");
+        assert!(
+            !log.iter()
+                .any(|line| line.starts_with("RNFR") || line.starts_with("RNTO")),
+            "nothing is renamed: {log:?}"
+        );
     }
 
     /// Without a `-a` entry, a dot name the plain listing does not show is

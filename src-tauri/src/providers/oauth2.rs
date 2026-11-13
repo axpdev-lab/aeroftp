@@ -825,6 +825,7 @@ fn with_stored_legacy_token_claim<T>(
 
 // Sign-out purges every valid stranded claim without selecting a login to
 // restore. Keep the same file -> cache -> vault order as migration.
+#[cfg(test)]
 fn with_legacy_signout<T>(
     cache: &Mutex<Option<HashMap<String, String>>>,
     path: &std::path::Path,
@@ -1810,25 +1811,51 @@ impl OAuth2Manager {
             return Ok(());
         }
 
-        // MUV-4: drop the per-profile token from the active user's partition too.
-        if !profile_id.is_empty() {
-            if let Some(user) = self.credential_user {
-                crate::user_partitions::unmirror_credential_for_user_best_effort_any(
-                    user, &account,
-                );
-            } else {
-                crate::user_partitions::unmirror_active_credential(&account);
+        // MUV-4: drop the per-profile token from the active user's partition
+        // too, but only once the sign-out holds its lock (below): a sign-out
+        // refused for the lock must leave every copy in place.
+        let credential_user = self.credential_user;
+        let unmirror = || {
+            if !profile_id.is_empty() {
+                if let Some(user) = credential_user {
+                    crate::user_partitions::unmirror_credential_for_user_best_effort_any(
+                        user, &account,
+                    );
+                } else {
+                    crate::user_partitions::unmirror_active_credential(&account);
+                }
             }
-        }
+        };
 
         let json_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        with_legacy_signout(&MEMORY_TOKEN_CACHE, &json_path, |cache| {
+        Self::delete_shared_tokens(
+            provider,
+            &account,
+            &json_path,
+            LegacyTokenGuard::acquire_for_signout,
+            unmirror,
+        )
+    }
+
+    /// The part of [`Self::delete_tokens`] the legacy owner's copies share:
+    /// take the sign-out lock first, then remove the partition mirror, the
+    /// vault entry, the memory cache and the legacy files, all under it.
+    fn delete_shared_tokens(
+        provider: OAuthProvider,
+        account: &str,
+        json_path: &std::path::Path,
+        lock: impl FnOnce(&std::path::Path) -> Result<LegacyTokenGuard, ProviderError>,
+        unmirror: impl FnOnce(),
+    ) -> Result<(), ProviderError> {
+        let process = lock(json_path)?;
+        with_legacy_signout_guard(&MEMORY_TOKEN_CACHE, json_path, process, |cache| {
+            unmirror();
             // Delete from vault
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                store.delete(&account).map_err(|_| token_owner_changed())?;
+                store.delete(account).map_err(|_| token_owner_changed())?;
             }
-            invalidate_memory_tokens(cache, legacy_revision(provider), &account);
+            invalidate_memory_tokens(cache, legacy_revision(provider), account);
             // Delete legacy .json file if exists
             let json_path =
                 Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
@@ -2748,6 +2775,55 @@ mod tests {
             std::fs::read_to_string(dir.path().join("held")).unwrap(),
             "authorization"
         );
+    }
+
+    /// The whole sign-out of `delete_tokens` refused on ENOLCK takes nothing
+    /// away: the partition mirror is removed only after the lock is held, as
+    /// are the vault entry and the memory cache, so "nothing was signed out"
+    /// is true. With the lock the same call removes them.
+    #[cfg(unix)]
+    #[test]
+    fn a_signout_refused_on_enolck_removes_no_copy_of_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let json_path = dir.path().join("oauth2_box.json");
+        let account = format!("oauth_box_enolck-{}", uuid::Uuid::new_v4());
+        MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .get_or_insert_with(HashMap::new)
+            .insert(account.clone(), "{}".into());
+        let unmirrored = std::cell::Cell::new(false);
+        let refused = OAuth2Manager::delete_shared_tokens(
+            OAuthProvider::Box,
+            &account,
+            &json_path,
+            |path| LegacyTokenGuard::lock_with(path, LegacyLockUse::Signout, |_| Err(enolck())),
+            || unmirrored.set(true),
+        );
+        assert!(
+            matches!(&refused, Err(ProviderError::Other(message)) if message.contains("nothing was signed out")),
+            "{refused:?}"
+        );
+        assert!(!unmirrored.get(), "the partition mirror stays");
+        let cached = |account: &str| {
+            MEMORY_TOKEN_CACHE
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|map| map.contains_key(account))
+        };
+        assert!(cached(&account), "the memory cache stays");
+
+        OAuth2Manager::delete_shared_tokens(
+            OAuthProvider::Box,
+            &account,
+            &json_path,
+            LegacyTokenGuard::acquire_for_signout,
+            || unmirrored.set(true),
+        )
+        .unwrap();
+        assert!(unmirrored.get());
+        assert!(!cached(&account));
     }
 
     /// A token miss with no legacy file and no claim answers "no stored

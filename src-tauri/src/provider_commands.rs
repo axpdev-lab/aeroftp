@@ -7411,16 +7411,17 @@ async fn upload_file_for_ipc(
     }
 }
 
-/// The error text a provider command hands to the webview.
+/// The error a sync runner's command hands to the webview.
 ///
 /// A provider's error can carry what its server wrote (a JSON `detail`, an
-/// HTML page), which may quote a token or a signed URL. The sync runner's
-/// commands return their errors through here, the one place the text leaves
-/// the native side, so it is redacted before any script can read it. The
-/// `CONNECTION_CHANGED` marker survives: the runner confirms it through the
-/// backend's own owner check, never by the text alone.
+/// HTML page), and an opaque token there matches no redaction pattern. So
+/// none of that text crosses: the commands the runner calls return their
+/// errors through here, the one place the text leaves the native side, as the
+/// fixed message of [`crate::sync::ipc_error_message`] (the error's kind, its
+/// HTTP status, the trusted markers such as `CONNECTION_CHANGED`). The full
+/// text, redacted, is logged natively.
 pub(crate) fn ipc_result<T>(result: Result<T, String>) -> Result<T, String> {
-    result.map_err(|error| crate::debug_tests::redact(&error))
+    result.map_err(|error| crate::sync::ipc_error_message(&error))
 }
 
 /// Create a directory
@@ -18464,8 +18465,21 @@ mod tests {
     /// quoting the ownership marker and a bearer token, as a Twake server can.
     struct LeakyServer;
 
-    const LEAKED: &str =
-        "CONNECTION_CHANGED: Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 rejected";
+    /// A JSON error detail as a Twake server writes it: the ownership marker,
+    /// an Authorization header, and an opaque token with no label any pattern
+    /// could recognize.
+    const LEAKED: &str = r#"{"errors":[{"status":"403","detail":"CONNECTION_CHANGED Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 session zq8Xv2Lr9TmPq4Ks7Wd1Hy"}]}"#;
+    const SECRETS: [&str; 2] = [
+        "abcdefghijklmnopqrstuvwxyz0123456789",
+        "zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+    ];
+
+    fn assert_no_server_text(returned: &str) {
+        for secret in SECRETS {
+            assert!(!returned.contains(secret), "{returned}");
+        }
+        assert!(!returned.contains("detail"), "{returned}");
+    }
 
     #[async_trait::async_trait]
     impl StorageProvider for LeakyServer {
@@ -18539,6 +18553,9 @@ mod tests {
         async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
             // Every source is there and no backup yet, so a backup goes on
             // to the failing write.
+            if path.contains("receipt-error") {
+                return Err(ProviderError::Other(LEAKED.to_string()));
+            }
             if path.contains(".aeroftp-versions") {
                 return Err(ProviderError::NotFound(path.to_string()));
             }
@@ -18559,33 +18576,64 @@ mod tests {
     }
 
     /// What `provider_delete_file` and `provider_mkdir` return to the webview,
-    /// through the same boundary the commands use: the server's token is
-    /// masked, and the marker the runner confirms natively is still there.
+    /// through the same boundary the commands use: none of the server's text,
+    /// only the error's kind, its HTTP status and the marker the runner
+    /// confirms natively; `classify_transfer_error` reads the kind back.
     #[tokio::test]
-    async fn a_provider_error_reaches_the_webview_with_its_token_masked() {
+    async fn a_provider_error_reaches_the_webview_without_the_server_text() {
         let state = ProviderState::new();
         *state.provider.lock().await = Some(Box::new(LeakyServer));
         let deleted = ipc_result(delete_file_for_ipc(&state, "/a".into(), None, None).await);
         let created = ipc_result(mkdir_for_ipc(&state, "/d".into(), None, None).await);
         for returned in [deleted.unwrap_err(), created.unwrap_err()] {
-            assert!(
-                !returned.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
-                "{returned}"
+            assert_no_server_text(&returned);
+            assert!(returned.starts_with("CONNECTION_CHANGED: "), "{returned}");
+            assert!(returned.contains("(HTTP 403)"), "{returned}");
+            let raw_kind = crate::sync::classify_sync_error(LEAKED, None);
+            let read_back = crate::sync::classify_ipc_error(&returned, None);
+            assert_eq!(
+                (read_back.kind, read_back.retryable),
+                (raw_kind.kind, raw_kind.retryable)
             );
-            assert!(returned.contains("REDACTED"), "{returned}");
-            assert!(returned.contains("CONNECTION_CHANGED"), "{returned}");
         }
         // Without the boundary the same call hands the token over.
         let raw = delete_file_for_ipc(&state, "/a".into(), None, None)
             .await
             .unwrap_err();
-        assert!(raw.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+        assert!(raw.contains(SECRETS[1]));
     }
 
-    /// The remote backup of a sync run, on a provider: the provider's error
-    /// text reaches the webview through the same boundary.
+    /// The receipt check of a sync run's backup, on a provider whose `stat`
+    /// fails with the server's text.
     #[tokio::test]
-    async fn a_remote_backup_error_reaches_the_webview_with_its_token_masked() {
+    async fn a_receipt_check_error_reaches_the_webview_without_the_server_text() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let call = || {
+            crate::sync_backup_verify_receipt_for_ipc(
+                &app,
+                &state,
+                "provider".into(),
+                "/root".into(),
+                ".aeroftp-versions".into(),
+                "20260925T070000Z".into(),
+                "docs/receipt-error.txt".into(),
+                "/root/.aeroftp-versions/20260925T070000Z/docs/receipt-error.txt".into(),
+                None,
+            )
+        };
+        let raw = call().await.unwrap_err();
+        assert!(raw.contains(SECRETS[1]), "{raw}");
+        let returned = ipc_result(call().await).unwrap_err();
+        assert_no_server_text(&returned);
+        assert!(returned.starts_with("CONNECTION_CHANGED: "), "{returned}");
+    }
+
+    /// The remote backup of a sync run, on a provider: none of the provider's
+    /// text reaches the webview.
+    #[tokio::test]
+    async fn a_remote_backup_error_reaches_the_webview_without_the_server_text() {
         let app = crate::AppState::new();
         let state = ProviderState::new();
         *state.provider.lock().await = Some(Box::new(LeakyServer));
@@ -18602,21 +18650,15 @@ mod tests {
             )
         };
         let raw = call().await.unwrap_err();
-        assert!(
-            raw.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
-            "{raw}"
-        );
+        assert!(raw.contains(SECRETS[1]), "{raw}");
         let returned = ipc_result(call().await).unwrap_err();
-        assert!(
-            !returned.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
-            "{returned}"
-        );
+        assert_no_server_text(&returned);
         assert!(returned.contains("CONNECTION_CHANGED"), "{returned}");
     }
 
     /// The legacy FTP session of a sync run: a server reply quoting the marker
     /// and a token. `safe_ftp_error` already keeps reply text out, and the
-    /// boundary would mask a token that came by any other route.
+    /// boundary would drop it if it came by any other route.
     #[tokio::test]
     async fn a_legacy_ftp_error_reaches_the_webview_without_the_server_text() {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -18650,16 +18692,10 @@ mod tests {
         let returned =
             ipc_result(crate::create_remote_folder_for_ipc(&app, &state, "/d".into(), None).await)
                 .unwrap_err();
-        assert!(
-            !returned.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
-            "{returned}"
-        );
-        assert!(returned.contains("Failed to create folder"), "{returned}");
-        // The boundary masks the same token when it does arrive as text.
-        assert!(
-            !ipc_result::<()>(Err(format!("Failed to create folder: {LEAKED}")))
-                .unwrap_err()
-                .contains("abcdefghijklmnopqrstuvwxyz0123456789")
+        assert_no_server_text(&returned);
+        assert!(returned.contains("[sync-error:"), "{returned}");
+        assert_no_server_text(
+            &ipc_result::<()>(Err(format!("Failed to create folder: {LEAKED}"))).unwrap_err(),
         );
     }
 

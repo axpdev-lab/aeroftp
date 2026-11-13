@@ -31,6 +31,7 @@ import {
     type NewQueueItem,
 } from './transferQueueActions';
 import { copyText } from '../utils/clipboard';
+import { withoutErrorTag } from '../utils/transferErrorClassifier';
 
 // `staged` was added by TQ-3 (APPENDIX-TRANSFER-QUEUE). It represents an
 // entry that was added to the queue without launching: the user can prune,
@@ -945,7 +946,7 @@ export const useTransferQueue = () => {
     const setProgress = (id: string, progress: number, speedBps?: number) =>
         setItems(prev => applyItemProgress(prev, id, progress, speedBps));
     const completeTransfer = (id: string) => updateStatus(id, 'completed', 100);
-    const failTransfer = (id: string, error: string) => updateStatus(id, 'error', undefined, error);
+    const failTransfer = (id: string, error: string) => updateStatus(id, 'error', undefined, withoutErrorTag(error));
     // A row the user stopped: marked `cancelled`, so no retry and no journal
     // reads the translated label to know it.
     const cancelTransfer = (id: string, label: string) =>
