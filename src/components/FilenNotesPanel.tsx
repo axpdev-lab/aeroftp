@@ -138,6 +138,10 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   // Bumped on every edit: a save clears `dirty` only when no edit came in
   // while it ran, so a later edit keeps the close guard up (Discussion #1527).
   const editVersionRef = useRef(0);
+  // The note on screen: a save that completes after the user left its note
+  // must not touch the state of the note opened since (Discussion #1527).
+  const currentNoteUuidRef = useRef<string | null>(null);
+  useEffect(() => { currentNoteUuidRef.current = selectedNote?.uuid ?? null; }, [selectedNote]);
   // The open note, so a late request result is applied only to the note it was made on
   const selectedUuidRef = useRef<string | null>(null);
   const creatingTagRef = useRef(false);
@@ -199,6 +203,9 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   }, []);
 
   const handleBackToList = useCallback(async () => {
+    // Leaving waits for a save in flight: navigating away under it would let
+    // its late completion land on the next note opened.
+    if (saving) return;
     // Cancel pending auto-save to prevent stale overwrites
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -235,7 +242,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     setNoteContent('');
     setDirty(false);
     loadNotes();
-  }, [dirty, selectedNote, noteContent, noteTitle, savedTitle, noteType, loadNotes]);
+  }, [saving, dirty, selectedNote, noteContent, noteTitle, savedTitle, noteType, loadNotes]);
 
   // ── Keyboard ──
 
@@ -266,6 +273,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     saveTimeoutRef.current = setTimeout(async () => {
       if (!selectedNote) return;
       const savedVersion = editVersionRef.current;
+      const noteUuid = selectedNote.uuid;
       setSaving(true);
       try {
         await invoke('filen_notes_edit_content', {
@@ -273,7 +281,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           content: value,
           noteType: noteType,
         });
-        if (editVersionRef.current === savedVersion) setDirty(false);
+        if (currentNoteUuidRef.current === noteUuid && editVersionRef.current === savedVersion) setDirty(false);
       } catch (err) {
         setError(String(err));
       } finally {
@@ -296,6 +304,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       saveTimeoutRef.current = null;
     }
     const savedVersion = editVersionRef.current;
+    const noteUuid = selectedNote.uuid;
     setSaving(true);
     const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
@@ -309,10 +318,10 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           uuid: selectedNote.uuid,
           title: noteTitle,
         });
-        setSavedTitle(noteTitle);
+        if (currentNoteUuidRef.current === noteUuid) setSavedTitle(noteTitle);
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_saved', { provider: 'Filen', title: noteTitle }) });
-      if (editVersionRef.current === savedVersion) setDirty(false);
+      if (currentNoteUuidRef.current === noteUuid && editVersionRef.current === savedVersion) setDirty(false);
     } catch (err) {
       humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_save_error', { provider: 'Filen' }) });
       setError(String(err));

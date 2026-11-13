@@ -869,6 +869,28 @@ describe('FilenNotesPanel (Discussion #1527)', () => {
         expect(confirmOpen()).toBe(true);
     });
 
+    it('waits for a save in flight before going back to the list', async () => {
+        // Leaving under a running save let its late completion set the
+        // saved-title baseline of the next note opened.
+        const onClose = vi.fn();
+        await openNote(onClose);
+        const save = deferred<unknown>();
+        mocks.handlers.filen_notes_edit_content = () => save.promise;
+        mocks.handlers.filen_notes_edit_title = async () => null;
+        await typeInto(titleInput(), 'sentinel-note-retitled');
+        await click('filenNotes.saveNow');
+        await escape();
+        await flush();
+        // No second save overlaps the first, and the note stays on screen.
+        expect(mocks.invoke.mock.calls.filter(c => c[0] === 'filen_notes_edit_content')).toHaveLength(1);
+        expect(host.querySelector('input[placeholder="filenNotes.untitled"]')).not.toBeNull();
+        await act(async () => save.resolve(null));
+        await flush();
+        await escape();
+        await flush();
+        expect(host.querySelector('input[placeholder="filenNotes.untitled"]')).toBeNull();
+    });
+
     it('saves a title edit on the way back to the list after the content auto-save completes', async () => {
         // Back to the list saved only while `dirty`, which the content
         // auto-save clears: a title typed before it was dropped unasked.
