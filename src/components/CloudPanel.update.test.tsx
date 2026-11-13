@@ -5,7 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CloudPanel } from './CloudPanel';
 
-const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Map<string, (event: { payload: unknown }) => void>() }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Map<string, (event: { payload: unknown }) => void>(), setupResult: null as unknown }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ emit: vi.fn() }));
 vi.mock('../hooks/useTauriListener', () => ({ useTauriListener: (name: string, callback: (event: { payload: unknown }) => void) => { mocks.listeners.set(name, callback); } }));
@@ -16,6 +16,11 @@ vi.mock('./SyncScheduler', () => ({ SyncScheduler: () => null }));
 vi.mock('./WatcherStatus', () => ({ WatcherStatus: () => null }));
 vi.mock('./Sync/SelectiveSyncTree', () => ({ SelectiveSyncTree: () => null }));
 vi.mock('./CloudPairsEditor', () => ({ CloudPairsEditor: () => null }));
+vi.mock('./CloudSetupWizard', () => ({
+    CloudSetupWizard: ({ onComplete }: { onComplete: (config: unknown) => void }) => (
+        <button type="button" data-testid="setup-complete" onClick={() => onComplete(mocks.setupResult)} />
+    ),
+}));
 
 let root: Root | undefined;
 let host: HTMLDivElement;
@@ -175,6 +180,50 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(remoteFolder()).not.toBeNull();
         await React.act(async () => resolveSave(null));
         await React.act(async () => { await Promise.resolve(); });
+    });
+
+    it('drops the stale settings baseline when Disable replaces the configuration', async () => {
+        mocks.setupResult = { enabled: true, cloud_name: 'fresh', local_folder: '/local2', remote_folder: '/new', sync_interval_secs: 300, sync_direction: 'bidirectional', exclude_patterns: [], excluded_folders: [] };
+        const savedConfigs: { remote_folder?: string }[] = [];
+        let resolveDisable!: () => void;
+        const disablePromise = new Promise<void>(res => { resolveDisable = res; });
+        await mount([]);
+        mocks.invoke.mockImplementation(async (command: string, args?: { config?: { remote_folder?: string } }) => {
+            if (command === 'disable_aerocloud') return disablePromise;
+            if (command === 'save_cloud_config_cmd') { savedConfigs.push(args?.config ?? {}); return null; }
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        // Disable, then open Settings while the disable is still in flight:
+        // the open session must not survive the configuration it edited.
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
+        const confirmOverlay = host.querySelector('[aria-label="cloud.disableConfirm"]')!;
+        await React.act(async () => [...confirmOverlay.querySelectorAll('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
+        await openSettings();
+        expect(host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]')?.value).toBe('/remote');
+        await React.act(async () => resolveDisable());
+        await React.act(async () => { await Promise.resolve(); });
+        // Setup wizard is up; completing it installs the NEW configuration.
+        await React.act(async () => host.querySelector<HTMLButtonElement>('[data-testid="setup-complete"]')!.click());
+        expect(host.textContent).toContain('/new');
+        // Cancel on the settings view must restore the NEW baseline, never the old one.
+        await openSettings();
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.cancel')!.click());
+        expect(host.textContent).toContain('/new');
+        expect(host.textContent).not.toContain('/remote');
+        // X goes through the same path.
+        await openSettings();
+        await React.act(async () => host.querySelector('button .lucide-x, button svg.lucide-x')!.closest('button')!.click());
+        expect(host.textContent).toContain('/new');
+        // And the next Save submits the NEW folder.
+        await openSettings();
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('common.save'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(savedConfigs[savedConfigs.length - 1]?.remote_folder).toBe('/new');
     });
 
     it('keeps the edit in place when the settings save rejects', async () => {

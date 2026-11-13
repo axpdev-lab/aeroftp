@@ -387,6 +387,15 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // A save cannot be stopped: while it runs the whole settings view is busy,
     // so the backdrop stays inert even when there are no unsaved edits.
     const settingsGuard = useGuardedClose({ guard: savingSettings ? 'busy' : settingsEdited ? 'dirty' : null, onClose });
+    // A settings session belongs to one configuration: when the configuration
+    // is cleared or replaced from outside the settings view (Disable
+    // resolving, setup completing, a reload), an open settings must close and
+    // drop its baseline instead of editing or restoring the old one.
+    const replaceConfig = (next: CloudConfig | null) => {
+        setConfig(next);
+        setShowSettings(false);
+        setSettingsBaseline(null);
+    };
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
     // dedicated aerocloud commands (pause_aerocloud/resume_aerocloud/disable_aerocloud)
@@ -444,7 +453,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setIsLoading(true);
         try {
             const cfg = await invoke<CloudConfig>('get_cloud_config');
-            setConfig(cfg);
+            replaceConfig(cfg);
             // Pair-specific settings own Update whenever pairs exist. Failure
             // to read them must not expose an ineffective legacy checkbox.
             const pairs = await invoke<{ pairs: unknown[] }>('get_cloud_pairs_config').catch(() => null);
@@ -463,7 +472,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     };
 
     const handleSetupComplete = (newConfig: CloudConfig) => {
-        setConfig(newConfig);
+        replaceConfig(newConfig);
         setStatus({ type: 'idle' });
         // Notify parent that cloud is now active
         emit('cloud-sync-status', { status: 'active', message: t('cloud.aerocloudEnabled') });
@@ -492,7 +501,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const handlePause = async () => {
         try {
             const updated = await invoke<CloudConfig>('pause_aerocloud');
-            setConfig(updated);
+            replaceConfig(updated);
             setStatus({ type: 'paused' });
             logger.debug('Sync paused');
         } catch (error) {
@@ -503,7 +512,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const handleResume = async () => {
         try {
             const updated = await invoke<CloudConfig>('resume_aerocloud');
-            setConfig(updated);
+            replaceConfig(updated);
             setStatus({ type: 'idle', last_sync: config?.last_sync || undefined });
             logger.debug('Sync resumed');
         } catch (error) {
@@ -523,7 +532,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setPendingDisableConfirm(false);
         try {
             await invoke('disable_aerocloud');
-            setConfig(null);
+            replaceConfig(null);
             setStatus({ type: 'not_configured' });
             logger.debug('AeroCloud disabled');
         } catch (error) {
