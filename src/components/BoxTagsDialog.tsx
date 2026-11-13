@@ -27,7 +27,7 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasChanges = JSON.stringify(tags.sort()) !== JSON.stringify([...currentTags].sort());
+  const hasChanges = JSON.stringify([...tags].sort()) !== JSON.stringify([...currentTags].sort());
   // A save already sent goes on after a close, and changed tags or a typed tag are unsaved: the backdrop is inert
   // in both cases and the X asks first (Discussion #1527).
   const guarded = useGuardedClose({ guard: saving ? 'busy' : hasChanges || input.trim() ? 'dirty' : null, onClose });
