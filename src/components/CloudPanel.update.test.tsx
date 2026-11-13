@@ -356,4 +356,31 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(host.querySelector('input[placeholder="/cloud/"]')).toBeTruthy();
     });
 
+    it('keeps the re-authorize entry from opening Settings while a Pause request is in flight', async () => {
+        // The re-authorize banner is the second way into Settings: left open,
+        // a Pause resolving later would replace the configuration under a draft.
+        let resolvePause!: (v: unknown) => void;
+        const pausePromise = new Promise(res => { resolvePause = res; });
+        const paused = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+        await mount([]);
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'pause_aerocloud') return pausePromise;
+            if (command === 'get_cloud_config') return paused;
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        await React.act(async () => mocks.listeners.get('cloud-reauth-required')!({ payload: { provider: 'gdrive', reason: 'expired', message: 'expired' } }));
+        const reauthButton = () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.includes('cloud.reauthorize'))!;
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.pause'))!.click());
+        expect(reauthButton().disabled).toBe(true);
+        await React.act(async () => reauthButton().click());
+        expect(host.querySelector('input[placeholder="/cloud/"]')).toBeNull();
+        await React.act(async () => resolvePause(paused));
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(reauthButton().disabled).toBe(false);
+        await React.act(async () => reauthButton().click());
+        expect(host.querySelector('input[placeholder="/cloud/"]')).toBeTruthy();
+    });
+
 });

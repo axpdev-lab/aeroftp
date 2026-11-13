@@ -372,7 +372,15 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // saved it does nothing (Discussion #1527); the X and Cancel of the
     // settings view only leave it, as before.
     const [settingsBaseline, setSettingsBaseline] = useState<CloudConfig | null>(null);
-    const openSettings = () => { setSettingsBaseline(config); setShowSettings(true); };
+    // Settings does not open while Pause, Resume or Disable is in flight
+    // (pendingLifecycle, below): their result replaces the configuration and
+    // would drop a draft opened meanwhile. Every entry (the dashboard button,
+    // the re-authorize banner) goes through here.
+    const openSettings = () => {
+        if (pendingLifecycle > 0) return;
+        setSettingsBaseline(config);
+        setShowSettings(true);
+    };
     // Edits live in `config` until Save persists them, so Cancel and X must
     // hand the draft back to the baseline; otherwise a reopen would adopt the
     // unsaved values as its baseline and the dirty guard would never fire.
@@ -918,7 +926,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                         </div>
                         <button
                             onClick={() => { setReauthRequired(null); openSettings(); }}
-                            className="px-3 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700"
+                            disabled={pendingLifecycle > 0}
+                            className="px-3 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {t('cloud.reauthorize') || 'Re-authorize'}
                         </button>
