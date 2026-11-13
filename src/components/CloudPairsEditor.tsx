@@ -19,6 +19,7 @@ import { logger } from '../utils/logger';
 import { loadSavedServerProfiles } from '../utils/serverProfileStore';
 import { pickFile } from '../utils/pickPath';
 import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 const MAX_CLOUD_PAIRS = 32;
@@ -85,7 +86,11 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     // A save already sent goes on after a close, and pair edits not yet saved would be lost by one: the backdrop
     // is inert in both cases and the X asks first (Discussion #1527).
     const pairsChanged = !loading && JSON.stringify(pairs) !== JSON.stringify(persistedPairs);
-    const guarded = useGuardedClose({ guard: saving ? 'busy' : pairsChanged ? 'dirty' : null, onClose });
+    // Add, remove, toggle and the legacy import persist on their own, without
+    // Save: they count as busy too, so a stray click cannot close the editor
+    // before their result or error shows (Discussion #1527).
+    const requests = useInFlight<string>();
+    const guarded = useGuardedClose({ guard: saving || requests.count > 0 ? 'busy' : pairsChanged ? 'dirty' : null, onClose });
 
     useEffect(() => {
         if (!isOpen) return;
@@ -152,6 +157,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             last_sync: null,
         };
 
+        requests.begin(newPair.id);
         try {
             const updated = await invoke<CloudPairsConfig>('add_cloud_pair', { pair: newPair });
             setPairs(updated.pairs || []);
@@ -162,10 +168,13 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             logger.error('[CloudPairsEditor] add_cloud_pair failed:', e);
             // fallback local add (will save on explicit Save)
             setPairs(prev => [...prev, newPair]);
+        } finally {
+            requests.end(newPair.id);
         }
     };
 
     const handleRemove = async (pairId: string) => {
+        requests.begin(pairId);
         try {
             const updated = await invoke<CloudPairsConfig>('remove_cloud_pair', { pairId });
             setPairs(updated.pairs || []);
@@ -173,6 +182,8 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         } catch (e) {
             logger.error('[CloudPairsEditor] remove_cloud_pair failed:', e);
             setPairs(prev => prev.filter(p => p.id !== pairId));
+        } finally {
+            requests.end(pairId);
         }
     };
 
@@ -182,6 +193,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             p.id === pairId ? { ...p, enabled: !p.enabled } : p
         );
         setPairs(updated);
+        requests.begin(pairId);
         try {
             // persist immediately for toggle (like multi path)
             await invoke('save_cloud_pairs_config_cmd', {
@@ -191,6 +203,8 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         } catch (e) {
             logger.error('[CloudPairsEditor] toggle save failed, rolling back:', e);
             setPairs(previous);
+        } finally {
+            requests.end(pairId);
         }
     };
 
@@ -267,6 +281,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             exclude_patterns: legacyConfig.exclude_patterns || [],
             last_sync: legacyConfig.last_sync || null,
         };
+        requests.begin(imported.id);
         try {
             const updated = await invoke<CloudPairsConfig>('add_cloud_pair', { pair: imported });
             setPairs(updated.pairs || []);
@@ -276,6 +291,8 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             logger.error('[CloudPairsEditor] import legacy failed:', e);
             setPairs(prev => [...prev, imported]);
             setLegacyConfig(null);
+        } finally {
+            requests.end(imported.id);
         }
     };
 

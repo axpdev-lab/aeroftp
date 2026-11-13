@@ -153,3 +153,37 @@ it('CloudPairsEditor Cancel asks before dropping an edited pair', async () => {
     await click(buttonByText('modalGuard.discardAndClose')!);
     expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it('CloudPairsEditor stays open while a pair removal is in flight', async () => {
+    // Add, remove, toggle and the legacy import persist on their own: an
+    // unchanged editor had no guard while one ran, so a stray click closed it
+    // before its result or error showed.
+    const onClose = vi.fn();
+    const pair = {
+        id: 'p1', name: 'Pair 1', local_path: '/l', remote_path: '/r', enabled: true,
+        server_profile: '', protocol_type: 'ftp', connection_params: {},
+        sync_direction: 'bidirectional', preserve_remote_deletes: true, update_only: false,
+        compress_enabled: false, compress_level: 3, conflict_strategy: 'ask_user',
+        versioning_strategy: { type: 'trash_can', max_age_days: 30 },
+        excluded_folders: [], exclude_patterns: [], last_sync: null,
+    };
+    let resolveRemove!: (v: unknown) => void;
+    mocks.invoke.mockImplementation(async (command: string) => {
+        if (command === 'get_cloud_pairs_config') return { pairs: [pair], parallel_pairs: false };
+        if (command === 'get_cloud_config') throw new Error('none');
+        if (command === 'remove_cloud_pair') return new Promise(res => { resolveRemove = res; });
+        return {};
+    });
+    await act(async () => root.render(<CloudPairsEditor isOpen onClose={onClose} />));
+    await flush();
+    await flush();
+    await click(host.querySelector('button[title="common.delete"]')!);
+    const backdrop = host.querySelector('[aria-label="cloud.pairsEditorLabel"]')!;
+    await act(async () => backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(onClose).not.toHaveBeenCalled();
+    await click(buttonByText('common.cancel')!);
+    expect(host.textContent).toContain('modalGuard.busyTitle');
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => resolveRemove({ pairs: [] }));
+    await flush();
+});
