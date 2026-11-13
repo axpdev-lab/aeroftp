@@ -244,6 +244,31 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 static PROBE_CACHE: LazyLock<TokioMutex<HashMap<String, CacheEntry>>> =
     LazyLock::new(|| TokioMutex::new(HashMap::new()));
 
+/// Why a cached probe gave no capability. A hard rejection (a host key
+/// rejected, a pinned session key that is not the login key) keeps its type
+/// through the cache, fresh or cached, so the transfer surfaces it instead of
+/// falling back to classic SFTP like an ordinary "no rsync here".
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ProbeFailure {
+    Hard(String),
+    Unavailable(String),
+}
+
+impl std::fmt::Display for ProbeFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hard(reason) | Self::Unavailable(reason) => f.write_str(reason),
+        }
+    }
+}
+
+fn probe_failure(error: &RsyncError) -> ProbeFailure {
+    match error {
+        RsyncError::HardRejection(reason) => ProbeFailure::Hard(reason.clone()),
+        other => ProbeFailure::Unavailable(other.to_string()),
+    }
+}
+
 /// Probe remote capability via the transport, with 5-minute per-session cache.
 ///
 /// Returns the cached result if present and fresh; otherwise runs a live probe
@@ -252,7 +277,7 @@ static PROBE_CACHE: LazyLock<TokioMutex<HashMap<String, CacheEntry>>> =
 async fn probe_capability_cached(
     transport: &dyn DeltaTransport,
     session_key: &str,
-) -> Result<RsyncCapability, String> {
+) -> Result<RsyncCapability, ProbeFailure> {
     let now = Instant::now();
 
     {
@@ -266,7 +291,7 @@ async fn probe_capability_cached(
             if now.duration_since(entry.cached_at) < ttl {
                 return match &entry.capability {
                     Ok(cap) => Ok(cap.clone()),
-                    Err(e) => Err(e.to_string()),
+                    Err(e) => Err(probe_failure(e)),
                 };
             }
         }
@@ -284,7 +309,7 @@ async fn probe_capability_cached(
     };
     let report = match &fresh {
         Ok(cap) => Ok(cap.clone()),
-        Err(e) => Err(e.to_string()),
+        Err(e) => Err(probe_failure(e)),
     };
 
     let mut cache = PROBE_CACHE.lock().await;
@@ -345,6 +370,8 @@ pub async fn transfer_with_delta(
     // Step 1: probe remote capability (cached per session, typed error path).
     let capability = match probe_capability_cached(transport, session_key).await {
         Ok(cap) => cap,
+        // The same split as a transfer's own hard rejection below.
+        Err(ProbeFailure::Hard(reason)) => return Ok(hard_rejection_result(&reason)),
         Err(reason) => {
             return Ok(DeltaSyncResult::fallback(format!(
                 "remote delta unavailable: {}",
@@ -1181,6 +1208,102 @@ mod tests {
             transport.probes.load(Ordering::SeqCst),
             1,
             "a failed remote probe must be cached, not re-run on the next transfer"
+        );
+    }
+
+    /// A probe that refuses a pinned key that is not the login key must stop
+    /// the transfer, on the first file (fresh probe) and on every later file
+    /// (cached probe): neither may fall back to classic SFTP.
+    #[tokio::test]
+    async fn a_pinned_key_mismatch_from_the_probe_is_a_hard_error_fresh_and_cached() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        /// What the native probe answers for the mismatch, through the
+        /// adapter's own mapping when the native transport is built in.
+        fn pinned_key_mismatch() -> RsyncError {
+            #[cfg(feature = "aerorsync")]
+            {
+                crate::aerorsync_adapter::errors::probe_error_to_rsync(
+                    crate::aerorsync::types::AerorsyncError::pinned_key_mismatch(
+                        "the pinned key is not the login key",
+                    ),
+                )
+            }
+            #[cfg(not(feature = "aerorsync"))]
+            {
+                RsyncError::HardRejection(
+                    "native hard rejection (PinnedKeyMismatch): the pinned key is not the login key"
+                        .into(),
+                )
+            }
+        }
+
+        struct MismatchTransport {
+            probes: AtomicUsize,
+        }
+
+        #[async_trait]
+        impl DeltaTransport for MismatchTransport {
+            fn name(&self) -> &'static str {
+                "pinned-key-mismatch-transport"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                self.probes.fetch_add(1, Ordering::SeqCst);
+                Err(pinned_key_mismatch())
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                unreachable!("no transfer after a refused probe")
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                unreachable!("no transfer after a refused probe")
+            }
+        }
+
+        assert!(matches!(
+            pinned_key_mismatch(),
+            RsyncError::HardRejection(_)
+        ));
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        let transport = MismatchTransport {
+            probes: AtomicUsize::new(0),
+        };
+        for attempt in ["fresh", "cached"] {
+            let r = transfer_with_delta(
+                &transport,
+                SyncDirection::Upload,
+                Path::new("/tmp/nope"),
+                "/remote/nope",
+                "test-pinned-key-mismatch",
+                None,
+            )
+            .await
+            .expect("a hard rejection is a typed result, not an Err");
+            assert!(!r.used_delta, "{attempt}");
+            assert!(
+                r.fallback_reason.is_none(),
+                "{attempt}: a pinned key mismatch must not fall back to classic SFTP"
+            );
+            assert!(
+                r.hard_error
+                    .as_deref()
+                    .is_some_and(|e| e.contains("PinnedKeyMismatch")),
+                "{attempt}: {r:?}"
+            );
+        }
+        assert_eq!(
+            transport.probes.load(Ordering::SeqCst),
+            1,
+            "the second file reads the cached refusal"
         );
     }
 }

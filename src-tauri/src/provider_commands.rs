@@ -4218,6 +4218,44 @@ pub async fn provider_download_file(
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
+    modified: Option<String>,
+    use_delta: Option<bool>,
+    download_segments: Option<u32>,
+    sftp_download_preset: Option<SftpDownloadPreset>,
+    expected_gui_target: Option<u64>,
+    expected_generation: Option<u64>,
+    require_crypt_overlay: Option<bool>,
+    expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
+    sync_run_lease: Option<String>,
+) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    ipc_result(
+        download_file_for_ipc(
+            app,
+            state,
+            remote_path,
+            local_path,
+            modified,
+            use_delta,
+            download_segments,
+            sftp_download_preset,
+            expected_gui_target,
+            expected_generation,
+            require_crypt_overlay,
+            expected_profile_id,
+            expected_crypt_scope,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn download_file_for_ipc(
+    app: AppHandle,
+    state: State<'_, ProviderState>,
+    remote_path: String,
+    local_path: String,
     mut modified: Option<String>,
     use_delta: Option<bool>,
     download_segments: Option<u32>,
@@ -4228,7 +4266,6 @@ pub async fn provider_download_file(
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::native_work();
     let _transfer_owner = state
         .pin_gui_transfer_owner(
             expected_gui_target,
@@ -6841,8 +6878,45 @@ pub async fn provider_upload_file(
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    ipc_result(
+        upload_file_for_ipc(
+            app,
+            state,
+            local_path,
+            remote_path,
+            commit_message,
+            use_delta,
+            resume,
+            no_clobber,
+            expected_gui_target,
+            expected_generation,
+            require_crypt_overlay,
+            expected_profile_id,
+            expected_crypt_scope,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upload_file_for_ipc(
+    app: AppHandle,
+    state: State<'_, ProviderState>,
+    local_path: String,
+    remote_path: String,
+    commit_message: Option<String>,
+    use_delta: Option<bool>,
+    resume: Option<bool>,
+    no_clobber: Option<bool>,
+    expected_gui_target: Option<u64>,
+    expected_generation: Option<u64>,
+    require_crypt_overlay: Option<bool>,
+    expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
+) -> Result<String, String> {
     let _transfer_owner = state
         .pin_gui_transfer_owner(
             expected_gui_target,
@@ -7337,6 +7411,18 @@ pub async fn provider_upload_file(
     }
 }
 
+/// The error text a provider command hands to the webview.
+///
+/// A provider's error can carry what its server wrote (a JSON `detail`, an
+/// HTML page), which may quote a token or a signed URL. The sync runner's
+/// commands return their errors through here, the one place the text leaves
+/// the native side, so it is redacted before any script can read it. The
+/// `CONNECTION_CHANGED` marker survives: the runner confirms it through the
+/// backend's own owner check, never by the text alone.
+pub(crate) fn ipc_result<T>(result: Result<T, String>) -> Result<T, String> {
+    result.map_err(|error| crate::debug_tests::redact(&error))
+}
+
 /// Create a directory
 #[tauri::command]
 pub async fn provider_mkdir(
@@ -7344,8 +7430,18 @@ pub async fn provider_mkdir(
     path: String,
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    ipc_result(mkdir_for_ipc(&state, path, commit_message, expected_gui_target).await)
+}
+
+async fn mkdir_for_ipc(
+    state: &ProviderState,
+    path: String,
+    commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+) -> Result<(), String> {
     let _target = state.pin_gui_target(expected_gui_target).await?;
     // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store,
     // unless the target is provably outside the overlay anchor (#390).
@@ -7389,8 +7485,18 @@ pub async fn provider_delete_file(
     path: String,
     commit_message: Option<String>,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    ipc_result(delete_file_for_ipc(&state, path, commit_message, expected_gui_target).await)
+}
+
+pub(crate) async fn delete_file_for_ipc(
+    state: &ProviderState,
+    path: String,
+    commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+) -> Result<(), String> {
     let _target = state.pin_gui_target(expected_gui_target).await?;
     // The raw view exposes raw paths. Deletion removes the selected object and
     // cannot inject plaintext, so it remains available with CRYPT off (#390).
@@ -18352,6 +18458,209 @@ mod tests {
         fn peak(&self) -> usize {
             self.peak.load(Ordering::SeqCst)
         }
+    }
+
+    /// A server that answers a delete and a mkdir with a JSON error detail
+    /// quoting the ownership marker and a bearer token, as a Twake server can.
+    struct LeakyServer;
+
+    const LEAKED: &str =
+        "CONNECTION_CHANGED: Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 rejected";
+
+    #[async_trait::async_trait]
+    impl StorageProvider for LeakyServer {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "leaky-server".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            // Every source is there and no backup yet, so a backup goes on
+            // to the failing write.
+            if path.contains(".aeroftp-versions") {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            Ok(RemoteEntry::file("f".to_string(), path.to_string(), 1))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(!path.contains(".aeroftp-versions"))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("leaky-server".to_string())
+        }
+    }
+
+    /// What `provider_delete_file` and `provider_mkdir` return to the webview,
+    /// through the same boundary the commands use: the server's token is
+    /// masked, and the marker the runner confirms natively is still there.
+    #[tokio::test]
+    async fn a_provider_error_reaches_the_webview_with_its_token_masked() {
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let deleted = ipc_result(delete_file_for_ipc(&state, "/a".into(), None, None).await);
+        let created = ipc_result(mkdir_for_ipc(&state, "/d".into(), None, None).await);
+        for returned in [deleted.unwrap_err(), created.unwrap_err()] {
+            assert!(
+                !returned.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
+                "{returned}"
+            );
+            assert!(returned.contains("REDACTED"), "{returned}");
+            assert!(returned.contains("CONNECTION_CHANGED"), "{returned}");
+        }
+        // Without the boundary the same call hands the token over.
+        let raw = delete_file_for_ipc(&state, "/a".into(), None, None)
+            .await
+            .unwrap_err();
+        assert!(raw.contains("abcdefghijklmnopqrstuvwxyz0123456789"));
+    }
+
+    /// The remote backup of a sync run, on a provider: the provider's error
+    /// text reaches the webview through the same boundary.
+    #[tokio::test]
+    async fn a_remote_backup_error_reaches_the_webview_with_its_token_masked() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let call = || {
+            crate::sync_backup_archive_remote_for_ipc(
+                &app,
+                &state,
+                true,
+                "/root".into(),
+                ".aeroftp-versions".into(),
+                "20260925T070000Z".into(),
+                "docs/a.txt".into(),
+                None,
+            )
+        };
+        let raw = call().await.unwrap_err();
+        assert!(
+            raw.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
+            "{raw}"
+        );
+        let returned = ipc_result(call().await).unwrap_err();
+        assert!(
+            !returned.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
+            "{returned}"
+        );
+        assert!(returned.contains("CONNECTION_CHANGED"), "{returned}");
+    }
+
+    /// The legacy FTP session of a sync run: a server reply quoting the marker
+    /// and a token. `safe_ftp_error` already keeps reply text out, and the
+    /// boundary would mask a token that came by any other route.
+    #[tokio::test]
+    async fn a_legacy_ftp_error_reaches_the_webview_without_the_server_text() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let reply = match line.split_whitespace().next().unwrap_or("") {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => "257 \"/\"\r\n".to_string(),
+                    "MKD" => format!("550 {LEAKED}\r\n"),
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let app = crate::AppState::new();
+        {
+            let mut ftp = app.ftp_manager.lock().await;
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+        }
+        let state = ProviderState::new();
+        let returned =
+            ipc_result(crate::create_remote_folder_for_ipc(&app, &state, "/d".into(), None).await)
+                .unwrap_err();
+        assert!(
+            !returned.contains("abcdefghijklmnopqrstuvwxyz0123456789"),
+            "{returned}"
+        );
+        assert!(returned.contains("Failed to create folder"), "{returned}");
+        // The boundary masks the same token when it does arrive as text.
+        assert!(
+            !ipc_result::<()>(Err(format!("Failed to create folder: {LEAKED}")))
+                .unwrap_err()
+                .contains("abcdefghijklmnopqrstuvwxyz0123456789")
+        );
     }
 
     /// A provider whose mkdir fails with a given error and whose folder is

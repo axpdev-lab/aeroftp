@@ -3702,8 +3702,18 @@ async fn download_file(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     params: DownloadParams,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(download_file_for_ipc(app, state, provider_state, params).await)
+}
+
+async fn download_file_for_ipc(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    params: DownloadParams,
+) -> Result<String, String> {
     let _target = provider_state
         .pin_gui_target(params.expected_gui_target)
         .await?;
@@ -3849,8 +3859,18 @@ async fn upload_file(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(upload_file_for_ipc(app, state, provider_state, params).await)
+}
+
+async fn upload_file_for_ipc(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    params: UploadParams,
+) -> Result<String, String> {
     let _target = provider_state
         .pin_gui_target(params.expected_gui_target)
         .await?;
@@ -6621,8 +6641,30 @@ async fn delete_remote_file(
     path: String,
     is_dir: bool,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        delete_remote_file_for_ipc(
+            app,
+            state,
+            provider_state,
+            path,
+            is_dir,
+            expected_gui_target,
+        )
+        .await,
+    )
+}
+
+async fn delete_remote_file_for_ipc(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    path: String,
+    is_dir: bool,
+    expected_gui_target: Option<u64>,
+) -> Result<String, String> {
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
@@ -6941,8 +6983,9 @@ async fn delete_local_file(
     provider_state: State<'_, provider_commands::ProviderState>,
     expected_gui_target: Option<u64>,
     is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
@@ -7303,8 +7346,20 @@ async fn create_remote_folder(
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        create_remote_folder_for_ipc(&state, &provider_state, path, expected_gui_target).await,
+    )
+}
+
+async fn create_remote_folder_for_ipc(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    expected_gui_target: Option<u64>,
+) -> Result<(), String> {
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
@@ -7450,8 +7505,13 @@ async fn rename_local_file_inner(
 }
 
 #[tauri::command]
-async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+async fn copy_local_file(
+    from: String,
+    to: String,
+    overwrite: Option<bool>,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     validate_path(&from)?;
     validate_path(&to)?;
     let from_path = std::path::Path::new(&from);
@@ -7695,12 +7755,14 @@ mod local_link_tests {
             src.to_string_lossy().into(),
             to.to_string_lossy().into(),
             Some(false),
+            None,
         )
         .await;
         assert!(refused.is_err(), "{refused:?}");
         let through = copy_local_file(
             src.to_string_lossy().into(),
             to.to_string_lossy().into(),
+            None,
             None,
         )
         .await;
@@ -7858,8 +7920,9 @@ async fn create_local_folder(
     provider_state: State<'_, provider_commands::ProviderState>,
     expected_gui_target: Option<u64>,
     is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
@@ -13200,8 +13263,37 @@ async fn sync_ec_generate(
     max_file_size: Option<u64>,
     is_provider: Option<bool>,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<SyncEcCommandResult, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        sync_ec_generate_for_ipc(
+            state,
+            provider_state,
+            local_path,
+            remote_path,
+            relative_path,
+            pct,
+            max_file_size,
+            is_provider,
+            expected_gui_target,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_ec_generate_for_ipc(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    local_path: String,
+    remote_path: String,
+    relative_path: String,
+    pct: Option<u32>,
+    max_file_size: Option<u64>,
+    is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
+) -> Result<SyncEcCommandResult, String> {
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let options = sync::SyncErrorCorrectionOptions {
         enabled: true,
@@ -13283,8 +13375,37 @@ async fn sync_ec_verify_repair(
     expected_mtime: Option<String>,
     is_provider: Option<bool>,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<SyncEcCommandResult, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        sync_ec_verify_repair_for_ipc(
+            state,
+            provider_state,
+            local_path,
+            remote_path,
+            relative_path,
+            expected_sha256,
+            expected_mtime,
+            is_provider,
+            expected_gui_target,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_ec_verify_repair_for_ipc(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    local_path: String,
+    remote_path: String,
+    relative_path: String,
+    expected_sha256: Option<String>,
+    expected_mtime: Option<String>,
+    is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
+) -> Result<SyncEcCommandResult, String> {
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let Some(expected_sha256) = expected_sha256.filter(|s| !s.trim().is_empty()) else {
         return Ok(SyncEcCommandResult {
@@ -14261,8 +14382,9 @@ async fn save_sync_index_cmd(
     expected_gui_target: Option<u64>,
     owner_binding: Option<String>,
     is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
 ) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _pin = provider_state
         .pin_gui_index_owner(
             expected_gui_target,
@@ -14297,7 +14419,7 @@ async fn sync_intent_begin_cmd(
     paths: Vec<String>,
     sync_run_lease: String,
 ) -> Result<Vec<String>, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(Some(&sync_run_lease))?;
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
@@ -14316,8 +14438,9 @@ async fn sync_intent_begin_cmd(
 async fn sync_intent_snapshot_cmd(
     local_path: String,
     remote_path: String,
+    sync_run_lease: Option<String>,
 ) -> Result<std::collections::HashMap<String, String>, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
@@ -14332,15 +14455,28 @@ async fn sync_run_lease_begin_cmd(
     window: tauri::Window,
     local_path: String,
     remote_path: String,
+    page_epoch: Option<u64>,
 ) -> Result<String, String> {
     let window = window.label().to_string();
+    // The page generation the page read at its own start (`sync_page_epoch_cmd`),
+    // not one read here: this handler may run after the page was replaced, and
+    // would then read the new page's generation.
     tokio::task::spawn_blocking(move || {
         validate_path(&local_path)?;
         validate_sync_remote_root(&remote_path)?;
-        sync_run_lease::acquire(&local_path, &remote_path, &window)
+        sync_run_lease::acquire_for_page(&local_path, &remote_path, &window, page_epoch)
     })
     .await
     .map_err(|_| "Sync run lock worker failed")?
+}
+
+/// The page generation of the calling window. A page reads it once at its start
+/// and passes it to every `sync_run_lease_begin_cmd`; the generation moves on
+/// when the window starts loading another page (`on_page_load`, `Started`),
+/// before that page's script can run.
+#[tauri::command]
+fn sync_page_epoch_cmd(window: tauri::Window) -> Result<u64, String> {
+    sync_run_lease::page_epoch(window.label())
 }
 
 #[tauri::command]
@@ -14378,8 +14514,11 @@ fn load_sync_journal_cmd_blocking(
 }
 
 #[tauri::command]
-async fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+async fn save_sync_journal_cmd(
+    journal: SyncJournal,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     tokio::task::spawn_blocking(move || save_sync_journal_cmd_blocking(journal))
         .await
         .unwrap_or_else(|err| Err(format!("save_sync_journal_cmd task failed: {err}")))
@@ -14393,8 +14532,12 @@ fn save_sync_journal_cmd_blocking(journal: SyncJournal) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
-    let _native_work = crate::sync_run_lease::native_work();
+async fn delete_sync_journal_cmd(
+    local_path: String,
+    remote_path: String,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     tokio::task::spawn_blocking(move || delete_sync_journal_cmd_blocking(local_path, remote_path))
         .await
         .unwrap_or_else(|err| Err(format!("delete_sync_journal_cmd task failed: {err}")))
@@ -16763,6 +16906,7 @@ async fn sync_backup_remote_move(
 
 /// Move `<root>/<rel>` into the backup folder on the local disk before the
 /// sync overwrites or deletes it. `None` when there was nothing to keep.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn sync_backup_archive_local(
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -16772,8 +16916,9 @@ async fn sync_backup_archive_local(
     dir: String,
     stamp: String,
     rel: String,
+    sync_run_lease: Option<String>,
 ) -> Result<Option<String>, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
@@ -16813,8 +16958,35 @@ async fn sync_backup_archive_remote(
     stamp: String,
     rel: String,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<Option<String>, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        sync_backup_archive_remote_for_ipc(
+            &app_state,
+            &provider_state,
+            use_provider,
+            root,
+            dir,
+            stamp,
+            rel,
+            expected_gui_target,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_backup_archive_remote_for_ipc(
+    app_state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    use_provider: bool,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+    expected_gui_target: Option<u64>,
+) -> Result<Option<String>, String> {
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
     sync::validate_relative_path(&rel)?;
@@ -16933,8 +17105,22 @@ async fn sync_remove_empty_dir(
     target: String,
     path: String,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        sync_remove_empty_dir_for_ipc(app_state, provider_state, target, path, expected_gui_target)
+            .await,
+    )
+}
+
+async fn sync_remove_empty_dir_for_ipc(
+    app_state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    target: String,
+    path: String,
+    expected_gui_target: Option<u64>,
+) -> Result<String, String> {
     let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let removal = match target.as_str() {
         "local" => {
@@ -22825,6 +23011,8 @@ pub fn run() {
             if payload.event() != tauri::webview::PageLoadEvent::Started {
                 return;
             }
+            // This also ends the page generation, so a lease the lost page
+            // asked for but had not registered yet is refused.
             let orphans = sync_run_lease::orphan_window(webview.window().label());
             if orphans.is_empty() {
                 return;
@@ -23003,6 +23191,7 @@ pub fn run() {
             save_sync_index_cmd,
             sync_intent_begin_cmd,
             sync_run_lease_begin_cmd,
+            sync_page_epoch_cmd,
             sync_run_lease_end_cmd,
             sync_intent_snapshot_cmd,
             load_sync_journal_cmd,
@@ -28747,6 +28936,21 @@ mod legacy_ftp_switch_during_batch_tests {
             .is_err()
     }
 
+    /// Whether the provider connection generation is still `expected` (the
+    /// read an editor or a crypt re-arm takes before it trusts the session).
+    async fn generation_is(provider_state: &ProviderState, expected: u64) -> bool {
+        provider_state
+            .pin_connection_generation(expected)
+            .await
+            .is_ok()
+    }
+
+    /// Whether the crypt overlay armed over the session is still applied.
+    fn overlay_applied(provider_state: &ProviderState) -> bool {
+        provider_state.active_crypt_overlay.load(Ordering::SeqCst)
+            && provider_state.overlay_wrapped.load(Ordering::SeqCst)
+    }
+
     async fn pin_error(provider_state: &ProviderState, expected: u64) -> Option<String> {
         provider_state.pin_gui_target(Some(expected)).await.err()
     }
@@ -28802,6 +29006,13 @@ mod legacy_ftp_switch_during_batch_tests {
         let epoch = 1;
         assert_eq!(pin_error(&provider_state, epoch).await, None);
         assert!(owner_is_installed(&provider_state, epoch).await);
+        // An overlay applied over the session, as `provider_apply_crypt_overlay`
+        // leaves it, and the connection generation it is stamped with.
+        provider_state.arm_crypt_capability();
+        provider_state.overlay_wrapped.store(true, Ordering::SeqCst);
+        let generation = 0;
+        assert!(generation_is(&provider_state, generation).await);
+        assert!(overlay_applied(&provider_state));
 
         // 1. A batch with one file in flight holds the pin.
         let in_flight = Arc::new(tokio::sync::Notify::new());
@@ -28833,9 +29044,15 @@ mod legacy_ftp_switch_during_batch_tests {
             "{waited:?}"
         );
 
-        // 3. Nothing changed: epoch, owner, session, socket, running batch.
+        // 3. Nothing changed: epoch, owner, overlay, connection generation,
+        // session, socket, running batch.
         assert_eq!(pin_error(&provider_state, epoch).await, None);
         assert!(owner_is_installed(&provider_state, epoch).await);
+        assert!(
+            overlay_applied(&provider_state),
+            "a refused switch keeps the overlay"
+        );
+        assert!(generation_is(&provider_state, generation).await);
         {
             let mut ftp_manager = app.ftp_manager.lock().await;
             assert!(ftp_manager.is_connected());
@@ -28854,6 +29071,8 @@ mod legacy_ftp_switch_during_batch_tests {
         assert!(stopped.cancelled);
         assert_eq!(stopped.completed, 0);
         assert!(!pin_is_held(&provider_state).await);
+        assert!(overlay_applied(&provider_state), "Stop keeps the overlay");
+        assert!(generation_is(&provider_state, generation).await);
         // Until the flag is cleared a batch starts no file.
         let unstarted = run_batch(
             app.clone(),
@@ -28888,6 +29107,11 @@ mod legacy_ftp_switch_during_batch_tests {
         assert_eq!(count(&log, 0, "NOOP"), 3);
         assert_eq!(connections.load(Ordering::SeqCst), 1);
         assert!(owner_is_installed(&provider_state, epoch).await);
+        assert!(
+            overlay_applied(&provider_state),
+            "the retry runs under the same overlay"
+        );
+        assert!(generation_is(&provider_state, generation).await);
 
         // 6. With nothing in flight the same switch goes through, here as
         // `disconnect_ftp` continues it.

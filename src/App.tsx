@@ -475,7 +475,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, normalizedSyncRoot, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, readPageSyncEpoch, filesFromJournal, normalizedSyncRoot, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -1074,9 +1074,31 @@ const App: React.FC = () => {
   // its comparison began with: a batch that ran (or ended) since, even one
   // that is over by the time the plan is launched, is a different number.
   const batchGenerationRef = useRef(0);
+  // A transfer that runs outside `withBatchLatch` counts too: a staged Start,
+  // a Retry, a restored entry and a single upload or download each move the
+  // number when they begin and again when they end, so a Mirror plan compared
+  // before one of them cannot delete the file it wrote.
+  const withTransferGeneration = <A extends unknown[], R>(fn: (...args: A) => R | Promise<R>) =>
+    async (...args: A): Promise<Awaited<R>> => {
+      batchGenerationRef.current += 1;
+      try {
+        return await fn(...args);
+      } finally {
+        batchGenerationRef.current += 1;
+      }
+    };
+  // Staged Start (the effect below) and Retry both run what is stored here.
+  const registerTransferCallback = (id: string, callback: () => unknown) => {
+    retryCallbacksRef.current.set(id, withTransferGeneration(callback));
+  };
   useEffect(() => {
     batchOpInFlightRef.current = scanningState.active;
   }, [scanningState.active]);
+  // This page's generation, read once at its start: a sync run's lease names
+  // it, so a request this page sent before a reload is refused natively.
+  useEffect(() => {
+    readPageSyncEpoch(invoke).catch(error => console.error('sync page generation unavailable', error));
+  }, []);
 
   // Dialogs
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green'; secondaryLabel?: string; onSecondary?: () => void; informational?: boolean } | null>(null);
@@ -10880,7 +10902,7 @@ const App: React.FC = () => {
     });
   }, [localFiles, remoteFiles, fileExistsAction]);
 
-  const downloadFile = useLatestCallback(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }, onTarget?: () => void, targetEpoch?: number): Promise<boolean> => {
+  const downloadFile = useLatestCallback(withTransferGeneration(async (remoteFilePath: string, fileName: string, destinationPath?: string, isDir: boolean = false, fileSize?: number, _skipConflictCheck: boolean = false, onError: TransferErrorMode = 'notify', ownership?: { profileId: string; generation: number; cryptScope?: string; requireOverlay?: boolean }, onTarget?: () => void, targetEpoch?: number): Promise<boolean> => {
     const logId = humanLog.logStart('DOWNLOAD', { filename: fileName });
     pendingFileLogIds.current.set(fileName, logId); // Dedup
     const startTime = Date.now();
@@ -11051,12 +11073,12 @@ const App: React.FC = () => {
       }
     }
     return completed;
-  });
+  }));
 
   // TQ-7b: optional explicitRemoteDir lets restore re-run an upload to the
   // journaled remote directory without depending on currentRemotePath.
   // All existing callers leave it undefined (legacy path unchanged).
-  const uploadFile = useLatestCallback(async (
+  const uploadFile = useLatestCallback(withTransferGeneration(async (
     localFilePath: string,
     fileName: string,
     isDir: boolean = false,
@@ -11293,7 +11315,7 @@ const App: React.FC = () => {
       }
     }
     return completed;
-  });
+  }));
 
   // The retry of an item restored from the journal, which the user starts long
   // after the restore: it runs with the queue and the transfers of now.
@@ -11396,7 +11418,7 @@ const App: React.FC = () => {
         size: Number(entry.size) || 0,
         is_folder: !!entry.is_folder,
       });
-      retryCallbacksRef.current.set(id, () => retryRestoredEntry(id, entry));
+      registerTransferCallback(id, () => retryRestoredEntry(id, entry));
     }
   });
 
@@ -14240,8 +14262,8 @@ const App: React.FC = () => {
     // A Start of staged rows or a Retry clears a Stop left from an earlier
     // transfer when the user acts; a Stop during this run still holds.
     const cancelFlags = { batchCancelled: batchCancelledRef, cancelLevel: cancelLevelRef };
-    for (const id of batchIds) retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id))));
-    for (const id of singleIds) retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id))));
+    for (const id of batchIds) registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, batchDispatcher.callbackFor(id))));
+    for (const id of singleIds) registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, rearmedOnUserAction(cancelFlags, singleDispatcher.callbackFor(id))));
     if (staged) {
       result.staged = true;
       return result;
@@ -14417,7 +14439,7 @@ const App: React.FC = () => {
             size,
             is_folder: !!file?.is_dir,
           });
-          retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
+          registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
             transferQueue.startTransfer(id);
             try {
               await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedTarget);
@@ -14772,7 +14794,7 @@ const App: React.FC = () => {
           size: 0,
           is_folder: false,
         });
-        retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
+        registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
             await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedTarget);
@@ -15005,7 +15027,7 @@ const App: React.FC = () => {
           size: file.size || 0,
           is_folder: !!file.is_dir,
         });
-        retryCallbacksRef.current.set(id, boundToQueuedServer(queuedTarget, id, async () => {
+        registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
           transferQueue.startTransfer(id);
           try {
             await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedTarget);

@@ -482,6 +482,10 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
         metadata: Default::default(),
     };
     mark_size_unreadable(&mut entry, size_read);
+    // The field is the type and the size at once: `<DIR>` or a number. Any
+    // other text confirms neither a folder nor a regular file, so the row
+    // stays in the listing but cannot serve as proof that a file is there.
+    mark_type_unconfirmed(&mut entry, is_dir || size_read);
     Some(entry)
 }
 
@@ -1031,6 +1035,23 @@ mod tests {
         assert_eq!(listing.entries.len(), 2, "both are kept");
         assert_eq!(listing.unreadable_sizes, 1);
         assert_eq!(listing.unreadable, 0, "neither row failed to parse");
+    }
+
+    /// A DOS row's third field is `<DIR>` or the size. Other text keeps the
+    /// row in the listing, but it confirms neither a folder nor a file.
+    #[test]
+    fn a_dos_row_without_dir_or_numeric_size_is_listed_unconfirmed() {
+        let odd = parse_listing("01-23-24  10:30AM       ????      kept.bak", "/b")
+            .expect("the row stays in the listing");
+        assert_eq!(odd.name, "kept.bak");
+        assert!(!odd.is_dir && !odd.is_symlink);
+        assert!(type_is_unconfirmed(&odd), "{odd:?}");
+        assert!(size_is_unreadable(&odd), "{odd:?}");
+        let file =
+            parse_listing("01-23-24  10:30AM           12345 kept.bak", "/b").expect("a file");
+        assert!(!type_is_unconfirmed(&file), "{file:?}");
+        let dir = parse_listing("01-23-24  10:30AM       <DIR>          d", "/b").expect("a dir");
+        assert!(dir.is_dir && !type_is_unconfirmed(&dir), "{dir:?}");
     }
 
     /// The dispatcher decides on the shape of the first token, so a DOS row

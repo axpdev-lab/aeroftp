@@ -949,6 +949,8 @@ mod tests {
             parse_mlsd_entry("type=OS.unix=fifo;size=0; kept", "/root"),
             parse_mlsd_entry("type=;size=5; kept", "/root"),
             parse_listing("prw-r--r-- 1 user group 0 Jan 20 10:00 kept", "/root"),
+            // A DOS row whose type-or-size field is neither `<DIR>` nor a number.
+            parse_listing("01-23-24  10:30AM       ????      kept", "/root"),
         ];
         for row in unconfirmed {
             let row = row.expect("the row parses");
@@ -961,6 +963,7 @@ mod tests {
         let confirmed = [
             parse_mlsd_entry("type=file;size=5; kept", "/root"),
             parse_listing("-rw-r--r-- 1 user group 5 Jan 20 10:00 kept", "/root"),
+            parse_listing("01-23-24  10:30AM           12345 kept", "/root"),
         ];
         for row in confirmed {
             remote

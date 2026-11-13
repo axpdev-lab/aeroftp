@@ -73,6 +73,7 @@ export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly 
       { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
   const resolveDestination = vi.fn(loadOverwriteDestination);
   const queueItemsRef = { current: [] as { id: string; status: string }[] };
+  const retryCallbacksRef = { current: new Map<string, () => unknown>() };
   const transferQueue = {
     addItem: vi.fn(() => {
       const id = `q${queueItemsRef.current.length}`;
@@ -99,7 +100,8 @@ export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly 
     remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
     humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
     stopCountRef: { current: 0 }, pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
-    circuitBreaker: { reset: vi.fn() }, retryCallbacksRef: { current: new Map() }, queueItemsRef, transferQueue,
+    circuitBreaker: { reset: vi.fn() }, retryCallbacksRef, withTransferGeneration: <T,>(fn: T) => fn,
+    registerTransferCallback: (id: string, cb: () => unknown) => { retryCallbacksRef.current.set(id, cb); }, queueItemsRef, transferQueue,
     recordQueueDescriptor: vi.fn(),
     // The event hook's own functions when a test mounts it; inert otherwise.
     holdFileCompletions: options.hold?.holdFileCompletions ?? (() => () => undefined), registerFileBatchRows: options.hold?.registerFileBatchRows ?? vi.fn(), fileBatchCommand, keepsSingleFilePath,

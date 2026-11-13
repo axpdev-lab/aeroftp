@@ -5,10 +5,16 @@ const fixtures = new WeakMap<RemoteSyncDeps['invoke'], ReturnType<typeof createI
 export function createIntentFixture() {
     const generations = new Map<string,string>();
     const leases = new Map<string, string>();
+    const beginArgs: Record<string, unknown>[] = [];
     let sequence = 0;
-    return { generations, wrap(invoke: RemoteSyncDeps['invoke']): RemoteSyncDeps['invoke'] {
+    return { generations, beginArgs, wrap(invoke: RemoteSyncDeps['invoke']): RemoteSyncDeps['invoke'] {
         return async <T,>(cmd: string, args?: Record<string,unknown>): Promise<T> => {
+            // The page generation the native side gives: the test's own answer, else 0.
+            if (cmd === 'sync_page_epoch_cmd') return ((await invoke<T>(cmd, args)) ?? 0) as T;
             if (cmd === 'sync_run_lease_begin_cmd') {
+                beginArgs.push({ ...args });
+                // As natively: a begin that names no page generation is refused.
+                if (typeof args?.pageEpoch !== 'number') throw new Error('SYNC_RUN_PAGE_REPLACED');
                 const pair = JSON.stringify([args!.localPath, args!.remotePath]);
                 if (leases.has(pair)) throw new Error('SYNC_RUN_BUSY');
                 const token = `run-lease-${++sequence}`;

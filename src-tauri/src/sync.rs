@@ -3490,15 +3490,164 @@ fn load_index_with_intents_in(
     Ok((existed || has_pending).then_some(index))
 }
 
+/// The forms a root could take in a pair key written before the runner
+/// normalized its roots (`normalizedSyncRoot`). That runner only stripped
+/// trailing slashes, so `/` became the empty string, a drive root picked as
+/// `C:/` became `C:`, and one picked as `C:\` stayed `C:\`. Every other root
+/// is the same string in both: a trailing slash was already stripped.
+fn legacy_root_forms(root: &str) -> Vec<String> {
+    let bytes = root.as_bytes();
+    if root == "/" {
+        vec![String::new()]
+    } else if bytes.len() == 3 && bytes[0].is_ascii_alphabetic() && &root[1..] == ":/" {
+        let drive = &root[..1];
+        vec![format!("{drive}:\\"), format!("{drive}:")]
+    } else {
+        Vec::new()
+    }
+}
+
+/// The legacy pair keys that name the same pair as `(local, remote)`.
+fn legacy_pairs(local: &str, remote: &str) -> Vec<(String, String)> {
+    let locals: Vec<String> = std::iter::once(local.to_owned())
+        .chain(legacy_root_forms(local))
+        .collect();
+    let remotes: Vec<String> = std::iter::once(remote.to_owned())
+        .chain(legacy_root_forms(remote))
+        .collect();
+    let mut pairs = Vec::new();
+    for l in &locals {
+        for r in &remotes {
+            if l != local || r != remote {
+                pairs.push((l.clone(), r.clone()));
+            }
+        }
+    }
+    pairs
+}
+
+/// Move the history of a pair saved under a legacy key to its normalized key,
+/// when the normalized key has none yet: the index, and the journal with the
+/// answer its signature gave. The intent fences need no move: no released
+/// runner wrote any (they are new with the normalized key), so none can be
+/// under a legacy key. Done under the writer reservation index publication
+/// holds, so a concurrent save of the normalized key is never overwritten.
+fn adopt_legacy_pair_in(
+    conn: &mut rusqlite::Connection,
+    index_dir: &Path,
+    journal_dir: &Path,
+    local: &str,
+    remote: &str,
+) -> Result<(), String> {
+    let legacy = legacy_pairs(local, remote);
+    if legacy.is_empty() {
+        return Ok(());
+    }
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let index_path = index_dir.join(index_filename(local, remote));
+    if !index_path.exists() {
+        for (l, r) in &legacy {
+            let old = index_dir.join(index_filename(l, r));
+            let Some(mut index) = read_sync_index_file(&old)? else {
+                continue;
+            };
+            index.local_path = local.to_owned();
+            index.remote_path = remote.to_owned();
+            let data = serde_json::to_vec(&index).map_err(|error| error.to_string())?;
+            atomic_write(&index_path, &data)?;
+            remove_if_present(&old)?;
+            tracing::info!("sync index of a legacy pair key adopted under its normalized roots");
+            break;
+        }
+    }
+    adopt_legacy_journal_in(journal_dir, local, remote, &legacy)?;
+    tx.commit().map_err(|error| error.to_string())
+}
+
+fn remove_if_present(path: &Path) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "Failed to retire a legacy sync history file: {error}"
+        )),
+    }
+}
+
+/// The journal part of [`adopt_legacy_pair_in`]. Its signature is keyed by the
+/// pair, so Verify answers after the move what it answered before: a new
+/// signature when the old one held, the old bytes when they did not (still a
+/// mismatch), none when the journal had none.
+fn adopt_legacy_journal_in(
+    dir: &Path,
+    local: &str,
+    remote: &str,
+    legacy: &[(String, String)],
+) -> Result<(), String> {
+    let _lock = JOURNAL_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if dir.join(journal_filename(local, remote)).exists() {
+        return Ok(());
+    }
+    for (l, r) in legacy {
+        let Some(mut journal) = load_sync_journal_in(dir, l, r)? else {
+            continue;
+        };
+        let old_sig = std::fs::read(dir.join(journal_sig_filename(l, r))).ok();
+        let held = old_sig.is_some()
+            && journal_signing_key_in(dir, l, r)
+                .and_then(|key| verify_journal_signature_in(dir, l, r, &key))
+                .unwrap_or(false);
+        journal.local_path = local.to_owned();
+        journal.remote_path = remote.to_owned();
+        let data = serde_json::to_string(&journal).map_err(|error| error.to_string())?;
+        atomic_write(&dir.join(journal_filename(local, remote)), data.as_bytes())?;
+        let sig_path = dir.join(journal_sig_filename(local, remote));
+        match old_sig {
+            Some(_) if held => sign_journal_file(dir, &journal, &sig_path)?,
+            Some(old) => atomic_write(&sig_path, &old)?,
+            None => {}
+        }
+        remove_if_present(&dir.join(journal_filename(l, r)))?;
+        remove_if_present(&dir.join(journal_sig_filename(l, r)))?;
+        tracing::info!("sync journal of a legacy pair key adopted under its normalized roots");
+        break;
+    }
+    Ok(())
+}
+
+/// [`adopt_legacy_pair_in`] in the app's own data folders.
+fn adopt_legacy_pair(local: &str, remote: &str) -> Result<(), String> {
+    if legacy_pairs(local, remote).is_empty() {
+        return Ok(());
+    }
+    adopt_legacy_pair_in(
+        &mut intent_connection()?,
+        &sync_index_dir()?,
+        &sync_journal_dir()?,
+        local,
+        remote,
+    )
+    .map_err(|error| {
+        format!("Sync history saved under an older pair key could not be moved: {error}")
+    })
+}
+
 fn load_sync_index_with_recovery(
     local_path: &str,
     remote_path: &str,
     require_durable_fences: bool,
 ) -> Result<Option<SyncIndex>, String> {
+    adopt_legacy_pair(local_path, remote_path)?;
     let path = sync_index_dir()?.join(index_filename(local_path, remote_path));
     let result = intent_connection().and_then(|mut conn| {
+        // The journal was adopted above; reading it here must not take the
+        // writer reservation again while this transaction holds it.
         load_index_with_intents_in(&mut conn, &path, local_path, remote_path, || {
-            load_sync_journal(local_path, remote_path)
+            load_sync_journal_in(&sync_journal_dir()?, local_path, remote_path)
         })
     });
     finish_index_recovery_load(&path, require_durable_fences, result)
@@ -5544,6 +5693,7 @@ pub fn load_sync_journal(
     local_path: &str,
     remote_path: &str,
 ) -> Result<Option<SyncJournal>, String> {
+    adopt_legacy_pair(local_path, remote_path)?;
     load_sync_journal_in(&sync_journal_dir()?, local_path, remote_path)
 }
 
@@ -7561,6 +7711,82 @@ mod tests {
         journal.completed = true;
         save_sync_journal_in(dir.path(), &journal).unwrap();
         assert!(verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
+    }
+
+    /// The runner before normalized roots saved a drive-root pair as `C:\`
+    /// and the root `/` as the empty string. Its index and journal are found
+    /// on the first load under the normalized key, moved there with the
+    /// journal's signature answer, and never written over a normalized history.
+    #[test]
+    fn a_history_saved_under_a_legacy_pair_key_is_adopted_by_the_normalized_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        assert_eq!(legacy_root_forms("C:/"), ["C:\\", "C:"]);
+        assert_eq!(legacy_root_forms("/"), [""]);
+        assert!(legacy_root_forms("/srv/data").is_empty());
+
+        let (old_local, old_remote) = ("C:\\", "");
+        let mut legacy = SyncIndex::new(old_local.into(), old_remote.into());
+        legacy.profile_id = Some("A".into());
+        std::fs::write(
+            index_dir.join(index_filename(old_local, old_remote)),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+        let journal = SyncJournal::new(
+            old_local.into(),
+            old_remote.into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        save_sync_journal_in(&journal_dir, &journal).unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/"));
+        let adopted = read_sync_index_file(&index_path)
+            .unwrap()
+            .expect("adopted index");
+        assert_eq!(
+            (adopted.local_path.as_str(), adopted.remote_path.as_str()),
+            ("C:/", "/")
+        );
+        assert_eq!(adopted.profile_id.as_deref(), Some("A"));
+        assert!(!index_dir
+            .join(index_filename(old_local, old_remote))
+            .exists());
+        let moved = load_sync_journal_in(&journal_dir, "C:/", "/")
+            .unwrap()
+            .expect("adopted journal");
+        assert_eq!(moved.id, journal.id);
+        assert!(load_sync_journal_in(&journal_dir, old_local, old_remote)
+            .unwrap()
+            .is_none());
+        let key = journal_signing_key_in(&journal_dir, "C:/", "/").unwrap();
+        assert!(verify_journal_signature_in(&journal_dir, "C:/", "/", &key).unwrap());
+        // The compare's own load sees the baseline under the normalized key.
+        let loaded = load_index_with_intents_in(&mut conn, &index_path, "C:/", "/", || {
+            load_sync_journal_in(&journal_dir, "C:/", "/")
+        })
+        .unwrap();
+        assert!(loaded.is_some(), "the existing baseline is not missed");
+
+        // A history already under the normalized key wins: a legacy one found
+        // later stays where it is and overwrites nothing.
+        let mut stale = SyncIndex::new("C:".into(), "/".into());
+        stale.profile_id = Some("stale".into());
+        std::fs::write(
+            index_dir.join(index_filename("C:", "/")),
+            serde_json::to_vec(&stale).unwrap(),
+        )
+        .unwrap();
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+        let kept = read_sync_index_file(&index_path).unwrap().unwrap();
+        assert_eq!(kept.profile_id.as_deref(), Some("A"));
+        assert!(index_dir.join(index_filename("C:", "/")).exists());
     }
 
     /// Two first-use callers (two sync jobs, or a job and the transfer-DAG

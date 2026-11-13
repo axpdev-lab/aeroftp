@@ -1091,6 +1091,71 @@ it.each(['during-preflight', 'before-launch', 'none'] as const)('refuses a saved
     expect(context.remoteSyncRunningRef.current).toBe(false);
 });
 
+// A staged upload queued before Compare, started after it, and a failed row
+// retried while the launch waits: neither enters `withBatchLatch`. Both run
+// the callback stored for the row (the staged effect and the Retry handler
+// read the same map), so the stored callback must move the number.
+it.each(['staged-start', 'retry'] as const)('refuses a saved Mirror delete after a %s that ran outside the batch latch', async path => {
+    const launchCode = await appSlice('  const runConnectedRemoteSync =', '  // GAP-10: shared local-local sync launcher', 'stale-mirror-staged.ts');
+    const generationCode = await appSlice('  const withTransferGeneration =', '  useEffect(() => {\n    batchOpInFlightRef', 'stale-mirror-generation.ts');
+    const remoteFiles = new Map([['/remote/orphan.txt', 'old']]);
+    let releaseBinding!: () => void;
+    const binding = new Promise<void>(resolve => { releaseBinding = resolve; });
+    const backend = wrapIntentInvoke(async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        if (cmd === 'provider_gui_target_binding') { await binding; return 'owner' as T; }
+        if (cmd === 'provider_bulk_support') return { upload: false, download: false } as T;
+        if (cmd === 'provider_delete_file') remoteFiles.delete(String(args?.path));
+        return undefined as T;
+    });
+    const invoke = vi.fn(<T,>(cmd: string, args?: Record<string, unknown>) => backend<T>(cmd, args));
+    const context = {
+        useLatestCallback: (fn: unknown) => fn, stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 },
+        syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(),
+        batchGenerationRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol: 'webdav' } }),
+        queuedTargetGuard: () => () => {}, QueuedTargetChangedError, captureGuiTarget: async () => 7,
+        currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
+        localStorage: { getItem: () => null }, isCryptOverlayActive: () => false, invoke,
+        remoteSyncRunningRef: { current: false }, runRemoteSync, runTrackedSync, syncRunnerPendingRef: { current: null }, syncCancelPendingRef: { current: null },
+        window: { addEventListener: vi.fn(), removeEventListener: vi.fn() }, TRANSFER_EVENT_BRIDGE: 'test',
+        syncRunQueueBridge: () => () => undefined, transferQueue: {}, syncRefreshAbortRef: { current: null },
+        runCompletionRefresh, loadRemoteFiles: vi.fn(async () => true), loadLocalPendingRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
+        currentLocalPathRef: { current: '' }, localPanelShows, isLocalFlattenSearchActive: () => false, loadLocalFiles: vi.fn(),
+        setDeltaEligibilityPrompt: vi.fn(), setRemoteSyncResult: vi.fn(), setSyncCancelling: vi.fn(),
+        notify: { error: vi.fn(), info: vi.fn() }, t: (key: string) => key, debugMode: false,
+    };
+    const retryCallbacksRef = { current: new Map<string, () => unknown>() };
+    const generationContext = { batchGenerationRef: context.batchGenerationRef, retryCallbacksRef };
+    const registerTransferCallback = new Function(...Object.keys(generationContext), `${generationCode};return registerTransferCallback;`)(...Object.values(generationContext));
+    // The row is queued (staged, or failed once) before the comparison.
+    registerTransferCallback('row-1', async () => { remoteFiles.set('/remote/orphan.txt', 'new'); });
+    // What the staged effect and the Retry handler do with the row.
+    const runRow = () => retryCallbacksRef.current.get('row-1')!();
+    const planBatchGeneration = context.batchGenerationRef.current;
+    if (path === 'staged-start') await runRow();
+    const launch = new Function(...Object.keys(context), `${launchCode};return runConnectedRemoteSync;`)(...Object.values(context));
+    launch([file('orphan.txt', 'delete-remote')], { remote: [], local: [] }, { direction: 'local_to_remote', deltaSyncEnabled: false, verifyPolicy: 'none', profileId: 'A', planBatchGeneration });
+    const commands = () => invoke.mock.calls.map(([cmd]) => cmd);
+    await vi.waitFor(() => expect(commands()).toContain('provider_gui_target_binding'));
+    if (path === 'retry') await runRow();
+    expect(context.batchOperationPendingRef.current).toBeNull();
+    releaseBinding();
+    await vi.waitFor(() => expect(context.notify.error).toHaveBeenCalledWith('aerosync.title', 'syncPanel.planStaleAfterBatch'));
+    await tick();
+    expect(remoteFiles.get('/remote/orphan.txt')).toBe('new');
+    expect(commands()).not.toContain('provider_delete_file');
+    expect(commands()).not.toContain('sync_run_lease_begin_cmd');
+});
+
+it('routes every stored transfer callback and every single transfer through the generation counter', async () => {
+    const { default: app } = await import('../App.tsx?raw');
+    // The one write to the map is inside registerTransferCallback.
+    expect(app.match(/retryCallbacksRef\.current\.set\(/g)).toHaveLength(1);
+    expect(app).toContain('retryCallbacksRef.current.set(id, withTransferGeneration(callback));');
+    expect(app).toContain('const downloadFile = useLatestCallback(withTransferGeneration(async (');
+    expect(app).toContain('const uploadFile = useLatestCallback(withTransferGeneration(async (');
+});
+
 it('keeps the local-local latch until a delayed cancel_transfer acknowledgement settles', async () => {
     const launchCode = await appSlice('  const runLocalLocalSync = useLatestCallback((', '  const handleCompareMirrorLeftToRight =', 'local-local-latch.ts');
     const stopCode = await appSlice('  const cancelTransfer = async', '  // Circuit breaker: attempt reconnection', 'local-local-stop.ts');

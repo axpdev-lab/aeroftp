@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
-import { wrapIntentInvoke } from './testFixtures/syncIntents';
+import { createIntentFixture, wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
 import {
     readEmptyDirAnswer,
     runRemoteSync,
+    LEASED_COMMANDS,
+    readPageSyncEpoch,
+    forgetPageSyncEpochForTests,
     groupErrorsByKind,
     filesFromJournal,
     retryPolicyForSpeed,
@@ -117,6 +120,48 @@ const file = (
     size: 1024,
     mtime: '2026-05-22T10:00:00Z',
     ...over,
+});
+
+// The native side admits a run's command only while its lease is live, so
+// every command of the set must carry the run's token, and no other one.
+describe('remoteSyncRunner: lease token on native commands', () => {
+    // The page reads its generation once at start; a later reload moves the
+    // native generation on, and this page's runs keep naming the one it read,
+    // which the native side then refuses.
+    it('names the page generation read at start on every lease request, read once', async () => {
+        forgetPageSyncEpochForTests();
+        let native = 7;
+        const { invoke, calls } = makeInvoke({ sync_page_epoch_cmd: () => native, load_sync_index_cmd: () => null });
+        expect(await readPageSyncEpoch(invoke)).toBe(7);
+        native = 8;
+        const fixture = createIntentFixture();
+        for (const name of ['one.txt', 'two.txt']) {
+            await runRemoteSync([file(name, 'upload')], noDirs, baseConfig(), {}, { ...noWaitDeps(invoke), invoke: fixture.wrap(invoke) });
+        }
+        expect(fixture.beginArgs.map(args => args.pageEpoch)).toEqual([7, 7]);
+        expect(calls.filter(c => c.cmd === 'sync_page_epoch_cmd')).toHaveLength(1);
+        forgetPageSyncEpochForTests();
+    });
+
+    it.each([false, true])('passes the run lease to every leased command (local-local: %s)', async isLocalLocal => {
+        const { invoke, calls } = makeInvoke({ load_sync_index_cmd: () => null });
+        await runRemoteSync(
+            [file('up.txt', 'upload'), file('down.txt', 'download'), file('gone.txt', 'delete-remote'), file('old.txt', 'delete-local')],
+            noDirs,
+            baseConfig({ isLocalLocal, direction: 'bidirectional' }),
+            {},
+            noWaitDeps(invoke),
+        );
+        const leased = calls.filter(c => LEASED_COMMANDS.has(c.cmd));
+        const others = calls.filter(c => !LEASED_COMMANDS.has(c.cmd));
+        const sent = new Set(leased.map(c => c.cmd));
+        // The plan reaches a copy, both deletes and a journal write.
+        expect(sent).toContain(isLocalLocal ? 'copy_local_file' : 'upload_file');
+        expect(sent).toContain('delete_local_file');
+        expect(sent).toContain('save_sync_journal_cmd');
+        for (const call of leased) expect(call.args?.syncRunLease, call.cmd).toMatch(/^run-lease-\d+$/);
+        for (const call of others) expect(call.args?.syncRunLease, call.cmd).toBeUndefined();
+    });
 });
 
 describe('remoteSyncRunner — copy legs', () => {
@@ -355,6 +400,7 @@ describe('remoteSyncRunner: versioned backup', () => {
             dir: '.aeroftp-versions',
             stamp: '20260925T070000Z',
             rel: 'docs/a.txt',
+            syncRunLease: 'run-lease-1',
         });
         expect(idx(calls, 'sync_backup_archive_remote')).toBeLessThan(idx(calls, 'upload_file'));
     });
@@ -407,7 +453,7 @@ describe('remoteSyncRunner: versioned backup', () => {
         // and only as an empty folder.
         expect(calls.some((c) => c.cmd === 'provider_delete_file' || c.cmd === 'delete_local_file')).toBe(false);
         expect(calls.filter((c) => c.cmd === 'sync_remove_empty_dir').map((c) => c.args))
-            .toEqual([{ target: 'provider', path: '/srv/data/empty-dir', expectedGuiTarget: 1 }]);
+            .toEqual([{ target: 'provider', path: '/srv/data/empty-dir', expectedGuiTarget: 1, syncRunLease: 'run-lease-1' }]);
     });
 
     it('asks for one stamp per run however many copies it keeps', async () => {
@@ -517,7 +563,7 @@ describe('remoteSyncRunner: versioned backup', () => {
         expect(report.errors).toEqual([]);
         expect(report.deleted).toBe(1);
         expect(calls.find((c) => c.cmd === 'delete_remote_file')?.args)
-            .toEqual({ path: '/srv/data/gone.txt.aerocorrect', isDir: false, expectedGuiTarget: 1 });
+            .toEqual({ path: '/srv/data/gone.txt.aerocorrect', isDir: false, expectedGuiTarget: 1, syncRunLease: 'run-lease-1' });
     });
 
     it('does not archive or delete a sidecar that is not there', async () => {
@@ -680,7 +726,7 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
             noWaitDeps(invoke),
         );
         expect(folderRemovals(calls, '/srv/data/docs')).toEqual([
-            { cmd: 'sync_remove_empty_dir', args: { target: 'ftp', path: '/srv/data/docs', expectedGuiTarget: 1 } },
+            { cmd: 'sync_remove_empty_dir', args: { target: 'ftp', path: '/srv/data/docs', expectedGuiTarget: 1, syncRunLease: 'run-lease-1' } },
         ]);
         expect(report.deleted).toBe(0);
         expect(report.skipped).toBe(1);
@@ -718,7 +764,7 @@ describe('remoteSyncRunner: a folder row never takes along what stayed', () => {
             {},
             noWaitDeps(invoke),
         );
-        expect(folderRemovals(calls, path)).toEqual([{ cmd: 'sync_remove_empty_dir', args: { target, path, ...('isLocalLocal' in over ? {} : { expectedGuiTarget: 1 }) } }]);
+        expect(folderRemovals(calls, path)).toEqual([{ cmd: 'sync_remove_empty_dir', args: { target, path, ...('isLocalLocal' in over ? {} : { expectedGuiTarget: 1 }), syncRunLease: 'run-lease-1' } }]);
         expect(report.deleted).toBe(1);
     });
 

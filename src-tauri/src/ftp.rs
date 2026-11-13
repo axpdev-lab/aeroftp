@@ -698,8 +698,9 @@ impl FtpManager {
         self.change_dir(if parent.is_empty() { "/" } else { parent })
             .await?;
         // `-a` is an ls option, not LIST syntax: a server that reads it as a
-        // pathname lists a folder named `-a`. Only a dot name needs it.
-        let listed = self.list_entries_opts(name.starts_with('.'), true).await;
+        // pathname lists a folder named `-a`. Only a dot name needs it, and
+        // only after the plain listing proves `-a` can name nothing here.
+        let listed = self.list_receipt_folder(name).await;
         if self.stream.is_none() {
             return Err(listed
                 .err()
@@ -713,6 +714,31 @@ impl FtpManager {
                 && !entry.is_symlink
                 && !crate::providers::ftp_listing::type_is_unconfirmed(entry)
         }))
+    }
+
+    /// The listing a receipt for `name` is read from, in the current folder.
+    ///
+    /// A plain `LIST` serves an ordinary name, and a dot name the server
+    /// already shows. Otherwise the dot name needs `LIST -a`, which a server
+    /// may read as the pathname `-a`: then it lists a folder named `-a`, and a
+    /// same-named file there would pass for the receipt. So `-a` is sent only
+    /// when the plain listing has no entry named `-a`; with one, the location
+    /// is ambiguous and the receipt cannot be verified.
+    async fn list_receipt_folder(
+        &mut self,
+        name: &str,
+    ) -> Result<Vec<crate::providers::RemoteEntry>> {
+        let plain = self.list_entries_opts(false, true).await?;
+        if !name.starts_with('.') || plain.iter().any(|entry| entry.name == name) {
+            return Ok(plain);
+        }
+        if plain.iter().any(|entry| entry.name == "-a") {
+            return Err(FtpManagerError::OperationFailed(
+                "Backup receipt cannot be verified: the folder holds an entry named -a, so LIST -a is ambiguous".into(),
+            )
+            .into());
+        }
+        self.list_entries_opts(true, true).await
     }
 
     pub async fn get_file_size(&mut self, path: &str) -> Result<u64> {
@@ -1904,6 +1930,80 @@ pub(crate) mod exists_tests {
                 "{special} is not a confirmed file"
             );
         }
+        assert!(ftp.receipt_is_file("/b/kept.bak").await.unwrap());
+    }
+
+    /// A folder named `-a` beside the receipt makes `LIST -a` ambiguous: the
+    /// server below reads it as that folder's pathname, and the folder holds
+    /// a file with the receipt's dot name. The receipt is refused, and `-a` is
+    /// never sent.
+    #[tokio::test]
+    async fn ftp_receipt_for_a_dot_name_refuses_a_folder_named_dash_a() {
+        let (addr, seen) = receipt_server(
+            "drwxr-xr-x 2 user group 4096 Jan 20 10:00 -a\r\n",
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env.bak\r\n",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.change_dir("/elsewhere").await.unwrap();
+        let refused = ftp.receipt_is_file("/b/sub/.env.bak").await;
+        assert!(
+            refused.is_err(),
+            "an ambiguous location is not a receipt: {refused:?}"
+        );
+        assert_eq!(ftp.current_path, "/elsewhere");
+        let lists: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("LIST"))
+            .cloned()
+            .collect();
+        assert_eq!(lists, ["LIST"], "LIST -a must not be sent");
+    }
+
+    /// Without a `-a` entry, a dot name the plain listing does not show is
+    /// read from `LIST -a`; one the plain listing shows needs no `-a`.
+    #[tokio::test]
+    async fn ftp_receipt_for_a_dot_name_uses_list_a_only_when_it_is_unambiguous() {
+        let (addr, seen) = receipt_server(
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .shown.bak\r\n",
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env.bak\r\n",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.receipt_is_file("/b/.shown.bak").await.unwrap());
+        assert!(ftp.receipt_is_file("/b/.env.bak").await.unwrap());
+        let lists: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("LIST"))
+            .cloned()
+            .collect();
+        assert_eq!(lists, ["LIST", "LIST", "LIST -a"]);
+    }
+
+    /// An IIS-style DOS listing: the field after the time is `<DIR>` or the
+    /// size. A row with anything else there stays listed but proves no file.
+    #[tokio::test]
+    async fn ftp_receipt_refuses_a_dos_row_without_a_numeric_size() {
+        let (addr, _) = receipt_server(
+            "01-23-24  10:30AM       ????           odd.bak\r\n\
+             01-23-24  10:30AM       <DIR>          dir.bak\r\n\
+             01-23-24  10:30AM                12345 kept.bak\r\n",
+            "",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(!ftp.receipt_is_file("/b/odd.bak").await.unwrap());
+        assert!(!ftp.receipt_is_file("/b/dir.bak").await.unwrap());
         assert!(ftp.receipt_is_file("/b/kept.bak").await.unwrap());
     }
 

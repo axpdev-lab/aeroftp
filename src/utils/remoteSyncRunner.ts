@@ -414,6 +414,41 @@ type SyncBulkResult =
 /** A file of a bulk group, after its preparation and its transfer. */
 type BulkPrepared = SyncBulkResult | { status: 'backup_failed'; error: unknown };
 
+/**
+ * The native commands of a run that write files, folders or sync state. Each
+ * takes the run's lease token as `syncRunLease` and refuses one whose lease
+ * is gone or orphaned (`sync_run_lease::admit`).
+ */
+export const LEASED_COMMANDS: ReadonlySet<string> = new Set([
+    'download_file', 'upload_file', 'copy_local_file', 'create_local_folder', 'create_remote_folder',
+    'delete_local_file', 'delete_remote_file', 'save_sync_index_cmd', 'save_sync_journal_cmd',
+    'delete_sync_journal_cmd', 'sync_backup_archive_local', 'sync_backup_archive_remote',
+    'sync_ec_generate', 'sync_ec_verify_repair', 'sync_remove_empty_dir', 'sync_intent_begin_cmd',
+    'sync_intent_snapshot_cmd', 'provider_delete_file', 'provider_download_file', 'provider_mkdir',
+    'provider_upload_file', 'provider_sync_transfer_bulk',
+]);
+
+let pageSyncEpoch: Promise<number> | null = null;
+
+/**
+ * This page's generation (`sync_page_epoch_cmd`), read once and kept for the
+ * page's life. App reads it at start; every run's lease request names it, and
+ * the native side refuses a request from a page that was replaced since. It is
+ * never read again later: after a reload begins the old page still runs for a
+ * moment, and a late read would hand it the new page's generation. A failed
+ * read stays failed, so this page starts no run (fail closed until a reload).
+ */
+export const readPageSyncEpoch = (invoke: RemoteSyncDeps['invoke']): Promise<number> => {
+    pageSyncEpoch ??= invoke<number>('sync_page_epoch_cmd').then(epoch => {
+        if (!Number.isSafeInteger(epoch) || epoch < 0) throw new Error('Cannot read this page\'s sync generation');
+        return epoch;
+    });
+    return pageSyncEpoch;
+};
+
+/** Forget the generation read, for a test that plays a new page. */
+export const forgetPageSyncEpochForTests = (): void => { pageSyncEpoch = null; };
+
 /** Files sent in one `provider_sync_transfer_bulk` call at most. */
 const BULK_CHUNK_FILES = 256;
 
@@ -430,13 +465,16 @@ export const runRemoteSync = (
     callbacks: RemoteSyncCallbacks,
     deps: RemoteSyncDeps,
 ): Promise<SyncRunReport> => withTransferRun(async () => {
+    const pageEpoch = await readPageSyncEpoch(deps.invoke);
     const token = await deps.invoke<string>('sync_run_lease_begin_cmd', {
-        localPath: normalizedSyncRoot(config.localRoot), remotePath: normalizedSyncRoot(config.remoteRoot),
+        localPath: normalizedSyncRoot(config.localRoot), remotePath: normalizedSyncRoot(config.remoteRoot), pageEpoch,
     });
     if (typeof token !== 'string' || !token) throw new Error('Cannot acquire sync run ownership');
     const pending = new Set<Promise<unknown>>();
     const trackedInvoke: RemoteSyncDeps['invoke'] = <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
-        const call = deps.invoke<T>(cmd, cmd === 'sync_intent_begin_cmd' ? { ...args, syncRunLease: token } : args);
+        // A command of this run is admitted natively only while its lease is
+        // live: one that reaches its handler after the page was lost is refused.
+        const call = deps.invoke<T>(cmd, LEASED_COMMANDS.has(cmd) ? { ...args, syncRunLease: token } : args);
         pending.add(call);
         void call.then(() => pending.delete(call), () => pending.delete(call));
         return call;

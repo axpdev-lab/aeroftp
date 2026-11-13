@@ -5,6 +5,7 @@ import * as React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SyncTemplateDialog } from './SyncTemplateDialog';
+import { RollbackDialog } from './RollbackDialog';
 import { createTabStateStore, TabStateStoreContext } from '../AeroSync/tabStateStore';
 import type { SyncProfile } from '../../types';
 import { compareEntries } from '../../utils/compareEndpoints';
@@ -215,4 +216,42 @@ it('refuses an Update export when the current options no longer match the compar
     expect(mocks.pickSave).not.toHaveBeenCalled();
     expect(mocks.invoke.mock.calls.some(([command]) => command === 'aerosync_export_script_cmd')).toBe(false);
     expect(host.textContent).toContain('aerosync.rescanNeeded');
+});
+
+// The rollback dialog of the same panel. A pair shown with a raw Windows root
+// and a trailing slash is the pair the runner saved as `C:/` | `/remote`:
+// every pair-keyed snapshot command asks for that key.
+it('sends the normalized pair roots to every snapshot command of the rollback dialog', async () => {
+    const snapshot = {
+        id: 'snap-1', created_at: '2026-11-12T00:00:00Z', local_path: 'C:/', remote_path: '/remote',
+        files: { 'a.txt': { size: 1, modified: null, checksum: null, action_taken: 'uploaded' } },
+    };
+    mocks.invoke.mockReset().mockImplementation(async (command: string) => {
+        if (command === 'list_sync_snapshots_cmd') return [snapshot];
+        if (command === 'restore_sync_snapshot_cmd') return { restored_from_remote: 0, restored_to_remote: 0, skipped: 0, failed: [] };
+        return null;
+    });
+    const button = (label: string) => {
+        const found = [...host.querySelectorAll('button')].find(b => b.textContent?.includes(label) || b.title === label);
+        if (!found) throw new Error(`button ${label} not found`);
+        return found;
+    };
+    const click = async (element: Element) => {
+        await React.act(async () => { element.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    };
+    await React.act(async () => {
+        root.render(<RollbackDialog isOpen embedded onClose={() => undefined} localPath={'C:\\'} remotePath="/remote/" isProvider={false} />);
+    });
+    await click(button('syncPanel.rollbackCreate'));
+    await click(host.querySelector('.cursor-pointer')!);
+    await click(button('syncPanel.rollbackRestore'));
+    const confirm = [...host.querySelectorAll('button')].filter(b => b.textContent?.includes('syncPanel.rollbackRestore')).pop();
+    if (confirm) await click(confirm);
+    await click(button('syncPanel.rollbackDeleteSnapshot'));
+    const pairs = mocks.invoke.mock.calls.map(([command, args]) => [command, args.localPath, args.remotePath]);
+    expect(new Set(pairs.map(([command]) => command))).toEqual(new Set(['list_sync_snapshots_cmd', 'create_sync_snapshot_cmd', 'restore_sync_snapshot_cmd', 'delete_sync_snapshot_cmd']));
+    for (const [, local, remote] of pairs) {
+        expect(local).toBe('C:/');
+        expect(remote).toBe('/remote');
+    }
 });

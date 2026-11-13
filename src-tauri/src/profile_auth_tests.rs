@@ -261,6 +261,58 @@ async fn round_trip() {
     );
     assert_eq!(readiness(&scope, &google).unwrap(), "valid");
 
+    // A profile id with path separators (an imported remote name) takes the
+    // same expired-token path: the refresh runs under a lease whose file name
+    // is made safe inside the token folder, and nothing is created outside it.
+    let separator_id = "rclone-team/drive..\\x-1";
+    let account = format!("oauth_google_{separator_id}");
+    scope
+        .write(&account, &serde_json::to_string(&tokens).unwrap())
+        .unwrap();
+    let mut separated = oauth_config(
+        ProviderType::GoogleDrive,
+        separator_id,
+        &("fixture-client".into(), "fixture-client-secret".into()),
+        "",
+        19899,
+    )
+    .unwrap();
+    separated.token_url = format!("{endpoint}/oauth2-token");
+    let refreshes = |log: &Mutex<Vec<(String, String, String)>>| {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|(p, _, b)| p == "/oauth2-token" && b.contains("grant_type=refresh_token"))
+            .count()
+    };
+    let before = refreshes(&captured);
+    assert_eq!(
+        OAuth2Manager::new()
+            .get_valid_token(&separated)
+            .await
+            .unwrap()
+            .expose_secret(),
+        "oauth-refreshed"
+    );
+    assert_eq!(
+        refreshes(&captured),
+        before + 1,
+        "the expired token was refreshed"
+    );
+    let token_dir = crate::portable::aeroftp_data_root()
+        .unwrap()
+        .join("oauth_tokens");
+    assert!(
+        !token_dir.join("refresh-oauth_google_rclone-team").exists(),
+        "the separator made no folder"
+    );
+    assert!(
+        !token_dir
+            .join("refresh-oauth_google_rclone-team_drive___x-1.lock")
+            .exists(),
+        "the lease is released after the refresh"
+    );
+
     let github =
         json!({"id":"fixture-github","name":"synthetic","protocol":"github","host":"owner/repo"});
     execute_at(

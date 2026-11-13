@@ -58,18 +58,36 @@ pub async fn provider_sync_transfer_bulk(
     items: Vec<SyncBulkItem>,
     timeout_seconds: Option<u64>,
     expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<Vec<SyncBulkResult>, String> {
-    let _native_work = crate::sync_run_lease::native_work();
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app));
-    sync_transfer_bulk(
-        &state,
-        &sink,
-        upload,
-        &items,
-        timeout_seconds,
-        expected_gui_target,
-    )
-    .await
+    let results = crate::provider_commands::ipc_result(
+        sync_transfer_bulk(
+            &state,
+            &sink,
+            upload,
+            &items,
+            timeout_seconds,
+            expected_gui_target,
+        )
+        .await,
+    )?;
+    Ok(redacted_bulk_results(results))
+}
+
+/// A file's failure text crosses to the webview like a command error: through
+/// the same redaction (see [`crate::provider_commands::ipc_result`]).
+fn redacted_bulk_results(results: Vec<SyncBulkResult>) -> Vec<SyncBulkResult> {
+    results
+        .into_iter()
+        .map(|result| match result {
+            SyncBulkResult::Failed { message } => SyncBulkResult::Failed {
+                message: crate::debug_tests::redact(&message),
+            },
+            other => other,
+        })
+        .collect()
 }
 
 async fn sync_transfer_bulk(

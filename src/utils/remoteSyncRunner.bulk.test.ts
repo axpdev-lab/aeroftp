@@ -551,7 +551,9 @@ describe('sync intent fixture', () => {
             .rejects.toThrow('SYNC_RUN_BUSY');
         expect(fixture.generations.size).toBe(0);
         // With the pair's lease the same request is served.
-        const lease = await invoke<string>('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r' });
+        // A begin names its page generation; one that names none is refused.
+        await expect(invoke('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r' })).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        const lease = await invoke<string>('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r', pageEpoch: 0 });
         await expect(invoke('sync_intent_begin_cmd', { localPath: '/l', remotePath: '/r', paths: ['a.txt'], syncRunLease: lease }))
             .resolves.toHaveLength(1);
         expect([...fixture.generations.keys()]).toEqual(['a.txt']);

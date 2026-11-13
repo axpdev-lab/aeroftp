@@ -104,6 +104,8 @@ describe('Properties privacy result and dialog identity', () => {
 
     async function harness() {
         const openLocal = (await transformWithOxc(slice('  const openLocalProperties = async', '\n  // Duplicate Finder & Disk Usage dialogs'), 'open-local-properties.ts')).code;
+        // App's own epoch read, which runs the target check once the epoch is known.
+        const resolveTarget = (await transformWithOxc(slice('  const resolveGuiTarget = async', '\n  const getOverwriteDestination ='), 'resolve-gui-target.ts')).code;
         const openRemote = (await transformWithOxc(slice('    const openRemoteProperties = (tab', '\n    const items: ContextMenuItem[] = ['), 'open-remote-properties.ts')).code;
         const state = { single: null as Dialog, multi: null as Dialog };
         const set = (key: 'single' | 'multi') => (next: Dialog | ((prev: Dialog) => Dialog)) => {
@@ -111,27 +113,30 @@ describe('Properties privacy result and dialog identity', () => {
         };
         // Each access change waits here until the test lets it through.
         const writes: Array<() => void> = [];
-        const invoke = vi.fn(async (cmd: string) => {
+        const invoke = vi.fn(async (cmd: string, _args?: Record<string, unknown>) => {
             if (cmd === 'get_file_properties') return { permissions_text: 'rw-r--r--', permissions_mode: 0o644 };
             if (cmd === 'opendrive_set_path_access') await new Promise<void>(resolve => { writes.push(resolve); });
             return undefined;
         });
         const notify = { error: vi.fn(), warning: vi.fn(), success: vi.fn() };
+        // The server the GUI shows now; a dialog's write checks its own target against it.
+        const live = { current: 'A' };
         const context = {
             propertiesOwnerRef: { current: null as unknown }, multiPropertiesOwnerRef: { current: null as unknown },
-            queuedTargetGuard: () => () => undefined,
-            resolveGuiTarget: async (pending: Promise<{ epoch: number }>) => (await pending).epoch,
+            queuedTargetGuard: (wanted: { profileId: string }) => () => {
+                if (wanted.profileId !== live.current) throw new QueuedTargetChangedError('CONNECTION_CHANGED: changed');
+            },
             invoke, notify, t: (key: string) => key,
             humanLog: { logRaw: () => 'log', updateEntry: vi.fn() },
             setPropertiesDialog: set('single'), setMultiPropertiesDialog: set('multi'), loadRemoteFiles: vi.fn(),
             setPropertiesInitialTab: vi.fn(), localFoldersShownBy: () => [], cancelLocalFolderSizes: vi.fn(), stopRemoteFolderSize: vi.fn(),
         };
-        const app = new Function(...Object.keys(context), `${code}; ${openLocal}; return {
+        const app = new Function(...Object.keys(context), `${resolveTarget}; ${code}; ${openLocal}; return {
             applyOpenDrivePrivacyToPaths, openLocalProperties,
-            remote: (names) => {
+            remote: (names, profile = 'A') => {
                 const remoteFiles = ['/same', '/other'].map(path => ({ name: path.slice(1), path, size: 1, is_dir: false, modified: null, permissions: 'private' }));
                 const selection = new Set(names), count = names.length, file = remoteFiles.find(f => f.name === names[0]);
-                const menuTarget = { profileId: 'A' }, preparedMenuTarget = Promise.resolve({ epoch: 9 }), shownProtocol = 'opendrive';
+                const menuTarget = { profileId: profile }, preparedMenuTarget = Promise.resolve({ epoch: profile === 'A' ? 9 : 10 }), shownProtocol = 'opendrive';
                 ${openRemote}
                 openRemoteProperties('permissions');
             },
@@ -144,7 +149,7 @@ describe('Properties privacy result and dialog identity', () => {
         };`)(...Object.values(context));
         const rendered = () => app.render(state.single, state.multi);
         const local = (path: string): NonNullable<Dialog> => ({ path, isRemote: false, permissions: 'rw-r--r--' });
-        return { state, app, rendered, local, writes, notify, context };
+        return { state, app, rendered, local, writes, notify, context, invoke, live };
     }
     const settle = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -195,6 +200,41 @@ describe('Properties privacy result and dialog identity', () => {
         h.writes[0]();
         await pending;
         expect(h.state.single).toMatchObject({ path: '/same', isRemote: true, permissions: 'public' });
+    });
+
+    // Two remote dialogs on two targets: the one opened first stays on screen
+    // while the user switches server and opens the other kind. Each write goes
+    // through the callbacks App renders, and only the dialog of the live target
+    // writes and shows the result.
+    it.each(['single then multi', 'multi then single'] as const)('keeps each dialog on its own target when they open %s across servers', async order => {
+        const h = await harness();
+        const firstKind = order === 'single then multi' ? 'single' : 'multi';
+        const secondKind = firstKind === 'single' ? 'multi' : 'single';
+        const open = (kind: 'single' | 'multi', profile: string) => h.app.remote(kind === 'single' ? ['same'] : ['same', 'other'], profile);
+        const privacy = (kind: 'single' | 'multi', level: string) => kind === 'single' ? h.rendered().privacySingle(level) : h.rendered().privacyMulti(level);
+        const levels = (kind: 'single' | 'multi') => kind === 'single' ? [h.state.single!.permissions] : h.state.multi!.files!.map(f => f?.permissions);
+        open(firstKind, 'A');
+        h.live.current = 'B';
+        open(secondKind, 'B');
+        expect(h.state.single).toMatchObject({ isRemote: true });
+        expect(h.state.multi).toMatchObject({ isRemote: true });
+        // The dialog of the server left behind refuses, before any write.
+        await privacy(firstKind, 'public');
+        expect(h.invoke.mock.calls.filter(([cmd]) => cmd === 'opendrive_set_path_access')).toHaveLength(0);
+        expect(h.notify.error).toHaveBeenCalledTimes(1);
+        expect(levels(firstKind).every(level => level === 'private')).toBe(true);
+        // The live server's dialog writes with its own epoch and shows the result.
+        const pending = privacy(secondKind, 'hidden');
+        const expected = secondKind === 'single' ? 1 : 2;
+        await vi.waitFor(() => expect(h.writes).toHaveLength(expected));
+        h.writes.forEach(release => release());
+        await pending;
+        const writes = h.invoke.mock.calls.filter(([cmd]) => cmd === 'opendrive_set_path_access');
+        expect(writes.map(([, args]) => args?.expectedGuiTarget)).toEqual(Array(expected).fill(10));
+        expect(levels(secondKind).every(level => level === 'hidden')).toBe(true);
+        // The other dialog, on the same path, still shows its own server's level.
+        expect(levels(firstKind).every(level => level === 'private')).toBe(true);
+        expect(h.notify.error).toHaveBeenCalledTimes(1);
     });
 
     it('does not apply a replaced request to the remote dialog reopened on the same path', async () => {

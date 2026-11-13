@@ -731,17 +731,22 @@ impl LegacyTokenGuard {
                 }
                 Err(std::fs::TryLockError::Error(error)) => {
                     let unlocked = match (legacy_lock_failure(&error), use_) {
+                        // A filesystem without locks: no process can hold this
+                        // lock, and `with_legacy_claim_guard` refuses to migrate
+                        // with an unlocked guard, so no migrator can exist for a
+                        // sign-out to race with.
                         (LegacyLockFailure::NoLocks, _) => true,
                         // An unlocked guard only disables migration.
                         (LegacyLockFailure::Unproven, LegacyLockUse::Migration) => true,
-                        // A migrator keeps the legacy file or its claim on
-                        // disk until its vault write is done, and cannot
-                        // start without one of them. With neither present
-                        // there is nothing for an unseen lock holder to
-                        // store after this sign-out.
+                        // ENOLCK says this process got no lock record, not that
+                        // nobody holds the lock. What is on disk proves nothing
+                        // either: a migrator's recovery moves its claim back to
+                        // the legacy name between any two looks. Sign-out waits
+                        // for a lock it can prove.
                         (LegacyLockFailure::Unproven, LegacyLockUse::Signout) => {
-                            !legacy_path.exists()
-                                && ClaimedTokenFile::recovery_paths(legacy_path)?.is_empty()
+                            return Err(ProviderError::Other(
+                                "Legacy authorization lock unavailable (no lock record left); nothing was signed out, try again".into(),
+                            ))
                         }
                         (LegacyLockFailure::Other, _) => false,
                     };
@@ -800,6 +805,24 @@ fn with_legacy_claim_guard<T>(
     migrate(&mut cache, claimed)
 }
 
+// A token miss with no legacy file and no claim is answered before any lock:
+// with nothing to migrate there is nothing to coordinate.
+fn with_stored_legacy_token_claim<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    migrate: impl FnOnce(
+        &mut Option<HashMap<String, String>>,
+        ClaimedTokenFile,
+    ) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    if !path.exists() && ClaimedTokenFile::recovery_paths(path)?.is_empty() {
+        return Err(ProviderError::AuthenticationFailed(
+            "No stored authorization".into(),
+        ));
+    }
+    with_legacy_token_claim(cache, path, migrate)
+}
+
 // Sign-out purges every valid stranded claim without selecting a login to
 // restore. Keep the same file -> cache -> vault order as migration.
 fn with_legacy_signout<T>(
@@ -808,6 +831,18 @@ fn with_legacy_signout<T>(
     clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
 ) -> Result<T, ProviderError> {
     let process = LegacyTokenGuard::acquire_for_signout(path)?;
+    with_legacy_signout_guard(cache, path, process, clear)
+}
+
+// Only the unix tests can play ENOLCK, so this shares their cfg.
+#[cfg(all(test, unix))]
+fn with_legacy_signout_with<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    try_lock: impl FnMut(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+    clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    let process = LegacyTokenGuard::lock_with(path, LegacyLockUse::Signout, try_lock)?;
     with_legacy_signout_guard(cache, path, process, clear)
 }
 
@@ -1677,12 +1712,7 @@ impl OAuth2Manager {
 
         let legacy_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        if !legacy_path.exists() && ClaimedTokenFile::recovery_paths(&legacy_path)?.is_empty() {
-            return Err(ProviderError::AuthenticationFailed(
-                "No stored authorization".into(),
-            ));
-        }
-        with_legacy_token_claim(&MEMORY_TOKEN_CACHE, &legacy_path, |cache, claimed| {
+        with_stored_legacy_token_claim(&MEMORY_TOKEN_CACHE, &legacy_path, |cache, claimed| {
             let observed_legacy_revision =
                 legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst);
             let json = Zeroizing::new(std::fs::read_to_string(&claimed.path).map_err(|_| {
@@ -2577,12 +2607,10 @@ mod tests {
         assert!(!original.exists(), "sign-out must not restore either login");
     }
 
+    // Only the unix tests can play ENOLCK, so the helper shares their cfg.
+    #[cfg(unix)]
     fn enolck() -> std::fs::TryLockError {
-        #[cfg(unix)]
-        let error = std::io::Error::from_raw_os_error(libc::ENOLCK);
-        #[cfg(not(unix))]
-        let error = std::io::Error::other("no lock records");
-        std::fs::TryLockError::Error(error)
+        std::fs::TryLockError::Error(std::io::Error::from_raw_os_error(libc::ENOLCK))
     }
 
     fn unsupported_lock() -> std::fs::TryLockError {
@@ -2638,22 +2666,108 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&original).unwrap(), "authorization");
     }
 
+    /// With nothing on disk at all, ENOLCK still refuses: an empty disk is
+    /// one of the states a migrator's recovery passes through.
     #[cfg(unix)]
     #[test]
-    fn signout_that_sees_enolck_proceeds_only_with_nothing_left_to_migrate() {
+    fn signout_that_sees_enolck_is_refused_even_with_nothing_left_to_migrate() {
         let dir = tempfile::tempdir().unwrap();
         let original = dir.path().join("legacy.json");
-        let guard =
-            LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| Err(enolck()))
-                .unwrap();
-        assert!(guard.0.is_none());
         let cache = Mutex::new(Some(HashMap::from([("login".into(), "A".into())])));
-        with_legacy_signout_guard(&cache, &original, guard, |tokens| {
-            *tokens = None;
-            Ok(())
-        })
-        .unwrap();
-        assert!(cache.lock().unwrap().is_none());
+        let refused = with_legacy_signout_with(
+            &cache,
+            &original,
+            |_| Err(enolck()),
+            |tokens| {
+                *tokens = None;
+                Ok(())
+            },
+        );
+        let message = match refused {
+            Err(ProviderError::Other(message)) => message,
+            other => panic!("sign-out must fail closed on ENOLCK: {other:?}"),
+        };
+        assert!(message.contains("try again"), "{message}");
+        assert_eq!(cache.lock().unwrap().as_ref().unwrap()["login"], "A");
+    }
+
+    /// The interleaving the review lists, driven through the injectable
+    /// try-lock: while sign-out asks for the lock, a migrator holding it
+    /// recovers its claim to the legacy name. Sign-out used to look at the
+    /// disk after that and could see neither a legacy file nor a claim at the
+    /// moment between them; now it refuses on ENOLCK whatever the disk shows,
+    /// so the restored authorization and the cache are left to the migrator.
+    #[cfg(unix)]
+    #[test]
+    fn signout_on_enolck_cannot_overtake_a_claim_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let claim = original.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&claim, "authorization").unwrap();
+        let _migrator = LegacyTokenGuard::lock(&original, LegacyLockUse::Migration).unwrap();
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "A".into())])));
+        let cleared = std::cell::Cell::new(false);
+        // Each state of the recovery as sign-out may see it: the claim alone,
+        // the legacy file alone, and neither (the gap a two-look check missed).
+        for step in ["claim", "restored", "empty"] {
+            let refused = with_legacy_signout_with(
+                &cache,
+                &original,
+                |_| {
+                    match step {
+                        "restored" if claim.exists() => std::fs::rename(&claim, &original).unwrap(),
+                        "empty" if original.exists() => {
+                            std::fs::rename(&original, dir.path().join("held")).unwrap()
+                        }
+                        _ => {}
+                    }
+                    Err(enolck())
+                },
+                |tokens| {
+                    cleared.set(true);
+                    *tokens = None;
+                    Ok(())
+                },
+            );
+            assert!(
+                matches!(refused, Err(ProviderError::Other(_))),
+                "{step}: {refused:?}"
+            );
+            assert!(
+                !cleared.get(),
+                "{step}: nothing may be cleared without the lock"
+            );
+            assert_eq!(
+                cache.lock().unwrap().as_ref().unwrap()["login"],
+                "A",
+                "{step}"
+            );
+        }
+        // The migrator's authorization survived every refused sign-out.
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("held")).unwrap(),
+            "authorization"
+        );
+    }
+
+    /// A token miss with no legacy file and no claim answers "no stored
+    /// authorization" and takes no lock: the lock file is never created.
+    #[test]
+    fn a_token_miss_with_nothing_on_disk_takes_no_legacy_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let result: Result<(), _> =
+            with_stored_legacy_token_claim(&Mutex::new(None), &original, |_, _| {
+                panic!("nothing to migrate")
+            });
+        assert!(
+            matches!(&result, Err(ProviderError::AuthenticationFailed(message)) if message == "No stored authorization"),
+            "{result:?}"
+        );
+        assert!(
+            !original.with_extension("migration.lock").exists(),
+            "no lock was taken"
+        );
     }
 
     #[cfg(unix)]

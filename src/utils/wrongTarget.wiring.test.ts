@@ -76,10 +76,10 @@ describe('Apply on a remote file', () => {
 
 describe('a queued transfer', () => {
     it('is bound to its server on every Start and Retry the user queues', () => {
-        const registrations = APP_CODE.split('retryCallbacksRef.current.set(').slice(1).map(rest => rest.slice(0, 120));
+        const registrations = APP_CODE.split('registerTransferCallback(id, ').slice(1).map(rest => rest.slice(0, 120));
         // The restored-journal retry has its own profile ownership check.
-        const restored = registrations.filter(r => r.startsWith('id, () => retryRestoredEntry('));
-        const bound = registrations.filter(r => r.startsWith('id, boundToQueuedServer(queuedTarget, id, '));
+        const restored = registrations.filter(r => r.startsWith('() => retryRestoredEntry('));
+        const bound = registrations.filter(r => r.startsWith('boundToQueuedServer(queuedTarget, id, '));
         expect(restored).toHaveLength(1);
         expect(bound).toHaveLength(5);
         expect(registrations).toHaveLength(restored.length + bound.length);

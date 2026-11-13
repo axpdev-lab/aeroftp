@@ -63,6 +63,7 @@ async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<t
     batchCancelledRef: f.batchCancelledRef, stopCountRef: f.stopCountRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
     invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
     transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
+    withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { f.retryCallbacksRef.current.set(id, cb); },
     // App's own target checks and file batch, over the fixture's live
     // connection, which a test can switch while the picker is open.
     ...f.targetChecks,
