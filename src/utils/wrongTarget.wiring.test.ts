@@ -934,3 +934,47 @@ describe('a delete that asks for a commit message', () => {
         expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message', expectedGuiTarget: 7 });
     });
 });
+
+/**
+ * E3: each local copy or delete is a native command with a cancel state of
+ * its own, so a Stop raised during the first one does not reach the next:
+ * the paste itself starts no further item once a Stop came.
+ */
+describe('a Stop during a paste ends the paste, not only the command in flight', () => {
+    const names = ['a.txt', 'b.txt', 'c.txt'];
+    const stopOnFirst = (f: ReturnType<typeof fixture>, command: string, answer: () => unknown) => {
+        const original = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+            if (cmd !== command) return original(cmd, args);
+            if (f.invoke.mock.calls.filter(([c]) => c === command).length === 1) {
+                f.stopCountRef.current += 1;
+                return answer();
+            }
+            return undefined;
+        }) as typeof original);
+    };
+    const sent = (f: ReturnType<typeof fixture>, command: string) => f.invoke.mock.calls.filter(([c]) => c === command);
+
+    it('copies no further local file after a Stop', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [SUB]: [] } });
+        stopOnFirst(f, 'copy_local_file', () => { throw 'Transfer cancelled by user [sync-error:unknown:true]'; });
+        f.clipboardCopy(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(false, SUB);
+        expect(sent(f, 'copy_local_file')).toHaveLength(1);
+    });
+
+    it('deletes no further source of a cut after a Stop, even one answered as a cancelled delete', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        stopOnFirst(f, 'delete_local_file', () => 'Deletion cancelled: 0 of 1 files deleted');
+        f.clipboardCut(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        expect(sent(f, 'delete_local_file')).toHaveLength(1);
+    });
+
+    it('imports no further dropped item after a Stop', () => {
+        // The drop listener lives in an effect the kit does not mount: its
+        // loop reads the Stop count it began with before every item.
+        const drop = between(APP_CODE, 'webview.onDragDropEvent(async (event) => {', "notify.success(t('toast.dropImported'");
+        expect(drop).toMatch(/const stops = stopCountRef\.current;\n\s+for \(const src of event\.payload\.paths\) \{\n\s+if \(stopCountRef\.current !== stops\) break;/);
+    });
+});

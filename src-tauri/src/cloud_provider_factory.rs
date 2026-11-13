@@ -157,7 +157,7 @@ fn resolved_target_identity(
 /// [`resolved_target_identity`], the account the provider reports, and what
 /// decides the names the run sees through a crypt overlay (`overlay`, see
 /// `OverlayKeys::naming_fingerprint`). A provider installed without a config
-/// (the OAuth ones) is its type and account; with no account either, there is
+/// (the OAuth ones) is its type, account and OAuth client id; with no account either, there is
 /// nothing that tells one sign-in from another, and `None` is returned: the
 /// caller gives such a connection an identity of its own, never reused. Never
 /// secret: no password or token is part of it.
@@ -165,9 +165,11 @@ pub(crate) fn gui_target_identity(
     config: Option<&ProviderConfig>,
     provider_type: ProviderType,
     account: Option<&str>,
+    oauth_client: Option<&str>,
     overlay: &serde_json::Value,
 ) -> Option<String> {
     let account = account.filter(|value| !value.trim().is_empty());
+    let oauth_client = oauth_client.filter(|value| !value.trim().is_empty());
     let value = match config {
         Some(config) => {
             let (principal, options) = target_selectors(config);
@@ -178,9 +180,12 @@ pub(crate) fn gui_target_identity(
                 "options": options, "overlay": overlay,
             })
         }
+        // The OAuth app is part of the target: an app limited to its own
+        // folder (Dropbox, Yandex "app folder") sees another root of the
+        // same account. Its public client id, never the secret.
         None => serde_json::json!({
             "surface": "gui-v1", "protocol": provider_type.to_string(),
-            "account": account?, "overlay": overlay,
+            "account": account?, "client": oauth_client, "overlay": overlay,
         }),
     };
     Some(format!("target-v1:{}", identity_digest(value)))
@@ -253,6 +258,18 @@ fn target_selectors(
                     | "public_key"
                     | "space_id"
                     | "library_id"
+                    // GitHub and GitLab: the branch is the tree read.
+                    | "branch"
+                    // ImageKit: the URL endpoint id is the media library.
+                    | "imagekit_id"
+                    // AeroShare: the shared drive and its replica folder.
+                    | "peer_namespace"
+                    | "peer_local_folder"
+                    // An OAuth app limited to its own folder (Dropbox or
+                    // Yandex "app folder") sees another root of the same
+                    // account: the app is part of the target. Never the secret.
+                    | "client_id"
+                    | "app_key"
             )
         })
         .collect();
@@ -1132,7 +1149,8 @@ mod tests {
             } else {
                 serde_json::Value::Null
             };
-            gui_target_identity(Some(config), config.provider_type, account, &overlay).unwrap()
+            gui_target_identity(Some(config), config.provider_type, account, None, &overlay)
+                .unwrap()
         };
         let expected = id(&original, Some("acct"), false);
         assert!(expected.starts_with("target-v1:"));
@@ -1141,7 +1159,20 @@ mod tests {
         same.name = "renamed".into();
         same.password = Some("secret-two".into());
         assert_eq!(id(&same, Some("acct"), false), expected);
-        for change in ["host", "port", "username", "root", "bucket", "region"] {
+        for change in [
+            "host",
+            "port",
+            "username",
+            "root",
+            "bucket",
+            "region",
+            "branch",
+            "imagekit_id",
+            "peer_namespace",
+            "peer_local_folder",
+            "client_id",
+            "app_key",
+        ] {
             let mut changed = original.clone();
             match change {
                 "host" => changed.host = "second.example".into(),
@@ -1161,11 +1192,22 @@ mod tests {
         // A provider installed without a config: its type and account; with
         // no account (a 4shared sign-in without an email) no reusable one.
         let none = serde_json::Value::Null;
-        let oauth = |account| gui_target_identity(None, ProviderType::GoogleDrive, account, &none);
+        let oauth = |account| {
+            gui_target_identity(None, ProviderType::GoogleDrive, account, Some("app"), &none)
+        };
         assert_eq!(oauth(Some("a@x")), oauth(Some("a@x")));
         assert_ne!(oauth(Some("a@x")), oauth(Some("b@x")));
         assert!(oauth(None).is_none());
-        assert!(gui_target_identity(None, ProviderType::FourShared, Some(" "), &none).is_none());
+        assert!(
+            gui_target_identity(None, ProviderType::FourShared, Some(" "), None, &none).is_none()
+        );
+        // The OAuth app is part of the target (an "app folder" app sees
+        // another root of the same account); a blank id is no id.
+        let app =
+            |client| gui_target_identity(None, ProviderType::Dropbox, Some("a@x"), client, &none);
+        assert_ne!(app(Some("app-one")), app(Some("app-two")));
+        assert_ne!(app(Some("app-one")), app(None));
+        assert_eq!(app(Some(" ")), app(None));
         // Two overlays that name the same files differently are two targets.
         let suffixed = |suffix: &str| {
             let overlay = serde_json::json!({"kind": "rclone-crypt", "offSuffix": suffix});
@@ -1173,6 +1215,7 @@ mod tests {
                 Some(&original),
                 original.provider_type,
                 Some("acct"),
+                None,
                 &overlay,
             )
         };

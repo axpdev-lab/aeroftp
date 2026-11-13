@@ -123,6 +123,13 @@ pub struct ProviderState {
     /// Target identity of the legacy FTP session (`connect_ftp`), set with
     /// its owner and dropped with it; see [`Self::gui_target_identity`].
     legacy_target_identity: std::sync::Mutex<Option<String>>,
+    /// Public client id of the OAuth app the provider in the slot signed in
+    /// with (none for a config install); set with the provider, under the
+    /// same locks. Part of the GUI target (see [`Self::gui_target_identity`]).
+    gui_oauth_client: std::sync::Mutex<Option<String>>,
+    /// The namespace counter of the provider in the slot and the value the
+    /// GUI target last saw; see [`Self::observe_namespace_change`].
+    namespace_watch: std::sync::Mutex<Option<(Arc<AtomicU64>, u64)>>,
     /// Restored transfers pin a verified connection across multi-phase work.
     /// Swaps, disconnects and overlay mutations take the write side before
     /// touching the provider slot or changing how its paths are interpreted.
@@ -186,6 +193,8 @@ impl ProviderState {
             gui_process_nonce: uuid::Uuid::new_v4().to_string(),
             legacy_owner_binding: std::sync::Mutex::new(None),
             legacy_target_identity: std::sync::Mutex::new(None),
+            gui_oauth_client: std::sync::Mutex::new(None),
+            namespace_watch: std::sync::Mutex::new(None),
             transfer_owner_gate: RwLock::new(()),
             connected_profile_id: std::sync::Mutex::new(None),
             config: Arc::new(Mutex::new(None)),
@@ -335,6 +344,7 @@ impl ProviderState {
         };
         let pin = self.transfer_owner_gate.read().await;
         self.validate_gui_owner()?;
+        self.observe_namespace_change();
         if self.gui_target_epoch.load(Ordering::SeqCst) != expected {
             return Err(format!(
                 "{CONNECTION_CHANGED_MARKER}: the remote target changed; nothing was done"
@@ -480,10 +490,16 @@ impl ProviderState {
         } else {
             serde_json::Value::Null
         };
+        let oauth_client = self
+            .gui_oauth_client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         Ok(crate::cloud_provider_factory::gui_target_identity(
             config.as_ref(),
             provider.provider_type(),
             account.as_deref(),
+            oauth_client.as_deref(),
             &overlay,
         )
         .unwrap_or_else(this_connection))
@@ -496,6 +512,7 @@ impl ProviderState {
         &self,
         is_provider: bool,
     ) -> Result<(String, u64), String> {
+        self.observe_namespace_change();
         let epoch = self.gui_target_epoch.load(Ordering::SeqCst);
         let identity = self.gui_target_identity(is_provider).await?;
         if self.gui_target_epoch.load(Ordering::SeqCst) != epoch {
@@ -573,6 +590,26 @@ impl ProviderState {
         self.gui_target_epoch.fetch_add(1, Ordering::SeqCst);
     }
 
+    /// The provider in the slot moved to another tree without a reconnect
+    /// (its namespace counter advanced, see
+    /// `StorageProvider::namespace_changes`): the GUI target advances, so
+    /// every pin taken against the previous tree is refused from here on,
+    /// the remaining commands of a run and its index publication included.
+    /// Read without the provider lock, at every pin and target read.
+    fn observe_namespace_change(&self) {
+        let mut watch = self
+            .namespace_watch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some((counter, seen)) = watch.as_mut() {
+            let now = counter.load(Ordering::SeqCst);
+            if now != *seen {
+                *seen = now;
+                self.advance_gui_target();
+            }
+        }
+    }
+
     /// Writers leave the current connection/overlay untouched if a pinned
     /// transfer cannot finish within the bound. In particular, scoped cleanup
     /// must never cancel somebody else's active transfer to obtain this lock.
@@ -617,6 +654,7 @@ impl ProviderState {
             provider,
             None,
             Some(config),
+            None,
             Some(owner),
             Duration::from_secs(30),
         )
@@ -2327,6 +2365,7 @@ async fn provider_connect_inner(
         provider,
         config.extra.get("profile_id").cloned(),
         Some(config),
+        None,
         Some(owner),
         Duration::from_secs(30),
     )
@@ -2363,7 +2402,8 @@ async fn install_connected_provider_with_config(
     config: Option<ProviderConfig>,
     wait: Duration,
 ) -> Result<(), String> {
-    install_connected_provider_with_owner(state, provider, profile_id, config, None, wait).await
+    install_connected_provider_with_owner(state, provider, profile_id, config, None, None, wait)
+        .await
 }
 
 async fn install_connected_provider_with_owner(
@@ -2371,6 +2411,7 @@ async fn install_connected_provider_with_owner(
     mut provider: Box<dyn StorageProvider>,
     profile_id: Option<String>,
     config: Option<ProviderConfig>,
+    oauth_client: Option<String>,
     owner: Option<crate::sync_owner::GuiOwnerContext>,
     wait: Duration,
 ) -> Result<(), String> {
@@ -2416,6 +2457,10 @@ async fn install_connected_provider_with_owner(
     }
     let mut config_lock = state.config.lock().await;
     let validated_owner = owner.clone();
+    let namespace_watch = provider.namespace_changes().map(|counter| {
+        let seen = counter.load(Ordering::SeqCst);
+        (counter, seen)
+    });
     let mut candidate = Some(provider);
     let publish = || {
         *state
@@ -2437,6 +2482,14 @@ async fn install_connected_provider_with_owner(
         // the previous connection's, which the liveness probe would otherwise
         // compare against the new provider.
         *config_lock = config;
+        *state
+            .gui_oauth_client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = oauth_client.clone();
+        *state
+            .namespace_watch
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = namespace_watch.clone();
         Ok(())
     };
     let result = if let Some(owner) = validated_owner {
@@ -7966,6 +8019,7 @@ pub async fn provider_gui_verify_resume_owner(
 #[tauri::command]
 pub async fn provider_gui_target_epoch(state: State<'_, ProviderState>) -> Result<u64, String> {
     let _target = state.transfer_owner_gate.read().await;
+    state.observe_namespace_change();
     Ok(state.gui_target_epoch.load(Ordering::SeqCst))
 }
 
@@ -8685,13 +8739,24 @@ pub async fn oauth2_connect(
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
+    // The OAuth app of the tokens the provider signed in with (a public id).
+    let token_client = oauth_provider_named(&params.provider)
+        .ok()
+        .and_then(|oauth_provider| {
+            crate::providers::OAuth2Manager::new()
+                .with_credential_user(owner.user())
+                .token_client_id(oauth_provider, &params.profile_id)
+                .ok()
+        })
+        .flatten();
 
-    // Store provider
+    // Store provider, with that app.
     install_connected_provider_with_owner(
         &state,
         provider,
         Some(params.profile_id.clone()),
         None,
+        Some(oauth_identity_client(token_client)),
         Some(owner),
         Duration::from_secs(30),
     )
@@ -9052,7 +9117,12 @@ async fn pcloud_exchange_code(
         };
 
         let manager = OAuth2Manager::new().with_credential_user(credential_user);
-        manager.store_tokens(config.provider, config.profile_id(), &tokens)?;
+        manager.store_tokens_with_client(
+            config.provider,
+            config.profile_id(),
+            &tokens,
+            Some(&config.client_id),
+        )?;
 
         // Persist detected region so oauth2_connect uses the correct API endpoint
         let region = if endpoint.contains("eapi") {
@@ -9090,9 +9160,18 @@ pub async fn oauth2_has_tokens(
     provider: String,
     profile_id: Option<String>,
 ) -> Result<bool, String> {
-    use crate::providers::{OAuth2Manager, OAuthProvider};
+    use crate::providers::OAuth2Manager;
 
-    let oauth_provider = match provider.to_lowercase().as_str() {
+    let oauth_provider = oauth_provider_named(&provider)?;
+
+    let pid = profile_id.unwrap_or_default();
+    let manager = OAuth2Manager::new();
+    Ok(manager.has_tokens(oauth_provider, &pid))
+}
+
+fn oauth_provider_named(provider: &str) -> Result<crate::providers::OAuthProvider, String> {
+    use crate::providers::OAuthProvider;
+    Ok(match provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
         "googlephotos" | "google_photos" => OAuthProvider::GooglePhotos,
         "dropbox" => OAuthProvider::Dropbox,
@@ -9102,11 +9181,16 @@ pub async fn oauth2_has_tokens(
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthProvider::ZohoWorkdrive,
         "yandexdisk" | "yandex_disk" | "yandex" => OAuthProvider::YandexDisk,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    };
+    })
+}
 
-    let pid = profile_id.unwrap_or_default();
-    let manager = OAuth2Manager::new();
-    Ok(manager.has_tokens(oauth_provider, &pid))
+/// The OAuth app a GUI connection's target names: the one recorded with the
+/// stored tokens, never the one configured now (a token keeps working after
+/// the app is changed in Settings, and it still sees its own app's space).
+/// A record written before the app was kept names no app: one fixed value,
+/// which no recorded app shares, stands for it.
+pub(crate) fn oauth_identity_client(recorded: Option<String>) -> String {
+    recorded.unwrap_or_else(|| "token-app-unrecorded".to_string())
 }
 
 /// Create a shareable link for a file using the OAuth provider's native sharing API
@@ -10664,6 +10748,7 @@ pub async fn fourshared_connect(
     let connect_token = params.connect_token.clone();
     let (access_token, access_token_secret) = load_fourshared_tokens(&params.profile_id)?;
 
+    let oauth_client = params.consumer_key.clone();
     let config = FourSharedConfig {
         consumer_key: params.consumer_key,
         consumer_secret: params.consumer_secret.into(),
@@ -10689,6 +10774,7 @@ pub async fn fourshared_connect(
         Box::new(provider),
         Some(params.profile_id.clone()),
         None,
+        Some(oauth_client),
         Some(owner),
         Duration::from_secs(30),
     )
@@ -23565,6 +23651,91 @@ mod restored_transfer_owner_tests {
         drop(_change);
     }
 
+    /// E2: an upload refused on the protected branch makes GitHub write to a
+    /// working branch (here one that already exists, with other contents)
+    /// with no reconnect. That is another tree: the GUI target advances, so
+    /// the rest of a plan made against `main` is refused (a delete, the index
+    /// publication), and a page that reads the target again gets the working
+    /// branch's identity, never `main`'s.
+    #[tokio::test]
+    async fn a_working_branch_fallback_stops_the_plan_made_against_the_protected_branch() {
+        use axum::response::IntoResponse;
+        let app = axum::Router::new().fallback(axum::routing::any(
+            |method: axum::http::Method, uri: axum::http::Uri, body: String| async move {
+                let path = uri.path().to_string();
+                if path.contains("/branches/") {
+                    // The working branch exists already, ahead of main.
+                    return axum::Json(serde_json::json!({
+                        "name": "aeroftp/alice/main", "protected": false,
+                        "commit": {"sha": "fedcba9876543210fedcba9876543210fedcba98"}
+                    }))
+                    .into_response();
+                }
+                if method == axum::http::Method::PUT && path.contains("/contents/") {
+                    if body.contains("\"branch\":\"main\"") {
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            axum::Json(
+                                serde_json::json!({"message": "Protected branch update failed"}),
+                            ),
+                        )
+                            .into_response();
+                    }
+                    return (
+                        axum::http::StatusCode::CREATED,
+                        axum::Json(serde_json::json!({"content": {"sha": "abc123"}})),
+                    )
+                        .into_response();
+                }
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    axum::Json(serde_json::json!({"message": "Not Found"})),
+                )
+                    .into_response()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let state = ProviderState::new();
+        let provider =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        install_connected_provider(&state, Box::new(provider), Some("gh".into()))
+            .await
+            .unwrap();
+        let before = state.gui_target_snapshot(true).await.unwrap();
+        assert!(state.pin_gui_target(Some(before.1)).await.is_ok());
+
+        // The run's first upload: refused on main, written to the working branch.
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"a").unwrap();
+        state
+            .provider
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .upload(file.to_str().unwrap(), "/a.txt", None)
+            .await
+            .unwrap();
+
+        // Its next command and its index publication, pinned on main's target.
+        let refused = state.pin_gui_target(Some(before.1)).await.err().unwrap();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        assert!(state
+            .pin_gui_index_owner(Some(before.1), Some("binding"), true)
+            .await
+            .is_err());
+        // Read again, the target is the working branch's.
+        let after = state.gui_target_snapshot(true).await.unwrap();
+        assert_ne!(after.1, before.1);
+        assert_ne!(after.0, before.0);
+        assert!(state.pin_gui_target(Some(after.1)).await.is_ok());
+        server.abort();
+    }
+
     /// A compare that read target A, then saw B, then A again (A, B, A
     /// reconnects while it scanned) reads equal identities: the epoch tells
     /// the two A connections apart, so the compare refuses its rows.
@@ -24253,6 +24424,7 @@ mod installer_account_switch_tests {
                 &state,
                 candidate,
                 Some("B".into()),
+                None,
                 None,
                 Some(owner),
                 Duration::from_secs(10),

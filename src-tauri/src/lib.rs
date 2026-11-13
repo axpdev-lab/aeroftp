@@ -1589,6 +1589,9 @@ pub(crate) struct AppState {
     pub(crate) cancel_flag: Arc<AtomicBool>,
     cancel_token: Mutex<CancellationToken>,
     speed_limits: SpeedLimits,
+    /// The cancel flags of the copies and deletes running outside a sync run
+    /// (F5, a paste, a delete from a panel); see [`AppState::operation_cancel`].
+    local_operations: std::sync::Mutex<Vec<std::sync::Weak<AtomicBool>>>,
 }
 
 impl AppState {
@@ -1598,6 +1601,39 @@ impl AppState {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
             speed_limits: SpeedLimits::new(),
+            local_operations: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    /// The flag a local copy, a local delete or a legacy FTP delete observes.
+    /// A command of a sync run
+    /// (it carries the run's lease) observes the shared flag, which the run
+    /// reset at its start and which its Stop raises. Any other local
+    /// operation starts with a cancel state of its own: a Stop raised before
+    /// it began (another transfer's, never reset by F5 or a paste) does not
+    /// touch it, a Stop raised while it runs does, and it never clears
+    /// anyone else's Stop.
+    pub(crate) fn operation_cancel(&self, run_owned: bool) -> Arc<AtomicBool> {
+        if run_owned {
+            return self.cancel_flag.clone();
+        }
+        let flag = Arc::new(AtomicBool::new(false));
+        let mut operations = self
+            .local_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        operations.retain(|operation| operation.strong_count() > 0);
+        operations.push(Arc::downgrade(&flag));
+        flag
+    }
+
+    fn cancel_local_operations(&self) {
+        let operations = self
+            .local_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        for flag in operations.iter().filter_map(std::sync::Weak::upgrade) {
+            flag.store(true, Ordering::Relaxed);
         }
     }
 
@@ -1610,6 +1646,7 @@ impl AppState {
 
     async fn request_cancel(&self) {
         self.cancel_flag.store(true, Ordering::Relaxed);
+        self.cancel_local_operations();
         self.cancel_token.lock().await.cancel();
     }
 }
@@ -6684,11 +6721,13 @@ async fn delete_remote_file(
     sync_run_lease: Option<String>,
 ) -> Result<String, String> {
     let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let cancel = state.operation_cancel(sync_run_lease.is_some());
     provider_commands::ipc_result(
         "delete_remote_file",
         delete_remote_file_for_ipc(
             app,
             state,
+            cancel,
             provider_state,
             path,
             is_dir,
@@ -6698,9 +6737,10 @@ async fn delete_remote_file(
     )
 }
 
-async fn delete_remote_file_for_ipc(
-    app: AppHandle,
+async fn delete_remote_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
+    cancel: Arc<AtomicBool>,
     provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
     is_dir: bool,
@@ -6891,7 +6931,7 @@ async fn delete_remote_file_for_ipc(
 
         for item in &files_to_delete {
             // Check cancel flag before each file
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 info!(
                     "Folder deletion cancelled by user after {} files",
@@ -6963,7 +7003,7 @@ async fn delete_remote_file_for_ipc(
         // Skip if cancelled - partial content may remain
         let dirs_reversed: Vec<_> = dirs_to_delete.iter().rev().collect();
         for dir_path in dirs_reversed {
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 break;
             }
@@ -7048,7 +7088,8 @@ async fn delete_local_file(
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
-    let result = delete_local_file_inner(app.clone(), state, path.clone()).await;
+    let cancel = state.operation_cancel(sync_run_lease.is_some());
+    let result = delete_local_file_inner(app.clone(), cancel, path.clone()).await;
     // A folder delete can stop half way and still return Ok: follow_delete only
     // forgets the tags of paths that are no longer on disk.
     file_tags::follow_delete(&app, &path);
@@ -7063,6 +7104,259 @@ fn local_delete_walks_into(path: &std::path::Path) -> bool {
 
 #[cfg(test)]
 mod local_delete_cancel_tests {
+    use std::sync::atomic::Ordering;
+
+    /// A scripted FTP server holding `/d` with three files: it logs every
+    /// DELE and RMD, and on the first DELE it waits until the test has done
+    /// what it needs (`first_dele`) before it answers.
+    async fn scripted_folder_server(
+        first_dele: Option<tokio::sync::mpsc::Sender<tokio::sync::oneshot::Sender<()>>>,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = log.clone();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut cwd = "/".to_string();
+            let mut data_listener = None;
+            let mut first_dele = first_dele;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match cmd {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
+                    "TYPE" | "NOOP" => "200 ok\r\n".to_string(),
+                    "CWD" if arg == "/" || arg == "/d" => {
+                        cwd = arg.to_string();
+                        "250 ok\r\n".to_string()
+                    }
+                    "CWD" => "550 Failed to change directory.\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" => {
+                        write.write_all(b"150 listing\r\n").await.unwrap();
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        let listing = if cwd == "/d" {
+                            "-rw-r--r-- 1 u g 1 Jan 20 10:00 a.txt\r\n-rw-r--r-- 1 u g 1 Jan 20 10:00 b.txt\r\n-rw-r--r-- 1 u g 1 Jan 20 10:00 c.txt\r\n"
+                        } else {
+                            "drwxr-xr-x 1 u g 0 Jan 20 10:00 d\r\n"
+                        };
+                        data.write_all(listing.as_bytes()).await.unwrap();
+                        data.shutdown().await.unwrap();
+                        "226 done\r\n".to_string()
+                    }
+                    "DELE" | "RMD" => {
+                        seen.lock().unwrap().push(format!("{cmd} {arg}"));
+                        if cmd == "DELE" {
+                            if let Some(first) = first_dele.take() {
+                                let (done, wait) = tokio::sync::oneshot::channel();
+                                first.send(done).await.unwrap();
+                                wait.await.unwrap();
+                            }
+                        }
+                        "250 ok\r\n".to_string()
+                    }
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "502 not implemented\r\n".to_string(),
+                };
+                write.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        (addr, log)
+    }
+
+    /// P1-b on the legacy FTP session: a folder delete from the GUI (no run
+    /// lease) after another transfer's Stop, which nothing reset since,
+    /// deletes the whole folder; a Stop raised while it deletes stops it
+    /// between one entry and the next, and the folder is not removed.
+    #[tokio::test]
+    async fn a_gui_ftp_folder_delete_follows_its_own_stop_not_an_earlier_one() {
+        use tauri::{Listener, Manager};
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = events.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let state = app.state::<super::AppState>();
+        let connect = |addr: String| {
+            let state = app.state::<super::AppState>();
+            async move {
+                let mut ftp = state.ftp_manager.lock().await;
+                ftp.connect(&addr).await.unwrap();
+                ftp.login("u", "p").await.unwrap();
+            }
+        };
+        let delete = |cancel| {
+            super::delete_remote_file_for_ipc(
+                app.handle().clone(),
+                app.state::<super::AppState>(),
+                cancel,
+                app.state::<crate::provider_commands::ProviderState>(),
+                "/d".to_string(),
+                true,
+                None,
+            )
+        };
+
+        // Another transfer's Stop, never reset: the delete runs to the end.
+        state.request_cancel().await;
+        let (addr, log) = scripted_folder_server(None).await;
+        connect(addr).await;
+        let result = delete(state.operation_cancel(false)).await.unwrap();
+        assert_eq!(result, "Deleted 3 files, 1 folders");
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["DELE /d/a.txt", "DELE /d/b.txt", "DELE /d/c.txt", "RMD /d"]
+        );
+        assert!(
+            state.cancel_flag.load(Ordering::SeqCst),
+            "the Stop stays raised"
+        );
+
+        // A Stop raised while the first file is being deleted: the delete
+        // stops before the second, and the folder stays.
+        let (stop_at, mut first_dele) = tokio::sync::mpsc::channel(1);
+        let (addr, log) = scripted_folder_server(Some(stop_at)).await;
+        connect(addr).await;
+        let stopper = {
+            let app = app.handle().clone();
+            tokio::spawn(async move {
+                let done: tokio::sync::oneshot::Sender<()> = first_dele.recv().await.unwrap();
+                app.state::<super::AppState>().request_cancel().await;
+                done.send(()).unwrap();
+            })
+        };
+        let result = delete(state.operation_cancel(false)).await.unwrap();
+        stopper.await.unwrap();
+        assert_eq!(result, "Deletion cancelled: 1 of 3 files deleted");
+        assert_eq!(*log.lock().unwrap(), ["DELE /d/a.txt"]);
+        let last = events.lock().unwrap().last().cloned().unwrap();
+        assert!(last.contains("\"delete_cancelled\""), "{last}");
+    }
+
+    /// P1-b: a Stop of another transfer, which nothing reset since (F5 and a
+    /// paste never reset it), does not cancel a local copy or delete outside
+    /// a run, and is not cleared by one; a command of the run still observes
+    /// the run's Stop.
+    #[tokio::test]
+    async fn a_local_copy_or_delete_after_another_transfers_stop_runs_to_the_end() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        let state = app.state::<super::AppState>();
+        state.request_cancel().await;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        std::fs::write(&source, b"data").unwrap();
+        let path = |name: &str| dir.path().join(name).to_string_lossy().into_owned();
+
+        super::copy_local_file_with(
+            state.operation_cancel(false),
+            path("source.txt"),
+            path("copy.txt"),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(dir.path().join("copy.txt")).unwrap(), b"data");
+        assert!(
+            state.cancel_flag.load(Ordering::SeqCst),
+            "the Stop stays raised"
+        );
+
+        let of_the_run = super::copy_local_file_with(
+            state.operation_cancel(true),
+            path("source.txt"),
+            path("run-copy.txt"),
+            None,
+            None,
+        )
+        .await;
+        assert!(of_the_run.unwrap_err().contains("cancel"));
+        assert!(!dir.path().join("run-copy.txt").exists());
+
+        let folder = dir.path().join("folder");
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
+        let deleted = super::delete_local_file_inner(
+            app.handle().clone(),
+            state.operation_cancel(false),
+            folder.to_string_lossy().into_owned(),
+        )
+        .await
+        .unwrap();
+        assert!(!deleted.contains("cancelled"), "{deleted}");
+        assert!(!folder.exists());
+        assert!(state.cancel_flag.load(Ordering::SeqCst));
+    }
+
+    /// P1-b: a Stop raised while a copy runs stops it, whether the copy is a
+    /// run's (the shared flag) or one of its own (its registered flag).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_during_a_copy_stops_it_inside_or_outside_a_run() {
+        use std::io::Read;
+        struct StopAfterFirstChunk {
+            state: std::sync::Arc<super::AppState>,
+            handle: tokio::runtime::Handle,
+            served: bool,
+        }
+        impl Read for StopAfterFirstChunk {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.served {
+                    self.handle.block_on(self.state.request_cancel());
+                }
+                self.served = true;
+                buf.fill(7);
+                Ok(buf.len())
+            }
+        }
+        for run_owned in [true, false] {
+            let state = std::sync::Arc::new(super::AppState::new());
+            let cancel = state.operation_cancel(run_owned);
+            let dir = tempfile::tempdir().unwrap();
+            let to = dir.path().join("copy.bin");
+            let handle = tokio::runtime::Handle::current();
+            let copied = tokio::task::spawn_blocking(move || {
+                let mut source = StopAfterFirstChunk {
+                    state,
+                    handle,
+                    served: false,
+                };
+                let permissions = std::fs::metadata(dir.path()).unwrap().permissions();
+                let copied = super::copy_into_place(&mut source, permissions, &to, &cancel);
+                (copied, to.exists(), dir)
+            })
+            .await
+            .unwrap();
+            assert!(
+                matches!(copied.0, Err(crate::sync::IpcError::Cancelled)),
+                "run_owned={run_owned}: {:?}",
+                copied.0
+            );
+            assert!(!copied.1, "run_owned={run_owned}: nothing published");
+        }
+    }
     /// A Stop raised before the first listing of a folder delete: nothing is
     /// collected and nothing deleted, and the delete reports a cancellation
     /// (its result and its final event), never "Deleted 0 files".
@@ -7084,9 +7378,10 @@ mod local_delete_cancel_tests {
         state
             .cancel_flag
             .store(true, std::sync::atomic::Ordering::SeqCst);
+        // A delete of the run: it observes the run's Stop.
         let result = super::delete_local_file_inner(
             app.handle().clone(),
-            state,
+            state.operation_cancel(true),
             folder.to_string_lossy().into_owned(),
         )
         .await
@@ -7116,7 +7411,7 @@ async fn remove_local_file_or_link(path: &std::path::Path) -> std::io::Result<()
 
 async fn delete_local_file_inner<R: tauri::Runtime>(
     app: AppHandle<R>,
-    state: State<'_, AppState>,
+    cancel: Arc<AtomicBool>,
     path: String,
 ) -> Result<String, String> {
     validate_path(&path)?;
@@ -7217,7 +7512,7 @@ async fn delete_local_file_inner<R: tauri::Runtime>(
         // deletion is reported cancelled even when nothing was collected yet.
         let mut scan_cancelled = false;
         while let Some(current_dir) = dirs_to_scan.pop() {
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 scan_cancelled = true;
                 break;
             }
@@ -7291,7 +7586,7 @@ async fn delete_local_file_inner<R: tauri::Runtime>(
         let mut last_emit = std::time::Instant::now();
 
         for item in &files_to_delete {
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 info!(
                     "Local folder deletion cancelled by user after {} files",
@@ -7353,7 +7648,7 @@ async fn delete_local_file_inner<R: tauri::Runtime>(
         // to delete children before parents
         let dirs_reversed: Vec<_> = dirs_to_delete.iter().rev().collect();
         for dir_path in dirs_reversed {
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 break;
             }
@@ -7620,7 +7915,7 @@ async fn copy_local_file(
     sync_run_lease: Option<String>,
 ) -> Result<(), String> {
     copy_local_file_with(
-        state.cancel_flag.clone(),
+        state.operation_cancel(sync_run_lease.is_some()),
         from,
         to,
         overwrite,

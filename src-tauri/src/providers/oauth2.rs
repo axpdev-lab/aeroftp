@@ -488,6 +488,14 @@ struct TokenRecord {
     tokens: StoredTokens,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     owner_family: Option<String>,
+    /// The public client id of the OAuth app that authorized these tokens,
+    /// recorded at authorization and kept by every refresh. A bearer token
+    /// keeps working after the app is changed in Settings, so the app that
+    /// decides what the token sees (an "app folder" app sees its own root)
+    /// is the one recorded here, not the one configured now. Absent on a
+    /// record written before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
     #[serde(skip)]
     source: TokenSource,
     #[serde(skip)]
@@ -1253,7 +1261,12 @@ impl OAuth2Manager {
         };
 
         let tokens = self.exchange_auth_code(config, code, verifier).await?;
-        self.store_tokens(config.provider, &config.profile_id, &tokens)?;
+        self.store_tokens_with_client(
+            config.provider,
+            &config.profile_id,
+            &tokens,
+            Some(&config.client_id),
+        )?;
         Ok(tokens)
     }
 
@@ -1436,9 +1449,25 @@ impl OAuth2Manager {
         profile_id: &str,
         tokens: &StoredTokens,
     ) -> Result<(), ProviderError> {
+        self.store_tokens_with_client(provider, profile_id, tokens, None)
+    }
+
+    /// [`Self::store_tokens`] for a new authorization, recording the public
+    /// client id of the app that obtained the tokens (see `TokenRecord`).
+    pub fn store_tokens_with_client(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+        tokens: &StoredTokens,
+        client_id: Option<&str>,
+    ) -> Result<(), ProviderError> {
         let record = TokenRecord {
             tokens: tokens.clone(),
             owner_family: Some(format!("v1:{}", uuid::Uuid::new_v4())),
+            client_id: client_id
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned),
             source: TokenSource::Unavailable,
             credential_owner: self.credential_user,
             raw: Zeroizing::new(String::new()),
@@ -1518,6 +1547,17 @@ impl OAuth2Manager {
     ) -> Result<StoredTokens, ProviderError> {
         self.load_token_record(provider, profile_id)
             .map(|record| record.tokens)
+    }
+
+    /// The public client id recorded with the stored tokens (the app that
+    /// authorized them), `None` for a record written before it was kept.
+    pub fn token_client_id(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+    ) -> Result<Option<String>, ProviderError> {
+        self.load_token_record(provider, profile_id)
+            .map(|record| record.client_id)
     }
 
     fn decode_record(
@@ -1601,6 +1641,7 @@ impl OAuth2Manager {
         let replacement = TokenRecord {
             tokens: tokens.clone(),
             owner_family: Some(observed.family()?),
+            client_id: observed.client_id.clone(),
             source: TokenSource::Unavailable,
             credential_owner: current_owner,
             raw: Zeroizing::new(String::new()),
@@ -2422,6 +2463,91 @@ fn parse_callback_request(request: &str) -> Result<(String, String), ProviderErr
 
 #[cfg(test)]
 mod tests {
+    /// E1: the OAuth app a target names is the one that authorized the
+    /// stored tokens. A token of app A, with the app changed to B in
+    /// Settings and no new sign-in, keeps naming A, through a refresh too; a
+    /// genuine sign-in with B names B. A record from before the app was kept
+    /// names one fixed value no recorded app shares.
+    #[test]
+    fn a_token_names_the_app_that_authorized_it_not_the_one_configured_now() {
+        use super::{OAuth2Manager, OAuthProvider, StoredTokens};
+        let manager = OAuth2Manager::new();
+        let profile = format!("e1-token-app-{}", std::process::id());
+        let _ = manager.delete_tokens(OAuthProvider::Dropbox, &profile);
+        let tokens = |access: &str| StoredTokens {
+            access_token: access.to_string(),
+            refresh_token: Some("refresh".to_string()),
+            expires_at: Some(chrono::Utc::now().timestamp() + 3600),
+            token_type: "Bearer".to_string(),
+            scopes: vec![],
+        };
+        let target = |recorded: Option<String>| {
+            crate::cloud_provider_factory::gui_target_identity(
+                None,
+                crate::providers::ProviderType::Dropbox,
+                Some("alice@example"),
+                Some(&crate::provider_commands::oauth_identity_client(recorded)),
+                &serde_json::Value::Null,
+            )
+            .unwrap()
+        };
+        let named = |manager: &OAuth2Manager| {
+            target(
+                manager
+                    .token_client_id(OAuthProvider::Dropbox, &profile)
+                    .unwrap(),
+            )
+        };
+        let app_a = target(Some("app-a".into()));
+        let app_b = target(Some("app-b".into()));
+        assert_ne!(app_a, app_b);
+
+        // Authorized with A; Settings now say B: the target is still A's.
+        manager
+            .store_tokens_with_client(
+                OAuthProvider::Dropbox,
+                &profile,
+                &tokens("a-1"),
+                Some("app-a"),
+            )
+            .unwrap();
+        assert_eq!(named(&manager), app_a);
+        // A refresh keeps the app.
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, &profile);
+        let observed = manager
+            .load_token_record(OAuthProvider::Dropbox, &profile)
+            .unwrap();
+        manager
+            .persist_refreshed_record(&account, &observed, &tokens("a-2"))
+            .unwrap();
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, &profile)
+                .unwrap()
+                .access_token,
+            "a-2"
+        );
+        assert_eq!(named(&manager), app_a);
+        // A genuine sign-in with B names B.
+        manager
+            .store_tokens_with_client(
+                OAuthProvider::Dropbox,
+                &profile,
+                &tokens("b-1"),
+                Some("app-b"),
+            )
+            .unwrap();
+        assert_eq!(named(&manager), app_b);
+        // A record from before: neither A nor B, and the same every time.
+        manager
+            .store_tokens(OAuthProvider::Dropbox, &profile, &tokens("old"))
+            .unwrap();
+        let unrecorded = named(&manager);
+        assert!(unrecorded != app_a && unrecorded != app_b);
+        assert_eq!(named(&manager), unrecorded);
+        let _ = manager.delete_tokens(OAuthProvider::Dropbox, &profile);
+    }
+
     #[test]
     fn legacy_cache_signout_revision_rejects_a_paused_read() {
         use std::sync::{Arc, Barrier};

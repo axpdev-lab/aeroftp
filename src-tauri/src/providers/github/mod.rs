@@ -151,6 +151,9 @@ pub struct GitHubProvider {
     repo_private: bool,
     is_bot_token: bool,
     default_branch: String,
+    /// Advanced when the branch read and written changes in the session
+    /// (the working-branch fallback); see `StorageProvider::namespace_changes`.
+    namespace_changes: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl std::fmt::Debug for GitHubProvider {
@@ -187,6 +190,7 @@ impl GitHubProvider {
             repo_private: false,
             is_bot_token: false,
             default_branch: String::from("main"),
+            namespace_changes: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
         })
     }
 
@@ -508,6 +512,50 @@ impl GitHubProvider {
         } else {
             &self.branch
         }
+    }
+
+    /// A connected provider whose branch `main` is protected, its API at
+    /// `api_origin`: the state `connect` leaves before a working branch is
+    /// needed.
+    #[cfg(test)]
+    pub(crate) fn protected_for_test(api_origin: String) -> Self {
+        let mut extra = HashMap::new();
+        extra.insert("branch".to_string(), "main".to_string());
+        let config = ProviderConfig {
+            name: "repo".to_string(),
+            provider_type: ProviderType::GitHub,
+            host: "o/r".to_string(),
+            port: Some(443),
+            username: None,
+            password: Some("token".to_string()),
+            initial_path: Some("/".to_string()),
+            extra,
+        };
+        let mut provider = Self::connected_for_test(&config, "alice", "main");
+        provider.client.api_origin_override = Some(api_origin);
+        provider.write_mode = GitHubWriteMode::DirectWriteProtected {
+            base_sha: "0123456789abcdef0123456789abcdef01234567".to_string(),
+        };
+        provider
+    }
+
+    /// A provider in the state `connect` leaves it in, without the network:
+    /// the account and the repository's default branch as the API reported
+    /// them, the configured branch (or that default) active.
+    #[cfg(test)]
+    pub(crate) fn connected_for_test(
+        config: &ProviderConfig,
+        account: &str,
+        default_branch: &str,
+    ) -> Self {
+        let mut provider = Self::new(GitHubConfig::from_provider_config(config).unwrap()).unwrap();
+        provider.account_email = Some(account.to_string());
+        provider.default_branch = default_branch.to_string();
+        if provider.branch.is_empty() {
+            provider.branch = provider.default_branch.clone();
+        }
+        provider.connected = true;
+        provider
     }
 
     fn sanitise_branch_component(value: &str) -> String {
@@ -876,6 +924,23 @@ impl StorageProvider for GitHubProvider {
 
     fn account_email(&self) -> Option<String> {
         self.account_email.clone()
+    }
+
+    /// The account, the repository and the branch the listing reads
+    /// (`content_branch`: the configured branch, the repository's default
+    /// one resolved at connect, or the workflow branch). Another branch of
+    /// the same repository is another tree, so a sync index of one never
+    /// serves the other as a baseline.
+    fn namespace_changes(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicU64>> {
+        Some(self.namespace_changes.clone())
+    }
+
+    fn sync_namespace_identity(&self) -> Option<String> {
+        let branch = self.content_branch();
+        // Before connect the default branch is unknown: no identity.
+        (self.connected && !branch.is_empty()).then(|| {
+            serde_json::json!(["github", self.account_email, self.repo_slug(), branch]).to_string()
+        })
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -1399,6 +1464,12 @@ impl StorageProvider for GitHubProvider {
                     self.write_mode = GitHubWriteMode::BranchWorkflow {
                         branch: workflow_branch,
                     };
+                    // Another branch from here on: another tree, read and
+                    // written, under the same connection. The GUI target sees
+                    // it change, and a plan made against the previous branch
+                    // stops (no further write, no index published).
+                    self.namespace_changes
+                        .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
                     // QA-GH-019: Mutate the existing body in-place: no clone of the
                     // large base64 content. `body` is already a serde_json::Value on the stack.

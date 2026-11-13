@@ -302,5 +302,40 @@
     "name": "url username holding @",
     "input": "open ftp://alice@example.com:secret@host/file",
     "expected": "open ftp://***@***:***REDACTED***@host/file"
+  },
+  {
+    "name": "url password holding an apostrophe",
+    "input": "open ftp://bob:pa'ss@host/file",
+    "expected": "open ftp://bob:***REDACTED***@host/file"
+  },
+  {
+    "name": "url user name holding an apostrophe",
+    "input": "open ftp://o'brien:secret@host/file",
+    "expected": "open ftp://o'brien:***REDACTED***@host/file"
+  },
+  {
+    "name": "url inside backticks",
+    "input": "see `ftp://bob:pw@host/x` now",
+    "expected": "see `ftp://bob:***REDACTED***@host/x` now"
+  },
+  {
+    "name": "url password holding a backtick and parentheses",
+    "input": "(ftp://bob:p`(w)@host)",
+    "expected": "(ftp://bob:***REDACTED***@host)"
+  },
+  {
+    "name": "url password holding an escaped quote inside a json string",
+    "input": "{\"url\":\"ftp://bob:pa\\\"ss@host\",\"password\":\"x\"}",
+    "expected": "{\"url\":\"ftp://bob:***REDACTED***@host\",\"password\":\"***REDACTED***\"}"
+  },
+  {
+    "name": "url password ending in a backslash",
+    "input": "open ftp://bob:pw\\@host/file",
+    "expected": "open ftp://bob:***REDACTED***@host/file"
+  },
+  {
+    "name": "url password ending in a backslash inside a json string",
+    "input": "{\"url\":\"ftp://bob:pw\\\\@host/file\"}",
+    "expected": "{\"url\":\"ftp://bob:***REDACTED***@host/file\"}"
   }
 ]

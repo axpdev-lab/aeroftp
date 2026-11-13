@@ -1288,6 +1288,15 @@ pub trait StorageProvider: Send + Sync {
         None
     }
 
+    /// A counter the provider advances when the tree it reads and writes
+    /// changes within the session, with no reconnect (GitHub falling back to
+    /// a working branch after a protected-branch refusal). The GUI target
+    /// reads it without the provider lock and treats an advance as a target
+    /// change: a plan made against the previous tree stops there.
+    fn namespace_changes(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicU64>> {
+        None
+    }
+
     /// Stable identity for the process-global transfer governor. Direct
     /// providers normally expose a `user@host` display name; cloud providers
     /// expose their account or tenant label. Implementations with richer

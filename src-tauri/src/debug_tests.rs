@@ -341,8 +341,12 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
     ),
     (
         // The password runs to the last `@` of the authority, never past
-        // `/`, `?` or `#` (the TS twin in redactSensitive.ts says the same).
-        r#"(?i)\b((?:ftps?|sftp|scp|https?|webdav)://[^:\s/"']+:)[^\s/?#"']+(@)"#,
+        // `/`, `?` or `#`; an unescaped `"` ends it, an escaped one, an
+        // apostrophe, a backtick or a parenthesis belongs to it, in the user
+        // name as well; a backslash takes the next character when it can,
+        // else stands alone (a password ending in a literal backslash still
+        // reaches its `@`). The TS twin in redactSensitive.ts says the same.
+        r#"(?i)\b((?:ftps?|sftp|scp|https?|webdav)://(?:[^:\s/"\\]|\\.?)+:)(?:[^\s/?#"\\]|\\.?)+(@)"#,
         Replacement::Text("$1***REDACTED***$2"),
     ),
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".

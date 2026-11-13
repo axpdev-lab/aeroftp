@@ -6140,7 +6140,10 @@ const App: React.FC = () => {
       if (!dest || !event.payload.paths.length) return;
       let copied = 0;
       const failures: string[] = [];
+      // A Stop raised during the import ends it (see clipboardPaste).
+      const stops = stopCountRef.current;
       for (const src of event.payload.paths) {
+        if (stopCountRef.current !== stops) break;
         const base = localPathBasename(src);
         const to = localDropTarget(src, dest);
         if (!to) continue;
@@ -13561,6 +13564,11 @@ const App: React.FC = () => {
   const clipboardPaste = async (targetIsRemote: boolean, targetDir: string) => {
     const cb = fileClipboardRef.current;
     if (!cb) return;
+    // A Stop raised during the paste ends it: each local copy or delete is a
+    // native command with a cancel state of its own, so the loop itself must
+    // start no further item once a Stop came (the one in flight is stopped).
+    const stops = stopCountRef.current;
+    const pasteStopped = () => stopCountRef.current !== stops;
 
     const { files, isRemote: sourceIsRemote, operation, sourceDir } = cb;
     // Remote files pasted after a switch to another server named that
@@ -13683,6 +13691,7 @@ const App: React.FC = () => {
           }
         } else {
           for (const file of landed) {
+            if (pasteStopped()) break;
             if (sourceIsRemote && pasteRetargeted()) break;
             try {
               if (sourceIsRemote) {
@@ -13761,6 +13770,7 @@ const App: React.FC = () => {
         if (!targetIsRemote) {
           // Local copy
           for (const file of files) {
+            if (pasteStopped()) break;
             const sep = targetDir.includes('\\') ? '\\' : '/';
             const destPath = `${targetDir}${targetDir.endsWith(sep) ? '' : sep}${file.name}`;
             if (destPath === file.path) {

@@ -38,7 +38,7 @@ describe('a file of panel 2 brings its own size and modified date to the overwri
     const context = {
       fileClipboardRef: { current: { files: panel2.map(({ name, path, is_dir }) => ({ name, path, is_dir })), sourceDir: '/panel2', isRemote: false, operation: 'copy' } },
       splitForFileBatch, fileBatchSessionFlags: () => ({ aeroVaultOverlay: false, gitHostUpload: false }),
-      resetOverwriteSettings: vi.fn(), runFileBatch, batchCancelledRef: { current: false },
+      resetOverwriteSettings: vi.fn(), runFileBatch, batchCancelledRef: { current: false }, stopCountRef: { current: 0 },
       remoteFiles: [], localFiles: [file('a.bin', 1)], sortedLocalFiles: [], localFiles2: panel2, sortedLocalFiles2: panel2,
       loadRemoteFiles: vi.fn(), notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn() }, t: (key: string) => key,
       // One server for the whole paste (the clipboard's server check is in wrongTarget.wiring.test.ts).

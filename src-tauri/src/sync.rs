@@ -8618,6 +8618,84 @@ mod tests {
         );
     }
 
+    /// A saved GitHub profile switched to another branch keeps its host,
+    /// account, id and path pair. The history of the old branch's run must
+    /// not turn a local file the new branch lacks into a local deletion: the
+    /// branch is part of the target, whether set in the profile or resolved
+    /// at connect as the repository's default (which can change remotely).
+    #[test]
+    fn a_profile_switched_to_another_branch_plans_no_local_deletion() {
+        use crate::providers::StorageProvider;
+        let config = |branch: Option<&str>| {
+            let mut extra = HashMap::new();
+            if let Some(branch) = branch {
+                extra.insert("branch".to_string(), branch.to_string());
+            }
+            crate::providers::ProviderConfig {
+                name: "repo".into(),
+                provider_type: crate::providers::ProviderType::GitHub,
+                host: "owner/repo".into(),
+                port: Some(443),
+                username: None,
+                password: Some("token".into()),
+                initial_path: Some("/".into()),
+                extra,
+            }
+        };
+        let identity = |config: &crate::providers::ProviderConfig, default_branch: &str| {
+            let provider = crate::providers::github::GitHubProvider::connected_for_test(
+                config,
+                "alice",
+                default_branch,
+            );
+            let account = provider
+                .sync_namespace_identity()
+                .or_else(|| provider.account_email());
+            crate::cloud_provider_factory::gui_target_identity(
+                Some(config),
+                provider.provider_type(),
+                account.as_deref(),
+                None,
+                &serde_json::Value::Null,
+            )
+            .unwrap()
+        };
+        let main = identity(&config(Some("main")), "main");
+        let develop = identity(&config(Some("develop")), "main");
+        assert_ne!(main, develop, "a branch set in the profile");
+        assert_eq!(main, identity(&config(Some("main")), "main"));
+        let default_main = identity(&config(None), "main");
+        let default_develop = identity(&config(None), "develop");
+        assert_ne!(
+            default_main, default_develop,
+            "the repository default moved"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut page = SyncIndex::new("/local".into(), "/remote".into());
+        page.profile_id = Some("p1".into());
+        page.files.insert(
+            "x.txt".into(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        save_index_with_trust_in(&mut conn, &path, &page, &[], Some(&main)).unwrap();
+        assert_eq!(
+            plan_for_local_only_file(&path, &main),
+            SyncAction::DeleteLocal,
+            "the same branch: a file gone from it is a deletion"
+        );
+        for other in [&develop, &default_develop] {
+            assert_eq!(plan_for_local_only_file(&path, other), SyncAction::Upload);
+        }
+    }
+
     /// D6: target A's index, and an intent of a run on target B that failed
     /// before it published. Bound to B, A's baseline is gone but B's pending
     /// key stays: an equal pair of that file is an interrupted sync, not

@@ -84,7 +84,12 @@ const CREDENTIAL_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string 
     // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host.
     // The password runs to the LAST `@` of the authority (it may hold `@`) and
     // never past `/`, `?` or `#`: `https://host:443/docs/me@home` has none.
-    { pattern: /\b((?:ftps?|sftp|scp|https?|webdav):\/\/[^:\s/"']+:)[^\s/?#"']+(@)/gi, replacement: '$1***REDACTED***$2' },
+    // An unescaped double quote ends it (a JSON field boundary); an escaped
+    // one (`\"` inside a JSON string), an apostrophe, a backtick or a
+    // parenthesis belongs to it, in the user name as well. A backslash takes
+    // the next character when it can (`\"`), else stands alone: a password
+    // ending in a literal backslash still reaches its `@`.
+    { pattern: /\b((?:ftps?|sftp|scp|https?|webdav):\/\/(?:[^:\s/"\\]|\\.?)+:)(?:[^\s/?#"\\]|\\.?)+(@)/gi, replacement: '$1***REDACTED***$2' },
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     {
